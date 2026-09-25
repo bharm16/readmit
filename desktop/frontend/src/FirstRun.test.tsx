@@ -18,11 +18,13 @@ test("a window with no workspace open presents own-evidence and sample as clear 
   const region = within(firstRunRegion());
   expect(region.getByRole("heading", { name: "Start here" })).toBeTruthy();
   expect(
-    region.getByRole("button", { name: "Choose a folder for a new project…" }),
+    region.getByRole("button", { name: "Create project…" }),
   ).toBeTruthy();
-  expect(region.getByRole("button", { name: "Open an existing workspace…" })).toBeTruthy();
+  // The first-run card and the command region's action bar both offer the
+  // same open-workspace action.
+  expect(region.getAllByRole("button", { name: "Open workspace…" }).length).toBeGreaterThan(0);
   expect(
-    region.getByRole("button", { name: "Explore the guided sample…" }),
+    region.getByRole("button", { name: "Explore sample" }),
   ).toBeTruthy();
   // The sample is named as practice, never as own-evidence onboarding.
   expect(region.getByText(/never a substitute for your own evidence/i)).toBeTruthy();
@@ -41,7 +43,7 @@ test("choosing a real project opens a chosen folder and reaches the project scre
   });
   const region = within(firstRunRegion());
   await user.click(
-    region.getByRole("button", { name: "Choose a folder for a new project…" }),
+    region.getByRole("button", { name: "Create project…" }),
   );
   expect(facade.oneCall("SelectWorkspace")).toEqual([]);
   // The open workspace is announced in the navigation region, where the
@@ -60,7 +62,7 @@ test("choosing the guided sample creates the real sample workspace", async () =>
   });
   const region = within(firstRunRegion());
   await user.click(
-    region.getByRole("button", { name: "Explore the guided sample…" }),
+    region.getByRole("button", { name: "Explore sample" }),
   );
   expect(facade.oneCall("CreateSampleWorkspace")).toEqual([]);
   expect(screen.getByText(WORKSPACE_ROOT)).toBeTruthy();
@@ -73,7 +75,7 @@ test("the license state is stated with its own next action", async () => {
   });
   const region = within(firstRunRegion());
   expect(await region.findByText(/none activated on this machine/i)).toBeTruthy();
-  await user.click(region.getByRole("button", { name: "License and activation…" }));
+  await user.click(region.getByRole("button", { name: "License" }));
   // The action opens the real pane where activation lives.
   expect(document.activeElement?.classList.contains("region-privacy")).toBe(true);
   expect(facade.callsTo("ActivateOperations").length).toBe(0);

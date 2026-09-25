@@ -173,7 +173,7 @@ export function Comparison({
   const opened = comparison?.rows.find((row) => row.position === selected) ?? null;
 
   return (
-    <section className="comparison" aria-label="Compare two collections">
+    <section className="comparison" aria-label="Compare collections">
       <h3>Compare</h3>
       <p className="hint">
         Compare this case with another collection of the workspace. Records are paired by the
@@ -203,9 +203,7 @@ export function Comparison({
           ))}
         </select>
 
-        <label htmlFor="comparison-keys">
-          Fields that identify one record, separated by spaces
-        </label>
+        <label htmlFor="comparison-keys">Record keys</label>
         <input
           id="comparison-keys"
           placeholder="MSH-10"
@@ -213,8 +211,9 @@ export function Comparison({
           disabled={busy}
           onChange={(event) => setKeys(event.target.value)}
         />
+        <p className="hint">Fields that identify one record, separated by spaces.</p>
 
-        <label htmlFor="comparison-fields">Fields to compare, or none for every field</label>
+        <label htmlFor="comparison-fields">Compared fields</label>
         <input
           id="comparison-fields"
           placeholder="PID-3[2].1"
@@ -222,9 +221,10 @@ export function Comparison({
           disabled={busy}
           onChange={(event) => setFields(event.target.value)}
         />
+        <p className="hint">Leave empty to compare every field.</p>
 
         <button type="submit" disabled={busy || right === ""}>
-          Compare these collections
+          Compare
         </button>
       </form>
 
@@ -362,7 +362,7 @@ export function Comparison({
             <section
               className="differences"
               id="comparison-differences"
-              aria-label="What differs in the selected row"
+              aria-label="Differences"
             >
               <h4>Row {opened.position}</h4>
               {opened.fields?.length ? (
@@ -404,7 +404,7 @@ export function Comparison({
 
           {comparison.unsupported.length > 0 ? (
             <>
-              <h4>Evidence this comparison did not compare</h4>
+              <h4>Excluded evidence</h4>
               <ul className="gaps">
                 {comparison.unsupported.map((gap) => (
                   <li key={`${gap.side}:${gap.occurrence ?? ""}:${gap.selector ?? ""}:${gap.code}`}>
@@ -452,11 +452,11 @@ export function Comparison({
               ))}
             </select>
             <button type="submit" disabled={busy || !comparison || policy === ""}>
-              Preview under this policy
+              Preview
             </button>
           </form>
           <details>
-            <summary>Author a normalization policy</summary>
+            <summary>Normalization policy</summary>
             <NormalizationPolicyEditor
               workspace={workspace}
               entries={policyEntries}

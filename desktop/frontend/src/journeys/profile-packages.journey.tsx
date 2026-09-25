@@ -58,8 +58,8 @@ async function receivedPackage(): Promise<string> {
 /** Opens the workspace the packages arrived in, through the host's dialog. */
 async function openInterfaces(user: UserEvent): Promise<ReturnType<typeof within>> {
   await journey.chooseFolder(journey.path("interfaces"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
-  return within(await screen.findByRole("region", { name: "Interface Profiles & Metadata Packs" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  return within(await screen.findByRole("region", { name: "Profiles" }));
 }
 
 /** What one document of the fixtures says, read from the file. */
@@ -77,7 +77,7 @@ test("a profile package is imported into a new directory, shows what it verified
   const panel = await openInterfaces(user);
 
   await press(user, panel.getByRole("tab", { name: "Package Exchange" }));
-  const form = within(panel.getByRole("form", { name: "Import profile package" }));
+  const form = within(panel.getByRole("form", { name: "Import package" }));
   const outcome = () => within(panel.getByRole("region", { name: "Package import" }));
   const importInto = async (file: string, output: string) => {
     await enter(user, form.getByLabelText("Package File:"), file);
@@ -167,7 +167,7 @@ test("an existing local profile opened in the profile panel resolves against its
   // are not, as the first journey shows.
   await activateLicense(user, journey);
   const panel = await openInterfaces(user);
-  const form = within(panel.getByRole("form", { name: "Open an existing profile" }));
+  const form = within(panel.getByRole("form", { name: "Open profile" }));
   const profile = JSON.parse(journey.readFile("interfaces/imported/profile.json"));
   const sealed = JSON.parse(journey.readFile("interfaces/imported/version.json"));
   const pinned = `${profile.base.pack.id} v${profile.base.pack.version}`;
@@ -217,9 +217,9 @@ test("an existing local profile opened in the profile panel resolves against its
   expect((await form.findByRole("alert")).textContent).toMatch(/^This editor holds unstored edits\./);
   expect((panel.getByLabelText("Profile ID") as HTMLInputElement).value).toBe("edited-in-the-window");
   await press(user, panel.getByRole("tab", { name: "Canonical JSON" }));
-  await press(user, panel.getByRole("button", { name: "Discard Unstored Edits" }));
+  await press(user, panel.getByRole("button", { name: "Discard changes" }));
   await press(user, panel.getByRole("tab", { name: "Profile Editor" }));
-  await press(user, within(panel.getByRole("form", { name: "Open an existing profile" })).getByRole("button", { name: "Open Profile" }));
+  await press(user, within(panel.getByRole("form", { name: "Open profile" })).getByRole("button", { name: "Open Profile" }));
   await waitFor(() => expect((panel.getByLabelText("Profile ID") as HTMLInputElement).value).toBe(profile.profile.id));
   expect(panel.getByRole("heading", { name: "Open imported/profile.json: completed" })).toBeTruthy();
 

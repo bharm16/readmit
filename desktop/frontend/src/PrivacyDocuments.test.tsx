@@ -42,16 +42,16 @@ test("disclosure documents reopen into structured controls and save new validate
     onSaved={(kind, entry) => saved.push(`${kind}:${entry}`)} />);
   expect((screen.getByLabelText("Patient identifier selector") as HTMLInputElement).value).toBe("");
   expect(screen.queryByLabelText("Known value 1")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Open selected policy for editing" }));
+  await user.click(screen.getByRole("button", { name: "Edit policy" }));
   expect((screen.getByLabelText("Patient identifier selector") as HTMLInputElement).value).toBe("PID-3.1");
-  await user.type(screen.getByLabelText("New disclosure policy document"), "edited-policy.json");
-  await user.click(screen.getByRole("button", { name: "Save disclosure policy" }));
+  await user.type(screen.getByLabelText("Policy file"), "edited-policy.json");
+  await user.click(screen.getByRole("button", { name: "Save policy" }));
   expect(await screen.findByText("Saved disclosure policy edited-policy.json.")).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: "Open selected inventory for editing" }));
+  await user.click(screen.getByRole("button", { name: "Edit inventory" }));
   expect((screen.getByLabelText("Artifact path 1") as HTMLInputElement).value).toBe("original-run");
   await user.type(screen.getByLabelText("New original-artifact inventory document"), "edited-inventory.json");
-  await user.click(screen.getByRole("button", { name: "Save original-artifact inventory" }));
+  await user.click(screen.getByRole("button", { name: "Save inventory" }));
   expect(await screen.findByText("Saved original-artifact inventory edited-inventory.json.")).toBeTruthy();
   expect(saved).toEqual(["policy:edited-policy.json", "inventory:edited-inventory.json"]);
   expect(facadeStub().callsTo("SaveRedactPolicy")).toHaveLength(1);
@@ -68,11 +68,11 @@ test("new disclosure documents start without values and show reader refusals", a
   expect((screen.getByLabelText("Patient identifier selector") as HTMLInputElement).value).toBe("");
   expect(screen.queryByLabelText("Field selector 1")).toBeNull();
   expect(screen.queryByLabelText("Known value 1")).toBeNull();
-  await user.type(screen.getByLabelText("New disclosure policy document"), "policy.json");
-  await user.click(screen.getByRole("button", { name: "Save disclosure policy" }));
+  await user.type(screen.getByLabelText("Policy file"), "policy.json");
+  await user.click(screen.getByRole("button", { name: "Save policy" }));
   expect(await screen.findByText("invalid redaction policy; only explicit named policies are supported")).toBeTruthy();
   await user.type(screen.getByLabelText("New original-artifact inventory document"), "inventory.json");
-  await user.click(screen.getByRole("button", { name: "Save original-artifact inventory" }));
+  await user.click(screen.getByRole("button", { name: "Save inventory" }));
   expect(await screen.findByText("inventory requires explicit complete scope and supported bounded entries")).toBeTruthy();
 });
 
@@ -87,8 +87,8 @@ test("an unfinished disclosure edit restores from the customer-local draft bound
   });
   render(<PrivacyDocuments workspace={workspace} policyName="" inventoryName="" drafts={[draft]} onSaved={() => {}} />);
   await waitFor(() => expect((screen.getByLabelText("Patient identifier selector") as HTMLInputElement).value).toBe("PID-3.1"));
-  expect((screen.getByLabelText("New disclosure policy document") as HTMLInputElement).value).toBe("pending-policy.json");
-  expect((screen.getByRole("button", { name: "Open selected policy for editing" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Policy file") as HTMLInputElement).value).toBe("pending-policy.json");
+  expect((screen.getByRole("button", { name: "Edit policy" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText("Restored the retained disclosure policy draft.")).toBeTruthy();
   expect(facadeStub().callsTo("SaveEditorDraft")).toHaveLength(0);
 });
@@ -111,16 +111,16 @@ test("a refused open keeps the valid disclosure document already on screen", asy
     ReadRedactInventory: () => ({ state: "completed", inventory: existingInventory }),
   });
   render(<PrivacyDocuments workspace={workspace} policyName="policy.json" inventoryName="inventory.json" onSaved={() => {}} />);
-  await user.click(screen.getByRole("button", { name: "Open selected policy for editing" }));
-  await user.click(screen.getByRole("button", { name: "Open selected inventory for editing" }));
+  await user.click(screen.getByRole("button", { name: "Edit policy" }));
+  await user.click(screen.getByRole("button", { name: "Edit inventory" }));
   expect((screen.getByLabelText("Patient identifier selector") as HTMLInputElement).value).toBe("PID-3.1");
   expect((screen.getByLabelText("Artifact path 1") as HTMLInputElement).value).toBe("original-run");
   facadeStub().reply({
     ReadRedactPolicy: () => ({ state: "failed", reason: "unsupported disclosure policy contract" }),
     ReadRedactInventory: () => ({ state: "failed", reason: "inventory requires explicit complete scope" }),
   });
-  await user.click(screen.getByRole("button", { name: "Open selected policy for editing" }));
-  await user.click(screen.getByRole("button", { name: "Open selected inventory for editing" }));
+  await user.click(screen.getByRole("button", { name: "Edit policy" }));
+  await user.click(screen.getByRole("button", { name: "Edit inventory" }));
   expect(await screen.findByText(/The selected policy was not opened: unsupported disclosure policy contract/)).toBeTruthy();
   expect(await screen.findByText(/The selected inventory was not opened: inventory requires explicit complete scope/)).toBeTruthy();
   expect((screen.getByLabelText("Patient identifier selector") as HTMLInputElement).value).toBe("PID-3.1");
@@ -128,8 +128,8 @@ test("a refused open keeps the valid disclosure document already on screen", asy
 });
 
 const editors = [
-  { kind: "policy", output: "New disclosure policy document", discard: "Discard disclosure policy draft", name: "pending-policy.json" },
-  { kind: "inventory", output: "New original-artifact inventory document", discard: "Discard original-artifact inventory draft", name: "pending-inventory.json" },
+  { kind: "policy", output: "Policy file", discard: "Discard draft", refusal: "The disclosure policy draft could not be discarded", name: "pending-policy.json" },
+  { kind: "inventory", output: "New original-artifact inventory document", discard: "Discard draft", refusal: "The original-artifact inventory draft could not be discarded", name: "pending-inventory.json" },
 ] as const;
 
 test.each(editors)("a $kind edit queues retention before immediate navigation", async ({ output, name }) => {
@@ -146,7 +146,7 @@ test.each(editors)("a $kind edit queues retention before immediate navigation", 
   retaining.resolve({ state: "completed", drafts: [{ ...queued, id: "retained-1" }] });
 });
 
-test.each(editors)("a refused $kind draft discard preserves text and retries the same identity", async ({ output, discard, name }) => {
+test.each(editors)("a refused $kind draft discard preserves text and retries the same identity", async ({ output, discard, refusal, name }) => {
   const user = userEvent.setup();
   const discarded: string[] = [];
   const facade = installFacade({
@@ -165,7 +165,7 @@ test.each(editors)("a refused $kind draft discard preserves text and retries the
   expect((screen.getByLabelText(output) as HTMLInputElement).value).toBe(name);
   const first = facade.oneCall("SaveEditorDraft")[0] as EditorDraft;
   retaining.resolve({ state: "completed", drafts: [{ ...first, id: "retained-1" }] });
-  expect(await screen.findByText(new RegExp(`${discard.replace("Discard ", "The ").replace(" draft", " draft could not be discarded")}`))).toBeTruthy();
+  expect(await screen.findByText(new RegExp(refusal))).toBeTruthy();
   expect((screen.getByLabelText(output) as HTMLInputElement).value).toBe(name);
   expect(discarded).toEqual(["retained-1"]);
   await new Promise((resolve) => setTimeout(resolve, 300));
@@ -187,7 +187,7 @@ test.each(editors)("a saved $kind document reports refused draft cleanup", async
   render(<PrivacyDocuments workspace={workspace} policyName="" inventoryName="" onSaved={(savedKind, entry) => saved.push(`${savedKind}:${entry}`)} />);
   fireEvent.change(screen.getByLabelText(output), { target: { value: name } });
   expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: kind === "policy" ? "Save disclosure policy" : "Save original-artifact inventory" }));
+  await user.click(screen.getByRole("button", { name: kind === "policy" ? "Save policy" : "Save inventory" }));
   expect(await screen.findByText(new RegExp(`Saved .*${name.replace(".", "\\.")}, but its working draft could not be discarded`))).toBeTruthy();
   expect((screen.getByLabelText(output) as HTMLInputElement).value).toBe(name);
   expect(screen.getByRole("button", { name: discard })).toBeTruthy();

@@ -15,14 +15,14 @@
       <li><a href="index.html">Overview</a></li>
       <li><a href="download.html" aria-current="page">Download</a></li>
       <li><a href="workflows.html">Workflows</a></li>
-      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="connectors.html">Sources</a></li>
       <li><a href="limitations.html">Limitations</a></li>
-      <li><a href="samples.html">Sample projects</a></li>
+      <li><a href="samples.html">Samples</a></li>
     </ul>
   </nav>
 </header>
 <main>
-  <h1>Download and install</h1>
+  <h1>Download</h1>
 
   <div class="notice">
     <strong>Release status: unsigned development preview.</strong>
@@ -49,7 +49,7 @@
   </div>
   <p class="muted"><code>VERSION</code> is the release tag without its leading <code>v</code>, so the current prerelease is <code>readmit_0.1.0-alpha.2_darwin_arm64.tar.gz</code>. The floors follow <a href="https://go.dev/wiki/MinimumRequirements">Go's supported platforms</a>. CI runs the exact archives on the current runner for each target; it does not certify every older release in the range. There is no Windows arm64 archive.</p>
 
-  <h3>Check before you extract</h3>
+  <h3>Verify archive</h3>
   <pre><code>shasum -a 256 readmit_0.1.0-alpha.2_darwin_arm64.tar.gz   # macOS
 sha256sum readmit_0.1.0-alpha.2_linux_amd64.tar.gz        # Linux
 Get-FileHash .\readmit_0.1.0-alpha.2_windows_amd64.zip -Algorithm SHA256   # Windows
@@ -72,7 +72,7 @@ tar -xzf readmit_0.1.0-alpha.2_darwin_arm64.tar.gz
   </div>
   <p>No package downloads a prerequisite, reaches a network, or installs a service, daemon or scheduled task. Verification re-reads the manifest strictly, re-computes every digest, and opens each package with the tools that wrote it; a manifest claiming a distribution signature is refused by name. Signed and notarized installers are selected in the product decisions and remain a release gate — this page's table is the whole truth of the current state, and it is not that future state.</p>
 
-  <h2>Build the current branch</h2>
+  <h2>Build from source</h2>
   <p>To evaluate the workflows on this site before the next tagged prerelease, build from source with the pinned Go 1.27.1 toolchain. The build is static, needs no C compiler, and produces one file.</p>
   <pre><code>git clone https://github.com/bharm16/readmit
 cd readmit
@@ -82,7 +82,7 @@ sh samples/synthetic-walkthrough/walkthrough.sh</code></pre>
   <p class="muted">The desktop shell is a separate Wails 2 module over the same engine; building it additionally needs Node 24 and a platform webview. The procedure is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>, and the packaged result is what the section above describes. A source build is a preview you built yourself — it is not a published release, and it establishes no acceptance of its own.</p>
   <p>What CI checks on every push, so you can read its verdict instead of taking this page's word for it: the race-enabled Go suite, an independently implemented HL7 endpoint against an externally authored corpus, mutation checks, fuzz shards, a vulnerability scan, packaging of the five archives, the desktop packages above, and a native run of each archived executable with an empty <code>PATH</code>. The workflows are <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/ci.yml">ci.yml</a> and <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/desktop.yml">desktop.yml</a>; the local loop is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>.</p>
 
-  <h2>What installation does not include</h2>
+  <h2>Not included</h2>
   <ul>
     <li>No installer, service, daemon, scheduled task, shell integration or PATH change for the command line: you extract a directory and run a file. The desktop packages use each platform's own installer and declare exactly what the table above lists.</li>
     <li>No update check. A newer version is a new archive or package you choose to download.</li>

@@ -144,7 +144,7 @@ test("a review records only what a person decided, against the run that proposed
   const recorded: [TestSuggestionRequest, TestReview][] = [];
   render(<Harness asked={asked} recorded={recorded} />);
 
-  await user.click(screen.getByLabelText("Propose the record count that run settled on"));
+  await user.click(screen.getByLabelText("Suggest count"));
   await ask(user, "reviewed-run");
   expect(asked).toEqual([{ result: "reviewed-run", ledger: false, exact_ledger: false, positions: ["MSA-1"] }]);
   expect(screen.getByText(/^From reviewed-run · the run reports pass at ack-contract · result identity/)).toBeTruthy();
@@ -153,7 +153,7 @@ test("a review records only what a person decided, against the run that proposed
   // recorded, and the test still expects only what it expected.
   expect(proposalFor(GRID_OCCURRENCE).getByText(/· Not reviewed ·/)).toBeTruthy();
   expect(proposalFor(NEXT_OCCURRENCE).getByText(/· Not reviewed ·/)).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Record these decisions" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Save decisions" }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(1);
 
   // Naming another run after asking changes which run the next question is
@@ -167,9 +167,9 @@ test("a review records only what a person decided, against the run that proposed
   await user.click(booking.getByLabelText("Record it as"));
   await user.keyboard("booking-accepted");
   await user.tab();
-  expect(document.activeElement).toBe(booking.getByLabelText("The value should be"));
+  expect(document.activeElement).toBe(booking.getByLabelText("Expected value", { selector: "select" }));
   await user.tab();
-  expect(document.activeElement).toBe(booking.getByLabelText("Expected value"));
+  expect(document.activeElement).toBe(booking.getByLabelText("Expected value", { selector: "input" }));
   await user.tab();
   expect(document.activeElement).toBe(booking.getByRole("button", { name: `Approve ack-${GRID_OCCURRENCE}-msa-1` }));
   await user.keyboard("{Enter}");
@@ -177,7 +177,7 @@ test("a review records only what a person decided, against the run that proposed
   await user.click(proposalFor(NEXT_OCCURRENCE).getByRole("button", { name: `Reject ack-${NEXT_OCCURRENCE}-msa-1` }));
   expect(proposalFor(NEXT_OCCURRENCE).getByText(/· Rejected ·/)).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: "Record these decisions" }));
+  await user.click(screen.getByRole("button", { name: "Save decisions" }));
   expect(recorded).toEqual([
     [
       { result: "reviewed-run", ledger: false, exact_ledger: false, positions: ["MSA-1"] },
@@ -199,15 +199,15 @@ test("cancelling a review records nothing, drops what was decided and returns to
   const recorded: [TestSuggestionRequest, TestReview][] = [];
   render(<Harness asked={asked} recorded={recorded} />);
 
-  await user.click(screen.getByLabelText("Propose the record count that run settled on"));
+  await user.click(screen.getByLabelText("Suggest count"));
   await ask(user, "reviewed-run");
   await user.click(proposalFor(GRID_OCCURRENCE).getByRole("button", { name: `Approve ack-${GRID_OCCURRENCE}-msa-1` }));
-  expect((screen.getByRole("button", { name: "Record these decisions" }) as HTMLButtonElement).disabled).toBe(false);
+  expect((screen.getByRole("button", { name: "Save decisions" }) as HTMLButtonElement).disabled).toBe(false);
 
-  await tabTo(user, screen.getByRole("button", { name: "Cancel this review" }));
+  await tabTo(user, screen.getByRole("button", { name: "Cancel" }));
   await user.keyboard("{Enter}");
   expect(screen.queryByText(/^From reviewed-run · /)).toBeNull();
-  expect(screen.queryByRole("button", { name: "Record these decisions" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Save decisions" })).toBeNull();
   expect(document.activeElement).toBe(screen.getByLabelText("Entry holding the reviewed run result"));
   expect(recorded).toHaveLength(0);
   expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(1);
@@ -216,7 +216,7 @@ test("cancelling a review records nothing, drops what was decided and returns to
   await user.keyboard("{Enter}");
   expect(asked).toHaveLength(2);
   expect(proposalFor(GRID_OCCURRENCE).getByText(/· Not reviewed ·/)).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Record these decisions" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Save decisions" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("a refused request withdraws the proposals of the request before it", async () => {
@@ -225,7 +225,7 @@ test("a refused request withdraws the proposals of the request before it", async
   const recorded: [TestSuggestionRequest, TestReview][] = [];
   render(<Harness asked={asked} recorded={recorded} />);
 
-  await user.click(screen.getByLabelText("Propose the record count that run settled on"));
+  await user.click(screen.getByLabelText("Suggest count"));
   await ask(user, "reviewed-run");
   expect(screen.getByText(/^From reviewed-run · /)).toBeTruthy();
 
@@ -289,7 +289,7 @@ test("ledger proposals are approved with a corrected count or as an empty ledger
   await user.type(screen.getByLabelText("Acknowledgement position to propose a value for"), "ERR-1");
   await user.click(screen.getByRole("button", { name: "Also propose ERR-1" }));
   expect(screen.getByRole("button", { name: "Do not propose ERR-1" })).toBeTruthy();
-  await user.click(screen.getByLabelText("Propose the exact ledger that run settled on"));
+  await user.click(screen.getByLabelText("Suggest exact ledger"));
   await ask(user, "reviewed-run");
   expect(asked).toEqual([{ result: "reviewed-run", ledger: true, exact_ledger: true, positions: ["ERR-1"] }]);
 
@@ -299,14 +299,14 @@ test("ledger proposals are approved with a corrected count or as an empty ledger
     return within(item);
   };
   expect(proposed("ledger-records").getByText(/^ledger_count · 1 records · Not reviewed · read from reviewed-run\/observation\.json$/)).toBeTruthy();
-  await user.type(proposed("ledger-records").getByLabelText("Records the ledger should hold"), "2");
+  await user.type(proposed("ledger-records").getByLabelText("Expected records"), "2");
   await user.click(proposed("ledger-records").getByRole("button", { name: "Approve ledger-records" }));
   expect(proposed("ledger-exact").getByText(/^1 exact records proposed/)).toBeTruthy();
   await user.click(proposed("ledger-exact").getByRole("button", { name: "Approve as an empty ledger" }));
   expect(proposed("ledger-exact").getByText(/^0 exact records proposed/)).toBeTruthy();
   await user.click(proposed("ledger-exact").getByRole("button", { name: "Approve ledger-exact" }));
 
-  await user.click(screen.getByRole("button", { name: "Record these decisions" }));
+  await user.click(screen.getByRole("button", { name: "Save decisions" }));
   expect(recorded).toEqual([
     [
       { result: "reviewed-run", ledger: true, exact_ledger: true, positions: ["ERR-1"] },

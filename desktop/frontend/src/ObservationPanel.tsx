@@ -362,7 +362,7 @@ export function ObservationPanel({
       }}
     >
       <header className="observation-header">
-        <h3>Observation sources and windows</h3>
+        <h3>Observations</h3>
         <button type="button" onClick={onClose} disabled={busy}>
           Close
         </button>
@@ -525,7 +525,8 @@ export function ObservationPanel({
 
       {source.http ? (
         <>
-          <h4>Approved HTTPS API</h4>
+          <h4>HTTPS API</h4>
+          <p className="hint">Approved source, HTTPS only: the URL must be an https address of an approved endpoint.</p>
           <label htmlFor="observation-http-url">URL</label>
           <input
             disabled={blocked}
@@ -593,7 +594,7 @@ export function ObservationPanel({
 
       {source.database ? (
         <>
-          <h4>Database view (unqualified)</h4>
+          <h4>Database view</h4>
           <p className="hint">
             Structured view, column mapping and parameter filters only. Live qualification evidence is
             owned by #75; this UI must not claim production support.
@@ -750,6 +751,7 @@ export function ObservationPanel({
         }
       />
 
+      <p className="hint">Saving writes both documents: the source first, then the completion window.</p>
       <div className="observation-actions">
         <button
           type="button"
@@ -787,7 +789,7 @@ export function ObservationPanel({
             })();
           }}
         >
-          Save source and window
+          Save observation
         </button>
         <button
           type="button"
@@ -821,7 +823,7 @@ export function ObservationPanel({
             });
           }}
         >
-          Validate source document
+          Validate source
         </button>
         <button
           type="button"
@@ -838,7 +840,7 @@ export function ObservationPanel({
             });
           }}
         >
-          Validate window document
+          Validate window
         </button>
       </div>
 
@@ -925,9 +927,12 @@ export function ObservationPanel({
       ) : null}
 
       {onBindToTest ? (
-        <button type="button" disabled={busy || !windowFile} onClick={() => onBindToTest(windowFile)}>
-          Bind saved window into test authoring
-        </button>
+        <>
+          <button type="button" disabled={busy || !windowFile} onClick={() => onBindToTest(windowFile)}>
+            Use in test
+          </button>
+          <p className="hint">Uses the saved window named above, binding it into the test draft.</p>
+        </>
       ) : null}
     </section>
   );

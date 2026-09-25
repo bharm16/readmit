@@ -34,17 +34,21 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
     <h2 id="baseline-title">Regression baseline</h2>
     <p>Review saved expectations, then explicitly approve a new immutable revision. A passing run never approves itself. Local reviewer names are not authenticated team identities.</p>
     <fieldset disabled={disabled}>
-      <label><input type="checkbox" checked={released} onChange={e => {setReleased(e.target.checked); setPrevious(""); invalidate();}} />Release a test version with profile pins</label>
+      <label><input type="checkbox" checked={released} onChange={e => {setReleased(e.target.checked); setPrevious(""); invalidate();}} />Release test version</label>
+      <p className="hint">Releasing a test version pins local profiles; release is not ordinary saving.</p>
       {released ? <>
         <label>Stable test identity <input value={releaseID} onChange={e => {setReleaseID(e.target.value); invalidate();}} /></label>
-        <label>Local profile filenames, one per line (empty explicitly pins none) <textarea value={profiles} onChange={e => {setProfiles(e.target.value); invalidate();}} /></label>
+        <label>Local profiles <textarea value={profiles} onChange={e => {setProfiles(e.target.value); invalidate();}} /></label>
+        <p className="hint">One local profile filename per line; empty explicitly pins none.</p>
         <p>Profile changes require a fresh review. Suite release references pin the saved file by exact identity; impact summaries are available with expectation impact. No profile evaluation or team authentication is implied.</p>
       </> : null}
-      <label>Candidate specification in this workspace <input value={spec} onChange={e => {setSpec(e.target.value); invalidate();}} /></label>
-      <label>Previous {released ? "released test" : "baseline"} (empty for first revision) <input value={previous} onChange={e => {setPrevious(e.target.value); invalidate();}} /></label>
+      <label>Candidate test <input value={spec} onChange={e => {setSpec(e.target.value); invalidate();}} /></label>
+      <p className="hint">A saved specification in the current workspace.</p>
+      <label>Previous version <input value={previous} onChange={e => {setPrevious(e.target.value); invalidate();}} /></label>
+      <p className="hint">Leave empty for the first revision.</p>
       <label><input type="checkbox" checked={show} onChange={e => {setShow(e.target.checked); invalidate();}} />Reveal exact expected values and configuration (may contain patient data)</label>
-      <button disabled={!previous} onClick={() => void perform(false, true)}>Inspect retained {released ? "test version" : "baseline"}</button>
-      <button disabled={!spec || (released && !releaseID)} onClick={() => void perform(false)}>Review {released ? "test and profile" : "baseline"} changes</button>
+      <button disabled={!previous} onClick={() => void perform(false, true)}>{released ? "Open version" : "Open baseline"}</button>
+      <button disabled={!spec || (released && !releaseID)} onClick={() => void perform(false)}>Review changes</button>
     </fieldset>
     <p role="status">{working ? "Reading baseline files…" : result?.reason ?? (result?.output ? `Approved and saved ${result.output}.` : "")}</p>
     {review ? <>
@@ -63,7 +67,7 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
         <label>Approval rationale <textarea value={rationale} onChange={e => setRationale(e.target.value)} /></label>
         <label>New {released ? "released test" : "baseline"} filename <input value={output} onChange={e => setOutput(e.target.value)} /></label>
         <p>The private file retains the full specification, including expected values. It does not freeze referenced case or target files and is not permission to send or share evidence.</p>
-        <button disabled={!approver.trim() || !rationale.trim() || !output.trim()} onClick={() => void perform(true)}>{released ? "Release this exact test version" : "Approve this exact baseline revision"}</button>
+        <button disabled={!approver.trim() || !rationale.trim() || !output.trim()} onClick={() => void perform(true)}>{released ? "Release version" : "Approve baseline"}</button>
         <button onClick={invalidate}>Cancel review</button>
       </fieldset> : null}
     </> : null}

@@ -588,7 +588,7 @@ export function CapturePanel({
   return (
     <section className="capture-panel" aria-labelledby="capture-title">
       <header className="capture-header">
-        <h2 id="capture-title">Capture and collect evidence</h2>
+        <h2 id="capture-title">Capture</h2>
         <button type="button" disabled={locked} onClick={onClose}>
           Close
         </button>
@@ -734,9 +734,12 @@ export function CapturePanel({
               Diagnose access
             </button>
             <button type="button" disabled={locked} onClick={() => void runCollectSource()}>
-              Collect into workspace
+              Collect
             </button>
           </div>
+          <p className="hint">
+            Read-only collection from the source declared above into this workspace; it starts only when you collect.
+          </p>
           {access?.access ? (
             <p>
               Access: {access.access.status}
@@ -753,8 +756,12 @@ export function CapturePanel({
           {collection?.state === "completed" ? (
             <div className="actions">
               <button type="button" disabled={locked} onClick={() => void runFinalize()}>
-                Finalize into a verified case…
+                Create case…
               </button>
+              <p className="hint">
+                Finalizes the staged collection into imported-from-capture.case in this workspace; the new case is
+                verified before it opens.
+              </p>
             </div>
           ) : null}
         </div>
@@ -921,7 +928,7 @@ export function CapturePanel({
 
       {mode === "listen" ? (
         <div className="capture-section">
-          <h3>Built-in synthetic SIU fixture</h3>
+          <h3>Synthetic SIU fixture</h3>
           <p className="fixture-label">Separately labelled test fixture (readmit-siu-v1). Not a production receiver.</p>
           <label>
             Mode
@@ -960,7 +967,7 @@ export function CapturePanel({
               Preview fixture
             </button>
             <button type="button" disabled={locked || preview?.state !== "completed"} onClick={() => void runStart()}>
-              Start fixture listener
+              Start listener
             </button>
             <button ref={cancelControl} type="button" disabled={operation !== "listening"} onClick={lifecycle.cancel}>
               Cancel
@@ -1037,11 +1044,11 @@ export function CapturePanel({
           </p>
           <div className="actions">
             <button type="button" onClick={() => onOpenCase(finalized.case!.name)}>
-              Open this case
+              Open case
             </button>
             {onSetupIndex ? (
               <button type="button" onClick={() => onSetupIndex(finalized.case!.name)}>
-                Open this case to build an index
+                Set up index
               </button>
             ) : null}
             {onBindObservation ? (
@@ -1049,7 +1056,7 @@ export function CapturePanel({
                 type="button"
                 onClick={() => onBindObservation(observationBinding(finalized.case!.name))}
               >
-                Set up observation for this capture…
+                Set up observation
               </button>
             ) : null}
           </div>
@@ -1059,11 +1066,11 @@ export function CapturePanel({
       {session?.case && mode !== "source" ? (
         <div className="actions">
           <button type="button" disabled={locked} onClick={() => onOpenCase(session.case!.name)}>
-            Open this case
+            Open case
           </button>
           {onSetupIndex ? (
             <button type="button" disabled={locked} onClick={() => onSetupIndex(session.case!.name)}>
-              Open this case to build an index
+              Set up index
             </button>
           ) : null}
           {onBindObservation ? (
@@ -1072,7 +1079,7 @@ export function CapturePanel({
               disabled={locked}
               onClick={() => onBindObservation(observationBinding(session.case!.name))}
             >
-              Set up observation for this capture…
+              Set up observation
             </button>
           ) : null}
         </div>

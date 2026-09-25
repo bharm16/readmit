@@ -40,7 +40,7 @@ function asWindowRow(line: string): string {
 
 /** Every row the window shows, page by page, as a person reads them. */
 async function everyRow(user: UserEvent): Promise<string[]> {
-  const inspection = within(region("Inspect a raw HL7 file"));
+  const inspection = within(region("Inspect HL7 file"));
   const shown: string[] = [];
   for (;;) {
     const list = await inspection.findByRole("list", { name: "Inspection rows" });
@@ -62,10 +62,10 @@ test("a raw file is inspected and copied in the window exactly as the command li
 
   // The palette opens the screen, from the keyboard.
   await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Type a command"), "raw HL7{Enter}");
-  const inspection = within(region("Inspect a raw HL7 file"));
+  await user.type(screen.getByLabelText("Search commands"), "inspect HL7{Enter}");
+  const inspection = within(region("Inspect HL7 file"));
   await journey.chooseFiles([exported], "Choose the HL7 file to inspect");
-  await press(user, inspection.getByRole("button", { name: "Choose a file to inspect…" }));
+  await press(user, inspection.getByRole("button", { name: "Browse…" }));
   expect(await inspection.findByText(exported)).toBeTruthy();
   await user.selectOptions(inspection.getByLabelText("Framing"), "mllp");
   await press(user, inspection.getByRole("button", { name: "Inspect" }));
@@ -81,16 +81,16 @@ test("a raw file is inspected and copied in the window exactly as the command li
 
   // Values appear only once a person asks for them, escaped as the command
   // escapes them.
-  await user.click(inspection.getByLabelText(/Show field values as escaped byte strings/));
+  await user.click(inspection.getByLabelText("Show values"));
   await press(user, inspection.getByRole("button", { name: "Inspect" }));
   expect(await inspection.findByText(/"EXAMPLE\^CHARLIE"/)).toBeTruthy();
 
   // A byte-identical copy goes to a new file of a folder the person chose.
   await journey.chooseFolder(journey.path("copies"), "Choose the folder for the byte-identical copy");
-  await press(user, inspection.getByRole("button", { name: "Choose a folder for the copy…" }));
+  await press(user, inspection.getByRole("button", { name: "Choose destination…" }));
   expect(await inspection.findByText(journey.path("copies"))).toBeTruthy();
   await enter(user, inspection.getByLabelText("New file name"), "window.mllp");
-  await press(user, inspection.getByRole("button", { name: "Write the copy" }));
+  await press(user, inspection.getByRole("button", { name: "Save copy" }));
   expect(await inspection.findByText(/· the same bytes the inspection read$/)).toBeTruthy();
   const copied = await journey.commandLine(["inspect", "exports/two-messages.mllp", "--format", "mllp", "--roundtrip", "copies/command.mllp"]);
   expect(copied.code).toBe(0);
@@ -99,7 +99,7 @@ test("a raw file is inspected and copied in the window exactly as the command li
 
   // A second copy over the first is refused in the command's own words, and
   // neither the copy nor the source changes.
-  await press(user, inspection.getByRole("button", { name: "Write the copy" }));
+  await press(user, inspection.getByRole("button", { name: "Save copy" }));
   expect(await inspection.findByText("cannot create round-trip file; destination must be new and writable")).toBeTruthy();
   expect(journey.digest("copies/window.mllp")).toBe(before);
   expect(journey.digest("exports/two-messages.mllp")).toBe(before);
@@ -114,7 +114,7 @@ test("a corpus generated and scanned in the window is the command line's corpus,
   await journey.launch();
   await activateLicense(user, journey);
 
-  await press(user, screen.getByRole("button", { name: "Generate or scan a performance corpus" }));
+  await press(user, screen.getByRole("button", { name: "Performance corpus" }));
   const generation = within(region("Generate a corpus"));
   await enter(user, generation.getByLabelText("Seed"), "7");
   await enter(user, generation.getByLabelText(/Base time/), "2026-01-02T03:04:05Z");
@@ -126,7 +126,7 @@ test("a corpus generated and scanned in the window is the command line's corpus,
   await user.selectOptions(generation.getByLabelText("Encoding"), "us-ascii");
   await user.selectOptions(generation.getByLabelText("Direction"), "inbound");
   await journey.chooseFolder(journey.path("corpora"), "Choose the folder for the new corpus and its manifest");
-  await press(user, generation.getByRole("button", { name: "Choose a folder for the corpus…" }));
+  await press(user, generation.getByRole("button", { name: "Choose destination…" }));
   expect(await generation.findByText(journey.path("corpora"))).toBeTruthy();
   await press(user, generation.getByRole("button", { name: "Generate corpus" }));
   const written = within(await generation.findByLabelText("Written corpus"));
@@ -147,17 +147,17 @@ test("a corpus generated and scanned in the window is the command line's corpus,
   // Scanning the corpus the window wrote, with a window and a benchmark.
   const scanning = within(region("Scan a stream"));
   await journey.chooseFiles([journey.path("corpora", "corpus.mllp")], "Choose the stream to scan");
-  await press(user, scanning.getByRole("button", { name: "Choose a stream to scan…" }));
+  await press(user, scanning.getByRole("button", { name: "Browse…" }));
   // The declarations are offered again once the dialog has answered.
   expect(await scanning.findByText(journey.path("corpora", "corpus.mllp"))).toBeTruthy();
   await user.selectOptions(scanning.getByLabelText("Framing"), "mllp");
   await user.selectOptions(scanning.getByLabelText("Segment terminator"), "cr");
   await user.selectOptions(scanning.getByLabelText("Encoding"), "us-ascii");
   await user.selectOptions(scanning.getByLabelText("Direction"), "inbound");
-  await enter(user, scanning.getByLabelText(/Records per parsing batch/), "64");
+  await enter(user, scanning.getByLabelText(/Records per batch/), "64");
   await enter(user, scanning.getByLabelText("Window offset"), "1500");
   await enter(user, scanning.getByLabelText(/Window records/), "3");
-  await user.click(scanning.getByLabelText(/Write a readmit-benchmark\/v1 document/));
+  await user.click(scanning.getByLabelText("Save benchmark"));
   await journey.chooseFolder(journey.path("benchmarks"), "Choose the folder for the new benchmark");
   await press(user, scanning.getByRole("button", { name: "Choose a folder for the benchmark…" }));
   expect(await scanning.findByText(journey.path("benchmarks"))).toBeTruthy();

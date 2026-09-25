@@ -104,8 +104,8 @@ test("Ctrl+K opens the palette over the declared commands and runs the one chose
   await user.keyboard("{Control>}k{/Control}");
   const palette = screen.getByRole("dialog", { name: "Command palette" });
   expect(palette).toBeTruthy();
-  await user.type(screen.getByLabelText("Type a command"), "open a workspace");
-  const chosen = within(palette).getByRole("button", { name: /Open a workspace folder/ });
+  await user.type(screen.getByLabelText("Search commands"), "open work");
+  const chosen = within(palette).getByRole("button", { name: /Open workspace/ });
   await user.click(chosen);
   expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
   expect(facade.oneCall("SelectWorkspace")).toEqual([]);
@@ -123,7 +123,7 @@ test("opening a workspace lists every entry as it declares itself, evidence or n
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByText(WORKSPACE_ROOT)).toBeTruthy();
   expect(facade.oneCall("Guide")[0]).toBe(WORKSPACE_ROOT);
   const navigation = within(screen.getByRole("region", { name: "Workspace" }));
@@ -137,7 +137,7 @@ test("opening a workspace lists every entry as it declares itself, evidence or n
 test("a dismissed folder dialog is reported as cancelled and opens nothing", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => dialogDismissed });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByText("cancelled")).toBeTruthy();
   expect(facade.callsTo("Guide")).toHaveLength(0);
 });
@@ -145,7 +145,7 @@ test("a dismissed folder dialog is reported as cancelled and opens nothing", asy
 test("a folder this account cannot open is reported as denied, in words and shape", async () => {
   const user = userEvent.setup();
   await renderApp({ SelectWorkspace: () => folderDenied });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByText("permission_denied")).toBeTruthy();
 });
 
@@ -156,7 +156,7 @@ test("a prepared rerun is named in the workspace and explains why it has no wind
       { name: "prepared-rerun", kind: "prepared-rerun", reason: "Use RERUN.md to run the prepared trials; there is no window action for this folder." },
     ]),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const item = (await screen.findByText("prepared-rerun", { selector: "span.name" })).closest("li")!;
   expect(within(item).getByText("Prepared rerun workspace")).toBeTruthy();
   expect(within(item).getByText(/RERUN.md.*no window action/)).toBeTruthy();
@@ -168,7 +168,7 @@ test("a boundary that cannot answer is a fixed failed sentence, never the error'
   await renderApp({
     SelectWorkspace: () => Promise.reject(new Error("EHOSTUNREACH /secret/host/path")),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByText("the application did not answer")).toBeTruthy();
   expect(screen.queryByText(/EHOSTUNREACH/)).toBeNull();
   expect(screen.queryByText(/\/secret\/host\/path/)).toBeNull();
@@ -178,13 +178,13 @@ test("while one operation runs the window offers Cancel and starts nothing else"
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   const parked = facade.park("SelectWorkspace");
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(facade.callsTo("SelectWorkspace")).toHaveLength(1);
-  const cancel = screen.getByRole("button", { name: /^Cancel$/ });
+  const cancel = within(screen.getByRole("region", { name: "Commands" })).getByRole("button", { name: /^Cancel$/ });
   expect((cancel as HTMLButtonElement).disabled).toBe(false);
   const commands = within(screen.getByRole("region", { name: "Commands" }));
   expect(
-    (commands.getByRole("button", { name: "Create the sample workspace…" }) as HTMLButtonElement)
+    (commands.getAllByRole("button", { name: "Create sample…" })[0] as HTMLButtonElement)
       .disabled,
   ).toBe(true);
   await user.click(cancel);
@@ -198,10 +198,10 @@ async function openWorkspaceWithVerifiedCase(
   user: ReturnType<typeof userEvent.setup>,
 ) {
   facade.reply({ SelectWorkspace: () => folderWithCase() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
   facade.reply({ OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
   facade.reply({
     OpenGrid: () =>
@@ -248,7 +248,7 @@ test("a sequence event selected from the timeline selects the same occurrence in
     OpenSequence: () => sequenceResult([sequenceEvent(GRID_OCCURRENCE, 0), sequenceEvent(NEXT_OCCURRENCE, 1)]),
   });
   await openWorkspaceWithVerifiedCase(facade, user);
-  await user.click(screen.getByRole("button", { name: "Lay out this case" }));
+  await user.click(screen.getByRole("button", { name: "View sequence" }));
   const request = facade.oneCall("OpenSequence")[0];
   expect(request).toMatchObject({
     workspace: WORKSPACE_ROOT,
@@ -351,8 +351,8 @@ test("saving the authored test hands the draft to the engine and reads the guide
     expectations: [{ id: "ledger-has-booking", operator: "ledger_count" as const, count: 1 }],
   };
   facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: true, covered: true, expectation: "ledger-has-booking" }, messages: [], uncovered: [] } } } }) });
-  await user.type(screen.getByLabelText("What is this test called?"), "booking-regression");
-  await user.click(screen.getByRole("button", { name: "Name this test" }));
+  await user.type(screen.getAllByLabelText("Name")[1] as HTMLElement, "booking-regression");
+  await user.click(screen.getAllByRole("button", { name: "Save name" })[1] as HTMLElement);
   expect(await screen.findByText("Chosen: appointment-ledger")).toBeTruthy();
   const authorRequest = facade.oneCall("AuthorTest")[0];
   expect(authorRequest).toMatchObject({
@@ -374,7 +374,7 @@ test("saving the authored test hands the draft to the engine and reads the guide
   });
   const before = facade.callsTo("Guide").length;
   await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Write the test spec" }));
+  await user.click(screen.getByRole("button", { name: "Save test" }));
   const saveRequest = facade.oneCall("SaveTest")[0];
   expect(saveRequest).toMatchObject({
     workspace: WORKSPACE_ROOT,
@@ -416,11 +416,11 @@ test("a saved test is at once an entry the run panel offers, read back from the 
         { name: "reschedule-test.json", kind: "spec" },
       ]),
   });
-  await user.type(screen.getByLabelText("What is this test called?"), "booking-regression");
-  await user.click(screen.getByRole("button", { name: "Name this test" }));
+  await user.type(screen.getAllByLabelText("Name")[1] as HTMLElement, "booking-regression");
+  await user.click(screen.getAllByRole("button", { name: "Save name" })[1] as HTMLElement);
   await screen.findByText("Chosen: ack-contract");
   await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Write the test spec" }));
+  await user.click(screen.getByRole("button", { name: "Save test" }));
   // The folder is read again after the save, and the run panel offers what it
   // now holds, selected for the run that comes next.
   const saved = await screen.findByRole("option", { name: "reschedule-test.json (test)" });
@@ -431,16 +431,16 @@ test("a saved test is at once an entry the run panel offers, read back from the 
 test("a saved suite is at once an entry the run panel offers, and a refused save reads nothing again", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
-  const suites = within(screen.getByRole("region", { name: "Suites and releases" }));
+  const suites = within(screen.getByRole("region", { name: "Suites" }));
   await user.click(suites.getByRole("button", { name: "New suite" }));
-  await user.type(suites.getByLabelText("New revision entry"), "nightly.json");
+  await user.type(suites.getByLabelText("Version file"), "nightly.json");
 
   // Refused: nothing was written, so the folder is not read again.
   facade.reply({ SaveSuite: () => ({ state: "failed" as const, reason: "the suite is not valid" }) });
   const before = facade.callsTo("OpenWorkspace").length;
-  await user.click(suites.getByRole("button", { name: "Save new version" }));
+  await user.click(suites.getByRole("button", { name: "Save version" }));
   expect(await suites.findByText(/the suite is not valid/)).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(before);
 
@@ -453,8 +453,8 @@ test("a saved suite is at once an entry the run panel offers, and a refused save
         { name: "nightly.json", kind: "suite" },
       ]),
   });
-  await user.click(suites.getByRole("button", { name: "Save new version" }));
-  const runPanel = within(screen.getByRole("region", { name: "Durable test runs" }));
+  await user.click(suites.getByRole("button", { name: "Save version" }));
+  const runPanel = within(screen.getByRole("region", { name: "Runs" }));
   expect(await runPanel.findByRole("option", { name: "nightly.json (suite)" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
 });
@@ -475,12 +475,12 @@ test("a refused save reports the refusal and keeps the draft a person is working
     expectations: [],
   };
   facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } } } }) });
-  await user.type(screen.getByLabelText("What is this test called?"), "booking-regression");
-  await user.click(screen.getByRole("button", { name: "Name this test" }));
+  await user.type(screen.getAllByLabelText("Name")[1] as HTMLElement, "booking-regression");
+  await user.click(screen.getAllByRole("button", { name: "Save name" })[1] as HTMLElement);
   await screen.findByText("Chosen: ack-contract");
   facade.reply({ SaveTest: () => refused("The workspace already holds that entry.") });
   await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Write the test spec" }));
+  await user.click(screen.getByRole("button", { name: "Save test" }));
   expect(
     await screen.findByText("The workspace already holds that entry."),
   ).toBeTruthy();
@@ -498,11 +498,11 @@ test("the guided sample runs the saved spec against the practice receiver and re
     Guide: () => guideResult("baseline", 2),
     RunPractice: () => practiceResult("baseline", "assertion_failure"),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const run = await screen.findByRole("button", {
-    name: "Run against the fixture as it misbehaves",
+    name: "Run failing example",
   });
-  expect((screen.getByLabelText("New folder for this run") as HTMLInputElement).value).toBe(
+  expect((screen.getAllByLabelText("Run folder")[0] as HTMLInputElement).value).toBe(
     "baseline-run",
   );
   const before = facade.callsTo("Guide").length;
@@ -525,9 +525,9 @@ test("a practice run the person stopped is reported as cancelled, not as a verdi
     Guide: () => guideResult("baseline", 2),
     RunPractice: () => ({ state: "cancelled" as const }),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await user.click(
-    await screen.findByRole("button", { name: "Run against the fixture as it misbehaves" }),
+    await screen.findByRole("button", { name: "Run failing example" }),
   );
   expect(await screen.findByText("cancelled")).toBeTruthy();
   expect(facade.oneCall("RunPractice")[0].trial).toBe("baseline");
@@ -545,11 +545,11 @@ test("a retained draft comes back after an interruption and is stored only by a 
       }),
     SaveNote: () => refused("The project did not take this note."),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const body = (await screen.findByLabelText("Body")) as HTMLTextAreaElement;
   expect(body.value).toBe("still writing this");
   // A store the project refuses leaves the draft retained as unstored work.
-  await user.click(screen.getByRole("button", { name: "Store this note in the project" }));
+  await user.click(screen.getByRole("button", { name: "Save note" }));
   expect(await screen.findByText("The project did not take this note.")).toBeTruthy();
   expect(facade.callsTo("DiscardDraft")).toHaveLength(0);
   expect(((await screen.findByLabelText("Body")) as HTMLTextAreaElement).value).toBe(
@@ -569,7 +569,7 @@ test("a retained draft comes back after an interruption and is stored only by a 
         drafts: [],
       }),
   });
-  await user.click(screen.getByRole("button", { name: "Store this note in the project" }));
+  await user.click(screen.getByRole("button", { name: "Save note" }));
   const calls = facade.calls;
   await waitFor(() => {
     const storedAt = calls.findIndex((call) => call.method === "SaveNote");
@@ -620,11 +620,11 @@ test("recovery after an interruption never resumes or resends the run it was wat
 test("a cancelled folder dialog leaves the open workspace and its edits exactly as they were", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
   // A second attempt is dismissed.
   facade.reply({ SelectWorkspace: () => dialogDismissed });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(screen.getByRole("region", { name: "Workspace" }));
   expect(await navigation.findByText("cancelled")).toBeTruthy();
   // The listing, and the case it offered to verify, are still on screen.
@@ -635,10 +635,10 @@ test("a cancelled folder dialog leaves the open workspace and its edits exactly 
 test("a folder this account cannot open leaves the investigation untouched as well", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
   facade.reply({ SelectWorkspace: () => folderDenied });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(screen.getByRole("region", { name: "Workspace" }));
   expect(await navigation.findByText("permission_denied")).toBeTruthy();
   expect(navigation.getByText(CASE_ENTRY)).toBeTruthy();
@@ -654,7 +654,7 @@ test("a refused case verification keeps the verified case and everything derived
   await openWorkspaceWithVerifiedCase(facade, user);
   // Another verification of this case is refused.
   facade.reply({ OpenCase: () => refused("The evidence changed since it was registered.") });
-  const buttons = screen.getAllByRole("button", { name: "Verify and open" });
+  const buttons = screen.getAllByRole("button", { name: "Open case" });
   await user.click(buttons[0] as HTMLButtonElement);
   expect(
     await screen.findByText("The evidence changed since it was registered."),
@@ -668,11 +668,11 @@ test("recordings of where the viewer is are chained, so the newest place is reco
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   const parked = facade.park("RecordView");
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
   // The viewer moves on while the earlier recording is still unanswered.
   facade.reply({ OpenCase: () => caseResult() });
-  const buttons = screen.getAllByRole("button", { name: "Verify and open" });
+  const buttons = screen.getAllByRole("button", { name: "Open case" });
   await user.click(buttons[0] as HTMLButtonElement);
   await screen.findByText(CASE_IDENTITY);
   // Answering the first recording lets the coalesced newest one go out after
@@ -707,7 +707,7 @@ test("a note retained in the draft store comes back after an interruption", asyn
       ],
     }),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const body = (await screen.findByLabelText("Body")) as HTMLTextAreaElement;
   expect(body.value).toBe("from the last crash");
   // The next edit continues that draft instead of minting a second one.
@@ -764,7 +764,7 @@ test("a retained test draft comes back only for the evidence it was authored aga
     }),
   });
   facade.reply({ SelectWorkspace: () => dialogDismissed });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Workspace" })).findByText("cancelled");
   // A cancelled navigation changes nothing, so the draft still does not adopt:
   // adoption happens when the verified case is opened again.
@@ -783,7 +783,7 @@ test("reopening where you were is an explicit act that reopens and re-verifies",
     OpenWorkspace: () => folderWithCase(),
     OpenCase: () => caseResult(),
   });
-  await user.click(await screen.findByRole("button", { name: "Reopen where you were" }));
+  await user.click(await screen.findByRole("button", { name: "Reopen session" }));
   expect(facade.oneCall("OpenWorkspace")).toEqual([WORKSPACE_ROOT]);
   const [workspace, name] = facade.oneCall("OpenCase");
   expect([workspace, name]).toEqual([WORKSPACE_ROOT, CASE_ENTRY]);
@@ -811,7 +811,7 @@ test("a recovery that arrives while another opening read holds the slot is asked
           });
     },
   });
-  expect(await screen.findByRole("button", { name: "Reopen where you were" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Reopen session" })).toBeTruthy();
   expect(facade.callsTo("RecoverSession").length).toBeGreaterThan(3);
   // Asking again reads; nothing was reopened or resumed on the viewer's behalf.
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(0);
@@ -830,15 +830,15 @@ test("a navigation read that meets a held slot is asked again, and a write refus
         : caseResult();
     },
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
-  await user.click(await screen.findByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  await user.click(await screen.findByRole("button", { name: "Open case" }));
   // Verifying reads; the busy answer read nothing, so it was asked again.
   expect(await screen.findByText(CASE_IDENTITY)).toBeTruthy();
   expect(facade.callsTo("OpenCase")).toHaveLength(2);
   // Creating the sample writes: its busy answer is the refusal, asked once.
   facade.reply({ CreateSampleWorkspace: () => ({ state: "busy" as const, reason: "another operation is running" }) });
   const commands = within(screen.getByRole("region", { name: "Commands" }));
-  await user.click(commands.getByRole("button", { name: "Create the sample workspace…" }));
+  await user.click(commands.getAllByRole("button", { name: "Create sample…" })[0] as HTMLElement);
   expect(await screen.findByText("another operation is running")).toBeTruthy();
   expect(facade.callsTo("CreateSampleWorkspace")).toHaveLength(1);
 });
@@ -849,8 +849,8 @@ test("a navigation read whose slot stays held is reported busy after a bounded n
     SelectWorkspace: () => folderWithCase(),
     OpenCase: () => ({ state: "busy" as const, reason: "another operation is running" }),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
-  await user.click(await screen.findByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  await user.click(await screen.findByRole("button", { name: "Open case" }));
   // Busy is reported once the asks run out — never a verified case, and never
   // an endless wait.
   expect(await screen.findByText("another operation is running", {}, { timeout: 4000 })).toBeTruthy();
@@ -891,7 +891,7 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
     ),
     DisclosureStatus: busyFirst(() => disclosureStatusResult(), { state: "busy", reason: BUSY }),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   // Each panel draws the facade's answer, not the busy refusal.
   expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
   expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
@@ -924,12 +924,12 @@ test("the run folder a send writes is retained in the session as the folder itse
     DurableRunProgress: () => runProgressResult(),
     OpenRunEvidence: () => runEvidenceResult(),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await user.selectOptions(await screen.findByLabelText("Saved test or suite"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/Destination: job-001 \(generated\) · fresh/);
   const sending = facade.park("StartDurableRun");
-  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await user.click(screen.getByRole("button", { name: "Send test" }));
   await waitFor(() => expect(facade.callsTo("StartDurableRun")).toHaveLength(1));
   const watched = facade.callsTo("RecordView").map((call) => (call.args[0] as { run: string }).run);
   expect(watched).toContain(`${WORKSPACE_ROOT}/job-001`);
@@ -956,7 +956,7 @@ test("reopening a folder that meets a held slot asks again and opens it", async 
       }),
     OpenWorkspace: () => (++asked === 1 ? { state: "busy" as const, reason: "another operation is running" } : folderWithCase()),
   });
-  await user.click(await screen.findByRole("button", { name: "Reopen where you were" }));
+  await user.click(await screen.findByRole("button", { name: "Reopen session" }));
   expect(await screen.findByText(WORKSPACE_ROOT)).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(2);
 });
@@ -975,7 +975,7 @@ test("an editor draft another panel offers back can be discarded by hand", async
       ],
     }),
   });
-  const discardButtons = await screen.findAllByRole("button", { name: "Discard this draft" });
+  const discardButtons = await screen.findAllByRole("button", { name: "Discard draft" });
   await user.click(discardButtons[0] as HTMLButtonElement);
   await waitFor(() => expect(facade.oneCall("DiscardEditorDraft")).toEqual(["left-over"]));
 });
@@ -986,7 +986,7 @@ test("closing asks before dropping text the store refused to retain, and not aft
     SelectWorkspace: () => folderWithCase(),
     SaveEditorDraft: () => ({ state: "failed", reason: "The disk refused the write." }),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await user.type(await screen.findByLabelText("Body"), "unacknowledged");
   expect(await screen.findByText("This edit was not retained.")).toBeTruthy();
 
@@ -1022,9 +1022,9 @@ test("verifying a case auto-selects and opens an applicable index", async () => 
     OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE)]),
   });
 
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
 
   expect(await screen.findByText(`Inspect ${GRID_OCCURRENCE}`)).toBeTruthy();
@@ -1037,9 +1037,9 @@ test("a page of the grid is one read, and the index details beside it are that r
     SelectWorkspace: () => folderWithCase(),
     OpenCase: () => caseResult(),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
   const described = facade.callsTo("DescribeIndex").length;
 
@@ -1080,9 +1080,9 @@ test("verifying an unindexed case shows unindexed view and keeps inspector avail
     InspectOccurrence: () => inspectionResult(),
   });
 
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
 
   expect(await screen.findByText("Case is unindexed")).toBeTruthy();
@@ -1113,10 +1113,10 @@ test("searching workspace with content hit badges match and navigates to inspect
     InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE),
   });
 
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
 
-  const searchInput = screen.getByLabelText("Search this workspace");
+  const searchInput = screen.getByLabelText("Search workspace");
   await user.type(searchInput, "MRN-1001");
   await user.click(screen.getByRole("button", { name: "Search" }));
 
@@ -1139,9 +1139,9 @@ test("building an index from the unindexed case view calls BuildIndex and opens 
     OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE)]),
   });
 
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText("Case is unindexed");
 
   await user.click(screen.getByRole("button", { name: "Build case index" }));
@@ -1205,7 +1205,7 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
   });
   await openWorkspaceWithVerifiedCase(facade, user);
 
-  await user.click(screen.getByRole("button", { name: "Lay out this case" }));
+  await user.click(screen.getByRole("button", { name: "View sequence" }));
   expect(facade.oneCall("OpenSequence")[0]).toMatchObject({
     workspace: WORKSPACE_ROOT,
     case: CASE_ENTRY,
@@ -1217,9 +1217,11 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
     occurrence: NEXT_OCCURRENCE,
   });
 
-  await user.selectOptions(screen.getByLabelText("Configuration"), "builtin:siu");
+  // The diagnosis configuration select; the Suites tab of the same name sits
+  // in another region.
+  await user.selectOptions(within(screen.getByRole("region", { name: "Diagnosis" })).getByLabelText("Configuration"), "builtin:siu");
   await user.type(screen.getByLabelText("New report directory in this workspace"), REPORT_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Run this diagnosis" }));
+  await user.click(screen.getByRole("button", { name: "Diagnose" }));
   expect(facade.oneCall("RunDiagnosis")[0]).toMatchObject({
     builtin: "siu",
     output: REPORT_ENTRY,
@@ -1229,7 +1231,7 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
   expect(await screen.findByText("f000001")).toBeTruthy();
 
   // Evidence on the finding opens the inspector again for the original bytes.
-  const diagnosis = screen.getByRole("region", { name: "Diagnosis and finding review" });
+  const diagnosis = screen.getByRole("region", { name: "Diagnosis" });
   await user.click(within(diagnosis).getAllByRole("button", { name: GRID_OCCURRENCE })[0]!);
   expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({
     occurrence: GRID_OCCURRENCE,
@@ -1240,7 +1242,7 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
   await user.type(within(diagnosis).getByLabelText("Rationale"), "scheduler must keep rejecting");
   await user.type(screen.getByLabelText("New finding-review directory"), "review-1");
   await user.type(screen.getByLabelText("New decisions document"), "decisions-1.json");
-  await user.click(screen.getByRole("button", { name: "Record these finding decisions" }));
+  await user.click(screen.getByRole("button", { name: "Save decisions" }));
   await waitFor(() => expect(facade.callsTo("DecideFindings").length).toBe(1));
   expect(facade.oneCall("DecideFindings")[0]).toMatchObject({
     report_sha256: REPORT_SHA256,

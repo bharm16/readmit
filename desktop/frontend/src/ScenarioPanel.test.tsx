@@ -63,19 +63,22 @@ test("ScenarioPanel previews through the shared engine and reveals identifiers d
   expect(await screen.findByText(/Synthetic scenarios/i)).toBeTruthy();
 
   await user.click(screen.getByRole("button", { name: /^Preview$/i }));
-  await user.click(screen.getByRole("button", { name: /Preview through shared engine/i }));
+  // The action shares its name with the tab, so it is the Preview outside the tabs.
+  const tabs = screen.getByRole("navigation", { name: "Scenario authoring tabs" });
+  const previewAction = screen.getAllByRole("button", { name: "Preview" }).find((button) => !tabs.contains(button))!;
+  await user.click(previewAction);
   expect(facade.callsTo("PreviewScenario").length).toBe(1);
   expect(await screen.findByText(/identifiers masked/i)).toBeTruthy();
 
-  await user.click(screen.getByLabelText(/Deliberately reveal sensitive identifiers locally/i));
-  await user.click(screen.getByRole("button", { name: /Preview through shared engine/i }));
+  await user.click(screen.getByLabelText(/Show identifiers/i));
+  await user.click(previewAction);
   expect(await screen.findByText(/READMIT\/SYNTH-PATIENT-A/i)).toBeTruthy();
 
   await user.click(screen.getByRole("button", { name: /^Generate$/i }));
   await user.click(screen.getByRole("button", { name: /Generate artifact/i }));
   expect(facade.callsTo("GenerateScenario").length).toBe(1);
-  await user.click(screen.getByRole("button", { name: /Open generated case in inspector/i }));
-  await user.click(screen.getByRole("button", { name: /Continue into test draft by reference/i }));
+  await user.click(screen.getByRole("button", { name: /Open case/i }));
+  await user.click(screen.getByRole("button", { name: /Create test/i }));
   expect(opened).toEqual(["workflow-case"]);
   expect(authored).toEqual(["workflow-case"]);
 
@@ -164,7 +167,7 @@ test("ScenarioPanel binds a local profile family, refuses an unsupported profile
   // the document keeps the profile it had.
   await user.clear(panel().getByLabelText("Local profile entry"));
   await user.type(panel().getByLabelText("Local profile entry"), "mdm-profile.json");
-  await user.click(panel().getByRole("button", { name: "Use local profile family" }));
+  await user.click(panel().getByRole("button", { name: "Use local profile" }));
   expect(await panel().findByText(REFUSED_FAMILY)).toBeTruthy();
   expect(facade.oneCall("BindScenarioProfile")).toEqual([{ workspace: WORKSPACE_ROOT, entry: "mdm-profile.json" }]);
   expect(documentField().value).toBe(blank);
@@ -172,7 +175,7 @@ test("ScenarioPanel binds a local profile family, refuses an unsupported profile
   // A supported one pins its identity and the lifecycle its family selects.
   await user.clear(panel().getByLabelText("Local profile entry"));
   await user.type(panel().getByLabelText("Local profile entry"), "adt-profile.json");
-  await user.click(panel().getByRole("button", { name: "Use local profile family" }));
+  await user.click(panel().getByRole("button", { name: "Use local profile" }));
   expect(
     await panel().findByText("Pinned fixture-local-adt@2 → readmit-adt-lifecycle-v1 (readmit-scenario-generator-v1)"),
   ).toBeTruthy();
@@ -393,7 +396,7 @@ test("ScenarioPanel generates SIU fixtures only from declared inputs, names each
     },
   });
   await user.click(panel().getByRole("button", { name: "SIU fixtures" }));
-  const generate = panel().getByRole("button", { name: "Generate SIU fixtures" }) as HTMLButtonElement;
+  const generate = panel().getByRole("button", { name: "Generate fixtures" }) as HTMLButtonElement;
   // Nothing is preselected: every input the command requires is declared.
   expect(generate.disabled).toBe(true);
   await user.type(panel().getByLabelText("Seed"), "010");

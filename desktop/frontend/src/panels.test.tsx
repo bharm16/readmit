@@ -50,7 +50,7 @@ test("the guided sample offers each step out of the folder and runs a new folder
   expect(screen.getByText("Author a regression test").closest("li")?.getAttribute("aria-current")).toBe(
     "step",
   );
-  await user.click(screen.getByRole("button", { name: `Verify and open ${CASE_ENTRY}` }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   expect(acts).toEqual([`open:${CASE_ENTRY}`]);
 });
 
@@ -70,12 +70,12 @@ test("the run steps offer a new folder and never an existing one by default", as
       onCancel={() => undefined}
     />,
   );
-  expect((screen.getByLabelText("New folder for this run") as HTMLInputElement).value).toBe(
+  expect((screen.getByLabelText("Run folder") as HTMLInputElement).value).toBe(
     "baseline-run",
   );
-  await user.type(screen.getByLabelText("New folder for this run"), "-try-2");
+  await user.type(screen.getByLabelText("Run folder"), "-try-2");
   await user.click(
-    screen.getByRole("button", { name: "Run against the fixture as it misbehaves" }),
+    screen.getByRole("button", { name: "Run failing example" }),
   );
   expect(runs).toEqual(["baseline:baseline-run-try-2"]);
 });
@@ -95,10 +95,10 @@ test("the canonical editor shows expected values on import and exports exact byt
   expect(
     (screen.getByLabelText("Complete test spec") as HTMLTextAreaElement).value,
   ).toBe("COMPLETE-CANONICAL-SPEC");
-  await user.click(screen.getByRole("button", { name: "Validate with the test reader" }));
+  await user.click(screen.getByRole("button", { name: "Validate" }));
   expect(await screen.findByText("Accepted by the shared test reader.")).toBeTruthy();
   await user.type(screen.getByLabelText("New test file in this workspace"), "exported-test.json");
-  await user.click(screen.getByRole("button", { name: "Export new test" }));
+  await user.click(screen.getByRole("button", { name: "Export test" }));
   expect(facade.oneCall("ExportTest")[0]).toEqual({
     workspace: WORKSPACE_ROOT,
     document: "COMPLETE-CANONICAL-SPEC",
@@ -117,7 +117,7 @@ test("a refused export keeps the edit in the window and says why", async () => {
   await user.type(screen.getByLabelText("Test file in this workspace"), "saved-test.json");
   await user.click(screen.getByRole("button", { name: "Import and show values" }));
   await user.type(screen.getByLabelText("New test file in this workspace"), "exported-test.json");
-  await user.click(screen.getByRole("button", { name: "Export new test" }));
+  await user.click(screen.getByRole("button", { name: "Export test" }));
   expect(
     await screen.findByText("That name is already an entry of this workspace."),
   ).toBeTruthy();
@@ -146,8 +146,8 @@ test("baseline review hides values until they are deliberately revealed", async 
     }),
   });
   render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
-  await user.type(screen.getByLabelText("Candidate specification in this workspace"), "saved-test.json");
-  await user.click(screen.getByRole("button", { name: "Review baseline changes" }));
+  await user.type(screen.getByLabelText("Candidate test"), "saved-test.json");
+  await user.click(screen.getByRole("button", { name: "Review changes" }));
   const request = facade.oneCall("ReviewBaseline")[0];
   expect(request.show_values).toBe(false);
   expect(await screen.findByText("Values are hidden. Reveal them and review again to inspect exact changes.")).toBeTruthy();
@@ -171,10 +171,10 @@ test("approving a baseline needs a person, a reason and a new file, explicitly",
     ApproveBaseline: () => ({ state: "completed" as const, output: "baseline-2" }),
   });
   render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
-  await user.type(screen.getByLabelText("Candidate specification in this workspace"), "saved-test.json");
-  await user.click(screen.getByRole("button", { name: "Review baseline changes" }));
+  await user.type(screen.getByLabelText("Candidate test"), "saved-test.json");
+  await user.click(screen.getByRole("button", { name: "Review changes" }));
   await screen.findByText("No specification changes; an approval still requires a deliberate local decision.");
-  const approve = () => screen.getByRole("button", { name: "Approve this exact baseline revision" }) as HTMLButtonElement;
+  const approve = () => screen.getByRole("button", { name: "Approve baseline" }) as HTMLButtonElement;
   expect(approve().disabled).toBe(true);
   await user.type(screen.getByLabelText("Local approver"), "sam");
   await user.type(screen.getByLabelText("Approval rationale"), "matches the reviewed run");
@@ -212,7 +212,7 @@ test("reproducer steps are composed and resolved by the engine", async () => {
   await user.click(screen.getByRole("button", { name: `Retain ${GRID_OCCURRENCE}` }));
   expect(steps).toEqual([{ operator: "select-occurrence/v1", occurrence: GRID_OCCURRENCE }]);
   await user.click(
-    screen.getByRole("button", { name: "Include the acknowledgements this case correlated" }),
+    screen.getByRole("button", { name: "Include ACKs" }),
   );
   expect(steps[1]).toEqual({ operator: "include-acknowledgements/v1" });
   // With the engine's answer, the retained occurrence can be dropped or edited.
@@ -242,8 +242,8 @@ test("reproducer steps are composed and resolved by the engine", async () => {
   expect(screen.getByText("Acknowledgement the case correlated")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: `Drop ${GRID_OCCURRENCE}` }));
   expect(steps[2]).toEqual({ operator: "drop-occurrence/v1", occurrence: GRID_OCCURRENCE });
-  await user.type(screen.getByLabelText("New folder in this workspace"), "incident-reproducer");
-  await user.click(screen.getByRole("button", { name: "Write the reproducer" }));
+  await user.type(screen.getByLabelText("Revision folder"), "incident-reproducer");
+  await user.click(screen.getByRole("button", { name: "Build revision" }));
   expect(steps[3]).toBe("build:incident-reproducer");
 });
 
@@ -271,10 +271,10 @@ test("the inspected position fills the edit form instead of being retyped", asyn
     />,
   );
   await user.click(
-    screen.getByRole("button", { name: "Use the inspected position PID[1]-3[1]" }),
+    screen.getByRole("button", { name: "Use selected field PID[1]-3[1]" }),
   );
   fireEvent.change(screen.getByLabelText("Replacement value"), { target: { value: "REPLACED" } });
-  await user.click(screen.getByRole("button", { name: "Replace this value" }));
+  await user.click(screen.getByRole("button", { name: "Replace value" }));
   expect(steps).toEqual([
     { operator: "set-field/v1", occurrence: GRID_OCCURRENCE, selector: "PID[1]-3[1]", value: "REPLACED" },
   ]);
@@ -297,10 +297,10 @@ test("a comparison is paired on the fields a person named, and shows positions o
   );
   await user.selectOptions(screen.getByLabelText("Compare with"), "other-case");
   fireEvent.change(
-    screen.getByLabelText("Fields that identify one record, separated by spaces"),
+    screen.getByLabelText("Record keys"),
     { target: { value: "PID[1]-3[1] PID[1]-5[1]" } },
   );
-  await user.click(screen.getByRole("button", { name: "Compare these collections" }));
+  await user.click(screen.getByRole("button", { name: "Compare" }));
   expect(compared).toEqual({
     right: "other-case",
     keys: ["PID[1]-3[1]", "PID[1]-5[1]"],
@@ -370,7 +370,7 @@ test("a normalization preview lists suppressed differences beside their rules an
   const { rerender } = render(panel(null));
   await user.selectOptions(screen.getByLabelText("Compare with"), "other-case");
   await user.selectOptions(screen.getByLabelText("Normalization policy"), "policy-1.json");
-  await user.click(screen.getByRole("button", { name: "Preview under this policy" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   expect(normalized).toEqual({
     right: "other-case",
     policy: "policy-1.json",
@@ -436,11 +436,11 @@ test("after a build the reproducer offers register and handoff actions", async (
     />,
   );
   await user.type(screen.getByLabelText("New project entry for the derived case"), "incident-revision");
-  await user.click(screen.getByRole("button", { name: "Register this revision" }));
+  await user.click(screen.getByRole("button", { name: "Add to project" }));
   expect(acts).toEqual([`register:incident-reproducer:incident-revision:${CASE_ENTRY}`]);
-  await user.click(await screen.findByRole("button", { name: "Open the registered revision" }));
-  await user.click(screen.getByRole("button", { name: "Compare this build with another revision" }));
-  await user.click(screen.getByRole("button", { name: "Create a test from this revision" }));
+  await user.click(await screen.findByRole("button", { name: "Open revision" }));
+  await user.click(screen.getByRole("button", { name: "Compare revisions" }));
+  await user.click(screen.getByRole("button", { name: "Create test" }));
   expect(acts).toEqual([
     `register:incident-reproducer:incident-revision:${CASE_ENTRY}`,
     "open:incident-revision",
@@ -510,17 +510,17 @@ test("TestAuthoring authors ledger_equals and exact_ledger suggestions", async (
   );
 
   await user.selectOptions(screen.getByLabelText("Ledger operator"), "ledger_equals");
-  await user.click(screen.getByRole("button", { name: "Expect an empty ledger" }));
+  await user.click(screen.getByRole("button", { name: "Expect empty ledger" }));
   await user.type(screen.getByLabelText("Expectation name"), "exact-empty");
-  await user.click(screen.getByRole("button", { name: "Expect this exact ledger" }));
+  await user.click(screen.getByRole("button", { name: "Expect exact ledger" }));
   expect(answers.at(-1)).toEqual({
     stage: "expectations",
     expectations: [{ id: "exact-empty", operator: "ledger_equals", records: [] }],
   });
 
   await user.type(screen.getByLabelText("Entry holding the reviewed run result"), "baseline-result");
-  await user.click(screen.getByLabelText("Propose the exact ledger that run settled on"));
-  await user.click(screen.getByRole("button", { name: "Suggest expectations from this run" }));
+  await user.click(screen.getByLabelText("Suggest exact ledger"));
+  await user.click(screen.getByRole("button", { name: "Review suggestions" }));
   expect(suggests.at(-1)).toMatchObject({
     result: "baseline-result",
     exact_ledger: true,
@@ -548,15 +548,15 @@ test("releasing a test version pins profiles and saves one immutable revision", 
     ApproveBaseline: () => ({ state: "completed" as const, output: "booking-3.json" }),
   });
   render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
-  await user.click(screen.getByLabelText("Release a test version with profile pins"));
+  await user.click(screen.getByLabelText("Release test version"));
   await user.type(screen.getByLabelText("Stable test identity"), "booking");
   await user.type(
-    screen.getByLabelText(/Local profile filenames, one per line/),
+    screen.getByLabelText(/Local profiles/),
     "siu-rules.json",
   );
-  await user.type(screen.getByLabelText("Candidate specification in this workspace"), "booking.json");
-  await user.type(screen.getByLabelText("Previous released test (empty for first revision)"), "booking-2.json");
-  const release = () => screen.getByRole("button", { name: "Review test and profile changes" }) as HTMLButtonElement;
+  await user.type(screen.getByLabelText("Candidate test"), "booking.json");
+  await user.type(screen.getByLabelText("Previous version"), "booking-2.json");
+  const release = () => screen.getByRole("button", { name: "Review changes" }) as HTMLButtonElement;
   // The review needs the stable identity before it can run at all.
   const identity = screen.getByLabelText("Stable test identity");
   await user.clear(identity);
@@ -568,7 +568,7 @@ test("releasing a test version pins profiles and saves one immutable revision", 
   await user.type(screen.getByLabelText("Local approver"), "sam");
   await user.type(screen.getByLabelText("Approval rationale"), "reviewed profile pin");
   await user.type(screen.getByLabelText("New released test filename"), "booking-3.json");
-  await user.click(screen.getByRole("button", { name: "Release this exact test version" }));
+  await user.click(screen.getByRole("button", { name: "Release version" }));
   const approval = facade.oneCall("ApproveBaseline")[0];
   expect(approval).toMatchObject({
     release: true,
@@ -608,8 +608,8 @@ test("inspecting a retained baseline shows its local approval and refuses a miss
           : { state: "failed" as const, reason: "baseline input must be a readable regular file, not a symlink" },
   });
   render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
-  const inspect = () => screen.getByRole("button", { name: "Inspect retained baseline" }) as HTMLButtonElement;
-  const previous = screen.getByLabelText("Previous baseline (empty for first revision)");
+  const inspect = () => screen.getByRole("button", { name: "Open baseline" }) as HTMLButtonElement;
+  const previous = screen.getByLabelText("Previous version");
   // Nothing is inspected until a retained revision is named.
   expect(inspect().disabled).toBe(true);
   await user.type(previous, "baseline-1.json");
@@ -630,7 +630,7 @@ test("inspecting a retained baseline shows its local approval and refuses a miss
   expect(screen.getByRole("table", { name: "Retained expectations and configuration" })).toBeTruthy();
   expect(screen.getAllByText("Hidden").length).toBeGreaterThanOrEqual(1);
   // An inspection is not a review: nothing here approves or writes.
-  expect(screen.queryByRole("button", { name: "Approve this exact baseline revision" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Approve baseline" })).toBeNull();
 
   // Revealing values is a new, deliberate read; the hidden view does not stay.
   await user.click(screen.getByLabelText(/Reveal exact expected values/));
@@ -722,9 +722,9 @@ test("inspecting a retained test version shows its full release identity and a c
     }),
   });
   render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
-  await user.click(screen.getByLabelText("Release a test version with profile pins"));
-  const previous = screen.getByLabelText("Previous released test (empty for first revision)");
-  const inspect = () => screen.getByRole("button", { name: "Inspect retained test version" });
+  await user.click(screen.getByLabelText("Release test version"));
+  const previous = screen.getByLabelText("Previous version");
+  const inspect = () => screen.getByRole("button", { name: "Open version" });
   await user.type(previous, "booking-1.json");
   // From the field, past the reveal option, to the inspect control: Enter.
   await user.tab();
@@ -751,12 +751,12 @@ test("inspecting a retained test version shows its full release identity and a c
   await user.clear(previous);
   await user.type(previous, "booking-1.json");
   await user.type(screen.getByLabelText("Stable test identity"), "booking");
-  await user.type(screen.getByLabelText("Candidate specification in this workspace"), "booking.json");
-  await user.click(screen.getByRole("button", { name: "Review test and profile changes" }));
+  await user.type(screen.getByLabelText("Candidate test"), "booking.json");
+  await user.click(screen.getByRole("button", { name: "Review changes" }));
   expect(await screen.findByText(`Proposed revision 2. Parent identity: ${releaseIdentity}`)).toBeTruthy();
   await user.type(screen.getByLabelText("Local approver"), "sam");
   await user.click(screen.getByRole("button", { name: "Cancel review" }));
-  expect(screen.queryByRole("button", { name: "Release this exact test version" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Release version" })).toBeNull();
   expect(screen.queryByText(/Proposed revision/)).toBeNull();
   expect(facade.callsTo("ApproveBaseline")).toHaveLength(0);
 });

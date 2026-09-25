@@ -109,21 +109,21 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
   }
 
   return <section aria-labelledby="synthetic-packets-title" className="run-history">
-    <h4 id="synthetic-packets-title">Synthetic demonstration packets</h4>
+    <h4 id="synthetic-packets-title">Synthetic sample packets</h4>
     <p>Generate the committed synthetic SIU scenario ({SCENARIO}) against fresh built-in defective and fixed receivers on loopback, verify a packet offline, and prepare runnable copies outside it. A synthetic packet is never your own evidence: every message and ledger identifier in it is invented, and it establishes nothing about a production receiver, a downstream workflow or readiness for patient data.</p>
 
     <div className="actions">
-      <button ref={packetChooser} disabled={busy} onClick={() => void choose("packet-destination", setDestination)}>Choose new packet folder…</button>
+      <button ref={packetChooser} disabled={busy} onClick={() => void choose("packet-destination", setDestination)}>Choose destination…</button>
       <p className="hint">{destination || "No new packet folder named."}</p>
       <button disabled={busy || !destination} onClick={() => void generate()}>
-        {operation === "generating" ? "Generating…" : "Generate synthetic packet"}
+        {operation === "generating" ? "Generating…" : "Generate sample packet"}
       </button>
       <button ref={cancelControl} disabled={operation !== "generating"} onClick={lifecycle.cancel}>Cancel generation</button>
     </div>
     <div className="actions">
-      <button disabled={busy} onClick={() => void choose("packet", selectPacket)}>Choose a synthetic packet…</button>
+      <button disabled={busy} onClick={() => void choose("packet", selectPacket)}>Browse…</button>
       <p className="hint">{packetPath || "No synthetic packet chosen."}</p>
-      <button disabled={busy || !packetPath} onClick={() => void verify()}>Verify synthetic packet</button>
+      <button disabled={busy || !packetPath} onClick={() => void verify()}>Verify packet</button>
     </div>
     <div role="status" aria-live="polite">
       {operation === "generating" ? <p>Generating: the synthetic messages go only to the two built-in receivers this window starts on loopback. Cancellation stops them; a partial folder remains incomplete and cannot be verified as complete.</p> : null}
@@ -138,9 +138,10 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
       <label htmlFor="synthetic-rerun-address">Loopback address for manual reruns</label>
       <input id="synthetic-rerun-address" value={address} disabled={busy}
         onChange={(e) => { setAddress(e.target.value); setRerun(null); }} />
-      <button ref={rerunChooser} disabled={busy} onClick={() => void choose("rerun-destination", setRerunDestination)}>Choose new folder for runnable copies…</button>
+      <button ref={rerunChooser} disabled={busy} onClick={() => void choose("rerun-destination", setRerunDestination)}>Choose destination…</button>
       <p className="hint">{rerunDestination || "No folder named for the runnable copies."}</p>
-      <button disabled={busy || !rerunDestination || !address} onClick={() => void prepare()}>Prepare runnable copies</button>
+      <button disabled={busy || !rerunDestination || !address} onClick={() => void prepare()}>Prepare copies</button>
+      <p className="hint">Preparing runnable copies does not run or send anything.</p>
       <div role="status" aria-live="polite">
         {choice?.kind === "rerun-destination" && choice.answer.reason ? <p>{choice.answer.reason}</p> : null}
         {rerun?.reason ? <p>{rerun.reason}</p> : null}

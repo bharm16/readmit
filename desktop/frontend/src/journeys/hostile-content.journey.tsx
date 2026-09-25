@@ -59,22 +59,22 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   await journey.launch();
 
   // Indexing is licensed work, so the person selects their activation first.
-  await press(user, screen.getByRole("button", { name: "License and activation…" }));
-  const access = within(region("License and trial activation"));
+  await press(user, screen.getByRole("button", { name: "License" }));
+  const access = within(region("License"));
   await journey.chooseFolder(license, "Choose the license activation folder");
-  await press(user, access.getByRole("button", { name: "Select a supplied activation folder…" }));
-  await press(user, access.getByRole("button", { name: "Refresh local status" }));
+  await press(user, access.getByRole("button", { name: "Choose activation folder…" }));
+  await press(user, access.getByRole("button", { name: "Refresh activation" }));
   expect(await access.findByText(/^License: active\./)).toBeTruthy();
 
   // The folder lists the hostile file name as the text it is.
   await journey.chooseFolder(journey.path("work"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
-  const navigation = within(region("Project navigation"));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  const navigation = within(region("Workspace"));
   expect(await navigation.findByText(HOSTILE_NAME)).toBeTruthy();
 
   // Verify the case and index it, as a person investigating it would.
   const listed = (await navigation.findByText("hostile-case")).closest("li")!;
-  await press(user, within(listed).getByRole("button", { name: "Verify and open" }));
+  await press(user, within(listed).getByRole("button", { name: "Open case" }));
   const inspector = within(region("Inspector"));
   await press(user, await inspector.findByRole("button", { name: "Build case index" }));
   const form = within(await inspector.findByRole("form", { name: "Build index form" }));
@@ -85,7 +85,7 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   // The occurrence's original bytes are shown as escaped text: every angle
   // bracket the content carried is spelled as its byte value.
   await press(user, (await inspector.findAllByRole("button", { name: /^Inspect s\d+-e\d+$/ }))[0]!);
-  const occurrence = within(inspector.getByRole("region", { name: "Selected occurrence inspector" }));
+  const occurrence = within(inspector.getByRole("region", { name: "Message inspector" }));
   const raw = (await occurrence.findByText(/^MSH\|/, { selector: "code" })).textContent ?? "";
   for (const shown of [
     '\\x3cimg src=x onerror="window.PLANTED=1"\\x3e',
@@ -96,17 +96,17 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   }
   // A decoded value the person selects by its exact position is escaped text
   // too.
-  await user.type(occurrence.getByLabelText("Exact field, repetition, component or subcomponent"), "OBX[1]-5");
+  await user.type(occurrence.getByLabelText("Field path"), "OBX[1]-5");
   await press(user, occurrence.getByRole("button", { name: "Inspect selector" }));
   const decoded = await occurrence.findByText("Decoded value (escaped text)");
   await waitFor(() => expect(decoded.nextElementSibling?.textContent).toContain("window.PLANTED=2"));
   expect(decoded.nextElementSibling?.textContent).not.toContain("<script>");
 
   // A search for the hostile value is shown as typed and answered as text.
-  const commands = within(region("Commands and search"));
-  await user.type(commands.getByLabelText("Search this workspace"), SCRIPT);
+  const commands = within(region("Commands"));
+  await user.type(commands.getByLabelText("Search workspace"), SCRIPT);
   await press(user, commands.getByRole("button", { name: "Search" }));
-  expect((commands.getByLabelText("Search this workspace") as HTMLInputElement).value).toBe(SCRIPT);
+  expect((commands.getByLabelText("Search workspace") as HTMLInputElement).value).toBe(SCRIPT);
 
   // Nothing the content said became an element, and nothing it planted ran.
   observer.disconnect();

@@ -292,7 +292,7 @@ export function ProtectionPanel({
                   >
                     <span className="hint"> Retire {control.name}? It writes no new package and still opens the packages it wrote. No command makes a retired control active again.</span>
                     <button type="button" disabled={busy} onClick={() => void retire(control.name)}>Retire it</button>
-                    <button type="button" ref={keep} disabled={busy} onClick={() => keepActive(control.name)}>Keep it active</button>
+                    <button type="button" ref={keep} disabled={busy} onClick={() => keepActive(control.name)}>Keep active</button>
                   </span>
                 ) : (
                   <button
@@ -321,7 +321,7 @@ export function ProtectionPanel({
       </div>
       {documentView?.document ? <ul>{documentView.document.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul> : null}
 
-      <h4>Register a control</h4>
+      <h4>Add control</h4>
       <label htmlFor="protection-name">Control name</label>
       <input id="protection-name" value={newName} disabled={busy} onChange={(e) => setNewName(e.target.value)} />
       <label htmlFor="protection-storage">Declared at-rest storage</label>
@@ -337,7 +337,7 @@ export function ProtectionPanel({
       <input id="protection-argument" value={newArgument} disabled={busy}
         onChange={(e) => setNewArgument(e.target.value)} />
       <button type="button" disabled={busy || newArgument === ""} onClick={() => { setNewArguments((current) => [...current, newArgument]); setNewArgument(""); }}>
-        Add this locator argument
+        Add argument
       </button>
       {newArguments.length > 0 ? <ol>{newArguments.map((argument, at) => <li key={String(at)}>{argument}</li>)}</ol> : null}
       <label htmlFor="protection-max-age">Rotation stays current for (Go duration, optional)</label>
@@ -345,7 +345,7 @@ export function ProtectionPanel({
       <label htmlFor="protection-retain">Packages declare retention of (Go duration, optional)</label>
       <input id="protection-retain" value={newRetain} disabled={busy} placeholder="2160h" onChange={(e) => setNewRetain(e.target.value)} />
       <button disabled={busy || !documentEntry || !newName || !newCommand} onClick={() => void register()}>
-        {operation === "registering" ? "Registering…" : "Register this control"}
+        {operation === "registering" ? "Registering…" : "Register control"}
       </button>
       {lastChange?.action === "register" && lastChange.result?.reason ? <p>{lastChange.result.reason}</p> : null}
       {lastChange?.action === "register" && lastChange.result?.document ? <p>Registered. Registering a reference proves nothing about the store behind it: a rotation the store answers for is what records a generation.</p> : null}
@@ -388,7 +388,7 @@ export function ProtectionPanel({
     </div>
 
     <div className="actions">
-      <h4>Packages of this workspace</h4>
+      <h4>Packages</h4>
       <label htmlFor="protection-package">Transfer package</label>
       <select id="protection-package" value={selectedPackage} disabled={busy}
         onChange={(e) => void inspect(e.target.value)}>
@@ -399,18 +399,18 @@ export function ProtectionPanel({
       {packageView?.package ? <PackageView view={packageView.package} limitations={packageView.limitations} /> : null}
       {packageView?.package ? <>
         <button disabled={busy || !documentEntry} onClick={() => void openPackage()}>
-          {operation === "packing" ? "Opening…" : "Open with the control above"}
+          {operation === "packing" ? "Opening…" : "Open package"}
         </button>
         {openResult?.reason ? <p>{openResult.reason}</p> : null}
         {openResult?.package ? <p>Opened into <strong>{openResult.package.entry}</strong>. Opening ended the protection the package carried: the decrypted output is protected by this machine's own storage control and an owner-only mode, and by nothing else.</p> : null}
         <label htmlFor="protection-discard-override">Declared retention override</label>
         <select id="protection-discard-override" value={discardOverride ? "override" : "declared"} disabled={busy}
           onChange={(e) => setDiscardOverride(e.target.value === "override")}>
-          <option value="declared">Respect the declared retention</option>
-          <option value="override">Override the declared retention</option>
+          <option value="declared">Use declared retention</option>
+          <option value="override">Override retention</option>
         </select>
         <button disabled={busy || !selectedPackage} onClick={() => void discard()}>
-          {operation === "discarding" ? "Discarding…" : "Discard this package"}
+          {operation === "discarding" ? "Discarding…" : "Discard package"}
         </button>
         {discarded?.reason ? <p>{discarded.reason}</p> : null}
         {discarded?.removed !== undefined && discarded.removed !== null && discarded.removed > 0 ? <p>Unlinked {discarded.removed} declared files. Removal is not erasure; the result says exactly what it does not establish.</p> : null}

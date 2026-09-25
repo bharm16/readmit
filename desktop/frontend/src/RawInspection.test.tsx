@@ -85,7 +85,7 @@ function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
 
 async function openScreen() {
   const user = userEvent.setup();
-  const toggle = screen.getByRole("button", { name: "Inspect a raw HL7 file" });
+  const toggle = screen.getByRole("button", { name: "Inspect HL7 file" });
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   await user.click(toggle);
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -104,7 +104,7 @@ test("raw inspection chooses a file natively, pages every row the command report
   expect((inspect as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByText("Nothing has been read yet.")).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: "Choose a file to inspect…" }));
+  await user.click(screen.getByRole("button", { name: "Browse…" }));
   expect(await screen.findByText(FILE)).toBeTruthy();
   expect(facade.oneCall("ChooseInspectionPath")).toEqual(["file"]);
   await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
@@ -136,7 +136,7 @@ test("raw inspection chooses a file natively, pages every row the command report
   expect(await screen.findByText("Rows 1–200 of 250")).toBeTruthy();
 
   // Asking for values is a new declaration: what was shown without them goes.
-  await user.click(screen.getByLabelText(/Show field values as escaped byte strings/));
+  await user.click(screen.getByLabelText("Show values"));
   expect(screen.queryByRole("list", { name: "Inspection rows" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "Inspect" }));
   expect(await screen.findByText('"escaped-token"')).toBeTruthy();
@@ -160,7 +160,7 @@ test("raw inspection reports refusals, a denied file and a dismissed dialog, and
   );
   render(<RawInspection busy={false} indicators={new Map()} request={0} />);
   const user = await openScreen();
-  await user.click(screen.getByRole("button", { name: "Choose a file to inspect…" }));
+  await user.click(screen.getByRole("button", { name: "Browse…" }));
   expect(await screen.findByText("no file was chosen")).toBeTruthy();
   expect(screen.getByText("No file chosen.")).toBeTruthy();
   expect((screen.getByRole("button", { name: "Inspect" }) as HTMLButtonElement).disabled).toBe(true);
@@ -169,7 +169,7 @@ test("raw inspection reports refusals, a denied file and a dismissed dialog, and
     ChooseInspectionPath: (kind) => ({ state: "completed", kind, path: FILE }),
     InspectRawFile: () => ({ state: "failed", reason: "truncated MLLP frame: missing end block" }),
   });
-  await user.click(screen.getByRole("button", { name: "Choose a file to inspect…" }));
+  await user.click(screen.getByRole("button", { name: "Browse…" }));
   expect(await screen.findByText(FILE)).toBeTruthy();
   expect(screen.queryByText("no file was chosen")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Inspect" }));
@@ -212,20 +212,20 @@ test("a byte-identical copy is written to a new file of a natively chosen folder
   );
   render(<RawInspection busy={false} indicators={new Map()} request={0} />);
   const user = await openScreen();
-  const write = screen.getByRole("button", { name: "Write the copy" });
+  const write = screen.getByRole("button", { name: "Save copy" });
   expect((write as HTMLButtonElement).disabled).toBe(true);
-  await user.click(screen.getByRole("button", { name: "Choose a file to inspect…" }));
+  await user.click(screen.getByRole("button", { name: "Browse…" }));
   await screen.findByText(FILE);
   await user.click(screen.getByRole("button", { name: "Inspect" }));
   await screen.findByText("Rows 1–200 of 250");
   // A dismissed folder dialog is answered beside the copy, not the inspection.
   facade.reply({ ChooseInspectionPath: () => ({ state: "cancelled", reason: "no folder was chosen" }) });
-  await user.click(screen.getByRole("button", { name: "Choose a folder for the copy…" }));
+  await user.click(screen.getByRole("button", { name: "Choose destination…" }));
   const dismissed = await screen.findByText("no folder was chosen");
   expect(write.compareDocumentPosition(dismissed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByText("Rows 1–200 of 250")).toBeTruthy();
   facade.reply({ ChooseInspectionPath: (kind) => ({ state: "completed", kind, path: kind === "file" ? FILE : FOLDER }) });
-  await user.click(screen.getByRole("button", { name: "Choose a folder for the copy…" }));
+  await user.click(screen.getByRole("button", { name: "Choose destination…" }));
   expect(await screen.findByText(FOLDER)).toBeTruthy();
   expect(screen.queryByText("no folder was chosen")).toBeNull();
   expect(facade.callsTo("ChooseInspectionPath").map((call) => call.args[0])).toEqual(["file", "round-trip-folder", "round-trip-folder"]);
@@ -249,13 +249,15 @@ test("the palette opens raw inspection and a keyboard alone chooses, declares an
   const user = userEvent.setup();
   const { facade } = await renderApp(handlers());
   await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Type a command"), "raw HL7{Enter}");
-  const toggle = screen.getByRole("button", { name: "Inspect a raw HL7 file" });
+  await user.type(screen.getByLabelText("Search commands"), "Inspect HL7{Enter}");
+  const toggle = screen.getByRole("button", { name: "Inspect HL7 file" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(toggle);
 
   await user.tab();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Choose a file to inspect…" }));
+  expect(document.activeElement).toBe(
+    within(screen.getByRole("region", { name: "Inspect HL7 file" })).getByRole("button", { name: "Browse…" }),
+  );
   await user.keyboard("{Enter}");
   expect(await screen.findByText(FILE)).toBeTruthy();
   await user.tab();
@@ -264,7 +266,7 @@ test("the palette opens raw inspection and a keyboard alone chooses, declares an
   expect(document.activeElement).toBe(screen.getByLabelText("Segment terminator"));
   await user.tab();
   await user.keyboard(" ");
-  expect((screen.getByLabelText(/Show field values/) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText("Show values") as HTMLInputElement).checked).toBe(true);
   await user.tab();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Inspect" }));
   await user.keyboard("{Enter}");

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GridRow, Reproducer as ReproducerDraft, ReproducerResolution, ReproducerResult, ReproducerStep, State } from "./bindings";
+import { IconButton } from "./IconButton";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
 
@@ -150,7 +151,7 @@ export function Reproducer({
           </p>
           {onDiscardDraft ? (
             <button type="button" onClick={onDiscardDraft}>
-              Discard this restored plan
+              Discard plan
             </button>
           ) : null}
         </div>
@@ -190,8 +191,9 @@ export function Reproducer({
         disabled={busy}
         onClick={() => onStep({ operator: "include-acknowledgements/v1" })}
       >
-        Include the acknowledgements this case correlated
+        Include ACKs
       </button>
+      <p className="hint">Only acknowledgements this case correlated.</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -201,15 +203,17 @@ export function Reproducer({
           });
         }}
       >
-        <label htmlFor="reproducer-identity">Identity fields, separated by spaces</label>
+        <label htmlFor="reproducer-identity">Identity fields</label>
+        <p className="hint">Separate fields with spaces.</p>
         <input
           id="reproducer-identity"
           value={identity}
           onChange={(event) => setIdentity(event.target.value)}
         />
         <button type="submit" disabled={busy}>
-          Include earlier occurrences with the same identity
+          Include earlier matches
         </button>
+        <p className="hint">Earlier occurrences with the same identity.</p>
       </form>
 
       <h4>Edit a field</h4>
@@ -253,8 +257,8 @@ export function Reproducer({
           }}
         >
           {inspected?.path
-            ? `Use the inspected position ${inspected.path}`
-            : "Use the position open in the inspector"}
+            ? `Use selected field ${inspected.path}`
+            : "Use selected field"}
         </button>
         <label htmlFor="reproducer-value">Replacement value</label>
         <input
@@ -263,14 +267,14 @@ export function Reproducer({
           onChange={(event) => setValue(event.target.value)}
         />
         <button type="submit" disabled={busy || !chosen}>
-          Replace this value
+          Replace value
         </button>
         <button
           type="button"
           disabled={busy || !chosen}
           onClick={() => onStep({ operator: "clear-field/v1", occurrence: chosen, selector })}
         >
-          Leave this position empty
+          Clear field
         </button>
       </form>
 
@@ -312,9 +316,10 @@ export function Reproducer({
           </li>
         ))}
       </ol>
-      <button type="button" disabled={busy || !plan?.steps.length} onClick={onUndo}>
-        Undo the last step
-      </button>
+      {/* Undo only the last plan-editing step: it is not cancellation, a
+          fixture reset, or deleting retained data, and the icon's accessible
+          name says exactly that. */}
+      <IconButton label="Undo last step" icon="undo" disabled={busy || !plan?.steps.length} onClick={onUndo} />
       {/* Abandoning a plan writes nothing and drops the unstored draft kept for
           it, so an interruption does not bring it back. A reproducer already
           written stays where it is. Focus returns to the occurrences, where a
@@ -327,19 +332,20 @@ export function Reproducer({
             onDiscardDraft();
             selection.current?.querySelector("button")?.focus();
           }}
-        >
-          Discard this plan
-        </button>
+          >
+            Discard plan
+          </button>
       ) : null}
 
-      <h4>Write this revision</h4>
+      <h4>Revision</h4>
       <form
         onSubmit={(event) => {
           event.preventDefault();
           onBuild(output);
         }}
       >
-        <label htmlFor="reproducer-output">New folder in this workspace</label>
+        <label htmlFor="reproducer-output">Revision folder</label>
+        <p className="hint">A new folder in this workspace; existing revisions remain unchanged.</p>
         <input
           id="reproducer-output"
           placeholder="incident-reproducer"
@@ -347,7 +353,7 @@ export function Reproducer({
           onChange={(event) => setOutput(event.target.value)}
         />
         <button type="submit" disabled={busy || !editable.length}>
-          Write the reproducer
+          Build revision
         </button>
       </form>
       {view?.output ? (
@@ -365,7 +371,7 @@ export function Reproducer({
             disabled={busy || !onCompareRevision}
             onClick={() => onCompareRevision?.(view.output!)}
           >
-            Compare this build with another revision
+            Compare revisions
           </button>
           {registered?.state === "completed" ? (
             <div className="handoffs" aria-label="Revision handoffs">
@@ -379,14 +385,14 @@ export function Reproducer({
                 disabled={busy || !onOpenRevision}
                 onClick={() => onOpenRevision?.(registered.name)}
               >
-                Open the registered revision
+                Open revision
               </button>
               <button
                 type="button"
                 disabled={busy || !onCreateTest}
                 onClick={() => onCreateTest?.(registered.name)}
               >
-                Create a test from this revision
+                Create test
               </button>
             </div>
           ) : (
@@ -409,7 +415,7 @@ export function Reproducer({
                 type="submit"
                 disabled={busy || !onRegister || !parentCase || revisionName === ""}
               >
-                Register this revision
+                Add to project
               </button>
               {/* The project's own sentence for a refused registration, beside
                   the name that was typed, which stays for the next attempt. */}

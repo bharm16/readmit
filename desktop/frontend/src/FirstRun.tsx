@@ -43,21 +43,27 @@ export function FirstRun({
       </p>
       <div className="first-run-choices" role="group" aria-labelledby="first-run-title">
         <div className="first-run-choice">
-          <h4>Work with your own evidence</h4>
+          <h4>Your projects</h4>
           <p>
             Choose a folder this account can write to and start a real project
             in it — you will import or capture your own evidence into it next.
             A folder that already holds a workspace opens as that workspace.
           </p>
           <button type="button" disabled={busy} onClick={onOpenWorkspace}>
-            Choose a folder for a new project…
+            Create project…
           </button>
           <button type="button" disabled={busy} onClick={onOpenWorkspace}>
-            Open an existing workspace…
+            Open workspace…
           </button>
         </div>
-        <div className="first-run-choice">
-          <h4>Or explore the free guided sample</h4>
+        <div
+          className="first-run-choice"
+          role="group"
+          aria-labelledby="guided-sample-choice-title"
+        >
+          <h4 id="guided-sample-choice-title" className="visually-hidden">
+            Guided sample
+          </h4>
           <p>
             Deterministic synthetic evidence with genuinely failing and passing
             saved tests, created in a new folder. It is practice for the
@@ -65,7 +71,7 @@ export function FirstRun({
             claim about your integration.
           </p>
           <button type="button" disabled={busy} onClick={onExploreSample}>
-            Explore the guided sample…
+            Explore sample
           </button>
         </div>
       </div>
@@ -93,7 +99,7 @@ export function FirstRun({
           </p>
         )}
         <button type="button" onClick={onLicense}>
-          License and activation…
+          License
         </button>
       </div>
     </section>

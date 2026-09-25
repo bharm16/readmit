@@ -488,31 +488,56 @@ export function SuitePanel({
 
   return (
     <section className="suite-panel" aria-labelledby="suite-title">
-      <h2 id="suite-title">Suites and releases</h2>
+      <h2 id="suite-title">Suites</h2>
       <p>
         Author suites, release expectations, declare coverage and approve environment promotion over the one canonical
         contract. Nothing here sends: preparation compiles configuration only, and execution is the execution center&rsquo;s
         explicit step.
       </p>
-      <nav className="suite-tabs" aria-label="Suite views">
-        {(["suite", "releases", "prepare", "coverage", "promotion"] as const).map((name) => (
+      {/* Real tabs, not navigation buttons: one tablist, one selected tab per
+       * tabpanel, automatic activation on arrow keys, and Home/End to the
+       * ends — the W3C tabs pattern, so what assistive technology announces
+       * and what a keyboard does are the same relationship the eye sees. */}
+      <div className="suite-tabs" role="tablist" aria-label="Suite views">
+        {(["suite", "releases", "prepare", "coverage", "promotion"] as const).map((name, position, tabs) => (
           <button
             key={name}
             type="button"
+            role="tab"
+            id={`suite-tab-${name}`}
+            aria-selected={tab === name}
+            aria-controls="suite-tabpanel"
+            tabIndex={tab === name ? 0 : -1}
             className={`suite-tab ${tab === name ? "active" : ""}`}
+            onKeyDown={(event) => {
+              const move = (to: number) => {
+                event.preventDefault();
+                const next = tabs[to] ?? name;
+                setTab(next);
+                // The panel's own document state shadows the DOM's document.
+                globalThis.document.getElementById(`suite-tab-${next}`)?.focus();
+              };
+              if (event.key === "ArrowRight") move((position + 1) % tabs.length);
+              else if (event.key === "ArrowLeft") move((position - 1 + tabs.length) % tabs.length);
+              else if (event.key === "Home") move(0);
+              else if (event.key === "End") move(tabs.length - 1);
+            }}
             onClick={() => setTab(name)}
           >
-            {name === "suite" ? "Suite" : name === "releases" ? "Releases and impact" : name === "prepare" ? "Prepare" : name === "coverage" ? "Coverage" : "Promotion"}
+            {name === "suite" ? "Configuration" : name === "releases" ? "Releases" : name === "prepare" ? "Prepare" : name === "coverage" ? "Coverage" : "Promotion"}
           </button>
         ))}
-      </nav>
+      </div>
       <RetentionStatus retention={retainer.retention} />
+      {/* One tabpanel, named by whichever tab is selected; each tab controls
+       * it, and the selected tab's own id labels it. */}
+      <div role="tabpanel" id="suite-tabpanel" aria-labelledby={`suite-tab-${tab}`} tabIndex={0} className="suite-tabpanel">
       {tab === "suite" ? (
         <fieldset disabled={disabled}>
-          <legend>Suite editor</legend>
+          <legend>Suite configuration</legend>
           <div className="suite-row">
             <label>
-              Saved suite entry{" "}
+              Suite{" "}
               <select value={sourceEntry} onChange={(event) => setSourceEntry(event.target.value)}>
                 <option value="">(none)</option>
                 {suiteEntries.map((name) => (
@@ -554,7 +579,7 @@ export function SuitePanel({
               </select>
             </label>
             <label>
-              Release references (optional){" "}
+              Release pins (optional){" "}
               <select value={previewReleases} onChange={(event) => setPreviewReleases(event.target.value)}>
                 <option value="">(none)</option>
                 {releaseEntries.map((name) => (
@@ -565,21 +590,21 @@ export function SuitePanel({
               </select>
             </label>
             <button type="button" disabled={!document || !environment} onClick={() => void runPreview()}>
-              Preview the exact expansion
+              Preview
             </button>
           </div>
           {expectedError ? <p role="alert">{expectedError}</p> : null}
           <ExpansionView result={preview} />
           <div className="suite-row">
             <label>
-              New revision entry <input value={output} onChange={(event) => setOutput(event.target.value)} />
+              Version file <input value={output} onChange={(event) => setOutput(event.target.value)} />
             </label>
             <button
               type="button"
               disabled={!document || !output.trim() || Boolean(expectedError)}
               onClick={() => void saveRevision()}
             >
-              Save new version
+              Save version
             </button>
           </div>
           <p role="status">
@@ -603,8 +628,9 @@ export function SuitePanel({
               }}
             />
             <button type="button" disabled={!canonical.trim()} onClick={() => void importCanonical()}>
-              Validate and load
+              Import JSON
             </button>
+            <p className="hint">Validates the pasted JSON and loads it into the editor; nothing is saved.</p>
             {imported && imported.state !== "completed" ? <p role="alert">{imported.reason}</p> : null}
             {imported?.state === "completed" ? <p role="status">Validated and loaded into the editor; nothing was saved.</p> : null}
           </details>
@@ -612,7 +638,7 @@ export function SuitePanel({
       ) : null}
       {tab === "releases" ? (
         <fieldset disabled={disabled}>
-          <legend>Release references and impact</legend>
+          <legend>Version impact</legend>
           <table className="suite-table">
             <caption>readmit-suite-releases/v1: one exact released identity per suite test</caption>
             <thead>
@@ -679,14 +705,14 @@ export function SuitePanel({
             </tbody>
           </table>
           <button type="button" onClick={() => setSidecarRows((rows) => [...rows, { test: "", release: "", identity: "" }])}>
-            Add test pin
+            Pin test version
           </button>
           <div className="suite-row">
             <label>
-              New sidecar entry <input value={sidecarOutput} onChange={(event) => setSidecarOutput(event.target.value)} />
+              Release pins file <input value={sidecarOutput} onChange={(event) => setSidecarOutput(event.target.value)} />
             </label>
             <button type="button" disabled={!sidecarOutput.trim()} onClick={() => void writeSidecar()}>
-              Save release references
+              Save release pins
             </button>
           </div>
           <p role="status">{sidecar?.reason ?? (sidecar?.state === "completed" ? `Saved ${sidecar.output}.` : "")}</p>
@@ -729,7 +755,7 @@ export function SuitePanel({
               disabled={!impactSuite || !impactSidecar || !impactFrom || !impactTo}
               onClick={() => void runImpact()}
             >
-              Report impact
+              Compare versions
             </button>
           </div>
           {impact && impact.state !== "completed" ? <p role="alert">{impact.reason}</p> : null}
@@ -783,7 +809,7 @@ export function SuitePanel({
               </table>
             </>
           ) : null}
-          <h3>Team review of the successor release</h3>
+          <h3>Release review</h3>
           <p>
             Request review of, or approve, the exact released expectation named by the To entry. The
             commands name the digest of those reviewed bytes — never a typed value. Identity is the
@@ -793,13 +819,13 @@ export function SuitePanel({
           </p>
           <div className="suite-row">
             <label>
-              Hub project <input value={hubProject} onChange={(event) => setHubProject(event.target.value)} />
+              Project <input value={hubProject} onChange={(event) => setHubProject(event.target.value)} />
             </label>
             <label>
-              Request recipient <input value={teamRecipient} onChange={(event) => setTeamRecipient(event.target.value)} />
+              Reviewer <input value={teamRecipient} onChange={(event) => setTeamRecipient(event.target.value)} />
             </label>
             <label>
-              Command id <input value={teamCommandId} onChange={(event) => setTeamCommandId(event.target.value)} />
+              Command ID <input value={teamCommandId} onChange={(event) => setTeamCommandId(event.target.value)} />
             </label>
             <label>
               Rationale <input value={teamRationale} onChange={(event) => setTeamRationale(event.target.value)} />
@@ -811,14 +837,14 @@ export function SuitePanel({
               disabled={!hubProject.trim() || !impactTo.trim() || !teamCommandId.trim() || !teamRationale.trim() || !teamRecipient.trim()}
               onClick={() => void runReleaseReview("review-request")}
             >
-              Request team review
+              Request review
             </button>
             <button
               type="button"
               disabled={!hubProject.trim() || !impactTo.trim() || !teamCommandId.trim() || !teamRationale.trim()}
               onClick={() => void runReleaseReview("approval")}
             >
-              Approve this release
+              Approve release
             </button>
           </div>
           {teamReview && teamReview.state !== "completed" ? <p role="alert">{teamReview.reason}</p> : null}
@@ -832,8 +858,7 @@ export function SuitePanel({
         </fieldset>
       ) : null}
       {tab === "prepare" ? (
-        <fieldset disabled={disabled}>
-          <legend>Prepare a suite</legend>
+        <fieldset disabled={disabled} aria-label="Prepare a suite">
           <p>Compile a saved suite against one declared environment into a new private directory. Nothing is sent and existing output is never resumed.</p>
           <div className="suite-row">
             <label>
@@ -851,7 +876,7 @@ export function SuitePanel({
               Environment <input value={prepareEnvironment} onChange={(event) => setPrepareEnvironment(event.target.value)} />
             </label>
             <label>
-              Release references (optional){" "}
+              Release pins (optional){" "}
               <select value={prepareReleases} onChange={(event) => setPrepareReleases(event.target.value)}>
                 <option value="">(none)</option>
                 {releaseEntries.map((name) => (
@@ -862,14 +887,14 @@ export function SuitePanel({
               </select>
             </label>
             <label>
-              New directory entry <input value={prepareOutput} onChange={(event) => setPrepareOutput(event.target.value)} />
+              Output folder <input value={prepareOutput} onChange={(event) => setPrepareOutput(event.target.value)} />
             </label>
             <button
               type="button"
               disabled={!prepareEntry || !prepareEnvironment || !prepareOutput.trim()}
               onClick={() => void runPrepare()}
             >
-              Prepare configuration
+              Prepare suite
             </button>
           </div>
           <p role="status">{prepared?.reason ?? (prepared?.state === "completed" ? `Prepared ${prepared.directory}; ${prepared.queue?.jobs.length ?? 0} jobs. Nothing was sent.` : "")}</p>
@@ -904,7 +929,7 @@ export function SuitePanel({
               </p>
               {onExecute ? (
                 <button type="button" onClick={() => onExecute(prepareEntry)}>
-                  Continue to the execution center
+                  Go to runs
                 </button>
               ) : null}
             </>
@@ -915,11 +940,11 @@ export function SuitePanel({
         <>
         <fieldset disabled={disabled}>
           <legend>Declared requirement coverage</legend>
-          <h3>Author the coverage document</h3>
+          <h3 className="visually-hidden">Coverage declaration</h3>
           <p>The suite digest and every specification pin are computed from the retained bytes of a prepared suite; only the requirements and exclusions are declarations. An exclusion never filters execution and expiry never enables a send.</p>
           <div className="suite-row">
             <label>
-              Prepared suite directory{" "}
+              Prepared suite{" "}
               <select value={coveragePrepared} onChange={(event) => setCoveragePrepared(event.target.value)}>
                 <option value="">(select)</option>
                 {suiteEntries.map((name) => (
@@ -1037,17 +1062,17 @@ export function SuitePanel({
           </button>
           <div className="suite-row">
             <label>
-              New coverage entry <input value={coverageOutput} onChange={(event) => setCoverageOutput(event.target.value)} />
+              Coverage file <input value={coverageOutput} onChange={(event) => setCoverageOutput(event.target.value)} />
             </label>
             <button type="button" disabled={!coveragePrepared || !coverageOutput.trim()} onClick={() => void writeCoverage()}>
-              Author coverage document
+              Save coverage
             </button>
           </div>
           <p role="status">{authored?.reason ?? (authored?.state === "completed" ? `Saved ${authored.output}.` : "")}</p>
-          <h3>Assess a prepared suite</h3>
+          <h3>Assess coverage</h3>
           <div className="suite-row">
             <label>
-              Prepared suite directory{" "}
+              Prepared suite{" "}
               <select value={assessPrepared} onChange={(event) => setAssessPrepared(event.target.value)}>
                 <option value="">(select)</option>
                 {suiteEntries.map((name) => (
@@ -1094,8 +1119,7 @@ export function SuitePanel({
         </>
       ) : null}
       {tab === "promotion" ? (
-        <fieldset disabled={disabled}>
-          <legend>Environment promotion</legend>
+        <fieldset disabled={disabled} aria-label="Environment promotion">
           <p>
             Review and approve one exact suite against one declared environment and the operator-declared target
             revision. Changed configuration invalidates the review. Promotion grants no send authority and never
@@ -1130,8 +1154,9 @@ export function SuitePanel({
               </select>
             </label>
             <label>
-              Target revision (operator-declared) <input value={revision} onChange={(event) => setRevision(event.target.value)} />
+              Target revision <input value={revision} onChange={(event) => setRevision(event.target.value)} />
             </label>
+            <span className="hint">Operator-declared</span>
             <button
               type="button"
               disabled={!promotionEntry || !promotionEnvironment || !promotionReleases || !revision.trim()}
@@ -1180,7 +1205,7 @@ export function SuitePanel({
                   disabled={!approver.trim() || !rationale.trim() || !promotionOutput.trim()}
                   onClick={() => void runApproval()}
                 >
-                  Approve this exact promotion
+                  Approve promotion
                 </button>
               </div>
             </>
@@ -1190,6 +1215,7 @@ export function SuitePanel({
           </p>
         </fieldset>
       ) : null}
+      </div>
     </section>
   );
 }

@@ -8,7 +8,7 @@
 // destination explicitly incomplete, and opening anything here acquires no
 // authority at all.
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PacketPanel } from "./PacketPanel";
 import { installFacade } from "./testkit/wails";
@@ -64,6 +64,12 @@ async function selectInputs(user: ReturnType<typeof userEvent.setup>, baseline: 
   }
 }
 
+/** The sealed-packets area, where the export destination is chosen; the
+ * synthetic section names its own destination chooser the same. */
+function sealedPackets() {
+  return within(screen.getByRole("heading", { name: "Sealed packets" }).closest("div")!);
+}
+
 test("actual retained baseline and current are previewed, assembled, and the identity is read back and registered", async () => {
   const user = userEvent.setup();
   const { facade, events } = renderPanel({
@@ -88,14 +94,14 @@ test("actual retained baseline and current are previewed, assembled, and the ide
     },
   });
   await selectInputs(user, true);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   expect(await screen.findByText("Assembly preview")).toBeTruthy();
   expect(screen.getAllByText(/boundary ack-contract/).length).toBeGreaterThan(0);
   expect(screen.getByText(/Baseline and current share one input/)).toBeTruthy();
   expect(screen.getByText(/Packet inventory:/)).toBeTruthy();
   expect(screen.getByText(/current\/ — the retained execution, byte for byte/)).toBeTruthy();
   expect(facade.callsTo("AssemblePacket")).toHaveLength(0);
-  await user.click(screen.getByRole("button", { name: "Assemble packet" }));
+  await user.click(screen.getByRole("button", { name: "Create packet" }));
   await screen.findByText(/sealed: identity 112233445566/);
   // The packet registered, and the panel says where it goes next without
   // doing it: privacy review is a separate, deliberate step.
@@ -112,10 +118,10 @@ test("a missing baseline stays absent: the single-run limitation is shown and as
     AssemblePacket: () => packetResult(),
   });
   await selectInputs(user, false);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText(/No observed baseline/);
   expect(screen.getByText(/none selected/)).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Assemble packet" }));
+  await user.click(screen.getByRole("button", { name: "Create packet" }));
   await screen.findByText(/sealed: identity/);
   expect(facade.callsTo("AssemblePacket")).toHaveLength(1);
 });
@@ -137,9 +143,9 @@ test("a mismatched historical specification is named before assembly and offers 
       }),
   });
   await selectInputs(user, false);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findAllByText(/never substitutes the current editable test for a historical one/);
-  expect(screen.queryByRole("button", { name: "Assemble packet" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create packet" })).toBeNull();
   expect(facade.callsTo("AssemblePacket")).toHaveLength(0);
 });
 
@@ -153,9 +159,9 @@ test("an output collision is named before assembly and offers nothing to run", a
       }),
   });
   await selectInputs(user, false);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findAllByText(/already exists/);
-  expect(screen.queryByRole("button", { name: "Assemble packet" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Create packet" })).toBeNull();
   expect(facade.callsTo("AssemblePacket")).toHaveLength(0);
 });
 
@@ -166,9 +172,9 @@ test("a permission denial reports its fixed sentence and never a completed packe
     AssemblePacket: () => ({ state: "permission_denied", reason: "this account cannot write the chosen folder" }),
   });
   await selectInputs(user, false);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText("Assembly preview");
-  await user.click(screen.getByRole("button", { name: "Assemble packet" }));
+  await user.click(screen.getByRole("button", { name: "Create packet" }));
   expect(await screen.findByText(/cannot write the chosen folder/)).toBeTruthy();
   expect(screen.queryByText(/sealed: identity/)).toBeNull();
 });
@@ -183,9 +189,9 @@ test("a failed write names the incomplete output it left and never reads as comp
     }),
   });
   await selectInputs(user, false);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText("Assembly preview");
-  await user.click(screen.getByRole("button", { name: "Assemble packet" }));
+  await user.click(screen.getByRole("button", { name: "Create packet" }));
   expect(await screen.findByText(/incomplete output retained/)).toBeTruthy();
   expect(screen.queryByText(/sealed: identity/)).toBeNull();
 });
@@ -200,12 +206,12 @@ test("cancelling names the packet operation and says a partial destination stays
     }),
   });
   await selectInputs(user, false);
-  await user.click(screen.getByRole("button", { name: "Preview assembly" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText("Assembly preview");
   const parked = facade.park("AssemblePacket");
-  await user.click(screen.getByRole("button", { name: "Assemble packet" }));
+  await user.click(screen.getByRole("button", { name: "Create packet" }));
   await screen.findByText(/Cancellation stops the copy/);
-  await user.click(screen.getByRole("button", { name: "Cancel packet work" }));
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(facade.oneCall("Cancel")).toEqual(["packet"]);
   parked.resolve({
     state: "cancelled",
@@ -226,7 +232,7 @@ test("a corrupted packet is refused by name and nothing is rendered as verified"
     },
     packets,
   );
-  await user.selectOptions(screen.getByLabelText("Packets of this workspace"), PACKET_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Packets"), PACKET_ENTRY);
   await user.click(screen.getByRole("button", { name: "Verify read-only" }));
   await screen.findByText(/invalid, incomplete, changed or unsupported retained packet/);
   expect(screen.queryByText(/Verified: identity/)).toBeNull();
@@ -245,7 +251,7 @@ test("a packet from an unsupported version is refused and nothing is rendered as
     },
     packets,
   );
-  await user.selectOptions(screen.getByLabelText("Packets of this workspace"), PACKET_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Packets"), PACKET_ENTRY);
   await user.click(screen.getByRole("button", { name: "Verify read-only" }));
   expect(await screen.findByText(/a version this release cannot read/)).toBeTruthy();
   expect(facade.callsTo("ExportPacketReview")).toHaveLength(0);
@@ -266,13 +272,13 @@ test("export seals all five renderings into a natively chosen destination and re
     },
     packets,
   );
-  await user.selectOptions(screen.getByLabelText("Packets of this workspace"), PACKET_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Packets"), PACKET_ENTRY);
   await user.click(screen.getByRole("button", { name: "Verify read-only" }));
   await screen.findByText(/Verified: identity/);
-  expect((screen.getByRole("button", { name: "Export portable review" }) as HTMLButtonElement).disabled).toBe(true);
-  await user.click(screen.getByRole("button", { name: "Choose destination…" }));
+  expect((screen.getByRole("button", { name: "Export review" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(sealedPackets().getByRole("button", { name: "Choose destination…" }));
   await waitFor(() => expect(screen.getByText("/chosen/review")).toBeTruthy());
-  await user.click(screen.getByRole("button", { name: "Export portable review" }));
+  await user.click(screen.getByRole("button", { name: "Export review" }));
   await screen.findByText(/sealed: identity eeddffee/);
   expect(screen.getByText(/offline HTML, PDF, Markdown, strict JSON, JUnit/)).toBeTruthy();
   expect(facade.oneCall("ExportPacketReview")[0]).toMatchObject({ packet: PACKET_ENTRY, destination: "/chosen/review" });
@@ -290,11 +296,11 @@ test("packet export chooser shows dismissal and unavailability reasons", async (
     },
     packets,
   );
-  await user.selectOptions(screen.getByLabelText("Packets of this workspace"), PACKET_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Packets"), PACKET_ENTRY);
   await user.click(screen.getByRole("button", { name: "Verify read-only" }));
   await screen.findByText(/Verified: identity/);
-  const choose = screen.getByRole("button", { name: "Choose destination…" });
-  const exportButton = screen.getByRole("button", { name: "Export portable review" }) as HTMLButtonElement;
+  const choose = sealedPackets().getByRole("button", { name: "Choose destination…" });
+  const exportButton = screen.getByRole("button", { name: "Export review" }) as HTMLButtonElement;
 
   await user.click(choose);
   expect(await screen.findByText("no new folder was named")).toBeTruthy();
@@ -330,12 +336,12 @@ test("an export refusal is shown as itself and never as a sealed review", async 
     },
     packets,
   );
-  await user.selectOptions(screen.getByLabelText("Packets of this workspace"), PACKET_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Packets"), PACKET_ENTRY);
   await user.click(screen.getByRole("button", { name: "Verify read-only" }));
   await screen.findByText(/Verified: identity/);
-  await user.click(screen.getByRole("button", { name: "Choose destination…" }));
+  await user.click(sealedPackets().getByRole("button", { name: "Choose destination…" }));
   await waitFor(() => expect(screen.getByText("/chosen/review")).toBeTruthy());
-  await user.click(screen.getByRole("button", { name: "Export portable review" }));
+  await user.click(screen.getByRole("button", { name: "Export review" }));
   expect(await screen.findByText(/must name a new file or directory/)).toBeTruthy();
   expect(screen.queryByText(/sealed: identity/)).toBeNull();
   expect(facade.callsTo("ExportPacketReview")).toHaveLength(1);
@@ -353,7 +359,7 @@ test("a portable review opens read-only and reveals the report text only on purp
     },
     reviews,
   );
-  await user.selectOptions(screen.getByLabelText("Reviews of this workspace"), REVIEW_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Reviews"), REVIEW_ENTRY);
   await user.click(screen.getByRole("button", { name: "Open read-only" }));
   await screen.findByText(/Verified read-only: identity eeddffee/);
   expect(screen.getByText(/report.html/)).toBeTruthy();
@@ -362,7 +368,7 @@ test("a portable review opens read-only and reveals the report text only on purp
   expect(screen.getByText(/Report text hidden/)).toBeTruthy();
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
   expect(facade.callsTo("ExportPacketReview")).toHaveLength(0);
-  await user.click(screen.getByRole("button", { name: "Reveal report text" }));
+  await user.click(screen.getByRole("button", { name: "Show report" }));
   const calls = facade.callsTo("OpenPacketReview");
   expect(calls).toHaveLength(2);
   expect(calls[1]?.args[0]).toMatchObject({ reveal: true });
@@ -374,8 +380,8 @@ test("a portable review opens read-only and reveals the report text only on purp
 test("an empty workspace offers nothing to select and the panels render their honest states", () => {
   renderPanel({}, []);
   expect((screen.getByLabelText("Case") as HTMLSelectElement).value).toBe("");
-  expect((screen.getByLabelText("Packets of this workspace") as HTMLSelectElement).value).toBe("");
-  expect((screen.getByLabelText("Reviews of this workspace") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Packets") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByLabelText("Reviews") as HTMLSelectElement).value).toBe("");
 });
 
 test("PACKET_IDENTITY fixture stays well-formed for the identity displays", () => {

@@ -160,7 +160,7 @@ export function Review({
   };
 
   return (
-    <section className="review" aria-label="Review and transform this case">
+    <section className="review" aria-label="Review and transform">
       <h3>Review and transform</h3>
       <p className="hint">
         Preview what a transformation plan would do to the sequence a replay sends, and read an
@@ -169,7 +169,7 @@ export function Review({
         over the derived case a review names.
       </p>
 
-      <h4>Author a transformation plan</h4>
+      <h4>Transform plan</h4>
       <p className="hint">
         Compose the operators the engine already supports. Correlation rules are
         selected documents authored in the Sequence panel — this panel does not
@@ -201,7 +201,7 @@ export function Review({
           ))}
         </select>
         <button type="submit" ref={openButton} disabled={authoring || reopenEntry === ""}>
-          Open this plan
+          Open plan
         </button>
       </form>
       {confirming !== null ? (
@@ -297,7 +297,7 @@ export function Review({
           </>
         ) : null}
         <button type="submit" disabled={authoring}>
-          Add this step
+          Add step
         </button>
       </form>
       {authoredSteps.length ? (
@@ -345,7 +345,7 @@ export function Review({
           onChange={(event) => setPlanOutput(event.target.value)}
         />
         <button type="submit" disabled={authoring || rules === "" || planOutput === ""}>
-          Save this transformation plan
+          Save plan
         </button>
         {rules === "" ? (
           <p className="hint">Choose the correlation rules below; a plan pins the rules it preserves.</p>
@@ -369,7 +369,7 @@ export function Review({
           onPreview(rules, plan, profile);
         }}
       >
-        <label htmlFor="transform-rules">Correlation rules whose relations are preserved</label>
+        <label htmlFor="transform-rules">Correlation rules</label>
         <select
           id="transform-rules"
           value={rules}
@@ -383,8 +383,9 @@ export function Review({
             </option>
           ))}
         </select>
+        <p className="hint">The transform preserves the named rules' relations; the choice is not arbitrary.</p>
 
-        <label htmlFor="transform-plan">Transformation plan to preview</label>
+        <label htmlFor="transform-plan">Transform plan</label>
         <select
           id="transform-plan"
           value={plan}
@@ -399,7 +400,7 @@ export function Review({
           ))}
         </select>
 
-        <label htmlFor="transform-profile">Profile pack the plan pinned, if it pinned one</label>
+        <label htmlFor="transform-profile">Pinned profile pack</label>
         <select
           id="transform-profile"
           value={profile}
@@ -413,9 +414,10 @@ export function Review({
             </option>
           ))}
         </select>
+        <p className="hint">Only a pack the plan pinned, if it pinned one; no pack is inferred or chosen by default.</p>
 
         <button type="submit" disabled={busy || !caseOpen || rules === "" || plan === ""}>
-          Preview this transformation
+          Preview
         </button>
         {caseOpen ? null : (
           <p className="hint">Open a case to preview a transformation over it.</p>
@@ -453,18 +455,20 @@ export function Review({
           ))}
         </select>
 
-        <label htmlFor="review-approval">
-          Approve this review by naming its exact identity, or leave it empty
-        </label>
+        <label htmlFor="review-approval">Review ID</label>
         <input
           id="review-approval"
           value={approval}
           disabled={busy}
           onChange={(event) => setApproval(event.target.value)}
         />
+        <p className="hint">
+          Approval of this review is recorded only when its complete exact identity is named; a blank
+          records no approval, and nothing is prefilled.
+        </p>
 
         <button type="submit" disabled={busy || entry === ""}>
-          Read this review
+          Open review
         </button>
       </form>
 

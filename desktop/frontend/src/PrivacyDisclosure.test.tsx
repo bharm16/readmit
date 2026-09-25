@@ -45,7 +45,7 @@ test("the live states come from the facade and refresh deliberately", async () =
   expect(await within(run).findByText(/Active now/i)).toBeTruthy();
   const hub = within(table).getByRole("row", { name: /Customer artifact hub/ });
   expect(await within(hub).findByText(/Configured, offline/i)).toBeTruthy();
-  await user.click(privacyRegion().getByRole("button", { name: "Refresh the states" }));
+  await user.click(privacyRegion().getByRole("button", { name: "Refresh privacy status" }));
   expect(facade.callsTo("DisclosureStatus").length).toBeGreaterThan(initialCalls);
 });
 
@@ -78,7 +78,7 @@ test("a running operator-declared program reads active with the sentence the fac
   expect(within(hub).getByText("Active now")).toBeTruthy();
 
   running = false;
-  await user.click(privacyRegion().getByRole("button", { name: "Refresh the states" }));
+  await user.click(privacyRegion().getByRole("button", { name: "Refresh privacy status" }));
   expect(await within(declared).findByText("Idle — nothing is connected")).toBeTruthy();
   expect(within(declared).getByText("No operator-declared program is running.")).toBeTruthy();
   expect(within(declared).queryByText("Active now")).toBeNull();
@@ -106,25 +106,25 @@ test("each activity's next action opens the screen where that activity lives", a
   });
   // The workspace is open first: capture and observation setup live behind
   // an open workspace, exactly as the disclosure says.
-  await user.click(screen.getByRole("button", { name: "Open an existing workspace…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
   await screen.findByText("/workspace-under-test");
   const table = screen.getByRole("table", { name: /deliberately configured activities/i });
   const run = within(table).getByRole("row", { name: /Durable test execution/ });
-  await user.click(within(run).getByRole("button", { name: /Open the run panel/i }));
+  await user.click(within(run).getByRole("button", { name: "Runs" }));
   expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
   // Capture setup is a real screen: with a workspace open it opens directly.
   const capture = within(table).getByRole("row", { name: /Capture and source collection/ });
-  await user.click(within(capture).getByRole("button", { name: /Set up capture/i }));
+  await user.click(within(capture).getByRole("button", { name: "Capture" }));
   expect(
-    screen.getByRole("region", { name: "Evidence" }).textContent,
-  ).toMatch(/Capture and collect/i);
+    within(screen.getByRole("region", { name: "Evidence" })).getByRole("heading", { name: "Capture" }),
+  ).toBeTruthy();
   expect(facade.callsTo("StartCapture").length).toBe(0);
 });
 
 test("the support guidance names the ledger rows still open and the qualification refusals", async () => {
   await renderApp();
   const privacy = privacyRegion();
-  expect(privacy.getByRole("heading", { name: "What this build supports" })).toBeTruthy();
+  expect(privacy.getByRole("heading", { name: "Capabilities" })).toBeTruthy();
   expect(privacy.getByText(/generate reproducible SIU synthetic case bundles from declared inputs/i)).toBeTruthy();
   expect(privacy.getByText(/declared, not qualified/i)).toBeTruthy();
   expect(privacy.getByText(/selected and unqualified/i)).toBeTruthy();

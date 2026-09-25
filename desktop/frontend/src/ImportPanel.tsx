@@ -675,7 +675,7 @@ export function ImportPanel({
   const isBusy = busy || previewing || committing || pasting;
 
   return (
-    <div className="import-panel" aria-label="Import Evidence and Extraction Mapping">
+    <div className="import-panel" aria-label="Import">
       <div className="import-header">
         <h3>Import evidence</h3>
         <p className="hint">
@@ -706,7 +706,7 @@ export function ImportPanel({
             invalidatePreview();
           }}
         >
-          Import Plan (HL7 v2)
+          HL7 import
         </button>
         <button
           type="button"
@@ -718,7 +718,7 @@ export function ImportPanel({
             invalidatePreview();
           }}
         >
-          Mapping Recipe (Envelopes)
+          Envelope mapping
         </button>
         <button
           type="button"
@@ -730,13 +730,17 @@ export function ImportPanel({
             invalidatePreview();
           }}
         >
-          Engine Export Adapter
+          Engine adapter
         </button>
       </div>
 
+      <p className="hint">
+        HL7 import reads HL7 v2 messages only — not FHIR or other HL7 formats.
+      </p>
+
       {/* Section 1: Sources */}
       <section className="import-section" aria-label="Declared sources">
-        <h4>1. Declare Evidence Sources</h4>
+        <h4>1. Sources</h4>
         <div className="import-source-actions">
           <button type="button" disabled={isBusy} onClick={() => void handleChooseSources("files")}>
             Select Files…
@@ -819,7 +823,7 @@ export function ImportPanel({
             disabled={isBusy || !pasteContent.trim()}
             onClick={() => void handleStagePaste()}
           >
-            Retain as declared source
+            Add source
           </button>
           <p className="import-paste-notice">
             Retained as a newly declared source with its actual bytes; never represented as a captured original file.
@@ -898,7 +902,7 @@ export function ImportPanel({
 
       {/* Section 2: Authoring Controls */}
       <section className="import-section" aria-label="Authoring extraction configuration">
-        <h4>2. Author Extraction Configuration</h4>
+        <h4>2. Extraction</h4>
 
         {mode === "plan" && (
           <div className="import-plan-controls">
@@ -1422,7 +1426,7 @@ export function ImportPanel({
                     />
                   </div>
                   <div className="import-field" style={{ gridColumn: "1 / -1" }}>
-                    <label>Direction Value Mappings</label>
+                    <label>Direction mapping</label>
                     {directionValues.map((v, i) => (
                       <div key={`dir-val-${i}`} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.3rem" }}>
                         <input
@@ -1477,7 +1481,7 @@ export function ImportPanel({
                         invalidatePreview();
                       }}
                     >
-                      Add Direction Value Entry
+                      Add mapping
                     </button>
                   </div>
                 </>
@@ -1607,14 +1611,17 @@ export function ImportPanel({
 
       {/* Section 3: Bounded Preview */}
       <section className="import-section" aria-label="Extraction preview">
-        <h4>3. Bounded Preview</h4>
+        <h4>3. Preview</h4>
+        <p className="hint">
+          Preview is read-only and commits nothing. One preview is bounded to 4 MiB: past that bound it is refused rather than truncated.
+        </p>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1rem" }}>
           <button
             type="button"
             disabled={isBusy || !hasSources}
             onClick={() => void handlePreview()}
           >
-            {previewing ? "Extracting preview…" : "Preview extraction"}
+            {previewing ? "Extracting preview…" : "Preview"}
           </button>
           {previewing ? (
             <button type="button" onClick={lifecycle.cancel}>
@@ -1697,13 +1704,13 @@ export function ImportPanel({
 
             {/* Deliberate reveal toggle for sensitive payload values */}
             <div className="import-reveal-banner">
-              <span>Message payload values are hidden by default to protect sensitive clinical evidence.</span>
+              <span>Message payload values are hidden by default to protect sensitive clinical evidence. Revealed values may contain patient data.</span>
               <button
                 type="button"
                 className="import-reveal-toggle"
                 onClick={() => setRevealSensitive(!revealSensitive)}
               >
-                {revealSensitive ? "Hide payload values" : "Reveal payload values"}
+                {revealSensitive ? "Hide payload values" : "Show values"}
               </button>
             </div>
 
@@ -1810,7 +1817,7 @@ export function ImportPanel({
 
       {/* Section 4: Commit */}
       <section className="import-section" aria-label="Commit import">
-        <h4>4. Commit Import</h4>
+        <h4>4. Import</h4>
         <p className="hint">
           Commit creates the new case bundle and receipt atomically. If registered into the project, it becomes immediately navigable.
         </p>
@@ -1847,8 +1854,11 @@ export function ImportPanel({
                   checked={registerInProject}
                   onChange={(e) => setRegisterInProject(e.target.checked)}
                 />
-                Register verified case into active project
+                Add to project
               </label>
+              <p className="hint">
+                Registers the verified case into the active project ({project}). Registration is optional and is not consent to import.
+              </p>
             </div>
           )}
 
@@ -1899,7 +1909,7 @@ export function ImportPanel({
             disabled={isBusy || !preview || preview.state !== "completed" || !outputName.trim()}
             onClick={() => void handleCommit()}
           >
-            {committing ? "Committing import…" : "Commit import"}
+            {committing ? "Committing import…" : "Import"}
           </button>
           {committing ? (
             <button type="button" onClick={lifecycle.cancel}>
@@ -1937,14 +1947,14 @@ export function ImportPanel({
                 type="button"
                 onClick={() => onOpenCase(commitResult.case!.name)}
               >
-                Open this case in inspector
+                Open case
               </button>
               {onSetupIndex ? (
                 <button
                   type="button"
                   onClick={() => onSetupIndex(commitResult.case!.name)}
                 >
-                  Open this case to build an index
+                  Set up index
                 </button>
               ) : null}
             </div>

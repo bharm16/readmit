@@ -141,7 +141,7 @@ export function Reduction({
           onPreview(form());
         }}
       >
-        <label htmlFor="reduction-spec">Test spec whose failure is held</label>
+        <label htmlFor="reduction-spec">Failing test</label>
         <select id="reduction-spec" value={spec} disabled={busy || !caseOpen} onChange={(e) => setSpec(e.target.value)}>
           <option value="">Choose a spec…</option>
           {specEntries.map((name) => (
@@ -167,8 +167,9 @@ export function Reduction({
           </>
         ) : null}
 
-        <label htmlFor="reduction-assertions">Failed assertion ids, separated by spaces</label>
+        <label htmlFor="reduction-assertions">Failed assertion IDs</label>
         <input id="reduction-assertions" value={assertions} disabled={busy} onChange={(e) => setAssertions(e.target.value)} />
+        <p className="hint">Exact assertion IDs, separated by spaces.</p>
 
         <label htmlFor="reduction-trials">Trial budget</label>
         <input id="reduction-trials" value={trials} disabled={busy} onChange={(e) => setTrials(e.target.value)} />
@@ -197,22 +198,25 @@ export function Reduction({
           ))}
         </select>
 
-        <label htmlFor="reduction-policy">Send policy, if the reset opens a connection</label>
+        <label htmlFor="reduction-policy">Send policy</label>
         <select id="reduction-policy" value={policy} disabled={busy} onChange={(e) => setPolicy(e.target.value)}>
           <option value="">None</option>
           {policyEntries.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}
         </select>
+        <p className="hint">Needed when the reset opens a connection; the policy governs the network messages the reset sends.</p>
 
-        <label htmlFor="reduction-confirmed">Confirmed reset action ids</label>
+        <label htmlFor="reduction-confirmed">Confirmed reset actions</label>
         <input id="reduction-confirmed" value={confirmed} disabled={busy} onChange={(e) => setConfirmed(e.target.value)} />
+        <p className="hint">Enter the exact id of each reset action being confirmed; ids are matched exactly.</p>
 
-        <label htmlFor="reduction-work">New working folder for trials</label>
+        <label htmlFor="reduction-work">Trial folder</label>
         <input id="reduction-work" value={work} disabled={busy} onChange={(e) => setWork(e.target.value)} />
+        <p className="hint">Trials use a new working folder.</p>
 
         <button type="submit" disabled={busy || !caseOpen || spec === "" || target === "" || resetPlan === "" || assertions === ""}>
-          Preview planned side effects
+          Preview effects
         </button>
         <button
           type="button"
@@ -220,11 +224,12 @@ export function Reduction({
           disabled={busy || !caseOpen || spec === "" || target === "" || resetPlan === "" || assertions === "" || work === ""}
           onClick={() => onStart(form())}
         >
-          Run this reduction
+          Run reduction
         </button>
         <button type="button" ref={stopButton} disabled={!reducing} onClick={onCancel}>
           Stop reduction
         </button>
+        <p className="hint">Preview effects lists every declared side effect without executing anything; Run reduction executes the plan above.</p>
       </form>
 
       {view ? (
@@ -256,7 +261,7 @@ export function Reduction({
           </ul>
           {preview.unsupported.length ? (
             <>
-              <h4>Unsupported or pinned</h4>
+              <h4>Constraints</h4>
               <ul>
                 {preview.unsupported.map((item, index) => (
                   <li key={`${item.code}:${index}`}>

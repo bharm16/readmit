@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CorrelationDecision, CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
+import { IconButton } from "./IconButton";
 import { useLifecycle } from "./lifecycle";
 
 const emptyDecision: CorrelationDecision = { action: "add", link: "", from: "", to: "", actor: "", reason: "" };
@@ -44,17 +45,18 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
     setResult(next);
     if (next.output) { setPrevious(next.output); setOutput(""); setDecision(emptyDecision); }
   }
-  return <section aria-label="Review correlation links">
-    <h4>Review correlation links</h4>
+  return <section aria-label="Correlation review">
+    <h4>Correlation review</h4>
     <p className="hint">The sequence above is the original machine finding. Human decisions below
       are separate local assertions. A hash binds their contents; it does not authenticate an analyst.
       This review changes no original evidence, timestamps, or machine findings.</p>
     <form onSubmit={event => { event.preventDefault(); void run(false); }}>
-      <label htmlFor="correlation-previous">Retained review directory (blank starts from machine findings)</label>
+      <label htmlFor="correlation-previous">Previous review</label>
       <input id="correlation-previous" list="correlation-reviews" value={previous} disabled={busy}
         onChange={event => { setPrevious(event.target.value); setResult(null); setDecision(emptyDecision); }} />
       <datalist id="correlation-reviews">{reviews.map(entry => <option key={entry} value={entry} />)}</datalist>
-      <button disabled={busy}>Open selected mapping</button>
+      <p className="hint">Leave empty to start from machine findings; a previous review is optional.</p>
+      <button disabled={busy}>Open mapping</button>
     </form>
     <p role="status">{pending ?? result?.reason ?? (result?.state !== "completed" ? ""
       : result.output ? `Saved to ${result.output} · mapping verified locally.` : "Mapping verified locally.")}</p>
@@ -62,8 +64,11 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
       <p className="scope">{view.boundary}</p>
       <p>Mapping: <code>{view.mapping}</code></p>
       <p>{view.total_links} links · {view.total_collisions} original collisions · {view.total_decisions} decisions</p>
-      <button type="button" disabled={busy || view.offset === 0} onClick={() => void run(false, Math.max(0, view.offset - 200))}>Previous review page</button>
-      <button type="button" disabled={busy || view.offset + 200 >= Math.max(view.total_links, view.total_collisions, view.total_decisions)} onClick={() => void run(false, view.offset + 200)}>Next review page</button>
+      {/* Conventional pagination chevrons beside the visible page indicator;
+          the disabled boundary state and keyboard operation are the native
+          button's own, and neither is a wizard Back. */}
+      <IconButton label="Previous review page" icon="previous" disabled={busy || view.offset === 0} onClick={() => void run(false, Math.max(0, view.offset - 200))} />
+      <IconButton label="Next review page" icon="next" disabled={busy || view.offset + 200 >= Math.max(view.total_links, view.total_collisions, view.total_decisions)} onClick={() => void run(false, view.offset + 200)} />
       <p>Each list shows up to 200 items starting at {view.offset + 1}; membership shows up to 32 occurrences.</p>
       <table><caption>Reviewed mapping — original linkage and human status remain distinct</caption>
         <thead><tr><th>Link</th><th>Origin</th><th>Occurrences</th><th>Decision</th><th>Review</th></tr></thead>
@@ -82,7 +87,7 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
       </li>)}</ul>
       <form onSubmit={event => { event.preventDefault(); void run(true); }}>
         <h5>{decision.action === "add" ? "Add an analyst link" : `${decision.action} ${decision.link}`}</h5>
-        <button type="button" disabled={busy} onClick={() => setDecision({ ...emptyDecision, actor: decision.actor, reason: decision.reason })}>Choose an exact pair</button>
+        <button type="button" disabled={busy} onClick={() => setDecision({ ...emptyDecision, actor: decision.actor, reason: decision.reason })}>Select pair</button>
         {decision.action === "add" ? <>
           <label htmlFor="correlation-from">First occurrence ID</label>
           <input id="correlation-from" required value={decision.from} disabled={busy} onChange={event => setDecision({ ...decision, from: event.target.value })} />
@@ -100,7 +105,7 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
         <p className="hint">Actor and reason are stored locally in this new owner-readable directory and may
           contain sensitive text you enter. Previous revisions remain unchanged. Saving rebuilds the reviewed
           mapping and invalidates results derived from the prior mapping.</p>
-        <button disabled={busy}>Save explicit decision</button>
+        <button disabled={busy}>Save decision</button>
       </form>
       <h5>Human decision history</h5>
       <label><input type="checkbox" checked={showValues} disabled={busy} onChange={event => {

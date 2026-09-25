@@ -49,7 +49,7 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
 
   // Import the export: choose the file in the host's dialog, declare the
   // framing it really uses, and preview before anything is written.
-  await press(user, evidence.getByRole("button", { name: "Import evidence into this project…" }));
+  await press(user, evidence.getByRole("button", { name: "Import" }));
   await journey.chooseFiles([journey.path("exports", "scheduling-feed.hl7")], "Choose evidence files to import");
   await press(user, await screen.findByRole("button", { name: "Select Files…" }));
   const sources = within(screen.getByRole("region", { name: "Declared sources" }));
@@ -57,7 +57,9 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   await user.selectOptions(screen.getByLabelText("Framing"), "batch");
   await user.selectOptions(await screen.findByLabelText("Batch boundary"), "segment-start");
   await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
-  await press(user, screen.getByRole("button", { name: "Preview extraction" }));
+  // Several panels carry a Preview button of this name now; this one belongs
+  // to the import's own bounded-preview section.
+  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
   const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
   const member = await preview.findByText("scheduling-feed.hl7");
   const memberRow = member.closest("tr");
@@ -71,9 +73,9 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   await user.type(commit.getByLabelText("Case bundle folder name"), "reschedule-feed");
   await user.clear(commit.getByLabelText("Receipt file name"));
   await user.type(commit.getByLabelText("Receipt file name"), "reschedule-feed-receipt.json");
-  expect((commit.getByLabelText("Register verified case into active project") as HTMLInputElement).checked).toBe(true);
+  expect((commit.getByLabelText("Add to project") as HTMLInputElement).checked).toBe(true);
   await user.type(commit.getByLabelText("Case title"), "Reschedule leaves a duplicate");
-  await press(user, commit.getByRole("button", { name: "Commit import" }));
+  await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
   // The import is stored, so its draft was dropped before the window said so:
   // closing on this confirmation offers nothing back as unstored work.
@@ -82,7 +84,7 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   expect(dropped[0]?.settled).toBe(true);
   expect(commit.getByText("Registered into project.")).toBeTruthy();
   expect(commit.getByText(/^Case:/).parentElement?.textContent).toMatch(/Case: reschedule-feed \([0-9a-f]{64}\)/);
-  await press(user, commit.getByRole("button", { name: "Open this case to build an index" }));
+  await press(user, commit.getByRole("button", { name: "Set up index" }));
 
   // Leaving the import re-reads the project: the case it registered is listed
   // as verified evidence, and the case opens verified in the inspector.
@@ -111,15 +113,15 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   expect(rows).toHaveLength(2);
   const [booked, moved] = rows.map((row) => (row.textContent ?? "").replace(/^Inspect /, ""));
   await press(user, rows[1]!);
-  const occurrence = within(inspector.getByRole("region", { name: "Selected occurrence inspector" }));
+  const occurrence = within(inspector.getByRole("region", { name: "Message inspector" }));
   const header = await occurrence.findByText(new RegExp(`^Occurrence ${moved} · `));
   expect(header.textContent).toContain(`${EXPORTED_RESCHEDULE.length} original bytes`);
   expect(occurrence.getByText(escaped(EXPORTED_RESCHEDULE))).toBeTruthy();
 
   // Search the workspace by the control identifier: the digest index answers
   // with the one message that carries it, and nothing else.
-  const commands = within(region("Commands and search"));
-  await user.type(commands.getByLabelText("Search this workspace"), "OWN-MOVE-1");
+  const commands = within(region("Commands"));
+  await user.type(commands.getByLabelText("Search workspace"), "OWN-MOVE-1");
   await press(user, commands.getByRole("button", { name: "Search" }));
   const results = within(await commands.findByRole("list", { name: "Search results" }));
   const found = results.getAllByRole("button");
@@ -130,15 +132,15 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   // project still records the verified case.
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
-  expect(screen.queryByText("Unstored editor work this machine holds")).toBeNull();
-  const reopened = within(region("Project navigation"));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
+  expect(screen.queryByText("Unsaved drafts")).toBeNull();
+  const reopened = within(region("Workspace"));
   expect(await reopened.findByText(project, { selector: ".root" })).toBeTruthy();
   // Reopening verifies the case again and reopens its index; it is not a
   // copy of what the window showed before it closed.
   expect(await within(region("Inspector")).findByText(/Showing 2 of 2 matching/)).toBeTruthy();
   expect(journey.callsTo("OpenCase").at(-1)?.args).toEqual([project, "reschedule-feed"]);
-  await press(user, reopened.getByRole("button", { name: "Read the project" }));
+  await press(user, reopened.getByRole("button", { name: "Open project" }));
   const overview = within(region("Evidence"));
   expect(await overview.findByText("Reschedule leaves a duplicate")).toBeTruthy();
   expect(overview.getByText("verified")).toBeTruthy();

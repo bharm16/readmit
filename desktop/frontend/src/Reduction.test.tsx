@@ -98,9 +98,10 @@ function reported(state: ReductionResult["state"], report: Partial<ReductionRepo
 /** Opens the folder and verifies its case, so the reduction panel is offered. */
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  // The toolbar's Open workspace…, which the first-run panel names identically.
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" }).at(-1)!);
   await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getAllByRole("button", { name: "Verify and open" })[0]!);
+  await user.click(screen.getAllByRole("button", { name: "Open case" })[0]!);
   await screen.findByText(CASE_IDENTITY);
   return within(await screen.findByRole("region", { name: "Controlled reduction" }));
 }
@@ -115,11 +116,11 @@ async function fill(user: UserEvent, field: HTMLElement, text: string) {
 /** Chooses the test whose failure is held, the environment and reset every
  * trial uses, and the one reset action the person confirms. */
 async function configure(user: UserEvent, panel: ReturnType<typeof within>) {
-  await user.selectOptions(panel.getByLabelText("Test spec whose failure is held"), SPEC);
-  await fill(user, panel.getByLabelText("Failed assertion ids, separated by spaces"), "reschedule-accepted");
+  await user.selectOptions(panel.getByLabelText("Failing test"), SPEC);
+  await fill(user, panel.getByLabelText("Failed assertion IDs"), "reschedule-accepted");
   await user.selectOptions(panel.getByLabelText("Approved environment"), TARGET);
   await user.selectOptions(panel.getByLabelText("Reviewed reset plan"), RESET);
-  await fill(user, panel.getByLabelText("Confirmed reset action ids"), "empty-ledger");
+  await fill(user, panel.getByLabelText("Confirmed reset actions"), "empty-ledger");
 }
 
 /** What the panel sends for the configuration above. */
@@ -158,7 +159,7 @@ test("a preview sends nothing, and a run moves focus to Stop, is stopped from th
       },
     }),
   });
-  await user.click(panel.getByRole("button", { name: "Preview planned side effects" }));
+  await user.click(panel.getByRole("button", { name: "Preview effects" }));
   expect(await panel.findByText(`Preview of ${SPEC} over ${CASE_ENTRY}`)).toBeTruthy();
   expect(panel.getByText("group-per-occurrence/v1 · holding reschedule-accepted · budget 32 trials · 2 confirmations")).toBeTruthy();
   expect(facade.oneCall("PreviewReduction")[0]).toEqual(REQUEST);
@@ -169,13 +170,13 @@ test("a preview sends nothing, and a run moves focus to Stop, is stopped from th
   // A run holds the window: everything but Stop waits, and focus moves to
   // Stop, the one thing the running reduction offers.
   const running = facade.park("StartReduction");
-  await user.click(panel.getByRole("button", { name: "Run this reduction" }));
+  await user.click(panel.getByRole("button", { name: "Run reduction" }));
   const stop = panel.getByRole("button", { name: "Stop reduction" });
   await waitFor(() => expect(document.activeElement).toBe(stop));
   expect(facade.oneCall("StartReduction")[0]).toEqual(REQUEST);
   expect(panel.getByText("Running this reduction: every trial resets the environment, then sends.")).toBeTruthy();
-  expect((panel.getByRole("button", { name: "Run this reduction" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Preview planned side effects" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Run reduction" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Preview effects" }) as HTMLButtonElement).disabled).toBe(true);
   expect(panel.queryByText(`Preview of ${SPEC} over ${CASE_ENTRY}`)).toBeNull();
 
   await user.keyboard("{Enter}");
@@ -198,7 +199,7 @@ test("a preview sends nothing, and a run moves focus to Stop, is stopped from th
   expect(panel.queryByText(/^Reduced:/)).toBeNull();
   // The answer disabled Stop again, so focus returns to the control that
   // started the run.
-  await waitFor(() => expect(document.activeElement).toBe(panel.getByRole("button", { name: "Run this reduction" })));
+  await waitFor(() => expect(document.activeElement).toBe(panel.getByRole("button", { name: "Run reduction" })));
 });
 
 test("a bounded result is marked incomplete and claims no minimality, and a reset nobody confirmed is shown as it was recorded", async () => {
@@ -217,7 +218,7 @@ test("a bounded result is marked incomplete and claims no minimality, and a rese
         removed: [BOOKING],
       }),
   });
-  await user.click(panel.getByRole("button", { name: "Run this reduction" }));
+  await user.click(panel.getByRole("button", { name: "Run reduction" }));
   expect(await panel.findByText(/^Incomplete: the trial budget ran out\./)).toBeTruthy();
   expect(panel.getByText("Outcome bounded · minimality none · trial_budget_spent_before_the_result_was_confirmed")).toBeTruthy();
   expect(panel.getByText(`Retained ${RESCHEDULE} · removed ${BOOKING}`)).toBeTruthy();
@@ -226,8 +227,8 @@ test("a bounded result is marked incomplete and claims no minimality, and a rese
 
   // Without the confirmation, the first reset is unconfirmed and the
   // reduction stops there; nothing ran, so no working folder is named.
-  await user.clear(panel.getByLabelText("Confirmed reset action ids"));
-  await fill(user, panel.getByLabelText("New working folder for trials"), "unconfirmed-work");
+  await user.clear(panel.getByLabelText("Confirmed reset actions"));
+  await fill(user, panel.getByLabelText("Trial folder"), "unconfirmed-work");
   facade.reply({
     StartReduction: () =>
       reported(
@@ -250,7 +251,7 @@ test("a bounded result is marked incomplete and claims no minimality, and a rese
         "",
       ),
   });
-  await user.click(panel.getByRole("button", { name: "Run this reduction" }));
+  await user.click(panel.getByRole("button", { name: "Run reduction" }));
   expect(
     await panel.findByText("#1 · calibration · reset unconfirmed (awaiting_operator_confirmation) · verdict undecided (reset_not_confirmed)"),
   ).toBeTruthy();
@@ -270,7 +271,7 @@ test("rules hidden with their grouping are never sent, Stop is not offered for a
 
   // A preview runs to completion, so Stop stays unavailable while it does.
   const previewing = facade.park("PreviewReduction");
-  await user.click(panel.getByRole("button", { name: "Preview planned side effects" }));
+  await user.click(panel.getByRole("button", { name: "Preview effects" }));
   expect(await panel.findByText("Previewing how this reduction would take the sequence apart. Nothing is reset or sent.")).toBeTruthy();
   expect((panel.getByRole("button", { name: "Stop reduction" }) as HTMLButtonElement).disabled).toBe(true);
   expect(facade.oneCall("PreviewReduction")[0]).toEqual(REQUEST);
@@ -278,18 +279,18 @@ test("rules hidden with their grouping are never sent, Stop is not offered for a
   expect(await panel.findByText("a correlation grouping names the rules whose relations form the groups")).toBeTruthy();
 
   facade.reply({ StartReduction: () => ({ state: "permission_denied", reason: "this activation does not admit execution" }) });
-  await user.click(panel.getByRole("button", { name: "Run this reduction" }));
+  await user.click(panel.getByRole("button", { name: "Run reduction" }));
   expect(await panel.findByText("this activation does not admit execution")).toBeTruthy();
   expect(facade.oneCall("StartReduction")[0]).toEqual(REQUEST);
 
   facade.reply({ StartReduction: () => reported("completed", { outcome: "not_attempted", reason: "no_group_of_this_partition_could_be_removed", trials: [trial(1)] }) });
-  await fill(user, panel.getByLabelText("New working folder for trials"), "second-work");
-  await user.click(panel.getByRole("button", { name: "Run this reduction" }));
+  await fill(user, panel.getByLabelText("Trial folder"), "second-work");
+  await user.click(panel.getByRole("button", { name: "Run reduction" }));
   expect(await panel.findByText("Not attempted: no group of this partition could be removed, so nothing was reduced.")).toBeTruthy();
 
   // Another case is opened: the result was about the case before it.
   facade.reply({ OpenCase: () => caseResult(OTHER_CASE_ENTRY, "other-identity-fixed-for-tests") });
-  await user.click(screen.getAllByRole("button", { name: "Verify and open" })[1]!);
+  await user.click(screen.getAllByRole("button", { name: "Open case" })[1]!);
   await screen.findByText("other-identity-fixed-for-tests");
   const reopened = within(await screen.findByRole("region", { name: "Controlled reduction" }));
   await waitFor(() => expect(reopened.queryByText(/^Not attempted:/)).toBeNull());

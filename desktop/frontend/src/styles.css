@@ -164,6 +164,42 @@ input:disabled {
   opacity: 0.5;
 }
 
+/* An icon-only utility button and its tooltip. The tooltip repeats the
+   button's accessible name, so it appears for a pointer hovering the control
+   and for keyboard focus alike: what a sighted mouse user reads is what the
+   accessible name already says. It is never the only name — aria-label holds
+   that — and it takes no room until asked for. */
+.icon-button {
+  display: inline-block;
+  position: relative;
+}
+
+.icon-button button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0.25rem 0.3rem;
+}
+
+.icon-tooltip {
+  background: var(--ink);
+  border-radius: 0.3rem;
+  color: var(--surface);
+  font-size: 0.8rem;
+  left: 50%;
+  max-width: 16rem;
+  padding: 0.15rem 0.45rem;
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 10;
+}
+
+.icon-button:not(:hover):not(:focus-within) .icon-tooltip {
+  display: none;
+}
+
 kbd {
   border: 1px solid var(--line);
   border-radius: 0.3rem;

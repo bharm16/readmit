@@ -49,7 +49,7 @@ function outcome(
   return opened;
 }
 
-/** One "save as a new entry" form every editor shares: the document being
+/** One "Save as new" form every editor shares: the document being
  * saved is the composed JSON beside it, and the name has to be new. */
 function SaveForm({
   idPrefix,
@@ -82,7 +82,7 @@ function SaveForm({
         onChange={(event) => onOutput(event.target.value)}
       />
       <button type="submit" disabled={busy || output === ""}>
-        Save as a new entry
+        Save as new
       </button>
     </form>
   );
@@ -131,7 +131,7 @@ function OpenForm({
         ))}
       </select>
       <button type="submit" ref={openButton} disabled={busy || entry === ""}>
-        Open this document
+        Open
       </button>
     </form>
   );
@@ -348,10 +348,10 @@ export function CorrelationRulesEditor({
               void open(name);
             }}
           >
-            Replace them with {confirming}
+            Replace rules
           </button>
           <button type="button" ref={keep} disabled={busy} onClick={keepRules}>
-            Keep these rules
+            Keep rules
           </button>
         </div>
       ) : null}
@@ -421,7 +421,7 @@ export function CorrelationRulesEditor({
           <option value="session">session</option>
           <option value="declared">declared</option>
         </select>
-        <label htmlFor="correlation-rule-sources">Sources, separated by spaces</label>
+        <label htmlFor="correlation-rule-sources">Sources</label>
         <input
           id="correlation-rule-sources"
           placeholder="s0001 s0002"
@@ -429,6 +429,7 @@ export function CorrelationRulesEditor({
           disabled={busy}
           onChange={(event) => setDraft({ ...draft, sources: event.target.value })}
         />
+        <p className="hint">Separate sources with spaces.</p>
         <label htmlFor="correlation-rule-value">Identifier value selector</label>
         <input
           id="correlation-rule-value"
@@ -437,10 +438,7 @@ export function CorrelationRulesEditor({
           disabled={busy}
           onChange={(event) => setDraft({ ...draft, value: event.target.value })}
         />
-        <label htmlFor="correlation-rule-authority">
-          Assigning authority selectors (namespace, universal ID, universal ID type), separated by
-          spaces
-        </label>
+        <label htmlFor="correlation-rule-authority">Assigning authorities</label>
         <input
           id="correlation-rule-authority"
           placeholder="PID-3.4.1 PID-3.4.2 PID-3.4.3"
@@ -448,8 +446,11 @@ export function CorrelationRulesEditor({
           disabled={busy}
           onChange={(event) => setDraft({ ...draft, authority: event.target.value })}
         />
+        <p className="hint">
+          Namespace, universal ID and universal ID type selectors, separated by spaces.
+        </p>
         <button type="submit" disabled={busy || draft.id === ""}>
-          Add this rule
+          Add rule
         </button>
       </form>
       <ul className="selection">
@@ -512,7 +513,7 @@ export function CorrelationRulesEditor({
           onChange={(event) => setAuthority({ ...authority, universal_id_type: event.target.value })}
         />
         <button type="submit" disabled={busy || authority.key === ""}>
-          Add this authority
+          Add authority
         </button>
       </form>
       <RawDocument
@@ -746,16 +747,14 @@ export function SequenceAnalysisEditor({
               void open(name);
             }}
           >
-            Replace it with {confirming}
+            Replace declaration
           </button>
           <button type="button" ref={keep} disabled={busy} onClick={keepDeclaration}>
-            Keep this declaration
+            Keep declaration
           </button>
         </div>
       ) : null}
-      <label htmlFor="sequence-analysis-rules-sha">
-        Canonical correlation rules SHA-256 this analysis names, as the sequence reports it
-      </label>
+      <label htmlFor="sequence-analysis-rules-sha">Correlation rules hash</label>
       <input
         id="sequence-analysis-rules-sha"
         value={rulesSHA}
@@ -764,6 +763,10 @@ export function SequenceAnalysisEditor({
           recompose(event.target.value, tolerance, windows, retries, downstream)
         }
       />
+      <p className="hint">
+        SHA-256 of the canonical correlation rules this analysis names; the sequence's recorded
+        rules must match it exactly.
+      </p>
       <label htmlFor="sequence-analysis-tolerance">Clock comparison tolerance, seconds</label>
       <input
         id="sequence-analysis-tolerance"
@@ -841,7 +844,7 @@ export function SequenceAnalysisEditor({
           <option value="complete">complete</option>
         </select>
         <button type="submit" disabled={busy || windowDraft.source === ""}>
-          Add this window
+          Add window
         </button>
       </form>
       <ul className="selection">
@@ -902,7 +905,7 @@ export function SequenceAnalysisEditor({
           onChange={(event) => setRetryDraft({ ...retryDraft, basis: event.target.value })}
         />
         <button type="submit" disabled={busy || retryDraft.first === ""}>
-          Add this retry
+          Add retry
         </button>
       </form>
       <ul className="selection">
@@ -964,7 +967,7 @@ export function SequenceAnalysisEditor({
           onChange={(event) => setDownstreamDraft({ ...downstreamDraft, rule: event.target.value })}
         />
         <button type="submit" disabled={busy || downstreamDraft.occurrence === ""}>
-          Add this downstream expectation
+          Add downstream expectation
         </button>
       </form>
       <RawDocument
@@ -1161,10 +1164,10 @@ export function NormalizationPolicyEditor({
               void open(name);
             }}
           >
-            Replace them with {confirming}
+            Replace rules
           </button>
           <button type="button" ref={keep} disabled={busy} onClick={keepRules}>
-            Keep these rules
+            Keep rules
           </button>
         </div>
       ) : null}
@@ -1247,7 +1250,7 @@ export function NormalizationPolicyEditor({
           </>
         ) : null}
         <button type="submit" disabled={busy || draft.id === "" || draft.selector === ""}>
-          Add this policy rule
+          Add policy rule
         </button>
       </form>
       <RawDocument
@@ -1467,10 +1470,10 @@ export function DiagnoseConfigEditor({
               void open(name);
             }}
           >
-            Replace it with {confirming}
+            Replace configuration
           </button>
           <button type="button" ref={keep} disabled={busy} onClick={keepConfiguration}>
-            Keep this configuration
+            Keep configuration
           </button>
         </div>
       ) : null}
@@ -1499,7 +1502,7 @@ export function DiagnoseConfigEditor({
         })}
       </select>
       <p className="hint">Ruleset: {ruleset}</p>
-      <label htmlFor="diagnose-config-rules">Rule identifiers, separated by spaces</label>
+      <label htmlFor="diagnose-config-rules">Rule IDs</label>
       <input
         id="diagnose-config-rules"
         placeholder="ack.msa-outcome message.duplicate-control-id"
@@ -1507,6 +1510,7 @@ export function DiagnoseConfigEditor({
         disabled={busy}
         onChange={(event) => recompose(profile, ruleset, event.target.value, namespaces)}
       />
+      <p className="hint">Exact rule IDs of the selected ruleset, separated by spaces.</p>
       <ul className="selection">
         {namespaces.map((declared, index) => (
           <li key={`${declared.key}:${index}`}>
@@ -1575,7 +1579,7 @@ export function DiagnoseConfigEditor({
           }
         />
         <button type="submit" disabled={busy || namespaceDraft.key === ""}>
-          Add this namespace
+          Add namespace
         </button>
       </form>
       <RawDocument

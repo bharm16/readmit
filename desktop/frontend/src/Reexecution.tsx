@@ -106,7 +106,7 @@ export function Reexecution({
   const complete = Boolean(workspace && review && localState && packet && spec && phase && approval);
 
   return <div className="actions" role="group" aria-labelledby="reexecution-title">
-    <h4 id="reexecution-title">Reexecute against the authorized target</h4>
+    <h4 id="reexecution-title">Rerun</h4>
     <p className="hint">
       This step sends. It reruns one reviewed transformed phase through the durable runner against the
       target the actual original execution recorded, once, after you authorize it. The preview sends
@@ -125,12 +125,13 @@ export function Reexecution({
     <label htmlFor="reexecution-private">Private local state its derivation wrote</label>
     <input id="reexecution-private" value={localState} disabled={busy}
       onChange={(e) => { setLocalState(e.target.value); withdraw(); }} />
-    <label htmlFor="reexecution-packet">Original packet (its current run is the actual original phase)</label>
+    <label htmlFor="reexecution-packet">Original packet</label>
     <select id="reexecution-packet" value={packet} disabled={busy}
       onChange={(e) => { setPacket(e.target.value); withdraw(); }}>
       <option value="">Select a retained packet…</option>
       {packets.map((name) => <option key={name} value={name}>{name}</option>)}
     </select>
+    <p className="hint">Its current run is the actual original phase.</p>
     <label htmlFor="reexecution-spec">Rebound execution specification</label>
     <select id="reexecution-spec" value={spec} disabled={busy}
       onChange={(e) => { setSpec(e.target.value); withdraw(); }}>
@@ -144,14 +145,18 @@ export function Reexecution({
       <option value="failure">failure — the reviewed failed assertions</option>
       <option value="pass">pass — every assertion passes</option>
     </select>
-    <label htmlFor="reexecution-approval">Exact review identity approving this reexecution</label>
+    <label htmlFor="reexecution-approval">Review ID</label>
     <input id="reexecution-approval" value={approval} disabled={busy || !review}
       onChange={(e) => { setApproval(e.target.value); withdraw(); }} />
+    <p className="hint">
+      The complete exact identity of the review approving this rerun; it is never prefilled or
+      taken from the selected review.
+    </p>
     <label htmlFor="reexecution-output">New job folder</label>
     <input id="reexecution-output" value={output} disabled={busy} placeholder="generated at preview"
       onChange={(e) => { setOutput(e.target.value); withdraw(); }} />
     <button disabled={busy || !complete} onClick={() => void preview()}>
-      {operation === "previewing" ? "Previewing…" : "Preview reexecution"}
+      {operation === "previewing" ? "Previewing…" : "Preview"}
     </button>
     <div role="status" aria-live="polite">
       {previewed?.reason ? <p>{previewed.reason}</p> : null}

@@ -80,15 +80,18 @@ function exportFeed(): void {
  * `incident` and opens it. */
 async function importIncident(user: UserEvent): Promise<void> {
   await declareMllpImport(user, journey, FEED);
-  await press(user, screen.getByRole("button", { name: "Preview extraction" }));
+  // Several panels carry a Preview button of this name now; this one belongs
+  // to the import's own bounded-preview section.
+  const extraction = within(screen.getByRole("region", { name: "Extraction preview" }));
+  await press(user, extraction.getByRole("button", { name: "Preview" }));
   const commit = within(screen.getByRole("region", { name: "Commit import" }));
   await enter(user, commit.getByLabelText("Case bundle folder name"), "incident");
   await enter(user, commit.getByLabelText("Receipt file name"), "incident-receipt.json");
   await enter(user, commit.getByLabelText("Case title"), "Reschedule is refused");
-  await press(user, commit.getByRole("button", { name: "Commit import" }));
+  await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
   expect(commit.getByText("Registered into project.")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open this case to build an index" }));
+  await press(user, commit.getByRole("button", { name: "Set up index" }));
 }
 
 function reproducerPanel() {
@@ -109,7 +112,7 @@ async function retainWithBooking(user: UserEvent, panel: ReturnType<typeof withi
 }
 
 async function includeTheBooking(user: UserEvent, panel: ReturnType<typeof within>): Promise<void> {
-  await press(user, panel.getByRole("button", { name: "Include earlier occurrences with the same identity" }));
+  await press(user, panel.getByRole("button", { name: "Include earlier matches" }));
   expect(await panel.findByText("Earlier occurrence with the same declared identity")).toBeTruthy();
   expect(panel.getByRole("button", { name: `Drop ${BOOKING_ID}` })).toBeTruthy();
 }
@@ -119,15 +122,15 @@ async function replacePatientId(user: UserEvent, panel: ReturnType<typeof within
   await user.selectOptions(panel.getByLabelText("Retained occurrence"), RESCHEDULE_ID);
   await enter(user, panel.getByLabelText("Field, repetition, component or subcomponent"), PATIENT_ID);
   await enter(user, panel.getByLabelText("Replacement value"), "SYNTH-REPRO");
-  await press(user, panel.getByRole("button", { name: "Replace this value" }));
+  await press(user, panel.getByRole("button", { name: "Replace value" }));
   expect(await panel.findByText(byContent(new RegExp(`^${RESCHEDULE_ID} · PID\\[1\\]-3\\[1\\]\\.1 · set-field/v1 · was present · 11 bytes at offset \\d+$`)))).toBeTruthy();
 }
 
 /** Asks for a build into one folder and waits for the facade's answer. */
 async function write(user: UserEvent, panel: ReturnType<typeof within>, output: string): Promise<void> {
   const asked = journey.callsTo("BuildReproducer").length;
-  await enter(user, panel.getByLabelText("New folder in this workspace"), output);
-  await press(user, panel.getByRole("button", { name: "Write the reproducer" }));
+  await enter(user, panel.getByLabelText("Revision folder"), output);
+  await press(user, panel.getByRole("button", { name: "Build revision" }));
   await waitFor(() => expect(journey.callsTo("BuildReproducer")[asked]?.settled).toBe(true));
 }
 
@@ -146,7 +149,7 @@ async function written(user: UserEvent, panel: ReturnType<typeof within>, output
 async function register(user: UserEvent, panel: ReturnType<typeof within>, name: string): Promise<void> {
   const asked = journey.callsTo("RegisterRevision").length;
   await enter(user, panel.getByLabelText("New project entry for the derived case"), name);
-  await whenEnabled(panel.getByRole("button", { name: "Register this revision" }));
+  await whenEnabled(panel.getByRole("button", { name: "Add to project" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(journey.callsTo("RegisterRevision")[asked]?.settled).toBe(true));
 }
@@ -173,7 +176,7 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
   // Undo, from the keyboard: the edit is gone and the plan before it is
   // restored exactly, the booking still retained for the reschedule.
   await user.click(panel.getByLabelText("Replacement value"));
-  await tabTo(user, panel.getByRole("button", { name: "Undo the last step" }));
+  await tabTo(user, panel.getByRole("button", { name: "Undo last step" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(planSteps(panel)).toEqual([`select-occurrence/v1 · ${RESCHEDULE_ID}`, IDENTITY_STEP]));
   expect(panel.queryByRole("heading", { name: "Applied edits" })).toBeNull();
@@ -183,7 +186,7 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
   // for it is discarded, and focus is back where a plan starts.
   const project = namesIn(journey.path(PROJECT));
   const discarded = journey.callsTo("DiscardEditorDraft").length;
-  await tabTo(user, panel.getByRole("button", { name: "Discard this plan" }));
+  await tabTo(user, panel.getByRole("button", { name: "Discard plan" }));
   await user.keyboard("{Enter}");
   expect(await panel.findAllByText("Not resolved yet")).toHaveLength(2);
   expect(planSteps(panel)).toEqual([]);
@@ -292,8 +295,8 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
  * expectation — the reschedule is accepted — then saves it. */
 async function authorRescheduleTest(user: UserEvent, output: string): Promise<void> {
   const panel = await authoring();
-  await enter(user, panel.getByLabelText("What is this test called?"), "reschedule-accepted-test");
-  await press(user, panel.getByRole("button", { name: "Name this test" }));
+  await enter(user, panel.getByLabelText("Name"), "reschedule-accepted-test");
+  await press(user, panel.getByRole("button", { name: "Save name" }));
   for (const occurrence of [BOOKING_ID, RESCHEDULE_ID]) {
     await press(user, await panel.findByRole("button", { name: `Send ${occurrence}` }));
     await panel.findByRole("button", { name: `Do not send ${occurrence}` });
@@ -301,14 +304,14 @@ async function authorRescheduleTest(user: UserEvent, output: string): Promise<vo
   await press(user, panel.getByRole("button", { name: "Send to downstream-target.json" }));
   await press(user, await panel.findByRole("button", { name: "ack-contract" }));
   expect(await panel.findByText("Initial state: operator-declared.")).toBeTruthy();
-  await enter(user, panel.getByLabelText("How is the fixture returned to its initial state?"), "Empty the downstream appointment ledger before the run.");
-  await press(user, panel.getByRole("button", { name: "Record these instructions" }));
+  await enter(user, panel.getByLabelText("Reset"), "Empty the downstream appointment ledger before the run.");
+  await press(user, panel.getByRole("button", { name: "Save instructions" }));
   await enter(user, panel.getByLabelText("Expectation name"), "reschedule-accepted");
   await user.selectOptions(panel.getByLabelText("Acknowledgement of"), RESCHEDULE_ID);
-  await press(user, panel.getByRole("button", { name: "Expect this acknowledgement value" }));
+  await press(user, panel.getByRole("button", { name: "Add ACK expectation" }));
   expect(await panel.findByText(`ack_field_equals · ${RESCHEDULE_ID} · MSA-1 · present`)).toBeTruthy();
   await enter(user, panel.getByLabelText("New entry in this workspace"), output);
-  await press(user, panel.getByRole("button", { name: "Write the test spec" }));
+  await press(user, panel.getByRole("button", { name: "Save test" }));
   expect(await panel.findByText(new RegExp(`^Written to ${output.replace(/\./g, "\\.")}`))).toBeTruthy();
 }
 
@@ -333,10 +336,10 @@ test("built revisions are compared by lineage, by what they retain and edit, and
 
   // The second one drops the booking. It is handed to the comparison as the
   // later revision, and the earlier one is named from the keyboard.
-  await press(user, panel.getByRole("button", { name: "Undo the last step" }));
+  await press(user, panel.getByRole("button", { name: "Undo last step" }));
   await waitFor(() => expect(planSteps(panel)).toEqual([`select-occurrence/v1 · ${RESCHEDULE_ID}`]));
   await written(user, panel, "reschedule-alone");
-  await press(user, panel.getByRole("button", { name: "Compare this build with another revision" }));
+  await press(user, panel.getByRole("button", { name: "Compare revisions" }));
   expect((revisions.getByLabelText("Later revision") as HTMLInputElement).value).toBe("reschedule-alone");
   expect(document.activeElement).toBe(revisions.getByLabelText("Earlier revision"));
   await user.keyboard("with-booking{Enter}");
@@ -355,7 +358,7 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   const edited = await written(user, panel, "edited");
   await register(user, panel, "edited-case");
   expect(await panel.findByText(/^Registered as edited-case\./)).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Create a test from this revision" }));
+  await press(user, panel.getByRole("button", { name: "Create test" }));
   const inspector = within(region("Inspector"));
   expect(await inspector.findByText("edited-case", { selector: "dd" })).toBeTruthy();
   // The project already holds the incident's index. The new revision has no
@@ -393,10 +396,10 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   const runPanel = runs();
   await runPanel.findByRole("option", { name: "edited-test.json (test)" });
   await user.selectOptions(runPanel.getByLabelText("Saved test or suite"), "edited-test.json");
-  await enter(user, runPanel.getByLabelText("Fresh output folder"), "edited-run");
-  await press(user, runPanel.getByRole("button", { name: "Validate and preflight" }));
+  await enter(user, runPanel.getByLabelText("Run folder"), "edited-run");
+  await press(user, runPanel.getByRole("button", { name: "Preview run" }));
   expect(await runPanel.findByText(byContent(/^Admission: admitted$/))).toBeTruthy();
-  await press(user, runPanel.getByRole("button", { name: "Send and execute once" }));
+  await press(user, runPanel.getByRole("button", { name: "Send test" }));
   expect(await runPanel.findByText(byContent(/^Run: assertion_failed · Stop reason: assertion_failed$/))).toBeTruthy();
   expect(journey.callsTo("StartDurableRun")).toHaveLength(1);
 
@@ -406,9 +409,9 @@ test("built revisions are compared by lineage, by what they retain and edit, and
     const asked = journey.callsTo("CompareReproducers").length;
     await enter(user, revisions.getByLabelText("Earlier revision"), left);
     await enter(user, revisions.getByLabelText("Later revision"), right);
-    await enter(user, revisions.getByLabelText("Retained run of the earlier revision"), leftRun);
-    await enter(user, revisions.getByLabelText("Retained run of the later revision"), rightRun);
-    await press(user, revisions.getByRole("button", { name: "Compare these revisions" }));
+    await enter(user, revisions.getByLabelText("Earlier run"), leftRun);
+    await enter(user, revisions.getByLabelText("Later run"), rightRun);
+    await press(user, revisions.getByRole("button", { name: "Compare revisions" }));
     await waitFor(() => expect(journey.callsTo("CompareReproducers")[asked]?.settled).toBe(true));
   };
   await compare("with-booking", "edited", "with-booking-run", "edited-run");

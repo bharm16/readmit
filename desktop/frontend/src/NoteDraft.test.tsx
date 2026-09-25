@@ -223,7 +223,7 @@ test("storing the note drops the draft only once the project has taken it", asyn
   await user.type(screen.getByLabelText("Title"), "First pass");
   await user.type(screen.getByLabelText("Body"), "still writing this");
   await screen.findByText("Retained. It will come back if this window stops.");
-  await user.click(screen.getByRole("button", { name: "Store this note in the project" }));
+  await user.click(screen.getByRole("button", { name: "Save note" }));
   await waitFor(() => expect(facade.callsTo("SaveNote")).toHaveLength(1));
   expect(facade.oneCall("SaveNote")[1]).toEqual({
     name: "triage",
@@ -246,7 +246,7 @@ test("a store the project refuses leaves the text retained as unstored work", as
   await user.type(screen.getByLabelText("Title"), "First pass");
   await user.type(screen.getByLabelText("Body"), "still writing this");
   await screen.findByText("Retained. It will come back if this window stops.");
-  await user.click(screen.getByRole("button", { name: "Store this note in the project" }));
+  await user.click(screen.getByRole("button", { name: "Save note" }));
   expect(await screen.findByText("The project folder is read-only.")).toBeTruthy();
   expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
   expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe("still writing this");

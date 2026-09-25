@@ -154,11 +154,11 @@ function caseIdentity(day: string): string {
 /** Opens the clinic folder and verifies Wednesday's case. */
 async function openWednesday(user: UserEvent) {
   await journey.chooseFolder(journey.path("clinic"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
-  const navigation = within(region("Project navigation"));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("wednesday", { selector: ".name" })).closest("li") as HTMLElement;
-  await press(user, within(listed).getByRole("button", { name: "Verify and open" }));
-  return within(await screen.findByRole("region", { name: "Diagnosis and finding review" }));
+  await press(user, within(listed).getByRole("button", { name: "Open case" }));
+  return within(await screen.findByRole("region", { name: "Diagnosis" }));
 }
 
 type Panel = Awaited<ReturnType<typeof openWednesday>>;
@@ -170,7 +170,7 @@ async function openReport(user: UserEvent, panel: Panel, entry: string): Promise
   await within(picker).findByRole("option", { name: entry });
   await user.selectOptions(await whenEnabled(picker), entry);
   const asked = journey.callsTo("OpenDiagnosisReport").length;
-  await press(user, panel.getByRole("button", { name: "Open this report" }));
+  await press(user, panel.getByRole("button", { name: "Open report" }));
   await waitFor(() => expect(journey.callsTo("OpenDiagnosisReport")[asked]?.settled).toBe(true));
 }
 
@@ -189,7 +189,7 @@ async function openGroupReport(user: UserEvent, panel: Panel, entry: string): Pr
 async function preview(user: UserEvent, panel: Panel): Promise<void> {
   const asked = journey.callsTo("ReviewFindings").length;
   panel.getAllByLabelText("Decision").at(-1)!.focus();
-  await tabTo(user, await whenEnabled(panel.getByRole("button", { name: "Preview the review (writes nothing)" })));
+  await tabTo(user, await whenEnabled(panel.getByRole("button", { name: "Preview" })));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(journey.callsTo("ReviewFindings")[asked]?.settled).toBe(true));
 }
@@ -221,7 +221,7 @@ test("findings recurring across captured cases name their entries and match read
   for (const day of ["monday", "tuesday", "wednesday"]) {
     await user.click(panel.getByRole("checkbox", { name: day }));
   }
-  await press(user, panel.getByRole("button", { name: "Group findings across these cases" }));
+  await press(user, panel.getByRole("button", { name: "Group findings" }));
   expect(await panel.findByText("Groups 1–3 of 3 across 3 cases")).toBeTruthy();
   // A group lists its members case by case in the order of the cases'
   // identities, as the grouping orders the cases themselves.
@@ -345,7 +345,7 @@ test("a review is previewed without writing anything, decisions are saved as the
   // The person diagnoses Wednesday in the window and confirms the rejection.
   await user.selectOptions(panel.getByLabelText("Configuration"), "builtin:siu");
   await enter(user, panel.getByLabelText("New report directory in this workspace"), "wednesday-diagnosis");
-  await press(user, panel.getByRole("button", { name: "Run this diagnosis" }));
+  await press(user, panel.getByRole("button", { name: "Diagnose" }));
   const reportIdentity = await waitFor(() => {
     const shown = panel.getByText(/report identity [0-9a-f]{64}$/).textContent ?? "";
     return shown.replace(/.*report identity /, "");
@@ -369,7 +369,7 @@ test("a review is previewed without writing anything, decisions are saved as the
   // the bytes written, and the command line reviews them over the report.
   const section = within(panel.getByRole("region", { name: "Finding decisions document" }));
   await enter(user, section.getByLabelText("New finding-decisions entry"), "my-decisions.json");
-  await press(user, section.getByRole("button", { name: "Save these decisions as a new entry" }));
+  await press(user, section.getByRole("button", { name: "Save as new" }));
   const saved = await section.findByText(/^Saved to my-decisions\.json · exact bytes hash to /);
   expect(saved.textContent).toBe(`Saved to my-decisions.json · exact bytes hash to ${journey.digest("clinic/my-decisions.json")}`);
   await commandLine(["--operation-policy", operationPolicy(), "diagnose", "review", "clinic/wednesday-diagnosis", "--case", "clinic/wednesday", "--decisions", "clinic/my-decisions.json", "--output", "clinic/cli-review"]);
@@ -389,12 +389,12 @@ test("a review is previewed without writing anything, decisions are saved as the
   await within(picker).findByRole("option", { name: "my-decisions.json" });
   await user.selectOptions(picker, "colleague-decisions.json");
   const opens = journey.callsTo("OpenFindingDecisions").length;
-  await press(user, section.getByRole("button", { name: "Open these decisions" }));
+  await press(user, section.getByRole("button", { name: "Open decisions" }));
   const question = within(section.getByRole("group", { name: "Open colleague-decisions.json in place of these decisions?" }));
   expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these decisions" }));
   await user.keyboard("{Escape}");
   expect(section.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(section.getByRole("button", { name: "Open these decisions" }));
+  expect(document.activeElement).toBe(section.getByRole("button", { name: "Open decisions" }));
   expect(journey.callsTo("OpenFindingDecisions")).toHaveLength(opens);
   expect([verdict("f000001"), verdict("f000002")]).toEqual(["confirmed", "suppressed"]);
 
@@ -416,7 +416,7 @@ test("a review is previewed without writing anything, decisions are saved as the
 
   // The person's own document puts back what they saved.
   await user.selectOptions(picker, "my-decisions.json");
-  await press(user, section.getByRole("button", { name: "Open these decisions" }));
+  await press(user, section.getByRole("button", { name: "Open decisions" }));
   await press(user, section.getByRole("button", { name: "Replace them with my-decisions.json" }));
   expect(await section.findByText(`Opened my-decisions.json · exact bytes hash to ${journey.digest("clinic/my-decisions.json")}`)).toBeTruthy();
   expect([verdict("f000001"), verdict("f000002")]).toEqual(["confirmed", ""]);
@@ -444,7 +444,7 @@ test("a review is previewed without writing anything, decisions are saved as the
   expect([verdict("f000001"), verdict("f000002")]).toEqual(["", ""]);
   const reopened = within(panel.getByRole("region", { name: "Finding decisions document" }));
   await user.selectOptions(reopened.getByLabelText("Retained decisions document"), "my-decisions.json");
-  await press(user, reopened.getByRole("button", { name: "Open these decisions" }));
+  await press(user, reopened.getByRole("button", { name: "Open decisions" }));
   expect(
     await reopened.findByText(
       `The decisions in my-decisions.json were recorded against a different diagnosis report (${reportIdentity}); finding identifiers name other findings there, so none of them is applied to this report.`,
@@ -470,13 +470,13 @@ test("a retained diagnose configuration opens into the editor under the identity
   );
   const colleagueDigest = journey.digest("clinic/colleague-config.json");
   const panel = await openWednesday(user);
-  await user.click(panel.getByText("Author a diagnose configuration"));
+  await user.click(panel.getByText("Diagnosis settings"));
   const editor = within(panel.getByRole("region", { name: "Diagnose configuration editor" }));
   const namespaces = () => editor.queryAllByRole("button", { name: /^Remove namespace / }).map((button) => button.textContent);
 
   // A configuration of a later contract version is listed in the folder and
   // offered nowhere a configuration is read, and the command line refuses it.
-  expect(within(region("Project navigation")).getByText("later-config.json", { selector: ".name" })).toBeTruthy();
+  expect(within(region("Workspace")).getByText("later-config.json", { selector: ".name" })).toBeTruthy();
   const offered = (picker: HTMLElement) => Array.from((picker as HTMLSelectElement).options).map((option) => option.textContent);
   expect(offered(editor.getByLabelText("Retained configuration document"))).toEqual([
     "Choose an entry of this workspace…",
@@ -489,10 +489,10 @@ test("a retained diagnose configuration opens into the editor under the identity
   // The colleague's configuration opens into the controls, named by its file
   // and the digest of its bytes.
   await user.selectOptions(editor.getByLabelText("Retained configuration document"), "colleague-config.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   expect(await editor.findByText(`Opened colleague-config.json · exact bytes hash to ${colleagueDigest}`)).toBeTruthy();
   expect((editor.getByLabelText("Bundled profile and ruleset") as HTMLSelectElement).value).toBe("readmit-siu-v1");
-  expect((editor.getByLabelText("Rule identifiers, separated by spaces") as HTMLInputElement).value).toBe(`${ACK_OUTCOME} siu.retired-rule`);
+  expect((editor.getByLabelText("Rule IDs") as HTMLInputElement).value).toBe(`${ACK_OUTCOME} siu.retired-rule`);
   expect(namespaces()).toEqual(["Remove namespace READMIT"]);
 
   // The person adds the clinic's own authority, from the keyboard.
@@ -505,19 +505,19 @@ test("a retained diagnose configuration opens into the editor under the identity
   // editor asks, and Escape keeps it and reads nothing.
   const opens = journey.callsTo("OpenDiagnoseConfig").length;
   await user.selectOptions(editor.getByLabelText("Retained configuration document"), "misspelled-config.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: "Open misspelled-config.json in place of this configuration?" }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep this configuration" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep configuration" }));
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(journey.callsTo("OpenDiagnoseConfig")).toHaveLength(opens);
   expect(namespaces()).toHaveLength(2);
 
   // Asked again and answered, the misspelled copy is refused in the sentence
   // the command line refuses it in, and the controls stay.
   await user.keyboard("{Enter}");
-  await press(user, editor.getByRole("button", { name: "Replace it with misspelled-config.json" }));
+  await press(user, editor.getByRole("button", { name: "Replace configuration" }));
   expect(await editor.findByText(MISSPELLED_CONFIG)).toBeTruthy();
   expect(namespaces()).toHaveLength(2);
   await refusedByCommandLine(["diagnose", "clinic/wednesday", "--config", "clinic/misspelled-config.json", "--output", "misspelled-diagnosis"], MISSPELLED_CONFIG);
@@ -525,7 +525,7 @@ test("a retained diagnose configuration opens into the editor under the identity
   // Saved beside the colleague's, which is unchanged, the extended
   // configuration is named by the digest of what was written.
   await enter(user, editor.getByLabelText("New diagnose-config entry"), "extended-config.json");
-  await press(user, editor.getByRole("button", { name: "Save as a new entry" }));
+  await press(user, editor.getByRole("button", { name: "Save as new" }));
   const saved = await editor.findByText(/^Saved to extended-config\.json · exact bytes hash to /);
   expect(saved.textContent).toBe(`Saved to extended-config.json · exact bytes hash to ${journey.digest("clinic/extended-config.json")}`);
   expect(journey.digest("clinic/colleague-config.json")).toBe(colleagueDigest);
@@ -545,7 +545,7 @@ test("a retained diagnose configuration opens into the editor under the identity
     await user.selectOptions(await whenEnabled(choice), `config:${config}`);
     await enter(user, panel.getByLabelText("New report directory in this workspace"), output);
     const runs = journey.callsTo("RunDiagnosis").length;
-    await press(user, panel.getByRole("button", { name: "Run this diagnosis" }));
+    await press(user, panel.getByRole("button", { name: "Diagnose" }));
     await waitFor(() => expect(journey.callsTo("RunDiagnosis")[runs]?.settled).toBe(true));
     expect(await panel.findByText(new RegExp(`report identity ${journey.digest(`clinic/${output}/report.json`)}$`))).toBeTruthy();
     expect(panel.getByText("1 finding under readmit-siu-v1 · readmit-siu-diagnosis/v1")).toBeTruthy();

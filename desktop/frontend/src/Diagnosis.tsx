@@ -356,7 +356,7 @@ export function Diagnosis({
   const reviewCurrent = Boolean(reviewResult?.output) || reviewedDecisions === decidedKey;
 
   return (
-    <section className="diagnosis" aria-label="Diagnosis and finding review">
+    <section className="diagnosis" aria-label="Diagnosis">
       <h3>Diagnosis</h3>
       <p className="hint">
         Run one supported diagnosis over this verified case under a configuration you choose, or
@@ -413,7 +413,7 @@ export function Diagnosis({
           onChange={(event) => setOutput(event.target.value)}
         />
         <button type="submit" disabled={busy || chosen === "" || output === ""}>
-          Run this diagnosis
+          Diagnose
         </button>
       </form>
 
@@ -421,14 +421,14 @@ export function Diagnosis({
         <p className="hint">
           A configuration names one of the engine's bundled fixture profiles.{" "}
           <button type="button" disabled={busy} onClick={onManageProfiles}>
-            Manage interface profiles…
+            Profiles
           </button>{" "}
           edits local interface profiles, which are a separate document.
         </p>
       ) : null}
 
       <details>
-        <summary>Author a diagnose configuration</summary>
+        <summary>Diagnosis settings</summary>
         <DiagnoseConfigEditor
           workspace={workspace}
           entries={configEntries}
@@ -459,7 +459,7 @@ export function Diagnosis({
           ))}
         </select>
         <button type="submit" disabled={busy || reportEntry === ""}>
-          Open this report
+          Open report
         </button>
       </form>
 
@@ -603,7 +603,7 @@ export function Diagnosis({
 
           {diagnosis.unsupported.length > 0 ? (
             <>
-              <h4>Evidence this diagnosis did not evaluate</h4>
+              <h4>Unevaluated evidence</h4>
               <ul className="gaps">
                 {diagnosis.unsupported.map((item, index) => (
                   <li key={`${item.code}:${item.occurrence ?? ""}:${index}`}>
@@ -627,7 +627,7 @@ export function Diagnosis({
             </>
           ) : null}
 
-          <h4>Review these findings</h4>
+          <h4>Review findings</h4>
           <p className="hint">
             A decision is one person&apos;s typed judgment: a verdict and a rationale, and for a
             suppression its scope. Previewing joins them to this exact report and writes nothing;
@@ -635,7 +635,7 @@ export function Diagnosis({
             the command line&apos;s own review writes them.
           </p>
           {decidedOutsideWindow.length > 0 ? (
-            <section aria-label="Decisions about findings not listed here">
+            <section aria-label="Unlisted decisions">
               <p className="hint">
                 These decisions are about findings this window of the report does not list. They are
                 part of a review and of a saved decisions document until you forget them.
@@ -649,7 +649,7 @@ export function Diagnosis({
                       {decision.scope ? ` · scope ${decision.scope}` : ""} · {decision.rationale}
                     </span>
                     <button type="button" disabled={busy} onClick={() => forget(decision.finding)}>
-                      Forget the decision about {decision.finding}
+                      Remove decision
                     </button>
                   </li>
                 ))}
@@ -657,7 +657,7 @@ export function Diagnosis({
             </section>
           ) : null}
           <button type="button" disabled={busy} onClick={() => review(false)}>
-            Preview the review (writes nothing)
+            Preview
           </button>
 
           <section aria-label="Finding decisions document">
@@ -689,7 +689,7 @@ export function Diagnosis({
                 ))}
               </select>
               <button type="submit" ref={openDecisionsButton} disabled={busy || decisionsEntry === ""}>
-                Open these decisions
+                Open decisions
               </button>
             </form>
             {confirming !== null ? (
@@ -741,7 +741,7 @@ export function Diagnosis({
                 onChange={(event) => setNewDecisionsEntry(event.target.value)}
               />
               <button type="submit" disabled={busy || newDecisionsEntry === ""}>
-                Save these decisions as a new entry
+                Save as new
               </button>
             </form>
             <details>
@@ -778,7 +778,7 @@ export function Diagnosis({
               onChange={(event) => setDecisionsOutput(event.target.value)}
             />
             <button type="submit" disabled={busy || reviewOutput === "" || decisionsOutput === ""}>
-              Record these finding decisions
+              Save decisions
             </button>
           </form>
         </>
@@ -890,7 +890,7 @@ export function Diagnosis({
         </section>
       ) : null}
 
-      <h4>Recurring findings across cases</h4>
+      <h4>Recurring findings</h4>
       <p className="hint">
         Re-evaluates the selected cases under the chosen configuration and groups equal finding
         signatures. Equal signatures mean the same diagnostic shape, never the same root cause, and
@@ -934,7 +934,7 @@ export function Diagnosis({
           ))}
         </ul>
         <button type="submit" disabled={busy || chosen === "" || grouped.length === 0}>
-          Group findings across these cases
+          Group findings
         </button>
       </form>
 

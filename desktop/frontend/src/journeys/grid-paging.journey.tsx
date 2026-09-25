@@ -33,12 +33,14 @@ test("each page of the grid is one read of the case, and a case changed between 
   journey.writeFile("exports/feed.mllp", framed(BOOKING).repeat(OCCURRENCES));
   await licensedProject(journey, user);
   await declareMllpImport(user, journey, "exports/feed.mllp");
-  await press(user, screen.getByRole("button", { name: "Preview extraction" }));
+  // Several panels carry a Preview button of this name now; this one belongs
+  // to the import's own bounded-preview section.
+  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
   const commit = within(screen.getByRole("region", { name: "Commit import" }));
   await enter(user, commit.getByLabelText("Case bundle folder name"), "feed");
-  await press(user, commit.getByRole("button", { name: "Commit import" }));
+  await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open this case to build an index" }));
+  await press(user, commit.getByRole("button", { name: "Set up index" }));
   await buildIndex(user, OCCURRENCES);
   const inspector = within(region("Inspector"));
 

@@ -172,11 +172,11 @@ async function correlated(rules: string): Promise<{ report: CorrelationReport; p
  * sequence panel. */
 async function openIncident(user: UserEvent) {
   await journey.chooseFolder(journey.path("scheduling"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
-  const navigation = within(region("Project navigation"));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("incident", { selector: ".name" })).closest("li") as HTMLElement;
-  await press(user, within(listed).getByRole("button", { name: "Verify and open" }));
-  return within(await screen.findByRole("region", { name: "Event sequence and source swimlanes" }));
+  await press(user, within(listed).getByRole("button", { name: "Open case" }));
+  return within(await screen.findByRole("region", { name: "Sequence" }));
 }
 
 /** Chooses a rules document and an analysis, lays the case out from the
@@ -185,11 +185,11 @@ async function layOut(user: UserEvent, panel: ReturnType<typeof within>, rules: 
   const rulesPicker = panel.getByLabelText("Correlation rules");
   if (rules !== "") await within(rulesPicker).findByRole("option", { name: rules });
   await user.selectOptions(await whenEnabled(rulesPicker), rules);
-  const analysisPicker = panel.getByLabelText("Observation windows and explanations");
+  const analysisPicker = panel.getByLabelText("Observations");
   if (analysis !== "") await within(analysisPicker).findByRole("option", { name: analysis });
   await user.selectOptions(analysisPicker, analysis);
   const asked = journey.callsTo("OpenSequence").length;
-  await tabTo(user, panel.getByRole("button", { name: "Lay out this case" }));
+  await tabTo(user, panel.getByRole("button", { name: "View sequence" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(journey.callsTo("OpenSequence")[asked]?.settled).toBe(true));
 }
@@ -270,11 +270,11 @@ test("a case is laid out under a chosen correlation-rules document exactly as re
 
   // In the editor, the colleague's rules open as their three rules and their
   // authority, named by the digest of the file's bytes.
-  await user.click(panel.getByText("Author correlation rules and sequence analysis"));
+  await user.click(panel.getByText("Rules and analysis"));
   const editor = within(panel.getByRole("region", { name: "Correlation rules editor" }));
   const rules = () => editor.queryAllByRole("button", { name: /^Remove rule / }).map((button) => button.textContent);
   await user.selectOptions(await whenEnabled(editor.getByLabelText("Retained rules document")), "scheduling.rules.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(rules()).toEqual(["Remove rule acknowledgements", "Remove rule same-booking", "Remove rule patient"]));
   expect(editor.getByRole("button", { name: "Remove authority READMIT-MR" })).toBeTruthy();
   expect(editor.getByText(`Opened scheduling.rules.json · exact bytes hash to ${journey.digest("scheduling/scheduling.rules.json")}`)).toBeTruthy();
@@ -284,29 +284,29 @@ test("a case is laid out under a chosen correlation-rules document exactly as re
   // nothing.
   await enter(user, editor.getByLabelText("Rule ID"), "placer-booking");
   await user.selectOptions(editor.getByLabelText("Scope"), "session");
-  await user.click(editor.getByRole("button", { name: "Add this rule" }));
+  await user.click(editor.getByRole("button", { name: "Add rule" }));
   expect(rules()).toHaveLength(4);
   const opens = journey.callsTo("OpenCorrelationRules").length;
   await user.selectOptions(editor.getByLabelText("Retained rules document"), "two-parts.rules.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: "Open two-parts.rules.json in place of these rules?" }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these rules" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep rules" }));
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(journey.callsTo("OpenCorrelationRules")).toHaveLength(opens);
 
   // Answered the other way, the document is refused in the command line's
   // sentence and the four rules stay.
   await user.keyboard("{Enter}");
-  await press(user, editor.getByRole("button", { name: "Replace them with two-parts.rules.json" }));
+  await press(user, editor.getByRole("button", { name: "Replace rules" }));
   expect(await editor.findByText(TWO_PARTS_REFUSED)).toBeTruthy();
   expect(rules()).toHaveLength(4);
 });
 
 /** The review panel below a laid-out sequence. */
 function reviewPanel(panel: ReturnType<typeof within>) {
-  return within(panel.getByRole("region", { name: "Review correlation links" }));
+  return within(panel.getByRole("region", { name: "Correlation review" }));
 }
 
 /** The original collisions the review lists, which no decision overwrites. */
@@ -337,7 +337,7 @@ function linkRow(link: (typeof LINKS)[number], status: string): string {
 async function saveDecision(user: UserEvent, review: ReturnType<typeof within>, output: string): Promise<void> {
   await enter(user, review.getByLabelText("New review directory"), output);
   const asked = journey.callsTo("DecideCorrelation").length;
-  await press(user, review.getByRole("button", { name: "Save explicit decision" }));
+  await press(user, review.getByRole("button", { name: "Save decision" }));
   await waitFor(() => expect(journey.callsTo("DecideCorrelation")[asked]?.settled).toBe(true));
 }
 
@@ -375,7 +375,7 @@ test("a review history is opened from the machine findings and reopened by name,
   // Opened with no retained history, the review starts from the machine
   // finding: every link unreviewed, and the collision listed as it is.
   let review = reviewPanel(panel);
-  await press(user, review.getByRole("button", { name: "Open selected mapping" }));
+  await press(user, review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText("Mapping verified locally.")).toBeTruthy();
   expect(review.getByText(`${LINKS.length} links · 1 original collisions · 0 decisions`)).toBeTruthy();
   expect(reviewedLinks(review)).toEqual(LINKS.map((link) => linkRow(link, "unreviewed")));
@@ -407,7 +407,7 @@ test("a review history is opened from the machine findings and reopened by name,
   expect(await review.findByText(WRITE_REFUSED)).toBeTruthy();
   expect(review.queryByRole("table")).toBeNull();
   expect(journey.digest("scheduling/review-accepted/decisions.json")).toBe(acceptedDigest);
-  await press(user, review.getByRole("button", { name: "Open selected mapping" }));
+  await press(user, review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByRole("heading", { name: "reject l000006" })).toBeTruthy();
   await saveDecision(user, review, "review-rejected");
   expect(await review.findByText("Saved to review-rejected · mapping verified locally.")).toBeTruthy();
@@ -415,7 +415,7 @@ test("a review history is opened from the machine findings and reopened by name,
 
   // The pair the rules could not decide: the scheduler's second booking and
   // the receiver's first copy of it. The collision stays listed as it was.
-  await press(user, review.getByRole("button", { name: "Choose an exact pair" }));
+  await press(user, review.getByRole("button", { name: "Select pair" }));
   await enter(user, review.getByLabelText("First occurrence ID"), sent(3));
   await enter(user, review.getByLabelText("Second occurrence ID"), received(2));
   await decide(user, review, ANALYST, PAIRED, "review-paired");
@@ -440,8 +440,8 @@ test("a review history is opened from the machine findings and reopened by name,
 
   // The first history, reopened by name, holds its one decision; its analyst
   // and reason are shown only when asked for.
-  await enter(user, review.getByLabelText("Retained review directory (blank starts from machine findings)"), "review-accepted");
-  await press(user, review.getByRole("button", { name: "Open selected mapping" }));
+  await enter(user, review.getByLabelText("Previous review"), "review-accepted");
+  await press(user, review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText(`${LINKS.length} links · 1 original collisions · 1 decisions`)).toBeTruthy();
   expect(reviewedLinks(review)).toEqual([linkRow(LINKS[0]!, "accepted"), ...LINKS.slice(1).map((link) => linkRow(link, "unreviewed"))]);
   await press(user, review.getByLabelText("Reveal retained analyst and reason text"));
@@ -452,7 +452,7 @@ test("a review history is opened from the machine findings and reopened by name,
   const narrowed = RULES.replace(/,\n {4}\{\n {6}"id": "patient"[\s\S]*?\n {4}\}/, "");
   expect(narrowed).not.toBe(RULES);
   journey.changeFile("scheduling/scheduling.rules.json", narrowed);
-  await press(user, review.getByRole("button", { name: "Open selected mapping" }));
+  await press(user, review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText(STALE_RULES)).toBeTruthy();
   expect(review.queryByRole("table")).toBeNull();
   const { report: changed } = await correlated("scheduling.rules.json");
@@ -463,8 +463,8 @@ test("a review history is opened from the machine findings and reopened by name,
   await layOut(user, panel, "scheduling.rules.json");
   expect(await panel.findByText("4 links · 1 collision · 0 not evaluated · readmit-correlation/v1")).toBeTruthy();
   review = reviewPanel(panel);
-  await enter(user, review.getByLabelText("Retained review directory (blank starts from machine findings)"), "review-paired");
-  await press(user, review.getByRole("button", { name: "Open selected mapping" }));
+  await enter(user, review.getByLabelText("Previous review"), "review-paired");
+  await press(user, review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText(STALE_HISTORY)).toBeTruthy();
   expect(review.queryByRole("table")).toBeNull();
 });
@@ -527,15 +527,15 @@ test("a retained sequence-analysis declaration is reopened into the editor with 
   // The colleague's declaration opens into the editor: its windows and its
   // expectation, the canonical rules digest it pins, and the digest of the
   // file's own bytes.
-  await user.click(panel.getByText("Author correlation rules and sequence analysis"));
+  await user.click(panel.getByText("Rules and analysis"));
   const editor = within(panel.getByRole("region", { name: "Sequence analysis editor" }));
   const expectations = () => editor.queryAllByRole("button", { name: /^Remove downstream / }).map((button) => button.textContent);
   await user.selectOptions(await whenEnabled(editor.getByLabelText("Retained analysis document")), "colleague.analysis.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   expect(await editor.findByText(`Opened colleague.analysis.json · exact bytes hash to ${colleagueDigest}`)).toBeTruthy();
   expect(editor.queryAllByRole("button", { name: /^Remove window / }).map((button) => button.textContent)).toEqual(["Remove window s0001", "Remove window s0002"]);
   expect(expectations()).toEqual([`Remove downstream ${sent(6)}`]);
-  expect((editor.getByLabelText("Canonical correlation rules SHA-256 this analysis names, as the sequence reports it") as HTMLInputElement).value).toBe(report.rules_sha256);
+  expect((editor.getByLabelText("Correlation rules hash") as HTMLInputElement).value).toBe(report.rules_sha256);
   expect(editor.getByText(new RegExp(`binds to the verified case identity ${identity}\\.`))).toBeTruthy();
 
   // The person expects the first booking downstream as well, from the
@@ -550,24 +550,24 @@ test("a retained sequence-analysis declaration is reopened into the editor with 
   // cancelled with Escape, nothing is read.
   const opens = journey.callsTo("OpenSequenceAnalysis").length;
   await user.selectOptions(editor.getByLabelText("Retained analysis document"), "unknown-offset.analysis.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: "Open unknown-offset.analysis.json in place of this declaration?" }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep this declaration" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep declaration" }));
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(journey.callsTo("OpenSequenceAnalysis")).toHaveLength(opens);
 
   // Answered the other way, it is refused in the reader's sentence, and the
   // declaration on screen stays.
   await user.keyboard("{Enter}");
-  await press(user, editor.getByRole("button", { name: "Replace it with unknown-offset.analysis.json" }));
+  await press(user, editor.getByRole("button", { name: "Replace declaration" }));
   expect(await editor.findByText(UNKNOWN_OFFSET_REFUSED)).toBeTruthy();
   expect(expectations()).toHaveLength(2);
 
   // Saved as a new entry beside the colleague's, which is unchanged.
   await enter(user, editor.getByLabelText("New sequence-analysis entry"), "extended.analysis.json");
-  await press(user, editor.getByRole("button", { name: "Save as a new entry" }));
+  await press(user, editor.getByRole("button", { name: "Save as new" }));
   const saved = await editor.findByText(/^Saved to extended\.analysis\.json · exact bytes hash to /);
   expect(saved.textContent).toBe(`Saved to extended.analysis.json · exact bytes hash to ${journey.digest("scheduling/extended.analysis.json")}`);
   expect(journey.digest("scheduling/colleague.analysis.json")).toBe(colleagueDigest);

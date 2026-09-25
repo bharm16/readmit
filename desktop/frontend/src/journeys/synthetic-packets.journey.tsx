@@ -32,7 +32,7 @@ const RERUN_DIALOG = "Choose a new folder for the runnable copies";
 /** The synthetic demonstration section of the packet panels. */
 function synthetic() {
   const packets = within(screen.getByRole("region", { name: "Investigation packets" }));
-  return within(packets.getByRole("region", { name: "Synthetic demonstration packets" }));
+  return within(packets.getByRole("region", { name: "Synthetic sample packets" }));
 }
 
 /** The text of the one line a pattern matches, once the window shows it. */
@@ -40,28 +40,35 @@ async function line(scope: ReturnType<typeof within>, pattern: RegExp): Promise<
   return (await scope.findByText(byContent(pattern))).textContent ?? "";
 }
 
+/** The runnable-copies part of the panel, which carries its own destination
+ * choice beside the packet's own. */
+function rerunCopies() {
+  const panel = synthetic();
+  return within(panel.getByRole("heading", { name: "Runnable copies" }).closest("div") as HTMLElement);
+}
+
 test("a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout", async () => {
   const user = userEvent.setup();
   journey.makeFolder("demo");
   await journey.launch();
   await journey.chooseFolder(journey.path("demo"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const panel = synthetic();
 
   // Dismissing the save dialog names nothing, and nothing can be generated.
   await journey.dismissDialog("save", PACKET_DIALOG);
-  await press(user, panel.getByRole("button", { name: "Choose new packet folder…" }));
+  await press(user, panel.getByRole("button", { name: "Choose destination…" }));
   expect(await panel.findByText("no new folder was named")).toBeTruthy();
-  expect((panel.getByRole("button", { name: "Generate synthetic packet" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Generate sample packet" }) as HTMLButtonElement).disabled).toBe(true);
 
   // Generated into the folder named in the save dialog, and read back as the
   // scenario states it: a defective baseline that fails with two appointment
   // records and a fixed post-fix that passes with one, over one unchanged,
   // synthetic input.
   await journey.nameNewFolder(journey.path("demo", "synthetic-demo"), PACKET_DIALOG);
-  await press(user, panel.getByRole("button", { name: "Choose new packet folder…" }));
+  await press(user, panel.getByRole("button", { name: "Choose destination…" }));
   expect(await panel.findByText(journey.path("demo", "synthetic-demo"))).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Generate synthetic packet" }));
+  await press(user, panel.getByRole("button", { name: "Generate sample packet" }));
   const verified = await line(panel, /^Verified: synthetic-demo · identity [0-9a-f]{12}… · contract readmit-report\/v1 · state complete · \d+ indexed files\.$/);
   const identity = verified.replace(/^.*identity ([0-9a-f]{12})….*$/, "$1");
   // Every file the packet's own manifest indexes is counted.
@@ -77,10 +84,10 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
 
   // The listing names it a synthetic demonstration packet, and the panels for
   // the person's own retained packets do not offer it.
-  const navigation = within(region("Project navigation"));
+  const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("synthetic-demo")).closest("li")!;
   expect(within(listed).getByText("Synthetic demonstration packet")).toBeTruthy();
-  const retained = within(screen.getByRole("region", { name: "Investigation packets" })).getByLabelText("Packets of this workspace");
+  const retained = within(screen.getByRole("region", { name: "Investigation packets" })).getByLabelText("Packets");
   expect(within(retained).queryByRole("option", { name: "synthetic-demo" })).toBeNull();
 
   // The command line verifies the folder the window wrote, under the same
@@ -97,15 +104,15 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   const address = panel.getByLabelText("Loopback address for manual reruns") as HTMLInputElement;
   expect(address.value).toBe("127.0.0.1:2575");
   await journey.nameNewFolder(journey.path("demo", "synthetic-demo", "rerun"), RERUN_DIALOG);
-  await press(user, panel.getByRole("button", { name: "Choose new folder for runnable copies…" }));
+  await press(user, rerunCopies().getByRole("button", { name: "Choose destination…" }));
   await panel.findByText(journey.path("demo", "synthetic-demo", "rerun"));
-  await press(user, panel.getByRole("button", { name: "Prepare runnable copies" }));
+  await press(user, panel.getByRole("button", { name: "Prepare copies" }));
   const inside = "output must be outside the immutable input case or enclosing evidence";
   expect(await panel.findByText(inside)).toBeTruthy();
   const commandInside = await journey.commandLine(["report", "prepare", "demo/synthetic-demo", "--output", "demo/synthetic-demo/rerun", "--address", "127.0.0.1:2575"]);
   expect([commandInside.code, commandInside.stderr]).toEqual([1, `readmit: ${inside}\n`]);
   await enter(user, address, "192.0.2.10:2575");
-  await press(user, panel.getByRole("button", { name: "Prepare runnable copies" }));
+  await press(user, panel.getByRole("button", { name: "Prepare copies" }));
   const wide = "report preparation requires a numeric loopback address and port";
   expect(await panel.findByText(wide)).toBeTruthy();
   const commandWide = await journey.commandLine(["report", "prepare", "demo/synthetic-demo", "--output", "demo/wide-rerun", "--address", "192.0.2.10:2575"]);
@@ -116,9 +123,9 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   // the same workspace, byte for byte, from the same packet and address.
   await enter(user, address, "127.0.0.1:2575");
   await journey.nameNewFolder(journey.path("demo", "rerun"), RERUN_DIALOG);
-  await press(user, panel.getByRole("button", { name: "Choose new folder for runnable copies…" }));
+  await press(user, rerunCopies().getByRole("button", { name: "Choose destination…" }));
   await panel.findByText(journey.path("demo", "rerun"));
-  await press(user, panel.getByRole("button", { name: "Prepare runnable copies" }));
+  await press(user, panel.getByRole("button", { name: "Prepare copies" }));
   expect(await line(panel, /^Runnable copies prepared in /)).toBe(`Runnable copies prepared in rerun: packet ${identity}… · no connection opened.`);
   expect(await line(panel, /^Trials: /)).toBe(
     "Trials: baseline (defective), post-fix (fixed), reintroduced (defective) on 127.0.0.1:2575 · bindings changed: input.case, target, observation.path; input identity and assertion semantics preserved.",
@@ -135,9 +142,9 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
 
   // A folder that is not a packet is refused by both.
   await journey.chooseFolder(journey.path("demo", "rerun"), VERIFY_DIALOG);
-  await press(user, panel.getByRole("button", { name: "Choose a synthetic packet…" }));
+  await press(user, panel.getByRole("button", { name: "Browse…" }));
   await panel.findByText(journey.path("demo", "rerun"));
-  await press(user, panel.getByRole("button", { name: "Verify synthetic packet" }));
+  await press(user, panel.getByRole("button", { name: "Verify packet" }));
   const invalid = "invalid, incomplete, changed, or unsupported report packet";
   expect(await panel.findByText(invalid)).toBeTruthy();
   expect(panel.queryByText(byContent(/^Verified: /))).toBeNull();
@@ -147,11 +154,11 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   // Once a file of the packet is changed, the window refuses it and offers
   // nothing to prepare from it, as the command line refuses it.
   await journey.chooseFolder(journey.path("demo", "synthetic-demo"), VERIFY_DIALOG);
-  await press(user, panel.getByRole("button", { name: "Choose a synthetic packet…" }));
-  await press(user, panel.getByRole("button", { name: "Verify synthetic packet" }));
+  await press(user, panel.getByRole("button", { name: "Browse…" }));
+  await press(user, panel.getByRole("button", { name: "Verify packet" }));
   expect(await line(panel, /^Verified: synthetic-demo · /)).toBe(verified);
   journey.changeFile("demo/synthetic-demo/SUMMARY.md", "# Customer evidence\n");
-  await press(user, panel.getByRole("button", { name: "Verify synthetic packet" }));
+  await press(user, panel.getByRole("button", { name: "Verify packet" }));
   expect(await panel.findByText(invalid)).toBeTruthy();
   expect(panel.queryByText(byContent(/^Verified: /))).toBeNull();
   expect(panel.queryByRole("heading", { name: "Runnable copies" })).toBeNull();

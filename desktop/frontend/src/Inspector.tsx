@@ -23,7 +23,7 @@ export function Inspector({
   const [selector, setSelector] = useState("");
   const view = result?.inspection;
   return (
-    <section className="message-inspector" aria-label="Selected occurrence inspector">
+    <section className="message-inspector" aria-label="Message inspector">
       <h3>Message inspector</h3>
       <p className="hint">
         Selecting an occurrence reveals local evidence. Values and byte controls are escaped;
@@ -42,9 +42,7 @@ export function Inspector({
               onInspect(selector, 0, -1);
             }}
           >
-            <label htmlFor="inspect-selector">
-              Exact field, repetition, component or subcomponent
-            </label>
+            <label htmlFor="inspect-selector">Field path</label>
             <input
               id="inspect-selector"
               placeholder="PID[1]-3[2].4.1"
@@ -52,11 +50,14 @@ export function Inspector({
               onChange={(event) => setSelector(event.target.value)}
               disabled={busy || view.decode_state === "unparsed"}
             />
+            <p className="hint">
+              Names an exact field, repetition, component or subcomponent, e.g. PID[1]-3[2].4.1
+            </p>
             <button type="submit" disabled={busy || !selector || view.decode_state === "unparsed"}>
               Inspect selector
             </button>
           </form>
-          <nav aria-label="Segment tree navigation">
+          <nav aria-label="Segments">
             <button
               type="button"
               disabled={busy || view.selected.path === ""}
@@ -188,7 +189,7 @@ export function Inspector({
               disabled={busy || view.selected.state === "omitted"}
               onClick={() => onInspect(view.selected.path, view.node_offset, -1)}
             >
-              Jump to selected bytes
+              Go to bytes
             </button>
           </nav>
           <table className="inspector-bytes">

@@ -25,7 +25,7 @@ afterEach(async () => {
 
 /** The folders the recent list offers to reopen, in the order it offers them. */
 function listed(): string[] {
-  const list = within(region("Project navigation")).getByRole("list", { name: "Recent workspaces" });
+  const list = within(region("Workspace")).getByRole("list", { name: "Recent workspaces" });
   return within(list)
     .queryAllByRole("button")
     .filter((button) => !(button.getAttribute("aria-label") ?? "").startsWith("Forget") && button.textContent !== "Forget it" && button.textContent !== "Keep it")
@@ -38,21 +38,21 @@ test("recent folders are listed, reopened after a restart with the keyboard, and
   const beta = journey.makeFolder("work/beta");
   journey.writeFile("work/beta/notes.txt", "kept where it is");
   await journey.launch();
-  const navigation = within(region("Project navigation"));
+  const navigation = within(region("Workspace"));
   await waitFor(() => expect(journey.callsTo("RecentWorkspaces")[0]?.settled).toBe(true));
   expect(listed()).toEqual([]);
 
   // Two folders opened are listed, the latest first.
   for (const folder of [alpha, beta]) {
     await journey.chooseFolder(folder, "Open a readmit workspace folder");
-    await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+    await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
     expect(await navigation.findByText(folder, { selector: ".root" })).toBeTruthy();
   }
   await waitFor(() => expect(listed()).toEqual([beta, alpha]));
 
   // A dismissed folder dialog opens nothing and records nothing.
   await journey.dismissDialog("folder", "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await navigation.findByText("no folder was chosen")).toBeTruthy();
   expect(listed()).toEqual([beta, alpha]);
 
@@ -60,7 +60,7 @@ test("recent folders are listed, reopened after a restart with the keyboard, and
   // folder is reopened from it with Tab and Enter alone.
   await journey.close();
   await journey.launch();
-  const reopened = within(region("Project navigation"));
+  const reopened = within(region("Workspace"));
   await waitFor(() => expect(listed()).toEqual([beta, alpha]));
   await tabTo(user, reopened.getByRole("button", { name: alpha }));
   await user.keyboard("{Enter}");
@@ -100,10 +100,10 @@ test("a folder another window already forgot is refused, and a list a later rele
   const alpha = journey.makeFolder("work/alpha");
   const beta = journey.makeFolder("work/beta");
   await journey.launch();
-  const navigation = within(region("Project navigation"));
+  const navigation = within(region("Workspace"));
   for (const folder of [alpha, beta]) {
     await journey.chooseFolder(folder, "Open a readmit workspace folder");
-    await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+    await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
     expect(await navigation.findByText(folder, { selector: ".root" })).toBeTruthy();
   }
   await waitFor(() => expect(listed()).toEqual([beta, alpha]));
@@ -125,12 +125,12 @@ test("a folder another window already forgot is refused, and a list a later rele
   journey.changeFile("shell-state/recent.json", later);
   await journey.close();
   await journey.launch();
-  const reported = within(region("Project navigation"));
+  const reported = within(region("Workspace"));
   expect(await reported.findByText("the recent workspace list was written by a version this release cannot read")).toBeTruthy();
   expect(listed()).toEqual([]);
   expect(reported.queryAllByRole("button", { name: /^Forget / })).toHaveLength(0);
   await journey.chooseFolder(alpha, "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await reported.findByText(alpha, { selector: ".root" })).toBeTruthy();
   expect(await reported.findByText("the recent workspace list was written by a version this release cannot read")).toBeTruthy();
   expect(journey.readFile("shell-state/recent.json")).toBe(later);

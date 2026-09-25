@@ -72,7 +72,7 @@ test("a saved test is selected from the workspace, preflighted locally, and the 
     },
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   expect(await screen.findByText("Preflight — Rescheduling updates the original appointment (test)")).toBeTruthy();
   // Local validation only: nothing was sent and no verdict exists.
   expect(screen.getByText(/No message was sent, nothing was reset, and no result exists yet/)).toBeTruthy();
@@ -85,11 +85,11 @@ test("execution is offered only under a fresh preflight, and a changed selection
   const user = userEvent.setup();
   const { facade } = renderPanel({ PreflightRun: () => runPreflightResult() });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText("Preflight — Rescheduling updates the original appointment (test)");
   // Changing the selection invalidates the preflight: nothing can execute.
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SUITE_ENTRY);
-  expect(screen.queryByRole("button", { name: "Send and execute once" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Send test" })).toBeNull();
   expect(screen.queryByText(/Preflight —/)).toBeNull();
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
 });
@@ -103,9 +103,9 @@ test("a denied admission shows the backend's reason and executes nothing", async
       }),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/the operation term is not active/);
-  expect(screen.queryByRole("button", { name: "Send and execute once" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Send test" })).toBeNull();
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
 });
 
@@ -129,10 +129,10 @@ test("send once: the folder is named in the session before the send, the pinned 
     },
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/Destination: job-001 \(generated\) · fresh/);
   const parked = facade.park("StartDurableRun");
-  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await user.click(screen.getByRole("button", { name: "Send test" }));
   await screen.findByText(/Running\. Cancellation stops future sends/);
   // The watch is recorded before the send starts.
   expect(events[0]).toBe("watch:job-001");
@@ -154,17 +154,17 @@ test("a duplicate click while a send is running starts nothing", async () => {
     OpenRunEvidence: () => runEvidenceResult(),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   const parked = facade.park("StartDurableRun");
-  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await user.click(screen.getByRole("button", { name: "Send test" }));
   // The button is disabled while the send holds the operation, so a second
   // click can press nothing.
   await waitFor(() =>
     expect(
-      (screen.getByRole("button", { name: "Send and execute once" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Send test" }) as HTMLButtonElement).disabled,
     ).toBe(true),
   );
-  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await user.click(screen.getByRole("button", { name: "Send test" }));
   expect(facade.callsTo("StartDurableRun")).toHaveLength(1);
   parked.resolve(durableRunResult("passed"));
   await screen.findByText(/Stop reason: passed/);
@@ -179,12 +179,12 @@ test("Cancel names the durable-run operation, so it cannot stop another panel's 
     OpenRunEvidence: () => runEvidenceResult(),
   }).facade;
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   expect(
     (screen.getByRole("button", { name: "Cancel run" }) as HTMLButtonElement).disabled,
   ).toBe(true);
   const parked = facade.park("StartDurableRun");
-  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await user.click(screen.getByRole("button", { name: "Send test" }));
   await screen.findByText(/Cancellation stops future sends/);
   await user.click(screen.getByRole("button", { name: "Cancel run" }));
   expect(facade.oneCall("Cancel")).toEqual(["durable-run"]);
@@ -217,8 +217,8 @@ test("run history opens retained evidence read-only and reveals values only on p
           : {}),
       }),
   });
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.selectOptions(screen.getByLabelText("Select run"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
   expect(await screen.findByText(/Recovery never resumes, resets or resends/)).toBeTruthy();
   // Completion was not recorded and the delivery is uncertain: both facts are
   // shown and neither became a verdict.
@@ -230,7 +230,7 @@ test("run history opens retained evidence read-only and reveals values only on p
   await user.click(screen.getByRole("button", { name: "regression" }));
   expect(events).toEqual(["case:regression"]);
   // The deliberate reveal asks again and only then sees values.
-  await user.click(screen.getByRole("button", { name: "Reveal expected and observed values" }));
+  await user.click(screen.getByRole("button", { name: "Show values" }));
   await screen.findByText(/values revealed/);
   const evidenceCalls = facade.callsTo("OpenRunEvidence");
   expect(evidenceCalls).toHaveLength(2);
@@ -305,13 +305,13 @@ test("a suite is selected, its environment is chosen from what it declares, and 
     DurableRunProgress: () => runProgressResult(),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SUITE_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/select one of the environments the suite declares/);
-  expect(screen.queryByRole("button", { name: "Send and execute once" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Send suite" })).toBeNull();
   await user.selectOptions(screen.getByLabelText("Suite environment"), "east");
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/Environment east · site hospital-a/);
-  await user.click(screen.getByRole("button", { name: "Send and execute once" }));
+  await user.click(screen.getByRole("button", { name: "Send suite" }));
   await screen.findByText(/Stop reason: passed/);
   // The queue's own report shows each job's admission and its own run.
   expect(screen.getByText("Suite queue report — each job's own admission and run")).toBeTruthy();
@@ -334,7 +334,7 @@ test("the native file dialog can still select a saved test, kept inside the work
   expect(facade.callsTo("ChooseRunSpec")).toHaveLength(1);
   expect(facade.oneCall("ChooseRunSpec")).toEqual([WORKSPACE_ROOT]);
   // The advanced path hands the same entry to the same preflight.
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   expect(facade.oneCall("PreflightRun")[0]).toMatchObject({ spec: SPEC_ENTRY });
 });
 
@@ -350,11 +350,11 @@ test("resume repeats a retained never-attempted run only after explicit keyboard
     } }; },
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.selectOptions(screen.getByLabelText("Select run"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
   await screen.findByText(/Run: timed_out/);
-  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "job-002");
-  screen.getByRole("button", { name: "Resume never-attempted work" }).focus();
+  await user.type(screen.getByLabelText("Resume folder"), "job-002");
+  screen.getByRole("button", { name: "Resume send" }).focus();
   await user.keyboard("{Enter}");
   await screen.findByText(/Resumed 1 never-attempted occurrence/);
   expect(facade.oneCall("ResumeDurableRun")).toEqual([{ workspace: WORKSPACE_ROOT, job: RUN_ENTRY, spec: SPEC_ENTRY, output: "job-002" }]);
@@ -370,10 +370,10 @@ test("resume shows a delivery-uncertain refusal without creating an output", asy
     ResumeDurableRun: () => ({ state: "failed", reason: "resume refused: an intent was synced without an acknowledged outcome; that send is never repeated" }),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
-  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "job-002");
-  await user.click(screen.getByRole("button", { name: "Resume never-attempted work" }));
+  await user.selectOptions(screen.getByLabelText("Select run"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
+  await user.type(screen.getByLabelText("Resume folder"), "job-002");
+  await user.click(screen.getByRole("button", { name: "Resume send" }));
   await screen.findByText(/resume refused: an intent was synced without an acknowledged outcome/);
   expect(facade.callsTo("ResumeDurableRun")).toHaveLength(1);
   expect(events).toContain("watch:job-001");
@@ -387,10 +387,10 @@ test("an invalid resume output is refused without recording an outside folder in
     ResumeDurableRun: () => ({ state: "failed", reason: "the new run folder must be one entry of the open workspace" }),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
-  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "../outside");
-  await user.click(screen.getByRole("button", { name: "Resume never-attempted work" }));
+  await user.selectOptions(screen.getByLabelText("Select run"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
+  await user.type(screen.getByLabelText("Resume folder"), "../outside");
+  await user.click(screen.getByRole("button", { name: "Resume send" }));
   await screen.findByText(/new run folder must be one entry/);
   expect(facade.callsTo("ResumeDurableRun")).toHaveLength(1);
   expect(events).not.toContain("watch:../outside");
@@ -403,11 +403,11 @@ test("cancelling a resumed run retains its new folder and later recovery only re
     DurableRunProgress: () => runProgressResult(),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
-  await user.type(screen.getByLabelText("Fresh folder for resumed run"), "job-002");
+  await user.selectOptions(screen.getByLabelText("Select run"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
+  await user.type(screen.getByLabelText("Resume folder"), "job-002");
   const pending = mounted.facade.park("ResumeDurableRun");
-  await user.click(screen.getByRole("button", { name: "Resume never-attempted work" }));
+  await user.click(screen.getByRole("button", { name: "Resume send" }));
   await waitFor(() => expect(mounted.facade.callsTo("ResumeDurableRun")).toHaveLength(1));
   await user.click(screen.getByRole("button", { name: "Cancel run" }));
   expect(mounted.facade.oneCall("Cancel")).toEqual(["durable-run"]);
@@ -424,8 +424,8 @@ test("cancelling a resumed run retains its new folder and later recovery only re
     OpenRunEvidence: () => runEvidenceResult({ entry: "job-002", run_state: "cancelled", stop_reason: "cancelled", acknowledged: 0, not_attempted: 1 }),
     DurableRunProgress: () => runProgressResult({ phase: "cancelled", acknowledged: 0, not_attempted: 1 }),
   }, [...ENTRIES, { name: "job-002", kind: "job" }]);
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), "job-002");
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
+  await user.selectOptions(screen.getByLabelText("Select run"), "job-002");
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
   await screen.findByText(/Run: cancelled · stopped cancelled/);
   expect(reopened.facade.callsTo("ResumeDurableRun")).toHaveLength(0);
   expect(reopened.facade.callsTo("OpenRunEvidence")).toHaveLength(1);
@@ -442,16 +442,16 @@ test("cleanup is offered after completion, refuses a changed live run, then remo
       ? { state: "completed", cleanup: { schema: "readmit-run-cleanup/v1", run: durableRunResult("passed").run!, removed: ["lease.json"], retained: ["journal.jsonl"] } }
       : { state: "failed", reason: "completion was not recorded; the writer may still hold its lease and nothing was removed" },
   });
-  await user.selectOptions(screen.getByLabelText("Retained executions of this workspace"), RUN_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
-  expect(screen.queryByRole("button", { name: "Remove stale lease" })).toBeNull();
+  await user.selectOptions(screen.getByLabelText("Select run"), RUN_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
+  expect(screen.queryByRole("button", { name: "Clear stale lease" })).toBeNull();
   listedTerminal = true;
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
-  await user.click(screen.getByRole("button", { name: "Remove stale lease" }));
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
+  await user.click(screen.getByRole("button", { name: "Clear stale lease" }));
   await screen.findByText(/Cleanup refused: completion was not recorded/);
   actuallyTerminal = true;
-  await user.click(screen.getByRole("button", { name: "Open evidence read-only" }));
-  screen.getByRole("button", { name: "Remove stale lease" }).focus();
+  await user.click(screen.getByRole("button", { name: "Open evidence" }));
+  screen.getByRole("button", { name: "Clear stale lease" }).focus();
   await user.keyboard("{Enter}");
   await screen.findByText(/Cleanup removed lease.json; retained 1 evidence entries/);
   expect(facade.callsTo("CleanDurableRun")).toHaveLength(2);
@@ -464,7 +464,7 @@ test("an empty workspace offers nothing to select and explains the empty history
   renderPanel({}, []);
   const select = screen.getByLabelText("Saved test or suite") as HTMLSelectElement;
   expect(select.value).toBe("");
-  const preflightButton = screen.getByRole("button", { name: "Validate and preflight" }) as HTMLButtonElement;
+  const preflightButton = screen.getByRole("button", { name: "Preview run" }) as HTMLButtonElement;
   expect(preflightButton.disabled).toBe(true);
 });
 
@@ -507,7 +507,7 @@ test("recovery after an interruption shows the run and never resumes it", async 
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
   // An unstored note is offered back, and dropping it is the person's act.
   expect(screen.getByText("still writing this")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Discard this draft" }));
+  await user.click(screen.getByRole("button", { name: "Discard draft" }));
   await waitFor(() => expect(facade.callsTo("DiscardDraft")).toHaveLength(1));
   expect(facade.oneCall("DiscardDraft")).toEqual([WORKSPACE_ROOT, "triage"]);
 });
@@ -556,11 +556,11 @@ test("a disconnected application reports the fixed failure sentence and never a 
     PreflightRun: () => runPreflightResult(),
   });
   await user.selectOptions(screen.getByLabelText("Saved test or suite"), SPEC_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Validate and preflight" }));
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/Preflight —/);
   const parked = facade.park("StartDurableRun");
   // The preflight stays; the send is attempted only under its identity.
-  await user.click(await screen.findByRole("button", { name: "Send and execute once" }));
+  await user.click(await screen.findByRole("button", { name: "Send test" }));
   parked.reject();
   // The bindings turn an unreachable application into one fixed failure
   // sentence — never a silent success and never a made-up verdict.

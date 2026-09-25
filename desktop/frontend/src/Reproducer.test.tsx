@@ -81,10 +81,12 @@ const reproducerHandlers = {
  * reproducer panel and the revision comparison are both on screen. */
 async function openGrid(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => folderWithCase() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  // Both the first-run block and the commands beside it offer Open workspace…,
+  // so the first of them is clicked: both run the same open action.
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
   await screen.findByText(WORKSPACE_ROOT);
   facade.reply({ OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Verify and open" }));
+  await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
   facade.reply({ OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
   await user.selectOptions(screen.getByLabelText("Index file in this folder"), INDEX_ENTRY);
@@ -107,7 +109,7 @@ async function tabTo(user: UserEvent, control: HTMLElement) {
 async function build(user: UserEvent, panel: ReturnType<typeof within>, output: string) {
   await user.click(await panel.findByRole("button", { name: `Retain ${GRID_OCCURRENCE}` }));
   await panel.findByRole("button", { name: `Drop ${GRID_OCCURRENCE}` });
-  const folder = panel.getByLabelText("New folder in this workspace");
+  const folder = panel.getByLabelText("Revision folder");
   await user.clear(folder);
   await user.type(folder, `${output}{Enter}`);
   expect(await panel.findByText(new RegExp(`^Written to ${output} · derived case identity`))).toBeTruthy();
@@ -132,19 +134,19 @@ test("a build is reported registered only once the project records it, and a ref
     parent: CASE_ENTRY,
   });
   expect(panel.queryByText(/^Registered as /)).toBeNull();
-  expect(panel.queryByRole("button", { name: "Open the registered revision" })).toBeNull();
+  expect(panel.queryByRole("button", { name: "Open revision" })).toBeNull();
   expect((panel.getByLabelText("New project entry for the derived case") as HTMLInputElement).value).toBe("incident-revision");
 
   // Once the project records it, the same build reads as registered, the
   // register form gives way to the handoffs, and the refusal is gone.
   facade.reply({ RegisterRevision: () => projectOverviewResult([registeredCase()]) });
-  await tabTo(user, panel.getByRole("button", { name: "Register this revision" }));
+  await tabTo(user, panel.getByRole("button", { name: "Add to project" }));
   await user.keyboard("{Enter}");
   expect(await panel.findByText(/^Registered as incident-revision\./)).toBeTruthy();
   expect(panel.queryByText("a revision must be derived from a case or revision this project registers")).toBeNull();
   expect(panel.queryByLabelText("New project entry for the derived case")).toBeNull();
-  expect(panel.getByRole("button", { name: "Open the registered revision" })).toBeTruthy();
-  expect(panel.getByRole("button", { name: "Create a test from this revision" })).toBeTruthy();
+  expect(panel.getByRole("button", { name: "Open revision" })).toBeTruthy();
+  expect(panel.getByRole("button", { name: "Create test" })).toBeTruthy();
 
   // A later build is a different revision: the registration of the first is
   // not shown beside it, and it is offered for registration itself.
@@ -153,7 +155,7 @@ test("a build is reported registered only once the project records it, and a ref
   expect(panel.queryByText(/^Written to /)).toBeNull();
   await build(user, panel, "second-reproducer");
   expect(panel.queryByText(/^Registered as /)).toBeNull();
-  expect(panel.getByRole("button", { name: "Register this revision" })).toBeTruthy();
+  expect(panel.getByRole("button", { name: "Add to project" })).toBeTruthy();
   expect(facade.callsTo("RegisterRevision")).toHaveLength(2);
 });
 
@@ -163,15 +165,15 @@ test("a build is handed to the revision comparison, which compares it with the r
   const panel = await openGrid(facade, user);
   await build(user, panel, "incident-reproducer");
   const revisions = within(screen.getByRole("region", { name: "Reproducer revisions" }));
-  await user.type(revisions.getByLabelText("Retained run of the later revision"), "run-of-something-else");
+  await user.type(revisions.getByLabelText("Later run"), "run-of-something-else");
 
   // The build becomes the later revision, the run named for whatever was there
   // before is cleared, and focus waits on the earlier revision.
-  await user.click(panel.getByLabelText("New folder in this workspace"));
-  await tabTo(user, panel.getByRole("button", { name: "Compare this build with another revision" }));
+  await user.click(panel.getByLabelText("Revision folder"));
+  await tabTo(user, panel.getByRole("button", { name: "Compare revisions" }));
   await user.keyboard("{Enter}");
   expect((revisions.getByLabelText("Later revision") as HTMLInputElement).value).toBe("incident-reproducer");
-  expect((revisions.getByLabelText("Retained run of the later revision") as HTMLInputElement).value).toBe("");
+  expect((revisions.getByLabelText("Later run") as HTMLInputElement).value).toBe("");
   expect(document.activeElement).toBe(revisions.getByLabelText("Earlier revision"));
   expect(facade.callsTo("CompareReproducers")).toHaveLength(0);
 
@@ -214,7 +216,7 @@ test("a build is handed to the revision comparison, which compares it with the r
 
   // Handing the build over again withdraws the comparison on screen, which
   // belonged to the revisions named before.
-  await user.click(panel.getByRole("button", { name: "Compare this build with another revision" }));
+  await user.click(panel.getByRole("button", { name: "Compare revisions" }));
   expect(revisions.queryByText("Both were built from the same case")).toBeNull();
 });
 
@@ -227,7 +229,7 @@ test("an edit names only the occurrence the panel shows as chosen", async () => 
   await user.selectOptions(panel.getByLabelText("Retained occurrence"), GRID_OCCURRENCE);
   await user.type(panel.getByLabelText("Field, repetition, component or subcomponent"), "PID[1]-3[1].1");
   await user.type(panel.getByLabelText("Replacement value"), "SYNTH-REPRO");
-  expect((panel.getByRole("button", { name: "Replace this value" }) as HTMLButtonElement).disabled).toBe(false);
+  expect((panel.getByRole("button", { name: "Replace value" }) as HTMLButtonElement).disabled).toBe(false);
 
   // Dropping the occurrence takes it out of the list; the edit controls no
   // longer offer to change it, and nothing sends the occurrence that was
@@ -235,8 +237,8 @@ test("an edit names only the occurrence the panel shows as chosen", async () => 
   await user.click(panel.getByRole("button", { name: `Drop ${GRID_OCCURRENCE}` }));
   await panel.findByRole("button", { name: `Retain ${GRID_OCCURRENCE}` });
   expect((panel.getByLabelText("Retained occurrence") as HTMLSelectElement).value).toBe("");
-  expect((panel.getByRole("button", { name: "Replace this value" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Leave this position empty" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Replace value" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Clear field" }) as HTMLButtonElement).disabled).toBe(true);
   await user.click(panel.getByLabelText("Replacement value"));
   await user.keyboard("{Enter}");
   expect(facade.callsTo("EditReproducer").map((call) => (call.args[0] as ReproducerRequest).step?.operator)).toEqual([
@@ -258,13 +260,13 @@ test("a plan is undone and discarded from the keyboard, and discarding it writes
   const panel = await openGrid(facade, user);
   await user.click(await panel.findByRole("button", { name: `Retain ${GRID_OCCURRENCE}` }));
   await panel.findByRole("button", { name: `Drop ${GRID_OCCURRENCE}` });
-  await user.click(panel.getByRole("button", { name: "Include the acknowledgements this case correlated" }));
+  await user.click(panel.getByRole("button", { name: "Include ACKs" }));
   expect(await panel.findByText("Acknowledgement the case correlated")).toBeTruthy();
   expect(panel.getAllByText(/^(select-occurrence|include-acknowledgements)\/v1/)).toHaveLength(2);
 
   // Undo, from the keyboard: the plan the engine answered with is the one
   // before the last step.
-  await tabTo(user, panel.getByRole("button", { name: "Undo the last step" }));
+  await tabTo(user, panel.getByRole("button", { name: "Undo last step" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(panel.queryByText("Acknowledgement the case correlated")).toBeNull());
   expect((facade.oneCall("UndoReproducer")[0] as ReproducerRequest).plan.steps).toEqual([SELECT, { operator: "include-acknowledgements/v1" }]);
@@ -274,11 +276,11 @@ test("a plan is undone and discarded from the keyboard, and discarding it writes
   // Discarding, from the keyboard: the plan is gone from the panel, its
   // retained draft is forgotten, nothing is built, and focus is back where a
   // new plan starts.
-  await tabTo(user, panel.getByRole("button", { name: "Discard this plan" }));
+  await tabTo(user, panel.getByRole("button", { name: "Discard plan" }));
   await user.keyboard("{Enter}");
   expect(await panel.findAllByText("Not resolved yet")).toHaveLength(2);
   expect(panel.queryByText(/^select-occurrence\/v1/)).toBeNull();
-  expect(panel.queryByRole("button", { name: "Discard this plan" })).toBeNull();
+  expect(panel.queryByRole("button", { name: "Discard plan" })).toBeNull();
   expect(document.activeElement).toBe(panel.getByRole("button", { name: `Retain ${GRID_OCCURRENCE}` }));
   await waitFor(() => expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(1));
   expect(facade.oneCall("DiscardEditorDraft")).toEqual(["reproducer-draft-fixed-for-tests"]);
@@ -295,14 +297,14 @@ test("a refused build keeps the plan and says why, and the next build is written
   const panel = await openGrid(facade, user);
   await user.click(await panel.findByRole("button", { name: `Retain ${GRID_OCCURRENCE}` }));
   await panel.findByRole("button", { name: `Drop ${GRID_OCCURRENCE}` });
-  await user.type(panel.getByLabelText("New folder in this workspace"), "handover{Enter}");
+  await user.type(panel.getByLabelText("Revision folder"), "handover{Enter}");
   expect(await panel.findByText("reproducer destination must be new")).toBeTruthy();
   expect(panel.getByRole("button", { name: `Drop ${GRID_OCCURRENCE}` })).toBeTruthy();
   expect(panel.queryByText(/^Written to /)).toBeNull();
-  expect(panel.queryByRole("button", { name: "Compare this build with another revision" })).toBeNull();
+  expect(panel.queryByRole("button", { name: "Compare revisions" })).toBeNull();
 
   facade.reply({ BuildReproducer: reproducerHandlers.BuildReproducer });
-  const folder = panel.getByLabelText("New folder in this workspace");
+  const folder = panel.getByLabelText("Revision folder");
   await user.clear(folder);
   await user.type(folder, "incident-reproducer{Enter}");
   expect(await panel.findByText(/^Written to incident-reproducer · derived case identity/)).toBeTruthy();
@@ -327,10 +329,10 @@ test("a build and a registration in flight hold the panel, a denied one is said 
 
   // While the build runs, the panel says so and offers nothing that would
   // change the plan under it.
-  await user.type(panel.getByLabelText("New folder in this workspace"), "incident-reproducer{Enter}");
+  await user.type(panel.getByLabelText("Revision folder"), "incident-reproducer{Enter}");
   await waitFor(() => expect(building.size).toBe(1));
   expect(panel.getByText("Resolving this reproducer against the case.")).toBeTruthy();
-  for (const control of ["Write the reproducer", "Undo the last step", "Discard this plan", `Drop ${GRID_OCCURRENCE}`]) {
+  for (const control of ["Build revision", "Undo last step", "Discard plan", `Drop ${GRID_OCCURRENCE}`]) {
     expect((panel.getByRole("button", { name: control }) as HTMLButtonElement).disabled).toBe(true);
   }
   building.resolve({ state: "permission_denied", reason: "this account cannot write into the open workspace" });
@@ -340,26 +342,26 @@ test("a build and a registration in flight hold the panel, a denied one is said 
 
   // Written the second time; the registration is then held in flight, and a
   // denial is said beside the build rather than read as registered.
-  await user.click(panel.getByRole("button", { name: "Write the reproducer" }));
+  await user.click(panel.getByRole("button", { name: "Build revision" }));
   await waitFor(() => expect(building.size).toBe(1));
   building.resolve(reproducerHandlers.BuildReproducer(facade.callsTo("BuildReproducer").at(-1)?.args[0] as ReproducerRequest));
   expect(await panel.findByText(/^Written to incident-reproducer · derived case identity/)).toBeTruthy();
   await user.type(panel.getByLabelText("New project entry for the derived case"), "incident-revision{Enter}");
   await waitFor(() => expect(registering.size).toBe(1));
-  expect((panel.getByRole("button", { name: "Register this revision" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Add to project" }) as HTMLButtonElement).disabled).toBe(true);
   registering.resolve({ state: "permission_denied", reason: "this account cannot write into the open workspace" });
   expect(await panel.findByText("this account cannot write into the open workspace")).toBeTruthy();
   expect(panel.queryByText(/^Registered as /)).toBeNull();
 
   // Registered once the account can write, and the revision is opened from
   // the keyboard as a case of its own.
-  await tabTo(user, panel.getByRole("button", { name: "Register this revision" }));
+  await tabTo(user, panel.getByRole("button", { name: "Add to project" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(registering.size).toBe(1));
   registering.resolve(projectOverviewResult([registeredCase()]));
   expect(await panel.findByText(/^Registered as incident-revision\./)).toBeTruthy();
   // The form it was asked from is gone, and focus is on the first handoff.
-  const opener = panel.getByRole("button", { name: "Open the registered revision" });
+  const opener = panel.getByRole("button", { name: "Open revision" });
   await waitFor(() => expect(document.activeElement).toBe(opener));
   facade.reply({ OpenCase: () => caseResult("incident-revision", DERIVED) });
   await user.keyboard("{Enter}");

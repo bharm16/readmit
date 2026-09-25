@@ -23,17 +23,17 @@ test("the hub administration handoff reads a real configuration and never runs i
     max_storage_bytes: 1073741824,
   }));
   await journey.launch();
-  const panel = within(within(region("Privacy status")).getByRole("region", { name: "Customer Artifact Hub" }));
-  await press(user, panel.getByRole("button", { name: "Host administration handoffs" }));
+  const panel = within(within(region("Privacy")).getByRole("region", { name: "Hub" }));
+  await press(user, panel.getByRole("button", { name: "Host administration" }));
   const admin = within(panel.getByRole("region", { name: "Hub host administration" }));
-  await enter(user, admin.getByLabelText("Local copy of hub configuration"), config);
-  await enter(user, admin.getByLabelText("Hub host configuration path"), "/etc/readmit-hub/config.json");
-  await press(user, admin.getByRole("button", { name: "Review operator step" }));
+  await enter(user, admin.getByLabelText("Local configuration"), config);
+  await enter(user, admin.getByLabelText("Host configuration"), "/etc/readmit-hub/config.json");
+  await press(user, admin.getByRole("button", { name: "Preview command" }));
   expect(await admin.findByText("readmit-hub -config '/etc/readmit-hub/config.json' migrate")).toBeTruthy();
   expect(journey.calls.filter((call) => call.method === "Preview").at(-1)?.result).toMatchObject({ state: "completed" });
-  await enter(user, admin.getByLabelText("Hub host configuration path"), "relative.json");
+  await enter(user, admin.getByLabelText("Host configuration"), "relative.json");
   expect(admin.queryByText("readmit-hub -config '/etc/readmit-hub/config.json' migrate")).toBeNull();
-  await press(user, admin.getByRole("button", { name: "Review operator step" }));
+  await press(user, admin.getByRole("button", { name: "Preview command" }));
   expect((await admin.findByRole("alert")).textContent).toContain("clean absolute Linux path");
   await press(user, admin.getByRole("button", { name: "Cancel handoff" }));
   expect(await admin.findByText(/handoff review cancelled; no host action was taken/)).toBeTruthy();

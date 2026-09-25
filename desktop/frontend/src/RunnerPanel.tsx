@@ -10,6 +10,8 @@ import {
   inspectRunnerJob,
   executeRunnerJob,
   readRunnerRecovery,
+  settleRunnerAdmission,
+  showRunnerAdmissions,
   verifyRunnerUpdate,
   openSchedulePolicy,
   previewSchedulePolicy,
@@ -26,6 +28,7 @@ import {
   type RunnerJobPreviewResult,
   type RunnerExecutionResult,
   type RunnerRecoveryResult,
+  type RunnerStatusResult,
   type RunnerUpdateResult,
   type ScheduleEntryInput,
   type SchedulePreviewResult,
@@ -248,8 +251,8 @@ function RunnerSection() {
   const configured = inspection?.state === "completed" && inspection.config !== undefined;
 
   return (
-    <section className="runner-section" aria-label="Runner configuration and work">
-      <h4>Generate runner documents</h4>
+    <section className="runner-section" aria-label="Runner">
+      <h4>Runner setup</h4>
       <p className="runner-note">
         Every document is generated and validated here; nothing is hand-authored JSON. The shipped
         native service unit (<code>runner/readmit-runner.service</code>) and container image
@@ -380,7 +383,7 @@ function RunnerSection() {
         )
       ) : null}
 
-      <h4>Prepare and execute one pinned job</h4>
+      <h4>Job execution</h4>
       <p className="runner-note">
         Execution asks the existing explicit approval and the runner's own admission. A retained
         job id is never replayed, and an execution whose delivery stayed uncertain is never
@@ -457,7 +460,7 @@ function RunnerSection() {
         )
       ) : null}
 
-      <h4>Staged runner update</h4>
+      <h4>Runner update</h4>
       <p className="runner-note">
         A staged candidate is checked against the deployment key and the approved update engine the
         selected configuration pins, as <code>readmit runner verify-update</code> checks it: the
@@ -547,7 +550,7 @@ function SchedulesSection() {
 
   return (
     <section className="runner-section" aria-label="Recurring schedules">
-      <h4>Recurring regression schedules</h4>
+      <h4>Schedules</h4>
       <p className="runner-note">
         A revision of the hub's schedule policy is generated and validated here with the backend's
         own semantics: serial execution, a window missed while the scheduler was not running is
@@ -781,7 +784,7 @@ function CISection() {
 
   return (
     <section className="runner-section" aria-label="CI handoffs">
-      <h4>CI configuration handoff</h4>
+      <h4>CI setup</h4>
       <p className="runner-note">
         The generated file is the documented workflow for one supported integration, unchanged.
         Provision its six variables on a customer-owned, trusted agent; this application never
@@ -808,10 +811,14 @@ function CISection() {
         <legend>Reviewed change gate</legend>
         <label className="runner-field">
           <span>
-            <input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Add the
-            reviewed change-gate step after the suite
+            <input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Include
+            change gate
           </span>
         </label>
+        <p className="runner-note">
+          The reviewed change gate runs after the suite; including it approves no gate and implies
+          no passing result.
+        </p>
         {gated ? (
           <>
             <p className="runner-note">
@@ -847,7 +854,7 @@ function CISection() {
       </fieldset>
       <div className="runner-actions">
         <button type="button" disabled={busy} onClick={() => void handleGenerate()}>
-          Generate handoff
+          Generate configuration
         </button>
       </div>
       {handoff ? (
@@ -861,17 +868,17 @@ function CISection() {
         )
       ) : null}
 
-      <h4>Retained CI results and gate policy</h4>
+      <h4>CI results</h4>
       <div className="runner-form">
         <Field label="CI output directory" value={resultsDirectory} onChange={changeResultsDirectory} disabled={busy} />
         <Field label="Gate policy file" value={policyPath} onChange={changePolicyPath} disabled={busy} />
       </div>
       <div className="runner-actions">
         <button type="button" disabled={busy || resultsDirectory === ""} onClick={() => void handleResults()}>
-          Inspect CI results
+          Open CI results
         </button>
         <button type="button" disabled={busy || policyPath === ""} onClick={() => void handlePolicy()}>
-          Inspect gate policy
+          Open gate policy
         </button>
       </div>
       {results ? (
@@ -908,7 +915,7 @@ function CISection() {
         )
       ) : null}
 
-      <h4>Verify a retained change gate</h4>
+      <h4>Verify gate</h4>
       <p className="runner-note">
         Verification reads only the retained snapshot, as <code>readmit suite verify-gate</code>{" "}
         does: every retained byte is checked against the snapshot&apos;s manifest and the assessment
@@ -925,7 +932,7 @@ function CISection() {
           disabled={busy || snapshot.directory === "" || snapshot.identity === ""}
           onClick={() => void handleVerify()}
         >
-          Verify retained gate
+          Verify gate
         </button>
         {verifying ? (
           <button type="button" ref={cancelVerification} onClick={lifecycle.cancel}>
@@ -939,6 +946,50 @@ function CISection() {
         </p>
       ) : null}
       {verification ? <GateVerification result={verification} /> : null}
+    </section>
+  );
+}
+
+/** The license's runner capacity: which execution instances the organization's
+ * authority has admitted, held and free, settled only by an explicit release
+ * or reconcile. It lives with the runner work it governs, not on the License
+ * page; the actions keep their selected authority and explicit semantics. */
+function RunnerCapacity() {
+  const [runners, setRunners] = useState<RunnerStatusResult | null>(null);
+  const { running, run } = useLifecycle<"working">();
+  const busy = running !== null;
+
+  async function perform<T>(action: () => Promise<T>, apply: (value: T) => void) {
+    if (busy) return;
+    await run("working", async () => {
+      apply(await action());
+    });
+  }
+
+  return (
+    <section className="runner-section" aria-label="Runner capacity">
+      <h4>Runner capacity</h4>
+      <button disabled={busy} onClick={() => void perform(showRunnerAdmissions, setRunners)}>Runner capacity</button>
+      {runners ? (
+        runners.state === "completed" ? <>
+          <p>Organization {runners.organization}, authority {runners.authority}: {runners.active} active, {runners.stale} stale, {runners.free} free of {runners.instances} granted instances. Stale capacity is held until an operator reconciles it.</p>
+          {runners.admissions?.length ? <table>
+            <thead><tr><th>Instance</th><th>State</th><th>Admitted</th><th>Lease until</th><th>Settle</th></tr></thead>
+            <tbody>
+              {runners.admissions.map(admission => <tr key={admission.instance}>
+                <td>{admission.instance}</td>
+                <td>{admission.state}</td>
+                <td>{admission.admitted}</td>
+                <td>{admission.lease_until}</td>
+                <td>
+                  <button disabled={busy} onClick={() => void perform(() => settleRunnerAdmission({ instance: admission.instance, reconcile: false }), setRunners)}>Release {admission.instance}</button>
+                  <button disabled={busy} onClick={() => void perform(() => settleRunnerAdmission({ instance: admission.instance, reconcile: true }), setRunners)}>Reconcile {admission.instance}</button>
+                </td>
+              </tr>)}
+            </tbody>
+          </table> : <p>No execution instance is admitted against this authority.</p>}
+        </> : <p role="note">{runners.reason}</p>
+      ) : null}
     </section>
   );
 }
@@ -960,6 +1011,7 @@ export function RunnerPanel() {
         </button>
       </div>
       {tab === "runner" ? <RunnerSection /> : null}
+      {tab === "runner" ? <RunnerCapacity /> : null}
       {tab === "schedules" ? <SchedulesSection /> : null}
       {tab === "ci" ? <CISection /> : null}
     </section>

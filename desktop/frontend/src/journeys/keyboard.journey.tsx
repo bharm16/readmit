@@ -45,7 +45,7 @@ async function activate(user: UserEvent, control: HTMLElement): Promise<void> {
 }
 
 /** The regions the facade declares, in its focus order. */
-const DECLARED = ["Commands and search", "Project navigation", "Evidence", "Inspector", "Privacy status"];
+const DECLARED = ["Commands", "Workspace", "Evidence", "Inspector", "Privacy"];
 
 /** The declared region that holds focus now, by its accessible name. */
 function focusedRegion(): string | null {
@@ -76,7 +76,7 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
 
   // Ctrl+O opens the host's folder dialog. Dismissing it is a cancellation the
   // window says in words, and the window stays usable.
-  const navigation = within(region("Project navigation"));
+  const navigation = within(region("Workspace"));
   await journey.dismissDialog("folder", "Open a readmit workspace folder");
   await user.keyboard("{Control>}o{/Control}");
   expect(await navigation.findByText("no folder was chosen")).toBeTruthy();
@@ -88,9 +88,9 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
 
   // The first-run choice is reached and pressed with the keyboard alone.
   await journey.chooseFolder(journey.path("work"), "Choose a folder for the readmit sample workspace");
-  await activate(user, screen.getByRole("button", { name: "Explore the guided sample…" }));
+  await activate(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
-  await activate(user, await guided.findByRole("button", { name: "Verify and open regression" }));
+  await activate(user, await guided.findByRole("button", { name: "Open case" }));
   const inspector = within(region("Inspector"));
   expect(await inspector.findByText(/^regression · regression\.index\.json · verified [0-9a-f]{64}/)).toBeTruthy();
 
@@ -98,7 +98,7 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
   const rows = await inspector.findAllByRole("button", { name: /^Inspect s\d+-e\d+$/ });
   const first = (rows[0]!.textContent ?? "").replace(/^Inspect /, "");
   await activate(user, rows[0]!);
-  const occurrence = within(inspector.getByRole("region", { name: "Selected occurrence inspector" }));
+  const occurrence = within(inspector.getByRole("region", { name: "Message inspector" }));
   expect(await occurrence.findByText(new RegExp(`^Occurrence ${first} · `))).toBeTruthy();
 
   // F6 moves through every region in the order the facade declares, and

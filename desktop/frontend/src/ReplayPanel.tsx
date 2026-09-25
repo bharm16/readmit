@@ -142,7 +142,7 @@ export function ReplayPanel({
   const plan = result?.state === "completed" ? result.preview : undefined;
   return (
     <section aria-labelledby="replay-title">
-      <h3 id="replay-title">Replay selected messages</h3>
+      <h3 id="replay-title">Replay</h3>
       <p>
         Preview which messages of this case would be sent to a test target and how the named transformations change them, as{" "}
         <code>readmit replay</code> does, then send them once only after you approve that preview. A preview sends and writes nothing. A send
@@ -179,12 +179,12 @@ export function ReplayPanel({
           )}
           <p>
             {chosen.length === 0
-              ? "No message is chosen, so every message of the case is replayed, in source order."
+              ? `No message is chosen, so all ${messages.length} message(s) of the case are replayed, in source order.`
               : `Chosen: ${chosen.join(", ")}. They are replayed in source order, whatever order they were chosen in.`}
           </p>
           {chosen.length > 0 ? (
             <button type="button" onClick={() => withdrawing(setChosen)([])}>
-              Replay every message instead
+              Select all messages
             </button>
           ) : null}
         </fieldset>
@@ -241,7 +241,7 @@ export function ReplayPanel({
           />
         </fieldset>
         <div className="actions">
-          <label htmlFor="replay-output">Fresh run folder</label>
+          <label htmlFor="replay-output">Run folder</label>
           <input
             id="replay-output"
             value={output}
@@ -249,6 +249,7 @@ export function ReplayPanel({
             placeholder="generated at preview"
             onChange={(event) => withdrawing(setOutput)(event.target.value)}
           />
+          <p className="hint">The run folder must be fresh: a send writes only to a folder no earlier run used.</p>
           <button type="submit" disabled={disabled || !target}>
             Preview replay
           </button>
@@ -331,9 +332,18 @@ export function ReplayPanel({
                   ))}
                 </tbody>
               </table>
-              <button type="button" disabled={disabled} onClick={() => void preview(!plan.revealed)}>
-                {plan.revealed ? "Hide values" : "Reveal changed values"}
+              <button
+                type="button"
+                disabled={disabled}
+                aria-describedby="replay-values-warning"
+                onClick={() => void preview(!plan.revealed)}
+              >
+                {plan.revealed ? "Hide values" : "Show values"}
               </button>
+              <p className="hint" id="replay-values-warning">
+                Values may contain patient data: the exact field values of this preview, shown on this computer only. Showing them
+                sends nothing.
+              </p>
             </>
           ) : null}
           <p>
@@ -345,10 +355,11 @@ export function ReplayPanel({
           <p>Preview identity {plan.identity.slice(0, 12)}…</p>
           {plan.sendable ? (
             <fieldset disabled={disabled}>
-              <legend>Approve this send</legend>
+              <legend>Approve send</legend>
               <label>
                 <input type="checkbox" checked={approved} onChange={(event) => setApproved(event.target.checked)} /> I approve sending these{" "}
-                {plan.messages.length} message(s) once to {plan.target.address}, exactly as previewed
+                {plan.messages.length} message(s) once to {plan.target.address}, exactly as previewed (preview identity{" "}
+                {plan.identity.slice(0, 12)}…)
               </label>
               <button type="button" disabled={!approved} onClick={() => void send(plan)}>
                 Send once

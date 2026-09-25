@@ -201,7 +201,7 @@ export function Palette({
           choose(commands[0]?.id);
         }}
       >
-        <label htmlFor="palette-query">Type a command</label>
+        <label htmlFor="palette-query">Search commands</label>
         <input
           id="palette-query"
           type="text"

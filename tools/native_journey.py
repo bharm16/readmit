@@ -45,8 +45,13 @@ NATIVE = ROOT / "tools" / "native"
 
 # The roles a journey names, and the native roles each platform reports for
 # them. A control is found by one of these roles and its exact accessible name.
+# A disclosure's summary exposes itself as a button on some platforms and as
+# its own disclosure-triangle role — or, on linux WebKit, the platform's
+# catch-all "unknown" role — so a journey presses any of these; the exact name
+# is what tells two controls apart.
+CATCHALL_ROLES = {"unknown"}
 ROLES = {
-    "button": {"darwin": {"AXButton"}, "windows": {"Button"}, "linux": {"push button", "button"}},
+    "button": {"darwin": {"AXButton", "AXDisclosureTriangle"}, "windows": {"Button", "DisclosureTriangle"}, "linux": {"push button", "button", "toggle button"} | CATCHALL_ROLES},
     "tab": {"darwin": {"AXRadioButton", "AXTab"}, "windows": {"TabItem"}, "linux": {"page tab"}},
     "checkbox": {"darwin": {"AXCheckBox"}, "windows": {"CheckBox"}, "linux": {"check box"}},
     "textbox": {"darwin": {"AXTextField", "AXTextArea"}, "windows": {"Edit"}, "linux": {"entry", "text", "password text"}},
@@ -191,7 +196,9 @@ class Snapshot:
         while stack:
             node = stack.pop()
             out.append(node)
-            stack.extend(self.children.get(node["id"], []))
+            # A LIFO stack must receive siblings in reverse so scoped
+            # selectors preserve the same document order as global ones.
+            stack.extend(reversed(self.children.get(node["id"], [])))
         return out
 
     def matching(self, role, name, scope=None):
@@ -278,27 +285,30 @@ class Application:
         answer = self.backend.call("snapshot", pid=self.process.pid)
         return Snapshot(self.system, answer["nodes"])
 
-    def find(self, role, name, *, within=None, enabled=True, timeout=60):
+    def find(self, role, name, *, within=None, enabled=True, timeout=60, index=0):
         """Waits until the window offers a control of role named name,
-        inside the region named within when one is given, and returns it."""
+        inside the region named within when one is given, and returns it.
+
+        index picks among controls that share one reviewed name — two editors
+        may label their name field "Name" — in the tree's order."""
         deadline = time.monotonic() + timeout
         while True:
             snapshot = self.snapshot()
             scopes = [None] if within is None else snapshot.matching("region", within)[:1]
             for scope in scopes:
                 found = [n for n in snapshot.matching(role, name, scope) if not enabled or n.get("enabled", True)]
-                if found:
-                    return found[0]
+                if len(found) > index:
+                    return found[index]
             if time.monotonic() > deadline:
                 where = f" in {within!r}" if within else ""
                 raise Refused(f"no {'enabled ' if enabled else ''}{role} named {name!r}{where} appeared")
             time.sleep(0.4)
 
-    def press(self, name, *, role="button", within=None, timeout=60):
+    def press(self, name, *, role="button", within=None, timeout=60, index=0):
         """Presses a control once the window offers it enabled."""
         self.step(f"press {name}")
         for attempt in range(3):
-            node = self.find(role, name, within=within, timeout=timeout)
+            node = self.find(role, name, within=within, timeout=timeout, index=index)
             try:
                 self.backend.call("press", id=node["id"])
                 return
@@ -307,7 +317,7 @@ class Application:
                     raise Refused(f"pressing {name!r}: {error}") from error
                 time.sleep(0.5)
 
-    def fill(self, name, text, *, within=None, timeout=60, settle=15):
+    def fill(self, name, text, *, within=None, timeout=60, settle=15, index=0):
         """Replaces one field and verifies its value before continuing.
 
         Windows can accept every injected key while the UI Automation field
@@ -318,14 +328,14 @@ class Application:
         for attempt in range(attempts):
             if attempt:
                 self.step(f"retype {name} (attempt {attempt + 1})")
-            node = self.find("textbox", name, within=within, timeout=timeout)
+            node = self.find("textbox", name, within=within, timeout=timeout, index=index)
             try:
                 self.backend.call("set", id=node["id"], text=text)
             except Refused as error:
                 raise Refused(f"entering text in {name!r} on attempt {attempt + 1}: {error}") from error
             deadline = time.monotonic() + (min(settle, 2) if attempt < attempts - 1 else settle)
             while True:
-                node = self.find("textbox", name, within=within, timeout=timeout)
+                node = self.find("textbox", name, within=within, timeout=timeout, index=index)
                 if (node.get("value") or "") == text:
                     return
                 if time.monotonic() > deadline:
@@ -400,8 +410,11 @@ class Application:
         path.write_text(json.dumps(document, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
         # A button a screen reader can only call "button", counted in the
         # page the application draws, not in the window frame or a host dialog.
+        # The platform's catch-all role (a linux summary reads as "unknown")
+        # is not itself a button role, so it is not counted either way.
         page = [n for n in snapshot.nodes if n.get("role") in DOCUMENT[self.system]]
-        unnamed = [n for n in snapshot.under(page[0]) if n.get("role") in ROLES["button"][self.system]
+        census_roles = ROLES["button"][self.system] - CATCHALL_ROLES
+        unnamed = [n for n in snapshot.under(page[0]) if n.get("role") in census_roles
                    and not normalized(n.get("name"))] if page else []
         self.checkpoints.append({"checkpoint": name, "file": path.name, "nodes": len(snapshot.nodes), "unnamed_buttons": len(unnamed)})
 
@@ -455,13 +468,15 @@ def guided_sample(app, work, command, record):
     app.launch()
     app.checkpoint("first-run")
     work.mkdir()
-    app.press("Explore the guided sample…")
+    app.press("Explore sample")
     app.choose_folder("Choose a folder for the readmit sample workspace", work)
-    app.press("Verify and open regression", within="Guided sample", timeout=120)
+    app.press("Open case", within="Guided sample", timeout=120)
     app.read_out(r"regression · regression\.index\.json · verified [0-9a-f]{64}", timeout=120)
 
-    app.fill("What is this test called?", "reschedule-regression")
-    app.press("Name this test")
+    # Several editors share these short labels; select the task's region,
+    # not a position among unrelated controls in the inspector's tree.
+    app.fill("Name", "reschedule-regression", within="Test authoring")
+    app.press("Save name", within="Test authoring")
     app.press("Send s0001-e000001")
     app.find("button", "Do not send s0001-e000001")
     app.press("Send s0001-e000002")
@@ -470,22 +485,22 @@ def guided_sample(app, work, command, record):
     app.press("appointment-ledger")
     app.read_out(r"Initial state: empty-ledger\.")
     app.press("Read the observation from this entry")
-    app.fill("How is the fixture returned to its initial state?", "Restart the practice receiver with an empty appointment ledger.")
-    app.press("Record these instructions")
+    app.fill("Reset", "Restart the practice receiver with an empty appointment ledger.")
+    app.press("Save instructions")
     app.fill("Expectation name", "one-appointment")
-    app.fill("Records the ledger should hold", "1")
-    app.press("Expect this record count")
+    app.fill("Expected records", "1")
+    app.press("Expect count")
     app.read_out(r"ledger_count · 1 records")
     app.checkpoint("test-authoring")
     app.fill("New entry in this workspace", "reschedule-test.json")
-    app.press("Write the test spec")
+    app.press("Save test")
     app.read_out(r"Written to reschedule-test\.json.*spec identity [0-9a-f]{64}\.")
 
     # The fixture as it misbehaves fails the saved expectation; the corrected
     # fixture passes it.
-    app.press("Run against the fixture as it misbehaves", timeout=120)
+    app.press("Run failing example", timeout=120)
     app.read_out(r"baseline-run: assertion_failure", timeout=120)
-    app.press("Run against the corrected fixture", timeout=120)
+    app.press("Run fixed example", timeout=120)
     app.read_out(r"post-fix-run: pass", timeout=120)
     app.read_out(r"Every step is done")
     app.checkpoint("practice-results")
@@ -504,7 +519,7 @@ def guided_sample(app, work, command, record):
 
     # Reopened, the window reads both verdicts back from the folder.
     app.launch()
-    app.press("Reopen where you were", timeout=90)
+    app.press("Reopen session", timeout=90)
     app.read_out(r"Every step is done", timeout=120)
     app.read_out(r"baseline-run ?assertion_failure")
     app.read_out(r"post-fix-run ?pass")
@@ -513,7 +528,7 @@ def guided_sample(app, work, command, record):
     # The packet is verified read-only and exported as a portable review into
     # a new folder named in the host's save dialog, which the export creates.
     review = sample / "practice-review"
-    app.select("Packets of this workspace", "practice-packet", within="Investigation packets")
+    app.select("Packets", "practice-packet", within="Investigation packets")
     app.press("Verify read-only", within="Investigation packets")
     # A shortened identity and its ellipsis are two text elements, which some
     # platforms read out with a space between them.
@@ -521,7 +536,7 @@ def guided_sample(app, work, command, record):
     app.press("Choose destination…", within="Investigation packets")
     app.name_new_folder("Choose a new folder for the portable review", review)
     app.read_out(re.escape(str(review)))
-    app.press("Export portable review", within="Investigation packets", timeout=120)
+    app.press("Export review", within="Investigation packets", timeout=120)
     record["native_review"] = app.read_out(rf"Review ?practice-review ?sealed: identity [0-9a-f]{{12}} ?… · packet {packet[:12]} ?…",
                                            timeout=120)
     app.checkpoint("portable-review")
@@ -559,38 +574,41 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     (work / "investigations").mkdir()
 
     app.launch()
-    app.press("License and activation…")
-    app.press("Select a supplied activation folder…", within="License and trial activation")
+    app.press("License")
+    # The supplied-folder workflow lives behind the License page's
+    # Administrator setup disclosure.
+    app.press("Administrator setup", within="License")
+    app.press("Choose activation folder…", within="License")
     app.choose_folder("Choose the license activation folder", work / "vendor-delivered-license")
-    app.find("button", "Activate license", within="License and trial activation")
-    app.press("Refresh local status", within="License and trial activation")
+    app.find("button", "Activate", within="License")
+    app.press("Refresh activation", within="License")
     app.read_out(r"License: active\. Organization: test-organization\.")
 
-    app.press("Choose a folder for a new project…")
+    app.press("Create project…")
     app.choose_folder("Open a readmit workspace folder", work / "investigations")
     app.press("Create a project…", within="Evidence")
-    app.fill("Folder name for the new project", "upgrade-check", within="Evidence")
+    app.fill("Project folder", "upgrade-check", within="Evidence")
     app.fill("Title", "Staged upgrade check", within="Evidence")
-    app.fill("Interface versions, comma-separated", "siu-2.5.1-v1", within="Evidence")
-    app.press("Create the project…", within="Evidence")
+    app.fill("Interface versions", "siu-2.5.1-v1", within="Evidence")
+    app.press("Create project", within="Evidence")
     app.choose_folder("Choose a folder for the new project", work / "investigations")
     project = work / "investigations" / "upgrade-check"
     app.read_out(re.escape(str(project)), timeout=90)
 
     # The project is backed up into a new folder named in the host's save
     # dialog, which the backup creates.
-    app.press("Maintain this workspace…", within="Evidence")
+    app.press("Maintenance", within="Evidence")
     (work / "backups").mkdir()
     backup = work / "backups" / "before-upgrade"
-    app.press("Choose backup destination…")
+    app.press("Choose destination…")
     app.name_new_folder("Choose a new folder for the backup", backup)
     app.read_out(re.escape(str(backup)))
-    app.press("Create verified backup", timeout=120)
+    app.press("Create backup", timeout=120)
     record["native_backup"] = app.read_out(r"Backup created\.", timeout=120)
     app.checkpoint("backup")
     app.press("Staged upgrade", role="tab")
     app.checkpoint("staged-upgrade")
-    app.press("Choose staged candidate folder…")
+    app.press("Browse upgrade…")
     app.choose_folder("Choose the staged upgrade package folder", staged)
     app.read_out(re.escape(str(staged)))
     app.press("Check staged upgrade")
@@ -605,10 +623,10 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     # dialog; installing the candidate is still refused.
     rollback = work / "rollback-window"
     app.press("Administrator approves taking a rollback archive (installing still uses the native installer)", role="checkbox")
-    app.press("Choose rollback archive destination…")
+    app.press("Choose destination…")
     app.name_new_folder("Choose a new folder for the recovery archive", rollback)
     app.read_out(re.escape(str(rollback)))
-    app.press("Prepare rollback archive", timeout=120)
+    app.press("Create rollback archive", timeout=120)
     record["native_rollback"] = app.read_out(
         r"Rollback point taken\. Installing this candidate is still refused: the staged candidate is the build already running this check",
         timeout=120)

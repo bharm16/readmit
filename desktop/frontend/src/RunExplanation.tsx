@@ -97,7 +97,7 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
   const explanation = result?.state === "completed" ? result.explanation : undefined;
   return (
     <section aria-labelledby="run-explanation-title">
-      <h3 id="run-explanation-title">Explain a retained run</h3>
+      <h3 id="run-explanation-title">Run details</h3>
       <p>
         Re-decide an assertion set against the evidence one run retained, assertion by assertion, as <code>readmit explain</code>{" "}
         does. Nothing is sent and nothing is written. Expected and observed values stay hidden until you reveal them.
@@ -116,7 +116,7 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
         </datalist>
         {field("assertions", "explain-assertions", "Assertion set", "Choose assertion set…")}
         <details>
-          <summary>Observed records, for a set that asks about them</summary>
+          <summary>Observed records</summary>
           <p>A completion record and the observation source it read are supplied together, and only for an observation the set asks about.</p>
           {field("before", "explain-before", "Completion record before the run", "Choose before completion…")}
           {field("before-source", "explain-before-source", "Observation source before the run", "Choose before source…")}
@@ -139,9 +139,10 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
       </div>
       {explanation ? (
         <>
-          <button type="button" disabled={disabled} onClick={() => void explain(!explanation.revealed)}>
-            {explanation.revealed ? "Hide values" : "Reveal expected and observed values"}
+          <button type="button" disabled={disabled} aria-describedby="explain-values-warning" onClick={() => void explain(!explanation.revealed)}>
+            {explanation.revealed ? "Hide values" : "Show values"}
           </button>
+          <p id="explain-values-warning" className="hint">Values may contain patient data.</p>
           <ExplanationView explanation={explanation} />
         </>
       ) : null}

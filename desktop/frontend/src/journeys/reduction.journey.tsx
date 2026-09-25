@@ -54,15 +54,15 @@ function reduction() {
 /** Records the reset the engineer performs between trials as a reviewed
  * reset plan: one action a person performs and confirms by name. */
 async function recordReset(user: UserEvent): Promise<void> {
-  const heading = screen.getByRole("heading", { name: "Environment & Credential Configuration" });
+  const heading = screen.getByRole("heading", { name: "Environments" });
   const panel = within(heading.closest("section") as HTMLElement);
-  await press(user, panel.getByRole("button", { name: "Fixture Reset Plan" }));
-  await press(user, await panel.findByRole("button", { name: "Start New Reset Plan" }));
+  await press(user, panel.getByRole("button", { name: "Reset plan" }));
+  await press(user, await panel.findByRole("button", { name: "New reset plan" }));
   await enter(user, panel.getByLabelText("Environment Name Match"), "scheduling-downstream");
   await enter(user, panel.getByLabelText("Action ID"), "empty-ledger");
-  await enter(user, panel.getByLabelText("Side-Effect & Reset Instructions"), "Empty the downstream appointment ledger.");
-  await press(user, panel.getByRole("button", { name: "Add Action to Plan" }));
-  await press(user, panel.getByRole("button", { name: "Save Reset Plan" }));
+  await enter(user, panel.getByLabelText("Reset instructions"), "Empty the downstream appointment ledger.");
+  await press(user, panel.getByRole("button", { name: "Add action" }));
+  await press(user, panel.getByRole("button", { name: "Save plan" }));
   expect(await panel.findByText("Fixture reset plan saved.")).toBeTruthy();
 }
 
@@ -70,10 +70,10 @@ async function recordReset(user: UserEvent): Promise<void> {
  * to answer it. */
 async function run(user: UserEvent, work: string, confirmed: string): Promise<void> {
   const panel = reduction();
-  await enter(user, panel.getByLabelText("New working folder for trials"), work);
-  await enter(user, panel.getByLabelText("Confirmed reset action ids"), confirmed);
+  await enter(user, panel.getByLabelText("Trial folder"), work);
+  await enter(user, panel.getByLabelText("Confirmed reset actions"), confirmed);
   const asked = journey.callsTo("StartReduction").length;
-  await press(user, panel.getByRole("button", { name: "Run this reduction" }));
+  await press(user, panel.getByRole("button", { name: "Run reduction" }));
   await waitFor(() => expect(journey.callsTo("StartReduction")[asked]?.settled).toBe(true), { timeout: 120_000 });
 }
 
@@ -86,8 +86,8 @@ test("a controlled reduction is previewed, refused where its reset is not author
   // The reset plan saved a moment ago is offered beside the test and the
   // environment it resets.
   await panel.findByRole("option", { name: RESET });
-  await user.selectOptions(panel.getByLabelText("Test spec whose failure is held"), SPEC);
-  await enter(user, panel.getByLabelText("Failed assertion ids, separated by spaces"), "reschedule-accepted");
+  await user.selectOptions(panel.getByLabelText("Failing test"), SPEC);
+  await enter(user, panel.getByLabelText("Failed assertion IDs"), "reschedule-accepted");
   await enter(user, panel.getByLabelText("Trial budget"), "8");
   await enter(user, panel.getByLabelText("Confirmations"), "1");
   await user.selectOptions(panel.getByLabelText("Approved environment"), TARGET);
@@ -98,7 +98,7 @@ test("a controlled reduction is previewed, refused where its reset is not author
   // and writes nothing into the project.
   downstream.reset();
   const before = namesIn(project);
-  await press(user, panel.getByRole("button", { name: "Preview planned side effects" }));
+  await press(user, panel.getByRole("button", { name: "Preview effects" }));
   expect(await panel.findByText(`Preview of ${SPEC} over reschedule-feed`)).toBeTruthy();
   expect(panel.getByText("group-per-occurrence/v1 · holding reschedule-accepted · budget 8 trials · 1 confirmation")).toBeTruthy();
   expect(panel.getByText(`g001 · ${BOOKING}`)).toBeTruthy();
@@ -127,9 +127,9 @@ test("a controlled reduction is previewed, refused where its reset is not author
   // holds its acknowledgement. Focus is on Stop, and Enter stops the
   // reduction: it is cancelled, claims nothing, and nothing is sent again.
   downstream.holdAcknowledgements();
-  await enter(user, panel.getByLabelText("Confirmed reset action ids"), "empty-ledger");
+  await enter(user, panel.getByLabelText("Confirmed reset actions"), "empty-ledger");
   const stopping = journey.callsTo("StartReduction").length;
-  await press(user, panel.getByRole("button", { name: "Run this reduction" }));
+  await press(user, panel.getByRole("button", { name: "Run reduction" }));
   const stop = panel.getByRole("button", { name: "Stop reduction" });
   await waitFor(() => expect(document.activeElement).toBe(stop));
   await waitFor(() => expect(downstream.received()).toHaveLength(1), { timeout: 60_000 });
@@ -140,7 +140,7 @@ test("a controlled reduction is previewed, refused where its reset is not author
   expect(panel.getByText(/^Undecided: nothing was established\./)).toBeTruthy();
   expect(panel.getByText(/^#1 · calibration · reset confirmed \(every_action_confirmed\) · verdict undecided \(run_\w+\)/)).toBeTruthy();
   expect(panel.getByText(`Reduction of ${SPEC} over reschedule-feed · trials retained in reduction-work`)).toBeTruthy();
-  await waitFor(() => expect(document.activeElement).toBe(panel.getByRole("button", { name: "Run this reduction" })));
+  await waitFor(() => expect(document.activeElement).toBe(panel.getByRole("button", { name: "Run reduction" })));
   downstream.releaseAcknowledgement();
   expect(downstream.received()).toEqual([EXPORTED_BOOKING]);
   const recovered = await journey.commandLine(["run", "status", `${project}/reduction-work/t0001`, "--recovery", "--json"]);

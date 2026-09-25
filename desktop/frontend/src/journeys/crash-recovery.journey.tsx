@@ -35,14 +35,14 @@ test("a crash while a send waits on its acknowledgement leaves the delivery unce
   // The downstream system receives the first message and applies it, and its
   // acknowledgement never comes back before the application ends.
   downstream.holdAcknowledgements();
-  await press(user, runs().getByRole("button", { name: "Send and execute once" }));
+  await press(user, runs().getByRole("button", { name: "Send test" }));
   await waitFor(() => expect(downstream.received()).toHaveLength(1));
 
   // While the run holds the window's one operation and waits, the privacy
   // status is read again and says a run is executing now — the moment that
   // statement matters — without waiting for, or touching, the run.
   const asked = journey.callsTo("DisclosureStatus").length;
-  await press(user, screen.getByRole("button", { name: "Refresh the states" }));
+  await press(user, screen.getByRole("button", { name: "Refresh privacy status" }));
   expect(await execution().findByText("Active now")).toBeTruthy();
   // Answered at once: a run names its operation, so the read never met busy.
   expect(journey.callsTo("DisclosureStatus")).toHaveLength(asked + 1);
@@ -66,8 +66,8 @@ test("a crash while a send waits on its acknowledgement leaves the delivery unce
   expect(state.textContent).toBe("Run: delivery_uncertain · Stop reason: interrupted");
   expect(recovery.getByText(byContent(/^Delivery uncertain: yes — inspect the receiver before any new execution$/))).toBeTruthy();
   expect(recovery.getByText("Nothing was resumed or resent. Recovery only read the retained evidence.")).toBeTruthy();
-  await press(user, recovery.getByRole("button", { name: "Reopen where you were" }));
-  expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
+  await press(user, recovery.getByRole("button", { name: "Reopen session" }));
+  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
 
   // Neither reading nor reopening sent anything: the downstream system still
   // holds exactly the one message it received before the crash.
@@ -101,7 +101,7 @@ test("a test half authored when the application ended comes back for its case an
   await journey.crash();
 
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
   const panel = await authoring();
   expect(
     await panel.findByText(/The test draft you had not stored was kept on this machine for this case and is open again\./),

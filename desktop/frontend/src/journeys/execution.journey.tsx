@@ -50,9 +50,9 @@ const PROJECT = "investigations/scheduling-investigation";
 async function assertionEvidence(user: UserEvent, output: string): Promise<{ outcome: string; expected: string; observed: string }> {
   const panel = runs();
   await panel.findByRole("option", { name: output });
-  await user.selectOptions(panel.getByLabelText("Retained executions of this workspace"), output);
-  await press(user, panel.getByRole("button", { name: "Open evidence read-only" }));
-  await press(user, await panel.findByRole("button", { name: "Reveal expected and observed values" }));
+  await user.selectOptions(panel.getByLabelText("Select run"), output);
+  await press(user, panel.getByRole("button", { name: "Open evidence" }));
+  await press(user, await panel.findByRole("button", { name: "Show values" }));
   const table = await panel.findByRole("table", { name: /Assertion evidence \(values revealed\)/ });
   const row = within(table).getByRole("row", { name: /reschedule-accepted/ });
   // The assertion names its row; the cells after it are operator, position,
@@ -71,12 +71,12 @@ async function assertionEvidence(user: UserEvent, output: string): Promise<{ out
  * already open. */
 async function observe(user: UserEvent, journey: Journey, path: string, completion: string, maxBytes = 65536) {
   if (!screen.queryByRole("region", { name: "Observation setup" })) {
-    await press(user, within(region("Evidence")).getByRole("button", { name: "Set up observation…" }));
+    await press(user, within(region("Evidence")).getByRole("button", { name: "Observations" }));
   }
   const panel = within(await screen.findByRole("region", { name: "Observation setup" }));
   await enter(user, panel.getByLabelText("Export path"), path);
   await enter(user, panel.getByLabelText("Max bytes"), String(maxBytes));
-  await press(user, panel.getByRole("button", { name: "Save source and window" }));
+  await press(user, panel.getByRole("button", { name: "Save observation" }));
   expect(await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.")).toBeTruthy();
   await enter(user, panel.getByLabelText("Completion output"), `${completion}.json`);
   await enter(user, panel.getByLabelText("Snapshot directory"), `${completion}-snapshot`);

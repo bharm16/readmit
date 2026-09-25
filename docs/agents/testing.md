@@ -226,6 +226,20 @@ flake or establish that a failing revision is correct.
 
 ## CI and merge
 
+Automatic journey execution is temporarily disabled by the owner's decision.
+Pull requests, pushes (including release tags), scheduled runs, and default
+manual runs skip frontend, hub, packaged CLI, and native accessibility journeys.
+Unit/component tests, race tests, independent verification, mutation checks,
+vulnerability checks, builds, archive smoke tests, and native installation,
+startup and removal checks remain required. A green automatic run therefore
+provides no journey or interactive-accessibility acceptance evidence.
+
+Journeys remain runnable locally. Explicitly opt into CI execution with
+`gh workflow run ci.yml --ref BRANCH -f run_journeys=true` for hub and packaged
+CLI journeys, or `gh workflow run desktop.yml --ref BRANCH -f run_journeys=true`
+for frontend and native journeys. An opted-in failure still fails its aggregate;
+`quality` requires the hub-journeys job to be skipped when not opted in.
+
 The `quality` check aggregates Go tests, tooling/independent verification and
 mutations, the vulnerability scan, the hub, the hub journeys, and the three
 timed fuzz shards on the events that run them. It fails if any job its event runs fails, is skipped,
@@ -240,24 +254,19 @@ An install check never runs on the runner that built its package: that runner
 carries the Go, Node and WiX build setup, the build tree and the frontend's
 modules, which a person's machine does not, so a package that works only
 beside its build would pass there.
-The macOS shell job also executes the frontend behavior tests and the
-interaction journeys and publishes their output as an artifact, so a failing
-component test or journey fails the `desktop` aggregate rather than only a
-developer's local run. The Windows package job runs the shell's own Go tests
+The macOS shell job executes the frontend behavior tests, plus interaction
+journeys only when explicitly opted in, and publishes their output as an artifact.
+A failing enabled test fails the `desktop` aggregate. The Windows package job runs the shell's own Go tests
 on Windows, where its Windows-only code runs.
 An install job can also drive the application it installed through the
 platform's accessibility API with `tools/native_journey.py`, before removing
 it, and publish the receipt and the accessibility tree at each checkpoint as
 `native-journey-OS-ARCH`; a failing native journey fails that install job and
-so `desktop`. To keep pull requests fast, a pull request's run, and a push to
-main that runs its jobs, drives it only in the linux/amd64 install job; every
-other target installs, checks and removes its package exactly as before. The
-daily run and a dispatched run drive it on all five targets, and they are the
-runs an accessibility review cites. The workflow decides this from the event
-alone (`NATIVE_JOURNEYS` in `desktop-package` and `desktop-install`, which must
-stay identical), so a push to main whose tree was proven still skips every
-job. To see a platform's journeys on a branch, dispatch the desktop workflow
-on it with `gh workflow run desktop.yml --ref BRANCH`. The journey steps and every expected outcome live once in that
+so `desktop`. These journeys run on all five targets only when a manual
+workflow dispatch explicitly enables `run_journeys`. `NATIVE_JOURNEYS` in
+`desktop-package` and `desktop-install` must stay identical, so only an enabled
+run builds the provisioning bridge. Automatic installation jobs run without
+journeys. The journey steps and every expected outcome live once in that
 tool; the per-platform backends in `tools/native/` only read the tree and act
 on it, so a new step is written once for every platform. `make test-tools`
 checks the driver against a fake backend. Run it locally only on a machine

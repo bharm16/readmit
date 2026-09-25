@@ -229,7 +229,7 @@ export function RunPanel({
   const canExecute = plan !== null && plan !== undefined && !changed && plan.admission.admitted && plan.destination.fresh && (!isSuite || environment !== "");
 
   return <section aria-labelledby="durable-runs-title">
-    <h3 id="durable-runs-title">Durable test runs</h3>
+    <h3 id="durable-runs-title">Runs</h3>
     <EnvironmentBanner
       name={plan?.target.name}
       classification={plan ? plan.target.classification : "nonproduction"}
@@ -259,13 +259,14 @@ export function RunPanel({
       </> : null}
     </div>
     <div className="actions">
-      <label htmlFor="run-output">Fresh output folder</label>
+      <label htmlFor="run-output">Run folder</label>
       <input id="run-output" value={output} disabled={busy} placeholder="generated at preflight"
         onChange={(e) => { setOutput(e.target.value); invalidate(); }} />
+      <p className="hint">Each run writes to a fresh folder; an existing output is never reused.</p>
       <button disabled={busy || !selected} onClick={() => void ask()}>
-        {operation === "preflighting" ? "Checking…" : "Validate and preflight"}
+        {operation === "preflighting" ? "Checking…" : "Preview run"}
       </button>
-      {canExecute ? <button disabled={busy} onClick={() => void execute(plan!.identity, plan!.destination.name)}>Send and execute once</button> : null}
+      {canExecute ? <button disabled={busy} onClick={() => void execute(plan!.identity, plan!.destination.name)}>{isSuite ? "Send suite" : "Send test"}</button> : null}
       <button disabled={operation !== "executing"} onClick={lifecycle.cancel}>Cancel run</button>
     </div>
     <div role="status" aria-live="polite">
@@ -276,12 +277,12 @@ export function RunPanel({
           <p className="recovery-actions">
             {onConfigureEnvironment ? (
               <button type="button" disabled={busy} onClick={onConfigureEnvironment}>
-                Configure environments and targets…
+                Environments
               </button>
             ) : null}
             {onOpenLicense ? (
               <button type="button" disabled={busy} onClick={onOpenLicense}>
-                Open license and activation…
+                License
               </button>
             ) : null}
           </p>
@@ -327,24 +328,28 @@ export function RunPanel({
     </div>
     <div className="run-history">
       <h4>Run history</h4>
-      <label htmlFor="run-history">Retained executions of this workspace</label>
+      <label className="visually-hidden" htmlFor="run-history">Select run</label>
       <select id="run-history" value={history} disabled={busy} onChange={(e) => { setHistory(e.target.value); setEvidence(null); setProgress(null); setResumeResult(null); setCleanResult(null); }}>
         <option value="">Select a retained run…</option>
         {runs.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
-      <button disabled={busy || !history} onClick={() => void openHistory(false)}>Open evidence read-only</button>
+      <button disabled={busy || !history} onClick={() => void openHistory(false)}>Open evidence</button>
+      <p className="hint">Opening is read-only and cannot resume or send.</p>
       {evidence?.evidence?.durable && evidence.evidence.entry === history ? <div className="actions">
-        <label htmlFor="run-resume-output">Fresh folder for resumed run</label>
+        <label htmlFor="run-resume-output">Resume folder</label>
         <input id="run-resume-output" value={resumeOutput} disabled={busy} onChange={(e) => setResumeOutput(e.target.value)} />
-        <button disabled={busy || !specs.includes(selected) || !resumeOutput} onClick={() => void resumeHistory()}>Resume never-attempted work</button>
-        {evidence.evidence.terminal ? <button disabled={busy} onClick={() => void cleanHistory()}>Remove stale lease</button> : null}
+        <button disabled={busy || !specs.includes(selected) || !resumeOutput} onClick={() => void resumeHistory()}>Resume send</button>
+        {evidence.evidence.terminal ? <button disabled={busy} onClick={() => void cleanHistory()}>Clear stale lease</button> : null}
         <p>Resume requires the unchanged saved test selected above. It writes a new folder and refuses any previously attempted send. Cleanup retains all evidence.</p>
       </div> : null}
       {resumeResult?.reason ? <p role="alert">{resumeResult.reason}</p> : null}
       {resumeResult?.resume ? <p>Resumed {resumeResult.resume.repeated} never-attempted occurrence(s) into {resumedTo}. Run: {resumeResult.resume.run.state}.</p> : null}
       {cleanResult?.reason ? <p role="alert">Cleanup refused: {cleanResult.reason}</p> : null}
       {cleanResult?.cleanup ? <p>Cleanup removed {cleanResult.cleanup.removed.length ? cleanResult.cleanup.removed.join(", ") : "nothing"}; retained {cleanResult.cleanup.retained.length} evidence entries.</p> : null}
-      {evidence?.evidence ? <button disabled={busy} onClick={() => void openHistory(!revealed)}>{revealed ? "Hide values" : "Reveal expected and observed values"}</button> : null}
+      {evidence?.evidence ? <>
+        <button disabled={busy} aria-describedby="run-values-warning" onClick={() => void openHistory(!revealed)}>{revealed ? "Hide values" : "Show values"}</button>
+        <p id="run-values-warning" className="hint">Values may contain patient data.</p>
+      </> : null}
       {evidence?.evidence ? <RunEvidenceView evidence={evidence.evidence} onOpenCase={onOpenCase} /> : null}
       {progress && history ? <p>{progress.state === "empty" ? progress.reason : null}</p> : null}
     </div>

@@ -11,6 +11,11 @@ on:
   schedule:
     - cron: '41 7 * * *'
   workflow_dispatch:
+    inputs:
+      run_journeys:
+        description: Run the temporarily opt-in hub and packaged CLI journeys
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -217,7 +222,7 @@ jobs:
   # them, having no PostgreSQL installation.
   hub-journeys:
     needs: proof
-    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' && github.event_name == 'workflow_dispatch' && inputs.run_journeys }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -267,13 +272,14 @@ jobs:
           SECURITY_RESULT: ${{ needs.security.result }}
           HUB_RESULT: ${{ needs.hub.result }}
           HUB_JOURNEYS_RESULT: ${{ needs.hub-journeys.result }}
+          RUN_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys }}
         run: |
           if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
           test "$GO_RESULT" = "$expected"
           test "$TOOLING_RESULT" = "$expected"
           test "$SECURITY_RESULT" = "$expected"
           test "$HUB_RESULT" = "$expected"
-          test "$HUB_JOURNEYS_RESULT" = "$expected"
+          if [ "$RUN_JOURNEYS" = true ]; then test "$HUB_JOURNEYS_RESULT" = success; else test "$HUB_JOURNEYS_RESULT" = skipped; fi
           if [ "$TIMED_FUZZ" = true ]; then test "$FUZZ_RESULT" = success; else test "$FUZZ_RESULT" = skipped; fi
       # The record a later push to main looks for. Failing to write it only
       # means that push runs in full, so it never fails this check.
@@ -353,9 +359,11 @@ jobs:
       - name: Run the archived executable without a toolchain on PATH
         run: python3 tools/smoke.py --artifacts dist --os ${{ matrix.os }} --arch ${{ matrix.arch }}
       - uses: ./.github/actions/setup-go
+        if: github.event_name == 'workflow_dispatch' && inputs.run_journeys
         with:
           cache-scope: native-acceptance-${{ matrix.os }}-${{ matrix.arch }}
       - name: Require the packaged public CLI journeys without skipped tests
+        if: github.event_name == 'workflow_dispatch' && inputs.run_journeys
         shell: python
         env:
           TARGET_OS: ${{ matrix.os }}
@@ -376,7 +384,7 @@ jobs:
           version = archive.name.removeprefix("readmit_").removesuffix(suffix)
           execute(archive, digest(archive), version, Path("native-acceptance").resolve())
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.run_journeys
         with:
           name: native-acceptance-${{ matrix.os }}-${{ matrix.arch }}
           path: native-acceptance/

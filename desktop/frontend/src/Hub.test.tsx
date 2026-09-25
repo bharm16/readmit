@@ -45,7 +45,7 @@ test("HubPanel displays offline mode initially and allows selecting hub config",
   expect(screen.getByText(/No configuration file selected/i)).toBeTruthy();
 
   // Click choose config
-  const chooseBtn = screen.getByRole("button", { name: /Choose hub configuration…/i });
+  const chooseBtn = screen.getByRole("button", { name: /Choose configuration…/i });
   await user.click(chooseBtn);
 
   expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
@@ -167,7 +167,7 @@ test("HubPanel performs first-party PKCE sign-in and shows authorized projects a
 
   render(<HubPanel />);
 
-  const signInBtn = await screen.findByRole("button", { name: /Sign in with Customer IdP/i });
+  const signInBtn = await screen.findByRole("button", { name: /Sign in/i });
   await user.click(signInBtn);
 
   expect(facade.callsTo("StartHubAuth").length).toBe(1);
@@ -222,11 +222,11 @@ test("HubPanel displays project artifacts, handles download with custody notice,
   render(<HubPanel />);
 
   // Click View Project Artifacts
-  const viewBtn = await screen.findByRole("button", { name: /View Project Artifacts/i });
+  const viewBtn = await screen.findByRole("button", { name: /View artifacts/i });
   await user.click(viewBtn);
 
   expect(facade.callsTo("ListHubProjectArtifacts").length).toBe(1);
-  expect(await screen.findByText(/Artifacts for Project: cardio-icu/i)).toBeTruthy();
+  expect(await screen.findByText(/Artifacts: cardio-icu/i)).toBeTruthy();
   expect(screen.getByText("lead@hospital.org")).toBeTruthy();
 
   // Download
@@ -277,9 +277,9 @@ test("HubPanel shows a failed sign-in as a recoverable error and the next action
   const signIn = facade.park("CompleteHubAuth");
 
   render(<HubPanel />);
-  await user.click(await screen.findByRole("button", { name: /Sign in with Customer IdP/i }));
+  await user.click(await screen.findByRole("button", { name: /Sign in/i }));
   expect(await screen.findByRole("button", { name: "Cancel sign-in" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: /Sign in with Customer IdP/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Sign in/i }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: /Refresh status/i }).hasAttribute("disabled")).toBe(true);
 
   signIn.resolve({
@@ -297,7 +297,7 @@ test("HubPanel shows a failed sign-in as a recoverable error and the next action
   expect(facade.callsTo("HubStatus").length).toBe(1);
 
   // The next action is the person's own, and it reaches the application.
-  await user.click(screen.getByRole("button", { name: /Sign in with Customer IdP/i }));
+  await user.click(screen.getByRole("button", { name: /Sign in/i }));
   expect(facade.callsTo("StartHubAuth").length).toBe(2);
   await screen.findByRole("button", { name: "Cancel sign-in" });
   signIn.resolve(defaultHubResult());
@@ -320,14 +320,14 @@ test("HubPanel cancels a sign-in whose browser never returns", async () => {
   const signIn = facade.park("CompleteHubAuth");
 
   render(<HubPanel />);
-  await user.click(await screen.findByRole("button", { name: /Sign in with Customer IdP/i }));
+  await user.click(await screen.findByRole("button", { name: /Sign in/i }));
   await user.click(await screen.findByRole("button", { name: "Cancel sign-in" }));
   expect(facade.oneCall("Cancel")).toEqual(["hub-sign-in"]);
 
   signIn.resolve({ state: "cancelled", connected: false, authenticated: false, reason: "sign-in was cancelled" });
   expect(await screen.findByText("sign-in was cancelled")).toBeTruthy();
   expect(screen.getByText(/Connected \(https:\/\/hub\.customer\.example:8443\)/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: /Sign in with Customer IdP/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Sign in/i }).hasAttribute("disabled")).toBe(false);
   expect(facade.callsTo("StartHubAuth").length).toBe(1);
   expect(facade.callsTo("CompleteHubAuth").length).toBe(1);
   expect(facade.callsTo("HubStatus").length).toBe(1);
@@ -367,9 +367,9 @@ test("HubPanel shows a remembered configuration that no longer validates and rec
   expect(screen.getByText(/Offline \/ Local Mode/)).toBeTruthy();
   expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(true);
-  expect(screen.getByRole("button", { name: /Choose hub configuration…/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Choose configuration…/i }).hasAttribute("disabled")).toBe(false);
 
-  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
   expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
   await waitFor(() => expect(screen.queryByText(/no longer validates/)).toBeNull());
   expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
@@ -408,20 +408,20 @@ test.each([
 
   render(<HubPanel />);
   expect(await screen.findByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
   expect(await screen.findByText(refused)).toBeTruthy();
   expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
   expect(screen.queryByText(/No configuration file selected/)).toBeNull();
   expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(false);
   expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(false);
-  expect(screen.getByRole("button", { name: /Choose hub configuration…/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Choose configuration…/i }).hasAttribute("disabled")).toBe(false);
 
   // Choosing again reaches the application, and a choice it remembers
   // replaces what was selected and the refusal with it.
   facade.reply({
     ChooseHubConfig: async () => ({ ...selected, config_path: "/etc/readmit/replacement/hub-client.json" }),
   });
-  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
   expect(await screen.findByText("Configuration: /etc/readmit/replacement/hub-client.json")).toBeTruthy();
   expect(screen.queryByText(refused)).toBeNull();
   expect(facade.calls.map((call) => call.method)).toEqual(["HubStatus", "ChooseHubConfig", "ChooseHubConfig"]);
@@ -455,9 +455,9 @@ test("HubPanel keeps a remembered configuration's reason when choosing another i
 
   render(<HubPanel />);
   expect(await screen.findByText(stale)).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: /Choose hub configuration…/i }));
+  await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /Choose hub configuration…/i }).hasAttribute("disabled")).toBe(false),
+    expect(screen.getByRole("button", { name: /Choose configuration…/i }).hasAttribute("disabled")).toBe(false),
   );
   expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
   expect(screen.getByText(stale)).toBeTruthy();
@@ -491,7 +491,7 @@ test("HubPanel shows an upload the license does not admit as refused with why, a
   });
 
   render(<HubPanel />);
-  await user.click(await screen.findByRole("button", { name: /View Project Artifacts/i }));
+  await user.click(await screen.findByRole("button", { name: /View artifacts/i }));
   const publish = await screen.findByRole("button", { name: "Publish Artifact" });
   expect(publish.hasAttribute("disabled")).toBe(true);
 

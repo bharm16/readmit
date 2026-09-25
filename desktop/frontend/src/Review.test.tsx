@@ -99,11 +99,11 @@ function previewOf(planEntry: string, steps: TransformStep[]): TransformResult {
  * offers authoring over it. */
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getAllByRole("button", { name: "Verify and open" })[0]!);
+  await user.click(screen.getAllByRole("button", { name: "Open case" })[0]!);
   await screen.findByText(CASE_IDENTITY);
-  return within(await screen.findByRole("region", { name: "Review and transform this case" }));
+  return within(await screen.findByRole("region", { name: "Review and transform" }));
 }
 
 /** Replaces what a field holds the way a person pastes a name in: one
@@ -120,7 +120,7 @@ async function addStep(user: UserEvent, panel: ReturnType<typeof within>, step: 
   if (step.rule !== undefined) await fill(user, panel.getByLabelText("Correlation rule id"), step.rule);
   if (step.shift !== undefined) await fill(user, panel.getByLabelText("Shift duration"), step.shift);
   if (step.entry !== undefined) await fill(user, panel.getByLabelText("Sequence entry"), step.entry);
-  await user.click(panel.getByRole("button", { name: "Add this step" }));
+  await user.click(panel.getByRole("button", { name: "Add step" }));
 }
 
 /** The authored steps as the panel lists them. */
@@ -147,7 +147,7 @@ test("a save the decoder refuses keeps what was typed, a step is removed from th
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
-  await user.selectOptions(panel.getByLabelText("Correlation rules whose relations are preserved"), RULES);
+  await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
   await addStep(user, panel, RENAME);
   await addStep(user, panel, { operator: "shift-dates/v1", shift: "1 day" });
   expect(steps(panel)).toEqual(["rebase-identifiers/v1 · patient", "shift-dates/v1 · 1 day"]);
@@ -184,17 +184,17 @@ test("a save the decoder refuses keeps what was typed, a step is removed from th
     SaveTransformPlan: (request) => planned(request.output, request.steps, request.rules),
     OpenWorkspace: () => listing([{ name: "moved.plan.json", kind: "plan", schema: "readmit-transform-plan/v1" }]),
   });
-  await user.click(panel.getByRole("button", { name: "Save this transformation plan" }));
+  await user.click(panel.getByRole("button", { name: "Save plan" }));
   expect(await panel.findByText(`Saved moved.plan.json · 2 steps · rules digest ${DIGEST}. It is selected below to preview.`)).toBeTruthy();
   expect(facade.callsTo("SaveTransformPlan")[1]?.args[0]).toMatchObject({ steps: [RENAME, SHIFT], output: "moved.plan.json" });
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(1);
   await waitFor(() =>
-    expect((panel.getByLabelText("Transformation plan to preview") as HTMLSelectElement).value).toBe("moved.plan.json"),
+    expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe("moved.plan.json"),
   );
   expect((panel.getByLabelText("New plan document in this workspace") as HTMLInputElement).value).toBe("");
 
   facade.reply({ PreviewTransformation: (request) => previewOf(request.plan, [RENAME, SHIFT]) });
-  await user.click(panel.getByRole("button", { name: "Preview this transformation" }));
+  await user.click(panel.getByRole("button", { name: "Preview" }));
   expect(await panel.findByText(`Preview of moved.plan.json under ${RULES}.`)).toBeTruthy();
   expect(facade.oneCall("PreviewTransformation")[0]).toEqual({
     workspace: WORKSPACE_ROOT,
@@ -217,12 +217,12 @@ test("reopening a plan asks before it replaces unsaved steps, is declined from t
   // An open would replace a step nobody saved, so it is asked first; Escape
   // keeps the step, reads nothing and returns focus to Open.
   await user.selectOptions(panel.getByLabelText("Saved plan to reopen"), SAVED);
-  await user.click(panel.getByRole("button", { name: "Open this plan" }));
+  await user.click(panel.getByRole("button", { name: "Open plan" }));
   const question = within(panel.getByRole("group", { name: `Open ${SAVED} in place of these steps?` }));
   await waitFor(() => expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these steps" })));
   await user.keyboard("{Escape}");
   expect(panel.queryByRole("group", { name: `Open ${SAVED} in place of these steps?` })).toBeNull();
-  expect(document.activeElement).toBe(panel.getByRole("button", { name: "Open this plan" }));
+  expect(document.activeElement).toBe(panel.getByRole("button", { name: "Open plan" }));
   expect(facade.callsTo("OpenTransformPlan")).toHaveLength(0);
   expect(steps(panel)).toEqual(["rebase-identifiers/v1 · patient"]);
 
@@ -238,32 +238,32 @@ test("reopening a plan asks before it replaces unsaved steps, is declined from t
   await waitFor(() => expect(reading.size).toBe(1));
   expect(facade.oneCall("OpenTransformPlan")).toEqual([WORKSPACE_ROOT, SAVED]);
   expect(await panel.findByText("Reading this transformation plan.")).toBeTruthy();
-  expect((panel.getByRole("button", { name: "Open this plan" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Add this step" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Open plan" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Add step" }) as HTMLButtonElement).disabled).toBe(true);
   expect((panel.getByRole("button", { name: "Remove step 1" }) as HTMLButtonElement).disabled).toBe(true);
   reading.resolve(planned(SAVED, [RENAME, SHIFT, REPEAT]));
   expect(await panel.findByText(`Opened ${SAVED} · 3 steps · rules digest ${DIGEST}. It is selected below to preview.`)).toBeTruthy();
   expect(steps(panel)).toEqual(["rebase-identifiers/v1 · patient", "shift-dates/v1 · 24h", "duplicate-occurrence/v1 · t000002"]);
-  expect((panel.getByLabelText("Transformation plan to preview") as HTMLSelectElement).value).toBe(SAVED);
+  expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe(SAVED);
 
   // Nothing is unsaved now, so the next open is not asked. The decoder
   // refuses that plan: the refusal is said and the steps stay as they were.
   facade.reply({ OpenTransformPlan: () => refused(MEMBERS_REFUSED) });
   await user.selectOptions(panel.getByLabelText("Saved plan to reopen"), REFUSED_PLAN);
-  await user.click(panel.getByRole("button", { name: "Open this plan" }));
+  await user.click(panel.getByRole("button", { name: "Open plan" }));
   expect(await panel.findByText(MEMBERS_REFUSED)).toBeTruthy();
   expect(facade.callsTo("OpenTransformPlan")).toHaveLength(2);
   expect(facade.callsTo("OpenTransformPlan")[1]?.args).toEqual([WORKSPACE_ROOT, REFUSED_PLAN]);
   expect(panel.queryByText(/^Opened .* · rules digest /)).toBeNull();
   expect(steps(panel)).toHaveLength(3);
-  expect((panel.getByLabelText("Transformation plan to preview") as HTMLSelectElement).value).toBe(SAVED);
+  expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe(SAVED);
 });
 
 test("a save this account cannot write is denied beside the steps, and a preview, a plan answer and the steps leave with the case", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
-  await user.selectOptions(panel.getByLabelText("Correlation rules whose relations are preserved"), RULES);
+  await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
   await addStep(user, panel, RENAME);
   facade.reply({ SaveTransformPlan: () => ({ state: "permission_denied", reason: "this account cannot write into the open workspace" }) });
   await fill(user, panel.getByLabelText("New plan document in this workspace"), "denied.plan.json");
@@ -274,16 +274,16 @@ test("a save this account cannot write is denied beside the steps, and a preview
   // A preview names the plan it was of, so choosing another plan afterwards
   // does not relabel it.
   facade.reply({ PreviewTransformation: (request) => previewOf(request.plan, [RENAME]) });
-  await user.selectOptions(panel.getByLabelText("Transformation plan to preview"), SAVED);
-  await user.click(panel.getByRole("button", { name: "Preview this transformation" }));
+  await user.selectOptions(panel.getByLabelText("Transform plan"), SAVED);
+  await user.click(panel.getByRole("button", { name: "Preview" }));
   expect(await panel.findByText(`Preview of ${SAVED} under ${RULES}.`)).toBeTruthy();
-  await user.selectOptions(panel.getByLabelText("Transformation plan to preview"), REFUSED_PLAN);
+  await user.selectOptions(panel.getByLabelText("Transform plan"), REFUSED_PLAN);
   expect(panel.getByText(`Preview of ${SAVED} under ${RULES}.`)).toBeTruthy();
 
   // Another case is opened: the preview, the refused save and the steps were
   // about the case before it, so none of them stays beside this one.
   facade.reply({ OpenCase: () => caseResult(OTHER_CASE_ENTRY, "other-identity-fixed-for-tests") });
-  await user.click(screen.getAllByRole("button", { name: "Verify and open" })[1]!);
+  await user.click(screen.getAllByRole("button", { name: "Open case" })[1]!);
   await screen.findByText("other-identity-fixed-for-tests");
   await waitFor(() => expect(panel.queryByText(/^Preview of /)).toBeNull());
   expect(panel.queryByText("this account cannot write into the open workspace")).toBeNull();

@@ -275,7 +275,7 @@ export function ProfileEditor({
     // that are retained and not stored.
     if (retainer.currentId() !== "" || retainer.retention.state !== "idle") {
       setOpenNotice(
-        "This editor holds unstored edits. Save them as a profile revision, or discard them with Discard Unstored Edits under Canonical JSON, before opening another profile.",
+        "This editor holds unstored edits. Save them as a profile revision, or discard them with Discard changes under Canonical JSON, before opening another profile.",
       );
       return;
     }
@@ -397,7 +397,7 @@ export function ProfileEditor({
   return (
     <section aria-labelledby="profile-editor-heading" className="profile-editor-section">
       <div className="profile-editor-header">
-        <h3 id="profile-editor-heading">Interface Profiles & Metadata Packs</h3>
+        <h3 id="profile-editor-heading">Profiles</h3>
         <p className="hint">
           Model, validate, version and exchange local interface contracts. All constraints are strictly evaluated
           against pinned metadata packs with explicit origin tracking.
@@ -437,7 +437,7 @@ export function ProfileEditor({
           className={`tab-btn ${activeTab === "compare" ? "active" : ""}`}
           onClick={() => setActiveTab("compare")}
         >
-          Version Comparison & Pins
+          Versions and pins
         </button>
         <button
           type="button"
@@ -462,8 +462,8 @@ export function ProfileEditor({
       {/* TAB 1: LOCAL PROFILE EDITOR */}
       {activeTab === "editor" && (
         <div className="tab-panel" role="tabpanel" aria-label="Profile Editor">
-          <form className="open-profile" aria-label="Open an existing profile" onSubmit={(e) => void handleOpenProfile(e)}>
-            <h4>Open an Existing Profile</h4>
+          <form className="open-profile" aria-label="Open profile" onSubmit={(e) => void handleOpenProfile(e)}>
+            <h4>Open profile</h4>
             <p className="hint">
               Opens a local profile from the workspace or one of its folders, such as a directory a package was imported
               into, resolves it against the pack it pins and shows its seal. Opening activates nothing.
@@ -610,7 +610,7 @@ export function ProfileEditor({
           </div>
 
           <div className="section-toolbar">
-            <h4>Constrained Segments & Fields</h4>
+            <h4>Segments and fields</h4>
             <button
               type="button"
               disabled={disabled}
@@ -930,14 +930,14 @@ export function ProfileEditor({
               disabled={disabled}
               onClick={() => void handleValidateProfile()}
             >
-              Validate with Engine
+              Validate
             </button>
             <button
               type="button"
               disabled={disabled}
               onClick={() => void handleSaveProfile()}
             >
-              Save Profile Revision
+              Save revision
             </button>
             <label>
               <span>Output entry:</span>
@@ -993,7 +993,7 @@ export function ProfileEditor({
       {/* TAB 2: INSTALLED PACKS */}
       {activeTab === "packs" && (
         <div className="tab-panel" role="tabpanel" aria-label="Installed Packs">
-          <h4>Inspect Pack File</h4>
+          <h4>Open pack</h4>
           <div className="pack-input-row">
             <label>
               <span>Pack Entry in Workspace:</span>
@@ -1052,7 +1052,8 @@ export function ProfileEditor({
 
           <hr className="divider" />
 
-          <h4>Open Pack Library Directory</h4>
+          <h4>Open pack library</h4>
+          <p className="hint">Opens a local directory of packs on this computer, not an online marketplace.</p>
           <div className="pack-input-row">
             <label>
               <span>Library Directory Path:</span>
@@ -1109,8 +1110,8 @@ export function ProfileEditor({
 
       {/* TAB 3: VERSION COMPARISON & IMPACT */}
       {activeTab === "compare" && (
-        <div className="tab-panel" role="tabpanel" aria-label="Version Comparison & Pins">
-          <h4>Compare Profile Versions & Impacted Tests</h4>
+        <div className="tab-panel" role="tabpanel" aria-label="Versions and pins">
+          <h4>Version impact</h4>
           <p className="hint">
             Compare two versions of a profile to inspect differences. Evaluates pinned consumers against the references index.
             Approved profiles are immutable; historical test pins must be upgraded one test at a time.
@@ -1150,7 +1151,7 @@ export function ProfileEditor({
               disabled={disabled || !compareFrom || !compareTo}
               onClick={() => void handleCompareProfiles()}
             >
-              Compare & Assess Tests
+              Compare
             </button>
           </div>
 
@@ -1222,7 +1223,7 @@ export function ProfileEditor({
       {/* TAB 4: PACKAGE EXCHANGE */}
       {activeTab === "exchange" && (
         <div className="tab-panel" role="tabpanel" aria-label="Package Exchange">
-          <h4>Export Profile Contract Package</h4>
+          <h4>Export package</h4>
           <p className="hint">
             Export creates an offline package holding a verified local profile, its pinned pack, its canonical version seal,
             and its reviewed origin. No patient evidence is included.
@@ -1301,8 +1302,8 @@ export function ProfileEditor({
 
           <hr className="divider" />
 
-          <form aria-label="Import profile package" onSubmit={(e) => void handleImportPackage(e)}>
-            <h4>Import Profile Package</h4>
+          <form aria-label="Import package" onSubmit={(e) => void handleImportPackage(e)}>
+            <h4>Import package</h4>
             <p className="hint">
               Import verifies a package and writes its documents into a new directory of this workspace, as
               `readmit profile import` does. It refuses a directory that already exists and activates nothing.
@@ -1475,7 +1476,12 @@ export function ProfileEditor({
       {/* TAB 5: CANONICAL RAW JSON */}
       {activeTab === "raw" && (
         <div className="tab-panel" role="tabpanel" aria-label="Canonical JSON">
-          <h4>Raw Canonical Contract Document</h4>
+          <h4>JSON</h4>
+          <p className="hint">
+            The raw editor holds the canonical contract document itself: JSON under schema{" "}
+            <code>readmit-local-profile/v1</code>. Edits here round-trip into the editor's fields once they parse
+            with that schema; validate against the pinned pack before saving a revision.
+          </p>
           <textarea
             rows={22}
             className="code-textarea"
@@ -1498,7 +1504,7 @@ export function ProfileEditor({
               disabled={disabled}
               onClick={() => void discardDraft()}
             >
-              Discard Unstored Edits
+              Discard changes
             </button>
           </div>
         </div>

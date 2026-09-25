@@ -65,8 +65,8 @@ test("a collector started in the capture panel stops when that panel's Cancel is
   await licensedProject(journey, user);
   const address = await freeLoopbackAddress();
 
-  await press(user, await within(region("Evidence")).findByRole("button", { name: "Capture or collect evidence…" }));
-  const capture = within(await screen.findByRole("region", { name: "Capture and collect evidence" }));
+  await press(user, await within(region("Evidence")).findByRole("button", { name: "Capture" }));
+  const capture = within(await screen.findByRole("region", { name: "Capture" }));
   await press(user, capture.getByRole("tab", { name: "MLLP collect" }));
   await user.clear(capture.getByLabelText("Listen address"));
   await user.type(capture.getByLabelText("Listen address"), address);
@@ -108,8 +108,8 @@ test("a collector started in the capture panel stops when that panel's Cancel is
   // the reopened window did is in the record.
   const before = journey.calls.length;
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
-  expect(await within(region("Project navigation")).findByText(journey.path("investigations", "interface"), { selector: ".root" })).toBeTruthy();
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
+  expect(await within(region("Workspace")).findByText(journey.path("investigations", "interface"), { selector: ".root" })).toBeTruthy();
   await journey.close();
   const reopened = journey.calls.slice(before).map((call) => call.method);
   for (const method of STARTS) {
@@ -121,7 +121,7 @@ test("a collector started in the capture panel stops when that panel's Cancel is
 test("a note's text the window called retained survives a kill, and text it had not yet retained comes back whole or not at all", async () => {
   const user = userEvent.setup();
   const project = await licensedProject(journey, user);
-  const note = within(screen.getByRole("region", { name: "Write a note" }));
+  const note = within(screen.getByRole("region", { name: "Note" }));
   await user.type(note.getByLabelText("Body"), "first pass");
   // The window says "retained" only once the newest keystroke's retention was
   // answered, so everything typed so far is on disk from here on.
@@ -149,9 +149,9 @@ test("a note's text the window called retained survives a kill, and text it had 
   expect(acknowledged.startsWith("first pass")).toBe(true);
 
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
-  expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
-  const reopened = within(screen.getByRole("region", { name: "Write a note" }));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
+  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
+  const reopened = within(screen.getByRole("region", { name: "Note" }));
   let body = "";
   await waitFor(() => {
     body = (reopened.getByLabelText("Body") as HTMLTextAreaElement).value;
@@ -171,7 +171,9 @@ test("cancelling an import while it writes its case stops it there, registers no
   const project = await licensedProject(journey, user);
 
   await declareMllpImport(user, journey, "exports/feed.mllp");
-  await press(user, screen.getByRole("button", { name: "Preview extraction" }));
+  // Several panels carry a Preview button of this name now; this one belongs
+  // to the import's own bounded-preview section.
+  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
   const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
   await waitFor(() => {
     expect(preview.getByText("Occurrences").previousSibling?.textContent).toBe(String(occurrences));
@@ -180,7 +182,7 @@ test("cancelling an import while it writes its case stops it there, registers no
   const commit = within(screen.getByRole("region", { name: "Commit import" }));
   await user.clear(commit.getByLabelText("Case bundle folder name"));
   await user.type(commit.getByLabelText("Case bundle folder name"), "feed");
-  await press(user, commit.getByRole("button", { name: "Commit import" }));
+  await press(user, commit.getByRole("button", { name: "Import" }));
   const payloads = journey.path("investigations", "interface", "feed", "payloads");
   await waitFor(() => {
     if (entries(payloads) === 0) throw new Error("the case is not being written yet");

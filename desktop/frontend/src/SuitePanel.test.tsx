@@ -108,7 +108,7 @@ test("a suite is created, parameterized, previewed exactly and versioned through
 
   // Preview the exact expansion against the declared environment.
   await user.selectOptions(screen.getByLabelText("Preview environment"), "east");
-  await user.click(screen.getByRole("button", { name: "Preview the exact expansion" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   const preview = facade.oneCall("PreviewSuite")[0] as { document: string; environment: string };
   const composed = JSON.parse(preview.document) as ReturnType<typeof suiteDocument>;
   expect(composed.id).toBe("nightly");
@@ -127,8 +127,8 @@ test("a suite is created, parameterized, previewed exactly and versioned through
   expect(screen.getAllByText(`${WORKSPACE_ROOT}/${CASE_ENTRY}`).length).toBeGreaterThan(0);
 
   // Save a new version: a new entry with the exact canonical identity.
-  await user.type(screen.getByLabelText("New revision entry"), "nightly-v2.json");
-  await user.click(screen.getByRole("button", { name: "Save new version" }));
+  await user.type(screen.getByLabelText("Version file"), "nightly-v2.json");
+  await user.click(screen.getByRole("button", { name: "Save version" }));
   const saved = facade.oneCall("SaveSuite")[0] as { output: string };
   expect(saved.output).toBe("nightly-v2.json");
   expect(await screen.findByText(new RegExp(SUITE_IDENTITY))).toBeTruthy();
@@ -143,7 +143,7 @@ test("a CLI-authored suite opens whole and an unsupported version is refused", a
     OpenSuite: () => suiteDocumentResult(),
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.selectOptions(screen.getByLabelText("Saved suite entry"), SUITE_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Suite"), SUITE_ENTRY);
   await user.click(screen.getByRole("button", { name: "Open suite" }));
   expect(facade.callsTo("OpenSuite")[0]?.args[1]).toBe(SUITE_ENTRY);
   // Every clause the document declares is in the editor.
@@ -168,16 +168,16 @@ test("preview shows dependencies, shared serialization and refuses what preparat
     PreviewSuite: () => suitePreviewResult(),
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.selectOptions(screen.getByLabelText("Saved suite entry"), SUITE_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Suite"), SUITE_ENTRY);
   await user.click(screen.getByRole("button", { name: "Open suite" }));
   await user.selectOptions(screen.getByLabelText("Preview environment"), "east");
-  await user.click(screen.getByRole("button", { name: "Preview the exact expansion" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   // The dependent job names the setup job it waits for.
   expect((await screen.findAllByText("setup-one")).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/shared/i).length).toBeGreaterThan(0);
 
   facade.reply({ PreviewSuite: () => ({ state: "failed", reason: "suite sequence differs from its template" }) });
-  await user.click(screen.getByRole("button", { name: "Preview the exact expansion" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   expect(await screen.findByText(/suite sequence differs from its template/i)).toBeTruthy();
   uninstallFacade();
 });
@@ -200,18 +200,18 @@ test("preparation compiles the queue and hands the suite to the execution center
       }}
     />,
   );
-  await user.click(screen.getByRole("button", { name: "Prepare" }));
+  await user.click(screen.getByRole("tab", { name: "Prepare" }));
   await user.selectOptions(screen.getByLabelText("Suite entry"), SUITE_ENTRY);
   await user.type(screen.getByLabelText("Environment"), "east");
-  await user.type(screen.getByLabelText("New directory entry"), "east-run");
-  await user.click(screen.getByRole("button", { name: "Prepare configuration" }));
+  await user.type(screen.getByLabelText("Output folder"), "east-run");
+  await user.click(screen.getByRole("button", { name: "Prepare suite" }));
   const request = facade.oneCall("PrepareSuite")[0] as { entry: string; environment: string; output: string };
   expect(request).toEqual({ workspace: WORKSPACE_ROOT, entry: SUITE_ENTRY, environment: "east", releases: "", output: "east-run" });
   expect(await screen.findByText(/Nothing was sent/i)).toBeTruthy();
   expect(screen.getAllByText("setup-one").length).toBeGreaterThan(0);
   // The handoff names the suite entry itself: the execution center preflights
   // and executes it there, and this panel duplicates none of that surface.
-  await user.click(screen.getByRole("button", { name: "Continue to the execution center" }));
+  await user.click(screen.getByRole("button", { name: "Go to runs" }));
   expect(handedTo).toBe(SUITE_ENTRY);
   expect(screen.getAllByText(/execution center/i).length).toBeGreaterThan(0);
   uninstallFacade();
@@ -226,10 +226,10 @@ test("coverage shows the declared denominator, quarantine expiry and unknown exe
     AssessSuiteCoverage: () => suiteCoverageResult(),
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.click(screen.getByRole("button", { name: "Coverage" }));
+  await user.click(screen.getByRole("tab", { name: "Coverage" }));
 
   // Authoring: requirements and an exclusion with reason and expiry.
-  const preparedPicks = screen.getAllByLabelText("Prepared suite directory");
+  const preparedPicks = screen.getAllByLabelText("Prepared suite");
   const authoringPick = preparedPicks[0];
   const assessmentPick = preparedPicks.at(-1);
   if (!authoringPick || !assessmentPick) {
@@ -243,8 +243,8 @@ test("coverage shows the declared denominator, quarantine expiry and unknown exe
   await user.selectOptions(screen.getByLabelText("Exclusion state 1"), "quarantined");
   await user.type(screen.getByLabelText("Exclusion reason 1"), "Fixture intermittently refuses bookings");
   await user.type(screen.getByLabelText("Exclusion expiry 1"), "2026-10-01T00:00:00Z");
-  await user.type(screen.getByLabelText("New coverage entry"), "coverage.json");
-  await user.click(screen.getByRole("button", { name: "Author coverage document" }));
+  await user.type(screen.getByLabelText("Coverage file"), "coverage.json");
+  await user.click(screen.getByRole("button", { name: "Save coverage" }));
   const authored = facade.oneCall("SaveSuiteCoverage")[0] as {
     prepared: string;
     requirements: { id: string; jobs: string[] }[];
@@ -276,8 +276,8 @@ test("a coverage assessment is cancelled without touching retained evidence", as
   const facade = suiteFacade({});
   const parked = facade.park("AssessSuiteCoverage");
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.click(screen.getByRole("button", { name: "Coverage" }));
-  const picks = screen.getAllByLabelText("Prepared suite directory");
+  await user.click(screen.getByRole("tab", { name: "Coverage" }));
+  const picks = screen.getAllByLabelText("Prepared suite");
   const assessPick = picks.at(-1);
   if (!assessPick) {
     throw new Error("the coverage tab has no assessment picker");
@@ -303,11 +303,11 @@ test("promotion review and approval bind exact pins and refuse stale reviews", a
     ApproveSuitePromotion: () => suitePromotionApproval(),
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.click(screen.getByRole("button", { name: "Promotion" }));
+  await user.click(screen.getByRole("tab", { name: "Promotion" }));
   await user.selectOptions(screen.getByLabelText("Suite entry"), SUITE_ENTRY);
   await user.type(screen.getByLabelText("Environment"), "east");
   await user.selectOptions(screen.getByLabelText("Release references"), SUITE_ENTRY);
-  await user.type(screen.getByLabelText("Target revision (operator-declared)"), "fixture-build-7");
+  await user.type(screen.getByLabelText("Target revision"), "fixture-build-7");
   await user.click(screen.getByRole("button", { name: "Review promotion" }));
   const request = facade.oneCall("ReviewSuitePromotion")[0] as {
     entry: string;
@@ -322,7 +322,7 @@ test("promotion review and approval bind exact pins and refuse stale reviews", a
   await user.type(screen.getByLabelText("Local approver"), "Local reviewer");
   await user.type(screen.getByLabelText("Approval rationale"), "Reviewed dev mapping and isolation");
   await user.type(screen.getByLabelText("New approval entry"), "dev-promotion.json");
-  await user.click(screen.getByRole("button", { name: "Approve this exact promotion" }));
+  await user.click(screen.getByRole("button", { name: "Approve promotion" }));
   const approval = facade.oneCall("ApproveSuitePromotion")[0] as { reviewed: string; approver: string; output: string };
   expect(approval.reviewed).toBe(SUITE_REVIEW_IDENTITY);
   expect(approval.approver).toBe("Local reviewer");
@@ -335,7 +335,7 @@ test("promotion review and approval bind exact pins and refuse stale reviews", a
     ApproveSuitePromotion: () => ({ state: "failed", reason: "suite inputs changed since promotion approval" }),
   });
   await user.click(screen.getByRole("button", { name: "Review promotion" }));
-  await user.click(screen.getByRole("button", { name: "Approve this exact promotion" }));
+  await user.click(screen.getByRole("button", { name: "Approve promotion" }));
   expect(await screen.findByText(/suite inputs changed since promotion approval/i)).toBeTruthy();
   uninstallFacade();
 });
@@ -349,12 +349,12 @@ test("release references are authored and impact reports affected tests", async 
     ExpectationImpact: () => suiteImpactResult(),
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.click(screen.getByRole("button", { name: "Releases and impact" }));
+  await user.click(screen.getByRole("tab", { name: "Releases" }));
   await user.type(screen.getByLabelText("Test 1"), "booking");
   await user.type(screen.getByLabelText("Release entry 1"), "booking-1.json");
   await user.type(screen.getByLabelText("Release identity 1"), "release-identity-fixed-for-tests");
-  await user.type(screen.getByLabelText("New sidecar entry"), "releases.json");
-  await user.click(screen.getByRole("button", { name: "Save release references" }));
+  await user.type(screen.getByLabelText("Release pins file"), "releases.json");
+  await user.click(screen.getByRole("button", { name: "Save release pins" }));
   const sidecar = JSON.parse(facade.oneCall("SaveSuiteReleases")[0].document) as {
     schema: string;
     tests: { test: string; release: string; identity: string }[];
@@ -366,7 +366,7 @@ test("release references are authored and impact reports affected tests", async 
   await user.selectOptions(screen.getByLabelText("Release references"), SUITE_ENTRY);
   await user.type(screen.getByLabelText("From"), "booking-1.json");
   await user.type(screen.getByLabelText("To"), "booking-2.json");
-  await user.click(screen.getByRole("button", { name: "Report impact" }));
+  await user.click(screen.getByRole("button", { name: "Compare versions" }));
   expect(await screen.findByText("affected")).toBeTruthy();
   expect(screen.getByText("booking")).toBeTruthy();
   // The comparison is the expectation release's: its specification changes
@@ -405,7 +405,7 @@ test("a release reference takes its full identity from the retained release, and
     SaveSuiteReleases: () => suiteReleasesResult(),
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.click(screen.getByRole("button", { name: "Releases and impact" }));
+  await user.click(screen.getByRole("tab", { name: "Releases" }));
   const read = () => screen.getByRole("button", { name: "Read identity of release entry 1" }) as HTMLButtonElement;
   const entry = screen.getByLabelText("Release entry 1");
   const identity = () => (screen.getByLabelText("Release identity 1") as HTMLInputElement).value;
@@ -474,8 +474,8 @@ test("a release reference takes its full identity from the retained release, and
   expect(identity()).toBe(SUITE_RELEASE_IDENTITY);
 
   // The saved references pin exactly the identity the release declares.
-  await user.type(screen.getByLabelText("New sidecar entry"), "releases.json");
-  await user.click(screen.getByRole("button", { name: "Save release references" }));
+  await user.type(screen.getByLabelText("Release pins file"), "releases.json");
+  await user.click(screen.getByRole("button", { name: "Save release pins" }));
   const sidecar = JSON.parse(facade.oneCall("SaveSuiteReleases")[0].document) as { tests: unknown[] };
   expect(sidecar.tests).toEqual([{ test: "booking", release: "booking-1.json", identity: SUITE_RELEASE_IDENTITY }]);
   uninstallFacade();
@@ -498,7 +498,7 @@ test("pasted canonical suite JSON is validated before it loads, and an invalid s
   await user.type(screen.getByLabelText("Suite id"), "draft-suite");
   await user.click(screen.getByText("Import canonical JSON (expert)"));
   const pasted = screen.getByLabelText("Canonical suite JSON");
-  const load = () => screen.getByRole("button", { name: "Validate and load" }) as HTMLButtonElement;
+  const load = () => screen.getByRole("button", { name: "Import JSON" }) as HTMLButtonElement;
   expect(load().disabled).toBe(true);
 
   // A version this release cannot read is refused; the draft stays.
@@ -573,22 +573,22 @@ test("the successor release is requested and approved for team review by content
     },
   });
   render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={[]} />);
-  await user.click(screen.getByRole("button", { name: "Releases and impact" }));
+  await user.click(screen.getByRole("tab", { name: "Releases" }));
   await user.type(screen.getByLabelText("To"), "booking-2.json");
-  await user.type(screen.getByLabelText("Hub project"), "cardio-study");
-  await user.type(screen.getByLabelText("Request recipient"), "reviewer@hospital.org");
-  await user.type(screen.getByLabelText("Command id"), "rel-request-1");
+  await user.type(screen.getByLabelText("Project"), "cardio-study");
+  await user.type(screen.getByLabelText("Reviewer"), "reviewer@hospital.org");
+  await user.type(screen.getByLabelText("Command ID"), "rel-request-1");
   await user.type(screen.getByLabelText("Rationale"), "Review the exact released expectations");
 
   // Approving while no request names the release is refused and surfaced.
-  await user.click(screen.getByRole("button", { name: "Approve this release" }));
+  await user.click(screen.getByRole("button", { name: "Approve release" }));
   expect(await screen.findByText(/no review request names this exact release content/i)).toBeTruthy();
   const refused = facade.callsTo("PostHubReleaseReview")[0]?.args[0] as { kind: string; recipient: string };
   expect(refused.kind).toBe("approval");
   expect(refused.recipient).toBe("");
 
   // The request carries the entry the panel named and the subject it asks.
-  await user.click(screen.getByRole("button", { name: "Request team review" }));
+  await user.click(screen.getByRole("button", { name: "Request review" }));
   expect(await screen.findByText(/Recorded: review-request by author@hospital.org@https:\/\/idp\.example/)).toBeTruthy();
   const asked = facade.callsTo("PostHubReleaseReview")[1]?.args[0] as {
     kind: string;
@@ -603,7 +603,7 @@ test("the successor release is requested and approved for team review by content
   expect(asked.workspace).toBe(WORKSPACE_ROOT);
   expect(asked.project).toBe("cardio-study");
 
-  await user.click(screen.getByRole("button", { name: "Approve this release" }));
+  await user.click(screen.getByRole("button", { name: "Approve release" }));
   expect(await screen.findByText(/Recorded: approval by author@hospital.org/)).toBeTruthy();
   const approved = facade.callsTo("PostHubReleaseReview")[2]?.args[0] as { kind: string; recipient: string };
   expect(approved.kind).toBe("approval");
@@ -650,5 +650,40 @@ test("unsaved suite work is retained and restored", async () => {
     expect(retained.kind).toBe("suite-editor");
     expect(retained.id).toBe("held-1");
   });
+  uninstallFacade();
+});
+
+// The suite views are real tabs: the arrow keys move between them with
+// activation, Home and End reach the ends, and the selected tab alone is
+// tabbable — the keyboard relationship the tabs pattern promises.
+test("the suite tabs move and select with the keyboard", async () => {
+  const user = userEvent.setup();
+  suiteFacade();
+  render(<SuitePanel workspace={WORKSPACE_ROOT} busy={false} entries={entries} drafts={null} />);
+  const tabs = screen.getAllByRole("tab");
+  expect(tabs.map((tab) => tab.textContent)).toEqual([
+    "Configuration", "Releases", "Prepare", "Coverage", "Promotion",
+  ]);
+  const list = screen.getByRole("tablist", { name: "Suite views" });
+  expect(within(list).getAllByRole("tab", { selected: true })[0]?.textContent).toBe("Configuration");
+
+  tabs[0]?.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(within(list).getAllByRole("tab", { selected: true })[0]?.textContent).toBe("Releases");
+  expect(document.activeElement).toBe(tabs[1]);
+  await user.keyboard("{End}");
+  expect(within(list).getAllByRole("tab", { selected: true })[0]?.textContent).toBe("Promotion");
+  await user.keyboard("{ArrowLeft}");
+  expect(within(list).getAllByRole("tab", { selected: true })[0]?.textContent).toBe("Coverage");
+  await user.keyboard("{Home}");
+  expect(within(list).getAllByRole("tab", { selected: true })[0]?.textContent).toBe("Configuration");
+  expect(document.activeElement).toBe(tabs[0]);
+
+  // The selected tab is the tablist's one tab stop; the panel it controls is
+  // named by it.
+  expect(tabs[0]?.tabIndex).toBe(0);
+  expect(tabs[1]?.tabIndex).toBe(-1);
+  const panel = screen.getByRole("tabpanel");
+  expect(panel.getAttribute("aria-labelledby")).toBe(tabs[0]?.getAttribute("id"));
   uninstallFacade();
 });

@@ -39,8 +39,8 @@ function refusal(stderr: string): string {
 }
 
 async function openCapture(user: ReturnType<typeof userEvent.setup>) {
-  await press(user, await within(region("Evidence")).findByRole("button", { name: "Capture or collect evidence…" }));
-  return within(await screen.findByRole("region", { name: "Capture and collect evidence" }));
+  await press(user, await within(region("Evidence")).findByRole("button", { name: "Capture" }));
+  return within(await screen.findByRole("region", { name: "Capture" }));
 }
 
 /** The address the running capture reports it bound, read off the screen the
@@ -67,7 +67,7 @@ test("the SIU fixture listens on the port it chose, completes, is cancelled part
   await press(user, capture.getByRole("tab", { name: "SIU fixture" }));
   const address = capture.getByLabelText("Listen address");
   const preview = capture.getByRole("button", { name: "Preview fixture" });
-  const start = capture.getByRole("button", { name: "Start fixture listener" });
+  const start = capture.getByRole("button", { name: "Start listener" });
 
   // Every interface without the explicit approval is refused before anything
   // binds; the fixture window directs the person to a loopback address while
@@ -384,8 +384,8 @@ test("a collector the application died under reopens its journal read-only after
   // journal is read, never resumed.
   const before = journey.calls.length;
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
-  expect(await within(region("Project navigation")).findByText(journey.path(PROJECT), { selector: ".root" })).toBeTruthy();
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
+  expect(await within(region("Workspace")).findByText(journey.path(PROJECT), { selector: ".root" })).toBeTruthy();
   const reopened = await openCapture(user);
   await press(user, reopened.getByRole("tab", { name: "MLLP collect" }));
   await tabTo(user, reopened.getByRole("button", { name: "Reopen journal" }));

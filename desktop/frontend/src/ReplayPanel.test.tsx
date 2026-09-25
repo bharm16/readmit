@@ -193,7 +193,7 @@ test("a preview names every message, change and refusal, and a changed input wit
   const { facade } = renderPanel({ PreviewReplay: (request) => previewed(request) });
   // Only messages can be chosen; an acknowledgement is never a send.
   expect(screen.queryByRole("button", { name: "Replay s0001-e000002" })).toBeNull();
-  expect(screen.getByText("No message is chosen, so every message of the case is replayed, in source order.")).toBeTruthy();
+  expect(screen.getByText("No message is chosen, so all 2 message(s) of the case are replayed, in source order.")).toBeTruthy();
   expect((screen.getByRole("button", { name: "Preview replay" }) as HTMLButtonElement).disabled).toBe(true);
   // The listing's target configurations and send policies are offered.
   const offered = (list: string) => Array.from(document.querySelectorAll(`#${list} option`)).map((option) => option.getAttribute("value"));
@@ -202,8 +202,8 @@ test("a preview names every message, change and refusal, and a changed input wit
   // A choice can be taken back, all at once.
   await user.click(screen.getByRole("button", { name: "Replay s0002-e000001" }));
   expect(screen.getByText("Chosen: s0002-e000001. They are replayed in source order, whatever order they were chosen in.")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Replay every message instead" }));
-  expect(screen.getByText("No message is chosen, so every message of the case is replayed, in source order.")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Select all messages" }));
+  expect(screen.getByText("No message is chosen, so all 2 message(s) of the case are replayed, in source order.")).toBeTruthy();
 
   await describeReplay(user);
   expect(screen.getByRole("button", { name: "Do not replay s0001-e000001" }).getAttribute("aria-pressed")).toBe("true");
@@ -234,10 +234,10 @@ test("a preview names every message, change and refusal, and a changed input wit
   expect(shown.getByText("Run folder: replay-001 (generated) · fresh · decision retained in replay-001.decision.json")).toBeTruthy();
   expect(shown.getByText("Admission: admitted")).toBeTruthy();
   // The proposed run folder is now what a send would write.
-  expect((screen.getByLabelText("Fresh run folder") as HTMLInputElement).value).toBe("replay-001");
+  expect((screen.getByLabelText("Run folder") as HTMLInputElement).value).toBe("replay-001");
 
   // Values appear only on purpose, and hide again.
-  await user.click(shown.getByRole("button", { name: "Reveal changed values" }));
+  await user.click(shown.getByRole("button", { name: "Show values" }));
   const revealed = within(await screen.findByRole("table", { name: /values revealed/ }));
   expect(revealed.getByRole("row", { name: /MSH\[1\]-10\[1\]/ }).textContent).toContain("revealed-before (present)revealed-after (present)");
   expect(facade.callsTo("PreviewReplay").map((call) => (call.args[0] as ReplayRequest).reveal)).toEqual([false, true]);
@@ -360,7 +360,7 @@ test("a send happens only after explicit approval, is cancelled from the keyboar
   // the proposed folder is gone and the listing is read again.
   expect(screen.queryByRole("region", { name: "Replay preview" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Send once" })).toBeNull();
-  expect((screen.getByLabelText("Fresh run folder") as HTMLInputElement).value).toBe("");
+  expect((screen.getByLabelText("Run folder") as HTMLInputElement).value).toBe("");
   expect(refreshed()).toBe(1);
   expect(facade.callsTo("SendReplay")).toHaveLength(1);
 
@@ -421,7 +421,7 @@ test("without a case index every message of the case is replayed, into the run f
   const { facade } = renderPanel({ PreviewReplay: (request) => previewed(request) }, []);
   expect(screen.getByText("Build the case index to choose messages one by one.")).toBeTruthy();
   await name(user, "Target configuration", "downstream-target.json");
-  await user.type(screen.getByLabelText("Fresh run folder"), "reschedule-replay");
+  await user.type(screen.getByLabelText("Run folder"), "reschedule-replay");
   await user.keyboard("{Enter}");
   expect(await screen.findByText("Dry run: no connection opened.")).toBeTruthy();
   expect(facade.oneCall("PreviewReplay")[0]).toEqual({
@@ -446,8 +446,8 @@ test("without a case index every message of the case is replayed, into the run f
         refusal: taken,
       }),
   });
-  await user.clear(screen.getByLabelText("Fresh run folder"));
-  await user.type(screen.getByLabelText("Fresh run folder"), "reschedule-replay{Enter}");
+  await user.clear(screen.getByLabelText("Run folder"));
+  await user.type(screen.getByLabelText("Run folder"), "reschedule-replay{Enter}");
   expect(await screen.findByText(`This preview cannot be sent: ${taken}`)).toBeTruthy();
   expect(preview().getByText(`Run folder: reschedule-replay · ${taken} · decision retained in reschedule-replay.decision.json`)).toBeTruthy();
   expect(screen.queryByLabelText(/I approve sending/)).toBeNull();

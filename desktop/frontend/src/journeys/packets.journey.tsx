@@ -45,7 +45,13 @@ function packets() {
 
 /** The privacy review, export and support panel of the open workspace. */
 function privacy() {
-  return within(within(region("Privacy status")).getByRole("region", { name: "Privacy review and protected export" }));
+  return within(within(region("Privacy")).getByRole("region", { name: "Privacy review" }));
+}
+
+/** The portable-review export block of a verified packet, distinct from the
+ * synthetic sample packets' own destination choices below it. */
+function portableReview() {
+  return within(packets().getByRole("heading", { name: "Portable review" }).parentElement as HTMLElement);
 }
 
 /** The text of the one line a pattern matches, once the window shows it. */
@@ -78,7 +84,7 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   await user.selectOptions(panel.getByLabelText("Historical specification"), "reschedule-ack-test.json");
   await user.selectOptions(panel.getByLabelText("Current result"), "run-fixed");
   await user.selectOptions(panel.getByLabelText("Baseline (optional)"), "run-defective");
-  await press(user, panel.getByRole("button", { name: "Preview assembly" }));
+  await press(user, panel.getByRole("button", { name: "Preview" }));
   expect(await line(panel, /^Destination: packet-001 \(generated\) · fresh$/)).toBeTruthy();
   expect(await line(panel, /^Case: reschedule-feed — /)).toBe("Case: reschedule-feed — found · provenance imported · matches the retained case");
   expect(await line(panel, /^Historical specification: /)).toBe(
@@ -94,14 +100,14 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
       "Hashes establish integrity, not source authenticity, disclosure approval or a regression-equivalence claim.",
     ),
   ).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Assemble packet" }));
+  await press(user, panel.getByRole("button", { name: "Create packet" }));
   const sealed = await line(panel, /^Packet packet-001 sealed: identity [0-9a-f]{12}… · registered in the workspace navigation\.$/);
   expect(sealed).toBeTruthy();
 
   // Verified read-only, as the command line verifies it.
   panel = packets();
   await panel.findByRole("option", { name: "packet-001" });
-  await user.selectOptions(panel.getByLabelText("Packets of this workspace"), "packet-001");
+  await user.selectOptions(panel.getByLabelText("Packets"), "packet-001");
   await press(user, panel.getByRole("button", { name: "Verify read-only" }));
   const packetIdentity = sealed.replace(/^.*identity ([0-9a-f]{12})….*$/, "$1");
   expect(await line(panel, /^Verified: identity /)).toMatch(
@@ -119,28 +125,28 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   // report text hidden until it is revealed on purpose.
   // Dismissing the save dialog names nothing, and nothing can be exported.
   await journey.dismissDialog("save", "Choose a new folder for the portable review");
-  await press(user, panel.getByRole("button", { name: "Choose destination…" }));
+  await press(user, portableReview().getByRole("button", { name: "Choose destination…" }));
   await waitFor(() => expect(journey.callsTo("ChoosePacketExportPath").at(-1)?.result).toMatchObject({ state: "cancelled" }));
-  expect(panel.getByText("No destination chosen.")).toBeTruthy();
-  expect((panel.getByRole("button", { name: "Export portable review" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(portableReview().getByText("No destination chosen.")).toBeTruthy();
+  expect((portableReview().getByRole("button", { name: "Export review" }) as HTMLButtonElement).disabled).toBe(true);
   await journey.nameNewFolder(journey.path(PROJECT, "reschedule-review"), "Choose a new folder for the portable review");
-  await press(user, panel.getByRole("button", { name: "Choose destination…" }));
+  await press(user, portableReview().getByRole("button", { name: "Choose destination…" }));
   expect(await panel.findByText(journey.path(PROJECT, "reschedule-review"))).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Export portable review" }));
+  await press(user, panel.getByRole("button", { name: "Export review" }));
   const exported = await line(panel, /^Review reschedule-review sealed: /);
   expect(exported).toMatch(new RegExp(`^Review reschedule-review sealed: identity [0-9a-f]{12}… · packet ${packetIdentity}…$`));
   expect(await line(panel, /^Renderings: /)).toBe(
     "Renderings: offline HTML, PDF, Markdown, strict JSON, JUnit · sensitivity retained: contains original source values · policy customer-local-only",
   );
   await panel.findByRole("option", { name: "reschedule-review" });
-  await user.selectOptions(panel.getByLabelText("Reviews of this workspace"), "reschedule-review");
+  await user.selectOptions(panel.getByLabelText("Reviews"), "reschedule-review");
   await press(user, panel.getByRole("button", { name: "Open read-only" }));
   expect(await line(panel, /^Runs: current /)).toBe(
     "Runs: current pass · baseline assertion_failure. Statuses are the retained evidence's own labels, never a passing run or an approved disclosure.",
   );
   expect(await line(panel, /^Renderings present: /)).toBe("Renderings present: junit.xml, report.html, report.json, report.md, report.pdf.");
   expect(panel.getByText(/^Report text hidden\./)).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Reveal report text" }));
+  await press(user, panel.getByRole("button", { name: "Show report" }));
   const revealed = (await panel.findByText(/./, { selector: "pre.report-lines" })).textContent ?? "";
   expect(revealed).toContain(`Packet identity: ${fullPacketIdentity}`);
   // The command line reads the same review offline, to the same report.
@@ -182,19 +188,19 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   expect(extended.stderr.endsWith(refused)).toBe(true);
   await user.selectOptions(support.getByLabelText("Sharing policy"), "sharing.json");
   expect(await line(support, /^Support allowed · /)).toBe("Support allowed · local-file · 4096 bytes.");
-  await user.selectOptions(support.getByLabelText("Source to summarize"), "reschedule-review");
+  await user.selectOptions(support.getByLabelText("Source"), "reschedule-review");
   await press(user, support.getByRole("button", { name: "Preview summary" }));
   const identity = (await line(support, /^Preview identity: [0-9a-f]{64}$/)).replace("Preview identity: ", "");
   const other = identity.slice(0, -1) + (identity.endsWith("0") ? "1" : "0");
-  await enter(user, support.getByLabelText("Approve by naming the exact preview identity"), other);
-  await press(user, support.getByRole("button", { name: "Publish support bundle" }));
+  await enter(user, support.getByLabelText("Preview ID"), other);
+  await press(user, support.getByRole("button", { name: "Export support bundle" }));
   expect(
     await support.findByText(
       "this approval does not name the summary the current sources and policy produce; review the current preview again and approve the identity it displays",
     ),
   ).toBeTruthy();
   expect(journey.callsTo("PublishSupportSummary").at(-1)?.result).toMatchObject({ state: "failed" });
-  await enter(user, support.getByLabelText("Approve by naming the exact preview identity"), identity);
+  await enter(user, support.getByLabelText("Preview ID"), identity);
   // Dismissing the save dialog names nothing, and the panel says so.
   const destination = "Choose a new folder for the reviewed support bundle";
   await journey.dismissDialog("save", destination);
@@ -209,7 +215,7 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   await press(user, support.getByRole("button", { name: "Choose destination…" }));
   await waitFor(() => expect((support.getByLabelText("New support folder") as HTMLInputElement).value).toBe(journey.path("outbox/for-vendor")));
   expect(support.queryByText("no new folder was named")).toBeNull();
-  await press(user, support.getByRole("button", { name: "Publish support bundle" }));
+  await press(user, support.getByRole("button", { name: "Export support bundle" }));
   expect(
     await support.findByText(
       "the publication was refused; an incomplete directory has no completion marker and recovery is a new destination with a fresh review",
@@ -229,7 +235,7 @@ test("the failing and fixed runs become a sealed packet, a portable review that 
   await waitFor(() =>
     expect((support.getByLabelText("New support folder") as HTMLInputElement).value).toBe(journey.path(PROJECT, "support-for-vendor")),
   );
-  await press(user, support.getByRole("button", { name: "Publish support bundle" }));
+  await press(user, support.getByRole("button", { name: "Export support bundle" }));
   expect(await line(support, /^Bundle /)).toBe("Bundle support-for-vendor: support.json, event.json, identity.sha256.");
   await support.findByRole("option", { name: "support-for-vendor" });
   await user.selectOptions(support.getByLabelText("Verify a support bundle"), "support-for-vendor");
@@ -301,12 +307,12 @@ test("a policy and inventory authored in the window derive a ready review and th
   await importCaptures(user, "original.case");
   const panel = privacy();
 
-  await enter(user, panel.getByLabelText("New disclosure policy document"), "authored-policy.json");
-  await press(user, panel.getByRole("button", { name: "Save disclosure policy" }));
+  await enter(user, panel.getByLabelText("Policy file"), "authored-policy.json");
+  await press(user, panel.getByRole("button", { name: "Save policy" }));
   expect(await panel.findByText("invalid redaction policy; only explicit named policies are supported")).toBeTruthy();
   await enter(user, panel.getByLabelText("Patient identifier selector"), policy.patient.selector);
   for (const [index, selector] of policy.patient.authority.entries()) {
-    await press(user, panel.getByRole("button", { name: "Add patient authority selector" }));
+    await press(user, panel.getByRole("button", { name: "Add patient authority" }));
     await enter(user, panel.getByLabelText(`Authority selector ${index + 1}`), selector);
   }
   for (const [index, rule] of policy.fields.entries()) {
@@ -317,7 +323,7 @@ test("a policy and inventory authored in the window derive a ready review and th
     if (rule.policy === "scoped-surrogate/v1") {
       await enter(user, panel.getByLabelText(`Surrogate scope ${index + 1}`), rule.scope ?? "");
       for (const [at, selector] of (rule.authority ?? []).entries()) {
-        await press(user, panel.getByRole("button", { name: `Add rule authority selector ${index + 1}` }));
+        await press(user, panel.getByRole("button", { name: `Add rule authority ${index + 1}` }));
         await enter(user, panel.getByLabelText(`Rule authority selector ${index + 1}.${at + 1}`), selector);
       }
     }
@@ -326,7 +332,7 @@ test("a policy and inventory authored in the window derive a ready review and th
     }
     if (rule.policy === "retain-literal/v1") {
       for (const [at, value] of (rule.allowed ?? []).entries()) {
-        await press(user, panel.getByRole("button", { name: `Add allowed literal ${index + 1}` }));
+        await press(user, panel.getByRole("button", { name: `Add literal ${index + 1}` }));
         await enter(user, panel.getByLabelText(`Allowed literal ${index + 1}.${at + 1}`), value);
       }
     }
@@ -350,14 +356,14 @@ test("a policy and inventory authored in the window derive a ready review and th
     }
   }
   for (const [index, position] of policy.required_failures.entries()) {
-    await press(user, panel.getByRole("button", { name: "Add required failure" }));
+    await press(user, panel.getByRole("button", { name: "Add failure" }));
     await enter(user, panel.getByLabelText(`Assertion position ${index + 1}`), String(position));
   }
-  await press(user, panel.getByRole("button", { name: "Save disclosure policy" }));
+  await press(user, panel.getByRole("button", { name: "Save policy" }));
   expect(await panel.findByText("Saved disclosure policy authored-policy.json.")).toBeTruthy();
   await panel.findByRole("option", { name: "authored-policy.json" });
 
-  await user.click(panel.getByRole("checkbox", { name: "I declare this inventory complete for the original artifacts in scope" }));
+  await user.click(panel.getByRole("checkbox", { name: "Confirm inventory" }));
   for (const [index, artifact] of inventory.artifacts.entries()) {
     await press(user, panel.getByRole("button", { name: "Add original artifact" }));
     await user.selectOptions(panel.getByLabelText(`Artifact kind ${index + 1}`), artifact.kind);
@@ -368,7 +374,7 @@ test("a policy and inventory authored in the window derive a ready review and th
     await enter(user, panel.getByLabelText(`Known value ${index + 1}`), value);
   }
   await enter(user, panel.getByLabelText("New original-artifact inventory document"), "authored-inventory.json");
-  await press(user, panel.getByRole("button", { name: "Save original-artifact inventory" }));
+  await press(user, panel.getByRole("button", { name: "Save inventory" }));
   expect(await panel.findByText("Saved original-artifact inventory authored-inventory.json.")).toBeTruthy();
   await panel.findByRole("option", { name: "authored-inventory.json" });
 
@@ -376,7 +382,7 @@ test("a policy and inventory authored in the window derive a ready review and th
   await user.selectOptions(panel.getByLabelText("Original specification"), "spec.json");
   await user.selectOptions(panel.getByLabelText("Disclosure policy"), "authored-policy.json");
   await user.selectOptions(panel.getByLabelText("Original-artifact inventory"), "authored-inventory.json");
-  await press(user, panel.getByRole("button", { name: "Derive review" }));
+  await press(user, panel.getByRole("button", { name: "Create review" }));
   expect(await line(panel, /^Review review-\d+ · ready-for-approval/)).toBeTruthy();
   const windowIdentity = (await line(panel, /^Identity an approval must name: /)).replace("Identity an approval must name: ", "");
   const cli = await journey.commandLine([
@@ -401,19 +407,19 @@ test("a policy and inventory authored in the window derive a ready review and th
  * case, with the framing the capture used. */
 async function importCaptures(user: UserEvent, caseName: string) {
   const evidence = within(region("Evidence"));
-  await press(user, evidence.getByRole("button", { name: "Import evidence into this project…" }));
+  await press(user, evidence.getByRole("button", { name: "Import" }));
   await journey.chooseFiles([journey.path("captures/redact-booking.mllp"), journey.path("captures/redact-reschedule.mllp")], "Choose evidence files to import");
   await press(user, await screen.findByRole("button", { name: "Select Files…" }));
   await within(screen.getByRole("region", { name: "Declared sources" })).findByText(/redact-reschedule\.mllp/);
   await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
-  await press(user, screen.getByRole("button", { name: "Preview extraction" }));
+  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
   const commit = within(screen.getByRole("region", { name: "Commit import" }));
   await enter(user, commit.getByLabelText("Case bundle folder name"), caseName);
   await enter(user, commit.getByLabelText("Receipt file name"), `${caseName}-receipt.json`);
   await enter(user, commit.getByLabelText("Case title"), "Planted example");
-  await press(user, commit.getByRole("button", { name: "Commit import" }));
+  await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open this case in inspector" }));
+  await press(user, commit.getByRole("button", { name: "Open case" }));
   expect(await within(region("Inspector")).findByText(caseName, { selector: "dd" })).toBeTruthy();
 }
 
@@ -425,7 +431,7 @@ async function derive(user: UserEvent, policy: string) {
   await user.selectOptions(panel.getByLabelText("Original specification"), "spec.json");
   await user.selectOptions(panel.getByLabelText("Disclosure policy"), policy);
   await user.selectOptions(panel.getByLabelText("Original-artifact inventory"), "inventory.json");
-  await press(user, panel.getByRole("button", { name: "Derive review" }));
+  await press(user, panel.getByRole("button", { name: "Create review" }));
   const review = await line(panel, /^Review review-\d+ · /);
   const identity = (await line(panel, /^Identity an approval must name: /)).replace("Identity an approval must name: ", "");
   return { review, identity };
@@ -484,7 +490,7 @@ test("a planted example's privacy review is blocked while its policy leaves find
   expect(await line(exporting, /^review-001: blocked · /)).toMatch(/^review-001: blocked · decision \S+ · \d+ findings \(\d+ unresolved\)\.$/);
   expect(exporting.getByText("Unresolved surfaces — each is an explicit blocker:")).toBeTruthy();
   await enter(user, exporting.getByLabelText("Its private local state"), "review-private-001");
-  await enter(user, exporting.getByLabelText("Approve by naming the exact review identity shown in the inventory"), blocked.identity);
+  await enter(user, exporting.getByLabelText("Review ID", { selector: "#privacy-export-approval" }), blocked.identity);
   await press(user, exporting.getByRole("button", { name: "Export packet" }));
   const refusal = "export requires approval of an exact fully handled and proven review";
   expect(await exporting.findByText(refusal)).toBeTruthy();
@@ -492,11 +498,11 @@ test("a planted example's privacy review is blocked while its policy leaves find
   // The ready review is exported only under its exact identity.
   await user.selectOptions(exporting.getByLabelText("Review to export"), "review-002");
   await enter(user, exporting.getByLabelText("Its private local state"), "review-private-002");
-  await enter(user, exporting.getByLabelText("Approve by naming the exact review identity shown in the inventory"), blocked.identity);
+  await enter(user, exporting.getByLabelText("Review ID", { selector: "#privacy-export-approval" }), blocked.identity);
   const asked = journey.callsTo("ExportDerivedPacket").length;
   await press(user, exporting.getByRole("button", { name: "Export packet" }));
   await waitFor(() => expect(journey.callsTo("ExportDerivedPacket")[asked]?.result).toEqual({ state: "failed", reason: refusal }));
-  await enter(user, exporting.getByLabelText("Approve by naming the exact review identity shown in the inventory"), handled.identity);
+  await enter(user, exporting.getByLabelText("Review ID", { selector: "#privacy-export-approval" }), handled.identity);
   await press(user, exporting.getByRole("button", { name: "Export packet" }));
   expect(await line(exporting, /^Packet export-001 generated: /)).toMatch(/^Packet export-001 generated: \d+ files, identity [0-9a-f]{12}…$/);
   // Exporting reran the derived test against fresh built-in fixtures: it
@@ -553,10 +559,10 @@ test("an approved review is reexecuted against the target its original failing r
   const running = runs();
   await running.findByRole("option", { name: "spec.json (test)" });
   await user.selectOptions(running.getByLabelText("Saved test or suite"), "spec.json");
-  await enter(user, running.getByLabelText("Fresh output folder"), "run-original");
-  await press(user, running.getByRole("button", { name: "Validate and preflight" }));
+  await enter(user, running.getByLabelText("Run folder"), "run-original");
+  await press(user, running.getByRole("button", { name: "Preview run" }));
   expect(await running.findByText(byContent(/^Admission: admitted$/))).toBeTruthy();
-  await press(user, running.getByRole("button", { name: "Send and execute once" }));
+  await press(user, running.getByRole("button", { name: "Send test" }));
   expect((await running.findByText(byContent(/^Run: \w+ · Stop reason: \w+$/))).textContent).toBe("Run: assertion_failed · Stop reason: assertion_failed");
   expect((await original).code).toBe(0);
 
@@ -581,19 +587,19 @@ test("an approved review is reexecuted against the target its original failing r
   await user.selectOptions(packet.getByLabelText("Case"), "original.case");
   await user.selectOptions(packet.getByLabelText("Historical specification"), "spec.json");
   await user.selectOptions(packet.getByLabelText("Current result"), "run-original");
-  await press(user, packet.getByRole("button", { name: "Preview assembly" }));
+  await press(user, packet.getByRole("button", { name: "Preview" }));
   expect(await line(packet, /^Current result: /)).toBe("Current result: run-original — found · assertion_failure · assertion_failed · boundary appointment-ledger");
-  await press(user, await packet.findByRole("button", { name: "Assemble packet" }));
+  await press(user, await packet.findByRole("button", { name: "Create packet" }));
   expect(await line(packet, /^Packet packet-001 sealed: /)).toBeTruthy();
 
-  const step = within(privacy().getByRole("group", { name: "Reexecute against the authorized target" }));
+  const step = within(privacy().getByRole("group", { name: "Rerun" }));
   await step.findByRole("option", { name: "rebound.json" });
   await user.selectOptions(step.getByLabelText("Approved review"), "review-001");
   await enter(user, step.getByLabelText("Private local state its derivation wrote"), "review-private-001");
   await user.selectOptions(step.getByLabelText(/^Original packet/), "packet-001");
   await user.selectOptions(step.getByLabelText("Rebound execution specification"), "rebound.json");
   await user.selectOptions(step.getByLabelText("Phase"), "failure");
-  const approving = step.getByLabelText("Exact review identity approving this reexecution");
+  const approving = step.getByLabelText("Review ID");
   const reexecute = (approval: string, ...send: string[]) =>
     licensed(["redact", "reexecute", `${project}/review-001`, "--local-state", `${project}/review-private-001`, "--approve", approval,
       "--original-packet", `${project}/packet-001`, "--spec", `${project}/rebound.json`, "--phase", "failure", ...send]);
@@ -602,7 +608,7 @@ test("an approved review is reexecuted against the target its original failing r
   // command line in the same sentence, and nothing is offered to send.
   const unapproved = "reexecution requires the exact complete disclosure review; changed artifacts require review again";
   await enter(user, approving, "0".repeat(64));
-  await press(user, step.getByRole("button", { name: "Preview reexecution" }));
+  await press(user, step.getByRole("button", { name: "Preview" }));
   expect(await step.findByText(unapproved)).toBeTruthy();
   expect((step.getByRole("button", { name: "Send once" }) as HTMLButtonElement).disabled).toBe(true);
   const refused = await reexecute("0".repeat(64));
@@ -616,7 +622,7 @@ test("an approved review is reexecuted against the target its original failing r
   const receiving = (await ledgerReceiver(address, `${project}/reexecution-observation.json`, "receiver/reexecuted")).finished;
   let received = false;
   void receiving.then(() => (received = true));
-  await press(user, step.getByRole("button", { name: "Preview reexecution" }));
+  await press(user, step.getByRole("button", { name: "Preview" }));
   expect(await line(step, /^Target: /)).toBe(`Target: (unnamed) · unclassified · plain · ${address}`);
   expect(await line(step, /^Sends /)).toBe("Sends 2 messages of the approved derived case:");
   expect(step.getByText("s0001-e000001 → o000001")).toBeTruthy();

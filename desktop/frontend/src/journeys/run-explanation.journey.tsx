@@ -114,7 +114,7 @@ const LEDGER_WINDOW = JSON.stringify({
 
 /** The explanation panel of the open project. */
 async function explanation() {
-  return within(await screen.findByRole("region", { name: "Explain a retained run" }));
+  return within(await screen.findByRole("region", { name: "Run details" }));
 }
 
 /** Explains what the panel's inputs name and waits for the answer. */
@@ -235,7 +235,7 @@ test("a retained run is explained assertion by assertion as the command line re-
     ["reschedule-accepted", "failed"],
     ["booking-control-echoed", "passed"],
   ]);
-  const reveal = panel.getByRole("button", { name: "Reveal expected and observed values" });
+  const reveal = panel.getByRole("button", { name: "Show values" });
   await tabTo(user, reveal);
   await user.keyboard("{Enter}");
   await panel.findByRole("table", { name: /\(values revealed\)$/ });
@@ -291,7 +291,7 @@ test("a retained run is explained assertion by assertion as the command line re-
       "--out", `${PROJECT}/${completion}.json`, "--snapshot", `${PROJECT}/${completion}-snapshot`,
     ]);
   expect((await collect("after-fix")).code).toBe(0);
-  await press(user, panel.getByText("Observed records, for a set that asks about them"));
+  await press(user, panel.getByText("Observed records"));
   await journey.chooseFiles([journey.path(PROJECT, "after-fix.json")], "Choose the completion record of the observation after the run");
   await press(user, panel.getByRole("button", { name: "Choose after completion…" }));
   await waitFor(() => expect((panel.getByLabelText("Completion record after the run") as HTMLInputElement).value).toBe("after-fix.json"));

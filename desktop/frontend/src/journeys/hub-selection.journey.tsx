@@ -31,7 +31,7 @@ afterEach(async () => {
 
 /** The customer hub panel of the privacy region. */
 function hubPanel() {
-  return within(region("Customer Artifact Hub"));
+  return within(region("Hub"));
 }
 
 /** The privacy status row of the customer hub. */
@@ -43,7 +43,7 @@ function hubRow() {
 /** Reads the privacy status again and waits for the hub row to show a state
  * and the sentence beside it. */
 async function expectHubState(user: UserEvent, state: string): Promise<void> {
-  await press(user, screen.getByRole("button", { name: "Refresh the states" }));
+  await press(user, screen.getByRole("button", { name: "Refresh privacy status" }));
   await waitFor(() => expect(hubRow().getAllByRole("cell")[3]?.textContent).toBe(state));
 }
 
@@ -74,7 +74,7 @@ function writeConfiguration(hubEndpoint: string): string {
 /** Chooses the operator's folder in the hub panel, as a person does. */
 async function chooseConfiguration(user: UserEvent): Promise<void> {
   await journey.chooseFolder(journey.path("hub-operator"), "Choose customer hub configuration folder");
-  await press(user, hubPanel().getByRole("button", { name: "Choose hub configuration…" }));
+  await press(user, hubPanel().getByRole("button", { name: "Choose configuration…" }));
 }
 
 test("a chosen hub configuration is restored selected and offline when the window is reopened, and reopening reaches nothing", async () => {

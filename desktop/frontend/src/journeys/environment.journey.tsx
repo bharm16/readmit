@@ -32,7 +32,7 @@ const LOCATOR = "/usr/bin/security";
 
 /** The environment panel of the open project. */
 function environment() {
-  const heading = screen.getByRole("heading", { name: "Environment & Credential Configuration" });
+  const heading = screen.getByRole("heading", { name: "Environments" });
   return within(heading.closest("section") as HTMLElement);
 }
 
@@ -85,7 +85,7 @@ async function register(user: UserEvent, reference: Registration): Promise<void>
   await enter(user, panel.getByLabelText("Locator Command (Path)"), reference.command);
   await enter(user, panel.getByLabelText("Locator Arguments (one per line)"), (reference.arguments ?? []).join("{Enter}"));
   await enter(user, panel.getByLabelText("Maximum Rotation Age"), reference.maxAge ?? "");
-  await press(user, panel.getByRole("button", { name: "Register Secret Reference" }));
+  await press(user, panel.getByRole("button", { name: "Add credential reference" }));
 }
 
 /** The registered reference's row in the table. */
@@ -177,7 +177,7 @@ test("credential references are registered, refused, edited, cancelled and bound
   await user.tab();
   await user.keyboard("kv{Enter}get{Enter}-field=password{Enter}lab/mllp");
   await user.selectOptions(editing.getByLabelText("Store"), "customer-managed");
-  await tabTo(user, editing.getByRole("button", { name: "Save Changes to lab-mllp" }));
+  await tabTo(user, editing.getByRole("button", { name: "Save changes" }));
   await user.keyboard("{Enter}");
   await says("Credential reference lab-mllp updated.");
   const edited = await writtenIdentity("secrets.json");
@@ -200,13 +200,13 @@ test("credential references are registered, refused, edited, cancelled and bound
   // registered for that endpoint is bound instead.
   await register(user, { name: "lab-source", purpose: "source-endpoint", address: "127.0.0.1:2576", command: LOCATOR });
   await says("Secret reference registered successfully.");
-  await press(user, panel.getByRole("button", { name: "Target & Diagnostics" }));
+  await press(user, panel.getByRole("button", { name: "Target" }));
   await enter(user, panel.getByLabelText("Target Config File"), "lab-target.json");
   await enter(user, panel.getByLabelText("Environment Name"), "lab-siu");
   await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
   await enter(user, panel.getByLabelText("Destination Address"), "127.0.0.1:2576");
   await user.selectOptions(panel.getByLabelText("Credential Reference"), "lab-source");
-  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await press(user, panel.getByRole("button", { name: "Save target" }));
   const purposeRefusal = "the credential reference declares a different purpose than this use";
   await says(purposeRefusal);
   const boundByHand = await commandLine([
@@ -216,7 +216,7 @@ test("credential references are registered, refused, edited, cancelled and bound
   expect(boundByHand.code).not.toBe(0);
   expect(boundByHand.stderr).toContain(purposeRefusal);
   await user.selectOptions(panel.getByLabelText("Credential Reference"), "lab-mllp");
-  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await press(user, panel.getByRole("button", { name: "Save target" }));
   await says("Target configuration saved successfully.");
   const target = await journey.commandLine(["target", "show", "--target", `${PROJECT}/lab-target.json`]);
   expect(target.code).toBe(0);
@@ -242,7 +242,7 @@ test("credential references are registered, refused, edited, cancelled and bound
   // The window writes only what the person changed, so that change survives.
   const meanwhile = await commandLine(["secret", "update", "--secrets", `${PROJECT}/cli-secrets.json`, "--name", "lab-cli", "--address", "127.0.0.1:2578"]);
   expect(meanwhile.code).toBe(0);
-  await press(user, cliForm.getByRole("button", { name: "Save Changes to lab-cli" }));
+  await press(user, cliForm.getByRole("button", { name: "Save changes" }));
   await says("Credential reference lab-cli updated.");
   expect(await writtenIdentity("cli-secrets.json")).toBe(journey.digest(`${PROJECT}/cli-secrets.json`));
   expect(row("lab-cli").getByText("127.0.0.1:2578")).toBeTruthy();
@@ -262,23 +262,23 @@ test("a send policy and a reset plan are saved under the identity of their bytes
   await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
   await enter(user, panel.getByLabelText("Destination Address"), downstream.address);
   await enter(user, panel.getByLabelText("Message timeout"), "500ms");
-  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await press(user, panel.getByRole("button", { name: "Save target" }));
   await says("Target configuration saved successfully.");
 
   // A prefix that is not in canonical masked form is refused on save and
   // nothing is written; the draft stays to be corrected. Enter adds a prefix.
-  await press(user, panel.getByRole("button", { name: "Approved Send Policy" }));
-  await press(user, await panel.findByRole("button", { name: "Start New Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Send policy" }));
+  await press(user, await panel.findByRole("button", { name: "New send policy" }));
   await enter(user, panel.getByLabelText("Approved destination prefix"), "127.0.0.5/8{Enter}");
   expect(await panel.findByText("127.0.0.5/8", { selector: "code" })).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Save Approved Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Save policy" }));
   await says("every approved destination is one CIDR prefix in canonical masked form, such as 127.0.0.0/8 or 10.1.0.0/16");
   expect(panel.queryByText(/^Written to /)).toBeNull();
   expect(() => journey.readFile(`${PROJECT}/send-policy.json`)).toThrow();
   await enter(user, panel.getByLabelText("Approved destination prefix"), "127.0.0.0/8{Enter}");
   const refusedPrefix = within(panel.getByText("127.0.0.5/8", { selector: "code" }).closest("li") as HTMLElement);
   await press(user, refusedPrefix.getByRole("button", { name: "Remove" }));
-  await press(user, panel.getByRole("button", { name: "Save Approved Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Save policy" }));
   await says("Approved-destination policy saved.");
   const policy = await writtenIdentity("send-policy.json");
   expect(policy).toBe(journey.digest(`${PROJECT}/send-policy.json`));
@@ -290,30 +290,30 @@ test("a send policy and a reset plan are saved under the identity of their bytes
   expect(checked.stderr).toBe("");
   expect(checked.stdout).toContain("Approved destinations: 127.0.0.0/8\n");
   expect(checked.stdout).toContain("Send policy: denied (send_not_explicit)\n");
-  await press(user, panel.getByRole("button", { name: "Target & Diagnostics" }));
-  await press(user, panel.getByRole("button", { name: "Check Target Reachability & TLS" }));
+  await press(user, panel.getByRole("button", { name: "Target" }));
+  await press(user, panel.getByRole("button", { name: "Test connection" }));
   const decision = await panel.findByText(byContent(/^Send Policy Decision: /));
   expect(decision.textContent).toBe("Send Policy Decision: Refused (Reason: send_not_explicit)");
   expect(downstream.received()).toHaveLength(0);
 
   // A reset plan: an observation action without its file is refused, and the
   // plan saved without it is the plan the reset reader runs, by identity.
-  await press(user, panel.getByRole("button", { name: "Fixture Reset Plan" }));
-  await press(user, await panel.findByRole("button", { name: "Start New Reset Plan" }));
+  await press(user, panel.getByRole("button", { name: "Reset plan" }));
+  await press(user, await panel.findByRole("button", { name: "New reset plan" }));
   await enter(user, panel.getByLabelText("Environment Name Match"), "lab-siu");
   await enter(user, panel.getByLabelText("Action ID"), "stop-listener");
-  await enter(user, panel.getByLabelText("Side-Effect & Reset Instructions"), "Stop the prior listen session and wait for it to exit.");
-  await press(user, panel.getByRole("button", { name: "Add Action to Plan" }));
+  await enter(user, panel.getByLabelText("Reset instructions"), "Stop the prior listen session and wait for it to exit.");
+  await press(user, panel.getByRole("button", { name: "Add action" }));
   await enter(user, panel.getByLabelText("Action ID"), "empty-ledger");
   await user.selectOptions(panel.getByLabelText("Reviewed Operator"), "observation_empty");
-  await enter(user, panel.getByLabelText("Side-Effect & Reset Instructions"), "The fresh listener exports an empty ledger.");
-  await press(user, panel.getByRole("button", { name: "Add Action to Plan" }));
-  await press(user, panel.getByRole("button", { name: "Save Reset Plan" }));
+  await enter(user, panel.getByLabelText("Reset instructions"), "The fresh listener exports an empty ledger.");
+  await press(user, panel.getByRole("button", { name: "Add action" }));
+  await press(user, panel.getByRole("button", { name: "Save plan" }));
   await says("an observation_empty action names one receiver observation file inside the plan's own directory");
   expect(panel.queryByText(/^Written to /)).toBeNull();
   const ledgerAction = within(panel.getByText("empty-ledger").closest(".action-item") as HTMLElement);
   await press(user, ledgerAction.getByRole("button", { name: "Remove" }));
-  await press(user, panel.getByRole("button", { name: "Save Reset Plan" }));
+  await press(user, panel.getByRole("button", { name: "Save plan" }));
   await says("Fixture reset plan saved.");
   const plan = await writtenIdentity("reset-plan.json");
   expect(plan).toBe(journey.digest(`${PROJECT}/reset-plan.json`));
@@ -349,7 +349,7 @@ test.each([false, true])("a credential bound from the default target file resolv
   await register(user, { name: "default-target-key", address: downstream.address, command: LOCATOR });
   await says("Secret reference registered successfully.");
 
-  await press(user, panel.getByRole("button", { name: "Target & Diagnostics" }));
+  await press(user, panel.getByRole("button", { name: "Target" }));
   expect((panel.getByLabelText("Target Config File") as HTMLInputElement).value).toBe("targets/default.json");
   await enter(user, panel.getByLabelText("Environment Name"), "default-lab");
   await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
@@ -357,7 +357,7 @@ test.each([false, true])("a credential bound from the default target file resolv
   await user.selectOptions(panel.getByLabelText("Credential Reference"), "default-target-key");
   const secretsPath = journey.path(PROJECT, "secrets.json");
   expect(panel.getByText(secretsPath, { selector: "code" })).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await press(user, panel.getByRole("button", { name: "Save target" }));
   await says("Target configuration saved successfully.");
 
   const saved = JSON.parse(journey.readFile(`${PROJECT}/targets/default.json`)) as { credential: { secrets_file: string; reference: string } };

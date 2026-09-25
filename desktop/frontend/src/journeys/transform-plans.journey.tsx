@@ -45,7 +45,7 @@ const SHIFT_REFUSED = "a date shift is a nonzero whole-second duration within te
 
 /** The review-and-transform panel beside the open case. */
 function transformPanel() {
-  return screen.getByRole("region", { name: "Review and transform this case" });
+  return screen.getByRole("region", { name: "Review and transform" });
 }
 
 /** The authored steps as the panel lists them. */
@@ -62,21 +62,21 @@ async function addStep(user: UserEvent, operator: string, field: string, value: 
   const panel = within(transformPanel());
   await user.selectOptions(panel.getByLabelText("Operator"), operator);
   await enter(user, panel.getByLabelText(field), value);
-  await press(user, panel.getByRole("button", { name: "Add this step" }));
+  await press(user, panel.getByRole("button", { name: "Add step" }));
 }
 
 /** Declares the one relation the plan preserves — each message's control
  * ID, within its source — and saves it as a new rules entry. */
 async function declareRules(user: UserEvent): Promise<void> {
-  const sequence = within(screen.getByRole("region", { name: "Event sequence and source swimlanes" }));
-  await user.click(sequence.getByText("Author correlation rules and sequence analysis"));
+  const sequence = within(screen.getByRole("region", { name: "Sequence" }));
+  await user.click(sequence.getByText("Rules and analysis"));
   const editor = within(sequence.getByRole("region", { name: "Correlation rules editor" }));
   await enter(user, editor.getByLabelText("Rule ID"), "message");
   await user.selectOptions(editor.getByLabelText("Operator"), "control-id");
   await user.selectOptions(editor.getByLabelText("Scope"), "source");
-  await press(user, editor.getByRole("button", { name: "Add this rule" }));
+  await press(user, editor.getByRole("button", { name: "Add rule" }));
   await enter(user, editor.getByLabelText("New correlation-rules entry"), RULES);
-  await press(user, editor.getByRole("button", { name: "Save as a new entry" }));
+  await press(user, editor.getByRole("button", { name: "Save as new" }));
   expect(await editor.findByText(new RegExp(`^Saved to ${RULES.replace(/\./g, "\\.")} · exact bytes hash to [0-9a-f]{64}$`))).toBeTruthy();
 }
 
@@ -109,7 +109,7 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   await declareRules(user);
   const panel = within(transformPanel());
   await panel.findByRole("option", { name: RULES });
-  await user.selectOptions(panel.getByLabelText("Correlation rules whose relations are preserved"), RULES);
+  await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
 
   // A shift of "1 day" is not a duration the decoder reads back. The save is
   // refused in its words, nothing is written, and what was typed stays.
@@ -130,7 +130,7 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   await user.keyboard("{Enter}");
   expect(authored()).toEqual(["rebase-identifiers/v1 · message"]);
   await addStep(user, "shift-dates/v1", "Shift duration", "24h");
-  await press(user, panel.getByRole("button", { name: "Save this transformation plan" }));
+  await press(user, panel.getByRole("button", { name: "Save plan" }));
   const saved = await panel.findByText(/^Saved reschedule\.plan\.json · 2 steps · rules digest [0-9a-f]{64}\. It is selected below to preview\.$/);
   const correlated = await journey.commandLine([
     "correlate", `${project}/reschedule-feed`, "--rules", `${project}/${RULES}`, "--format", "json",
@@ -144,13 +144,13 @@ test("a transformation plan refused on save is corrected from the keyboard, save
     { operator: "rebase-identifiers/v1", rule: "message" },
     { operator: "shift-dates/v1", shift: "24h" },
   ]);
-  await waitFor(() => expect((panel.getByLabelText("Transformation plan to preview") as HTMLSelectElement).value).toBe(PLAN));
+  await waitFor(() => expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe(PLAN));
 
   // The preview is what `readmit transform` prints for the same case, rules
   // and plan: both messages' control IDs renamed and both messages' MSH-7 and
   // appointment start moved, six positions in a sequence of two, nothing
   // repeated.
-  await press(user, panel.getByRole("button", { name: "Preview this transformation" }));
+  await press(user, panel.getByRole("button", { name: "Preview" }));
   expect(await panel.findByText(`Preview of ${PLAN} under ${RULES}.`)).toBeTruthy();
   const transformed = await journey.commandLine([
     "transform", `${project}/reschedule-feed`, "--rules", `${project}/${RULES}`, "--plan", `${project}/${PLAN}`, "--format", "json",
@@ -182,12 +182,12 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   // decoder's sentence, which the command line prints for the same file, and
   // the steps on screen stay as they were.
   await user.selectOptions(panel.getByLabelText("Saved plan to reopen"), HAND_EDITED);
-  await press(user, panel.getByRole("button", { name: "Open this plan" }));
+  await press(user, panel.getByRole("button", { name: "Open plan" }));
   expect(await panel.findByText(MEMBERS_REFUSED)).toBeTruthy();
   expect(journey.callsTo("OpenTransformPlan").at(-1)?.args).toEqual([project, HAND_EDITED]);
   expect(authored()).toEqual(["rebase-identifiers/v1 · message", "shift-dates/v1 · 24h"]);
-  await user.selectOptions(panel.getByLabelText("Transformation plan to preview"), HAND_EDITED);
-  await press(user, panel.getByRole("button", { name: "Preview this transformation" }));
+  await user.selectOptions(panel.getByLabelText("Transform plan"), HAND_EDITED);
+  await press(user, panel.getByRole("button", { name: "Preview" }));
   await waitFor(() => expect(journey.callsTo("PreviewTransformation").at(-1)?.args[0]).toMatchObject({ plan: HAND_EDITED }));
   await waitFor(() => expect(journey.callsTo("PreviewTransformation").at(-1)?.settled).toBe(true));
   expect(journey.callsTo("PreviewTransformation").at(-1)?.result).toEqual({ state: "failed", reason: MEMBERS_REFUSED });
@@ -205,14 +205,14 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   await addStep(user, "duplicate-occurrence/v1", "Sequence entry", "t000002");
   await user.selectOptions(panel.getByLabelText("Saved plan to reopen"), PLAN);
   const opens = journey.callsTo("OpenTransformPlan").length;
-  await press(user, panel.getByRole("button", { name: "Open this plan" }));
+  await press(user, panel.getByRole("button", { name: "Open plan" }));
   const question = within(await panel.findByRole("group", { name: `Open ${PLAN} in place of these steps?` }));
   await waitFor(() => expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these steps" })));
   await user.keyboard("{Escape}");
   expect(panel.queryByRole("group", { name: `Open ${PLAN} in place of these steps?` })).toBeNull();
   expect(journey.callsTo("OpenTransformPlan")).toHaveLength(opens);
   expect(authored()).toHaveLength(3);
-  await press(user, panel.getByRole("button", { name: "Open this plan" }));
+  await press(user, panel.getByRole("button", { name: "Open plan" }));
   await press(
     user,
     within(await panel.findByRole("group", { name: `Open ${PLAN} in place of these steps?` })).getByRole("button", {
@@ -221,12 +221,12 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   );
   expect(await panel.findByText(`Opened ${PLAN} · 2 steps · rules digest ${digest}. It is selected below to preview.`)).toBeTruthy();
   expect(authored()).toEqual(["rebase-identifiers/v1 · message", "shift-dates/v1 · 24h"]);
-  expect((panel.getByLabelText("Transformation plan to preview") as HTMLSelectElement).value).toBe(PLAN);
+  expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe(PLAN);
 
   // The reopened plan previews as it did when it was saved, which is still
   // what the command line prints for it.
   const previews = journey.callsTo("PreviewTransformation").length;
-  await press(user, panel.getByRole("button", { name: "Preview this transformation" }));
+  await press(user, panel.getByRole("button", { name: "Preview" }));
   expect(await panel.findByText(`Preview of ${PLAN} under ${RULES}.`)).toBeTruthy();
   expect(journey.callsTo("PreviewTransformation")).toHaveLength(previews + 1);
   const reopened = journey.callsTo("PreviewTransformation").at(-1)?.result as { transformation: { preview: unknown } };

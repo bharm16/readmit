@@ -373,7 +373,7 @@ test("the CI handoff is generated in-app and results are inspected in-app", asyn
   });
   render(<RunnerPanel />);
   await user.click(await screen.findByRole("tab", { name: "CI handoff" }));
-  await user.click(screen.getByRole("button", { name: /Generate handoff/ }));
+  await user.click(screen.getByRole("button", { name: /Generate configuration/ }));
   expect(facade.oneCall("SaveCIHandoff")[0]).toMatchObject({ integration: "posix" });
   expect(await screen.findByText(/Install it as the customer administrator\./)).toBeTruthy();
   expect(await screen.findByText(/\$READMIT_BIN.*suite ci/s)).toBeTruthy();
@@ -382,7 +382,7 @@ test("the CI handoff is generated in-app and results are inspected in-app", asyn
     screen.getByLabelText("CI output directory"),
     "/var/lib/readmit-ci/run-1",
   );
-  await user.click(screen.getByRole("button", { name: /Inspect CI results/ }));
+  await user.click(screen.getByRole("button", { name: /Open CI results/ }));
   expect(
     await screen.findByText((_, element) => element?.textContent === "Suite gate: passed (exit 0)."),
   ).toBeTruthy();
@@ -392,7 +392,7 @@ test("the CI handoff is generated in-app and results are inspected in-app", asyn
   expect(facade.oneCall("InspectCIResults")[0]).toBe("/var/lib/readmit-ci/run-1");
 
   await user.type(screen.getByLabelText("Gate policy file"), "/srv/readmit/gate-policy.json");
-  await user.click(screen.getByRole("button", { name: /Inspect gate policy/ }));
+  await user.click(screen.getByRole("button", { name: /Open gate policy/ }));
   expect(await screen.findByText("e".repeat(64))).toBeTruthy();
   expect(await screen.findByText(/approves nothing/i)).toBeTruthy();
   uninstallFacade();
@@ -423,14 +423,14 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
   await ciTab(user);
   // Without the step, the handoff asks for no gate and no gate field is offered.
   expect(screen.queryByLabelText("Reviewed gate policy identity")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[0]?.args[0]).not.toHaveProperty("gate");
 
   // The step is chosen from the keyboard: the checkbox follows the handoff
   // destination, and Space checks it.
   await user.click(screen.getByLabelText("Handoff destination"));
   await user.tab();
-  const step = screen.getByRole("checkbox", { name: /Add the reviewed change-gate step after the suite/ });
+  const step = screen.getByRole("checkbox", { name: /Include change gate/ });
   expect(document.activeElement).toBe(step);
   await user.keyboard(" ");
   expect((step as HTMLInputElement).checked).toBe(true);
@@ -448,7 +448,7 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
   for (const [label, value] of fields) {
     await user.type(screen.getByLabelText(label), value);
   }
-  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[1]?.args[0]).toMatchObject({ gate: { ...GATE_STEP, policy_identity: "B".repeat(64) } });
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Refused: the reviewed gate policy identity is its full 64-character lowercase SHA-256 identity",
@@ -464,7 +464,7 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
   });
   await user.clear(screen.getByLabelText("Reviewed gate policy identity"));
   await user.type(screen.getByLabelText("Reviewed gate policy identity"), GATE_STEP.policy_identity);
-  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[2]?.args[0]).toMatchObject({ gate: GATE_STEP });
   expect(await screen.findByText("Saved to /srv/readmit/handoff.sh. Install it as the customer administrator.")).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
@@ -472,7 +472,7 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
   // Unchecked, the next handoff asks for no gate again, whatever was typed.
   await user.click(step);
   expect(screen.queryByLabelText("Reviewed gate policy identity")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Generate handoff" }));
+  await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[3]?.args[0]).not.toHaveProperty("gate");
   uninstallFacade();
 });
@@ -511,7 +511,7 @@ test("a retained change gate is verified against its pinned identity, and what c
   };
   const facade = installFacade({ VerifyCIGate: async () => passed });
   await ciTab(user);
-  const verify = screen.getByRole("button", { name: "Verify retained gate" }) as HTMLButtonElement;
+  const verify = screen.getByRole("button", { name: "Verify gate" }) as HTMLButtonElement;
   expect(verify.disabled).toBe(true);
   await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-1");
   expect(verify.disabled).toBe(true);
@@ -564,12 +564,12 @@ test("a running verification takes the focus to its Cancel, and Enter there canc
   await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-1");
   await user.type(screen.getByLabelText("Pinned gate policy identity"), GATE_STEP.policy_identity);
   await user.tab();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Verify retained gate" }));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Verify gate" }));
   await user.keyboard("{Enter}");
   const cancelControl = await screen.findByRole("button", { name: "Cancel verification" });
   expect(document.activeElement).toBe(cancelControl);
   expect(screen.getByText("Verifying the retained snapshot…")).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Generate handoff" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Generate configuration" }) as HTMLButtonElement).disabled).toBe(true);
   // The snapshot and its pin hold still while they are verified.
   expect((screen.getByLabelText("Retained gate snapshot") as HTMLInputElement).disabled).toBe(true);
   expect((screen.getByLabelText("Pinned gate policy identity") as HTMLInputElement).disabled).toBe(true);
@@ -594,7 +594,7 @@ test("a gate policy's identity and a directory's results are withdrawn once anot
   });
   await ciTab(user);
   await user.type(screen.getByLabelText("Gate policy file"), "/srv/readmit/gate-policy.json");
-  await user.click(screen.getByRole("button", { name: "Inspect gate policy" }));
+  await user.click(screen.getByRole("button", { name: "Open gate policy" }));
   expect(await screen.findByText("e".repeat(64))).toBeTruthy();
   // The identity shown beside the path it was read from is one a person pins;
   // beside another path it would be pinned by mistake.
@@ -602,7 +602,7 @@ test("a gate policy's identity and a directory's results are withdrawn once anot
   expect(screen.queryByText("e".repeat(64))).toBeNull();
 
   await user.type(screen.getByLabelText("CI output directory"), "/var/lib/readmit-ci/run-1");
-  await user.click(screen.getByRole("button", { name: "Inspect CI results" }));
+  await user.click(screen.getByRole("button", { name: "Open CI results" }));
   expect(await screen.findByText((_, element) => element?.tagName === "P" && element.textContent === "Suite gate: passed (exit 0).")).toBeTruthy();
   await user.type(screen.getByLabelText("CI output directory"), "0");
   expect(screen.queryByText(/Suite gate:/)).toBeNull();
@@ -631,5 +631,41 @@ test("an interrupted facade reports the fixed unreachable sentence as a refusal"
   await user.click(screen.getByRole("button", { name: /Enroll \(probe admission\)/ }));
   expect(await screen.findByText(/Refused: the application did not answer/)).toBeTruthy();
   expect(facadeStub().callsTo("EnrollRunner").length).toBe(1);
+  uninstallFacade();
+});
+
+// The license's runner capacity lives here, with the runner work it governs:
+// nothing is read until asked, and an instance is settled only by the
+// explicit release or reconcile a person chose.
+test("runner capacity is shown and settled explicitly, never silently", async () => {
+  const user = userEvent.setup();
+  const settled: { instance: string; reconcile: boolean }[] = [];
+  const held = () => ({
+    state: "completed" as const,
+    organization: "example-hospital",
+    authority: "local-runner",
+    instances: 2, active: 1, stale: 1, free: 0,
+    admissions: [
+      { instance: "build-4821", admitted: "2026-09-20T09:00:00Z", lease_until: "2026-09-20T10:00:00Z", state: "active" },
+      { instance: "build-4822", admitted: "2026-09-20T09:30:00Z", lease_until: "2026-09-20T09:40:00Z", state: "stale" },
+    ],
+  });
+  const facade = installFacade({
+    ShowRunnerAdmissions: () => held(),
+    SettleRunnerAdmission: async (request) => { settled.push(request); return held(); },
+  });
+  render(
+    <IndicatorsContext.Provider value={indicatorTable()}>
+      <RunnerPanel />
+    </IndicatorsContext.Provider>,
+  );
+  await user.click(screen.getByRole("button", { name: "Runner capacity" }));
+  expect(await screen.findByText(/1 active, 1 stale, 0 free of 2 granted instances/)).toBeTruthy();
+  expect(screen.getByText(/Stale capacity is held until an operator reconciles it/)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Reconcile build-4822" }));
+  expect(settled).toEqual([{ instance: "build-4822", reconcile: true }]);
+  await user.click(screen.getByRole("button", { name: "Release build-4821" }));
+  expect(settled).toEqual([{ instance: "build-4822", reconcile: true }, { instance: "build-4821", reconcile: false }]);
+  expect(facade.calls.length).toBeGreaterThan(0);
   uninstallFacade();
 });

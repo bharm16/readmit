@@ -124,9 +124,27 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
     });
   }
 
+  // Each submit action names the operation the selected kind records: an
+  // approval is never labelled a save, and the audit export records a command
+  // rather than producing a file.
+  const reviewActions: Record<string, string> = {
+    comment: "Post comment",
+    assignment: "Assign",
+    "review-request": "Request review",
+    approval: "Approve review",
+  };
+  const lifecycleActions: Record<string, string> = {
+    revision: "Record revision",
+    resolve: "Resolve conflict",
+    "remove-user": "Remove user",
+    retention: "Set retention",
+    retire: "Retire artifact",
+    "audit-export": "Submit audit export",
+  };
+
   return (
     <section className="hub-team-section" aria-label="Team collaboration">
-      <h3>Team reviews, conflicts and administration</h3>
+      <h3>Team reviews</h3>
       <p className="hub-team-note">
         Decisions use the authenticated hub identity. A local reviewer name cannot approve.
         Stale heads and changed grants require a renewed action. Membership and IdP assignment
@@ -135,16 +153,16 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
 
       <div className="hub-actions">
         <button type="button" disabled={busy} onClick={() => void run(() => listHubReviews(project), setReviews)}>
-          Load review history
+          Review history
         </button>
         <button type="button" disabled={busy} onClick={() => void run(() => listHubNotifications(project), setNotifications)}>
           Load notifications
         </button>
         <button type="button" disabled={busy} onClick={() => void run(() => listHubLifecycle(project), setLifecycle)}>
-          Load lifecycle and tips
+          Version history
         </button>
         <button type="button" disabled={busy} onClick={() => void run(() => explainHubCustody(), setCustody)}>
-          Explain downloaded-copy limits
+          Download limits
         </button>
       </div>
 
@@ -190,13 +208,13 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
 
       <form
         className="hub-collab-form"
-        aria-label="Search history and notifications"
+        aria-label="Search team activity"
         onSubmit={(e) => {
           e.preventDefault();
           search("history");
         }}
       >
-        <h4>Search history and notifications</h4>
+        <h4>Search team activity</h4>
         <p className="hub-team-note">
           The hub searches what it recorded for this project, or only what is addressed to you. Nothing is
           asked until you search.
@@ -247,7 +265,7 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
       </form>
 
       <div className="hub-collab-form">
-        <h4>Post collaboration decision</h4>
+        <h4>Review actions</h4>
         <label>
           Kind
           <select value={reviewKind} onChange={(e) => setReviewKind(e.target.value)} disabled={busy}>
@@ -258,7 +276,7 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
           </select>
         </label>
         <label>
-          Command id
+          Command ID
           <input value={commandId} onChange={(e) => setCommandId(e.target.value)} disabled={busy} />
         </label>
         <label>
@@ -313,12 +331,12 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
             )
           }
         >
-          Submit review decision
+          {reviewActions[reviewKind] ?? "Post comment"}
         </button>
       </div>
 
       <div className="hub-collab-form">
-        <h4>Team sharing approvals (support)</h4>
+        <h4>Support approvals</h4>
         <p>
           Announce the project&rsquo;s sharing policy by its exact bytes, ask a reviewer to approve a
           published value-free summary, and approve the request naming those same bytes — under the
@@ -362,21 +380,21 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
             disabled={busy || !workspace || !policyEntry || !supportId.trim()}
             onClick={() => void supportAct("support-policy")}
           >
-            Announce sharing policy
+            Announce policy
           </button>
           <button
             type="button"
             disabled={busy || !workspace || !bundleEntry || !supportId.trim() || !supportRecipient.trim()}
             onClick={() => void supportAct("support-request")}
           >
-            Request support approval
+            Request approval
           </button>
           <button
             type="button"
             disabled={busy || !workspace || !bundleEntry || !supportId.trim()}
             onClick={() => void supportAct("support-approval")}
           >
-            Approve this summary
+            Approve summary
           </button>
         </div>
         {supportReview && supportReview.state !== "completed" ? <p role="alert">{supportReview.reason}</p> : null}
@@ -409,7 +427,7 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
             void run(() => downloadHubExport({ project, digest: exportDigest, destination_path: exportDestination.trim() }), setExportResult)
           }
         >
-          Download approved support summary
+          Download summary
         </button>
         {exportResult ? (
           <p role="status" className={exportResult.state === "completed" ? undefined : "hub-message"}>
@@ -451,7 +469,7 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
           </select>
         </label>
         <label>
-          Command id
+          Command ID
           <input value={lifeId} onChange={(e) => setLifeId(e.target.value)} disabled={busy} />
         </label>
         <label>
@@ -506,7 +524,7 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
             )
           }
         >
-          Submit lifecycle command
+          {lifecycleActions[lifeKind] ?? "Record revision"}
         </button>
       </div>
 
@@ -539,7 +557,7 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
             )
           }
         >
-          Retain offline draft
+          Save offline draft
         </button>
         {drafts && (
           <p role="status">

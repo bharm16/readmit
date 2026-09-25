@@ -148,7 +148,7 @@ export function NoteDraft({
     return null;
   }
   return <section aria-labelledby="note-draft-title">
-    <h3 id="note-draft-title">Write a note</h3>
+    <h3 id="note-draft-title">Note</h3>
     <p>
       Kept on this machine while you write, outside the evidence it is about, so an
       interruption does not lose it — from the first letter, before it has a name or a
@@ -159,7 +159,8 @@ export function NoteDraft({
     <label htmlFor="note-name">Note name</label>
     <input id="note-name" value={note.name} disabled={storing}
       onChange={e => retain({ name: e.target.value })} />
-    <label htmlFor="note-subject">About this case or revision (optional)</label>
+    <label htmlFor="note-subject">Related case or revision</label>
+    <p className="hint">Optional: leave it empty when the note is not about a case or revision.</p>
     <input id="note-subject" value={note.subject} disabled={storing}
       onChange={e => retain({ subject: e.target.value })} />
     <label htmlFor="note-title">Title</label>
@@ -170,7 +171,7 @@ export function NoteDraft({
       onChange={e => retain({ body: e.target.value })} />
     <div className="actions">
       <button disabled={storing || note.name === "" || note.title === ""} onClick={() => void store()}>
-        Store this note in the project
+        Save note
       </button>
     </div>
     <RetentionStatus

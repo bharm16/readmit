@@ -32,7 +32,7 @@ const RETIRED = "the protection control is retired; it opens the packages it wro
 
 /** The protection panel of the privacy region. */
 function protection() {
-  return within(within(region("Privacy status")).getByRole("region", { name: "Protection" }));
+  return within(within(region("Privacy")).getByRole("region", { name: "Protection" }));
 }
 
 /** The row of the controls table that names the control. */
@@ -58,9 +58,9 @@ test("a control is retired only once the person confirms it, writes no new packa
   await journey.launch();
   await activateLicense(user, journey);
   await journey.chooseFolder(journey.path("lab"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   // The panel is drawn once the folder is open.
-  await within(region("Privacy status")).findByRole("region", { name: "Protection" });
+  await within(region("Privacy")).findByRole("region", { name: "Protection" });
   let panel = protection();
 
   // No protection document exists yet: the person names one, and registering
@@ -71,8 +71,8 @@ test("a control is retired only once the person confirms it, writes no new packa
   await enter(user, panel.getByLabelText("Control name"), CONTROL);
   await enter(user, panel.getByLabelText("Absolute path of the program that prints the key"), store);
   await enter(user, panel.getByLabelText("One locator argument (never key material)"), LOCATOR);
-  await press(user, panel.getByRole("button", { name: "Add this locator argument" }));
-  await press(user, panel.getByRole("button", { name: "Register this control" }));
+  await press(user, panel.getByRole("button", { name: "Add argument" }));
+  await press(user, panel.getByRole("button", { name: "Register control" }));
   expect(await panel.findByText(/^Registered\. Registering a reference proves nothing about the store behind it/)).toBeTruthy();
   expect(controlRow().getByRole("cell", { name: "active" })).toBeTruthy();
   expect(controlRow().getByRole("cell", { name: "******** · 1 locator arguments" })).toBeTruthy();
@@ -101,7 +101,7 @@ test("a control is retired only once the person confirms it, writes no new packa
   await user.keyboard("{Enter}");
   const question = within(panel.getByRole("group", { name: `Retire ${CONTROL}?` }));
   expect(question.getByText(/It writes no new package and still opens the packages it wrote\./)).toBeTruthy();
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep it active" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep active" }));
   await user.keyboard("{Escape}");
   expect(panel.queryByRole("group", { name: `Retire ${CONTROL}?` })).toBeNull();
   expect(document.activeElement).toBe(panel.getByRole("button", { name: `Retire ${CONTROL}` }));
@@ -142,7 +142,7 @@ test("a control is retired only once the person confirms it, writes no new packa
   // Its descriptor, read without a key, now stands below the one the pack
   // answered with.
   await waitFor(() => expect(panel.getAllByText(byContent(/^Package before-retirement · control lab-evidence · key generation 1 · /))).toHaveLength(2));
-  await press(user, panel.getByRole("button", { name: "Open with the control above" }));
+  await press(user, panel.getByRole("button", { name: "Open package" }));
   const opened = (await panel.findByText(byContent(/^Opened into \S+\. /))).textContent ?? "";
   const folder = opened.replace(/^Opened into (\S+)\. .*$/, "$1");
   expect(folder).toBe("opened-001");

@@ -97,14 +97,14 @@ test("AssertionSetAuthoring authors, saves, and validates through the facade", a
   expect(await screen.findByRole("heading", { name: "Assertion set" })).toBeTruthy();
 
   await user.type(screen.getByLabelText("Assertion set name"), "Synthetic expectations");
-  await user.click(screen.getByRole("button", { name: "Name this assertion set" }));
+  await user.click(screen.getByRole("button", { name: "Save name" }));
   expect(facade.callsTo("AuthorAssertionSet").length).toBeGreaterThan(0);
 
   await user.type(screen.getByLabelText("Assertion id"), "ack-accepted");
   await user.selectOptions(screen.getByLabelText("Operator"), "field_equals");
-  await user.click(screen.getByRole("button", { name: /Use the inspected position MSA-1/i }));
+  await user.click(screen.getByRole("button", { name: /Use selected field MSA-1/i }));
   await user.type(screen.getByLabelText("Expected text"), "AA");
-  await user.click(screen.getByRole("button", { name: "Add this assertion" }));
+  await user.click(screen.getByRole("button", { name: "Add assertion" }));
 
   const withAssertions = facade
     .callsTo("AuthorAssertionSet")
@@ -115,7 +115,7 @@ test("AssertionSetAuthoring authors, saves, and validates through the facade", a
   expect(withAssertions.at(-1)?.assertions?.[0]?.operator).toBe("field_equals");
 
   await user.type(screen.getByLabelText("New assertion set entry in this workspace"), "expectations.json");
-  await user.click(screen.getByRole("button", { name: "Write the assertion set" }));
+  await user.click(screen.getByRole("button", { name: "Save assertion set" }));
   await waitFor(() => expect(facade.callsTo("SaveAssertionSet").length).toBe(1));
   expect(await screen.findByText(/saved-assertion-identity/)).toBeTruthy();
 
@@ -123,7 +123,7 @@ test("AssertionSetAuthoring authors, saves, and validates through the facade", a
   fireEvent.change(screen.getByLabelText("Complete assertion set"), {
     target: { value: '{"schema":"readmit-assertion-set/v1"}' },
   });
-  await user.click(screen.getByRole("button", { name: "Validate with the assertion reader" }));
+  await user.click(screen.getByRole("button", { name: "Validate" }));
   expect(await screen.findByText(/Accepted by the shared assertion reader/)).toBeTruthy();
 
   uninstallFacade();
@@ -146,7 +146,7 @@ test("selecting an inspected field does not auto-add an assertion", async () => 
     />,
   );
 
-  await user.click(screen.getByRole("button", { name: /Use the inspected position PID-5.1/i }));
+  await user.click(screen.getByRole("button", { name: /Use selected field PID-5.1/i }));
   expect(facade.callsTo("AuthorAssertionSet").length).toBe(0);
   expect((screen.getByLabelText("Selector") as HTMLInputElement).value).toBe("PID-5.1");
 
@@ -188,19 +188,19 @@ test("import asks before replacing unsaved clauses, Escape and refusal keep them
   expect(clauses()).toEqual(["Remove second"]);
   expect(facade.callsTo("ImportAssertionSet")).toHaveLength(1);
 
-  await user.click(screen.getByRole("button", { name: "Import into this draft" }));
-  await user.click(screen.getByRole("button", { name: "Keep these assertions" }));
+  await user.click(screen.getByRole("button", { name: "Import" }));
+  await user.click(screen.getByRole("button", { name: "Keep assertions" }));
   expect(clauses()).toEqual(["Remove second"]);
   expect(facade.callsTo("ImportAssertionSet")).toHaveLength(1);
 
   await user.clear(entry);
   await user.type(entry, "refused.json{Enter}");
-  await user.click(screen.getByRole("button", { name: "Replace them with refused.json" }));
+  await user.click(screen.getByRole("button", { name: "Replace assertions" }));
   expect(await screen.findByText(refused)).toBeTruthy();
   expect(clauses()).toEqual(["Remove second"]);
 
   await user.type(screen.getByLabelText("New assertion set entry in this workspace"), "saved.json");
-  await user.click(screen.getByRole("button", { name: "Write the assertion set" }));
+  await user.click(screen.getByRole("button", { name: "Save assertion set" }));
   expect(await screen.findByText(/Written to saved.json/)).toBeTruthy();
   await user.clear(entry);
   await user.type(entry, "another.json{Enter}");
@@ -213,7 +213,7 @@ test("import asks before replacing unsaved clauses, Escape and refusal keep them
   await user.click(screen.getByRole("button", { name: "Remove first" }));
   await user.click(screen.getByRole("button", { name: "Remove second" }));
   await waitFor(() => expect(clauses()).toEqual([]));
-  await user.click(screen.getByRole("button", { name: "Import into this draft" }));
+  await user.click(screen.getByRole("button", { name: "Import" }));
   await waitFor(() => expect(clauses()).toEqual(["Remove first", "Remove second"]));
   expect(screen.queryByRole("group", { name: /in place of these assertions/ })).toBeNull();
   expect(facade.callsTo("ImportAssertionSet")).toHaveLength(4);
@@ -246,7 +246,7 @@ test("a retained clause is protected from import after reopening its draft", asy
   await user.type(screen.getByLabelText("Assertion set entry"), "another.json{Enter}");
   expect(screen.getByRole("group", { name: "Import another.json in place of these assertions?" })).toBeTruthy();
   expect(facade.callsTo("ImportAssertionSet")).toHaveLength(0);
-  await user.click(screen.getByRole("button", { name: "Keep these assertions" }));
+  await user.click(screen.getByRole("button", { name: "Keep assertions" }));
   expect(screen.getByRole("button", { name: "Remove keep-this" })).toBeTruthy();
   uninstallFacade();
 });
@@ -303,7 +303,7 @@ test("a refused import leaves the draft and an occupied export destination is re
   await user.click(screen.getByLabelText("Complete assertion set"));
   await user.paste('{"schema":"readmit-assertion-set/v1"}');
   await user.type(screen.getByLabelText("New assertion set entry"), "received-assertions.json");
-  await user.click(screen.getByRole("button", { name: "Export new assertion set" }));
+  await user.click(screen.getByRole("button", { name: "Export assertion set" }));
   expect(await screen.findByText(occupied)).toBeTruthy();
   expect(screen.queryByText(/^Written to /)).toBeNull();
   expect((screen.getByLabelText("Complete assertion set") as HTMLTextAreaElement).value).toBe('{"schema":"readmit-assertion-set/v1"}');
@@ -311,7 +311,7 @@ test("a refused import leaves the draft and an occupied export destination is re
   await user.clear(screen.getByLabelText("New assertion set entry"));
   await user.type(screen.getByLabelText("New assertion set entry"), "reviewed-assertions.json");
   await user.tab();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Export new assertion set" }));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Export assertion set" }));
   await user.keyboard("{Enter}");
   expect(await screen.findByText(/^Written to reviewed-assertions\.json · identity/)).toBeTruthy();
   expect(screen.getByText("exported-assertion-identity")).toBeTruthy();

@@ -877,7 +877,7 @@ export function EnvironmentPanel({
 
   return (
     <section className="environment-panel" aria-labelledby="environment-panel-title">
-      <h3 id="environment-panel-title">Environment & Credential Configuration</h3>
+      <h3 id="environment-panel-title">Environments</h3>
 
       {/* Persistent Environment Banner */}
       <EnvironmentBanner
@@ -911,7 +911,7 @@ export function EnvironmentPanel({
           className={`environment-tab ${activeTab === "target" ? "active" : ""}`}
           onClick={() => setActiveTab("target")}
         >
-          Target & Diagnostics
+          Target
         </button>
         <button
           type="button"
@@ -925,14 +925,14 @@ export function EnvironmentPanel({
           className={`environment-tab ${activeTab === "policy" ? "active" : ""}`}
           onClick={() => setActiveTab("policy")}
         >
-          Approved Send Policy
+          Send policy
         </button>
         <button
           type="button"
           className={`environment-tab ${activeTab === "reset" ? "active" : ""}`}
           onClick={() => setActiveTab("reset")}
         >
-          Fixture Reset Plan
+          Reset plan
         </button>
       </nav>
 
@@ -1128,11 +1128,12 @@ export function EnvironmentPanel({
 
           <div className="environment-actions">
             <button type="button" disabled={blocked} onClick={() => void handleSaveTarget()}>
-              Save Target Configuration
+              Save target
             </button>
             <button type="button" disabled={blocked} onClick={() => void handleCheckTarget()}>
-              Check Target Reachability & TLS
+              Test connection
             </button>
+            <p className="hint">Checks the named target's reachability and TLS by making a connection; this is not a local preview.</p>
           </div>
 
           {checkReport ? (
@@ -1248,7 +1249,7 @@ export function EnvironmentPanel({
                           type="button"
                           disabled={blocked}
                           onClick={() => void handleTestSecret(r.name)}
-                          title="Verify resolution without capturing secret"
+                          title="Check credential reference"
                         >
                           Test
                         </button>
@@ -1390,11 +1391,12 @@ export function EnvironmentPanel({
               </div>
               <div className="environment-actions">
                 <button type="submit" disabled={blocked}>
-                  Save Changes to {secretEdit.opened.name}
+                  Save changes
                 </button>
                 <button type="button" disabled={busy} onClick={cancelSecretEdit}>
                   Cancel Editing
                 </button>
+                <p className="hint">Saves the credential reference <code>{secretEdit.opened.name}</code></p>
               </div>
             </form>
           ) : null}
@@ -1484,12 +1486,13 @@ export function EnvironmentPanel({
           <div className="environment-actions">
             {secretEdit ? null : (
               <button type="button" disabled={blocked} onClick={() => void handleAddSecret()}>
-                Register Secret Reference
+                Add credential reference
               </button>
             )}
             <button type="button" disabled={blocked} onClick={() => void handleScanSecrets()}>
-              Scan Workspace for Residual Leaks
+              Scan for leaks
             </button>
+            <p className="hint">Scans this workspace's target, policy and plan files for residual credential values; see the report for the scan's limits.</p>
           </div>
           <WrittenIdentity written={secretsWritten} />
 
@@ -1548,7 +1551,7 @@ export function EnvironmentPanel({
                 setPolicy(newPolicy());
                 setPolicyReady(true);
                 setPolicyRefusal(null);
-              }}>Start New Send Policy</button>
+                }}>New send policy</button>
             </div>
           ) : null}
 
@@ -1584,14 +1587,16 @@ export function EnvironmentPanel({
               onChange={(e) => setNewDestination(e.target.value)}
             />
             <button type="submit" disabled={blocked || !policyReady || !newDestination}>
-              Add CIDR Prefix
+              Add CIDR range
             </button>
           </form>
+          <p className="hint">Accepted syntax: an IPv4 or IPv6 CIDR range, such as 127.0.0.0/8 or 10.1.0.0/16.</p>
 
           <div className="environment-actions" style={{ marginTop: "1rem" }}>
             <button type="button" disabled={blocked || !policyReady} onClick={() => void handleSavePolicy()}>
-              Save Approved Send Policy
+              Save policy
             </button>
+            <p className="hint">Saving records the approved destinations and their network scope; it is not send authorization.</p>
           </div>
           <WrittenIdentity written={policyWritten} />
 
@@ -1634,8 +1639,9 @@ export function EnvironmentPanel({
             </label>
           </div>
           <button type="button" disabled={blocked} onClick={() => void handleEvaluatePolicy()}>
-            Evaluate Destination Locally
+            Check destination
           </button>
+          <p className="hint">Checked locally; no connection is opened.</p>
 
           {evalDecision ? (
             <div className="report-box" aria-label="Local evaluation decision">
@@ -1653,7 +1659,7 @@ export function EnvironmentPanel({
       {/* TAB 4: Fixture Reset */}
       {activeTab === "reset" ? (
         <div className="environment-section" aria-labelledby="reset-section-title">
-          <h4 id="reset-section-title">Fixture Reset Plan & Execution (readmit-reset-plan/v1)</h4>
+          <h4 id="reset-section-title">Fixture reset (readmit-reset-plan/v1)</h4>
           <p className="environment-disclaimer">
             Fixture reset plans return nonproduction test fixtures to a declared starting state.
             Only reviewed operators are permitted; arbitrary shell commands or scripts are strictly rejected.
@@ -1697,7 +1703,7 @@ export function EnvironmentPanel({
                 setResetPlan(newPlan());
                 setPlanReady(true);
                 setPlanRefusal(null);
-              }}>Start New Reset Plan</button>
+                }}>New reset plan</button>
             </div>
           ) : null}
 
@@ -1771,7 +1777,7 @@ export function EnvironmentPanel({
               </select>
             </div>
             <div className="environment-field full-width">
-              <label htmlFor="action-instructions">Side-Effect & Reset Instructions</label>
+              <label htmlFor="action-instructions">Reset instructions</label>
               <textarea
                 id="action-instructions"
                 rows={2}
@@ -1797,10 +1803,10 @@ export function EnvironmentPanel({
 
           <div className="environment-actions">
             <button type="button" disabled={blocked || !planReady} onClick={handleAddResetAction}>
-              Add Action to Plan
+              Add action
             </button>
             <button type="button" disabled={blocked || !planReady} onClick={() => void handleSavePlan()}>
-              Save Reset Plan
+              Save plan
             </button>
             <button
               type="button"
@@ -1808,8 +1814,9 @@ export function EnvironmentPanel({
               onClick={() => void handleExecuteReset()}
               style={{ fontWeight: "bold" }}
             >
-              Execute Fixture Reset Deliberately
+              Reset fixture
             </button>
+            <p className="hint">Resets the fixture at target <code>{target.name || target.address || currentTargetFile}</code> by running the named actions and side effects listed above, each still requiring its explicit confirmation. Reset is not undo.</p>
           </div>
           <WrittenIdentity written={planWritten} />
 

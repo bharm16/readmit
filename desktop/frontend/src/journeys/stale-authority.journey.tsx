@@ -28,35 +28,35 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await journey.launch();
 
   // Select the activation the vendor delivered, then create a project.
-  await press(user, screen.getByRole("button", { name: "License and activation…" }));
-  const access = () => within(region("License and trial activation"));
+  await press(user, screen.getByRole("button", { name: "License" }));
+  const access = () => within(region("License"));
   await journey.chooseFolder(license, "Choose the license activation folder");
-  await press(user, access().getByRole("button", { name: "Select a supplied activation folder…" }));
-  await press(user, access().getByRole("button", { name: "Refresh local status" }));
+  await press(user, access().getByRole("button", { name: "Choose activation folder…" }));
+  await press(user, access().getByRole("button", { name: "Refresh activation" }));
   expect(await access().findByText(/^License: active\./)).toBeTruthy();
   await journey.chooseFolder(journey.path("investigations"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Choose a folder for a new project…" }));
+  await press(user, screen.getByRole("button", { name: "Create project…" }));
   const evidence = within(region("Evidence"));
   await press(user, await evidence.findByRole("button", { name: "Create a project…" }));
-  await user.type(evidence.getByLabelText("Folder name for the new project"), "handover");
+  await user.type(evidence.getByLabelText("Project folder"), "handover");
   await user.type(evidence.getByLabelText("Title", { selector: "#project-title" }), "Scheduling handover");
-  await user.type(evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await user.type(evidence.getByLabelText("Interface versions"), "siu-2.5.1-v1");
   await journey.chooseFolder(journey.path("investigations"), "Choose a folder for the new project");
-  await press(user, evidence.getByRole("button", { name: "Create the project…" }));
+  await press(user, evidence.getByRole("button", { name: "Create project" }));
   const project = journey.path("investigations", "handover");
-  expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
+  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
 
-  // Write a note and leave it unstored.
+  // Note and leave it unstored.
   await user.type(await screen.findByLabelText("Note name"), "handover-note");
   await user.type(screen.getByLabelText("Title", { selector: "#note-title" }), "Duplicate after reschedule");
   await user.type(screen.getByLabelText("Body"), "Check the filler identifier before the next run.");
-  await whenEnabled(screen.getByRole("button", { name: "Store this note in the project" }));
+  await whenEnabled(screen.getByRole("button", { name: "Save note" }));
 
   // Close and reopen: the note comes back as the person left it.
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
-  expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
+  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
   // The field is drawn before the retained draft is read back into it.
   await waitFor(() => expect((screen.getByLabelText("Note name") as HTMLInputElement).value).toBe("handover-note"));
   expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe("Check the filler identifier before the next run.");
@@ -67,10 +67,10 @@ test("a note restored after a reopen cannot be stored once the activation is rel
 
   // Release the activation where the privacy region keeps it. The restored
   // note is refused, and stays retained.
-  await press(user, access().getByRole("button", { name: "Release this activation" }));
+  await press(user, access().getByRole("button", { name: "Release activation" }));
   expect(await access().findByText(/This activation is released\./)).toBeTruthy();
   const refusedBefore = journey.callsTo("SaveNote").length;
-  await press(user, screen.getByRole("button", { name: "Store this note in the project" }));
+  await press(user, screen.getByRole("button", { name: "Save note" }));
   const refused = journey.callsTo("SaveNote");
   expect(refused).toHaveLength(refusedBefore + 1);
   const answer = () => refused.at(-1)?.result as { state: string; reason?: string } | undefined;
@@ -82,12 +82,12 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   // its own.
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
   await waitFor(() => expect((screen.getByLabelText("Note name") as HTMLInputElement).value).toBe("handover-note"));
   expect(journey.callsTo("SaveNote")).toHaveLength(refusedBefore + 1);
-  await press(user, access().getByRole("button", { name: "Refresh local status" }));
+  await press(user, access().getByRole("button", { name: "Refresh activation" }));
   expect(await access().findByText(/This activation is released\./)).toBeTruthy();
-  await press(user, screen.getByRole("button", { name: "Store this note in the project" }));
+  await press(user, screen.getByRole("button", { name: "Save note" }));
   // The press returns before the facade answers; the answer is what is read.
   await waitFor(() =>
     expect((journey.callsTo("SaveNote").at(-1)?.result as { state: string } | undefined)?.state).toBe(

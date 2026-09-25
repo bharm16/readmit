@@ -15,9 +15,9 @@
       <li><a href="index.html">Overview</a></li>
       <li><a href="download.html">Download</a></li>
       <li><a href="workflows.html">Workflows</a></li>
-      <li><a href="connectors.html">Sources and connectors</a></li>
+      <li><a href="connectors.html">Sources</a></li>
       <li><a href="limitations.html" aria-current="page">Limitations</a></li>
-      <li><a href="samples.html">Sample projects</a></li>
+      <li><a href="samples.html">Samples</a></li>
     </ul>
   </nav>
 </header>
@@ -54,7 +54,7 @@
     <li>Interactive terminal interfaces, configuration discovery, environment-variable precedence, hidden global config.</li>
   </ul>
 
-  <h2>What a result does not prove</h2>
+  <h2>What results don't prove</h2>
   <ul>
     <li><strong>Inspection is syntax.</strong> Field labels and states are not semantic validation or HL7 conformance.</li>
     <li><strong>The profile is narrow.</strong> <code>readmit-siu-v1</code> covers SIU S12, S13, S15 and ACK for one SCH and one PID. It is a readmit fixture profile, not a vendor profile and not v2.5.1 conformance. No ADT or MPI state machine runs.</li>
@@ -70,7 +70,7 @@
     <li><strong>Discarding a package is unlinking.</strong> It is not erasure on a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a replica or a recipient's machine.</li>
   </ul>
 
-  <h2>Bounds you will meet</h2>
+  <h2>Limits</h2>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Where</th><th>Bound</th><th>On reaching it</th></tr></thead>
@@ -95,7 +95,7 @@
     <li>Access control is the operating-system account and filesystem permissions. readmit has no accounts, no server and no store of its own.</li>
   </ul>
 
-  <h2>Owner gates before any of this changes</h2>
+  <h2>Release requirements</h2>
   <ul>
     <li>Tag and publish a prerelease from current <code>main</code> so the archives match this site.</li>
     <li>Capture desktop screenshots from a built release and add them here.</li>

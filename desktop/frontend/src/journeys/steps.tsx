@@ -55,12 +55,15 @@ export const EXPORTED_RESCHEDULE =
 /** Selects the activation folder the vendor delivered and sees it active. */
 export async function activateLicense(user: UserEvent, journey: Journey): Promise<void> {
   const license = journey.provisionLicense("vendor-delivered-license");
-  await press(user, screen.getByRole("button", { name: "License and activation…" }));
-  const access = within(region("License and trial activation"));
+  await press(user, screen.getByRole("button", { name: "License" }));
+  const access = within(region("License"));
   await journey.chooseFolder(license, "Choose the license activation folder");
-  await press(user, access.getByRole("button", { name: "Select a supplied activation folder…" }));
-  await whenEnabled(access.getByRole("button", { name: "Activate license" }));
-  await press(user, access.getByRole("button", { name: "Refresh local status" }));
+  // The supplied-folder workflow lives in the License page's Administrator
+  // setup subview; the window-level folder choice is the first of its name.
+  await press(user, access.getByText("Administrator setup"));
+  await press(user, access.getAllByRole("button", { name: "Choose activation folder…" })[0] as HTMLElement);
+  await whenEnabled(access.getByRole("button", { name: "Activate" }));
+  await press(user, access.getByRole("button", { name: "Refresh activation" }));
   expect(await access.findByText(/^License: active\. Organization: test-organization\./)).toBeTruthy();
 }
 
@@ -69,12 +72,12 @@ export async function activateLicense(user: UserEvent, journey: Journey): Promis
 export async function createProject(user: UserEvent, journey: Journey, parent: string, name: string, title: string): Promise<string> {
   journey.makeFolder(parent);
   await journey.chooseFolder(journey.path(parent), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Choose a folder for a new project…" }));
+  await press(user, screen.getByRole("button", { name: "Create project…" }));
   const evidence = within(region("Evidence"));
   await press(user, await evidence.findByRole("button", { name: "Create a project…" }));
   await submitProject(user, journey, parent, name, title, true);
   const project = journey.path(parent, name);
-  expect(await within(region("Project navigation")).findByText(project, { selector: ".root" })).toBeTruthy();
+  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
   // The project overview has drawn, so its controls are the ones a person sees.
   expect(await evidence.findByText(/Nothing is registered yet/)).toBeTruthy();
   return project;
@@ -85,12 +88,12 @@ export async function createProject(user: UserEvent, journey: Journey, parent: s
  * refuses is refused before any dialog opens. Returns the facade's answer. */
 export async function submitProject(user: UserEvent, journey: Journey, parent: string, name: string, title: string, admitted: boolean) {
   const evidence = within(region("Evidence"));
-  await enter(user, evidence.getByLabelText("Folder name for the new project"), name);
+  await enter(user, evidence.getByLabelText("Project folder"), name);
   await enter(user, evidence.getByLabelText("Title", { selector: "#project-title" }), title);
-  await enter(user, evidence.getByLabelText("Interface versions, comma-separated"), "siu-2.5.1-v1");
+  await enter(user, evidence.getByLabelText("Interface versions"), "siu-2.5.1-v1");
   if (admitted) await journey.chooseFolder(journey.path(parent), "Choose a folder for the new project");
   const asked = journey.callsTo("CreateProject").length;
-  await press(user, evidence.getByRole("button", { name: "Create the project…" }));
+  await press(user, evidence.getByRole("button", { name: "Create project" }));
   await waitFor(() => expect(journey.callsTo("CreateProject")[asked]?.settled).toBe(true));
   return journey.callsTo("CreateProject")[asked]?.result as { state: string; reason?: string };
 }
@@ -124,7 +127,7 @@ export async function savedAckTest(user: UserEvent, journey: Journey, mode: Down
  * person has done before they preview, commit or cancel it. */
 export async function declareMllpImport(user: UserEvent, journey: Journey, file: string): Promise<void> {
   const evidence = within(region("Evidence"));
-  await press(user, await evidence.findByRole("button", { name: "Import evidence into this project…" }));
+  await press(user, await evidence.findByRole("button", { name: "Import" }));
   await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
   await press(user, await screen.findByRole("button", { name: "Select Files…" }));
   await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
@@ -135,22 +138,25 @@ export async function declareMllpImport(user: UserEvent, journey: Journey, file:
  * registered case, then opens that case. */
 export async function importExport(user: UserEvent, journey: Journey, file: string, caseName: string, title: string): Promise<void> {
   const evidence = within(region("Evidence"));
-  await press(user, evidence.getByRole("button", { name: "Import evidence into this project…" }));
+  await press(user, evidence.getByRole("button", { name: "Import" }));
   await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
   await press(user, await screen.findByRole("button", { name: "Select Files…" }));
   await within(screen.getByRole("region", { name: "Declared sources" })).findByText(new RegExp(file.split("/").pop() ?? file));
   await user.selectOptions(screen.getByLabelText("Framing"), "batch");
   await user.selectOptions(await screen.findByLabelText("Batch boundary"), "segment-start");
   await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
-  await press(user, screen.getByRole("button", { name: "Preview extraction" }));
+  // Several panels carry a Preview button of this name now; this one belongs
+  // to the import's own bounded-preview section.
+  const extraction = within(screen.getByRole("region", { name: "Extraction preview" }));
+  await press(user, extraction.getByRole("button", { name: "Preview" }));
   const commit = within(screen.getByRole("region", { name: "Commit import" }));
-  await whenEnabled(commit.getByRole("button", { name: "Commit import" }));
+  await whenEnabled(commit.getByRole("button", { name: "Import" }));
   await enter(user, commit.getByLabelText("Case bundle folder name"), caseName);
   await enter(user, commit.getByLabelText("Receipt file name"), `${caseName}-receipt.json`);
   await enter(user, commit.getByLabelText("Case title"), title);
-  await press(user, commit.getByRole("button", { name: "Commit import" }));
+  await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open this case in inspector" }));
+  await press(user, commit.getByRole("button", { name: "Open case" }));
   expect(await within(region("Inspector")).findByText(caseName, { selector: "dd" })).toBeTruthy();
 }
 
@@ -166,22 +172,22 @@ function panelOf(heading: string) {
  * loopback address, approves that one destination in the send policy, and
  * checks it is reachable — a check that connects and sends no HL7. */
 export async function configureTarget(user: UserEvent, address: string): Promise<void> {
-  const panel = panelOf("Environment & Credential Configuration");
+  const panel = panelOf("Environments");
   await enter(user, panel.getByLabelText("Target Config File"), "downstream-target.json");
   await enter(user, panel.getByLabelText("Environment Name"), "scheduling-downstream");
   await user.selectOptions(panel.getByLabelText("Classification"), "nonproduction");
   await enter(user, panel.getByLabelText("Destination Address"), address);
   await user.click(panel.getByLabelText("Approved transport"));
-  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await press(user, panel.getByRole("button", { name: "Save target" }));
   expect(await panel.findByText("Target configuration saved successfully.")).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Approved Send Policy" }));
-  await press(user, await panel.findByRole("button", { name: "Start New Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Send policy" }));
+  await press(user, await panel.findByRole("button", { name: "New send policy" }));
   await enter(user, panel.getByPlaceholderText("network/prefix"), "127.0.0.1/32");
-  await press(user, panel.getByRole("button", { name: "Add CIDR Prefix" }));
-  await press(user, panel.getByRole("button", { name: "Save Approved Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Add CIDR range" }));
+  await press(user, panel.getByRole("button", { name: "Save policy" }));
   expect(await panel.findByText("Approved-destination policy saved.")).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Target & Diagnostics" }));
-  await press(user, panel.getByRole("button", { name: "Check Target Reachability & TLS" }));
+  await press(user, panel.getByRole("button", { name: "Target" }));
+  await press(user, panel.getByRole("button", { name: "Test connection" }));
   const diagnosis = within(await panel.findByLabelText("Reachability diagnostic report"));
   const value = (label: string) => diagnosis.getByText(label).nextElementSibling?.textContent;
   expect(value("Target Name:")).toBe("scheduling-downstream");
@@ -211,8 +217,8 @@ export async function authoring() {
  * contract with the operator's reset declared. */
 export async function beginAckTest(user: UserEvent, name: string): Promise<void> {
   const panel = await authoring();
-  await enter(user, panel.getByLabelText("What is this test called?"), name);
-  await press(user, panel.getByRole("button", { name: "Name this test" }));
+  await enter(user, panel.getByLabelText("Name"), name);
+  await press(user, panel.getByRole("button", { name: "Save name" }));
   for (const occurrence of ["s0001-e000001", "s0002-e000001"]) {
     await press(user, await panel.findByRole("button", { name: `Send ${occurrence}` }));
     await panel.findByRole("button", { name: `Do not send ${occurrence}` });
@@ -226,21 +232,21 @@ export async function beginAckTest(user: UserEvent, name: string): Promise<void>
  * one expectation — the reschedule is accepted — then saves it. */
 export async function finishAckTest(user: UserEvent, output: string): Promise<void> {
   const panel = await authoring();
-  await enter(user, panel.getByLabelText("How is the fixture returned to its initial state?"), "Empty the downstream appointment ledger before the run.");
-  await press(user, panel.getByRole("button", { name: "Record these instructions" }));
+  await enter(user, panel.getByLabelText("Reset"), "Empty the downstream appointment ledger before the run.");
+  await press(user, panel.getByRole("button", { name: "Save instructions" }));
   await enter(user, panel.getByLabelText("Expectation name"), "reschedule-accepted");
   await user.selectOptions(panel.getByLabelText("Acknowledgement of"), "s0002-e000001");
   expect((panel.getByLabelText("MSA or ERR position") as HTMLInputElement).value).toBe("MSA-1");
-  expect((panel.getByLabelText("Expected value") as HTMLInputElement).value).toBe("AA");
-  await press(user, panel.getByRole("button", { name: "Expect this acknowledgement value" }));
+  expect((panel.getByLabelText("Expected value", { selector: "input" }) as HTMLInputElement).value).toBe("AA");
+  await press(user, panel.getByRole("button", { name: "Add ACK expectation" }));
   expect(await panel.findByText("ack_field_equals · s0002-e000001 · MSA-1 · present")).toBeTruthy();
   await enter(user, panel.getByLabelText("New entry in this workspace"), output);
-  await press(user, panel.getByRole("button", { name: "Write the test spec" }));
+  await press(user, panel.getByRole("button", { name: "Save test" }));
   const written = await panel.findByText(new RegExp(`^Written to ${output.replace(/\./g, "\\.")}`));
   expect(written.textContent).toMatch(/spec identity [0-9a-f]{64}\./);
   // The saved result can render before the author operation releases the
   // global slot. Finish this step only when another panel may act on it.
-  await whenEnabled(panel.getByRole("button", { name: "Write the test spec" }));
+  await whenEnabled(panel.getByRole("button", { name: "Save test" }));
 }
 
 /** Releases the saved acknowledgement test as its first immutable test
@@ -252,22 +258,22 @@ export async function releaseSavedTest(
   release: { id: string; approver: string; rationale: string; output: string },
 ): Promise<void> {
   const panel = within(region("Regression baseline"));
-  const releasing = panel.getByLabelText("Release a test version with profile pins") as HTMLInputElement;
+  const releasing = panel.getByLabelText("Release test version") as HTMLInputElement;
   if (!releasing.checked) await press(user, releasing);
   await enter(user, panel.getByLabelText("Stable test identity"), release.id);
-  await enter(user, panel.getByLabelText("Candidate specification in this workspace"), "reschedule-ack-test.json");
-  await press(user, panel.getByRole("button", { name: "Review test and profile changes" }));
+  await enter(user, panel.getByLabelText("Candidate test"), "reschedule-ack-test.json");
+  await press(user, panel.getByRole("button", { name: "Review changes" }));
   expect(await panel.findByText("Proposed revision 1. First baseline; every expectation is new.")).toBeTruthy();
   await enter(user, panel.getByLabelText("Local approver"), release.approver);
   await enter(user, panel.getByLabelText("Approval rationale"), release.rationale);
   await enter(user, panel.getByLabelText("New released test filename"), release.output);
-  await press(user, panel.getByRole("button", { name: "Release this exact test version" }));
+  await press(user, panel.getByRole("button", { name: "Release version" }));
   expect(await panel.findByText(`Approved and saved ${release.output}.`)).toBeTruthy();
 }
 
 /** The durable-run panel of the open workspace. */
 export function runs() {
-  return panelOf("Durable test runs");
+  return panelOf("Runs");
 }
 
 /** Selects a saved test, preflights it into a fresh folder and checks the
@@ -276,8 +282,8 @@ export async function preflight(user: UserEvent, spec: string, output: string, a
   const panel = runs();
   await panel.findByRole("option", { name: `${spec} (test)` });
   await user.selectOptions(panel.getByLabelText("Saved test or suite"), spec);
-  await enter(user, panel.getByLabelText("Fresh output folder"), output);
-  await press(user, panel.getByRole("button", { name: "Validate and preflight" }));
+  await enter(user, panel.getByLabelText("Run folder"), output);
+  await press(user, panel.getByRole("button", { name: "Preview run" }));
   expect(await panel.findByText(byContent(/^Target: scheduling-downstream · nonproduction · plain · /))).toBeTruthy();
   expect(panel.getByText(byContent(new RegExp(`^Target: .* · ${address.replace(/\./g, "\\.")}$`)))).toBeTruthy();
   expect(panel.getByText(byContent(new RegExp(`^Destination: ${output} · fresh$`)))).toBeTruthy();
@@ -288,7 +294,7 @@ export async function preflight(user: UserEvent, spec: string, output: string, a
 /** Sends and executes once, as preflighted, and returns the run's state. */
 async function execute(user: UserEvent): Promise<string> {
   const panel = runs();
-  await press(user, panel.getByRole("button", { name: "Send and execute once" }));
+  await press(user, panel.getByRole("button", { name: "Send test" }));
   const line = await panel.findByText(byContent(/^Run: \w+ · Stop reason: \w+$/));
   return (line.textContent ?? "").replace(/^Run: (\w+) · .*$/, "$1");
 }
@@ -320,7 +326,7 @@ export const RUNNER_REFUSED = "runner operation refused; check private configura
 /** One view of the runner, schedules and CI panel in the privacy status: the
  * tab chosen, then its named section. */
 export async function runnerView(user: UserEvent, tab: string, name: string) {
-  const panel = within(region("Privacy status")).getByRole("region", { name: "Runners, schedules and CI" });
+  const panel = within(region("Privacy")).getByRole("region", { name: "Runners, schedules and CI" });
   await press(user, within(panel).getByRole("tab", { name: tab }));
   return within(within(panel).getByRole("region", { name }));
 }

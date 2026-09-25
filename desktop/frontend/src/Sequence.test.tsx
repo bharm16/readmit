@@ -64,12 +64,12 @@ function workspace() {
  * sequence panel is offered at all. */
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
   const listed = screen.getByText(CASE_ENTRY, { selector: ".name" }).closest("li")!;
-  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Verify and open" }));
+  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
-  return within(await screen.findByRole("region", { name: "Event sequence and source swimlanes" }));
+  return within(await screen.findByRole("region", { name: "Sequence" }));
 }
 
 /** The case laid out under RULES: one link and one collision. */
@@ -89,8 +89,8 @@ function laidOut() {
 async function layOut(facade: Stub, user: User, panel: ReturnType<typeof within>) {
   facade.reply({ OpenSequence: () => laidOut() });
   await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
-  await user.click(panel.getByRole("button", { name: "Lay out this case" }));
-  return within(await panel.findByRole("region", { name: "Review correlation links" }));
+  await user.click(panel.getByRole("button", { name: "View sequence" }));
+  return within(await panel.findByRole("region", { name: "Correlation review" }));
 }
 
 const occurrence = (id: string): CorrelationOccurrence => ({ occurrence: id, source_id: "s0001", kind: "message" });
@@ -142,7 +142,7 @@ test("a case is laid out under the rules document chosen in the sequence panel, 
   // out from the keyboard, and no sequence and no review stand beside it.
   facade.reply({ OpenSequence: () => refused("invalid correlation rules JSON") });
   await user.selectOptions(picker, BROKEN_RULES);
-  await tabTo(user, panel.getByRole("button", { name: "Lay out this case" }));
+  await tabTo(user, panel.getByRole("button", { name: "View sequence" }));
   await user.keyboard("{Enter}");
   expect(await panel.findByText("invalid correlation rules JSON")).toBeTruthy();
   expect(facade.oneCall("OpenSequence")[0]).toEqual({
@@ -155,14 +155,14 @@ test("a case is laid out under the rules document chosen in the sequence panel, 
     limit: 200,
   });
   expect(panel.queryByRole("table")).toBeNull();
-  expect(panel.queryByRole("region", { name: "Review correlation links" })).toBeNull();
+  expect(panel.queryByRole("region", { name: "Correlation review" })).toBeNull();
 
   // The chosen document: while the case is laid out the panel says so and
   // holds its controls, Escape asks for a cancellation, and what the facade
   // completes is drawn as completed.
   const parked = facade.park("OpenSequence");
   await user.selectOptions(picker, RULES);
-  await user.click(panel.getByRole("button", { name: "Lay out this case" }));
+  await user.click(panel.getByRole("button", { name: "View sequence" }));
   expect(await panel.findByText("Laying this case out as a sequence.")).toBeTruthy();
   expect(picker.disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
@@ -175,7 +175,7 @@ test("a case is laid out under the rules document chosen in the sequence panel, 
   // The digest a sequence names is the canonical one the command line
   // reports, which is what a sequence analysis pins.
   expect(panel.getByText(new RegExp(`whose canonical rules SHA-256 is ${RULES_SHA256}: the digest readmit correlate reports`))).toBeTruthy();
-  expect(panel.getByRole("region", { name: "Review correlation links" })).toBeTruthy();
+  expect(panel.getByRole("region", { name: "Correlation review" })).toBeTruthy();
 });
 
 /** The analyst and the reasons the review tests record, short so a keyboard
@@ -193,7 +193,7 @@ test("a retained review history is opened by name, accept is recorded from the k
 
   // The retained history is chosen by name and opened; nothing is implied.
   facade.reply({ OpenCorrelationReview: () => ({ state: "completed", view: reviewed() }) });
-  await user.type(review.getByLabelText("Retained review directory (blank starts from machine findings)"), `${REVIEW}{Enter}`);
+  await user.type(review.getByLabelText("Previous review"), `${REVIEW}{Enter}`);
   expect(await review.findByText("Mapping verified locally.")).toBeTruthy();
   expect(facade.oneCall("OpenCorrelationReview")[0]).toEqual({
     workspace: WORKSPACE_ROOT,
@@ -235,7 +235,7 @@ test("a retained review history is opened by name, accept is recorded from the k
   });
   // The new revision is where the next decision continues from, and the
   // folder is read again so the retained reviews offer it.
-  expect((review.getByLabelText("Retained review directory (blank starts from machine findings)") as HTMLInputElement).value).toBe("review-2");
+  expect((review.getByLabelText("Previous review") as HTMLInputElement).value).toBe("review-2");
   await waitFor(() => expect(facade.callsTo("OpenWorkspace").length).toBe(listings + 1));
   expect(review.getByText("accept l000001 · analyst and reason hidden")).toBeTruthy();
 
@@ -265,7 +265,7 @@ test("a decision written over an existing directory is refused leaving no view b
   const panel = await openCase(facade, user);
   const review = await layOut(facade, user, panel);
   facade.reply({ OpenCorrelationReview: () => ({ state: "completed", view: reviewed() }) });
-  await user.click(review.getByRole("button", { name: "Open selected mapping" }));
+  await user.click(review.getByRole("button", { name: "Open mapping" }));
   await review.findByText("Mapping verified locally.");
 
   // Reject, written over an existing directory: refused, no view is left
@@ -283,7 +283,7 @@ test("a decision written over an existing directory is refused leaving no view b
     output: REVIEW,
     decision: { action: "reject", link: "l000002", actor: ANALYST, reason: REJECTED },
   });
-  await user.click(review.getByRole("button", { name: "Open selected mapping" }));
+  await user.click(review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByRole("heading", { name: "reject l000002" })).toBeTruthy();
   expect((review.getByLabelText("Reason") as HTMLInputElement).value).toBe(REJECTED);
   expect((review.getByLabelText("New review directory") as HTMLInputElement).value).toBe(REVIEW);
@@ -298,7 +298,7 @@ test("a decision written over an existing directory is refused leaving no view b
 
   // An added pair names two exact occurrences, with its own analyst and
   // reason: a recorded decision leaves nothing of itself in the form.
-  await user.click(review.getByRole("button", { name: "Choose an exact pair" }));
+  await user.click(review.getByRole("button", { name: "Select pair" }));
   expect(review.getByRole("heading", { name: "Add an analyst link" })).toBeTruthy();
   expect((review.getByLabelText("Reason") as HTMLInputElement).value).toBe("");
   await user.type(review.getByLabelText("First occurrence ID"), NEXT_OCCURRENCE);
@@ -317,7 +317,7 @@ test("a decision written over an existing directory is refused leaving no view b
   // The rules changed on disk since the sequence was laid out: the review is
   // refused and no mapping is left on screen.
   facade.reply({ OpenCorrelationReview: () => refused(STALE) });
-  await user.click(review.getByRole("button", { name: "Open selected mapping" }));
+  await user.click(review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText(STALE)).toBeTruthy();
   expect(review.queryByRole("table")).toBeNull();
 });
@@ -329,12 +329,12 @@ test("while a review opens or a decision is saved the panel says so and holds it
   const review = await layOut(facade, user, panel);
 
   const opening = facade.park("OpenCorrelationReview");
-  await user.click(review.getByRole("button", { name: "Open selected mapping" }));
+  await user.click(review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText("Reading the selected mapping.")).toBeTruthy();
   // The sequence above does not claim to be laid out again.
   expect(panel.queryByText("Laying this case out as a sequence.")).toBeNull();
-  expect((review.getByRole("button", { name: "Open selected mapping" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Lay out this case" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((review.getByRole("button", { name: "Open mapping" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "View sequence" }) as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
@@ -348,7 +348,7 @@ test("while a review opens or a decision is saved the panel says so and holds it
   await user.type(review.getByLabelText("Reason"), "a separate observation");
   await user.type(review.getByLabelText("New review directory"), "review-2{Enter}");
   expect(await review.findByText("Saving this decision to review-2.")).toBeTruthy();
-  expect((review.getByRole("button", { name: "Open selected mapping" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((review.getByRole("button", { name: "Open mapping" }) as HTMLButtonElement).disabled).toBe(true);
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""], [""]]);
   const request = facade.oneCall("DecideCorrelation")[0] as CorrelationReviewRequest;
@@ -365,11 +365,11 @@ test("a review of more links than one page is paged from the keyboard under the 
   facade.reply({
     OpenCorrelationReview: (request) => ({ state: "completed", view: reviewed({ offset: request.offset, total_links: 250 }) }),
   });
-  await user.click(review.getByRole("button", { name: "Open selected mapping" }));
+  await user.click(review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText("Each list shows up to 200 items starting at 1; membership shows up to 32 occurrences.")).toBeTruthy();
   expect((review.getByRole("button", { name: "Previous review page" }) as HTMLButtonElement).disabled).toBe(true);
 
-  review.getByRole("button", { name: "Open selected mapping" }).focus();
+  review.getByRole("button", { name: "Open mapping" }).focus();
   await tabTo(user, review.getByRole("button", { name: "Next review page" }));
   await user.keyboard("{Enter}");
   expect(await review.findByText("Each list shows up to 200 items starting at 201; membership shows up to 32 occurrences.")).toBeTruthy();
@@ -378,7 +378,7 @@ test("a review of more links than one page is paged from the keyboard under the 
 
   // The page on screen is withdrawn while the next one is read, so the
   // keyboard starts again from the review's own controls.
-  review.getByRole("button", { name: "Open selected mapping" }).focus();
+  review.getByRole("button", { name: "Open mapping" }).focus();
   await tabTo(user, review.getByRole("button", { name: "Previous review page" }));
   await user.keyboard("{Enter}");
   expect(await review.findByText("Each list shows up to 200 items starting at 1; membership shows up to 32 occurrences.")).toBeTruthy();
@@ -396,7 +396,7 @@ const RETAINED_RULES: CorrelationRulesDocument = {
 };
 
 async function rulesEditor(user: User, panel: ReturnType<typeof within>) {
-  await user.click(panel.getByText("Author correlation rules and sequence analysis"));
+  await user.click(panel.getByText("Rules and analysis"));
   return within(panel.getByRole("region", { name: "Correlation rules editor" }));
 }
 
@@ -414,7 +414,7 @@ test("a retained rules document opens into the structured rules with its identit
         : refused("invalid correlation rules JSON"),
   });
   await user.selectOptions(editor.getByLabelText("Retained rules document"), RULES);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(rules()).toEqual(["Remove rule acknowledgements", "Remove rule same-booking"]));
   expect(editor.getByRole("button", { name: "Remove authority READMIT-MR" })).toBeTruthy();
   expect(editor.getByText(`Opened ${RULES} · exact bytes hash to ${ENTRY_SHA256}`)).toBeTruthy();
@@ -424,10 +424,10 @@ test("a retained rules document opens into the structured rules with its identit
   await user.type(editor.getByLabelText("Rule ID"), "patient");
   await user.selectOptions(editor.getByLabelText("Operator"), "identifier");
   await user.selectOptions(editor.getByLabelText("Scope"), "declared");
-  await user.type(editor.getByLabelText("Sources, separated by spaces"), "s0001 s0002");
+  await user.type(editor.getByLabelText("Sources"), "s0001 s0002");
   await user.type(editor.getByLabelText("Identifier value selector"), "PID-3.1");
   await user.type(
-    editor.getByLabelText("Assigning authority selectors (namespace, universal ID, universal ID type), separated by spaces"),
+    editor.getByLabelText("Assigning authorities"),
     "PID-3.4.1 PID-3.4.2 PID-3.4.3{Enter}",
   );
   expect(rules()).toEqual(["Remove rule acknowledgements", "Remove rule same-booking", "Remove rule patient"]);
@@ -443,23 +443,23 @@ test("a retained rules document opens into the structured rules with its identit
   // Opening another document now would replace unsaved rules: it asks, and
   // Escape keeps them without reading anything or cancelling anything else.
   await user.selectOptions(editor.getByLabelText("Retained rules document"), BROKEN_RULES);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: `Open ${BROKEN_RULES} in place of these rules?` }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these rules" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep rules" }));
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenCorrelationRules")).toHaveLength(1);
   expect(facade.callsTo("Cancel")).toHaveLength(cancels);
 
   // Keep these rules, pressed, answers the same way; Replace reads the
   // document, and the reader's refusal leaves the rules.
   await user.keyboard("{Enter}");
-  await user.click(editor.getByRole("button", { name: "Keep these rules" }));
+  await user.click(editor.getByRole("button", { name: "Keep rules" }));
   expect(facade.callsTo("OpenCorrelationRules")).toHaveLength(1);
   await user.keyboard("{Enter}");
-  await user.click(editor.getByRole("button", { name: `Replace them with ${BROKEN_RULES}` }));
+  await user.click(editor.getByRole("button", { name: "Replace rules" }));
   expect(await editor.findByText("invalid correlation rules JSON")).toBeTruthy();
   expect(facade.callsTo("OpenCorrelationRules")[1]?.args).toEqual([WORKSPACE_ROOT, BROKEN_RULES]);
   expect(rules()).toHaveLength(3);
@@ -467,12 +467,12 @@ test("a retained rules document opens into the structured rules with its identit
   // Saved while the question is open, the rules are no longer unsaved: the
   // question is withdrawn, and the new entry is offered once the folder is
   // read again.
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   expect(editor.getByRole("group", { name: `Open ${BROKEN_RULES} in place of these rules?` })).toBeTruthy();
   const saving = facade.park("SaveCorrelationRules");
   await user.type(editor.getByLabelText("New correlation-rules entry"), "extended.rules.json{Enter}");
   expect(await editor.findByText("Saving extended.rules.json.")).toBeTruthy();
-  expect((editor.getByRole("button", { name: "Add this rule" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((editor.getByRole("button", { name: "Add rule" }) as HTMLButtonElement).disabled).toBe(true);
   saving.resolve({ state: "completed", output: "extended.rules.json", sha256: "saved-sha256-fixed-for-tests", document: "{}" });
   expect(await editor.findByText("Saved to extended.rules.json · exact bytes hash to saved-sha256-fixed-for-tests")).toBeTruthy();
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
@@ -494,7 +494,7 @@ test("a retained sequence-analysis declaration opens into the structured control
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
-  await user.click(panel.getByText("Author correlation rules and sequence analysis"));
+  await user.click(panel.getByText("Rules and analysis"));
   const editor = within(panel.getByRole("region", { name: "Sequence analysis editor" }));
   const windows = () => editor.queryAllByRole("button", { name: /^Remove window / }).map((button) => button.textContent);
 
@@ -502,9 +502,9 @@ test("a retained sequence-analysis declaration opens into the structured control
   // Escape reaches the window's Cancel, and the completed open is shown.
   const opening = facade.park("OpenSequenceAnalysis");
   await user.selectOptions(editor.getByLabelText("Retained analysis document"), ANALYSIS);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   expect(await editor.findByText(`Opening ${ANALYSIS}.`)).toBeTruthy();
-  expect((editor.getByRole("button", { name: "Add this window" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((editor.getByRole("button", { name: "Add window" }) as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(1);
@@ -512,7 +512,7 @@ test("a retained sequence-analysis declaration opens into the structured control
   expect(await editor.findByText(`Opened ${ANALYSIS} · exact bytes hash to ${ENTRY_SHA256}`)).toBeTruthy();
   expect(windows()).toEqual(["Remove window s0001"]);
   expect(editor.getByRole("button", { name: `Remove downstream ${GRID_OCCURRENCE}` })).toBeTruthy();
-  expect((editor.getByLabelText("Canonical correlation rules SHA-256 this analysis names, as the sequence reports it") as HTMLInputElement).value).toBe(RULES_SHA256);
+  expect((editor.getByLabelText("Correlation rules hash") as HTMLInputElement).value).toBe(RULES_SHA256);
   expect((editor.getByLabelText("Clock comparison tolerance, seconds") as HTMLInputElement).value).toBe("5");
 
   // A second window extends the opened declaration.
@@ -535,12 +535,12 @@ test("a retained sequence-analysis declaration opens into the structured control
         : refused("sequence analysis requires every declared member"),
   });
   await user.selectOptions(editor.getByLabelText("Retained analysis document"), OTHER_ANALYSIS);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: `Open ${OTHER_ANALYSIS} in place of this declaration?` }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep this declaration" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep declaration" }));
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenSequenceAnalysis")).toHaveLength(1);
   expect(windows()).toHaveLength(2);
 
@@ -554,7 +554,7 @@ test("a retained sequence-analysis declaration opens into the structured control
 
   // With nothing unsaved, the other case's declaration opens at once and
   // keeps the identity it binds to; the window says the open case's differs.
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(windows()).toEqual(["Remove window s0001"]));
   expect(editor.getByText(/binds to the verified case identity another-case-identity\./)).toBeTruthy();
   expect(editor.getByText(new RegExp(`The open case's identity is ${CASE_IDENTITY}\\. Laying the open case out under this declaration is refused`))).toBeTruthy();
@@ -565,8 +565,8 @@ test("a retained sequence-analysis declaration opens into the structured control
 
   // A declaration the reader refuses leaves the controls as they were.
   await user.selectOptions(editor.getByLabelText("Retained analysis document"), ANALYSIS);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
-  await user.click(editor.getByRole("button", { name: `Replace it with ${ANALYSIS}` }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
+  await user.click(editor.getByRole("button", { name: "Replace declaration" }));
   expect(await editor.findByText("sequence analysis requires every declared member")).toBeTruthy();
   expect(windows()).toEqual(["Remove window s0001", "Remove window s0002"]);
 });

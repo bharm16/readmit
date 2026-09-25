@@ -68,7 +68,7 @@ test("a runner configuration is refused while the runner would refuse it, previe
   const destination = journey.path("runner/documents/runner.json");
   const form = runnerForm("lab", destination);
   await journey.launch();
-  const view = await runnerView(user, "Runner", "Runner configuration and work");
+  const view = await runnerView(user, "Runner", "Runner");
 
   // A hub named over plain HTTP is not one the runner connects to: the
   // preview is refused, and nothing is shown or written.
@@ -160,7 +160,7 @@ test("a staged runner update is verified against the pinned deployment key witho
 
   await journey.launch();
   await activateLicense(user, journey);
-  const view = await runnerView(user, "Runner", "Runner configuration and work");
+  const view = await runnerView(user, "Runner", "Runner");
   await fillRunnerForm(user, view, runnerForm("lab", destination, authority.publicKey));
   await saveConfiguration(user, view, destination);
 
@@ -213,7 +213,7 @@ test("a job document is saved once, preflighted to the prepared inputs and envir
   journey.makePrivateFolder("runner/documents");
   const spec = journey.path(PROJECT, "reschedule-ack-test.json");
   const job = journey.path("runner/documents/nightly-001.json");
-  const view = await runnerView(user, "Runner", "Runner configuration and work");
+  const view = await runnerView(user, "Runner", "Runner");
 
   // The runner for the downstream system's environment, and a runner for
   // another environment.

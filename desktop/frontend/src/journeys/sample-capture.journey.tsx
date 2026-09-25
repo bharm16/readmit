@@ -52,10 +52,10 @@ test("the frozen receiver fixtures are imported by the guided sample without act
   await journey.launch();
 
   await journey.chooseFolder(journey.path("work"), "Choose a folder for the readmit sample workspace");
-  await press(user, screen.getByRole("button", { name: "Explore the guided sample…" }));
+  await press(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
-  const importing = within(await guided.findByRole("form", { name: "Import the frozen receiver fixtures" }));
-  const submit = importing.getByRole("button", { name: "Choose the fixtures folder and import…" });
+  const importing = within(await guided.findByRole("form", { name: "Import fixtures" }));
+  const submit = importing.getByRole("button", { name: "Import fixtures…" });
   expect((importing.getByLabelText("New case folder in this workspace") as HTMLInputElement).value).toBe("receiver-sample");
   const written = (entry: string) => {
     try {
@@ -102,7 +102,7 @@ test("the frozen receiver fixtures are imported by the guided sample without act
   expect(facts.textContent).toBe("receiver-sample: imported · readmit-case/v1 · 2 sources · 2 occurrences · 2 messages");
   const identity = guided.getByText(/^Verified identity [0-9a-f]{64}$/).textContent?.replace("Verified identity ", "");
   expect(journey.readFile("work/readmit-sample/receiver-sample/identity.sha256").trim()).toBe(identity);
-  expect(await within(region("Project navigation")).findByText("receiver-sample", { selector: ".artifacts .name" })).toBeTruthy();
+  expect(await within(region("Workspace")).findByText("receiver-sample", { selector: ".artifacts .name" })).toBeTruthy();
   // Nothing was ever activated for any of it.
   expect(journey.callsTo("SelectOperationPolicy")).toHaveLength(0);
 
@@ -118,8 +118,10 @@ test("the frozen receiver fixtures are imported by the guided sample without act
     journey.digest("work/readmit-sample/command-sample/payloads/s0002-e000001.bin"),
   );
 
-  // The case it wrote opens through the reader every case is opened with.
-  await press(user, guided.getByRole("button", { name: "Verify and open receiver-sample" }));
+  // The case it wrote opens through the reader every case is opened with. The
+  // guided panel offers two buttons of this name: the sample's own authoring
+  // step first, the imported case's beside the import it reports.
+  await press(user, guided.getAllByRole("button", { name: "Open case" })[1]!);
   const inspector = within(region("Inspector"));
   expect(await inspector.findByText("receiver-sample", { selector: "dd" })).toBeTruthy();
   expect(inspector.getByText(identity ?? "", { selector: "dd" })).toBeTruthy();

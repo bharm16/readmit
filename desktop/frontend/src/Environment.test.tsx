@@ -50,7 +50,7 @@ test("EnvironmentPanel displays target configuration and runs deliberate diagnos
   expect(screen.getByDisplayValue("peer-under-test")).toBeTruthy();
 
   // Run deliberate diagnostics
-  const diagBtn = screen.getByRole("button", { name: /Check Target Reachability & TLS/i });
+  const diagBtn = screen.getByRole("button", { name: /Test connection/i });
   await user.click(diagBtn);
 
   expect(facade.callsTo("CheckTarget").length).toBe(1);
@@ -105,7 +105,7 @@ test("EnvironmentPanel manages credential references, tests, rotates and scans",
   expect(facade.callsTo("RotateSecretReference").length).toBe(1);
 
   // Scan workspace for residual secrets
-  const scanBtn = screen.getByRole("button", { name: /Scan Workspace for Residual Leaks/i });
+  const scanBtn = screen.getByRole("button", { name: /Scan for leaks/i });
   await user.click(scanBtn);
   expect(facade.callsTo("ScanSecrets").length).toBe(1);
   expect(await screen.findByText(/Files Checked: 5/i)).toBeTruthy();
@@ -148,7 +148,7 @@ test("EnvironmentPanel authors send policy and evaluates local destinations", as
   expect(screen.getByText("second-peer")).toBeTruthy();
 
   // Evaluate destination locally
-  const evalBtn = screen.getByRole("button", { name: /Evaluate Destination Locally/i });
+  const evalBtn = screen.getByRole("button", { name: /Check destination/i });
   await user.click(evalBtn);
 
   expect(facade.callsTo("EvaluateSendPolicy").length).toBe(1);
@@ -191,7 +191,7 @@ test("EnvironmentPanel authors fixture reset plan and executes with deliberate c
   await user.click(confirmBox);
 
   // Click deliberate reset execution
-  const executeBtn = screen.getByRole("button", { name: /Execute Fixture Reset/i });
+  const executeBtn = screen.getByRole("button", { name: /Reset fixture/i });
   await user.click(executeBtn);
 
   expect(facade.callsTo("ResetTarget").length).toBe(1);
@@ -281,7 +281,7 @@ test("an unfinished target draft is kept and transport approval stays off until 
   expect(screen.getByDisplayValue("3s")).toBeTruthy();
 
   await user.click(approval);
-  await user.click(screen.getByRole("button", { name: "Save Target Configuration" }));
+  await user.click(screen.getByRole("button", { name: "Save target" }));
   expect(savedRequest).toMatchObject({ target: { approved_transport: true, name: "from-draft" } });
   uninstallFacade();
 });
@@ -422,7 +422,7 @@ test("a registered reference is edited through the shared update, and its locato
   await user.click(row.getByRole("button", { name: "Edit mllp-basic-auth" }));
   const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
   // One form at a time: the registration's fields are not beside the edit's.
-  expect(screen.queryByRole("button", { name: "Register Secret Reference" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add credential reference" })).toBeNull();
   expect(screen.getAllByLabelText("Target Address Constraint")).toHaveLength(1);
   // Focus moves into the edit, and the registered arguments are not shown there either.
   expect(document.activeElement).toBe(form.getByLabelText("Store"));
@@ -437,7 +437,7 @@ test("a registered reference is edited through the shared update, and its locato
   await user.clear(form.getByLabelText("Maximum Rotation Age"));
   await user.click(form.getByLabelText("Replace the 1 registered locator arguments"));
   await user.type(form.getByLabelText(/Replacement Locator Arguments/), " first reference {Enter}{Enter}second");
-  await user.click(form.getByRole("button", { name: "Save Changes to mllp-basic-auth" }));
+  await user.click(form.getByRole("button", { name: "Save changes" }));
 
   await waitFor(() => expect(facade.callsTo("SaveSecretReference")).toHaveLength(1));
   const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
@@ -472,7 +472,7 @@ test("an edit keeps its registered arguments unless they are replaced, stays ope
   const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
   await user.clear(form.getByLabelText("Target Address Constraint"));
   await user.type(form.getByLabelText("Target Address Constraint"), "no-port");
-  await user.click(form.getByRole("button", { name: "Save Changes to mllp-basic-auth" }));
+  await user.click(form.getByRole("button", { name: "Save changes" }));
 
   expect(await screen.findByText("reference address: must be an explicit host and numeric port")).toBeTruthy();
   // Only the member the person changed is sent: the registered arguments and
@@ -544,7 +544,7 @@ test("a registration sends one locator argument per line and its maximum age, an
   await user.type(screen.getByLabelText("Locator Command (Path)", { selector: "#secret-command" }), "locator");
   await user.type(screen.getByLabelText("Locator Arguments (one per line)"), "named reference{Enter}-w");
   await user.type(screen.getByLabelText("Maximum Rotation Age", { selector: "#secret-max-age" }), "720h");
-  await user.click(screen.getByRole("button", { name: "Register Secret Reference" }));
+  await user.click(screen.getByRole("button", { name: "Add credential reference" }));
 
   expect(await screen.findByText("that name is already registered in this store")).toBeTruthy();
   const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
@@ -572,14 +572,14 @@ test("a destination prefix is added with Enter, a refused policy claims no ident
   expect(await screen.findByText("third-peer")).toBeTruthy();
   expect((screen.getByLabelText("Approved destination prefix") as HTMLInputElement).value).toBe("");
 
-  await user.click(screen.getByRole("button", { name: "Save Approved Send Policy" }));
+  await user.click(screen.getByRole("button", { name: "Save policy" }));
   expect(await screen.findByText(/canonical masked form/)).toBeTruthy();
   expect(screen.queryByText(/^Written to /)).toBeNull();
   // The refused draft is kept for the person to correct.
   expect(screen.getByText("third-peer")).toBeTruthy();
 
   answer = "save";
-  await user.click(screen.getByRole("button", { name: "Save Approved Send Policy" }));
+  await user.click(screen.getByRole("button", { name: "Save policy" }));
   expect(await screen.findByText("Approved-destination policy saved.")).toBeTruthy();
   expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
   const saved = facade.callsTo("SaveSendPolicy")[1]?.args[0] as SendPolicySaveRequest;
@@ -596,9 +596,9 @@ test("a saved reset plan shows the identity it was written under", async () => {
   renderPanel("reset");
   await screen.findByText("Confirm patient database is wiped.");
   await user.type(screen.getByLabelText("Action ID"), "step-3");
-  await user.type(screen.getByLabelText("Side-Effect & Reset Instructions"), "Confirm the receiver is stopped.");
-  await user.click(screen.getByRole("button", { name: "Add Action to Plan" }));
-  await user.click(screen.getByRole("button", { name: "Save Reset Plan" }));
+  await user.type(screen.getByLabelText("Reset instructions"), "Confirm the receiver is stopped.");
+  await user.click(screen.getByRole("button", { name: "Add action" }));
+  await user.click(screen.getByRole("button", { name: "Save plan" }));
   expect(await screen.findByText("Fixture reset plan saved.")).toBeTruthy();
   expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
   expect(screen.getByText("reset-plan.json", { selector: "code" })).toBeTruthy();
@@ -625,7 +625,7 @@ test("an action that did not complete says which state it answered as well as wh
       />
     </IndicatorsContext.Provider>,
   );
-  const check = await screen.findByRole("button", { name: /Check Target Reachability & TLS/i });
+  const check = await screen.findByRole("button", { name: /Test connection/i });
   await waitFor(() => expect((check as HTMLButtonElement).disabled).toBe(false));
   const states: State[] = ["empty", "busy", "cancelled", "permission_denied", "failed"];
   for (const state of states) {
@@ -733,7 +733,7 @@ test("a target bound to a reference in another secrets document says so rather t
   await waitFor(() => expect(bound.selectedOptions[0]?.textContent).toBe("mllp-basic-auth (bound in other-secrets.json)"));
   // The loaded document's reference of the same name is still a choice of its own.
   await user.selectOptions(bound, "mllp-basic-auth (mllp-endpoint · os-keychain)");
-  await user.click(screen.getByRole("button", { name: "Save Target Configuration" }));
+  await user.click(screen.getByRole("button", { name: "Save target" }));
   expect(saved).toMatchObject({ target: { credential: { secrets_file: `${WORKSPACE_ROOT}/secrets.json`, reference: "mllp-basic-auth" } } });
   uninstallFacade();
 });
@@ -744,18 +744,18 @@ test.each([
     fileLabel: "Policy File",
     oldContent: "approved-peer",
     refusal: "invalid send policy document",
-    save: "Save Approved Send Policy",
+    save: "Save policy",
     method: "SaveSendPolicy" as const,
-    fresh: "Start New Send Policy",
+    fresh: "New send policy",
   },
   {
     tab: "reset" as const,
     fileLabel: "Plan File",
     oldContent: "Confirm patient database is wiped.",
     refusal: "invalid fixture reset plan",
-    save: "Save Reset Plan",
+    save: "Save plan",
     method: "SaveResetPlan" as const,
-    fresh: "Start New Reset Plan",
+    fresh: "New reset plan",
   },
 ])("a failed $tab read clears the prior document and cannot save it to the new file", async ({ tab, fileLabel, oldContent, refusal, save, method, fresh }) => {
   const user = userEvent.setup();
@@ -800,7 +800,7 @@ test.each(["policy", "reset"] as const)("a retained %s draft cannot bypass a fai
   />);
   expect(await screen.findByText(tab === "policy" ? "policy file is unreadable" : "plan file is unreadable")).toBeTruthy();
   expect(screen.queryByText(tab === "policy" ? "approved-peer" : "Confirm patient database is wiped.")).toBeNull();
-  const save = screen.getByRole("button", { name: tab === "policy" ? "Save Approved Send Policy" : "Save Reset Plan" }) as HTMLButtonElement;
+  const save = screen.getByRole("button", { name: tab === "policy" ? "Save policy" : "Save plan" }) as HTMLButtonElement;
   expect(save.disabled).toBe(true);
   expect(facade.callsTo(tab === "policy" ? "SaveSendPolicy" : "SaveResetPlan")).toHaveLength(0);
   uninstallFacade();

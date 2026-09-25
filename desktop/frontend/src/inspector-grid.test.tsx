@@ -231,7 +231,7 @@ test("an unparsed occurrence offers no field tree and no selector entry", () => 
     />,
   );
   expect(
-    (screen.getByLabelText("Exact field, repetition, component or subcomponent") as HTMLInputElement)
+    (screen.getByLabelText("Field path") as HTMLInputElement)
       .disabled,
   ).toBe(true);
   expect(

@@ -6,8 +6,8 @@ import { installFacade, installHubAdmin } from "./testkit/wails";
 import type { HubAdminRequest, HubAdminResult } from "./bindings";
 
 async function fillCommon(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("Local copy of hub configuration"), "/local/config.json");
-  await user.type(screen.getByLabelText("Hub host configuration path"), "/etc/readmit-hub/config.json");
+  await user.type(screen.getByLabelText("Local configuration"), "/local/config.json");
+  await user.type(screen.getByLabelText("Host configuration"), "/etc/readmit-hub/config.json");
 }
 
 async function reviewCommand(operation: HubAdminRequest["operation"], label: string) {
@@ -31,7 +31,7 @@ async function reviewCommand(operation: HubAdminRequest["operation"], label: str
     await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Hub host test specification path" : "Hub host backup directory"), "/customer/entry");
   }
   if (operation === "verify-backup" || operation === "restore" || operation === "schedule-pin") {
-    await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Local copy of test specification" : "Local copy of backup directory"), "/local/entry");
+    await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Local test" : "Local backup"), "/local/entry");
   }
   if (operation === "schedule-init") {
     await user.type(screen.getByLabelText("Local copy of operation policy"), "/local/operation.json");
@@ -39,7 +39,7 @@ async function reviewCommand(operation: HubAdminRequest["operation"], label: str
     await user.type(screen.getByLabelText("Local copy of schedule policy"), "/local/schedules.json");
     await user.type(screen.getByLabelText("Hub host schedule policy path"), "/etc/readmit-hub/schedules.json");
   }
-  const button = screen.getByRole("button", { name: "Review operator step" });
+  const button = screen.getByRole("button", { name: "Preview command" });
   await user.click(button);
   expect(admin.callsTo("Preview")).toHaveLength(1);
   const request = admin.callsTo("Preview")[0]!.args[0] as HubAdminRequest;
@@ -68,12 +68,12 @@ test("hub administration refuses an invalid preview and clears stale commands wh
   const admin = installHubAdmin({ Preview: async () => answer });
   render(<HubAdministration />);
   await fillCommon(user);
-  await user.click(screen.getByRole("button", { name: "Review operator step" }));
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
   expect(await screen.findByText(answer.command!)).toBeTruthy();
-  await user.clear(screen.getByLabelText("Hub host configuration path"));
+  await user.clear(screen.getByLabelText("Host configuration"));
   expect(screen.queryByText(answer.command!)).toBeNull();
   answer = { state: "failed", reason: "enter a clean absolute Linux path for the hub configuration" };
-  await user.click(screen.getByRole("button", { name: "Review operator step" }));
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
   expect((await screen.findByRole("alert")).textContent).toContain("enter a clean absolute Linux path");
   expect(screen.queryByText(/Reviewed host command:/)).toBeNull();
   expect(admin.callsTo("Preview")).toHaveLength(2);
@@ -90,9 +90,9 @@ test("hub administration cancels a busy review from the keyboard without publish
   });
   render(<HubAdministration />);
   await fillCommon(user);
-  await user.click(screen.getByRole("button", { name: "Review operator step" }));
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
   expect(await screen.findByText("Checking local copies…")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Review operator step" }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: "Preview command" }).hasAttribute("disabled")).toBe(true);
   const cancel = screen.getByRole("button", { name: "Cancel handoff" });
   cancel.focus();
   await user.keyboard("{Enter}");
@@ -100,7 +100,7 @@ test("hub administration cancels a busy review from the keyboard without publish
   expect(await screen.findByText(/Review state: busy/)).toBeTruthy();
   expect(screen.getByText("Stopping local check…")).toBeTruthy();
   finish({ state: "completed", command: "stale command" });
-  await waitFor(() => expect(screen.getByRole("button", { name: "Review operator step" }).hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Preview command" }).hasAttribute("disabled")).toBe(false));
   expect(screen.getByText(/Review state: cancelled/)).toBeTruthy();
   expect(screen.queryByText("stale command")).toBeNull();
 });
