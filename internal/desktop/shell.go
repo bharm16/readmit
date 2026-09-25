@@ -1,6 +1,12 @@
 package desktop
 
-import "github.com/bharm16/readmit/internal/project"
+import (
+	"slices"
+
+	"github.com/bharm16/readmit/docs"
+	"github.com/bharm16/readmit/internal/capability"
+	"github.com/bharm16/readmit/internal/project"
+)
 
 // Region is one focusable area of the window. The order of the declared
 // regions is the order focus moves through them, which is the order the
@@ -65,9 +71,8 @@ type Privacy struct {
 // qualification state, never from what a screen can draw: a new panel
 // certifies no connector, no de-identification and no external workflow, and
 // a ledger row still open is named here rather than silently promised.
-// Unavailable carries the action of every open cli/desktop row verbatim, so
-// the check beside this declaration fails the moment the ledger and the
-// window disagree in either direction.
+// Unavailable carries the action of every open cli/desktop row verbatim, read
+// from the ledger this build embeds, so no delivery edits it by hand.
 type Support struct {
 	Notes       []string `json:"notes"`
 	Unavailable []string `json:"unavailable"`
@@ -337,12 +342,7 @@ var privacyStatus = Privacy{
 }
 
 // supportStatus is the window's feature and support guidance. The
-// unavailable list is the action of every cli/desktop row the checked
-// capability ledger (docs/capability-ledger.json) still has open, so a
-// capability without its completed screen and parity evidence is named as
-// open here rather than promised; the check beside the shell declaration
-// keeps this list and the ledger in agreement in both directions. The notes
-// state the refusals the verified qualification state actually holds: the
+// The notes state the refusals the verified qualification state actually holds: the
 // connector qualification #35 owns and the database matrix #75 owns are not
 // delivered, no de-identification determination exists, external regression
 // equivalence is declined by every prepared disclosure, and nothing in this
@@ -355,7 +355,32 @@ var supportStatus = Support{
 		"External workflow correctness is declined: fixture proof never substitutes for evidence from the actual target, and every prepared disclosure records external_equivalence as declined.",
 		"This is an unsigned development preview: the only published candidate is an early prerelease, nothing is signed for distribution or notarized, and packaged acceptance (#109), release acceptance (#153) and accessibility/privacy acceptance (#111) are open. A new screen certifies none of them.",
 	},
-	Unavailable: []string{},
+	Unavailable: openCapabilities(docs.CapabilityLedger),
+}
+
+// openCapabilities is the action of every cli/desktop row the checked
+// capability ledger (docs/capability-ledger.json) still has open, so a
+// capability without its completed screen and parity evidence is named as
+// open rather than promised. The ledger is embedded and checked by
+// internal/capability's tests, so one that does not decode is a broken build.
+func openCapabilities(data []byte) []string {
+	ledger, err := capability.Decode(data)
+	if err != nil {
+		panic("the embedded capability ledger does not decode: " + err.Error())
+	}
+	open := []string{}
+	for _, row := range ledger.Rows {
+		if row.Disposed() || row.Implemented {
+			continue
+		}
+		if row.Kind != capability.KindCLI && row.Kind != capability.KindDesktop {
+			continue
+		}
+		if !slices.Contains(open, row.Action) {
+			open = append(open, row.Action)
+		}
+	}
+	return open
 }
 
 // Shell describes the window: the regions focus moves through, how each status

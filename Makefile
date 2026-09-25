@@ -6,7 +6,7 @@ ARGS ?=
 
 check:
 	python3 tools/toolchain.py --check
-	test -z "$$(gofmt -l cmd internal tests desktop)"
+	test -z "$$(gofmt -l cmd internal tests desktop docs)"
 	go vet ./...
 	$(MAKE) check-labels
 

@@ -54,10 +54,9 @@ func TestPrivacyDisclosureNamesDestinationDataAndAuthorizationPerOperation(t *te
 
 // The support guidance is derived from the checked capability ledger and the
 // verified qualification state, not from what a screen can draw. Every
-// cli/desktop row the ledger still has open appears here as still without a
-// checked screen, in both directions: a row opened after this list was
-// written fails it, and so does a stale entry for a row another delivery
-// has since closed. The qualification refusals #35 and #75 own, the
+// cli/desktop row the ledger in this checkout still has open appears here as
+// still without a checked screen, and nothing else does: the window reads the
+// ledger it was built with, so it can never lag a row opened or closed since. The qualification refusals #35 and #75 own, the
 // de-identification and external-equivalence declines, and the development
 // preview status are named as not established rather than silently absent.
 func TestSupportGuidanceMatchesTheCheckedCapabilityLedger(t *testing.T) {

@@ -5,11 +5,9 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-  # Timed fuzz campaigns run here rather than on pull requests: daily, on
-  # demand, and for every release tag. The corpus remains an artifact even if
-  # the job's Go cache is evicted.
-  schedule:
-    - cron: '41 7 * * *'
+  # ADR-0011: until the product works, pull requests and pushes to main run
+  # only the correctness checks. A manual dispatch and a release tag run every
+  # job, including timed fuzzing; nothing runs on a schedule.
   workflow_dispatch:
     inputs:
       run_journeys:
@@ -30,6 +28,8 @@ env:
   GOTOOLCHAIN: local
   GOTELEMETRY: 'off'
   READMIT_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+  # ADR-0011: true only on the events that run the full gate set.
+  FULL_GATES: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   # A push to main repeats a pull request's work only when the pull request's
@@ -75,7 +75,7 @@ jobs:
 
   tooling:
     needs: proof
-    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -93,11 +93,11 @@ jobs:
         run: make mutate
 
   # Timed campaigns never run on a pull request or a push; go-tests runs every
-  # target's seed corpus there. Keep this condition identical to TIMED_FUZZ in
-  # quality. Each shard starts from the corpus the latest campaigns on main
-  # retained, and retains its own, so no cache eviction loses it.
+  # target's seed corpus there. Keep this condition identical to FULL_GATES.
+  # Each shard starts from the latest corpus a campaign on main retained, and
+  # retains its own, so no cache eviction loses it.
   fuzz:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -155,7 +155,7 @@ jobs:
 
   security:
     needs: proof
-    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -206,7 +206,7 @@ jobs:
           export READMIT_HUB_TEST_BINARY_SHA256="$(sha256sum "$READMIT_HUB_TEST_BINARY" | cut -d ' ' -f 1)"
           go test -race ./...
           go vet ./...
-          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+          if [ "$FULL_GATES" = true ]; then go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: readmit-hub-linux-amd64
@@ -260,12 +260,12 @@ jobs:
     timeout-minutes: 5
     steps:
       # Only a push to main whose tree a pull-request run proved skips its jobs,
-      # and then every one of them must have been skipped. Otherwise each must
-      # succeed, and timed fuzzing must run exactly on the events it runs for.
+      # and then every one of them must have been skipped. Otherwise the
+      # correctness jobs must succeed, and the full-gate jobs (ADR-0011) must
+      # succeed exactly on the events that run them and be skipped otherwise.
       - name: Require every quality job this event runs to succeed
         env:
           PROVEN: ${{ needs.proof.result == 'success' && needs.proof.outputs.proven == 'true' }}
-          TIMED_FUZZ: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
           GO_RESULT: ${{ needs.go-tests.result }}
           TOOLING_RESULT: ${{ needs.tooling.result }}
           FUZZ_RESULT: ${{ needs.fuzz.result }}
@@ -275,12 +275,13 @@ jobs:
           RUN_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys }}
         run: |
           if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
+          if [ "$FULL_GATES" = true ]; then full=success; else full=skipped; fi
           test "$GO_RESULT" = "$expected"
-          test "$TOOLING_RESULT" = "$expected"
-          test "$SECURITY_RESULT" = "$expected"
           test "$HUB_RESULT" = "$expected"
+          test "$TOOLING_RESULT" = "$full"
+          test "$SECURITY_RESULT" = "$full"
+          test "$FUZZ_RESULT" = "$full"
           if [ "$RUN_JOURNEYS" = true ]; then test "$HUB_JOURNEYS_RESULT" = success; else test "$HUB_JOURNEYS_RESULT" = skipped; fi
-          if [ "$TIMED_FUZZ" = true ]; then test "$FUZZ_RESULT" = success; else test "$FUZZ_RESULT" = skipped; fi
       # The record a later push to main looks for. Failing to write it only
       # means that push runs in full, so it never fails this check.
       - name: Record the tree this pull-request run tested
@@ -305,7 +306,7 @@ jobs:
 
   package:
     needs: proof
-    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -416,9 +417,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          python3 tools/release_notes.py > "$RUNNER_TEMP/release-notes.md"
           gh release create "$RELEASE_TAG" dist/*.tar.gz dist/*.zip dist/checksums.txt \
             --verify-tag --prerelease --title "readmit $RELEASE_TAG" \
-            --notes-file docs/release-notes.md
+            --notes-file "$RUNNER_TEMP/release-notes.md"
 
   download-smoke:
     if: ${{ !cancelled() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.publish.result == 'success' }}

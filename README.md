@@ -240,8 +240,9 @@ make test
 Use affected packages and their callers while iterating. `make test` runs the
 complete Go suite with race instrumentation on small fixtures and the actual
 production-size observation boundary separately. Timed fuzz discovery, mutation
-checks, vulnerability scans, and all five packaged-platform checks remain CI
-gates. See [the validation workflow](docs/agents/testing.md) for review fixes,
+checks, vulnerability scans, and all five packaged-platform checks run in CI on
+a manual dispatch and a release tag, not on every pull request
+([ADR-0011](docs/adr/0011-pre-product-ci-runs-only-correctness-checks.md)). See [the validation workflow](docs/agents/testing.md) for review fixes,
 rebases, and parallel worktrees.
 
 Released behavior is additionally checked against an independently implemented

@@ -26,15 +26,15 @@
 
   <div class="notice">
     <strong>Release status: unsigned development preview.</strong>
-    Three different things are easy to confuse, so this page keeps them apart: what is <em>published</em> (an early prerelease containing <code>readmit inspect</code> only), what CI <em>builds and installation-tests</em> on every push (the current branch, as unsigned CLI archives and unsigned native desktop packages that are never published), and a <em>published complete product</em> (which does not exist yet; <a href="https://github.com/bharm16/readmit/blob/main/docs/release-acceptance.md">release acceptance</a> is open). Nothing is code-signed for distribution or notarized; an operating-system or endpoint policy may refuse to run any of it.
+    Three different things are easy to confuse, so this page keeps them apart: what is <em>published</em> (an early prerelease containing <code>readmit inspect</code> only), what CI <em>builds and installation-tests</em> when a run is started by hand or a release is tagged (the current branch, as unsigned CLI archives and unsigned native desktop packages that are never published), and a <em>published complete product</em> (which does not exist yet; <a href="https://github.com/bharm16/readmit/blob/main/docs/release-acceptance.md">release acceptance</a> is open). Nothing is code-signed for distribution or notarized; an operating-system or endpoint policy may refuse to run any of it.
   </div>
 
   <h2>The published candidate: <code>v0.1.0-alpha.2</code></h2>
   <p>The only published archives are the <code>v0.1.0-alpha.2</code> GitHub prerelease, built from an early commit that shipped <code>readmit inspect</code> alone. Every other workflow described on this site landed on <code>main</code> afterwards and is in no published archive. Treating the prerelease as the product would understate the current code and overstate the release; this page does neither.</p>
   <p>Archives, <code>checksums.txt</code> and build provenance are published only on <a href="https://github.com/bharm16/readmit/releases">GitHub Releases</a>. Each archive holds one static executable with no runtime, installer or container requirement, plus the README, the documentation pages, third-party notices and licenses, the field-label source, and synthetic fixtures.</p>
 
-  <h3>Command-line archives CI builds on every push</h3>
-  <p>These five archives are the shape of the next release. CI cross-builds each one and runs the exact artifact on its native runner, but only a <code>v*</code> tag publishes anything, so today they are previews of an unpublished release.</p>
+  <h3>Command-line archives CI builds</h3>
+  <p>These five archives are the shape of the next release. When a run is started by hand or a release is tagged, CI cross-builds each one and runs the exact artifact on its native runner, but only a <code>v*</code> tag publishes anything, so today they are previews of an unpublished release.</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Archive</th><th>Operating-system floor</th><th>Tested in CI on</th></tr></thead>
@@ -59,7 +59,7 @@ tar -xzf readmit_0.1.0-alpha.2_darwin_arm64.tar.gz
   <p>GitHub build provenance is attested for each published executable and is separate from OS code signing. With the GitHub CLI: <code>gh attestation verify ./readmit --repo bharm16/readmit</code> (or <code>readmit.exe</code>).</p>
 
   <h2>Desktop packages</h2>
-  <p>The desktop shell is distributed as each platform's own package, never inside a CLI archive. On every push, CI builds each package natively on its target runner, installs it through the platform's own installer, checks the installed application, and removes it — so the packaging is exercised, while no package and no installer is published anywhere and no window is opened on any runner, because no runner has a display. Every build writes a <code>readmit-desktop-package/v1</code> manifest beside the packages naming each package, its format and its SHA-256 digest, and recording <code>"signed_for_distribution": false</code>.</p>
+  <p>The desktop shell is distributed as each platform's own package, never inside a CLI archive. When a run is started by hand, CI builds each package natively on its target runner, installs it through the platform's own installer, checks the installed application, and removes it — so the packaging is exercised, while no package and no installer is published anywhere and no window is opened on any runner, because no runner has a display. Every build writes a <code>readmit-desktop-package/v1</code> manifest beside the packages naming each package, its format and its SHA-256 digest, and recording <code>"signed_for_distribution": false</code>.</p>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Target</th><th>Package</th><th>What the package declares</th><th>Signature</th></tr></thead>
@@ -80,7 +80,7 @@ go build -trimpath -o readmit ./cmd/readmit
 ./readmit --help
 sh samples/synthetic-walkthrough/walkthrough.sh</code></pre>
   <p class="muted">The desktop shell is a separate Wails 2 module over the same engine; building it additionally needs Node 24 and a platform webview. The procedure is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>, and the packaged result is what the section above describes. A source build is a preview you built yourself — it is not a published release, and it establishes no acceptance of its own.</p>
-  <p>What CI checks on every push, so you can read its verdict instead of taking this page's word for it: the race-enabled Go suite, an independently implemented HL7 endpoint against an externally authored corpus, mutation checks, fuzz shards, a vulnerability scan, packaging of the five archives, the desktop packages above, and a native run of each archived executable with an empty <code>PATH</code>. The workflows are <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/ci.yml">ci.yml</a> and <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/desktop.yml">desktop.yml</a>; the local loop is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>.</p>
+  <p>What CI checks on every push, so you can read its verdict instead of taking this page's word for it: the race-enabled Go suite, the team hub against PostgreSQL, and the desktop shell's frontend and Go tests on macOS. A run started by hand or a release tag also checks an independently implemented HL7 endpoint against an externally authored corpus, mutation checks, fuzz shards, a vulnerability scan, packaging of the five archives, the desktop packages above, and a native run of each archived executable with an empty <code>PATH</code>. The workflows are <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/ci.yml">ci.yml</a> and <a href="https://github.com/bharm16/readmit/blob/main/.github/workflows/desktop.yml">desktop.yml</a>; the local loop is in the <a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a>.</p>
 
   <h2>Not included</h2>
   <ul>

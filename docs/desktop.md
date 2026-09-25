@@ -349,8 +349,8 @@ is ready. Linux supplies Xvfb. The installed application is then driven through
 the platform's accessibility API — the guided sample from first run to both
 verdicts read back after a reopen, and a staged upgrade checked against the
 real candidate the same run built — by `tools/native_journey.py`, which finds
-every control as a screen reader names it: on linux/amd64 in every pull
-request's run, and on all five targets in the daily and dispatched runs. See
+every control as a screen reader names it, on all five targets in a manual
+dispatch that sets `run_journeys=true`. See
 [native acceptance](native-acceptance.md).
 
 Hosted runners still contain developer tools. These are **preview installation

@@ -11,6 +11,7 @@ The choices below were agreed on 2026-09-17 from a stack review. The hard-to-rev
 - [ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md): the case index is a derived, disposable readmit-owned file rebuilt from canonical evidence, not a database.
 - [ADR-0009](adr/0009-profile-packs-are-offline-metadata-with-explicit-support.md): profile packs normalize pinned metadata offline and declare parsing, labels, structure and workflow support separately.
 - [ADR-0010](adr/0010-vendor-billing-issues-offline-entitlements-without-evidence.md): Paddle billing stays in a separate vendor service that issues Readmit's offline entitlements without receiving customer evidence.
+- [ADR-0011](adr/0011-pre-product-ci-runs-only-correctness-checks.md): until the product works, pull requests and pushes to main run only correctness checks; release gates run on manual dispatch and release tags, never on a schedule.
 
 The [September 18 product decisions](product-decisions.md) also settle the
 remaining connector, database, packaging, trial and commercial directions.
@@ -437,12 +438,14 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CI
 
-Journey automation is temporarily paused: frontend, hub, packaged CLI and
-native accessibility journeys run only when a manual workflow dispatch sets
-`run_journeys=true`. Automatic CI retains unit/component tests, race tests,
-independent verification, mutations, vulnerability scans, builds, archive smoke
-and package installation/startup/removal checks. Green automatic CI does not
-prove interactive journeys. See [validation](agents/testing.md#ci-and-merge).
+Until the product works, pull requests and pushes to main run only the
+correctness checks: Go and race tests, the hub, and the frontend and desktop
+shell on macOS ([ADR-0011](adr/0011-pre-product-ci-runs-only-correctness-checks.md)).
+Independent verification, mutations, vulnerability scans, timed fuzzing,
+archive smoke and native package installation/startup/removal checks run on a
+manual dispatch and a release tag; nothing runs on a schedule. Frontend, hub,
+packaged CLI and native accessibility journeys run only when a manual dispatch
+sets `run_journeys=true`. See [validation](agents/testing.md#ci-and-merge).
 
 GitHub Actions, with the declared release matrix mapped to native runners:
 
@@ -455,11 +458,11 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 | windows/amd64 | `windows-2025` |
 
 - Third-party actions are pinned by commit SHA.
-- Go tests (which run every fuzz target's seed corpus), tooling/independent verification and vulnerability scanning run concurrently. Three timed fuzz shards run daily, on demand and for release tags, not on pull requests, and keep their corpus as artifacts. Fuzz targets are discovered from Go's test inventory, including targets added by other worktrees. The stable `quality` check requires every lane its event runs to pass.
+- Go tests run every fuzz target's seed corpus. On a manual or tag run, tooling/independent verification and vulnerability scanning run beside them, and three timed fuzz shards keep their corpus as artifacts. Fuzz targets are discovered from Go's test inventory, including targets added by other worktrees. The stable `quality` check requires every lane its event runs to pass.
 - A push to main skips its jobs only when a successful pull-request run already tested that exact tree; any other push to main runs everything. See [validation](agents/testing.md).
-- Each Go job owns one compiler/platform/dependency-scoped cache per deliberate epoch. Main saves it on an exact miss; pull requests, tags and other branches restore from main without saving. Source changes compile against that snapshot until an epoch bump or dependency change. Desktop cache identity includes both module checksum files. Superseded PR runs are cancelled; main, release-tag, daily and dispatched runs are independent.
+- Each Go job owns one compiler/platform/dependency-scoped cache per deliberate epoch. Main saves it on an exact miss; pull requests, tags and other branches restore from main without saving. Source changes compile against that snapshot until an epoch bump or dependency change. Desktop cache identity includes both module checksum files. Superseded PR runs are cancelled; main, release-tag and dispatched runs are independent.
 - `make test` keeps the small observation boundary under race detection and runs the exact production-size boundary separately without instrumentation. See [validation](agents/testing.md) for the local loop.
-- PR checks: tests, vet, govulncheck, independent endpoint/corpus and mutation checks, and native executable smoke tests. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not. That workflow also builds each native desktop package on the runner it targets and installs, checks and removes it there through the platform's own installer; `desktop` is that workflow's stable aggregate over the shell build and the five package jobs. Installed packages also initialize the native webview with isolated temporary shell state and a bounded startup check; Linux uses Xvfb. That startup evidence is separate from full interactive acceptance.
+- PR checks: formatting, vet, race tests and the hub. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not. On a manual run that workflow also builds each native desktop package on the runner it targets and installs, checks and removes it there through the platform's own installer; `desktop` is that workflow's stable aggregate over the shell build and, when they run, the package and installation jobs. Installed packages also initialize the native webview with isolated temporary shell state and a bounded startup check; Linux uses Xvfb. That startup evidence is separate from full interactive acceptance.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.
 
@@ -468,8 +471,8 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 - GoReleaser OSS builds the archives: `.tar.gz` for macOS and Linux, `.zip` for Windows, plus SHA-256 checksums, published as GitHub Releases.
 - `actions/attest` v4 for build provenance on the binaries. Attest only build outputs, never customer evidence.
 - Current CLI releases are standalone archives. The desktop packages are built
-  and installation-tested on every push as unsigned development previews and are
-  published nowhere. There is no automatic update check.
+  and installation-tested on a manual dispatch as unsigned development previews
+  and are published nowhere. There is no automatic update check.
 - Selected desktop delivery (#104): Windows MSI with WebView2 handling;
   Developer ID-signed/notarized/stapled macOS DMG plus signed managed PKG;
   Ubuntu `.deb` with WebKitGTK dependencies. The finite OS/architecture targets
