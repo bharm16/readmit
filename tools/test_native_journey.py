@@ -121,12 +121,69 @@ class Driver(unittest.TestCase):
         with self.assertRaisesRegex(native_journey.Refused, "no enabled button named 'Verify and open regression' in 'Evidence'"):
             app.press("Verify and open regression", within="Evidence", timeout=1)
 
+    def test_scoped_controls_keep_document_order_across_nested_regions(self):
+        tree = [
+            node(0, "frame"),
+            node(1, "landmark", "Investigation packets", 0),
+            node(2, "section", "", 1),
+            node(3, "push button", "Choose destination…", 2),
+            node(4, "landmark", "Synthetic sample packets", 1),
+            node(5, "push button", "Choose destination…", 4),
+        ]
+        app = self.application("linux", [tree])
+        app.press("Choose destination…", within="Investigation packets", timeout=1)
+        self.assertEqual(self.sent("press"), [{"op": "press", "id": 3}])
+        app.press("Choose destination…", within="Investigation packets", index=1, timeout=1)
+        self.assertEqual(self.sent("press")[-1], {"op": "press", "id": 5})
+
     def test_what_is_entered_must_be_what_the_window_then_holds(self):
         empty = [node(0, "AXWindow"), node(1, "AXTextField", "Expectation name", 0, value="")]
         held = [node(0, "AXWindow"), node(1, "AXTextField", "Expectation name", 0, value="one-appointment")]
         app = self.application("darwin", [empty, empty, held])
         app.fill("Expectation name", "one-appointment", timeout=5)
         self.assertEqual(self.sent("set"), [{"op": "set", "id": 1, "text": "one-appointment"}])
+
+    def test_an_indexed_field_is_verified_against_the_same_field(self):
+        empty = [node(0, "frame"), node(1, "entry", "Name", 0, value=""),
+                 node(2, "entry", "Name", 0, value="")]
+        held = [*empty[:2], node(2, "entry", "Name", 0, value="regression")]
+        app = self.application("linux", [empty, held])
+        app.fill("Name", "regression", index=1, timeout=1, settle=0)
+        self.assertEqual(self.sent("set"), [{"op": "set", "id": 2, "text": "regression"}])
+
+    def test_guided_sample_names_the_test_inside_its_authoring_region(self):
+        # Minimized from the failed Linux journey: the filter and profile
+        # editor appear before Test authoring and also match a global Name.
+        empty = [
+            node(0, "frame"),
+            node(1, "entry", "Name", 0, value=""),
+            node(2, "entry", "Name for SCH-1", 0, value=""),
+            node(3, "push button", "Save name", 0),
+            node(4, "landmark", "Test authoring", 0),
+            node(5, "entry", "Name", 4, value=""),
+            node(6, "push button", "Save name", 4),
+        ]
+        held = [dict(n, value="reschedule-regression") if n["id"] == 5 else n for n in empty]
+        app = self.application("linux", [empty, held])
+        press = app.press
+        fill = app.fill
+
+        class NameSaved(Exception):
+            pass
+
+        def until_name_saved(name, **kwargs):
+            if name == "Save name":
+                press(name, **kwargs)
+                raise NameSaved
+
+        with mock.patch.object(app, "launch"), mock.patch.object(app, "checkpoint"), \
+                mock.patch.object(app, "choose_folder"), mock.patch.object(app, "read_out"), \
+                mock.patch.object(app, "press", side_effect=until_name_saved), \
+                mock.patch.object(app, "fill", side_effect=lambda *args, **kwargs: fill(*args, **kwargs, settle=0)):
+            with self.assertRaises(NameSaved):
+                native_journey.guided_sample(app, self.root / "sample", None, None)
+        self.assertEqual(self.sent("set"), [{"op": "set", "id": 5, "text": "reschedule-regression"}])
+        self.assertEqual(self.sent("press"), [{"op": "press", "id": 6}])
 
     def test_a_new_folder_is_named_in_the_save_dialog_and_an_existing_one_picked_in_the_folder_dialog(self):
         app = self.application("windows", [[node(0, "Window")]])

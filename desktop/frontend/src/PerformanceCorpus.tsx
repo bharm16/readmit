@@ -443,7 +443,7 @@ export function PerformanceCorpus({
           aria-controls="performance-corpus-body"
           onClick={() => setOpen(!open)}
         >
-          Generate or scan a performance corpus
+          Performance corpus
         </button>
       </h3>
       {open ? (
@@ -489,7 +489,7 @@ export function PerformanceCorpus({
               <legend>New files</legend>
               <div className="raw-choice">
                 <button type="button" onClick={() => void choose("corpus-folder", forGeneration(setFolder))}>
-                  Choose a folder for the corpus…
+                  Choose destination…
                 </button>
                 <span className="raw-path">{folder || "No folder chosen."}</span>
               </div>
@@ -553,7 +553,7 @@ export function PerformanceCorpus({
             <h4 id="corpus-scan-title">Scan a stream</h4>
             <div className="raw-choice">
               <button type="button" disabled={disabled} onClick={() => void choose("scan-file", forScan(setStream))}>
-                Choose a stream to scan…
+                Browse…
               </button>
               <span className="raw-path">{stream || "No stream chosen."}</span>
             </div>
@@ -567,13 +567,15 @@ export function PerformanceCorpus({
             <fieldset disabled={disabled}>
               <legend>Bounds and window</legend>
               <label>
-                Records per parsing batch (empty for 256)
+                Records per batch
                 <input inputMode="numeric" value={batchRecords} onChange={(event) => forScan(setBatchRecords)(event.target.value)} />
               </label>
+              <p className="hint">Empty for 256 records.</p>
               <label>
-                Bytes per parsing batch (empty for 8388608)
+                Bytes per batch
                 <input inputMode="numeric" value={batchBytes} onChange={(event) => forScan(setBatchBytes)(event.target.value)} />
               </label>
+              <p className="hint">Empty for 8,388,608 bytes.</p>
               <label>
                 Window offset
                 <input inputMode="numeric" value={windowOffset} onChange={(event) => forScan(setWindowOffset)(event.target.value)} />
@@ -587,8 +589,9 @@ export function PerformanceCorpus({
               <legend>Benchmark</legend>
               <label className="raw-check">
                 <input type="checkbox" checked={benchmark} onChange={(event) => forScan(setBenchmark)(event.target.checked)} />
-                Write a readmit-benchmark/v1 document when the scan completes
+                Save benchmark
               </label>
+              <p className="hint">Writes a readmit-benchmark/v1 document when the scan completes.</p>
               {benchmark ? (
                 <>
                   <div className="raw-choice">

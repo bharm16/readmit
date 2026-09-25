@@ -194,16 +194,17 @@ export function PacketPanel({
           {cases.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
       </> : null}
-      <label htmlFor="packet-output">New packet folder</label>
+      <label htmlFor="packet-output">Packet folder</label>
       <input id="packet-output" value={output} disabled={busy} placeholder="generated at preview"
         onChange={(e) => { setOutput(e.target.value); invalidate(); }} />
+      <p className="hint">Must be a new folder.</p>
       <button disabled={busy || !caseName || !specName || !currentName} onClick={() => void ask()}>
-        {operation === "previewing" ? "Checking…" : "Preview assembly"}
+        {operation === "previewing" ? "Checking…" : "Preview"}
       </button>
       {canAssemble ? <button disabled={busy} onClick={() => void assemble()}>
-        {operation === "assembling" ? "Assembling…" : "Assemble packet"}
+        {operation === "assembling" ? "Assembling…" : "Create packet"}
       </button> : null}
-      <button disabled={operation !== "assembling" && operation !== "exporting"} onClick={lifecycle.cancel}>Cancel packet work</button>
+      <button disabled={operation !== "assembling" && operation !== "exporting"} onClick={lifecycle.cancel}>Cancel</button>
     </div>
     <div role="status" aria-live="polite">
       {operation === "assembling" ? <p>Assembling. Cancellation stops the copy; a partial destination remains incomplete and cannot be verified as complete.</p> : null}
@@ -237,7 +238,7 @@ export function PacketPanel({
 
     <div className="run-history">
       <h4>Sealed packets</h4>
-      <label htmlFor="packet-open">Packets of this workspace</label>
+      <label htmlFor="packet-open">Packets</label>
       <select id="packet-open" value={packetName} disabled={busy}
         onChange={(e) => { setPacketName(e.target.value); setPacket(null); setExported(null); setExportDestination(""); setDestinationChoice(null); }}>
         <option value="">Select a packet…</option>
@@ -253,7 +254,7 @@ export function PacketPanel({
         <p className="hint">{exportDestination || "No destination chosen."}</p>
         {destinationChoice && destinationChoice.state !== "completed" ? <p>{destinationChoice.reason}</p> : null}
         <button disabled={busy || !exportDestination} onClick={() => void seal()}>
-          {operation === "exporting" ? "Exporting…" : "Export portable review"}
+          {operation === "exporting" ? "Exporting…" : "Export review"}
         </button>
         {exported?.reason ? <p>{exported.reason}</p> : null}
         {exported?.identity ? <>
@@ -266,14 +267,17 @@ export function PacketPanel({
     <div className="run-history">
       <h4>Portable reviews</h4>
       <p>A review opens read-only: verification without executing, sending, resetting or changing anything, with the report text revealed only on purpose. Opening a review never acquires send or mutation authority.</p>
-      <label htmlFor="review-open">Reviews of this workspace</label>
+      <label htmlFor="review-open">Reviews</label>
       <select id="review-open" value={reviewName} disabled={busy}
         onChange={(e) => { setReviewName(e.target.value); setReview(null); setRevealed(false); }}>
         <option value="">Select a portable review…</option>
         {reviews.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
       <button disabled={busy || !reviewName} onClick={() => void openReview(false)}>Open read-only</button>
-      {review?.review ? <button disabled={busy} onClick={() => void openReview(!revealed)}>{revealed ? "Hide report text" : "Reveal report text"}</button> : null}
+      {review?.review ? <>
+        <button disabled={busy} aria-describedby="review-reveal-warning" onClick={() => void openReview(!revealed)}>{revealed ? "Hide report text" : "Show report"}</button>
+        <p className="hint" id="review-reveal-warning">Report text may contain patient data.</p>
+      </> : null}
       {review?.reason ? <p>{review.reason}</p> : null}
       {review?.review ? <PacketReviewDetails view={review.review} /> : null}
     </div>

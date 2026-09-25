@@ -103,9 +103,11 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = 
         ...(defaults ? {} : { identity: "window-identity" }),
       }),
   });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  // The first-run card and the command region's action bar both offer the same
+  // open-workspace action, so either button starts the same chooser.
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
   await screen.findByText(WORKSPACE_ROOT);
-  const readBtn = await screen.findByRole("button", { name: "Read the project" });
+  const readBtn = await screen.findByRole("button", { name: "Open project" });
   await waitFor(() => expect((readBtn as HTMLButtonElement).disabled).toBe(false));
   await user.click(readBtn);
   await screen.findByRole("heading", { name: "Scheduling investigation" });
@@ -124,8 +126,8 @@ test("opening observation editor never queries and shows qualification state", a
   });
 
   const evidence = screen.getByRole("region", { name: "Evidence" });
-  await user.click(within(evidence).getByRole("button", { name: "Set up observation…" }));
-  expect(await screen.findByRole("heading", { name: "Observation sources and windows" })).toBeTruthy();
+  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  expect(await screen.findByRole("heading", { name: "Observations" })).toBeTruthy();
   expect(screen.getByText(/Editor opened locally/)).toBeTruthy();
   expect(screen.getByText(/postgresql/)).toBeTruthy();
   expect(screen.getByText(/not a production claim/)).toBeTruthy();
@@ -164,8 +166,8 @@ test("local validation and unauthorized collect stay separate", async () => {
   });
 
   const evidence = screen.getByRole("region", { name: "Evidence" });
-  await user.click(within(evidence).getByRole("button", { name: "Set up observation…" }));
-  await screen.findByRole("heading", { name: "Observation sources and windows" });
+  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await screen.findByRole("heading", { name: "Observations" });
 
   await user.click(screen.getByRole("button", { name: "Validate locally" }));
   expect(await screen.findByText(/Local configuration validation passed/)).toBeTruthy();
@@ -201,8 +203,8 @@ test("denied and stale completion summaries stay distinct from absence", async (
       }),
   });
   const evidence = screen.getByRole("region", { name: "Evidence" });
-  await user.click(within(evidence).getByRole("button", { name: "Set up observation…" }));
-  await screen.findByRole("heading", { name: "Observation sources and windows" });
+  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await screen.findByRole("heading", { name: "Observations" });
   await user.click(screen.getByRole("button", { name: "Explain completion" }));
   expect(await screen.findByText(/Status:/)).toBeTruthy();
   expect(screen.getByText("stale")).toBeTruthy();
@@ -225,13 +227,13 @@ test("a v1 source the facade answered with every transport member is saved again
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
   });
   const evidence = screen.getByRole("region", { name: "Evidence" });
-  await user.click(within(evidence).getByRole("button", { name: "Set up observation…" }));
-  await screen.findByRole("heading", { name: "Observation sources and windows" });
-  await user.click(screen.getByRole("button", { name: "Save source and window" }));
+  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await screen.findByRole("heading", { name: "Observations" });
+  await user.click(screen.getByRole("button", { name: "Save observation" }));
   expect(await screen.findByText(/^Saved through shared Go writers/)).toBeTruthy();
   await user.clear(screen.getByLabelText("Export path"));
   await user.type(screen.getByLabelText("Export path"), "never-exported.csv");
-  await user.click(screen.getByRole("button", { name: "Save source and window" }));
+  await user.click(screen.getByRole("button", { name: "Save observation" }));
   await waitFor(() => expect(saved).toHaveLength(2));
   // Sent back with capture, a v1 source is a document v1 never allowed.
   expect(saved[1]?.source?.file?.path).toBe("never-exported.csv");
@@ -241,7 +243,7 @@ test("a v1 source the facade answered with every transport member is saved again
     SaveObservationSource: (): Promise<ObservationSourceResult> =>
       Promise.resolve({ state: "failed", reason: "the source document could not be written" }),
   });
-  await user.click(screen.getByRole("button", { name: "Save source and window" }));
+  await user.click(screen.getByRole("button", { name: "Save observation" }));
   expect(
     await screen.findByText(/^Not saved: the source document could not be written\. A collection reads the documents saved before\./),
   ).toBeTruthy();
@@ -266,14 +268,14 @@ test("a source switched between kinds is saved with only the transports its cont
   const panel = await openObservationSetup(user);
   await user.click(panel.getByRole("button", { name: "http-api" }));
   await user.click(panel.getByRole("button", { name: "file-export" }));
-  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await user.click(panel.getByRole("button", { name: "Save observation" }));
   await waitFor(() => expect(saved).toHaveLength(1));
   expect(saved[0]?.source?.schema).toBe("readmit-observation-source/v1");
   expect(saved[0]?.source && "database" in saved[0].source).toBe(false);
   expect(saved[0]?.source && "capture" in saved[0].source).toBe(false);
 
   await user.click(panel.getByRole("button", { name: "downstream-capture" }));
-  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await user.click(panel.getByRole("button", { name: "Save observation" }));
   await waitFor(() => expect(saved).toHaveLength(2));
   expect(saved[1]?.source?.schema).toBe("readmit-observation-source/v2");
   expect(saved[1]?.source?.capture).not.toBeNull();
@@ -296,7 +298,7 @@ async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLEleme
 
 async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
   const evidence = screen.getByRole("region", { name: "Evidence" });
-  await user.click(within(evidence).getByRole("button", { name: "Set up observation…" }));
+  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   return within(await screen.findByRole("region", { name: "Observation setup" }));
 }
 
@@ -310,11 +312,11 @@ test("new observation defaults have no pinned identity until each document is sa
       Promise.resolve({ state: "completed", window: request.window!, identity: "saved-window-identity" }),
   });
   const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false));
   expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
     "Pinned identities — source: not saved; window: not saved",
   );
-  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await user.click(panel.getByRole("button", { name: "Save observation" }));
   await panel.findByText(/^Saved through shared Go writers/);
   expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(
     "Pinned identities — source: saved-source-identity; window: saved-window-identity",
@@ -449,14 +451,14 @@ test("each saved document is validated on its own from the keyboard, with its id
   });
   const panel = await openObservationSetup(user);
 
-  await tabTo(user, panel.getByRole("button", { name: "Validate source document" }));
+  await tabTo(user, panel.getByRole("button", { name: "Validate source" }));
   await user.keyboard("{Enter}");
   expect(
     await panel.findByText(
       "Source document observation-source.json: valid readmit-observation-source/v1, identity saved-source-identity. Nothing was collected.",
     ),
   ).toBeTruthy();
-  await tabTo(user, panel.getByRole("button", { name: "Validate window document" }));
+  await tabTo(user, panel.getByRole("button", { name: "Validate window" }));
   await user.keyboard(" ");
   expect(
     await panel.findByText(
@@ -480,7 +482,7 @@ test("a refused source save leaves the window as it was saved, and a refused win
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity-2" }),
   });
   const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("button", { name: "Save source and window" }));
+  await user.click(panel.getByRole("button", { name: "Save observation" }));
   expect(
     await panel.findByText("Not saved: cannot write an observation source here. A collection reads the documents saved before."),
   ).toBeTruthy();
@@ -496,7 +498,7 @@ test("a refused source save leaves the window as it was saved, and a refused win
     SaveObservationWindow: (): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "permission_denied", reason: "authoring requires an active license" }),
   });
-  await tabTo(user, panel.getByRole("button", { name: "Save source and window" }));
+  await tabTo(user, panel.getByRole("button", { name: "Save observation" }));
   await user.keyboard("{Enter}");
   expect(
     await panel.findByText(
@@ -546,11 +548,11 @@ test("a document the reader refuses is said to be refused on opening, and naming
   expect(facade.callsTo("OpenObservationSource")).toHaveLength(sourceReads);
   expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("exports/appointments.csv");
   // The refused window is never replaced by what the editor holds.
-  expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(true);
   expect(panel.getByText(/^Saving is closed while a named document is refused/)).toBeTruthy();
   await user.clear(panel.getByLabelText("Window document"));
   await user.type(panel.getByLabelText("Window document"), "observation-window.json");
-  await waitFor(() => expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false));
   expect(panel.queryByText(/^Saving is closed/)).toBeNull();
   expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
   expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
@@ -588,8 +590,8 @@ test("the editor stays closed while a document is read, so a late read never rep
   // Nothing can be typed, saved or validated while the document it would
   // replace is being read; the document's name can still be typed.
   expect(exportPath.disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Save source and window" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Validate source document" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Validate source" }) as HTMLButtonElement).disabled).toBe(true);
   expect((panel.getByLabelText("Source document") as HTMLInputElement).disabled).toBe(false);
   const answer: ObservationSourceResult = {
     state: "completed",

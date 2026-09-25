@@ -1794,10 +1794,10 @@ export default function App() {
         )}
         <div className="actions">
           <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
-            Open a workspace folder…
+            Open workspace…
           </button>
           <button type="button" disabled={busy} onClick={actions["create-sample-workspace"]}>
-            Create the sample workspace…
+            Create sample…
           </button>
           <button type="button" onClick={actions["command-palette"]}>
             Commands (Ctrl+K)
@@ -1844,7 +1844,7 @@ export default function App() {
             }
           }}
         >
-          <label htmlFor="workspace-search">Search this workspace</label>
+          <label htmlFor="workspace-search">Search workspace</label>
           <input
             id="workspace-search"
             ref={searchField}
@@ -1925,7 +1925,7 @@ export default function App() {
                 disabled={busy}
                 onClick={actions["open-workspace"]}
               >
-                Choose a different folder…
+                Change folder…
               </button>
             </p>
           </>
@@ -1946,13 +1946,13 @@ export default function App() {
                       disabled={busy}
                       onClick={() => void verifyCase(opened.root, artifact.name)}
                     >
-                      Verify and open
+                      Open case
                     </button>
                   </>
                 ) : null}
                 {artifact.kind === "project" ? (
                   <button type="button" disabled={busy} onClick={() => void readProject(opened.root)}>
-                    Read the project
+                    Open project
                   </button>
                 ) : null}
                 {artifact.kind === "target" ? (
@@ -2000,7 +2000,7 @@ export default function App() {
                       setEnvironmentArtifact({ name: artifact.name, kind: "reset" });
                     }}
                   >
-                    Review reset plan
+                    View reset plan
                   </button>
                 ) : null}
                 {artifact.reason ? (
@@ -2209,7 +2209,7 @@ export default function App() {
                 className="action-back-to-listing"
                 onClick={() => focusRegion("navigation")}
               >
-                Back to the folder listing
+                Back to files
               </button>
             </p>
           </>
@@ -2727,7 +2727,12 @@ export default function App() {
               }}
               onFocus={() => setFocused(region.id)}
             >
-              <h2 id={`${region.id}-heading`}>{region.label}</h2>
+              {/* The commands region's caption is visual chrome: the palette,
+               * search and action controls already name it, so the heading is
+               * kept only to name the landmark. */}
+              <h2 id={`${region.id}-heading`} className={region.id === "commands" ? "visually-hidden" : undefined}>
+                {region.label}
+              </h2>
               <ContextHelp region={region.id} />
               {content[region.id]}
             </section>

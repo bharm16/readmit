@@ -130,14 +130,14 @@ export function RevisionComparison({
           value={right}
           onChange={(event) => setRight(event.target.value)}
         />
-        <label htmlFor="revision-left-run">Retained run of the earlier revision</label>
+        <label htmlFor="revision-left-run">Earlier run</label>
         <input
           id="revision-left-run"
           list="revision-entries"
           value={leftResult}
           onChange={(event) => setLeftResult(event.target.value)}
         />
-        <label htmlFor="revision-right-run">Retained run of the later revision</label>
+        <label htmlFor="revision-right-run">Later run</label>
         <input
           id="revision-right-run"
           list="revision-entries"
@@ -145,7 +145,7 @@ export function RevisionComparison({
           onChange={(event) => setRightResult(event.target.value)}
         />
         <button type="submit" disabled={busy || !left || !right}>
-          Compare these revisions
+          Compare revisions
         </button>
       </form>
 
@@ -230,7 +230,7 @@ export function RevisionComparison({
             </>
           ) : null}
 
-          <h4>Proof from retained runs</h4>
+          <h4>Run evidence</h4>
           <p className="proof">{describe(PROOF, comparison.proof.state)}</p>
           {/* Every run that was named is shown as the engine read it, including
               the one run of a pair that claims nothing because the other

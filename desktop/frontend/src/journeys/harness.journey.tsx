@@ -21,12 +21,12 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-const navigation = () => within(region("Project navigation"));
+const navigation = () => within(region("Workspace"));
 
 test("a dialog the journey did not answer fails the journey instead of opening nothing quietly", async () => {
   const user = userEvent.setup();
   await journey.launch();
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   // The facade reports the dialog it could not show as unavailable.
   expect(await navigation().findByText("the folder dialog is unavailable")).toBeTruthy();
   await expect(journey.close()).rejects.toThrow(
@@ -38,7 +38,7 @@ test("an answer scripted for another dialog is refused and fails the journey", a
   const user = userEvent.setup();
   await journey.launch();
   await journey.chooseFolder(journey.path("somewhere"), "Choose a folder for the readmit sample workspace");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await navigation().findByText("the folder dialog is unavailable")).toBeTruthy();
   await expect(journey.close()).rejects.toThrow(
     /the next scripted answer is for the dialog titled Choose a folder for the readmit sample workspace[\s\S]*1 scripted dialog answer\(s\) were never used/,
@@ -100,11 +100,11 @@ test("a dismissed dialog is a cancellation that opens nothing", async () => {
   const user = userEvent.setup();
   await journey.launch();
   await journey.dismissDialog("folder", "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const status = (await navigation().findByText("no folder was chosen")).closest("[role=status]");
   expect(status?.classList.contains("status-cancelled")).toBe(true);
   expect(status?.textContent).toContain("Cancelled");
-  expect(screen.queryByRole("button", { name: "Read the project" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Open project" })).toBeNull();
   await journey.close();
 });
 
@@ -113,7 +113,7 @@ test("a crash abandons the window at once, and the next launch starts from what 
   const folder = journey.makeFolder("workspace");
   await journey.launch();
   await journey.chooseFolder(folder, "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await navigation().findByText(folder, { selector: ".root" })).toBeTruthy();
   // The window has retained where the viewer is by the time it crashes.
   await waitFor(() =>
@@ -130,7 +130,7 @@ test("a crash abandons the window at once, and the next launch starts from what 
   // happened, and reopening it is still the viewer's own act.
   expect(await screen.findByText(new RegExp(`You had this open: ${folder}`))).toBeTruthy();
   expect(journey.callsTo("OpenWorkspace")).toHaveLength(0);
-  await press(user, screen.getByRole("button", { name: "Reopen where you were" }));
+  await press(user, screen.getByRole("button", { name: "Reopen session" }));
   expect(await navigation().findByText(folder, { selector: ".root" })).toBeTruthy();
   expect(journey.callsTo("OpenWorkspace").at(-1)?.args).toEqual([folder]);
 });

@@ -48,7 +48,7 @@ export function Recovery({
           <p>Nothing was resumed or resent. Recovery only read the retained evidence.</p>
         </> : null}
         {session.view.workspace ? (
-          <p><button onClick={onReopen}>Reopen where you were</button></p>
+          <p><button onClick={onReopen}>Reopen session</button></p>
         ) : null}
         {session.drafts.length === 0 ? null : <p>Notes another edit of this window still holds:</p>}
         {session.drafts.map(draft => <div key={`${draft.project}|${draft.note.name}`}>
@@ -56,7 +56,7 @@ export function Recovery({
           {draft.note.subject ? <p>About: {draft.note.subject}</p> : null}
           <p>{draft.note.body}</p>
           <button onClick={() => void discard(draft.project, draft.note.name)}>
-            Discard this draft
+            Discard draft
           </button>
         </div>)}
       </> : <p>Operation: {restored.state}</p>}
@@ -79,14 +79,14 @@ export function RetainedDrafts({
     return null;
   }
   return <section aria-labelledby="retained-drafts-title">
-    <h3 id="retained-drafts-title">Unstored editor work this machine holds</h3>
+    <h3 id="retained-drafts-title">Unsaved drafts</h3>
     <ul>
       {drafts.map(draft => <li key={draft.id}>
         <p>
           {draft.kind} · {draft.workspace}
           {draft.case ? ` · case ${draft.case}` : ""}
         </p>
-        <button onClick={() => onDiscardDraft(draft.id)}>Discard this draft</button>
+        <button onClick={() => onDiscardDraft(draft.id)}>Discard draft</button>
       </li>)}
     </ul>
   </section>;

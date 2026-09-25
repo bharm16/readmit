@@ -76,8 +76,14 @@ function renderSection(handlers: FacadeHandlers = {}) {
     ...handlers,
   });
   render(<PacketPanel workspace={WORKSPACE_ROOT} entries={[]} onRefresh={() => events.push("refresh")} />);
-  const section = within(screen.getByRole("region", { name: "Synthetic demonstration packets" }));
+  const section = within(screen.getByRole("region", { name: "Synthetic sample packets" }));
   return { facade, events, section };
+}
+
+/** The runnable-copies block a verified packet shows; its destination chooser
+ * carries the same label as the packet folder's own. */
+function rerunCopies(section: ReturnType<typeof renderSection>["section"]) {
+  return within(section.getByRole("heading", { name: "Runnable copies" }).closest("div")!);
 }
 
 function named(path: string) {
@@ -95,10 +101,10 @@ test("a synthetic packet is generated into a newly named folder, read back as ve
     ChooseSyntheticPacketPath: named(PACKET_FOLDER),
     GenerateSyntheticPacket: () => syntheticPacket(),
   });
-  const generate = section.getByRole("button", { name: "Generate synthetic packet" }) as HTMLButtonElement;
+  const generate = section.getByRole("button", { name: "Generate sample packet" }) as HTMLButtonElement;
   expect(generate.disabled).toBe(true);
   expect(section.getByText("No new packet folder named.")).toBeTruthy();
-  await user.click(section.getByRole("button", { name: "Choose new packet folder…" }));
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
   expect(await section.findByText(PACKET_FOLDER)).toBeTruthy();
   expect(facade.oneCall("ChooseSyntheticPacketPath")).toEqual(["packet-destination"]);
   await user.click(generate);
@@ -125,20 +131,20 @@ test("a dismissed save dialog names nothing and generation stays unavailable", a
   const { facade, section } = renderSection({
     ChooseSyntheticPacketPath: () => ({ state: "cancelled", reason: "no new folder was named" }),
   });
-  await user.click(section.getByRole("button", { name: "Choose new packet folder…" }));
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
   expect(await section.findByText("no new folder was named")).toBeTruthy();
   expect(section.getByText("No new packet folder named.")).toBeTruthy();
-  expect((section.getByRole("button", { name: "Generate synthetic packet" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((section.getByRole("button", { name: "Generate sample packet" }) as HTMLButtonElement).disabled).toBe(true);
   expect(facade.callsTo("GenerateSyntheticPacket")).toHaveLength(0);
 });
 
 test("generation is cancelled from the keyboard: Cancel holds the focus, names only the synthetic operation and states the folder incomplete", async () => {
   const user = userEvent.setup();
   const { facade, events, section } = renderSection({ ChooseSyntheticPacketPath: named(PACKET_FOLDER) });
-  await user.click(section.getByRole("button", { name: "Choose new packet folder…" }));
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
   await section.findByText(PACKET_FOLDER);
   const parked = facade.park("GenerateSyntheticPacket");
-  const generate = section.getByRole("button", { name: "Generate synthetic packet" });
+  const generate = section.getByRole("button", { name: "Generate sample packet" });
   await tabTo(user, generate);
   await user.keyboard("{Enter}");
   expect(await section.findByText(/the synthetic messages go only to the two built-in receivers/)).toBeTruthy();
@@ -158,14 +164,14 @@ test("generation is cancelled from the keyboard: Cancel holds the focus, names o
   // The folder the cancelled generation reached is used: recovery is a new
   // folder, so focus goes to the chooser that names one, and Generate waits.
   expect(section.getByText("No new packet folder named.")).toBeTruthy();
-  expect((section.getByRole("button", { name: "Generate synthetic packet" }) as HTMLButtonElement).disabled).toBe(true);
-  await waitFor(() => expect(document.activeElement).toBe(section.getByRole("button", { name: "Choose new packet folder…" })));
+  expect((section.getByRole("button", { name: "Generate sample packet" }) as HTMLButtonElement).disabled).toBe(true);
+  await waitFor(() => expect(document.activeElement).toBe(section.getByRole("button", { name: "Choose destination…" })));
   expect((stop as HTMLButtonElement).disabled).toBe(true);
   // A new folder named from the keyboard is generated into.
   facade.reply({ GenerateSyntheticPacket: () => syntheticPacket() });
   await user.keyboard("{Enter}");
   await section.findByText(PACKET_FOLDER);
-  await tabTo(user, section.getByRole("button", { name: "Generate synthetic packet" }));
+  await tabTo(user, section.getByRole("button", { name: "Generate sample packet" }));
   await user.keyboard("{Enter}");
   expect(await section.findByText(/^Verified: demo-packet · /)).toBeTruthy();
   expect(facade.callsTo("GenerateSyntheticPacket")).toHaveLength(2);
@@ -180,22 +186,22 @@ test("a refused or busy generation is shown as itself and never as a packet", as
       reason: "cannot create report output; destination must be new and parent readable and writable",
     }),
   });
-  await user.click(section.getByRole("button", { name: "Choose new packet folder…" }));
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
   await section.findByText(PACKET_FOLDER);
-  await user.click(section.getByRole("button", { name: "Generate synthetic packet" }));
+  await user.click(section.getByRole("button", { name: "Generate sample packet" }));
   expect(await section.findByText(/destination must be new and parent readable and writable/)).toBeTruthy();
   expect(section.queryByText(/^Verified:/)).toBeNull();
   expect(section.queryByRole("heading", { name: "Runnable copies" })).toBeNull();
   expect(section.getByText("No new packet folder named.")).toBeTruthy();
   // A busy window reached nothing, so the folder stays named for a retry.
   facade.reply({ GenerateSyntheticPacket: () => ({ state: "busy", reason: "another operation is already running" }) });
-  await user.click(section.getByRole("button", { name: "Choose new packet folder…" }));
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
   await section.findByText(PACKET_FOLDER);
-  await user.click(section.getByRole("button", { name: "Generate synthetic packet" }));
+  await user.click(section.getByRole("button", { name: "Generate sample packet" }));
   expect(await section.findByText("another operation is already running")).toBeTruthy();
   expect(section.queryByText(/^Verified:/)).toBeNull();
   expect(section.getByText(PACKET_FOLDER)).toBeTruthy();
-  expect((section.getByRole("button", { name: "Generate synthetic packet" }) as HTMLButtonElement).disabled).toBe(false);
+  expect((section.getByRole("button", { name: "Generate sample packet" }) as HTMLButtonElement).disabled).toBe(false);
   expect(facade.callsTo("GenerateSyntheticPacket")).toHaveLength(2);
 });
 
@@ -205,10 +211,10 @@ test("a chosen packet is verified read-only, and a changed or unsupported one is
     ChooseSyntheticPacketPath: named(CHOSEN_PACKET),
     OpenSyntheticPacket: () => ({ state: "failed", reason: "invalid, incomplete, changed, or unsupported report packet" }),
   });
-  const verify = section.getByRole("button", { name: "Verify synthetic packet" }) as HTMLButtonElement;
+  const verify = section.getByRole("button", { name: "Verify packet" }) as HTMLButtonElement;
   expect(verify.disabled).toBe(true);
   expect(section.getByText("No synthetic packet chosen.")).toBeTruthy();
-  await user.click(section.getByRole("button", { name: "Choose a synthetic packet…" }));
+  await user.click(section.getByRole("button", { name: "Browse…" }));
   expect(await section.findByText(CHOSEN_PACKET)).toBeTruthy();
   expect(facade.oneCall("ChooseSyntheticPacketPath")).toEqual(["packet"]);
   await user.click(verify);
@@ -233,22 +239,22 @@ test("runnable copies are prepared into a newly named folder on the chosen loopb
     GenerateSyntheticPacket: () => syntheticPacket(),
     PrepareSyntheticRerun: (request) => prepared(request.address),
   });
-  await user.click(section.getByRole("button", { name: "Choose new packet folder…" }));
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
   await section.findByText(PACKET_FOLDER);
-  await user.click(section.getByRole("button", { name: "Generate synthetic packet" }));
+  await user.click(section.getByRole("button", { name: "Generate sample packet" }));
   await section.findByRole("heading", { name: "Runnable copies" });
 
   const address = section.getByLabelText("Loopback address for manual reruns") as HTMLInputElement;
   expect(address.value).toBe("127.0.0.1:2575");
-  const prepare = section.getByRole("button", { name: "Prepare runnable copies" }) as HTMLButtonElement;
+  const prepare = section.getByRole("button", { name: "Prepare copies" }) as HTMLButtonElement;
   expect(prepare.disabled).toBe(true);
   // A dismissed save dialog names nothing here either.
   facade.reply({ ChooseSyntheticPacketPath: () => ({ state: "cancelled", reason: "no new folder was named" }) });
-  await user.click(section.getByRole("button", { name: "Choose new folder for runnable copies…" }));
+  await user.click(rerunCopies(section).getByRole("button", { name: "Choose destination…" }));
   expect(await section.findByText("no new folder was named")).toBeTruthy();
   expect(prepare.disabled).toBe(true);
   facade.reply({ ChooseSyntheticPacketPath: named(RERUN_FOLDER) });
-  await user.click(section.getByRole("button", { name: "Choose new folder for runnable copies…" }));
+  await user.click(rerunCopies(section).getByRole("button", { name: "Choose destination…" }));
   expect(await section.findByText(RERUN_FOLDER)).toBeTruthy();
 
   // The address is typed; preparation is started from the keyboard.
@@ -265,7 +271,7 @@ test("runnable copies are prepared into a newly named folder on the chosen loopb
   ).toBeTruthy();
   expect(section.getByText(/^Synthetic-only: the copies rerun the committed synthetic scenario/)).toBeTruthy();
   expect(section.getByText("No folder named for the runnable copies.")).toBeTruthy();
-  await waitFor(() => expect(document.activeElement).toBe(section.getByRole("button", { name: "Choose new folder for runnable copies…" })));
+  await waitFor(() => expect(document.activeElement).toBe(rerunCopies(section).getByRole("button", { name: "Choose destination…" })));
   expect(events.filter((event) => event === "refresh")).toHaveLength(2);
 
   // A refusal is the operation's own sentence and never reads as prepared.
@@ -273,7 +279,7 @@ test("runnable copies are prepared into a newly named folder on the chosen loopb
     ChooseSyntheticPacketPath: named(RERUN_FOLDER),
     PrepareSyntheticRerun: () => ({ state: "failed", reason: "report preparation requires a numeric loopback address and port" }),
   });
-  await user.click(section.getByRole("button", { name: "Choose new folder for runnable copies…" }));
+  await user.click(rerunCopies(section).getByRole("button", { name: "Choose destination…" }));
   await section.findByText(RERUN_FOLDER);
   await user.clear(address);
   await user.type(address, "wide-address");

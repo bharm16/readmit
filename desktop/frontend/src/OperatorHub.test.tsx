@@ -18,7 +18,7 @@ const connected: HubResult = { ...chosen, connected: true, custody_warning: cust
 
 /** The hub panel's operator-only mode, opened from its disclosure. */
 async function operatorMode(user: ReturnType<typeof userEvent.setup>) {
-  const panel = within(screen.getByRole("region", { name: "Customer Artifact Hub" }));
+  const panel = within(screen.getByRole("region", { name: "Hub" }));
   await user.click(panel.getByRole("button", { name: "Operator-only hub", expanded: false }));
   return within(panel.getByRole("region", { name: "Operator-only hub" }));
 }
@@ -51,18 +51,18 @@ test("the operator-only hub mode chooses its configuration, connects deliberatel
   render(<HubPanel />);
   // The mode is closed until it is opened, from the keyboard here, and
   // closing it again keeps what it showed.
-  const panel = within(screen.getByRole("region", { name: "Customer Artifact Hub" }));
+  const panel = within(screen.getByRole("region", { name: "Hub" }));
   const disclosure = panel.getByRole("button", { name: "Operator-only hub", expanded: false });
-  expect(panel.queryByRole("button", { name: "Choose operator-only hub configuration…" })).toBeNull();
+  const operator = within(panel.getByRole("region", { name: "Operator-only hub" }));
+  expect(operator.queryByRole("button", { name: "Choose configuration…" })).toBeNull();
   disclosure.focus();
   await user.keyboard("{Enter}");
   expect(disclosure.getAttribute("aria-expanded")).toBe("true");
-  const operator = within(panel.getByRole("region", { name: "Operator-only hub" }));
   expect(operator.getByText("No operator-only hub configuration chosen.")).toBeTruthy();
   expect(operator.getByText("Not connected")).toBeTruthy();
-  const connect = operator.getByRole("button", { name: "Connect to operator-only hub" });
+  const connect = operator.getByRole("button", { name: "Connect" });
   expect(connect.hasAttribute("disabled")).toBe(true);
-  const choose = operator.getByRole("button", { name: "Choose operator-only hub configuration…" });
+  const choose = operator.getByRole("button", { name: "Choose configuration…" });
 
   // A dismissed dialog leaves the mode as it was; Tab reaches the choice.
   await user.tab();
@@ -87,22 +87,22 @@ test("the operator-only hub mode chooses its configuration, connects deliberatel
   await user.click(connect);
   expect(await operator.findByText(refusedConnection)).toBeTruthy();
   expect(operator.getByText("Not connected")).toBeTruthy();
-  expect(operator.queryByRole("button", { name: "Store a file…" })).toBeNull();
+  expect(operator.queryByRole("button", { name: "Upload file…" })).toBeNull();
   await waitFor(() => expect(connect.hasAttribute("disabled")).toBe(false));
   await user.click(connect);
   expect(await operator.findByText("Connected to operator-only hub (https://hub.example.com:8443)")).toBeTruthy();
   expect(operator.getByRole("note").textContent).toBe(`Custody Notice: ${custody}`);
-  expect(operator.getByRole("button", { name: "Store a file…" })).toBeTruthy();
+  expect(operator.getByRole("button", { name: "Upload file…" })).toBeTruthy();
 
-  operator.getByRole("button", { name: "Disconnect from operator-only hub" }).focus();
+  operator.getByRole("button", { name: "Disconnect" }).focus();
   await user.keyboard("[Space]");
   expect(await operator.findByText("Not connected")).toBeTruthy();
   expect(operator.getByRole("note").textContent).toBe(`Custody Notice: ${custody}`);
-  expect(operator.queryByRole("button", { name: "Store a file…" })).toBeNull();
-  expect(operator.getByRole("button", { name: "Connect to operator-only hub" })).toBeTruthy();
+  expect(operator.queryByRole("button", { name: "Upload file…" })).toBeNull();
+  expect(operator.getByRole("button", { name: "Connect" })).toBeTruthy();
   await user.click(disclosure);
   expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-  expect(panel.queryByRole("button", { name: "Connect to operator-only hub" })).toBeNull();
+  expect(panel.queryByRole("button", { name: "Connect" })).toBeNull();
   await user.click(disclosure);
   expect(operator.getByText("Operator-only configuration: /etc/readmit/hub-operator.json")).toBeTruthy();
   expect(facade.calls.map((call) => call.method)).toEqual([
@@ -157,9 +157,9 @@ test("the operator-only hub mode stores a chosen file and reads an artifact by d
 
   render(<HubPanel />);
   const operator = await operatorMode(user);
-  await user.click(operator.getByRole("button", { name: "Choose operator-only hub configuration…" }));
-  await user.click(await operator.findByRole("button", { name: "Connect to operator-only hub" }));
-  const store = await operator.findByRole("button", { name: "Store a file…" });
+  await user.click(operator.getByRole("button", { name: "Choose configuration…" }));
+  await user.click(await operator.findByRole("button", { name: "Connect" }));
+  const store = await operator.findByRole("button", { name: "Upload file…" });
   const outcome = () => operator.getByText(/^(Store|Read):/).textContent;
 
   await user.click(store);
@@ -187,7 +187,7 @@ test("the operator-only hub mode stores a chosen file and reads an artifact by d
   expect(operator.queryByText(/^Saved as:/)).toBeNull();
 
   // A read needs a digest; Enter in the field reads it.
-  const read = operator.getByRole("button", { name: "Read and save…" });
+  const read = operator.getByRole("button", { name: "Download…" });
   expect(read.hasAttribute("disabled")).toBe(true);
   const field = operator.getByLabelText("Artifact digest (SHA-256)");
   await user.type(field, `${digest}{Enter}`);
@@ -236,10 +236,10 @@ test("the operator-only hub mode shows a refused digest and a busy answer, and h
 
   render(<HubPanel />);
   const operator = await operatorMode(user);
-  await user.click(operator.getByRole("button", { name: "Choose operator-only hub configuration…" }));
-  await user.click(await operator.findByRole("button", { name: "Connect to operator-only hub" }));
+  await user.click(operator.getByRole("button", { name: "Choose configuration…" }));
+  await user.click(await operator.findByRole("button", { name: "Connect" }));
   const field = await operator.findByLabelText("Artifact digest (SHA-256)");
-  const read = operator.getByRole("button", { name: "Read and save…" });
+  const read = operator.getByRole("button", { name: "Download…" });
 
   await user.type(field, "A1B2{Enter}");
   expect(await operator.findByText(invalid)).toBeTruthy();
@@ -256,13 +256,13 @@ test("the operator-only hub mode shows a refused digest and a busy answer, and h
   await waitFor(() => expect(read.hasAttribute("disabled")).toBe(false));
   await user.click(read);
   await waitFor(() => expect(parked.size).toBe(1));
-  for (const name of ["Read and save…", "Store a file…", "Choose operator-only hub configuration…", "Disconnect from operator-only hub"]) {
+  for (const name of ["Download…", "Upload file…", "Choose configuration…", "Disconnect"]) {
     expect(operator.getByRole("button", { name }).hasAttribute("disabled")).toBe(true);
   }
   parked.resolve({ state: "completed", transfer_state: "completed", digest, size: 43, path: "/workspace-under-test/received.txt", warning: custody });
   expect(await operator.findByText("Saved as: /workspace-under-test/received.txt")).toBeTruthy();
   await waitFor(() => expect(read.hasAttribute("disabled")).toBe(false));
-  expect(operator.getByRole("button", { name: "Store a file…" }).hasAttribute("disabled")).toBe(false);
+  expect(operator.getByRole("button", { name: "Upload file…" }).hasAttribute("disabled")).toBe(false);
   expect(operator.queryByText(busy)).toBeNull();
   expect(facade.callsTo("ReadOperatorHubArtifact").map((call) => call.args)).toEqual([["A1B2"], [digest], [digest]]);
 

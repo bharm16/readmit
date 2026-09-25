@@ -34,6 +34,18 @@ const QUESTIONS: Record<TestStage, string> = {
   expectations: "What should the run have produced?",
 };
 
+/** The short label each stage is listed, headed and fielded under. The
+ * question it asks stays beside its field as helper text, once. */
+const STAGE_LABELS: Record<TestStage, string> = {
+  name: "Name",
+  messages: "Messages",
+  target: "Target",
+  boundary: "Outcome",
+  observation: "Observation",
+  reset: "Reset",
+  expectations: "Expectations",
+};
+
 const STAGES: TestStage[] = [
   "name",
   "messages",
@@ -233,7 +245,7 @@ export function TestAuthoring({
           </p>
           {onDiscardDraft ? (
             <button type="button" onClick={onDiscardDraft}>
-              Discard this restored draft
+              Discard draft
             </button>
           ) : null}
         </div>
@@ -243,7 +255,7 @@ export function TestAuthoring({
       <ul className="stages">
         {STAGES.map((stage) => (
           <li key={stage} className={missing.has(stage) ? undefined : "answered"}>
-            <span>{QUESTIONS[stage]}</span>
+            <span>{STAGE_LABELS[stage]}</span>
             <span className="reason">
               {missing.has(stage)
                 ? resolution?.stage === stage
@@ -261,14 +273,16 @@ export function TestAuthoring({
           onAnswer({ stage: "name", name });
         }}
       >
-        <label htmlFor="authoring-name">{QUESTIONS.name}</label>
+        <label htmlFor="authoring-name">{STAGE_LABELS.name}</label>
+        <p className="hint">{QUESTIONS.name}</p>
         <input id="authoring-name" value={name} onChange={(event) => setName(event.target.value)} />
         <button type="submit" disabled={busy}>
-          Name this test
+          Save name
         </button>
       </form>
 
-      <h4>{QUESTIONS.messages}</h4>
+      <h4>{STAGE_LABELS.messages}</h4>
+      <p className="hint">{QUESTIONS.messages}</p>
       <ul className="selection">
         {sendable.map((row) => (
           <li key={row.id}>
@@ -312,7 +326,8 @@ export function TestAuthoring({
         })()
       ) : null}
 
-      <h4>{QUESTIONS.target}</h4>
+      <h4>{STAGE_LABELS.target}</h4>
+      <p className="hint">{QUESTIONS.target}</p>
       <ul className="selection">
         {(resolution?.targets ?? []).map((target) => (
           <li key={target.name}>
@@ -332,7 +347,8 @@ export function TestAuthoring({
         ))}
       </ul>
 
-      <h4>{QUESTIONS.boundary}</h4>
+      <h4>{STAGE_LABELS.boundary}</h4>
+      <p className="hint">{QUESTIONS.boundary}</p>
       {/* Choosing the boundary fixes the initial state, so it is never
           answered twice, and the ACK contract reads no observation document. */}
       {(["appointment-ledger", "ack-contract"] as TestBoundary[]).map((boundary) => (
@@ -354,7 +370,8 @@ export function TestAuthoring({
             onAnswer({ stage: "observation", observation });
           }}
         >
-          <label htmlFor="authoring-observation">{QUESTIONS.observation}</label>
+          <label htmlFor="authoring-observation">{STAGE_LABELS.observation}</label>
+          <p className="hint">{QUESTIONS.observation}</p>
           <p className="hint">
             Prefer Observation setup to author a declared window and source, then bind the verified
             window reference here. A filename remains available for existing CLI documents.
@@ -376,16 +393,18 @@ export function TestAuthoring({
           onAnswer({ stage: "reset", reset });
         }}
       >
-        <label htmlFor="authoring-reset">{QUESTIONS.reset}</label>
+        <label htmlFor="authoring-reset">{STAGE_LABELS.reset}</label>
+        <p className="hint">{QUESTIONS.reset}</p>
         {/* Reset instructions are prose an operator reads. A spec names no
             reset action, plan, command or hook, and readmit executes none. */}
         <textarea id="authoring-reset" value={reset} onChange={(event) => setReset(event.target.value)} />
         <button type="submit" disabled={busy}>
-          Record these instructions
+          Save instructions
         </button>
       </form>
 
-      <h4>{QUESTIONS.expectations}</h4>
+      <h4>{STAGE_LABELS.expectations}</h4>
+      <p className="hint">{QUESTIONS.expectations}</p>
       <ul className="selection">
         {expectations.map((expectation) => (
           <li key={expectation.id}>
@@ -442,7 +461,7 @@ export function TestAuthoring({
         </select>
         {ledgerOperator === "ledger_count" ? (
           <>
-            <label htmlFor="authoring-count">Records the ledger should hold</label>
+            <label htmlFor="authoring-count">Expected records</label>
             <input
               id="authoring-count"
               inputMode="numeric"
@@ -457,7 +476,7 @@ export function TestAuthoring({
               should hold. An empty ledger is a deliberate claim, not an omission.
             </p>
             <button type="button" disabled={busy} onClick={() => setRecords([])}>
-              Expect an empty ledger
+              Expect empty ledger
             </button>
             <button
               type="button"
@@ -507,8 +526,8 @@ export function TestAuthoring({
         )}
         <button type="submit" disabled={busy || draft?.boundary !== "appointment-ledger"}>
           {ledgerOperator === "ledger_count"
-            ? "Expect this record count"
-            : "Expect this exact ledger"}
+            ? "Expect count"
+            : "Expect exact ledger"}
         </button>
       </form>
       <form
@@ -557,10 +576,10 @@ export function TestAuthoring({
           }}
         >
           {inspected?.path
-            ? `Use the inspected position ${inspected.path}`
-            : "Use the position open in the inspector"}
+            ? `Use selected field ${inspected.path}`
+            : "Use selected field"}
         </button>
-        <label htmlFor="authoring-ack-state">The value should be</label>
+        <label htmlFor="authoring-ack-state">Expected value</label>
         <select
           id="authoring-ack-state"
           value={state}
@@ -583,7 +602,7 @@ export function TestAuthoring({
           </>
         ) : null}
         <button type="submit" disabled={busy}>
-          Expect this acknowledgement value
+          Add ACK expectation
         </button>
       </form>
 
@@ -613,7 +632,7 @@ export function TestAuthoring({
         ))}
       </ul>
 
-      <h4>Suggest expectations from a reviewed run</h4>
+      <h4>Suggest expectations</h4>
       <p className="hint">
         A suggestion is a claim about what should be true, derived from what was true once. It is
         read from a run whose own expectations held, and nothing here approves anything: a proposal
@@ -644,7 +663,7 @@ export function TestAuthoring({
             checked={ledger}
             onChange={(event) => setLedger(event.target.checked)}
           />
-          Propose the record count that run settled on
+          Suggest count
         </label>
         <label htmlFor="authoring-exact-ledger">
           <input
@@ -653,7 +672,7 @@ export function TestAuthoring({
             checked={exactLedger}
             onChange={(event) => setExactLedger(event.target.checked)}
           />
-          Propose the exact ledger that run settled on
+          Suggest exact ledger
         </label>
         <label htmlFor="authoring-position">Acknowledgement position to propose a value for</label>
         <input
@@ -677,8 +696,8 @@ export function TestAuthoring({
           }}
         >
           {inspected?.path
-            ? `Use the inspected position ${inspected.path}`
-            : "Use the position open in the inspector"}
+            ? `Use selected field ${inspected.path}`
+            : "Use selected field"}
         </button>
         <ul className="selection">
           {positions.map((addressed) => (
@@ -695,7 +714,7 @@ export function TestAuthoring({
           ))}
         </ul>
         <button type="submit" disabled={busy || !runEntry}>
-          Suggest expectations from this run
+          Review suggestions
         </button>
       </form>
 
@@ -746,7 +765,7 @@ export function TestAuthoring({
                       {suggestion.operator === "ledger_count" ? (
                         <>
                           <label htmlFor={`authoring-records-${suggestion.id}`}>
-                            Records the ledger should hold
+                            Expected records
                           </label>
                           <input
                             id={`authoring-records-${suggestion.id}`}
@@ -772,7 +791,7 @@ export function TestAuthoring({
                         </>
                       ) : (
                         <>
-                          <label htmlFor={`authoring-state-${suggestion.id}`}>The value should be</label>
+                          <label htmlFor={`authoring-state-${suggestion.id}`}>Expected value</label>
                           <select
                             id={`authoring-state-${suggestion.id}`}
                             value={made.state ?? suggestion.field?.state ?? "present"}
@@ -836,7 +855,7 @@ export function TestAuthoring({
               });
             }}
           >
-            Record these decisions
+            Save decisions
           </button>
           {/* Cancelling a review records nothing: the decisions made above
               are dropped with the proposals, and the draft keeps only what
@@ -850,7 +869,7 @@ export function TestAuthoring({
               reviewedEntry.current?.focus();
             }}
           >
-            Cancel this review
+            Cancel
           </button>
         </>
       ) : null}
@@ -878,7 +897,7 @@ export function TestAuthoring({
           onChange={(event) => setOutput(event.target.value)}
         />
         <button type="submit" disabled={busy || missing.size > 0}>
-          Write the test spec
+          Save test
         </button>
       </form>
       {view?.output ? (

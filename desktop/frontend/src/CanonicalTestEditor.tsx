@@ -96,7 +96,7 @@ export function CanonicalTestEditor({
 
   return (
     <section aria-labelledby="canonical-test-heading">
-      <h3 id="canonical-test-heading">Import and edit a saved test</h3>
+      <h3 id="canonical-test-heading">Edit test</h3>
       <p className="hint">
         Advanced canonical JSON editor. Import explicitly shows the expected
         values in the test. All supported clauses are retained, and the edit is
@@ -116,6 +116,7 @@ export function CanonicalTestEditor({
       >
         Import and show values
       </button>
+      <p className="hint">Imported values may contain patient data.</p>
       <label htmlFor="canonical-document">Complete test spec</label>
       <textarea
         id="canonical-document"
@@ -130,7 +131,7 @@ export function CanonicalTestEditor({
         disabled={disabled || !document}
         onClick={() => void perform("validating", () => validateTest(document))}
       >
-        Validate with the test reader
+        Validate
       </button>
       <button
         type="button"
@@ -146,7 +147,7 @@ export function CanonicalTestEditor({
           setOutput("");
         }}
       >
-        Discard unstored edits
+        Discard changes
       </button>
       <label htmlFor="canonical-output">New test file in this workspace</label>
       <input
@@ -165,7 +166,7 @@ export function CanonicalTestEditor({
           })
         }
       >
-        Export new test
+        Export test
       </button>
       <p className="hint">
         Relative paths resolve from this workspace in both desktop and CLI.

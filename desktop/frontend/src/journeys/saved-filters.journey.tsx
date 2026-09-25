@@ -121,7 +121,7 @@ test("named filters are saved from the keyboard, listed and selected, and each r
   expect(await inspector.findByText("1 of 2 excluded by bookings")).toBeTruthy();
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
   const reopened = within(region("Inspector"));
   expect(await reopened.findByText("1 of 2 excluded by bookings")).toBeTruthy();
   expect((reopened.getByLabelText("Saved filter") as HTMLSelectElement).value).toBe("bookings");
@@ -196,7 +196,7 @@ test("a refused filter, a discarded one and an unreadable filter document change
   // grid is not drawn unfiltered in its place, and nothing replaced it.
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
   const reopened = within(region("Inspector"));
   await waitFor(() => expect(reopened.getAllByText(unreadable).length).toBeGreaterThan(0));
   await waitFor(() => expect(journey.callsTo("OpenGrid").at(-1)?.settled).toBe(true));

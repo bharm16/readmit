@@ -42,14 +42,14 @@ const PROJECT = "scheduling";
 
 /** The customer hub panel of the privacy region. */
 function hubPanel() {
-  return within(within(region("Privacy status")).getByRole("region", { name: "Customer Artifact Hub" }));
+  return within(within(region("Privacy")).getByRole("region", { name: "Hub" }));
 }
 
 /** Selects the configuration the hub's operator supplied and connects. */
 async function openHub(user: UserEvent, hub: Hub) {
   const panel = hubPanel();
   await journey.chooseFolder(hub.clientConfigFolder, "Choose customer hub configuration folder");
-  await press(user, panel.getByRole("button", { name: "Choose hub configuration…" }));
+  await press(user, panel.getByRole("button", { name: "Choose configuration…" }));
   await press(user, await panel.findByRole("button", { name: "Connect to hub" }));
   expect(await panel.findByText(`Connected (https://${hub.address})`)).toBeTruthy();
 }
@@ -58,7 +58,7 @@ async function openHub(user: UserEvent, hub: Hub) {
  * person's browser completes it, for a session of lifetimeSeconds when given. */
 async function signIn(user: UserEvent, hub: Hub, subject: string, lifetimeSeconds?: number) {
   const panel = hubPanel();
-  await press(user, await panel.findByRole("button", { name: "Sign in with Customer IdP" }));
+  await press(user, await panel.findByRole("button", { name: "Sign in" }));
   const login = await panel.findByRole("link", { name: "Open login window" });
   expect(await hub.signIn(login.getAttribute("href") ?? "", subject, lifetimeSeconds)).toBe(200);
   expect(await panel.findByRole("heading", { name: "Authenticated User" })).toBeTruthy();
@@ -95,7 +95,7 @@ test(
     // window offers it again at once; the next one completes.
     await openHub(user, hub);
     let panel = hubPanel();
-    await press(user, await panel.findByRole("button", { name: "Sign in with Customer IdP" }));
+    await press(user, await panel.findByRole("button", { name: "Sign in" }));
     await panel.findByRole("link", { name: "Open login window" });
     await press(user, panel.getByRole("button", { name: "Cancel sign-in" }));
     await waitFor(() => expect(journey.callsTo("CompleteHubAuth").at(-1)?.result).toMatchObject({ state: "cancelled" }));
@@ -106,7 +106,7 @@ test(
     expect(project.getByText("Authorized")).toBeTruthy();
 
     // Evidence published to the project, under the digest the hub stores it by.
-    await press(user, project.getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, project.getByRole("button", { name: "View artifacts" }));
     await enter(user, await panel.findByLabelText("Upload source path:"), journey.path("handover/reschedule-summary.txt"));
     await press(user, panel.getByRole("button", { name: "Publish Artifact" }));
     expect(await panel.findByText(byContent(/^Transfer state: completed \(65 bytes\)$/))).toBeTruthy();
@@ -119,26 +119,26 @@ test(
     // The person loads the history; the colleague posts before the person
     // does, so the person's decision names a head the hub has moved past.
     const team = within(screen.getByRole("region", { name: "Team collaboration" }));
-    await press(user, team.getByRole("button", { name: "Load review history" }));
+    await press(user, team.getByRole("button", { name: "Review history" }));
     expect(await team.findByRole("heading", { name: "Review history (head 0)" })).toBeTruthy();
     expect(
       await reviewer.call("PostHubReview", { project: PROJECT, id: "reviewer-confirms", expected: 0, kind: "comment", evidence: digest, parent: "", recipient: "", text: "Confirmed on the lab fixture.", release: "" }),
     ).toMatchObject({ state: "completed", head: 1 });
-    const decision = within(team.getByRole("heading", { name: "Post collaboration decision" }).parentElement!);
+    const decision = within(team.getByRole("heading", { name: "Review actions" }).parentElement!);
     await user.selectOptions(decision.getByLabelText("Kind"), "comment");
-    await enter(user, decision.getByLabelText("Command id"), "analyst-finding");
+    await enter(user, decision.getByLabelText("Command ID"), "analyst-finding");
     await enter(user, decision.getByLabelText("Evidence digest"), digest);
     await enter(user, decision.getByLabelText("Text"), "The reschedule is matched on the filler identifier.");
-    await press(user, decision.getByRole("button", { name: "Submit review decision" }));
+    await press(user, decision.getByRole("button", { name: "Post comment" }));
     expect((await team.findAllByText("hub head or revision conflict; fetch current state and renew the action")).length).toBeGreaterThan(0);
     expect(journey.callsTo("PostHubReview").at(-1)?.result).toMatchObject({ state: "failed" });
 
     // Loaded again and renewed, the decision is recorded after the
     // colleague's, and both windows read the one history the hub keeps,
     // each entry under the identity the hub authenticated.
-    await press(user, team.getByRole("button", { name: "Load review history" }));
+    await press(user, team.getByRole("button", { name: "Review history" }));
     expect(await team.findByRole("heading", { name: "Review history (head 1)" })).toBeTruthy();
-    await press(user, decision.getByRole("button", { name: "Submit review decision" }));
+    await press(user, decision.getByRole("button", { name: "Post comment" }));
     expect(await team.findByRole("heading", { name: "Review history (head 2)" })).toBeTruthy();
     const entries = team.getAllByRole("listitem").map((item) => item.textContent ?? "");
     expect(entries).toEqual([
@@ -153,7 +153,7 @@ test(
 
 /** The suites panel of the open workspace. */
 function suites() {
-  return within(region("Suites and releases"));
+  return within(region("Suites"));
 }
 
 test(
@@ -181,14 +181,14 @@ test(
 
     // The team review is requested through the hub session, naming the exact
     // released bytes rather than a typed value.
-    await press(user, within(suites().getByRole("navigation", { name: "Suite views" })).getByRole("button", { name: "Releases and impact" }));
+    await press(user, suites().getByRole("tab", { name: "Releases" }));
     const releases = suites();
     await enter(user, releases.getByLabelText("To"), "reschedule-release-1.json");
-    await enter(user, releases.getByLabelText("Hub project"), PROJECT);
-    await enter(user, releases.getByLabelText("Request recipient"), "reviewer");
-    await enter(user, releases.getAllByLabelText("Command id").at(-1)!, "release-review-1");
+    await enter(user, releases.getByLabelText("Project"), PROJECT);
+    await enter(user, releases.getByLabelText("Reviewer"), "reviewer");
+    await enter(user, releases.getAllByLabelText("Command ID").at(-1)!, "release-review-1");
     await enter(user, releases.getByLabelText("Rationale"), "Please review the released expectation.");
-    await press(user, releases.getByRole("button", { name: "Request team review" }));
+    await press(user, releases.getByRole("button", { name: "Request review" }));
     const releasedFile = "investigations/scheduling-investigation/reschedule-release-1.json";
     const release = journey.digest(releasedFile);
     expect((await releases.findByText(byContent(/^Recorded: review-request by analyst@/))).textContent).toBe(
@@ -197,8 +197,8 @@ test(
 
     // The analyst's own approval is refused by the hub: the role grants no
     // approval, whatever the window offers.
-    await enter(user, releases.getAllByLabelText("Command id").at(-1)!, "release-self-approval");
-    await press(user, releases.getByRole("button", { name: "Approve this release" }));
+    await enter(user, releases.getAllByLabelText("Command ID").at(-1)!, "release-self-approval");
+    await press(user, releases.getByRole("button", { name: "Approve release" }));
     expect(await releases.findByText("hub access refused; insufficient permissions or role revoked")).toBeTruthy();
 
     // A reviewer the request did not name is refused, though their role
@@ -228,9 +228,9 @@ test(
 
     // The person's window reads the request and the one approval the hub
     // chained to it, each under the identity the hub authenticated.
-    await press(user, hubPanel().getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, hubPanel().getByRole("button", { name: "View artifacts" }));
     const team = within(await screen.findByRole("region", { name: "Team collaboration" }));
-    await press(user, team.getByRole("button", { name: "Load review history" }));
+    await press(user, team.getByRole("button", { name: "Review history" }));
     expect(await team.findByRole("heading", { name: "Review history (head 2)" })).toBeTruthy();
     expect(team.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
       `review-request by analyst@https://idp.journey.test · evidence ${release.slice(0, 12)}… · release ${release.slice(0, 12)}… — Please review the released expectation.`,
@@ -262,7 +262,7 @@ test(
     // A dismissed dialog chooses nothing: the panel stays offline, with no
     // configuration selected.
     await journey.dismissDialog("folder", "Choose customer hub configuration folder");
-    await press(user, hubPanel().getByRole("button", { name: "Choose hub configuration…" }));
+    await press(user, hubPanel().getByRole("button", { name: "Choose configuration…" }));
     await waitFor(() => expect(journey.callsTo("ChooseHubConfig").at(-1)?.result).toMatchObject({ state: "cancelled" }));
     expect(hubPanel().getByText("No configuration file selected. Working entirely offline.")).toBeTruthy();
 
@@ -271,7 +271,7 @@ test(
     await openHub(user, hub);
     await signIn(user, hub, "analyst");
     let panel = hubPanel();
-    await press(user, panel.getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, panel.getByRole("button", { name: "View artifacts" }));
     await enter(user, await panel.findByLabelText("Upload source path:"), source);
     await press(user, panel.getByRole("button", { name: "Publish Artifact" }));
     expect(await panel.findByText("operation activation is missing or invalid; select and activate an operation policy")).toBeTruthy();
@@ -299,12 +299,12 @@ test(
     // Recorded as a revision, the evidence is listed among the project's
     // artifacts and downloads byte for byte.
     const lifecycle = within(teamPanel().getByRole("heading", { name: "Lifecycle / conflict / admin" }).parentElement!);
-    await enter(user, lifecycle.getByLabelText("Command id"), "reschedule-summary-1");
+    await enter(user, lifecycle.getByLabelText("Command ID"), "reschedule-summary-1");
     await enter(user, lifecycle.getByLabelText("Resource"), "reschedule-summary");
     await enter(user, lifecycle.getByLabelText("Artifact digest"), digest);
-    await press(user, lifecycle.getByRole("button", { name: "Submit lifecycle command" }));
+    await press(user, lifecycle.getByRole("button", { name: "Record revision" }));
     expect(await teamPanel().findByRole("heading", { name: "Lifecycle (head 1)" })).toBeTruthy();
-    await press(user, panel.getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, panel.getByRole("button", { name: "View artifacts" }));
     const listed = within((await panel.findByTitle(digest)).closest("tr")!);
     journey.makeFolder("downloads");
     await enter(user, panel.getByLabelText("Download destination path:"), journey.path("downloads/reschedule-summary.txt"));
@@ -328,7 +328,7 @@ test(
     await press(user, await panel.findByRole("button", { name: "Connect to hub" }));
     await signIn(user, hub, "viewer");
     panel = hubPanel();
-    await press(user, panel.getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, panel.getByRole("button", { name: "View artifacts" }));
     await press(user, await panel.findByRole("button", { name: "Publish Artifact" }));
     expect(await panel.findByText("hub access refused; insufficient permissions or role revoked")).toBeTruthy();
     expect(journey.callsTo("UploadHubArtifact").at(-1)?.result).toMatchObject({ state: "permission_denied" });
@@ -342,7 +342,7 @@ test(
     panel = hubPanel();
     const expires = Date.parse(panel.getByText("Session expires:").parentElement?.textContent?.replace("Session expires: ", "") ?? "");
     expect(Number.isNaN(expires)).toBe(false);
-    await press(user, panel.getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, panel.getByRole("button", { name: "View artifacts" }));
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, expires - Date.now()) + 500));
     await press(user, teamPanel().getByRole("button", { name: "Load notifications" }));
     expect(await teamPanel().findByText("sign-in required or session expired")).toBeTruthy();
@@ -382,7 +382,7 @@ test(
     expect(screen.queryByRole("region", { name: "Team collaboration" })).toBeNull();
     expect(panel.queryByRole("button", { name: "Publish Artifact" })).toBeNull();
     await press(user, panel.getByRole("button", { name: "Connect to hub" }));
-    expect(await panel.findByRole("button", { name: "Sign in with Customer IdP" })).toBeTruthy();
+    expect(await panel.findByRole("button", { name: "Sign in" })).toBeTruthy();
     expect(journey.callsTo("ConnectHub").at(-1)?.result).toMatchObject({ connected: true, authenticated: false });
   },
 );
@@ -444,11 +444,11 @@ test(
     await journey.launch();
     await activateLicense(user, journey);
     await journey.chooseFolder(journey.path("support-work"), "Open a readmit workspace folder");
-    await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
-    expect(await within(region("Project navigation")).findByText("published-support")).toBeTruthy();
+    await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+    expect(await within(region("Workspace")).findByText("published-support")).toBeTruthy();
     await openHub(user, hub);
     await signIn(user, hub, "analyst");
-    await press(user, hubPanel().getByRole("button", { name: "View Project Artifacts" }));
+    await press(user, hubPanel().getByRole("button", { name: "View artifacts" }));
 
     // The person asks the reviewer to approve the summary's exact bytes.
     const team = teamPanel();
@@ -456,7 +456,7 @@ test(
     await user.selectOptions(team.getByLabelText("Published support bundle"), "published-support");
     await enter(user, team.getByLabelText("Support command id"), "support-request-1");
     await enter(user, team.getByLabelText("Reviewer to ask (request)"), "reviewer");
-    await press(user, team.getByRole("button", { name: "Request support approval" }));
+    await press(user, team.getByRole("button", { name: "Request approval" }));
     expect((await team.findByText(byContent(/^Recorded: support-request by /))).textContent).toBe(
       "Recorded: support-request by analyst@https://idp.journey.test",
     );
@@ -464,7 +464,7 @@ test(
     expect(digestField.value).toBe(summaryDigest);
 
     // Until an approval names those bytes the hub serves nothing under them.
-    const download = team.getByRole("button", { name: "Download approved support summary" });
+    const download = team.getByRole("button", { name: "Download summary" });
     await enter(user, team.getByLabelText("Download the approved summary to"), journey.path("downloads/support.json"));
     await press(user, download);
     expect(
@@ -507,7 +507,7 @@ test(
     // policy was announced; a query naming the evidence by anything but its
     // digest is refused before the hub is asked; the notification search
     // finds what was addressed to the person.
-    const search = within(team.getByRole("form", { name: "Search history and notifications" }));
+    const search = within(team.getByRole("form", { name: "Search team activity" }));
     await enter(user, search.getByLabelText("Text contains"), "support");
     await enter(user, search.getByLabelText("Evidence (whole SHA-256 digest)"), summaryDigest);
     await enter(user, search.getByLabelText("After sequence"), "1");
@@ -572,7 +572,7 @@ test(
     journey.makeFolder("received");
     await journey.launch();
     const operator = await operatorMode(user);
-    const choose = operator.getByRole("button", { name: "Choose operator-only hub configuration…" });
+    const choose = operator.getByRole("button", { name: "Choose configuration…" });
     const configTitle = "Choose the operator-only hub configuration";
     const storeTitle = "Choose the file to store in the operator-only hub";
     const saveTitle = "Name the file to save the artifact as";
@@ -581,14 +581,14 @@ test(
       await enter(user, operator.getByLabelText("Artifact digest (SHA-256)"), address);
       await journey.nameNewFolder(journey.path(`received/${name}`), saveTitle);
       const asked = journey.callsTo("ReadOperatorHubArtifact").length;
-      await press(user, operator.getByRole("button", { name: "Read and save…" }));
+      await press(user, operator.getByRole("button", { name: "Download…" }));
       await waitFor(() => expect(journey.callsTo("ReadOperatorHubArtifact")[asked]?.settled).toBe(true));
       return journey.callsTo("ReadOperatorHubArtifact")[asked]?.result;
     };
     const store = async (file: string) => {
       await journey.chooseFiles([journey.path(file)], storeTitle);
       const asked = journey.callsTo("StoreOperatorHubArtifact").length;
-      await press(user, operator.getByRole("button", { name: "Store a file…" }));
+      await press(user, operator.getByRole("button", { name: "Upload file…" }));
       await waitFor(() => expect(journey.callsTo("StoreOperatorHubArtifact")[asked]?.settled).toBe(true));
       return journey.callsTo("StoreOperatorHubArtifact")[asked]?.result;
     };
@@ -607,12 +607,12 @@ test(
     await journey.chooseFiles([hub.operatorConfig], configTitle);
     await press(user, choose);
     expect(await operator.findByText(`Operator-only configuration: ${hub.operatorConfig}`)).toBeTruthy();
-    await press(user, operator.getByRole("button", { name: "Connect to operator-only hub" }));
+    await press(user, operator.getByRole("button", { name: "Connect" }));
     expect(await operator.findByText(`Connected to operator-only hub (https://${hub.address})`)).toBeTruthy();
 
     // With no license activated on this machine, storing is refused by the
     // window's own admission before any dialog opens.
-    await press(user, operator.getByRole("button", { name: "Store a file…" }));
+    await press(user, operator.getByRole("button", { name: "Upload file…" }));
     expect(await operator.findByText("operation activation is missing or invalid; select and activate an operation policy")).toBeTruthy();
     expect(outcome()).toBe("Store: permission_denied");
 
@@ -630,7 +630,7 @@ test(
     // A digest typed in capitals is not the whole lowercase digest: it is
     // refused before any dialog opens, and stays in the field to correct.
     await enter(user, operator.getByLabelText("Artifact digest (SHA-256)"), digest.toUpperCase());
-    await press(user, operator.getByRole("button", { name: "Read and save…" }));
+    await press(user, operator.getByRole("button", { name: "Download…" }));
     expect(await operator.findByText("an artifact is named by its whole SHA-256 digest: 64 lowercase hexadecimal characters")).toBeTruthy();
     expect(outcome()).toBe("Read: failed");
 
@@ -676,9 +676,9 @@ test(
     for (const name of ["team.txt", "closed.txt"]) expect(() => journey.readFile(`received/${name}`)).toThrow();
 
     // Disconnecting ends the connection and keeps the custody notice.
-    await press(user, operator.getByRole("button", { name: "Disconnect from operator-only hub" }));
+    await press(user, operator.getByRole("button", { name: "Disconnect" }));
     expect(await operator.findByText("Not connected")).toBeTruthy();
-    expect(operator.queryByRole("button", { name: "Store a file…" })).toBeNull();
+    expect(operator.queryByRole("button", { name: "Upload file…" })).toBeNull();
     expect(journey.callsTo("DisconnectOperatorHub").at(-1)?.result).toMatchObject({
       connected: false,
       custody_warning: "Downloaded copies remain under local custody and cannot be revoked.",

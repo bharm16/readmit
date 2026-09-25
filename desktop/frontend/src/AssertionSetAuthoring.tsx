@@ -198,8 +198,8 @@ function FieldInputs({
         }}
       >
         {inspected?.path
-          ? `Use the inspected position ${inspected.path}`
-          : "Use the position open in the inspector"}
+          ? `Use selected field ${inspected.path}`
+          : "Use selected field"}
       </button>
     </>
   );
@@ -429,7 +429,7 @@ export function AssertionSetAuthoring({
               onChange={(event) => setName(event.target.value)}
             />
             <button type="submit" disabled={disabled || !name}>
-              Name this assertion set
+              Save name
             </button>
           </form>
 
@@ -576,8 +576,9 @@ export function AssertionSetAuthoring({
                 checked={useWhen}
                 onChange={(event) => setUseWhen(event.target.checked)}
               />
-              Evaluate only when a condition holds
+              Apply condition
             </label>
+            <p className="hint">Evaluate only when the condition holds.</p>
             {useWhen ? (
               <>
                 <FieldInputs
@@ -751,11 +752,11 @@ export function AssertionSetAuthoring({
             ) : null}
 
             <button type="submit" disabled={disabled || !clauseId}>
-              Add this assertion
+              Add assertion
             </button>
           </form>
 
-          <h4>Import an existing set</h4>
+          <h4>Import set</h4>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -770,8 +771,9 @@ export function AssertionSetAuthoring({
               onChange={(event) => setImportEntry(event.target.value)}
             />
             <button type="submit" ref={importButton} disabled={disabled || !importEntry}>
-              Import into this draft
+              Import
             </button>
+            <p className="hint">Imports into this draft.</p>
           </form>
           {confirmingImport !== null ? (
             <div
@@ -799,7 +801,7 @@ export function AssertionSetAuthoring({
                   void apply(() => importAssertionSet(workspace, entry), "import");
                 }}
               >
-                Replace them with {confirmingImport}
+                Replace assertions
               </button>
               <button
                 type="button"
@@ -810,12 +812,12 @@ export function AssertionSetAuthoring({
                   importButton.current?.focus();
                 }}
               >
-                Keep these assertions
+                Keep assertions
               </button>
             </div>
           ) : null}
 
-          <h4>Save this assertion set</h4>
+          <h4>Save assertion set</h4>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -835,7 +837,7 @@ export function AssertionSetAuthoring({
               type="submit"
               disabled={disabled || !output || !draft.name || draft.assertions.length === 0}
             >
-              Write the assertion set
+              Save assertion set
             </button>
           </form>
           {result?.set?.output ? (
@@ -866,7 +868,7 @@ export function AssertionSetAuthoring({
             disabled={disabled || !document}
             onClick={() => void applyCanonical(() => validateAssertionSet(document))}
           >
-            Validate with the assertion reader
+            Validate
           </button>
           <label htmlFor="assertion-export-output">New assertion set entry</label>
           <input
@@ -887,7 +889,7 @@ export function AssertionSetAuthoring({
               )
             }
           >
-            Export new assertion set
+            Export assertion set
           </button>
           {canonical?.state === "completed" && !canonical.output ? (
             <p role="status">Accepted by the shared assertion reader.</p>

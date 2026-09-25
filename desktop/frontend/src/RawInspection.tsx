@@ -161,7 +161,7 @@ export function RawInspection({
           aria-controls="raw-inspection-body"
           onClick={() => setOpen(!open)}
         >
-          Inspect a raw HL7 file
+          Inspect HL7 file
         </button>
       </h3>
       {open ? (
@@ -172,7 +172,7 @@ export function RawInspection({
           </p>
           <div className="raw-choice">
             <button type="button" disabled={disabled} onClick={() => void choose("file")}>
-              Choose a file to inspect…
+              Browse…
             </button>
             <span className="raw-path">{file || "No file chosen."}</span>
           </div>
@@ -210,14 +210,18 @@ export function RawInspection({
             <label className="raw-check">
               <input
                 type="checkbox"
+                aria-describedby="raw-values-warning"
                 checked={showValues}
                 onChange={(event) => {
                   setShowValues(event.target.checked);
                   invalidate();
                 }}
               />
-              Show field values as escaped byte strings (may contain patient data)
+              Show values
             </label>
+            <p className="hint" id="raw-values-warning">
+              Values may contain patient data and are shown as escaped byte strings.
+            </p>
           </fieldset>
           <button type="button" disabled={disabled || !file} onClick={() => void inspect(0)}>
             Inspect
@@ -267,7 +271,7 @@ export function RawInspection({
             </p>
             <div className="raw-choice">
               <button type="button" onClick={() => void choose("round-trip-folder")}>
-                Choose a folder for the copy…
+                Choose destination…
               </button>
               <span className="raw-path">{folder || "No folder chosen."}</span>
             </div>
@@ -282,7 +286,7 @@ export function RawInspection({
               />
             </label>
             <button type="button" disabled={!file || !folder || !name.trim()} onClick={() => void copy()}>
-              Write the copy
+              Save copy
             </button>
           </fieldset>
           <Report

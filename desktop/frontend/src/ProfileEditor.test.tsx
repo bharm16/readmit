@@ -199,7 +199,7 @@ test("validates profile through Go backend and displays resolution findings and 
   const user = userEvent.setup();
   renderEditor();
 
-  const validateBtn = screen.getByRole("button", { name: "Validate with Engine" });
+  const validateBtn = screen.getByRole("button", { name: "Validate" });
   await user.click(validateBtn);
 
   expect(await screen.findByText("Validation Result: completed")).toBeDefined();
@@ -212,10 +212,10 @@ test("validation shows the named pack reader's refusal without a seal or resolut
   const reason = "the profile pack must be one regular file of the open workspace";
   const facade = renderEditor();
 
-  await user.click(screen.getByRole("button", { name: "Validate with Engine" }));
+  await user.click(screen.getByRole("button", { name: "Validate" }));
   expect(await screen.findByRole("heading", { name: "Validation Result: completed" })).toBeTruthy();
   facade.reply({ ValidateProfile: () => ({ state: "failed", reason }) });
-  await user.click(screen.getByRole("button", { name: "Validate with Engine" }));
+  await user.click(screen.getByRole("button", { name: "Validate" }));
   expect(await screen.findByRole("heading", { name: "Validation Result: failed" })).toBeTruthy();
   expect(screen.getByText(reason)).toBeTruthy();
   expect(screen.queryByText(/Sealed Version:/)).toBeNull();
@@ -236,7 +236,7 @@ test("saves profile revision and displays refusal on immutability failure", asyn
     }),
   });
 
-  const saveBtn = screen.getByRole("button", { name: "Save Profile Revision" });
+  const saveBtn = screen.getByRole("button", { name: "Save revision" });
   await user.click(saveBtn);
 
   expect(await screen.findByText(/approved profiles are immutable/)).toBeDefined();
@@ -247,10 +247,10 @@ test("compares profile versions and explicitly upgrades pinned consumer", async 
   const facade = renderEditor();
 
   // Switch to Version Comparison tab
-  await user.click(screen.getByRole("tab", { name: "Version Comparison & Pins" }));
+  await user.click(screen.getByRole("tab", { name: "Versions and pins" }));
 
   // Click compare button
-  const compareBtn = screen.getByRole("button", { name: "Compare & Assess Tests" });
+  const compareBtn = screen.getByRole("button", { name: "Compare" });
   await user.click(compareBtn);
 
   // Verifies changes displayed
@@ -329,7 +329,7 @@ test("discard waits for a delayed retention and cancels queued saves before clea
   expect(retaining.size).toBe(1);
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
   await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
-  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await user.click(screen.getByRole("button", { name: "Discard changes" }));
   expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
 
   const sent = facade.oneCall("SaveEditorDraft")[0] as EditorDraft;
@@ -361,13 +361,13 @@ test("a refused draft discard keeps the edits and their identity for a retry", a
   await user.type(screen.getByLabelText("Profile ID"), "x");
   expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
   await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
-  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await user.click(screen.getByRole("button", { name: "Discard changes" }));
   expect(await screen.findByText(reason)).toBeTruthy();
   expect((screen.getByLabelText("Raw Canonical JSON") as HTMLTextAreaElement).value).toContain('"id": "local-siu-profilex"');
   expect(held).toHaveLength(1);
 
   refuse = false;
-  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await user.click(screen.getByRole("button", { name: "Discard changes" }));
   await waitFor(() => expect(held).toEqual([]));
   expect(facade.callsTo("DiscardEditorDraft").map((call) => call.args[0])).toEqual([
     "profile-draft-1", "profile-draft-1",
@@ -387,7 +387,7 @@ test("after a delayed save and refused discard, Retry retains the newest queued 
   await user.type(screen.getByLabelText("Profile ID"), "xy");
   expect(retaining.size).toBe(1);
   await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
-  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await user.click(screen.getByRole("button", { name: "Discard changes" }));
   const first = facade.oneCall("SaveEditorDraft")[0] as EditorDraft;
   held = [{ ...first, id: "profile-draft-1" }];
   retaining.resolve({ state: "completed", drafts: held });
@@ -433,7 +433,7 @@ function importedPackage(): ProfilePackageResult {
 /** The import controls of the package exchange tab. */
 async function exchange(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("tab", { name: "Package Exchange" }));
-  return within(screen.getByRole("form", { name: "Import profile package" }));
+  return within(screen.getByRole("form", { name: "Import package" }));
 }
 
 test("imports a package into a new directory from the keyboard and shows what it verified, its provenance and that nothing was activated", async () => {
@@ -522,7 +522,7 @@ test("opens an existing local profile from the keyboard, resolves it against its
   const user = userEvent.setup();
   const opened = { ...localProfileFixture(), document: '{"schema":"readmit-local-profile/v1"}\n' };
   const facade = renderEditor({ OpenProfile: () => opened });
-  const form = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  const form = within(screen.getByRole("form", { name: "Open profile" }));
 
   await user.type(form.getByLabelText("Profile entry"), "imported-interface/profile.json");
   await user.type(form.getByLabelText("Pack entry"), "imported-interface/pack.json{Enter}");
@@ -556,7 +556,7 @@ test("an opened profile that no offered pack satisfies says nothing was read fro
     findings: [{ kind: "pack_not_pinned", detail: "the pack offered is not fixture-siu 1; nothing was read from it" }],
   };
   renderEditor({ OpenProfile: () => unpinned });
-  const form = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  const form = within(screen.getByRole("form", { name: "Open profile" }));
   await user.type(form.getByLabelText("Profile entry"), "profile.json");
   await user.type(form.getByLabelText("Pack entry"), "adt-pack.json");
   await user.click(form.getByRole("button", { name: "Open Profile" }));
@@ -577,7 +577,7 @@ test("refuses to open over unstored edits and shows an open the reader refused w
   await user.clear(screen.getByLabelText("Profile ID"));
   await user.type(screen.getByLabelText("Profile ID"), "edited-profile");
   await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(0));
-  const form = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  const form = within(screen.getByRole("form", { name: "Open profile" }));
   await user.type(form.getByLabelText("Profile entry"), "missing.json{Enter}");
   expect((await form.findByRole("alert")).textContent).toMatch(/^This editor holds unstored edits\./);
   expect(facade.callsTo("OpenProfile")).toHaveLength(0);
@@ -586,9 +586,9 @@ test("refuses to open over unstored edits and shows an open the reader refused w
   // Once the edits are discarded the open reaches the facade, and its refusal
   // leaves the editor as it was.
   await user.click(screen.getByRole("tab", { name: "Canonical JSON" }));
-  await user.click(screen.getByRole("button", { name: "Discard Unstored Edits" }));
+  await user.click(screen.getByRole("button", { name: "Discard changes" }));
   await user.click(screen.getByRole("tab", { name: "Profile Editor" }));
-  const reopened = within(screen.getByRole("form", { name: "Open an existing profile" }));
+  const reopened = within(screen.getByRole("form", { name: "Open profile" }));
   // What was typed is still there.
   expect((reopened.getByLabelText("Profile entry") as HTMLInputElement).value).toBe("missing.json");
   await user.click(reopened.getByRole("button", { name: "Open Profile" }));

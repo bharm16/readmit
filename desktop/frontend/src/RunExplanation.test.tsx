@@ -143,7 +143,7 @@ test("a retained run and an assertion set chosen through the host's dialogs are 
   expect(screen.getByText(/It opened nothing else, sent nothing and wrote nothing\./)).toBeTruthy();
 
   // Revealing is a second, deliberate reading; hiding is a third.
-  await user.click(screen.getByRole("button", { name: "Reveal expected and observed values" }));
+  await user.click(screen.getByRole("button", { name: "Show values" }));
   await screen.findByRole("table", { name: /\(values revealed\)$/ });
   expect(row("booking-accepted")[4]).toBe('present, text "expected-value"');
   await user.click(screen.getByRole("button", { name: "Hide values" }));
@@ -288,7 +288,7 @@ test("both observations' documents are chosen natively for a set that asks about
   });
   await user.type(screen.getByLabelText("Retained run"), "post-fix");
   await user.type(screen.getByLabelText("Assertion set"), "records.json");
-  await user.click(screen.getByText("Observed records, for a set that asks about them"));
+  await user.click(screen.getByText("Observed records"));
   await user.click(screen.getByRole("button", { name: "Choose before completion…" }));
   await waitFor(() => expect((screen.getByLabelText("Completion record before the run") as HTMLInputElement).value).toBe("before.json"));
   await user.click(screen.getByRole("button", { name: "Choose before source…" }));
@@ -372,7 +372,7 @@ test("the explanation is driven from the keyboard, and its cancel names its own 
   await tabTo(user, screen.getByRole("button", { name: "Explain" }));
   await user.keyboard("{Enter}");
   expect(await screen.findByText("Verdict: pass")).toBeTruthy();
-  await tabTo(user, screen.getByRole("button", { name: "Reveal expected and observed values" }));
+  await tabTo(user, screen.getByRole("button", { name: "Show values" }));
   await user.keyboard(" ");
   expect(await screen.findByRole("button", { name: "Hide values" })).toBeTruthy();
   expect(facade.callsTo("ExplainRun").map((call) => (call.args[0] as { reveal: boolean }).reveal)).toEqual([false, false, true]);

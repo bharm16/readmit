@@ -71,12 +71,13 @@ function workspace() {
  * the comparison panel is offered at all. */
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Open a workspace folder…" }));
+  // The toolbar's Open workspace…, which the first-run panel names identically.
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" }).at(-1)!);
   await screen.findByText(WORKSPACE_ROOT);
   const listed = screen.getByText(CASE_ENTRY, { selector: ".name" }).closest("li")!;
-  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Verify and open" }));
+  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
-  return within(await screen.findByRole("region", { name: "Compare two collections" }));
+  return within(await screen.findByRole("region", { name: "Compare collections" }));
 }
 
 /** Paired rows at positions from..to, each naming its own two occurrences. */
@@ -161,13 +162,13 @@ test("two collections are compared through the facade, a mismatched pair is refu
   // to declare, and no row is drawn.
   facade.reply({ Compare: () => refused(MISMATCHED) });
   await user.selectOptions(picker, AFTER);
-  await user.click(panel.getByRole("button", { name: "Compare these collections" }));
+  await user.click(panel.getByRole("button", { name: "Compare" }));
   expect(await panel.findByText(MISMATCHED)).toBeTruthy();
   expect(panel.queryByRole("table")).toBeNull();
 
   // The key is declared and the comparison asked for with Enter.
   facade.reply({ Compare: (request) => comparisonWindow(request.offset) });
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "MSH-10{Enter}");
+  await user.type(panel.getByLabelText("Record keys"), "MSH-10{Enter}");
   expect(await panel.findByText("Rows 1–200 of 251")).toBeTruthy();
   expect(facade.callsTo("Compare").map((call) => call.args[0])).toEqual([
     { workspace: WORKSPACE_ROOT, left: CASE_ENTRY, identity: CASE_IDENTITY, right: AFTER, keys: [], fields: [], offset: 0, limit: 200 },
@@ -179,8 +180,8 @@ test("two collections are compared through the facade, a mismatched pair is refu
   // Typing another key is not a comparison: the next window, reached with Tab
   // from the key field, is of the comparison on screen, on the key the engine
   // echoed.
-  await user.clear(panel.getByLabelText("Fields that identify one record, separated by spaces"));
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "PID-3");
+  await user.clear(panel.getByLabelText("Record keys"));
+  await user.type(panel.getByLabelText("Record keys"), "PID-3");
   await tabTo(user, panel.getByRole("button", { name: "Next 200" }));
   await user.keyboard("{Enter}");
   expect(await panel.findByText("Rows 201–251 of 251")).toBeTruthy();
@@ -191,7 +192,7 @@ test("two collections are compared through the facade, a mismatched pair is refu
   // A row on the second page opens from the keyboard and names positions only.
   panel.getByRole("button", { name: "201" }).focus();
   await user.keyboard("{Enter}");
-  const opened = within(panel.getByRole("region", { name: "What differs in the selected row" }));
+  const opened = within(panel.getByRole("region", { name: "Differences" }));
   expect(opened.getByText("Row 201")).toBeTruthy();
   expect(opened.getByText("present → empty")).toBeTruthy();
 
@@ -208,11 +209,11 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
   const panel = await openCase(facade, user);
   const parked = facade.park("Compare");
   await user.selectOptions(panel.getByLabelText("Compare with"), AFTER);
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "MSH-10");
-  await user.click(panel.getByRole("button", { name: "Compare these collections" }));
+  await user.type(panel.getByLabelText("Record keys"), "MSH-10");
+  await user.click(panel.getByRole("button", { name: "Compare" }));
   expect(await panel.findByText("Comparing these collections.")).toBeTruthy();
   expect((panel.getByLabelText("Compare with") as HTMLSelectElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Compare these collections" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Compare" }) as HTMLButtonElement).disabled).toBe(true);
 
   // A comparison runs to completion once it starts: the window's Escape asks
   // for a cancellation, and what the facade then answers is what is shown.
@@ -228,7 +229,7 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
   const section = within(panel.getByRole("region", { name: "Comparison under a normalization policy" }));
   const reading = facade.park("NormalizeCompare");
   await user.selectOptions(section.getByLabelText("Normalization policy"), POLICY);
-  section.getByRole("button", { name: "Preview under this policy" }).focus();
+  section.getByRole("button", { name: "Preview" }).focus();
   await user.keyboard("{Enter}");
   expect(await panel.findByText("Reading this comparison under the declared policy.")).toBeTruthy();
   await user.keyboard("{Escape}");
@@ -239,13 +240,13 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
 
   // And an open of a retained policy.
   const opening = facade.park("OpenNormalizationPolicy");
-  await user.click(section.getByText("Author a normalization policy"));
+  await user.click(section.getByText("Normalization policy", { selector: "summary" }));
   const editor = within(section.getByRole("region", { name: "Normalization policy editor" }));
   await user.selectOptions(editor.getByLabelText("Retained policy document"), POLICY);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   expect(await editor.findByText(`Opening ${POLICY}.`)).toBeTruthy();
-  expect((editor.getByRole("button", { name: "Open this document" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((editor.getByRole("button", { name: "Add this policy rule" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((editor.getByRole("button", { name: "Open" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((editor.getByRole("button", { name: "Add policy rule" }) as HTMLButtonElement).disabled).toBe(true);
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(3);
   opening.resolve({ state: "completed", document: JSON.stringify(RETAINED), sha256: POLICY_SHA256, policy: RETAINED });
@@ -261,25 +262,25 @@ test("a normalization preview reads the comparison on screen, a refused policy l
 
   // No comparison is on screen yet, so there is nothing to read under a policy.
   await user.selectOptions(section.getByLabelText("Normalization policy"), POLICY);
-  expect((section.getByRole("button", { name: "Preview under this policy" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((section.getByRole("button", { name: "Preview" }) as HTMLButtonElement).disabled).toBe(true);
 
   facade.reply({
     Compare: (request) => comparisonWindow(request.offset, request.right, request.fields.length > 0 ? FIELDS : []),
   });
   await user.selectOptions(panel.getByLabelText("Compare with"), AFTER);
-  await user.type(panel.getByLabelText("Fields to compare, or none for every field"), FIELDS_TYPED);
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "MSH-10{Enter}");
+  await user.type(panel.getByLabelText("Compared fields"), FIELDS_TYPED);
+  await user.type(panel.getByLabelText("Record keys"), "MSH-10{Enter}");
   await panel.findByText("Rows 1–200 of 251");
   expect(facade.oneCall("Compare")[0]).toMatchObject({ right: AFTER, keys: ["MSH-10"], fields: ["PID-5", "OBX-5"] });
 
   // The form now names another collection, another key and no field, but the
   // preview, asked for from the keyboard, reads the comparison on screen.
   await user.selectOptions(panel.getByLabelText("Compare with"), CASE_ENTRY);
-  await user.clear(panel.getByLabelText("Fields that identify one record, separated by spaces"));
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "PID-3");
-  await user.clear(panel.getByLabelText("Fields to compare, or none for every field"));
+  await user.clear(panel.getByLabelText("Record keys"));
+  await user.type(panel.getByLabelText("Record keys"), "PID-3");
+  await user.clear(panel.getByLabelText("Compared fields"));
   facade.reply({ NormalizeCompare: (request) => normalizationWindow(request.offset, request.right, request.fields) });
-  section.getByRole("button", { name: "Preview under this policy" }).focus();
+  section.getByRole("button", { name: "Preview" }).focus();
   await user.keyboard("{Enter}");
   expect(await section.findByText(/^250 differences · 250 suppressed · 0 retained/)).toBeTruthy();
   expect(facade.oneCall("NormalizeCompare")[0]).toEqual({
@@ -316,14 +317,14 @@ test("a normalization preview reads the comparison on screen, a refused policy l
   // left standing beside the refusal.
   facade.reply({ NormalizeCompare: () => refused("a numeric tolerance is an unsigned decimal distance") });
   await user.selectOptions(section.getByLabelText("Normalization policy"), REFUSED_POLICY);
-  await user.click(section.getByRole("button", { name: "Preview under this policy" }));
+  await user.click(section.getByRole("button", { name: "Preview" }));
   expect(await section.findByText("a numeric tolerance is an unsigned decimal distance")).toBeTruthy();
   expect(section.queryByText(/ differences · /)).toBeNull();
   expect(panel.getByText("Rows 201–251 of 251")).toBeTruthy();
 
   facade.reply({ NormalizeCompare: (request) => normalizationWindow(request.offset, request.right, request.fields) });
   await user.selectOptions(section.getByLabelText("Normalization policy"), POLICY);
-  await user.click(section.getByRole("button", { name: "Preview under this policy" }));
+  await user.click(section.getByRole("button", { name: "Preview" }));
   expect(await section.findByText("Differences 1–200 of 250")).toBeTruthy();
 
   // The same comparison refused — its evidence changed since it was shown —
@@ -339,17 +340,17 @@ test("a normalization preview reads the comparison on screen, a refused policy l
     Compare: (request) => comparisonWindow(request.offset, request.right, request.fields.length > 0 ? FIELDS : []),
   });
   await user.selectOptions(panel.getByLabelText("Compare with"), AFTER);
-  await user.type(panel.getByLabelText("Fields to compare, or none for every field"), FIELDS_TYPED);
-  await user.clear(panel.getByLabelText("Fields that identify one record, separated by spaces"));
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "MSH-10{Enter}");
+  await user.type(panel.getByLabelText("Compared fields"), FIELDS_TYPED);
+  await user.clear(panel.getByLabelText("Record keys"));
+  await user.type(panel.getByLabelText("Record keys"), "MSH-10{Enter}");
   await panel.findByText("Rows 1–200 of 251");
-  await user.click(section.getByRole("button", { name: "Preview under this policy" }));
+  await user.click(section.getByRole("button", { name: "Preview" }));
   expect(await section.findByText("Differences 1–200 of 250")).toBeTruthy();
   await user.selectOptions(panel.getByLabelText("Compare with"), CASE_ENTRY);
-  await user.clear(panel.getByLabelText("Fields that identify one record, separated by spaces"));
-  await user.type(panel.getByLabelText("Fields that identify one record, separated by spaces"), "PID-3");
-  await user.clear(panel.getByLabelText("Fields to compare, or none for every field"));
-  await user.click(panel.getByRole("button", { name: "Compare these collections" }));
+  await user.clear(panel.getByLabelText("Record keys"));
+  await user.type(panel.getByLabelText("Record keys"), "PID-3");
+  await user.clear(panel.getByLabelText("Compared fields"));
+  await user.click(panel.getByRole("button", { name: "Compare" }));
   await waitFor(() => expect(facade.callsTo("Compare").at(-1)?.args[0]).toMatchObject({ right: CASE_ENTRY, keys: ["PID-3"], fields: [] }));
   expect(await panel.findByText(`${CASE_ENTRY} (2 compared, 0 outside this comparison) beside ${CASE_ENTRY} (2 compared, 0 outside this comparison)`)).toBeTruthy();
   expect(section.queryByText(/ differences · /)).toBeNull();
@@ -360,7 +361,7 @@ test("a retained normalization policy opens into the structured rules with its i
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
-  await user.click(panel.getByText("Author a normalization policy"));
+  await user.click(panel.getByText("Normalization policy", { selector: "summary" }));
   const editor = within(panel.getByRole("region", { name: "Normalization policy editor" }));
   const rules = () => editor.queryAllByRole("button", { name: /^Remove policy rule / }).map((button) => button.textContent);
 
@@ -375,7 +376,7 @@ test("a retained normalization policy opens into the structured rules with its i
         : refused("invalid normalization policy JSON"),
   });
   await user.selectOptions(retained, POLICY);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(rules()).toEqual(["Remove policy rule volatile-time", "Remove policy rule analyser-drift"]));
   expect(facade.oneCall("OpenNormalizationPolicy")).toEqual([WORKSPACE_ROOT, POLICY]);
   expect(editor.getByText(`Opened ${POLICY} · exact bytes hash to ${POLICY_SHA256}`)).toBeTruthy();
@@ -394,35 +395,35 @@ test("a retained normalization policy opens into the structured rules with its i
   // Opening another policy now would replace unsaved rules, so it asks, and
   // Escape keeps them without reading anything or cancelling anything else.
   await user.selectOptions(retained, REFUSED_POLICY);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: `Open ${REFUSED_POLICY} in place of these rules?` }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these rules" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep rules" }));
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenNormalizationPolicy")).toHaveLength(1);
   expect(facade.callsTo("Cancel")).toHaveLength(cancels);
   expect(rules()).toHaveLength(3);
 
   // Keep these rules, pressed, answers the same way.
   await user.keyboard("{Enter}");
-  await user.click(editor.getByRole("button", { name: "Keep these rules" }));
+  await user.click(editor.getByRole("button", { name: "Keep rules" }));
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenNormalizationPolicy")).toHaveLength(1);
 
   // Answered the other way, the policy is read, and the reader's refusal
   // leaves the rules on screen.
   await user.keyboard("{Enter}");
-  await user.click(editor.getByRole("button", { name: `Replace them with ${REFUSED_POLICY}` }));
+  await user.click(editor.getByRole("button", { name: "Replace rules" }));
   expect(await editor.findByText("invalid normalization policy JSON")).toBeTruthy();
   expect(facade.callsTo("OpenNormalizationPolicy")[1]?.args).toEqual([WORKSPACE_ROOT, REFUSED_POLICY]);
   expect(rules()).toHaveLength(3);
 
   // Saved while the question is still open, the rules are no longer unsaved:
   // the question is withdrawn, and opening asks nothing.
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   expect(editor.getByRole("group", { name: `Open ${REFUSED_POLICY} in place of these rules?` })).toBeTruthy();
   facade.reply({
     SaveNormalizationPolicy: (request) => ({ state: "completed", output: request.output, sha256: "saved-sha256-fixed-for-tests", document: request.document }),
@@ -432,7 +433,7 @@ test("a retained normalization policy opens into the structured rules with its i
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
   expect(JSON.parse(facade.oneCall("SaveNormalizationPolicy")[0].document)).toEqual(composed);
   await user.selectOptions(retained, POLICY);
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(rules()).toHaveLength(2));
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
 });

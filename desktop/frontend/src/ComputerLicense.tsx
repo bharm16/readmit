@@ -11,6 +11,8 @@ import {
   type InstalledLicenseResult, type InstalledLicenseView, type LicenseDocumentView,
   type LicenseExportResult, type LicenseReviewResult,
 } from "./bindings";
+import { ControlledDetails } from "./ControlledDetails";
+import { IconButton } from "./IconButton";
 import { useLifecycle } from "./lifecycle";
 
 /** The calendar date an instant falls on, in UTC as the license states it. */
@@ -63,6 +65,9 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
   const [notice, setNotice] = useState<string | null>(null);
+  // The activation/renewal flow's method choice, opened by the primary
+  // action: the file the person received, or its pasted contents.
+  const [choosing, setChoosing] = useState(false);
   const [pasting, setPasting] = useState(false);
   const [pasted, setPasted] = useState("");
   const [review, setReview] = useState<LicenseReviewResult | null>(null);
@@ -180,8 +185,7 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
     setTimeout(() => deactivateControl.current?.focus(), 0);
   }
 
-  return <section aria-labelledby="computer-license-title" className="computer-license">
-    <h4 id="computer-license-title">This computer's license</h4>
+  return <section aria-label="Device license" className="computer-license">
     <div role="status" aria-live="polite">
       {status === null ? <p>Reading this computer's license…</p> : null}
       {status && status.state !== "completed" ? <p>{status.state === "empty"
@@ -201,37 +205,54 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
     </div>
 
     <div className="operation-actions">
-      {active ? <>
-        <button type="button" disabled={busy} onClick={() => startReview("", false)}>Renew with a license file…</button>
-        <button type="button" disabled={busy} onClick={() => setPasting(true)}>Paste a renewed license…</button>
-      </> : <>
-        <button type="button" disabled={busy} onClick={() => startReview("", false)}>Activate a license file…</button>
-        <button type="button" disabled={busy} onClick={() => setPasting(true)}>Paste a license…</button>
-      </>}
-      {license ? <button type="button" disabled={busy} onClick={() => void perform(exportInstalledLicense, setExported)}>Save a copy of this license…</button> : null}
-      {active ? (confirming ? (
-        <span
-          role="group"
-          aria-label="Deactivate this computer?"
-          onKeyDown={(event) => {
-            // Escape answers this question and goes no further: the window's
-            // own Escape cancels a running operation.
-            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              event.stopPropagation();
-              keepLicense();
-            }
-          }}
-        >
-          <span className="hint"> Deactivate this computer? New work stops here and on the command line; existing work stays readable, verifiable and exportable, and your vendor can reissue the seat for another computer.</span>
-          <button type="button" disabled={busy} onClick={deactivate}>Deactivate</button>
-          <button type="button" ref={keep} disabled={busy} onClick={keepLicense}>Keep this license</button>
-        </span>
-      ) : (
-        <button type="button" ref={deactivateControl} disabled={busy} onClick={() => setConfirming(true)}>Deactivate this computer…</button>
-      )) : null}
-      <button type="button" disabled={busy} onClick={() => void perform(licenseStatus, setStatus)}>Refresh this computer's license</button>
+      {/* One primary action for the state this computer is in: activating a
+       * license, or renewing the active one. The input methods — the received
+       * file and its pasted contents — are choices inside that flow, not
+       * parallel tasks on the page. */}
+      {active && renewalDue ? (
+        <button type="button" disabled={busy} onClick={() => setChoosing(true)}>Renew license…</button>
+      ) : !active ? (
+        <button type="button" disabled={busy} onClick={() => setChoosing(true)}>Activate license…</button>
+      ) : null}
+      <IconButton label="Refresh license" icon="refresh" disabled={busy} onClick={() => void perform(licenseStatus, setStatus)} />
+      <ControlledDetails summary="More actions" className="more-actions">
+        {/* Renewal stays reachable before it is due; it is the page's primary
+         * action only once the active license is expiring or expired. */}
+        {active && !renewalDue ? (
+          <button type="button" disabled={busy} onClick={() => setChoosing(true)}>Renew license…</button>
+        ) : null}
+        {license ? <button type="button" disabled={busy} onClick={() => void perform(exportInstalledLicense, setExported)}>Export license…</button> : null}
+        {active ? (confirming ? (
+          <span
+            role="group"
+            aria-label="Deactivate this device?"
+            onKeyDown={(event) => {
+              // Escape answers this question and goes no further: the window's
+              // own Escape cancels a running operation.
+              if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                event.stopPropagation();
+                keepLicense();
+              }
+            }}
+          >
+            <span className="hint"> Deactivate this device? New work stops here and on the command line; existing work stays readable, verifiable and exportable, and your vendor can reissue the seat for another computer.</span>
+            <button type="button" disabled={busy} onClick={deactivate}>Deactivate device</button>
+            <button type="button" ref={keep} disabled={busy} onClick={keepLicense}>Cancel</button>
+          </span>
+        ) : (
+          <button type="button" ref={deactivateControl} disabled={busy} onClick={() => setConfirming(true)}>Deactivate device…</button>
+        )) : null}
+      </ControlledDetails>
     </div>
+
+    {choosing ? (
+      <div className="license-methods" role="group" aria-label={active ? "Renewal method" : "Activation method"}>
+        <button type="button" disabled={busy} onClick={() => { setChoosing(false); startReview("", false); }}>Choose file…</button>
+        <button type="button" disabled={busy} onClick={() => { setChoosing(false); setPasting(true); }}>Paste license…</button>
+        <button type="button" disabled={busy} onClick={() => setChoosing(false)}>Cancel</button>
+      </div>
+    ) : null}
 
     {renewalDue || license?.deactivated ? (
       portal
@@ -245,7 +266,7 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
       <div className="license-paste">
         <label htmlFor="license-contents">License file contents</label>
         <textarea id="license-contents" rows={6} spellCheck={false} value={pasted} disabled={busy} onChange={(event) => setPasted(event.target.value)} />
-        <button type="button" disabled={busy || pasted.trim() === ""} onClick={() => startReview(pasted, false)}>Check the pasted license</button>
+        <button type="button" disabled={busy || pasted.trim() === ""} onClick={() => startReview(pasted, false)}>Verify license</button>
         <button type="button" disabled={busy} onClick={() => { setPasting(false); setPasted(""); }}>Cancel pasting</button>
       </div>
     ) : null}
@@ -266,7 +287,7 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
         <h5 id="license-review-title">{review.renewal ? "Renewed license" : "License to activate"}</h5>
         {document ? <p>{describeReceived(document)}</p> : <>
           <p role="note">{review.reason}</p>
-          <button type="button" disabled={busy} onClick={() => startReview(reviewed, true)}>Check it with an updated keys file…</button>
+          <button type="button" disabled={busy} onClick={() => startReview(reviewed, true)}>Verify with keys…</button>
         </>}
         {document && review.renewal ? <p>Activating it replaces this computer's license in place, for the same person and computer.</p> : null}
         {document && !review.renewal && document.operation_capable ? <>
@@ -294,7 +315,7 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
           </select>
           <p role="note">This license is in an earlier format that lists licensed computers; activating it does not let this computer create or run new work.</p>
         </> : null}
-        {document ? <button type="button" disabled={busy || !ready} onClick={activate}>{review.renewal ? "Install the renewed license" : "Activate on this computer"}</button> : null}
+        {document ? <button type="button" disabled={busy || !ready} onClick={activate}>{review.renewal ? "Install renewal" : "Activate"}</button> : null}
         <button type="button" disabled={busy} onClick={discardReview}>Cancel</button>
       </div>
     ) : null}

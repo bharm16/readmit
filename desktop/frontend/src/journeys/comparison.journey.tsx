@@ -187,16 +187,16 @@ async function captureFeeds(): Promise<void> {
 /** Opens the lab folder and verifies the case captured before the upgrade. */
 async function openBefore(user: UserEvent) {
   await journey.chooseFolder(journey.path("lab"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
-  const navigation = within(region("Project navigation"));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("before", { selector: ".name" })).closest("li") as HTMLElement;
-  await press(user, within(listed).getByRole("button", { name: "Verify and open" }));
-  return within(await screen.findByRole("region", { name: "Compare two collections" }));
+  await press(user, within(listed).getByRole("button", { name: "Open case" }));
+  return within(await screen.findByRole("region", { name: "Compare collections" }));
 }
 
 /** The key field of the comparison form. */
 function keyField(panel: ReturnType<typeof within>): HTMLElement {
-  return panel.getByLabelText("Fields that identify one record, separated by spaces");
+  return panel.getByLabelText("Record keys");
 }
 
 /** Asks for the comparison of the open case with another, on the keys typed,
@@ -265,7 +265,7 @@ test("two collections are compared and paged exactly as readmit diff reports the
 
   // Only the two case bundles are offered; the newer case is listed, and
   // refused by the command line as well.
-  expect(within(region("Project navigation")).getByText("newer-case", { selector: ".name" })).toBeTruthy();
+  expect(within(region("Workspace")).getByText("newer-case", { selector: ".name" })).toBeTruthy();
   const picker = panel.getByLabelText("Compare with") as HTMLSelectElement;
   expect(Array.from(picker.options).map((option) => option.value)).toEqual(["", "after", "before"]);
   const unsupported = await journey.commandLine(["diff", "lab/before", "lab/newer-case", "--key", "MSH-10"]);
@@ -301,7 +301,7 @@ test("two collections are compared and paged exactly as readmit diff reports the
   // Result 50 is row 49: it names the positions that differ — the time, the
   // renamed patient and the count — and no value.
   await activate(user, panel, panel.getByRole("button", { name: "49" }));
-  const opened = within(panel.getByRole("region", { name: "What differs in the selected row" }));
+  const opened = within(panel.getByRole("region", { name: "Differences" }));
   const positions = ["MSH[1]-7[1]", "PID[1]-5[1]", "OBX[1]-5[1]"];
   expect(opened.getAllByText(/^[A-Z]{3}\[\d+\]-\d+\[\d+\]$/).map((selector) => selector.textContent)).toEqual(positions);
   expect(report.pairs[48]!.fields.map((field) => field.selector)).toEqual(positions);
@@ -320,7 +320,7 @@ test("two collections are compared and paged exactly as readmit diff reports the
   // results. Comparing again is refused in the command line's words, and no
   // row of the comparison before it is left on screen.
   journey.changeFile("lab/after/payloads/s0001-e000001.bin", labResult(2, "20260101120512", "9.99", "SYNTHETIC"));
-  await press(user, panel.getByRole("button", { name: "Compare these collections" }));
+  await press(user, panel.getByRole("button", { name: "Compare" }));
   expect(await panel.findByText(TAMPERED)).toBeTruthy();
   expect(panel.queryByRole("table")).toBeNull();
   const tampered = await journey.commandLine(["diff", "lab/before", "lab/after", "--key", "MSH-10"]);
@@ -347,7 +347,7 @@ async function preview(user: UserEvent, section: ReturnType<typeof within>, poli
   await within(picker).findByRole("option", { name: policy });
   await user.selectOptions(await whenEnabled(picker), policy);
   const asked = journey.callsTo("NormalizeCompare").length;
-  await press(user, section.getByRole("button", { name: "Preview under this policy" }));
+  await press(user, section.getByRole("button", { name: "Preview" }));
   await waitFor(() => expect(journey.callsTo("NormalizeCompare")[asked]?.settled).toBe(true));
 }
 
@@ -419,11 +419,11 @@ test("a comparison is read under a retained normalization policy exactly as read
 
   // The person opens the colleague's policy into the editor: its rules are
   // the editor's rules, beside the identity of the bytes it read.
-  await user.click(section.getByText("Author a normalization policy"));
+  await user.click(section.getByText("Normalization policy", { selector: "summary" }));
   const editor = within(section.getByRole("region", { name: "Normalization policy editor" }));
   const rules = () => editor.queryAllByRole("button", { name: /^Remove policy rule / }).map((button) => button.textContent);
   await user.selectOptions(editor.getByLabelText("Retained policy document"), "colleague-policy.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(rules()).toEqual(["Remove policy rule volatile-message-time", "Remove policy rule analyser-drift"]));
   expect(editor.getByText(`Opened colleague-policy.json · exact bytes hash to ${colleagueDigest}`)).toBeTruthy();
 
@@ -441,19 +441,19 @@ test("a comparison is read under a retained normalization policy exactly as read
   // asks, and Escape keeps the rules and reads nothing.
   const opens = journey.callsTo("OpenNormalizationPolicy").length;
   await user.selectOptions(editor.getByLabelText("Retained policy document"), "truncated-policy.json");
-  await press(user, editor.getByRole("button", { name: "Open this document" }));
+  await press(user, editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: "Open truncated-policy.json in place of these rules?" }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these rules" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep rules" }));
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(journey.callsTo("OpenNormalizationPolicy")).toHaveLength(opens);
   expect(rules()).toHaveLength(3);
 
   // Asked again and answered, the undecodable policy is refused in the
   // command line's sentence, and the rules stay as they were.
   await user.keyboard("{Enter}");
-  await press(user, editor.getByRole("button", { name: "Replace them with truncated-policy.json" }));
+  await press(user, editor.getByRole("button", { name: "Replace rules" }));
   expect(await editor.findByText(UNDECODABLE)).toBeTruthy();
   expect(journey.callsTo("OpenNormalizationPolicy")).toHaveLength(opens + 1);
   expect(rules()).toHaveLength(3);
@@ -462,7 +462,7 @@ test("a comparison is read under a retained normalization policy exactly as read
   // extended policy is what the command line reads and what the preview
   // applies: the renamed patients are now hidden too.
   await enter(user, editor.getByLabelText("New normalization-policy entry"), "extended-policy.json");
-  await press(user, editor.getByRole("button", { name: "Save as a new entry" }));
+  await press(user, editor.getByRole("button", { name: "Save as new" }));
   const saved = await editor.findByText(/^Saved to extended-policy\.json · exact bytes hash to /);
   expect(saved.textContent).toBe(`Saved to extended-policy.json · exact bytes hash to ${journey.digest("lab/extended-policy.json")}`);
   expect(journey.digest("lab/colleague-policy.json")).toBe(colleagueDigest);

@@ -161,7 +161,7 @@ export function Sequence({
   const open = sequence?.events.find((event) => event.occurrence === opened) ?? null;
 
   return (
-    <section className="sequence" aria-label="Event sequence and source swimlanes">
+    <section className="sequence" aria-label="Sequence">
       <h3>Sequence</h3>
       <p className="hint">
         Every occurrence of this case in the order its recorded times put them, in the lane of the
@@ -190,18 +190,18 @@ export function Sequence({
             </option>
           ))}
         </select>
-        <label htmlFor="sequence-analysis">Observation windows and explanations</label>
+        <label htmlFor="sequence-analysis">Observations</label>
         <select id="sequence-analysis" value={analysis} disabled={busy} onChange={(event) => setAnalysis(event.target.value)}>
           <option value="">No analysis — coverage undeclared</option>
           {analyses.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
         </select>
         <button type="submit" disabled={busy}>
-          Lay out this case
+          View sequence
         </button>
       </form>
 
       <details className="rules-authoring">
-        <summary>Author correlation rules and sequence analysis</summary>
+        <summary>Rules and analysis</summary>
         <p className="hint">
           Documents are composed with typed controls and validated by the same strict readers the
           command line uses. Saving writes a new entry; the pickers above then offer it.
@@ -312,7 +312,7 @@ export function Sequence({
             distance between them is not a duration.
           </p>
 
-          <h4>Where this case stops saying what happened</h4>
+          <h4>Evidence gaps</h4>
           <ul className="gap-counts">
             {sequence.gaps.map((gap) => (
               <li key={gap.gap} className={gap.count === 0 ? "none" : undefined}>
@@ -475,7 +475,7 @@ export function Sequence({
 
           {sequence.unsupported.length > 0 ? (
             <>
-              <h4>Evidence these rules did not evaluate</h4>
+              <h4>Unevaluated evidence</h4>
               <ul className="gaps">
                 {sequence.unsupported.map((item, index) => (
                   <li key={`${item.code}:${item.occurrence ?? ""}:${index}`}>

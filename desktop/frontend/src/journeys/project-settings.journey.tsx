@@ -43,12 +43,12 @@ test("project settings are stored from the keyboard, refused, cancelled and left
   await user.tab();
   expect(document.activeElement).toBe(settings().getByLabelText("Default owner"));
   await user.keyboard("integration-team");
-  await tabTo(user, settings().getByLabelText("Declare a further interface version"));
+  await tabTo(user, settings().getByLabelText("Add interface version"));
   await user.keyboard("siu-2.5.1-v2{Enter}");
   expect(await evidence.findByRole("heading", { name: "Scheduling handover" })).toBeTruthy();
   expect(asked()).toBe(1);
   // The declaration was stored, so its field is empty for the next one.
-  await waitFor(() => expect((settings().getByLabelText("Declare a further interface version") as HTMLInputElement).value).toBe(""));
+  await waitFor(() => expect((settings().getByLabelText("Add interface version") as HTMLInputElement).value).toBe(""));
   const shown = await journey.commandLine(["project", "show", "investigations/interface"]);
   expect(shown.code).toBe(0);
   expect(shown.stdout).toMatch(/^Project: Scheduling handover\n/);
@@ -59,8 +59,8 @@ test("project settings are stored from the keyboard, refused, cancelled and left
   // line refuses it with, and the document is exactly as it was.
   const before = journey.digest("investigations/interface/project.json");
   await enter(user, settings().getByLabelText("Title"), "");
-  await enter(user, settings().getByLabelText("Declare a further interface version"), "siu-2.5.1-v3");
-  await press(user, settings().getByRole("button", { name: "Store these settings" }));
+  await enter(user, settings().getByLabelText("Add interface version"), "siu-2.5.1-v3");
+  await press(user, settings().getByRole("button", { name: "Save settings" }));
   expect(await evidence.findByText("project title: must not be empty")).toBeTruthy();
   expect(journey.digest("investigations/interface/project.json")).toBe(before);
   const refused = await journey.commandLine([
@@ -79,7 +79,7 @@ test("project settings are stored from the keyboard, refused, cancelled and left
   expect(journey.digest("investigations/interface/project.json")).toBe(before);
   // What was typed is still there beside the refusal, the further version
   // included, and the project the window last read is still on screen.
-  expect((settings().getByLabelText("Declare a further interface version") as HTMLInputElement).value).toBe("siu-2.5.1-v3");
+  expect((settings().getByLabelText("Add interface version") as HTMLInputElement).value).toBe("siu-2.5.1-v3");
   expect(evidence.getByRole("heading", { name: "Scheduling handover" })).toBeTruthy();
 
   // Escape discards the edit: nothing is written, the settings close and
@@ -105,7 +105,7 @@ test("project settings are stored from the keyboard, refused, cancelled and left
   journey.changeFile("investigations/interface/project.json", later);
   await press(user, evidence.getByRole("button", { name: "Edit settings…" }));
   await enter(user, settings().getByLabelText("Title"), "Over a later document");
-  await press(user, settings().getByRole("button", { name: "Store these settings" }));
+  await press(user, settings().getByRole("button", { name: "Save settings" }));
   expect(await evidence.findByText("the project document was written by a version this release cannot read")).toBeTruthy();
   expect(journey.readFile("investigations/interface/project.json")).toBe(later);
   expect(asked()).toBe(3);
@@ -123,7 +123,7 @@ test("the editable project document is read beside the overview as recorded, as 
 
   // Nothing recorded yet is an empty document, not a failure. The document
   // opens and closes from the keyboard.
-  await tabTo(user, evidence.getByRole("button", { name: "Show the editable document as recorded…" }));
+  await tabTo(user, evidence.getByRole("button", { name: "View source" }));
   await user.keyboard("{Enter}");
   const recorded = within(await evidence.findByRole("region", { name: "Editable project document" }));
   expect(await recorded.findByText("This project has recorded no notes, drafts or revisions yet.")).toBeTruthy();
@@ -139,11 +139,11 @@ test("the editable project document is read beside the overview as recorded, as 
   const reproducer = within(await screen.findByRole("region", { name: "Reproducer editor" }));
   await press(user, reproducer.getByRole("button", { name: "Retain s0002-e000001" }));
   expect(await reproducer.findByRole("button", { name: "Drop s0002-e000001" })).toBeTruthy();
-  await enter(user, reproducer.getByLabelText("New folder in this workspace"), "reschedule-reproducer");
-  await press(user, reproducer.getByRole("button", { name: "Write the reproducer" }));
+  await enter(user, reproducer.getByLabelText("Revision folder"), "reschedule-reproducer");
+  await press(user, reproducer.getByRole("button", { name: "Build revision" }));
   expect(await reproducer.findByText(/^Written to reschedule-reproducer · derived case identity/)).toBeTruthy();
   await enter(user, reproducer.getByLabelText("New project entry for the derived case"), "reschedule-revision");
-  await press(user, reproducer.getByRole("button", { name: "Register this revision" }));
+  await press(user, reproducer.getByRole("button", { name: "Add to project" }));
   expect(await reproducer.findByText(/^Registered as reschedule-revision\./)).toBeTruthy();
   // The overview lists the revision once the project has registered it.
   expect(await evidence.findByRole("button", { name: "Open this revision" })).toBeTruthy();
@@ -174,7 +174,7 @@ test("the editable project document is read beside the overview as recorded, as 
   expect(shown.stdout).toContain(
     "Notes: 1\n  handover subject=none\n    title: Handover checklist\n    body:\n      Confirm the reschedule reaches the downstream ledger once.\n",
   );
-  await press(user, evidence.getByRole("button", { name: "Show the editable document as recorded…" }));
+  await press(user, evidence.getByRole("button", { name: "View source" }));
   const note = within(await evidence.findByRole("region", { name: "Editable project document" }));
   expect(await note.findByText("1 note as recorded")).toBeTruthy();
   expect(note.getByText("handover")).toBeTruthy();
@@ -192,7 +192,7 @@ test("the editable project document is read beside the overview as recorded, as 
   // A document a later release wrote is refused and left exactly as written.
   const later = '{"schema":"readmit-revisions/v99","notes":[],"revisions":[]}\n';
   journey.changeFile("investigations/interface/revisions.json", later);
-  await press(user, evidence.getByRole("button", { name: "Show the editable document as recorded…" }));
+  await press(user, evidence.getByRole("button", { name: "View source" }));
   const refused = within(await evidence.findByRole("region", { name: "Editable project document" }));
   expect(await refused.findByText("the editable project document was written by a version this release cannot read")).toBeTruthy();
   expect(refused.queryByText("Handover checklist")).toBeNull();

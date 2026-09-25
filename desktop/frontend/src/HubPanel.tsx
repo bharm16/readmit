@@ -183,7 +183,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
   return (
     <section className="hub-panel" aria-labelledby="hub-panel-title">
-      <h3 id="hub-panel-title">Customer Artifact Hub</h3>
+      <h3 id="hub-panel-title">Hub</h3>
       <p>
         Connect to a customer-controlled artifact hub with mutual TLS and customer IdP
         authentication. Startup contacts no network service.
@@ -214,7 +214,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       <div className="hub-actions">
         <button type="button" disabled={busy} onClick={() => void handleChooseConfig()}>
-          Choose hub configuration…
+          Choose configuration…
         </button>
         <button
           type="button"
@@ -243,7 +243,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       {diagnosis ? (
         <div className="hub-diagnosis-results" aria-label="Prerequisite diagnostics">
-          <h4>Prerequisites Diagnostics ({diagnosis.passed ? "All Passed" : "Checks Failed"})</h4>
+          <h4>Connection checks ({diagnosis.passed ? "All Passed" : "Checks Failed"})</h4>
           <ul className="hub-checks-list">
             {(diagnosis.checks ?? []).map((check: HubCheckItem) => (
               <li key={check.name} className={check.passed ? "check-passed" : "check-failed"}>
@@ -262,7 +262,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
           <h4>Identity Provider Authentication</h4>
           <p>Sign in with your customer identity provider via PKCE loopback authentication.</p>
           <button type="button" disabled={busy} onClick={() => void handleStartAuth()}>
-            Sign in with Customer IdP
+            Sign in
           </button>
           {authUrl ? (
             <p className="hub-auth-url">
@@ -329,7 +329,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
                     disabled={busy}
                     onClick={() => void handleViewArtifacts(proj.project)}
                   >
-                    View Project Artifacts
+                    View artifacts
                   </button>
                 ) : null}
               </li>
@@ -340,7 +340,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       {selectedProject && artifacts ? (
         <div className="hub-artifacts-section">
-          <h4>Artifacts for Project: {selectedProject}</h4>
+          <h4>Artifacts: {selectedProject}</h4>
           {artifacts.warning ? <p className="warning">{artifacts.warning}</p> : null}
           <div className="hub-transfer-controls">
             <label htmlFor="hub-dest-path">Download destination path:</label>
@@ -423,7 +423,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       <OperatorHub />
       <h4>
         <button type="button" aria-expanded={adminOpen} aria-controls="hub-admin-handoff" onClick={() => setAdminOpen(!adminOpen)}>
-          Host administration handoffs
+          Host administration
         </button>
       </h4>
       <div id="hub-admin-handoff" hidden={!adminOpen}><HubAdministration /></div>

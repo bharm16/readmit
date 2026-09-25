@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := check
-.PHONY: check test test-focused test-boundary test-corpus test-tools verify mutate fuzz
+.PHONY: check test test-focused test-boundary test-corpus test-tools verify mutate fuzz check-labels
 
 PKGS ?=
 ARGS ?=
@@ -8,6 +8,7 @@ check:
 	python3 tools/toolchain.py --check
 	test -z "$$(gofmt -l cmd internal tests desktop)"
 	go vet ./...
+	$(MAKE) check-labels
 
 test-focused:
 	@test -n "$(PKGS)" || { echo 'Set PKGS to the affected Go packages.' >&2; exit 2; }
@@ -29,6 +30,12 @@ test-corpus:
 
 test-tools:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py' -v
+
+# The product-label coverage gate: implemented label decisions must still hold
+# in the presentation sources, and --strict is the issue's closure gate while
+# any file is still pending per-label review (docs/labels/inventory.json).
+check-labels:
+	PYTHONDONTWRITEBYTECODE=1 python3 tools/label_coverage.py
 
 verify:
 	@directory=$$(mktemp -d); trap 'rm -rf "$$directory"' EXIT; \

@@ -75,9 +75,9 @@ test("a control registers as a structured reference, and the document shows the 
   await user.type(screen.getByLabelText("Control name"), CONTROL_NAME);
   await user.type(screen.getByLabelText("Absolute path of the program that prints the key"), "/absolute/key-store-program");
   await user.type(screen.getByLabelText("One locator argument (never key material)"), "find-generic-password");
-  await user.click(screen.getByRole("button", { name: "Add this locator argument" }));
+  await user.click(screen.getByRole("button", { name: "Add argument" }));
   await user.type(screen.getByLabelText("Packages declare retention of (Go duration, optional)"), "2160h");
-  await user.click(screen.getByRole("button", { name: "Register this control" }));
+  await user.click(screen.getByRole("button", { name: "Register control" }));
   await waitFor(() =>
     expect(
       screen.getByText(/Registering a reference proves nothing about the store behind it/),
@@ -160,15 +160,15 @@ test("opening and discarding carry the operation's own refusals, and the retenti
   });
   await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
   await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
-  await waitFor(() => expect((screen.getByRole("button", { name: "Open with the control above" }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(screen.getByRole("button", { name: "Open with the control above" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Open package" }) as HTMLButtonElement).disabled).toBe(false));
+  await user.click(screen.getByRole("button", { name: "Open package" }));
   await waitFor(() => expect(screen.getByText(/earlier key generation/)).toBeTruthy());
 
-  await user.click(screen.getByRole("button", { name: "Discard this package" }));
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
   await waitFor(() => expect(screen.getByText(/declared retained until 2026-12-17T12:00:00Z; nothing was removed/)).toBeTruthy());
 
   await user.selectOptions(screen.getByLabelText("Declared retention override"), "override");
-  await user.click(screen.getByRole("button", { name: "Discard this package" }));
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
   await waitFor(() => expect(screen.getByText(/Unlinked 3 declared files/)).toBeTruthy());
 });
 
@@ -219,7 +219,7 @@ test("retiring asks first: Escape and Keep it active retire nothing, and a confi
     await user.keyboard("{Enter}");
     const question = within(screen.getByRole("group", { name: `Retire ${CONTROL_NAME}?` }));
     expect(question.getByText(/It writes no new package and still opens the packages it wrote\. No command makes a retired control active again\./)).toBeTruthy();
-    expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep it active" }));
+    expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep active" }));
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("group", { name: `Retire ${CONTROL_NAME}?` })).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: `Retire ${CONTROL_NAME}` }));
@@ -343,7 +343,7 @@ test("a new protection document is named, shown empty, and written by its first 
 
   await user.type(screen.getByLabelText("Control name"), CONTROL_NAME);
   await user.type(screen.getByLabelText("Absolute path of the program that prints the key"), "/absolute/key-store-program");
-  await user.click(screen.getByRole("button", { name: "Register this control" }));
+  await user.click(screen.getByRole("button", { name: "Register control" }));
   expect(await screen.findByText(/^Registered\. Registering a reference proves nothing/)).toBeTruthy();
   expect(row(CONTROL_NAME).getByRole("cell", { name: "active" })).toBeTruthy();
   expect(screen.queryByText(/No control is registered in/)).toBeNull();

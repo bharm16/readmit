@@ -37,9 +37,9 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
   // Start from the first-run choice, picking the new sample's folder in the
   // host's own dialog.
   await journey.chooseFolder(journey.path("work"), "Choose a folder for the readmit sample workspace");
-  await press(user, screen.getByRole("button", { name: "Explore the guided sample…" }));
+  await press(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
-  await press(user, await guided.findByRole("button", { name: "Verify and open regression" }));
+  await press(user, await guided.findByRole("button", { name: "Open case" }));
 
   // The case is verified, and its index opens as the grid authoring selects
   // occurrences from.
@@ -48,8 +48,8 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
 
   // Answer every stage the engine asks, one at a time.
   const authoring = within(await screen.findByRole("region", { name: "Test authoring" }));
-  await user.type(authoring.getByLabelText("What is this test called?"), "reschedule-regression");
-  await press(user, authoring.getByRole("button", { name: "Name this test" }));
+  await user.type(authoring.getByLabelText("Name"), "reschedule-regression");
+  await press(user, authoring.getByRole("button", { name: "Save name" }));
   await press(user, await authoring.findByRole("button", { name: "Send s0001-e000001" }));
   await authoring.findByRole("button", { name: "Do not send s0001-e000001" });
   await press(user, authoring.getByRole("button", { name: "Send s0001-e000002" }));
@@ -61,14 +61,14 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
   expect(await authoring.findByText("Initial state: empty-ledger.")).toBeTruthy();
   await press(user, authoring.getByRole("button", { name: "Read the observation from this entry" }));
   await user.type(
-    authoring.getByLabelText("How is the fixture returned to its initial state?"),
+    authoring.getByLabelText("Reset"),
     "Restart the practice receiver with an empty appointment ledger.",
   );
-  await press(user, authoring.getByRole("button", { name: "Record these instructions" }));
+  await press(user, authoring.getByRole("button", { name: "Save instructions" }));
   await user.type(authoring.getByLabelText("Expectation name"), "one-appointment");
-  await user.clear(authoring.getByLabelText("Records the ledger should hold"));
-  await user.type(authoring.getByLabelText("Records the ledger should hold"), "1");
-  await press(user, authoring.getByRole("button", { name: "Expect this record count" }));
+  await user.clear(authoring.getByLabelText("Expected records"));
+  await user.type(authoring.getByLabelText("Expected records"), "1");
+  await press(user, authoring.getByRole("button", { name: "Expect count" }));
   expect(await authoring.findByText("ledger_count · 1 records")).toBeTruthy();
   for (const stage of authoring.getAllByText(/^(Answered|Asked now|Not answered)$/)) {
     expect(stage.textContent).toBe("Answered");
@@ -76,14 +76,14 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
 
   // Save a new test; the guided sample reads the folder back and offers the run.
   await user.type(authoring.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await press(user, authoring.getByRole("button", { name: "Write the test spec" }));
+  await press(user, authoring.getByRole("button", { name: "Save test" }));
   const written = await authoring.findByText(/^Written to reschedule-test\.json/);
   expect(written.textContent).toMatch(/spec identity [0-9a-f]{64}\./);
 
   // The fixture as it misbehaves leaves a second appointment: the saved
   // expectation of one record fails, and that is an assertion failure, not an
   // execution error.
-  await press(user, await guided.findByRole("button", { name: "Run against the fixture as it misbehaves" }));
+  await press(user, await guided.findByRole("button", { name: "Run failing example" }));
   const baseline = await guided.findByText("baseline-run:");
   expect(baseline.textContent).toBe("baseline-run: assertion_failure");
   const failed = within(practiceOf(baseline));
@@ -92,7 +92,7 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
   expect(failed.getByText("failed")).toBeTruthy();
 
   // The same saved test against the corrected fixture passes.
-  await press(user, await guided.findByRole("button", { name: "Run against the corrected fixture" }));
+  await press(user, await guided.findByRole("button", { name: "Run fixed example" }));
   const corrected = await guided.findByText("post-fix-run:");
   expect(corrected.textContent).toBe("post-fix-run: pass");
   const passed = within(practiceOf(corrected));
@@ -104,7 +104,7 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
   // verdicts come back from what the folder retained.
   await journey.close();
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen where you were" }));
+  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
   const reopened = within(region("Guided sample"));
   expect(await reopened.findByText(/Every step is done/)).toBeTruthy();
   const steps = reopened.getAllByRole("listitem");

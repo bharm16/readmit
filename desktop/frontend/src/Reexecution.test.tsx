@@ -113,10 +113,10 @@ function renderPanel(handlers: FacadeHandlers = {}, entries: Artifact[] = ENTRIE
 async function select(user: User, phase = "failure") {
   await user.selectOptions(screen.getByLabelText("Approved review"), "review");
   await user.type(screen.getByLabelText("Private local state its derivation wrote"), "review-private");
-  await user.selectOptions(screen.getByLabelText(/^Original packet/), "original-packet");
+  await user.selectOptions(screen.getByLabelText("Original packet"), "original-packet");
   await user.selectOptions(screen.getByLabelText("Rebound execution specification"), "rebound.json");
   await user.selectOptions(screen.getByLabelText("Phase"), phase);
-  await user.type(screen.getByLabelText("Exact review identity approving this reexecution"), PRIVACY_REVIEW_IDENTITY);
+  await user.type(reviewIdentity(), PRIVACY_REVIEW_IDENTITY);
 }
 
 async function tabTo(user: User, control: HTMLElement): Promise<void> {
@@ -133,6 +133,9 @@ const line = (text: string) => (_: string, element: Element | null) => element?.
 
 const authorization = () => screen.getByLabelText(/^I authorize this single nonproduction send/) as HTMLInputElement;
 const sendButton = () => screen.getByRole("button", { name: "Send once" }) as HTMLButtonElement;
+// The panel's export step labels its identity field the same way, so the
+// rerun step's own field is named by its input.
+const reviewIdentity = () => screen.getByLabelText("Review ID", { selector: "#reexecution-approval" }) as HTMLInputElement;
 
 test("a preview names the target and the messages a send would deliver, and sends nothing", async () => {
   const user = userEvent.setup();
@@ -150,7 +153,7 @@ test("a preview names the target and the messages a send would deliver, and send
       return previewResult();
     },
   });
-  const preview = screen.getByRole("button", { name: "Preview reexecution" }) as HTMLButtonElement;
+  const preview = screen.getByRole("button", { name: "Preview" }) as HTMLButtonElement;
   expect(preview.disabled).toBe(true);
   expect(authorization().disabled).toBe(true);
   expect(sendButton().disabled).toBe(true);
@@ -197,7 +200,7 @@ test("the send happens only under the explicit authorization, pinned to the revi
     },
   });
   await select(user);
-  await user.click(screen.getByRole("button", { name: "Preview reexecution" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText(line(`Preview identity: ${PREVIEW_IDENTITY}`));
 
   // The keyboard gives the authorization and sends.
@@ -228,7 +231,7 @@ test("a refused preview says the operation's own sentence and offers no send", a
   const user = userEvent.setup();
   renderPanel({ PreviewReexecution: () => ({ state: "failed", reason: UNAPPROVED }) });
   await select(user);
-  await tabTo(user, screen.getByRole("button", { name: "Preview reexecution" }));
+  await tabTo(user, screen.getByRole("button", { name: "Preview" }));
   await user.keyboard("{Enter}");
   expect(await screen.findByText(UNAPPROVED)).toBeTruthy();
   expect(screen.queryByText(/^Preview identity:/)).toBeNull();
@@ -241,7 +244,7 @@ test("an admission the license refuses is stated in the preview, and the send st
   const user = userEvent.setup();
   renderPanel({ PreviewReexecution: () => previewResult(false) });
   await select(user);
-  await user.click(screen.getByRole("button", { name: "Preview reexecution" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   expect(await screen.findByText(`Admission: refused — ${LICENSE_REFUSED}`)).toBeTruthy();
   expect(authorization().disabled).toBe(true);
   expect(sendButton().disabled).toBe(true);
@@ -252,7 +255,7 @@ test("a send in flight is cancelled from the keyboard, and the cancelled send is
   const { events } = renderPanel({ PreviewReexecution: () => previewResult() });
   const sending = facadeStub().park("ReexecuteReviewedEvidence");
   await select(user);
-  await user.click(screen.getByRole("button", { name: "Preview reexecution" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText(line(`Preview identity: ${PREVIEW_IDENTITY}`));
   await user.click(authorization());
   await user.click(sendButton());
@@ -260,11 +263,11 @@ test("a send in flight is cancelled from the keyboard, and the cancelled send is
 
   // While it sends, nothing else can be started or changed.
   expect(screen.getByRole("button", { name: "Sending…" })).toBeTruthy();
-  for (const name of ["Preview reexecution", "Sending…"]) {
+  for (const name of ["Preview", "Sending…"]) {
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   }
-  for (const label of ["Approved review", "Phase", "Exact review identity approving this reexecution", "New job folder"]) {
-    expect((screen.getByLabelText(label) as HTMLInputElement).disabled).toBe(true);
+  for (const field of [screen.getByLabelText("Approved review"), screen.getByLabelText("Phase"), reviewIdentity(), screen.getByLabelText("New job folder")]) {
+    expect((field as HTMLInputElement).disabled).toBe(true);
   }
   const stop = screen.getByRole("button", { name: "Cancel reexecution" }) as HTMLButtonElement;
   expect(stop.disabled).toBe(false);
@@ -307,7 +310,7 @@ test("changing any selection withdraws the preview and the authorization, and an
   const user = userEvent.setup();
   renderPanel({ PreviewReexecution: () => previewResult() });
   await select(user);
-  const preview = screen.getByRole("button", { name: "Preview reexecution" });
+  const preview = screen.getByRole("button", { name: "Preview" });
   for (const change of [
     () => user.selectOptions(screen.getByLabelText("Phase"), "pass"),
     () => user.type(screen.getByLabelText("New job folder"), "x"),
@@ -323,7 +326,7 @@ test("changing any selection withdraws the preview and the authorization, and an
     expect(authorization().checked).toBe(false);
     expect(sendButton().disabled).toBe(true);
   }
-  const approval = screen.getByLabelText("Exact review identity approving this reexecution") as HTMLInputElement;
+  const approval = reviewIdentity();
   expect(approval.value).toBe(PRIVACY_REVIEW_IDENTITY);
   await user.selectOptions(screen.getByLabelText("Approved review"), "");
   expect(approval.value).toBe("");
@@ -338,7 +341,7 @@ test("a send the backend refuses shows its refusal, retains nothing, and needs a
     ReexecuteReviewedEvidence: () => ({ state: "failed", reason: stale }),
   });
   await select(user);
-  await user.click(screen.getByRole("button", { name: "Preview reexecution" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText(line(`Preview identity: ${PREVIEW_IDENTITY}`));
   await user.click(authorization());
   await user.click(sendButton());
@@ -350,7 +353,7 @@ test("a send the backend refuses shows its refusal, retains nothing, and needs a
 
 /** Previews, authorizes and sends once, and waits for the send to answer. */
 async function previewAndSend(user: User) {
-  await user.click(screen.getByRole("button", { name: "Preview reexecution" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await screen.findByText(line(`Preview identity: ${PREVIEW_IDENTITY}`));
   await user.click(authorization());
   await user.click(sendButton());
@@ -426,7 +429,7 @@ test("a preview in flight holds every control, and a busy slot or a refused admi
   renderPanel();
   const previewing = facadeStub().park("PreviewReexecution");
   await select(user);
-  await user.click(screen.getByRole("button", { name: "Preview reexecution" }));
+  await user.click(screen.getByRole("button", { name: "Preview" }));
   await waitFor(() => expect(previewing.size).toBe(1));
   expect((screen.getByRole("button", { name: "Previewing…" }) as HTMLButtonElement).disabled).toBe(true);
   for (const label of ["Approved review", "Phase", "Rebound execution specification", "New job folder"]) {
@@ -453,5 +456,5 @@ test("a preview in flight holds every control, and a busy slot or a refused admi
 test("a workspace without a ready review or a retained packet says where each comes from", async () => {
   renderPanel({}, [{ name: "rebound.json", kind: "spec" }]);
   expect(screen.getByText(/^A reexecution starts from a ready review and a retained packet of the actual original run/)).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Preview reexecution" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Preview" }) as HTMLButtonElement).disabled).toBe(true);
 });

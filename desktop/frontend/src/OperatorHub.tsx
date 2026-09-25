@@ -115,15 +115,15 @@ export function OperatorHub() {
 
         <div className="hub-actions">
           <button type="button" disabled={busy} onClick={() => void choose()}>
-            Choose operator-only hub configuration…
+            Choose configuration…
           </button>
           {!connected ? (
             <button type="button" disabled={busy || !configured} onClick={() => void connect()}>
-              Connect to operator-only hub
+              Connect
             </button>
           ) : (
             <button type="button" disabled={busy} onClick={() => void disconnect()}>
-              Disconnect from operator-only hub
+              Disconnect
             </button>
           )}
         </div>
@@ -132,7 +132,7 @@ export function OperatorHub() {
           <div className="hub-operator-transfers">
             <div className="hub-actions">
               <button type="button" disabled={busy} onClick={() => void store()}>
-                Store a file…
+                Upload file…
               </button>
             </div>
             <form className="hub-operator-read" onSubmit={read}>
@@ -146,7 +146,7 @@ export function OperatorHub() {
                 onChange={(event) => setDigest(event.target.value)}
               />
               <button type="submit" disabled={busy || !digest.trim()}>
-                Read and save…
+                Download…
               </button>
             </form>
           </div>

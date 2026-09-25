@@ -102,7 +102,7 @@ export function GuidedSample({
       {guide === null || next === "sample" ? (
         <div className="actions">
           <button type="button" disabled={busy} onClick={onCreateSample}>
-            Create the sample workspace…
+            Create sample…
           </button>
         </div>
       ) : null}
@@ -112,7 +112,7 @@ export function GuidedSample({
             Open the sample case, then answer the authoring stages beside it to save the test.
           </p>
           <button type="button" disabled={busy} onClick={() => onOpenCase(sampleCase)}>
-            Verify and open {sampleCase}
+            Open case
           </button>
         </div>
       ) : null}
@@ -122,7 +122,10 @@ export function GuidedSample({
             Runs {spec} against a practice receiver this application binds on a loopback port of
             this machine. No other host is contacted, and the saved test is not rewritten.
           </p>
-          <label htmlFor="practice-output">New folder for this run</label>
+          <label htmlFor="practice-output">Run folder</label>
+          <p className="hint">
+            A new folder for this run: one that does not already exist, so no earlier run is reused.
+          </p>
           <input
             id="practice-output"
             value={output}
@@ -137,9 +140,7 @@ export function GuidedSample({
               setFolder("");
             }}
           >
-            {trial === "baseline"
-              ? "Run against the fixture as it misbehaves"
-              : "Run against the corrected fixture"}
+            {trial === "baseline" ? "Run failing example" : "Run fixed example"}
           </button>
           <button type="button" disabled={!busy} onClick={onCancel}>
             Cancel
@@ -157,13 +158,13 @@ export function GuidedSample({
       {guide !== null && next !== "sample" && onCapture ? (
         <form
           className="actions sample-capture"
-          aria-label="Import the frozen receiver fixtures"
+          aria-label="Import fixtures"
           onSubmit={(event) => {
             event.preventDefault();
             onCapture(captureOutput.trim());
           }}
         >
-          <h4>Import the frozen receiver fixtures</h4>
+          <h4>Import fixtures</h4>
           <p className="hint">
             Imports the two synthetic receiver fixtures readmit ships &mdash; a booking and its
             reschedule &mdash; as one imported case in this folder, exactly as{" "}
@@ -179,7 +180,7 @@ export function GuidedSample({
             onChange={(event) => setCaptureOutput(event.target.value)}
           />
           <button type="submit" disabled={busy || captureOutput.trim() === ""}>
-            Choose the fixtures folder and import…
+            Import fixtures…
           </button>
         </form>
       ) : null}
@@ -194,7 +195,7 @@ export function GuidedSample({
           </p>
           <p className="identity">Verified identity {captured.identity}</p>
           <button type="button" disabled={busy} onClick={() => onOpenCase(captured.name)}>
-            Verify and open {captured.name}
+            Open case
           </button>
         </div>
       ) : null}

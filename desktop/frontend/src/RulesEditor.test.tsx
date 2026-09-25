@@ -37,10 +37,10 @@ test("correlation rules are composed from typed controls and saved as exact JSON
   await user.type(screen.getByLabelText("Rule ID"), "same-control-id");
   await user.selectOptions(screen.getByLabelText("Operator"), "control-id");
   await user.selectOptions(screen.getByLabelText("Scope"), "declared");
-  await user.type(screen.getByLabelText("Sources, separated by spaces"), "s0001 s0002");
-  await user.click(screen.getByRole("button", { name: "Add this rule" }));
+  await user.type(screen.getByLabelText("Sources"), "s0001 s0002");
+  await user.click(screen.getByRole("button", { name: "Add rule" }));
   await user.type(screen.getByLabelText("New correlation-rules entry"), "correlation-rules-1");
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   const [request] = facade.oneCall("SaveCorrelationRules");
   expect(request.workspace).toBe(WORKSPACE_ROOT);
   expect(request.output).toBe("correlation-rules-1");
@@ -70,9 +70,9 @@ test("a refused save is the parser's own sentence and leaves the composed work i
   render(<CorrelationRulesEditor workspace={WORKSPACE_ROOT} entries={[]} busy={false} />);
   await user.type(screen.getByLabelText("Rule ID"), "acked");
   await user.selectOptions(screen.getByLabelText("Operator"), "acknowledges");
-  await user.click(screen.getByRole("button", { name: "Add this rule" }));
+  await user.click(screen.getByRole("button", { name: "Add rule" }));
   await user.type(screen.getByLabelText("New correlation-rules entry"), "correlation-rules-1");
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   expect(
     await screen.findByText("correlation rules must declare readmit-correlation-rules/v1"),
   ).toBeTruthy();
@@ -105,7 +105,7 @@ test("a retained rules document opens as the exact text the entry holds", async 
     />,
   );
   await user.selectOptions(screen.getByLabelText("Retained rules document"), "correlation-rules-1");
-  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  await user.click(screen.getByRole("button", { name: "Open" }));
   expect(facade.oneCall("OpenCorrelationRules")).toEqual([WORKSPACE_ROOT, "correlation-rules-1"]);
   expect((screen.getByLabelText("Document JSON") as HTMLTextAreaElement).value).toBe(
     "RETAINED-RULES-DOCUMENT",
@@ -127,10 +127,10 @@ test("correlation rules hold every editor control while opening and saving", asy
   const rules = { schema: "readmit-correlation-rules/v1", rules: [{ id: "ack", operator: "acknowledges", scope: "source" }] } as const;
 
   await user.selectOptions(screen.getByLabelText("Retained rules document"), "rules.json");
-  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  await user.click(screen.getByRole("button", { name: "Open" }));
   expect(screen.getByText("Opening rules.json.")).toBeTruthy();
   expectEditorHeld(editor);
-  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  await user.click(screen.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenCorrelationRules")).toHaveLength(1);
 
   opening.resolve({
@@ -146,7 +146,7 @@ test("correlation rules hold every editor control while opening and saving", asy
   await user.type(screen.getByLabelText("New correlation-rules entry"), "revision.json{Enter}");
   expect(screen.getByText("Saving revision.json.")).toBeTruthy();
   expectEditorHeld(editor);
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   expect(facade.callsTo("SaveCorrelationRules")).toHaveLength(1);
   const [request] = facade.oneCall("SaveCorrelationRules");
   saving.resolve({ state: "completed", output: request.output, document: request.document, sha256: "saved-rules-sha256-fixed-for-tests" });
@@ -175,9 +175,9 @@ test("a sequence analysis is composed against the verified case identity", async
   await user.type(screen.getByLabelText("Start (UTC offset required)"), "2026-01-01T12:00:00Z");
   await user.type(screen.getByLabelText("End (UTC offset required)"), "2026-01-01T13:00:00Z");
   await user.selectOptions(screen.getByLabelText("Operator-declared coverage"), "complete");
-  await user.click(screen.getByRole("button", { name: "Add this window" }));
+  await user.click(screen.getByRole("button", { name: "Add window" }));
   await user.type(screen.getByLabelText("New sequence-analysis entry"), "analysis-1.json");
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   const [request] = facade.oneCall("SaveSequenceAnalysis");
   expect(JSON.parse(request.document)).toEqual({
     schema: "readmit-sequence-analysis/v1",
@@ -206,10 +206,10 @@ test("sequence analysis holds every editor control while opening and saving", as
   const declaration = { schema: "readmit-sequence-analysis/v1", case_identity: CASE_IDENTITY, rules_sha256: "", clock_tolerance_seconds: 0, windows: [], retries: [], downstream: [] };
 
   await user.selectOptions(screen.getByLabelText("Retained analysis document"), "analysis.json");
-  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  await user.click(screen.getByRole("button", { name: "Open" }));
   expect(screen.getByText("Opening analysis.json.")).toBeTruthy();
   expectEditorHeld(editor);
-  await user.click(screen.getByRole("button", { name: "Open this document" }));
+  await user.click(screen.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenSequenceAnalysis")).toHaveLength(1);
 
   opening.resolve({
@@ -225,7 +225,7 @@ test("sequence analysis holds every editor control while opening and saving", as
   await user.type(screen.getByLabelText("New sequence-analysis entry"), "revision.json{Enter}");
   expect(screen.getByText("Saving revision.json.")).toBeTruthy();
   expectEditorHeld(editor);
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   expect(facade.callsTo("SaveSequenceAnalysis")).toHaveLength(1);
   const [request] = facade.oneCall("SaveSequenceAnalysis");
   saving.resolve({ state: "completed", output: request.output, document: request.document, sha256: "saved-analysis-sha256-fixed-for-tests" });
@@ -248,9 +248,9 @@ test("a normalization policy rule is one typed operator over one selector", asyn
   await user.type(screen.getByLabelText("Canonical selector"), "MSH-7");
   await user.selectOptions(screen.getByLabelText("Operator"), "timestamp");
   await user.type(screen.getByLabelText("Precision"), "minute");
-  await user.click(screen.getByRole("button", { name: "Add this policy rule" }));
+  await user.click(screen.getByRole("button", { name: "Add policy rule" }));
   await user.type(screen.getByLabelText("New normalization-policy entry"), "policy-1.json");
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   const [request] = facade.oneCall("SaveNormalizationPolicy");
   expect(JSON.parse(request.document)).toEqual({
     schema: "readmit-normalization-policy/v1",
@@ -273,11 +273,11 @@ test("a diagnose configuration pairs the bundled profile with its own ruleset", 
     "readmit-lifecycle-v1",
   );
   await user.type(
-    screen.getByLabelText("Rule identifiers, separated by spaces"),
+    screen.getByLabelText("Rule IDs"),
     "ack.msa-outcome lifecycle.required-field",
   );
   await user.type(screen.getByLabelText("New diagnose-config entry"), "diagnose-config-1.json");
-  await user.click(screen.getByRole("button", { name: "Save as a new entry" }));
+  await user.click(screen.getByRole("button", { name: "Save as new" }));
   const [request] = facade.oneCall("SaveDiagnoseConfig");
   expect(JSON.parse(request.document)).toEqual({
     schema: "readmit-diagnose-config/v1",
@@ -335,12 +335,12 @@ test("a retained diagnose configuration opens into the controls with its identit
   // While the editor opens a document it says so and holds its controls.
   const opening = facade.park("OpenDiagnoseConfig");
   await user.selectOptions(editor.getByLabelText("Retained configuration document"), "colleague-config.json");
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   expect(editor.getByText("Opening colleague-config.json.")).toBeTruthy();
   for (const control of [
-    editor.getByRole("button", { name: "Open this document" }),
+    editor.getByRole("button", { name: "Open" }),
     editor.getByLabelText("Bundled profile and ruleset"),
-    editor.getByLabelText("Rule identifiers, separated by spaces"),
+    editor.getByLabelText("Rule IDs"),
     editor.getByLabelText("Namespace key"),
     editor.getByLabelText("New diagnose-config entry"),
   ]) {
@@ -353,7 +353,7 @@ test("a retained diagnose configuration opens into the controls with its identit
   // Its declarations are the controls' own, so a namespace added next is
   // added to the opened configuration rather than in place of it.
   expect((editor.getByLabelText("Bundled profile and ruleset") as HTMLSelectElement).value).toBe("readmit-siu-v1");
-  expect((editor.getByLabelText("Rule identifiers, separated by spaces") as HTMLInputElement).value).toBe(
+  expect((editor.getByLabelText("Rule IDs") as HTMLInputElement).value).toBe(
     "ack.msa-outcome siu.retired-rule",
   );
   expect(namespaces()).toEqual(["Remove namespace CLINIC"]);
@@ -374,25 +374,25 @@ test("a retained diagnose configuration opens into the controls with its identit
         : refused("unsupported diagnosis configuration schema"),
   });
   await user.selectOptions(editor.getByLabelText("Retained configuration document"), "v2-config.json");
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   const question = within(editor.getByRole("group", { name: "Open v2-config.json in place of this configuration?" }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep this configuration" }));
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep configuration" }));
   await user.keyboard("{Escape}");
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open this document" }));
+  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
   expect(facade.callsTo("OpenDiagnoseConfig")).toHaveLength(1);
   expect(namespaces()).toHaveLength(2);
 
-  // Keep this configuration, pressed, answers the same way.
+  // Keep configuration, pressed, answers the same way.
   await user.keyboard("{Enter}");
-  await user.click(editor.getByRole("button", { name: "Keep this configuration" }));
+  await user.click(editor.getByRole("button", { name: "Keep configuration" }));
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
   expect(facade.callsTo("OpenDiagnoseConfig")).toHaveLength(1);
 
   // Answered the other way, a configuration of another contract version is
   // refused in its reader's words and the controls stay as they were.
   await user.keyboard("{Enter}");
-  await user.click(editor.getByRole("button", { name: "Replace it with v2-config.json" }));
+  await user.click(editor.getByRole("button", { name: "Replace configuration" }));
   expect(await editor.findByText("unsupported diagnosis configuration schema")).toBeTruthy();
   expect(facade.callsTo("OpenDiagnoseConfig")[1]?.args).toEqual([WORKSPACE_ROOT, "v2-config.json"]);
   expect(namespaces()).toHaveLength(2);
@@ -402,7 +402,7 @@ test("a retained diagnose configuration opens into the controls with its identit
   const saving = facade.park("SaveDiagnoseConfig");
   await user.type(editor.getByLabelText("New diagnose-config entry"), "extended-config.json{Enter}");
   expect(editor.getByText("Saving extended-config.json.")).toBeTruthy();
-  expect((editor.getByRole("button", { name: "Add this namespace" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((editor.getByRole("button", { name: "Add namespace" }) as HTMLButtonElement).disabled).toBe(true);
   const [request] = facade.oneCall("SaveDiagnoseConfig");
   expect(JSON.parse(request.document)).toEqual(composed());
   saving.resolve({ state: "completed", output: "extended-config.json", sha256: "saved-sha256-fixed-for-tests", document: request.document });
@@ -411,12 +411,12 @@ test("a retained diagnose configuration opens into the controls with its identit
   // Opening now asks nothing. A pair the engine does not bundle is shown as
   // the opened pair, not as the first bundled one.
   await user.selectOptions(editor.getByLabelText("Retained configuration document"), "local-config.json");
-  await user.click(editor.getByRole("button", { name: "Open this document" }));
+  await user.click(editor.getByRole("button", { name: "Open" }));
   await waitFor(() => expect(namespaces()).toEqual([]));
   expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
   const pair = editor.getByLabelText("Bundled profile and ruleset") as HTMLSelectElement;
   expect(pair.selectedOptions[0]?.textContent).toBe("clinic-local-v1 · clinic-local-diagnosis/v1 (as opened; not bundled)");
   expect(editor.getByText("Ruleset: clinic-local-diagnosis/v1")).toBeTruthy();
-  await user.type(editor.getByLabelText("Rule identifiers, separated by spaces"), " ack.err-outcome");
+  await user.type(editor.getByLabelText("Rule IDs"), " ack.err-outcome");
   expect(composed()).toEqual({ ...UNBUNDLED_CONFIG, rules: [...UNBUNDLED_CONFIG.rules, "ack.err-outcome"] });
 });

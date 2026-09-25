@@ -83,7 +83,7 @@ function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
 }
 
 async function openScreen(user: UserEvent) {
-  const toggle = screen.getByRole("button", { name: "Generate or scan a performance corpus" });
+  const toggle = screen.getByRole("button", { name: "Performance corpus" });
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   await user.click(toggle);
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -104,13 +104,13 @@ async function declareGeneration(user: UserEvent, seed = "18446744073709551615")
   await user.selectOptions(part.getByLabelText("Segment terminator"), "cr");
   await user.selectOptions(part.getByLabelText("Encoding"), "utf-8");
   await user.selectOptions(part.getByLabelText("Direction"), "inbound");
-  await user.click(part.getByRole("button", { name: "Choose a folder for the corpus…" }));
+  await user.click(part.getByRole("button", { name: "Choose destination…" }));
   expect(await part.findByText(FOLDER)).toBeTruthy();
 }
 
 async function declareScan(user: UserEvent) {
   const part = scanning();
-  await user.click(part.getByRole("button", { name: "Choose a stream to scan…" }));
+  await user.click(part.getByRole("button", { name: "Browse…" }));
   expect(await part.findByText(STREAM)).toBeTruthy();
   await user.selectOptions(part.getByLabelText("Framing"), "mllp");
   await user.selectOptions(part.getByLabelText("Segment terminator"), "cr");
@@ -212,13 +212,13 @@ test("scanning a stream reports the command's counts, case bounds, window and be
   expect((scan as HTMLButtonElement).disabled).toBe(true);
   await declareScan(user);
   const part = scanning();
-  await user.type(part.getByLabelText(/Records per parsing batch/), "7");
-  await user.type(part.getByLabelText(/Bytes per parsing batch/), "4194304");
+  await user.type(part.getByLabelText(/Records per batch/), "7");
+  await user.type(part.getByLabelText(/Bytes per batch/), "4194304");
   await user.clear(part.getByLabelText("Window offset"));
   await user.type(part.getByLabelText("Window offset"), "150");
   await user.clear(part.getByLabelText(/Window records/));
   await user.type(part.getByLabelText(/Window records/), "4");
-  await user.click(part.getByLabelText(/Write a readmit-benchmark\/v1 document/));
+  await user.click(part.getByLabelText(/Save benchmark/));
   // A benchmark needs its own new destination before a scan may start.
   expect((scan as HTMLButtonElement).disabled).toBe(true);
   await user.click(part.getByRole("button", { name: "Choose a folder for the benchmark…" }));
@@ -260,7 +260,7 @@ test("scanning a stream reports the command's counts, case bounds, window and be
   expect(screen.queryByText(/Benchmark written to/)).toBeNull();
   await user.click(scan);
   expect(await screen.findByLabelText("Scan report")).toBeTruthy();
-  await user.click(part.getByRole("button", { name: "Choose a stream to scan…" }));
+  await user.click(part.getByRole("button", { name: "Browse…" }));
   await waitFor(() => expect(screen.queryByLabelText("Scan report")).toBeNull());
 });
 
@@ -278,7 +278,7 @@ test("a running scan shows progress, cancels on request and reports the counts i
   render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
   await openScreen(user);
   await declareScan(user);
-  await user.click(scanning().getByLabelText(/Write a readmit-benchmark\/v1 document/));
+  await user.click(scanning().getByLabelText(/Save benchmark/));
   await user.click(scanning().getByRole("button", { name: "Choose a folder for the benchmark…" }));
   await scanning().findByText(FOLDER);
   await user.click(scanning().getByRole("button", { name: "Scan stream" }));
@@ -317,7 +317,7 @@ test("corpus refusals, a denied stream and a dismissed dialog leave the screen u
   const user = userEvent.setup();
   render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
   await openScreen(user);
-  await user.click(generation().getByRole("button", { name: "Choose a folder for the corpus…" }));
+  await user.click(generation().getByRole("button", { name: "Choose destination…" }));
   expect(await screen.findByText("no folder was chosen")).toBeTruthy();
   expect(generation().getByText("No folder chosen.")).toBeTruthy();
 
@@ -359,12 +359,12 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   const { facade } = await renderApp(handlers());
   const parked = facade.park("ScanCorpus");
   await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Type a command"), "performance corpus{Enter}");
-  const toggle = screen.getByRole("button", { name: "Generate or scan a performance corpus" });
+  await user.type(screen.getByLabelText("Search commands"), "performance corpus{Enter}");
+  const toggle = screen.getByRole("button", { name: "Performance corpus" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(toggle);
 
-  const choose = scanning().getByRole("button", { name: "Choose a stream to scan…" });
+  const choose = scanning().getByRole("button", { name: "Browse…" });
   for (let step = 0; step < 40 && document.activeElement !== choose; step++) {
     await user.tab();
   }
@@ -385,7 +385,7 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   expect(await screen.findByText("Scanning the stream.")).toBeTruthy();
   // While the scan holds the facade, the rest of the window is unavailable
   // rather than answered busy.
-  expect((screen.getByRole("button", { name: "Open a workspace folder…" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getAllByRole("button", { name: "Open workspace…" })[0]! as HTMLButtonElement).disabled).toBe(true);
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").map((call) => call.args[0])).toEqual([""]);
   parked.resolve({
@@ -395,6 +395,6 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   });
   expect(await screen.findByText("not evaluated; the scan was cancelled")).toBeTruthy();
   await waitFor(() =>
-    expect((screen.getByRole("button", { name: "Open a workspace folder…" }) as HTMLButtonElement).disabled).toBe(false),
+    expect((screen.getAllByRole("button", { name: "Open workspace…" })[0]! as HTMLButtonElement).disabled).toBe(false),
   );
 });

@@ -292,7 +292,7 @@ export function ScenarioPanel({
               })
             }
           >
-            Use local profile family
+            Use local profile
           </button>
           <Report
             indicators={indicators}
@@ -307,7 +307,7 @@ export function ScenarioPanel({
             </p>
           ) : null}
 
-          <h3>Supported lifecycle events</h3>
+          <h3>Lifecycle events</h3>
           <ul className="scenario-events">
             {(selectedProfile?.events ?? []).map((event) => (
               <li key={event.event}>
@@ -400,12 +400,16 @@ export function ScenarioPanel({
           <label>
             <input
               type="checkbox"
+              aria-describedby="scenario-reveal-warning"
               checked={reveal}
               onChange={(event) => setReveal(event.target.checked)}
               disabled={disabled}
             />
-            Deliberately reveal sensitive identifiers locally
+            Show identifiers
           </label>
+          <p className="scenario-note" id="scenario-reveal-warning">
+            Revealing stays local to this computer; values may contain patient data.
+          </p>
           <button
             type="button"
             disabled={disabled}
@@ -420,7 +424,7 @@ export function ScenarioPanel({
               })
             }
           >
-            Preview through shared engine
+            Preview
           </button>
           {preview?.state === "completed" ? (
             <div>
@@ -535,14 +539,14 @@ export function ScenarioPanel({
               </p>
               <div className="scenario-actions">
                 <button type="button" disabled={disabled || !generateResult.case_name} onClick={() => onOpenCase(generateResult.case_name!)}>
-                  Open generated case in inspector
+                  Open case
                 </button>
                 <button
                   type="button"
                   disabled={disabled || !generateResult.case_name}
                   onClick={() => onStartTestDraft(generateResult.case_name!)}
                 >
-                  Continue into test draft by reference
+                  Create test
                 </button>
               </div>
             </div>
@@ -658,7 +662,7 @@ export function ScenarioPanel({
           </fieldset>
 
           <fieldset disabled={disabled}>
-            <legend>Check independent expectations</legend>
+            <legend>Check expectations</legend>
             <label>
               Expectations entry
               <input value={expectationsEntry} onChange={(event) => setExpectationsEntry(event.target.value)} />
@@ -674,6 +678,10 @@ export function ScenarioPanel({
             >
               Check expectations
             </button>
+            <p className="scenario-note">
+              These expectations are authored independently of the plan; a passing check does not
+              prove downstream behavior.
+            </p>
           </fieldset>
           {running === "check" ? (
             <button type="button" onClick={cancel}>
@@ -813,7 +821,7 @@ export function ScenarioPanel({
                 })
               }
             >
-              Generate SIU fixtures
+              Generate fixtures
             </button>
           </fieldset>
           <Report

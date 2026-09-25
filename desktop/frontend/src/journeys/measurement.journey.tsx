@@ -50,7 +50,7 @@ test.skipIf(!measuring())(
 
     // Import preview, repeated: the click to the preview's counts drawn again.
     await declareMllpImport(user, journey, "exports/feed.mllp");
-    const previewButton = () => screen.getByRole("button", { name: /Preview extraction|Extracting preview…/ });
+    const previewButton = () => screen.getByRole("button", { name: /Preview|Extracting preview…/ });
     const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
     const previews: number[] = [];
     for (let sample = 0; sample <= SAMPLES; sample++) {
@@ -58,7 +58,7 @@ test.skipIf(!measuring())(
         () => press(user, previewButton()),
         () =>
           waitFor(() => {
-            expect(previewButton().textContent).toBe("Preview extraction");
+            expect(previewButton().textContent).toBe("Preview");
             expect(preview.getByText("Occurrences").previousSibling?.textContent).toBe(String(OCCURRENCES));
           }),
       );
@@ -77,7 +77,7 @@ test.skipIf(!measuring())(
       },
     );
     logTiming(`import commit of ${OCCURRENCES} occurrences (one sample)`, [committed]);
-    await press(user, commit.getByRole("button", { name: "Open this case to build an index" }));
+    await press(user, commit.getByRole("button", { name: "Set up index" }));
 
     // Index build, once: the click to the first grid window drawn.
     const inspector = within(region("Inspector"));
@@ -123,7 +123,7 @@ test.skipIf(!measuring())(
 
     // Workspace search: the click to the answer drawn.
     const commands = within(region("Commands and search"));
-    await user.type(commands.getByLabelText("Search this workspace"), "CTL-1");
+    await user.type(commands.getByLabelText("Search workspace"), "CTL-1");
     const searches: number[] = [];
     for (let sample = 0; sample <= SAMPLES; sample++) {
       const before = journey.callsTo("Search").length;
@@ -142,7 +142,7 @@ test.skipIf(!measuring())(
     logTiming("workspace search", searches);
 
     // Draft retention: one keystroke to the window saying it is retained.
-    const note = within(screen.getByRole("region", { name: "Write a note" }));
+    const note = within(screen.getByRole("region", { name: "Note" }));
     const retentions: number[] = [];
     for (let sample = 0; sample <= SAMPLES; sample++) {
       const elapsed = await timed(

@@ -166,13 +166,13 @@ export function shellResult(): ShellResult {
     indicators: indicatorFixtures(),
     commands: [
       { id: "command-palette", title: "Command palette", keys: "Ctrl+K" },
-      { id: "search-workspace", title: "Search this workspace", keys: "Ctrl+F" },
-      { id: "open-workspace", title: "Open a workspace folder", keys: "Ctrl+O" },
-      { id: "maintain-workspace", title: "Maintain this workspace…" },
-      { id: "check-staged-upgrade", title: "Check a staged upgrade…" },
-      { id: "inspect-raw-file", title: "Inspect a raw HL7 file…", region: "inspector" },
-      { id: "performance-corpus", title: "Generate or scan a performance corpus…", region: "inspector" },
-      { id: "cancel-operation", title: "Cancel the running operation", keys: "Escape" },
+      { id: "search-workspace", title: "Search workspace", keys: "Ctrl+F" },
+      { id: "open-workspace", title: "Open workspace…", keys: "Ctrl+O" },
+      { id: "maintain-workspace", title: "Maintenance" },
+      { id: "check-staged-upgrade", title: "Check upgrade" },
+      { id: "inspect-raw-file", title: "Inspect HL7 file…", region: "inspector" },
+      { id: "performance-corpus", title: "Performance corpus", region: "inspector" },
+      { id: "cancel-operation", title: "Cancel operation", keys: "Escape" },
     ],
     themes: ["system", "light", "dark"],
     text_scales: [100, 125, 150],
@@ -453,7 +453,7 @@ export function inspectionResult(
  * absent means every step is done. */
 export function guideResult(next: GuideStepId | undefined, done: number): GuideResult {
   const steps: NonNullable<GuideResult["guide"]>["steps"] = [
-    { id: "sample", title: "Create the sample workspace", detail: "Writes synthetic evidence.", done: false },
+    { id: "sample", title: "Create sample", detail: "Writes synthetic evidence.", done: false },
     { id: "test", title: "Author a regression test", detail: "Answers the authoring stages.", done: false },
     { id: "baseline", title: "Run against the fixture as it misbehaves", detail: "The defect makes it fail.", done: false },
     { id: "post-fix", title: "Run against the corrected fixture", detail: "The same test passes.", done: false },

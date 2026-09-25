@@ -437,6 +437,13 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 
 ## CI
 
+Journey automation is temporarily paused: frontend, hub, packaged CLI and
+native accessibility journeys run only when a manual workflow dispatch sets
+`run_journeys=true`. Automatic CI retains unit/component tests, race tests,
+independent verification, mutations, vulnerability scans, builds, archive smoke
+and package installation/startup/removal checks. Green automatic CI does not
+prove interactive journeys. See [validation](agents/testing.md#ci-and-merge).
+
 GitHub Actions, with the declared release matrix mapped to native runners:
 
 | Target | Runner |

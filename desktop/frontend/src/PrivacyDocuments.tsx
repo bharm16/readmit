@@ -245,13 +245,13 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
   }
 
   return <div className="privacy-documents">
-    <h4>Author disclosure inputs</h4>
+    <h4>Review inputs</h4>
     <p className="hint">Enter only values you intend to declare. The engine validates the saved documents and later decides every disclosure finding. Opening a document lets you edit a copy and save it under a new name.</p>
 
     <h5>Disclosure policy</h5>
-    <button disabled={busy || policyDirty || !policyName} onClick={() => void openPolicy()}>Open selected policy for editing</button>
+    <button disabled={busy || policyDirty || !policyName} onClick={() => void openPolicy()}>Edit policy</button>
     <button disabled={busy || policyDirty} onClick={() => { setPolicyState(freshPolicy()); setPolicyOutput(""); setPolicyReason(""); }}>New disclosure policy</button>
-    {policyDirty ? <button disabled={busy} onClick={() => void discardPolicy()}>Discard disclosure policy draft</button> : null}
+    {policyDirty ? <button disabled={busy} onClick={() => void discardPolicy()}>Discard draft</button> : null}
     {policyDirty ? <p className="hint">Wait for retention to complete before leaving this edit. Save or discard this draft before opening another policy.</p> : null}
     <RetentionStatus retention={shownRetention(policyRetainer.retention, policyWaiting, policyDropping.current)} onRetry={policyRetainer.retry} onKeepAsNew={policyRetainer.keepAsNew} onDiscard={() => void discardPolicy()} />
     <label htmlFor="redact-patient-selector">Patient identifier selector</label>
@@ -262,7 +262,7 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
       <input id={`redact-patient-authority-${index}`} value={selector} disabled={busy} onChange={(e) => updatePolicy({ ...policy, patient: { ...policy.patient, authority: replaceAt(policy.patient.authority, index, e.target.value) } })} />
       <button disabled={busy} onClick={() => updatePolicy({ ...policy, patient: { ...policy.patient, authority: policy.patient.authority.filter((_, at) => at !== index) } })}>Remove authority {index + 1}</button>
     </div>)}
-    <button disabled={busy} onClick={() => updatePolicy({ ...policy, patient: { ...policy.patient, authority: [...policy.patient.authority, ""] } })}>Add patient authority selector</button>
+    <button disabled={busy} onClick={() => updatePolicy({ ...policy, patient: { ...policy.patient, authority: [...policy.patient.authority, ""] } })}>Add patient authority</button>
 
     <h6>Field rules</h6>
     {policy.fields.map((rule, index) => <div className="preflight" key={index}>
@@ -280,7 +280,7 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
           <input id={`redact-field-authority-${index}-${at}`} value={selector} disabled={busy} onChange={(e) => field(index, { authority: replaceAt(rule.authority ?? [], at, e.target.value) })} />
           <button disabled={busy} onClick={() => field(index, { authority: (rule.authority ?? []).filter((_, pos) => pos !== at) })}>Remove rule authority {index + 1}.{at + 1}</button>
         </div>)}
-        <button disabled={busy} onClick={() => field(index, { authority: [...(rule.authority ?? []), ""] })}>Add rule authority selector {index + 1}</button>
+        <button disabled={busy} onClick={() => field(index, { authority: [...(rule.authority ?? []), ""] })}>Add rule authority {index + 1}</button>
       </> : null}
       {rule.policy === "replace-field/v1" ? <>
         <label htmlFor={`redact-field-replacement-${index}`}>Replacement {index + 1}</label>
@@ -292,7 +292,8 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
           <textarea id={`redact-field-allowed-${index}-${at}`} value={value} disabled={busy} onChange={(e) => field(index, { allowed: replaceAt(rule.allowed ?? [], at, e.target.value) })} />
           <button disabled={busy} onClick={() => field(index, { allowed: (rule.allowed ?? []).filter((_, pos) => pos !== at) })}>Remove literal {index + 1}.{at + 1}</button>
         </div>)}
-        <button disabled={busy} onClick={() => field(index, { allowed: [...(rule.allowed ?? []), ""] })}>Add allowed literal {index + 1}</button>
+        <button disabled={busy} onClick={() => field(index, { allowed: [...(rule.allowed ?? []), ""] })}>Add literal {index + 1}</button>
+        <p className="hint">Retained literals match exactly: a value stays only when it equals one of the literals listed for the rule.</p>
       </> : null}
       <button disabled={busy} onClick={() => updatePolicy({ ...policy, fields: policy.fields.filter((_, at) => at !== index) })}>Remove field rule {index + 1}</button>
     </div>)}
@@ -341,19 +342,24 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
       <input id={`redact-failure-${index}`} type="number" min="1" max="256" value={position || ""} disabled={busy} onChange={(e) => updatePolicy({ ...policy, required_failures: replaceAt(policy.required_failures, index, Number(e.target.value)) })} />
       <button disabled={busy} onClick={() => updatePolicy({ ...policy, required_failures: policy.required_failures.filter((_, at) => at !== index) })}>Remove assertion {index + 1}</button>
     </div>)}
-    <button disabled={busy} onClick={() => updatePolicy({ ...policy, required_failures: [...policy.required_failures, 0] })}>Add required failure</button>
-    <label htmlFor="redact-policy-output">New disclosure policy document</label>
+    <button disabled={busy} onClick={() => updatePolicy({ ...policy, required_failures: [...policy.required_failures, 0] })}>Add failure</button>
+    <p className="hint">Each entry requires that original assertion position to fail; adding one here does not mean a failure was observed.</p>
+    <label htmlFor="redact-policy-output">Policy file</label>
     <input id="redact-policy-output" value={policyOutput} disabled={busy} placeholder="disclosure-policy.json" onChange={(e) => { policyDropping.current = false; setPolicyOutput(e.target.value); setPolicyDirty(true); setPolicyWaiting(true); retainPolicy(policy, e.target.value); }} />
-    <button disabled={busy || !workspace || !policyOutput} onClick={() => void savePolicy()}>Save disclosure policy</button>
+    <button disabled={busy || !workspace || !policyOutput} onClick={() => void savePolicy()}>Save policy</button>
     {policyReason ? <p role="status">{policyReason}</p> : null}
 
     <h5>Original-artifact inventory</h5>
-    <button disabled={busy || inventoryDirty || !inventoryName} onClick={() => void openInventory()}>Open selected inventory for editing</button>
+    <button disabled={busy || inventoryDirty || !inventoryName} onClick={() => void openInventory()}>Edit inventory</button>
     <button disabled={busy || inventoryDirty} onClick={() => { setInventoryState(freshInventory()); setInventoryOutput(""); setInventoryReason(""); }}>New original-artifact inventory</button>
-    {inventoryDirty ? <button disabled={busy} onClick={() => void discardInventory()}>Discard original-artifact inventory draft</button> : null}
+    {inventoryDirty ? <button disabled={busy} onClick={() => void discardInventory()}>Discard draft</button> : null}
     {inventoryDirty ? <p className="hint">Wait for retention to complete before leaving this edit. Save or discard this draft before opening another inventory.</p> : null}
     <RetentionStatus retention={shownRetention(inventoryRetainer.retention, inventoryWaiting, inventoryDropping.current)} onRetry={inventoryRetainer.retry} onKeepAsNew={inventoryRetainer.keepAsNew} onDiscard={() => void discardInventory()} />
-    <label><input type="checkbox" disabled={busy} checked={inventory.complete} onChange={(e) => updateInventory({ ...inventory, complete: e.target.checked })} />I declare this inventory complete for the original artifacts in scope</label>
+    <label>
+      <input type="checkbox" disabled={busy} checked={inventory.complete} aria-describedby="redact-inventory-declaration" onChange={(e) => updateInventory({ ...inventory, complete: e.target.checked })} />
+      Confirm inventory
+    </label>
+    <p className="hint" id="redact-inventory-declaration">I declare this inventory complete for the original artifacts in scope.</p>
     <h6>Original artifacts</h6>
     {inventory.artifacts.map((artifact, index) => <div key={index}>
       <label htmlFor={`redact-artifact-kind-${index}`}>Artifact kind {index + 1}</label>
@@ -373,7 +379,7 @@ export function PrivacyDocuments({ workspace, policyName, inventoryName, drafts,
     <button disabled={busy} onClick={() => updateInventory({ ...inventory, residual_values: [...inventory.residual_values, ""] })}>Add known value</button>
     <label htmlFor="redact-inventory-output">New original-artifact inventory document</label>
     <input id="redact-inventory-output" value={inventoryOutput} disabled={busy} placeholder="original-artifacts.json" onChange={(e) => { inventoryDropping.current = false; setInventoryOutput(e.target.value); setInventoryDirty(true); setInventoryWaiting(true); retainInventory(inventory, e.target.value); }} />
-    <button disabled={busy || !workspace || !inventoryOutput} onClick={() => void saveInventory()}>Save original-artifact inventory</button>
+    <button disabled={busy || !workspace || !inventoryOutput} onClick={() => void saveInventory()}>Save inventory</button>
     {inventoryReason ? <p role="status">{inventoryReason}</p> : null}
   </div>;
 }

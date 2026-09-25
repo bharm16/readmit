@@ -5,6 +5,7 @@ import {
   type OperationDisclosure,
   type Support,
 } from "./bindings";
+import { IconButton } from "./IconButton";
 import { useLifecycle } from "./lifecycle";
 
 /** How each closed state word reads. The word carries the meaning; the
@@ -66,7 +67,7 @@ export function PrivacyDisclosure({
 
   return (
     <section aria-labelledby="privacy-disclosure-title">
-      <h3 id="privacy-disclosure-title">What this build can reach</h3>
+      <h3 id="privacy-disclosure-title">Network access</h3>
       <p className="hint">
         These are the only activities that can reach a destination outside this
         window. Each happens only when you configure and start it; startup and
@@ -113,7 +114,7 @@ export function PrivacyDisclosure({
                 <td>
                   {operation.id === "run" ? (
                     <button type="button" disabled={busy} onClick={onOpenRunPanel}>
-                      Open the run panel
+                      Runs
                     </button>
                   ) : null}
                   {operation.id === "runner" ? (
@@ -126,7 +127,7 @@ export function PrivacyDisclosure({
                         disabled={busy || !workspaceOpen}
                         onClick={onStartCapture}
                       >
-                        Set up capture or collection
+                        Capture
                       </button>
                       {!workspaceOpen ? (
                         <span className="reason">Open a workspace folder first.</span>
@@ -140,7 +141,7 @@ export function PrivacyDisclosure({
                         disabled={busy || !workspaceOpen}
                         onClick={onStartObservation}
                       >
-                        Set up an observation window
+                        Observations
                       </button>
                       {!workspaceOpen ? (
                         <span className="reason">Open a workspace folder first.</span>
@@ -161,9 +162,9 @@ export function PrivacyDisclosure({
           })}
         </tbody>
       </table>
-      <button type="button" disabled={busy} onClick={() => void refresh()}>
-        Refresh the states
-      </button>
+      {/* A scoped refresh of the disclosed states only: no new network check
+       * or collection hides behind this utility. */}
+      <IconButton label="Refresh privacy status" icon="refresh" disabled={busy} onClick={() => void refresh()} />
       {busy ? <p className="hint">Reading the connection states.</p> : null}
     </section>
   );
@@ -179,7 +180,7 @@ export function SupportGuidance({ support }: { support: Support }) {
   }
   return (
     <section aria-labelledby="support-guidance-title">
-      <h3 id="support-guidance-title">What this build supports</h3>
+      <h3 id="support-guidance-title">Capabilities</h3>
       <ul className="support-notes">
         {support.notes.map((note) => (
           <li key={note}>{note}</li>

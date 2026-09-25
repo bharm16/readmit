@@ -258,7 +258,7 @@ export function PrivacyPanel({
   const blockers = readReview?.surfaces.filter((surface) => surface.unresolved > 0) ?? [];
 
   return <section aria-labelledby="privacy-title">
-    <h3 id="privacy-title">Privacy review and protected export</h3>
+    <h3 id="privacy-title">Privacy review</h3>
     <p>
       Prepare a derived extract from what this workspace actually holds, read the disclosure review the
       engine wrote, and export the reviewed packet only under an approval naming the exact identity. The
@@ -275,7 +275,7 @@ export function PrivacyPanel({
       }} />
 
     <div className="actions">
-      <h4>Derive a disclosure review</h4>
+      <h4>Create review</h4>
       <label htmlFor="privacy-case">Case</label>
       <select id="privacy-case" value={caseName} disabled={busy}
         onChange={(e) => { setCaseName(e.target.value); setDerived(null); }}>
@@ -301,7 +301,7 @@ export function PrivacyPanel({
         {originalInventories.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
       <button disabled={busy || !caseName || !specName || !policyName || !inventoryName} onClick={() => void derive()}>
-        {operation === "deriving" ? "Deriving…" : "Derive review"}
+        {operation === "deriving" ? "Deriving…" : "Create review"}
       </button>
       <button disabled={operation !== "deriving"} onClick={lifecycle.cancel}>Cancel derivation</button>
     </div>
@@ -318,7 +318,7 @@ export function PrivacyPanel({
     </div>
 
     <div className="actions">
-      <h4>Approve and export the reviewed packet</h4>
+      <h4>Export approval</h4>
       <label htmlFor="privacy-export-review">Review to export</label>
       <select id="privacy-export-review" value={exportReview} disabled={busy}
         onChange={(e) => { setExportReview(e.target.value); resetApproval(); void readSelectedReview(e.target.value); }}>
@@ -328,11 +328,12 @@ export function PrivacyPanel({
       <label htmlFor="privacy-export-private">Its private local state</label>
       <input id="privacy-export-private" value={exportPrivate} disabled={busy}
         onChange={(e) => { setExportPrivate(e.target.value); resetApproval(); }} />
-      <label htmlFor="privacy-export-approval">
-        Approve by naming the exact review identity shown in the inventory
-      </label>
-      <input id="privacy-export-approval" value={approval} disabled={busy || !exportReview}
+      <label htmlFor="privacy-export-approval">Review ID</label>
+      <input id="privacy-export-approval" value={approval} disabled={busy || !exportReview} aria-describedby="privacy-export-approval-hint"
         onChange={(e) => { setApproval(e.target.value); setExported(null); }} />
+      <p className="hint" id="privacy-export-approval-hint">
+        Approve by naming the exact review identity shown in the inventory; entering it approves this export.
+      </p>
       <label htmlFor="privacy-export-output">New packet folder</label>
       <input id="privacy-export-output" value={exportOutput} disabled={busy} placeholder="generated at export"
         onChange={(e) => setExportOutput(e.target.value)} />
@@ -400,18 +401,19 @@ export function PrivacyPanel({
       {policyView?.policy ? <p>Support {policyView.policy.support ? "allowed" : "denied"} · {policyView.policy.destinations.join(", ")} · {policyView.policy.max_bytes} bytes.</p> : null}
       {policyView?.reason ? <p>{policyView.reason}</p> : null}
 
-      <label htmlFor="support-source">Source to summarize</label>
+      <label htmlFor="support-source">Source</label>
       <select id="support-source" value={supportSource} disabled={busy}
         onChange={(e) => { setSupportSource(e.target.value); withdrawPreview(); }}>
-        <option value="">Select a derived review, sealed packet or portable review…</option>
+        <option value="">Select source…</option>
         {reviews.map((name) => <option key={"r" + name} value={name}>{name} — derived review</option>)}
         {sealedPackets.map((name) => <option key={"k" + name} value={name}>{name} — retained packet</option>)}
         {portables.map((name) => <option key={"w" + name} value={name}>{name} — portable review</option>)}
       </select>
       {supportSources.get(supportSource) === "derived-review" ? <>
-        <label htmlFor="support-private">Its private local state (bound, never copied)</label>
-        <input id="support-private" value={supportPrivate} disabled={busy}
+        <label htmlFor="support-private">Private state</label>
+        <input id="support-private" value={supportPrivate} disabled={busy} aria-describedby="support-private-hint"
           onChange={(e) => { setSupportPrivate(e.target.value); withdrawPreview(); }} />
+        <p className="hint" id="support-private-hint">Bound private local state; never copied into the bundle.</p>
       </> : null}
       <button disabled={busy || !supportSource || !selectedPolicy} onClick={() => void preview()}>
         {operation === "previewing" ? "Preparing…" : "Preview summary"}
@@ -432,16 +434,19 @@ export function PrivacyPanel({
         <p className="scope">{supportPreview.summary.scope}</p>
       </div> : null}
 
-      <label htmlFor="support-approval">Approve by naming the exact preview identity</label>
-      <input id="support-approval" value={supportApproval} disabled={busy || !supportPreview?.summary}
+      <label htmlFor="support-approval">Preview ID</label>
+      <input id="support-approval" value={supportApproval} disabled={busy || !supportPreview?.summary} aria-describedby="support-approval-hint"
         onChange={(e) => setSupportApproval(e.target.value)} />
+      <p className="hint" id="support-approval-hint">
+        Approve by naming the exact preview identity shown above; entering it approves publishing this exact preview.
+      </p>
       <label htmlFor="support-output">New support folder</label>
       <input id="support-output" value={supportOutput} disabled={busy} placeholder="generated in this workspace"
         onChange={(e) => { setSupportOutput(e.target.value); setDestinationChoice(null); }} />
       <button disabled={busy} onClick={() => void chooseDestination()}>Choose destination…</button>
       {destinationChoice && destinationChoice.state !== "completed" ? <p>{destinationChoice.reason}</p> : null}
       <button disabled={busy || !supportPreview?.summary || supportApproval === ""} onClick={() => void publish()}>
-        {operation === "publishing" ? "Publishing…" : "Publish support bundle"}
+        {operation === "publishing" ? "Publishing…" : "Export support bundle"}
       </button>
       {published?.reason ? <p>{published.reason}</p> : null}
       {published?.outcome ? <div className="preflight">

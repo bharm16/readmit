@@ -112,11 +112,11 @@ const (
 
 // regions are declared in focus order. Adding one adds a step to the journey.
 var regions = []Region{
-	{ID: CommandsRegion, Label: "Commands and search"},
-	{ID: NavigationRegion, Label: "Project navigation"},
+	{ID: CommandsRegion, Label: "Commands"},
+	{ID: NavigationRegion, Label: "Workspace"},
 	{ID: EvidenceRegion, Label: "Evidence"},
 	{ID: InspectorRegion, Label: "Inspector"},
-	{ID: PrivacyRegion, Label: "Privacy status"},
+	{ID: PrivacyRegion, Label: "Privacy"},
 }
 
 // indicators give every status a word and a shape. The word carries the meaning
@@ -203,28 +203,28 @@ const (
 // command key is accepted wherever it is shown.
 var commands = []Command{
 	{ID: CommandPaletteCommand, Title: "Command palette", Keys: "Ctrl+K", Region: CommandsRegion},
-	{ID: SearchWorkspaceCommand, Title: "Search this workspace", Keys: "Ctrl+F", Region: CommandsRegion},
-	{ID: OpenWorkspaceCommand, Title: "Open a workspace folder…", Keys: "Ctrl+O", Region: NavigationRegion},
-	{ID: CreateSampleWorkspaceCommand, Title: "Create the sample workspace…", Region: NavigationRegion},
-	{ID: OpenProjectCommand, Title: "Open the project of this workspace", Region: EvidenceRegion},
-	{ID: ManageProfilesCommand, Title: "Manage interface profiles…", Region: InspectorRegion},
-	{ID: ManageScenariosCommand, Title: "Design synthetic scenarios…", Keys: "Ctrl+Shift+S", Region: InspectorRegion},
-	{ID: MaintainWorkspaceCommand, Title: "Maintain this workspace…", Region: EvidenceRegion},
-	{ID: CheckStagedUpgradeCommand, Title: "Check a staged upgrade…", Region: EvidenceRegion},
-	{ID: ManageAssertionsCommand, Title: "Author assertion sets…", Keys: "Ctrl+Shift+A", Region: InspectorRegion},
-	{ID: InspectRawFileCommand, Title: "Inspect a raw HL7 file…", Region: InspectorRegion},
-	{ID: PerformanceCorpusCommand, Title: "Generate or scan a performance corpus…", Region: InspectorRegion},
-	{ID: CancelOperationCommand, Title: "Cancel the running operation", Keys: "Escape"},
-	{ID: NextRegionCommand, Title: "Go to the next region", Keys: "F6"},
-	{ID: PreviousRegionCommand, Title: "Go to the previous region", Keys: "Shift+F6"},
-	{ID: GoToCommandsCommand, Title: "Go to commands and search", Region: CommandsRegion},
-	{ID: GoToNavigationCommand, Title: "Go to project navigation", Region: NavigationRegion},
-	{ID: GoToEvidenceCommand, Title: "Go to evidence", Region: EvidenceRegion},
-	{ID: GoToInspectorCommand, Title: "Go to the inspector", Region: InspectorRegion},
-	{ID: GoToPrivacyCommand, Title: "Go to the privacy status", Region: PrivacyRegion},
-	{ID: LargerTextCommand, Title: "Larger text", Keys: "Ctrl+="},
-	{ID: SmallerTextCommand, Title: "Smaller text", Keys: "Ctrl+-"},
-	{ID: SwitchThemeCommand, Title: "Switch between system, light and dark"},
+	{ID: SearchWorkspaceCommand, Title: "Search workspace", Keys: "Ctrl+F", Region: CommandsRegion},
+	{ID: OpenWorkspaceCommand, Title: "Open workspace…", Keys: "Ctrl+O", Region: NavigationRegion},
+	{ID: CreateSampleWorkspaceCommand, Title: "Create sample…", Region: NavigationRegion},
+	{ID: OpenProjectCommand, Title: "Open project", Region: EvidenceRegion},
+	{ID: ManageProfilesCommand, Title: "Profiles", Region: InspectorRegion},
+	{ID: ManageScenariosCommand, Title: "Scenarios", Keys: "Ctrl+Shift+S", Region: InspectorRegion},
+	{ID: MaintainWorkspaceCommand, Title: "Maintenance", Region: EvidenceRegion},
+	{ID: CheckStagedUpgradeCommand, Title: "Check upgrade", Region: EvidenceRegion},
+	{ID: ManageAssertionsCommand, Title: "Assertion sets", Keys: "Ctrl+Shift+A", Region: InspectorRegion},
+	{ID: InspectRawFileCommand, Title: "Inspect HL7 file…", Region: InspectorRegion},
+	{ID: PerformanceCorpusCommand, Title: "Performance corpus", Region: InspectorRegion},
+	{ID: CancelOperationCommand, Title: "Cancel operation", Keys: "Escape"},
+	{ID: NextRegionCommand, Title: "Next section", Keys: "F6"},
+	{ID: PreviousRegionCommand, Title: "Previous section", Keys: "Shift+F6"},
+	{ID: GoToCommandsCommand, Title: "Focus commands", Region: CommandsRegion},
+	{ID: GoToNavigationCommand, Title: "Focus workspace", Region: NavigationRegion},
+	{ID: GoToEvidenceCommand, Title: "Focus evidence", Region: EvidenceRegion},
+	{ID: GoToInspectorCommand, Title: "Focus inspector", Region: InspectorRegion},
+	{ID: GoToPrivacyCommand, Title: "Focus privacy", Region: PrivacyRegion},
+	{ID: LargerTextCommand, Title: "Increase text size", Keys: "Ctrl+="},
+	{ID: SmallerTextCommand, Title: "Decrease text size", Keys: "Ctrl+-"},
+	{ID: SwitchThemeCommand, Title: "Change theme"},
 }
 
 // Theme is one appearance the window offers.

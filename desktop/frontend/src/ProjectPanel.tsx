@@ -15,6 +15,7 @@ import type {
   RevisionsResult,
   SettingsChange,
 } from "./bindings";
+import { IconButton } from "./IconButton";
 import type { Indicators } from "./shell";
 import { Badge, Report } from "./shell";
 
@@ -147,11 +148,15 @@ function CaseRow({
       <span className="badge">{caseEntry.interface_version}</span>
       <span className={`evidence evidence-${caseEntry.evidence}`}>{caseEntry.evidence}</span>
       <button type="button" disabled={busy} onClick={onOpen}>
-        Open this case
+        Open case
       </button>
-      <button type="button" disabled={busy} aria-expanded={editing} onClick={() => setEditing(!editing)}>
-        {editing ? "Close the editor" : "Edit details"}
-      </button>
+      {editing ? (
+        <IconButton label="Close editor" icon="close" disabled={busy} onClick={() => setEditing(false)} />
+      ) : (
+        <button type="button" disabled={busy} aria-expanded={false} onClick={() => setEditing(true)}>
+          Edit details
+        </button>
+      )}
       {editing ? (
         <form
           className="case-editor"
@@ -236,7 +241,7 @@ function CaseRow({
             onChange={(event) => setDraft({ ...draft, incidents: event.target.value })}
           />
           <button type="submit" disabled={busy}>
-            Store these details
+            Save details
           </button>
         </form>
       ) : null}
@@ -275,13 +280,14 @@ function CreateForm({
       }}
     >
       <h4>Create a project</h4>
-      <label htmlFor="project-name">Folder name for the new project</label>
+      <label htmlFor="project-name">Project folder</label>
       <input
         id="project-name"
         type="text"
         value={name}
         onChange={(event) => setName(event.target.value)}
       />
+      <p className="hint">A folder name, not a full path.</p>
       <label htmlFor="project-title">Title</label>
       <input
         id="project-title"
@@ -296,15 +302,16 @@ function CreateForm({
         value={owner}
         onChange={(event) => setOwner(event.target.value)}
       />
-      <label htmlFor="project-versions">Interface versions, comma-separated</label>
+      <label htmlFor="project-versions">Interface versions</label>
       <input
         id="project-versions"
         type="text"
         value={versions}
         onChange={(event) => setVersions(event.target.value)}
       />
+      <p className="hint">Separate versions with commas</p>
       <button type="submit" disabled={busy}>
-        Create the project…
+        Create project
       </button>
       <p className="hint">The folder that holds it is chosen in your own folder dialog.</p>
     </form>
@@ -400,7 +407,7 @@ function SettingsForm({
           </option>
         ))}
       </select>
-      <label htmlFor="settings-declare">Declare a further interface version</label>
+      <label htmlFor="settings-declare">Add interface version</label>
       <input
         id="settings-declare"
         type="text"
@@ -408,7 +415,7 @@ function SettingsForm({
         onChange={(event) => setNewVersion(event.target.value)}
       />
       <button type="submit" disabled={busy}>
-        Store these settings
+        Save settings
       </button>
       <button type="button" disabled={busy} onClick={onCancel}>
         Cancel
@@ -530,7 +537,7 @@ function RegisterForm({
       }}
     >
       <h4>Register a case</h4>
-      <label htmlFor="register-case">Case bundle in this workspace</label>
+      <label htmlFor="register-case">Case</label>
       <select
         id="register-case"
         value={name}
@@ -544,6 +551,7 @@ function RegisterForm({
           </option>
         ))}
       </select>
+      <p className="hint">A case bundle from this workspace.</p>
       <label htmlFor="register-title">Title</label>
       <input
         id="register-title"
@@ -600,7 +608,7 @@ function RegisterForm({
         onChange={(event) => setIncidents(event.target.value)}
       />
       <button type="submit" disabled={busy || name === ""}>
-        Register this case
+        Add to project
       </button>
       <p className="hint">
         The bundle is verified through the same reader the command line uses, and
@@ -680,22 +688,26 @@ export function ProjectPanel({
           This folder is open as a workspace. Open its project, or create one:
           a project is where cases are registered, named and carried forward.
         </p>
-        <button type="button" disabled={busy} aria-expanded={creating} onClick={() => setCreating(!creating)}>
-          {creating ? "Close the project form" : "Create a project…"}
-        </button>
+        {creating ? (
+          <IconButton label="Close project form" icon="close" disabled={busy} onClick={() => setCreating(false)} />
+        ) : (
+          <button type="button" disabled={busy} aria-expanded={false} onClick={() => setCreating(true)}>
+            Create a project…
+          </button>
+        )}
         {onStartImport ? (
           <button type="button" disabled={busy} onClick={onStartImport} style={{ marginLeft: "0.5rem" }}>
-            Import evidence…
+            Import
           </button>
         ) : null}
         {onStartCapture ? (
           <button type="button" disabled={busy} onClick={onStartCapture} style={{ marginLeft: "0.5rem" }}>
-            Capture or collect evidence…
+            Capture
           </button>
         ) : null}
         {onStartObservation ? (
           <button type="button" disabled={busy} onClick={onStartObservation} style={{ marginLeft: "0.5rem" }}>
-            Set up observation…
+            Observations
           </button>
         ) : null}
         {creating ? <CreateForm busy={busy} onCreate={onCreate} /> : null}
@@ -768,7 +780,7 @@ export function ProjectPanel({
           <div style={{ marginTop: "1rem" }}>
             {onStartCapture ? (
               <button type="button" disabled={busy} onClick={onStartCapture}>
-                Capture or collect evidence…
+                Capture
               </button>
             ) : null}
             {onStartImport ? (
@@ -778,7 +790,7 @@ export function ProjectPanel({
                 onClick={onStartImport}
                 style={{ marginLeft: onStartCapture ? "0.5rem" : undefined }}
               >
-                Import evidence into this project…
+                Import
               </button>
             ) : null}
             {onStartObservation ? (
@@ -788,7 +800,7 @@ export function ProjectPanel({
                 onClick={onStartObservation}
                 style={{ marginLeft: "0.5rem" }}
               >
-                Set up observation…
+                Observations
               </button>
             ) : null}
             {onStartMaintenance ? (
@@ -798,7 +810,7 @@ export function ProjectPanel({
                 onClick={onStartMaintenance}
                 style={{ marginLeft: "0.5rem" }}
               >
-                Maintain this workspace…
+                Maintenance
               </button>
             ) : null}
           </div>
@@ -852,7 +864,7 @@ export function ProjectPanel({
               setReadingDocument(!readingDocument);
             }}
           >
-            {readingDocument ? "Close the editable document" : "Show the editable document as recorded…"}
+            {readingDocument ? "Close the editable document" : "View source"}
           </button>
           {readingDocument ? <EditableDocument result={editable} indicators={indicators} /> : null}
           {selectedCase ? (

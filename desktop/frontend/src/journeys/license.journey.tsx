@@ -25,12 +25,12 @@ afterEach(async () => {
 
 /** This computer's license, inside the license and activation pane. */
 function license() {
-  return within(region("This computer's license"));
+  return within(region("Device license"));
 }
 
 async function openLicensing(user: UserEvent) {
-  await press(user, screen.getByRole("button", { name: "License and activation…" }));
-  await license().findByRole("button", { name: "Refresh this computer's license" });
+  await press(user, screen.getByRole("button", { name: "License" }));
+  await license().findByRole("button", { name: "Refresh license" });
 }
 
 /** A new project the command line creates with no license named, admitted
@@ -64,7 +64,9 @@ test("a delivered license file is activated here, used by the command line with 
 
   // Dismissing the file dialog changes nothing.
   await journey.dismissDialog("files", "Choose your license file");
-  await press(user, license().getByRole("button", { name: "Activate a license file…" }));
+  await press(user, license().getByRole("button", { name: "Activate license…" }));
+  // The primary action opens the input methods; the received file is one.
+  await press(user, license().getByRole("button", { name: "Choose file…" }));
   expect(await license().findByText("no file was chosen")).toBeTruthy();
 
   // The license file and the vendor's keys file, checked here and shown in
@@ -72,13 +74,14 @@ test("a delivered license file is activated here, used by the command line with 
   // assigns are shown chosen.
   await journey.chooseFiles([journey.path("delivery", "entitlement.json")], "Choose your license file");
   await journey.chooseFiles([journey.path("delivery", "trust.json")], "Choose your vendor's verification keys file");
-  await press(user, license().getByRole("button", { name: "Activate a license file…" }));
+  await press(user, license().getByRole("button", { name: "Activate license…" }));
+  await press(user, license().getByRole("button", { name: "Choose file…" }));
   const review = within(await license().findByRole("group", { name: "License to activate" }));
   expect(review.getByText(/^License for test-organization on the test-only plan: 1 author seat and 16 runner slots, valid from \S+ until \S+, with grace until \S+\. It was checked on this computer with your vendor's verification keys\.$/)).toBeTruthy();
   expect((review.getByLabelText("Who uses this computer") as HTMLSelectElement).value).toBe("test-author");
   expect((review.getByLabelText("This computer") as HTMLSelectElement).value).toBe("test-device");
   expect((review.getByLabelText("Tests run from this computer count against") as HTMLSelectElement).value).toBe("test-runner");
-  await press(user, review.getByRole("button", { name: "Activate on this computer" }));
+  await press(user, review.getByRole("button", { name: "Activate" }));
   expect(await license().findByText("This computer's license is activated.")).toBeTruthy();
   expect(license().getByText("Licensed to test-organization on the test-only plan: 1 author seat and 16 runner slots.")).toBeTruthy();
   expect(license().getByText(/^Activated on \S+ for test-author on the computer test-device; tests run from here count against the test-runner runner pool\.$/)).toBeTruthy();
@@ -97,10 +100,12 @@ test("a delivered license file is activated here, used by the command line with 
   expect((await newProjectByHand("first")).code).toBe(0);
 
   // The operator's account address: the renewal link appears, and following
-  // it is the person's own click, never a request the window makes.
-  const commercial = within(region("License and trial activation").querySelector(".commercial-access") as HTMLElement);
+  // it is the person's own click, never a request the window makes. The
+  // portal is configured in the License page's Administrator setup subview.
+  const pane = region("License");
   await journey.chooseFiles([journey.path("operator", "destinations.json")], "Choose the commercial destinations file");
-  await press(user, commercial.getByRole("button", { name: "Choose the commercial destinations file…" }));
+  await press(user, within(pane).getByText("Administrator setup"));
+  await press(user, within(pane).getByRole("button", { name: "Configure account portal…" }));
   const renewalLink = await license().findByRole("link", { name: "Get renewed license" });
   expect(renewalLink.getAttribute("href")).toBe("https://account.example.test/licenses");
   expect(renewalLink.getAttribute("target")).toBe("_blank");
@@ -108,18 +113,23 @@ test("a delivered license file is activated here, used by the command line with 
   // The renewed file replaces the license in place, for the same person and
   // computer; the command line reports the renewal.
   await journey.chooseFiles([journey.path("renewal", "entitlement.json")], "Choose your license file");
-  await press(user, license().getByRole("button", { name: "Renew with a license file…" }));
+  await press(user, license().getByRole("button", { name: "Renew license…" }));
+  await press(user, license().getByRole("button", { name: "Choose file…" }));
   const renewal = within(await license().findByRole("group", { name: "Renewed license" }));
-  await press(user, renewal.getByRole("button", { name: "Install the renewed license" }));
+  await press(user, renewal.getByRole("button", { name: "Install renewal" }));
   expect(await license().findByText("The renewed license replaced the previous one.")).toBeTruthy();
   expect(license().getByText(/^Valid until \S+\.$/)).toBeTruthy();
   expect(license().queryByRole("link", { name: "Get renewed license" })).toBeNull();
   expect((await journey.commandLine(["license", "show"])).stdout).toContain("Issue sequence: 2\n");
 
-  // The earlier file offered again is refused, and nothing changes.
+  // The earlier file offered again is refused, and nothing changes. Renewal
+  // before it is due, the copy and the deactivation live in the More actions
+  // subview, which stays open for each of them.
+  await press(user, license().getByText("More actions"));
   await journey.chooseFiles([journey.path("delivery", "entitlement.json")], "Choose your license file");
-  await press(user, license().getByRole("button", { name: "Renew with a license file…" }));
-  await press(user, within(await license().findByRole("group", { name: "Renewed license" })).getByRole("button", { name: "Install the renewed license" }));
+  await press(user, license().getByRole("button", { name: "Renew license…" }));
+  await press(user, license().getByRole("button", { name: "Choose file…" }));
+  await press(user, within(await license().findByRole("group", { name: "Renewed license" })).getByRole("button", { name: "Install renewal" }));
   expect(await license().findByText("this license is already activated here, or is older than the one activated on this computer")).toBeTruthy();
   await press(user, within(license().getByRole("group", { name: "Renewed license" })).getByRole("button", { name: "Cancel" }));
   expect((await journey.commandLine(["license", "show"])).stdout).toContain("Issue sequence: 2\n");
@@ -127,18 +137,18 @@ test("a delivered license file is activated here, used by the command line with 
   // A copy saves byte for byte, as `readmit license export` writes it.
   journey.makeFolder("copies");
   await journey.chooseFolder(journey.path("copies"), "Choose the folder to save a copy of this computer's license in");
-  await press(user, license().getByRole("button", { name: "Save a copy of this license…" }));
+  await press(user, license().getByRole("button", { name: "Export license…" }));
   expect(await license().findByText(byContent(/^A copy of this license was saved to .*test-entitlement\.json, exactly as it was received\.$/))).toBeTruthy();
   expect(journey.readFile("copies/test-entitlement.json")).toBe(journey.readFile("renewal/entitlement.json"));
 
   // Deactivating asks first; Escape keeps the license.
-  await press(user, license().getByRole("button", { name: "Deactivate this computer…" }));
-  expect(license().getByRole("group", { name: "Deactivate this computer?" })).toBeTruthy();
+  await press(user, license().getByRole("button", { name: "Deactivate device…" }));
+  expect(license().getByRole("group", { name: "Deactivate this device?" })).toBeTruthy();
   await user.keyboard("{Escape}");
-  expect(license().queryByRole("group", { name: "Deactivate this computer?" })).toBeNull();
+  expect(license().queryByRole("group", { name: "Deactivate this device?" })).toBeNull();
   expect(journey.callsTo("DeactivateLicense")).toHaveLength(0);
-  await press(user, license().getByRole("button", { name: "Deactivate this computer…" }));
-  await press(user, within(license().getByRole("group", { name: "Deactivate this computer?" })).getByRole("button", { name: "Deactivate" }));
+  await press(user, license().getByRole("button", { name: "Deactivate device…" }));
+  await press(user, within(license().getByRole("group", { name: "Deactivate this device?" })).getByRole("button", { name: "Deactivate device" }));
   expect(await license().findByText("This computer is deactivated.")).toBeTruthy();
   expect(license().getByText(/^This computer was deactivated on \S+\. Your vendor can reissue its seat/)).toBeTruthy();
   expect(license().getByRole("link", { name: "Open your account" }).getAttribute("href")).toBe("https://account.example.test/licenses");
@@ -151,7 +161,7 @@ test("a delivered license file is activated here, used by the command line with 
   expect((await journey.commandLine(["project", "show", "investigations/first"])).stdout).toMatch(/^Project: By hand\n/);
   journey.makeFolder("copies-after");
   await journey.chooseFolder(journey.path("copies-after"), "Choose the folder to save a copy of this computer's license in");
-  await press(user, license().getByRole("button", { name: "Save a copy of this license…" }));
+  await press(user, license().getByRole("button", { name: "Export license…" }));
   expect(await license().findByText(byContent(/^A copy of this license was saved to /))).toBeTruthy();
   expect(journey.readFile("copies-after/test-entitlement.json")).toBe(journey.readFile("renewal/entitlement.json"));
 
@@ -162,7 +172,7 @@ test("a delivered license file is activated here, used by the command line with 
     "--author", "test-author", "--device", "test-device",
   ]);
   expect(imported.code).toBe(0);
-  await press(user, license().getByRole("button", { name: "Refresh this computer's license" }));
+  await press(user, license().getByRole("button", { name: "Refresh license" }));
   expect(await license().findByText(/^Activated on \S+ for test-author on the computer test-device\.$/)).toBeTruthy();
   expect(license().getByText(/^Valid until \S+\.$/)).toBeTruthy();
   expect((await newProjectByHand("after-import")).code).toBe(0);
@@ -179,36 +189,42 @@ test("administrator activation choices, export and clock correction agree with t
   journey.writeFile("copies/test-entitlement.json", "existing export must survive");
   await journey.launch();
   await openLicensing(user);
-  const pane = within(region("License and trial activation"));
+  const pane = within(region("License"));
 
   await journey.chooseFiles([`${supplied}/entitlement.json`], "Choose the received entitlement document");
   await journey.chooseFiles([`${supplied}/trust.json`], "Choose the vendor trust document");
-  await press(user, pane.getByRole("button", { name: "Verify a received license…" }));
+  // The supplied-folder workflow lives in the Administrator setup subview.
+  await press(user, pane.getByText("Administrator setup"));
+  await press(user, pane.getByRole("button", { name: "Verify license…" }));
   await pane.findByText("test-organization");
+  // The verified received license offers its own folder choice, beside the
+  // window-level one: this press answers the received license's.
+  const received = within(await pane.findByRole("heading", { name: "Received license" }).then((heading) => heading.parentElement!));
   await journey.chooseFolder(link, "Choose the private folder for the local license activation");
-  await press(user, pane.getByRole("button", { name: "Choose the private activation folder…" }));
+  await press(user, received.getByRole("button", { name: "Choose activation folder…" }));
   expect(await pane.findByText("choose an existing folder that is not a symbolic link")).toBeTruthy();
   expect(pane.queryByText(/Activation folder:/)).toBeNull();
   await journey.dismissDialog("folder", "Choose the private folder for the local license activation");
-  await press(user, pane.getByRole("button", { name: "Choose the private activation folder…" }));
+  await press(user, received.getByRole("button", { name: "Choose activation folder…" }));
   expect(await pane.findByText("no folder was chosen")).toBeTruthy();
 
+  // The window-level folder choice is the first of its name.
   await journey.dismissDialog("folder", "Choose the license activation folder");
-  await press(user, pane.getByRole("button", { name: "Select a supplied activation folder…" }));
+  await press(user, pane.getAllByRole("button", { name: "Choose activation folder…" })[0] as HTMLElement);
   expect(await pane.findByText("no folder was chosen")).toBeTruthy();
   await journey.chooseFolder(supplied, "Choose the license activation folder");
-  await press(user, pane.getByRole("button", { name: "Select a supplied activation folder…" }));
+  await press(user, pane.getAllByRole("button", { name: "Choose activation folder…" })[0] as HTMLElement);
   expect(await pane.findByText(/License: active/)).toBeTruthy();
 
   await journey.chooseFolder(journey.path("copies"), "Choose the folder to export the entitlement into");
-  await press(user, pane.getByRole("button", { name: "Export the installed entitlement…" }));
+  await press(user, pane.getByRole("button", { name: "Export license…" }));
   expect(await pane.findByText("the destination folder already holds a file with this name; choose a different folder")).toBeTruthy();
   expect(journey.readFile("copies/test-entitlement.json")).toBe("existing export must survive");
   await journey.dismissDialog("folder", "Choose the folder to export the entitlement into");
-  await press(user, pane.getByRole("button", { name: "Export the installed entitlement…" }));
+  await press(user, pane.getByRole("button", { name: "Export license…" }));
   expect(await pane.findByText("no folder was chosen")).toBeTruthy();
   await journey.chooseFolder(journey.path("other-copies"), "Choose the folder to export the entitlement into");
-  await press(user, pane.getByRole("button", { name: "Export the installed entitlement…" }));
+  await press(user, pane.getByRole("button", { name: "Export license…" }));
   expect(await pane.findByText(byContent(/Document test-entitlement written to .*other-copies.* byte for byte/))).toBeTruthy();
   expect(journey.readFile("other-copies/test-entitlement.json")).toBe(journey.readFile("supplied-activation/entitlement.json"));
 
@@ -216,17 +232,17 @@ test("administrator activation choices, export and clock correction agree with t
   const clock = JSON.parse(journey.readFile(clockFile)) as Record<string, unknown>;
   const highWater = new Date(Date.now() + 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
   journey.changeFile(clockFile, JSON.stringify({ ...clock, high_water: highWater, rollback: true }) + "\n");
-  await press(user, pane.getByRole("button", { name: "Refresh local status" }));
+  await press(user, pane.getByRole("button", { name: "Refresh activation" }));
   expect(await pane.findByText(/Clock correction requires explicit resolution/)).toBeTruthy();
   const cliRefusal = await journey.commandLine(["--operation-policy", policy, "license", "operation", "resolve"]);
   expect(cliRefusal.code).not.toBe(0);
-  await press(user, pane.getByRole("button", { name: "Resolve corrected clock" }));
+  await press(user, pane.getByRole("button", { name: "Resolve clock change" }));
   expect(await pane.findByText(/local UTC moved backwards more than five minutes/)).toBeTruthy();
   expect((JSON.parse(journey.readFile(clockFile)) as { rollback: boolean }).rollback).toBe(true);
 
   const corrected = new Date(Date.now() - 60 * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
   journey.changeFile(clockFile, JSON.stringify({ ...clock, high_water: corrected, rollback: true }) + "\n");
-  await press(user, pane.getByRole("button", { name: "Resolve corrected clock" }));
+  await press(user, pane.getByRole("button", { name: "Resolve clock change" }));
   expect(await pane.findByText(/No unresolved clock rollback/)).toBeTruthy();
   const state = JSON.parse(journey.readFile(clockFile)) as { rollback: boolean; high_water: string };
   expect(state.rollback).toBe(false);

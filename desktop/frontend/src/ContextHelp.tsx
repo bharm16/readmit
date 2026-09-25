@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { RegionId, State } from "./bindings";
+import { IconButton } from "./IconButton";
 
 // Fixed, bundled copy. Neither evidence nor diagnostic strings are used as
 // help lookup keys, URLs, or persisted context.
@@ -26,11 +28,24 @@ export function StateHelp({ state }: { state: State }) {
 
 export function ContextHelp({ region }: { region: RegionId }) {
   const help = screens[region];
-  return <details className="context-help"><summary>Help for this screen: {help.title}</summary><p>{help.steps}</p><details><summary>Message-family recipes and verdicts</summary>
-    <p>ADT: retain registration/admission/transfer/discharge/merge evidence, select the lifecycle diagnosis profile, and check assigning authorities before interpreting missing visits.</p>
-    <p>SIU: use the synthetic sample to author one-appointment expectations, run the defective baseline, then the fixed receiver. AA alone does not prove the appointment was updated.</p>
-    <p>ORM: retain orders and their ACKs, select the order diagnosis profile, and compare placer/filler identifiers and declared acknowledgement stages.</p>
-    <p>ORU: retain the originating order and result groups, select the order diagnosis profile, and inspect result status progression and duplicate outputs. An unobserved order is not proof it never existed.</p>
-    <p>These are finite fixture profiles, not general HL7 conformance. Unknown versions, unsupported triggers, missing evidence and incomplete observations remain unsupported or undecided.</p>
-  </details><p>Offline references: docs/{help.guide} and docs/workflow-help.md in the matching CLI archive or source checkout. Help never opens a network connection.</p></details>;
+  // A small utility control beside the region's title, not a sentence: its
+  // accessible name says what it opens, the tooltip repeats that name for a
+  // pointer or the keyboard, and the glyph itself is decorative.
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`context-help${open ? " open" : ""}`}>
+      <IconButton label={`Help for ${help.title}`} icon="help" expanded={open} onClick={() => setOpen(!open)} />
+      {open ? <div className="context-help-body">
+        <p>{help.steps}</p>
+        <details><summary>HL7 guidance</summary>
+          <p>ADT: retain registration/admission/transfer/discharge/merge evidence, select the lifecycle diagnosis profile, and check assigning authorities before interpreting missing visits.</p>
+          <p>SIU: use the synthetic sample to author one-appointment expectations, run the defective baseline, then the fixed receiver. AA alone does not prove the appointment was updated.</p>
+          <p>ORM: retain orders and their ACKs, select the order diagnosis profile, and compare placer/filler identifiers and declared acknowledgement stages.</p>
+          <p>ORU: retain the originating order and result groups, select the order diagnosis profile, and inspect result status progression and duplicate outputs. An unobserved order is not proof it never existed.</p>
+          <p>These are finite fixture profiles, not general HL7 conformance. Unknown versions, unsupported triggers, missing evidence and incomplete observations remain unsupported or undecided.</p>
+        </details>
+        <p>Offline references: docs/{help.guide} and docs/workflow-help.md in the matching CLI archive or source checkout. Help never opens a network connection.</p>
+      </div> : null}
+    </div>
+  );
 }

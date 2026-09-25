@@ -25,7 +25,7 @@ export function RunComparison({ workspace, busy, entries }: { workspace: string;
  }
  const c = result?.comparison;
  return <section className="baseline-panel" aria-labelledby="run-comparison-title">
-  <h2 id="run-comparison-title">Compare retained executions</h2>
+  <h2 id="run-comparison-title">Compare runs</h2>
   <p>Select the workspace's retained result and durable-run directories. Reads are offline. Values stay hidden; baseline approval and execution success are separate facts.</p>
   <fieldset disabled={busy || working}>
    <label htmlFor="comparison-baseline">Baseline execution <select id="comparison-baseline" value={baseline} onChange={e => {setBaseline(e.target.value); invalidate();}}>
@@ -37,7 +37,8 @@ export function RunComparison({ workspace, busy, entries }: { workspace: string;
     {runs.map(name => <option key={name} value={name}>{name}</option>)}
    </select></label>
    <label>Approved baseline file (optional) <input value={approval} onChange={e => {setApproval(e.target.value); invalidate();}} /></label>
-   <label>Additional retained executions (one directory per line, up to 14)<textarea value={repeats} onChange={e => {setRepeats(e.target.value); invalidate();}} /></label>
+   <label>Additional runs<textarea value={repeats} onChange={e => {setRepeats(e.target.value); invalidate();}} /></label>
+   <p className="hint">One directory per line; up to 14 additional runs.</p>
    <button disabled={!baseline || !current} onClick={() => void perform()}>Compare executions</button>
   </fieldset>
   {working ? <button onClick={() => {withdraw(); cancel(); setResult({state:"cancelled",reason:"Comparison cancelled. Retained evidence is unchanged; compare again to recover."});}}>Cancel comparison</button> : <button onClick={invalidate}>Clear comparison</button>}
@@ -56,7 +57,7 @@ export function RunComparison({ workspace, busy, entries }: { workspace: string;
     <tbody>{c.drift.drift.map(d => <tr key={d.cause}><th>{d.cause}</th><td>{d.outcome}</td><td>{d.reason ?? (d.parts.join(", ") || "None recorded")}</td></tr>)}</tbody>
    </table>
    <p>Recorded-change attribution: {c.drift.attribution.outcome}. This does not establish why a result changed.</p>
-   <h3>Retained failures and flakiness</h3>
+   <h3>Failures and flakiness</h3>
    <p>{c.stability.state}: {c.stability.runs} distinct results, {c.stability.passes} passes, {c.stability.failures} assertion failures, {c.stability.errors} execution errors or missing results, {c.stability.incomplete} incomplete journals (possibly beside a finalized result).</p>
    <p>{c.stability.reason}</p>
    {c.stability.flaky_assertions.length ? <p>Assertions with both outcomes: {c.stability.flaky_assertions.join(", ")}</p> : null}

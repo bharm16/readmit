@@ -80,23 +80,23 @@ export function HubAdministration() {
 
   return (
     <section className="hub-admin-section" aria-label="Hub host administration">
-      <h4>Hub host administration handoffs</h4>
+      <h4>Host administration</h4>
       <p>Review a command for the customer-operated Linux host. This window reads local copies only. It never runs a hub command or contacts the host.</p>
       <form onSubmit={(event) => void preview(event)}>
         <label htmlFor="hub-admin-operation">Operator step</label>
         <select id="hub-admin-operation" value={request.operation} disabled={busy} onChange={(event) => change("operation", event.target.value as HubAdminRequest["operation"])}>
           {operations.map((operation) => <option key={operation.value} value={operation.value}>{operation.label}</option>)}
         </select>
-        <label htmlFor="hub-admin-config-copy">Local copy of hub configuration</label>
+        <label htmlFor="hub-admin-config-copy">Local configuration</label>
         <input id="hub-admin-config-copy" value={request.config_copy} disabled={busy} onChange={(event) => change("config_copy", event.target.value)} placeholder="Absolute path on this computer" />
-        <label htmlFor="hub-admin-config-path">Hub host configuration path</label>
+        <label htmlFor="hub-admin-config-path">Host configuration</label>
         <input id="hub-admin-config-path" value={request.config_path} disabled={busy} onChange={(event) => change("config_path", event.target.value)} placeholder="/etc/readmit-hub/config.json" />
         {directory ? <>
           <label htmlFor="hub-admin-directory">{request.operation === "schedule-pin" ? "Hub host test specification path" : "Hub host backup directory"}</label>
           <input id="hub-admin-directory" value={request.directory} disabled={busy} onChange={(event) => change("directory", event.target.value)} placeholder="Absolute path on the hub host" />
         </> : null}
         {local ? <>
-          <label htmlFor="hub-admin-local-copy">{request.operation === "schedule-pin" ? "Local copy of test specification" : "Local copy of backup directory"}</label>
+          <label htmlFor="hub-admin-local-copy">{request.operation === "schedule-pin" ? "Local test" : "Local backup"}</label>
           <input id="hub-admin-local-copy" value={request.local_copy} disabled={busy} onChange={(event) => change("local_copy", event.target.value)} placeholder="Absolute path on this computer" />
         </> : null}
         {schedule ? <>
@@ -110,7 +110,7 @@ export function HubAdministration() {
           <input id="hub-admin-schedule-path" value={request.schedule_policy_path} disabled={busy} onChange={(event) => change("schedule_policy_path", event.target.value)} placeholder="/etc/readmit-hub/schedules.json" />
         </> : null}
         <div>
-          <button type="submit" disabled={busy}>Review operator step</button>
+          <button type="submit" disabled={busy}>Preview command</button>
           <button type="button" onClick={() => void cancel()}>Cancel handoff</button>
         </div>
       </form>

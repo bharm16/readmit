@@ -100,7 +100,7 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
   // record count is refused before any run is read.
   await suggestFrom(user, panel, "reviewed-run");
   expect(await panel.findByText(NO_LEDGER)).toBeTruthy();
-  await user.click(panel.getByLabelText("Propose the record count that run settled on"));
+  await user.click(panel.getByLabelText("Suggest count"));
   await enter(user, panel.getByLabelText("Acknowledgement position to propose a value for"), "MSA-2");
   await press(user, panel.getByRole("button", { name: "Also propose MSA-2" }));
 
@@ -118,7 +118,7 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
     expect(proposal(panel, message, position, value).getByText(/ · Not reviewed · read from reviewed-run\/result\/run\//)).toBeTruthy();
   }
   expect(decided()).toEqual(["Remove reschedule-accepted"]);
-  expect((panel.getByRole("button", { name: "Record these decisions" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByRole("button", { name: "Save decisions" }) as HTMLButtonElement).disabled).toBe(true);
 
   // The run under investigation failed its own expectations: it proposes
   // nothing, and the passing run's proposals are no longer on screen.
@@ -132,7 +132,7 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
   await suggestFrom(user, panel, "reviewed-run");
   await press(user, await proposal(panel, "s0001-e000001", "MSA-1", "AA").findByRole("button", { name: /^Approve / }));
   expect(proposal(panel, "s0001-e000001", "MSA-1", "AA").getByText(/ · Approved · /)).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Cancel this review" }));
+  await press(user, panel.getByRole("button", { name: "Cancel" }));
   expect(panel.queryByText(byContent(/^From reviewed-run · /))).toBeNull();
   expect(document.activeElement).toBe(panel.getByLabelText("Entry holding the reviewed run result"));
   expect(journey.callsTo("ApproveExpectations")).toHaveLength(0);
@@ -153,7 +153,7 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
   await user.keyboard("{Enter}");
   await press(user, proposal(panel, "s0001-e000001", "MSA-2", BOOKING_CONTROL).getByRole("button", { name: `Approve ${ECHO_NAME}` }));
   await press(user, proposal(panel, "s0002-e000001", "MSA-1", "AA").getByRole("button", { name: /^Reject / }));
-  await press(user, panel.getByRole("button", { name: "Record these decisions" }));
+  await press(user, panel.getByRole("button", { name: "Save decisions" }));
   expect(
     await panel.findByText("Approved 2, rejected 1, not reviewed 1 of the proposals from reviewed-run. Only what was approved is in this test."),
   ).toBeTruthy();
@@ -163,7 +163,7 @@ test("expectations proposed from a reviewed run are recorded only as a person ap
   // The saved test holds what was approved, with the values the fixed system
   // answered, and nothing that was rejected or never looked at.
   await enter(user, panel.getByLabelText("New entry in this workspace"), "reviewed-ack-test.json");
-  await press(user, panel.getByRole("button", { name: "Write the test spec" }));
+  await press(user, panel.getByRole("button", { name: "Save test" }));
   const written = await panel.findByText(/^Written to reviewed-ack-test\.json/);
   expect(written.textContent).toContain(`spec identity ${journey.digest(`${PROJECT}/reviewed-ack-test.json`)}.`);
   const spec = JSON.parse(journey.readFile(`${PROJECT}/reviewed-ack-test.json`)) as {
@@ -256,7 +256,7 @@ test("an assertion set is imported into the structured draft, an undecodable one
   const explain = (set: string) => journey.commandLine(["explain", "interface/reschedule.run", "--assertions", `interface/${set}`]);
 
   await journey.chooseFolder(journey.path("interface"), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const panel = within(await screen.findByRole("region", { name: "Assertion set authoring" }));
   const clauses = () => panel.queryAllByRole("button", { name: /^Remove / }).map((button) => button.textContent);
 
@@ -272,7 +272,7 @@ test("an assertion set is imported into the structured draft, an undecodable one
 
   // The colleague's set opens into the structured draft, every clause of it.
   await enter(user, panel.getByLabelText("Assertion set entry"), "received-assertions.json");
-  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  await press(user, panel.getByRole("button", { name: "Import" }));
   await waitFor(() => expect(clauses()).toEqual(received.assertions.map((clause) => `Remove ${clause.id}`)));
   expect((panel.getByLabelText("Assertion set name") as HTMLInputElement).value).toBe(received.name);
   for (const clause of received.assertions) {
@@ -289,7 +289,7 @@ test("an assertion set is imported into the structured draft, an undecodable one
   const editedClauses = received.assertions.slice(1).map((clause) => `Remove ${clause.id}`);
   await waitFor(() => expect(clauses()).toEqual(editedClauses));
   const importsBeforeQuestion = journey.callsTo("ImportAssertionSet").length;
-  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  await press(user, panel.getByRole("button", { name: "Import" }));
   expect(panel.getByRole("group", { name: "Import received-assertions.json in place of these assertions?" })).toBeTruthy();
   expect(journey.callsTo("ImportAssertionSet")).toHaveLength(importsBeforeQuestion);
   await user.keyboard("{Escape}");
@@ -300,17 +300,17 @@ test("an assertion set is imported into the structured draft, an undecodable one
   // Even after explicit confirmation, the reader's refusal cannot replace
   // the unsaved clauses or alter the source set.
   await enter(user, panel.getByLabelText("Assertion set entry"), "refused-assertions.json");
-  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  await press(user, panel.getByRole("button", { name: "Import" }));
   const refusedImport = journey.callsTo("ImportAssertionSet").length;
-  await press(user, panel.getByRole("button", { name: "Replace them with refused-assertions.json" }));
+  await press(user, panel.getByRole("button", { name: "Replace assertions" }));
   await waitFor(() => expect(journey.callsTo("ImportAssertionSet")[refusedImport]?.settled).toBe(true));
   expect(panel.getByText(UNDECODABLE)).toBeTruthy();
   expect(clauses()).toEqual(editedClauses);
   expect(journey.digest("interface/received-assertions.json")).toBe(receivedDigest);
 
   await enter(user, panel.getByLabelText("Assertion set entry"), "received-assertions.json");
-  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
-  await press(user, panel.getByRole("button", { name: "Replace them with received-assertions.json" }));
+  await press(user, panel.getByRole("button", { name: "Import" }));
+  await press(user, panel.getByRole("button", { name: "Replace assertions" }));
   await waitFor(() => expect(clauses()).toEqual(received.assertions.map((clause) => `Remove ${clause.id}`)));
 
   // The advanced path: undecodable text is refused by validation and export
@@ -319,11 +319,11 @@ test("an assertion set is imported into the structured draft, an undecodable one
   const completeSet = panel.getByLabelText("Complete assertion set");
   await user.click(completeSet);
   await user.paste(journey.readFile("interface/refused-assertions.json"));
-  await press(user, panel.getByRole("button", { name: "Validate with the assertion reader" }));
+  await press(user, panel.getByRole("button", { name: "Validate" }));
   expect(await panel.findByText(UNDECODABLE)).toBeTruthy();
   await enter(user, panel.getByLabelText("New assertion set entry"), "never-written.json");
   const attempts = journey.callsTo("ExportAssertionSet").length;
-  await press(user, panel.getByRole("button", { name: "Export new assertion set" }));
+  await press(user, panel.getByRole("button", { name: "Export assertion set" }));
   await waitFor(() => expect(journey.callsTo("ExportAssertionSet")[attempts]?.settled).toBe(true));
   expect(panel.getByText(UNDECODABLE)).toBeTruthy();
   expect(exists(journey.path("interface", "never-written.json"))).toBe(false);
@@ -333,16 +333,16 @@ test("an assertion set is imported into the structured draft, an undecodable one
   await user.clear(completeSet);
   await user.click(completeSet);
   await user.paste(REVIEWED);
-  await press(user, panel.getByRole("button", { name: "Validate with the assertion reader" }));
+  await press(user, panel.getByRole("button", { name: "Validate" }));
   expect(await panel.findByText("Accepted by the shared assertion reader.")).toBeTruthy();
   await enter(user, panel.getByLabelText("New assertion set entry"), "received-assertions.json");
-  await press(user, panel.getByRole("button", { name: "Export new assertion set" }));
+  await press(user, panel.getByRole("button", { name: "Export assertion set" }));
   expect(await panel.findByText(OCCUPIED)).toBeTruthy();
   expect(panel.queryByText(/^Written to /)).toBeNull();
   expect(journey.digest("interface/received-assertions.json")).toBe(receivedDigest);
   await enter(user, panel.getByLabelText("New assertion set entry"), "reschedule-assertions.json");
   await user.tab();
-  expect(document.activeElement).toBe(panel.getByRole("button", { name: "Export new assertion set" }));
+  expect(document.activeElement).toBe(panel.getByRole("button", { name: "Export assertion set" }));
   await user.keyboard("{Enter}");
   const exported = await panel.findByText(/^Written to reschedule-assertions\.json · identity /);
   const identity = journey.digest("interface/reschedule-assertions.json");
@@ -363,7 +363,7 @@ test("an assertion set is imported into the structured draft, an undecodable one
   // And the exported set opens into the structured draft like any other.
   await press(user, panel.getByRole("button", { name: "Structured" }));
   await enter(user, panel.getByLabelText("Assertion set entry"), "reschedule-assertions.json");
-  await press(user, panel.getByRole("button", { name: "Import into this draft" }));
+  await press(user, panel.getByRole("button", { name: "Import" }));
   await waitFor(() =>
     expect(clauses()).toEqual(["Remove booking-accepted", "Remove reschedule-accepted", "Remove booking-control-echoed"]),
   );

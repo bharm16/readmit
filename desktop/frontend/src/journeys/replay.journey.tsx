@@ -47,7 +47,7 @@ function panelOf(heading: string) {
   return within(panel as HTMLElement);
 }
 
-const replay = () => panelOf("Replay selected messages");
+const replay = () => panelOf("Replay");
 const preview = () => within(replay().getByRole("region", { name: "Replay preview" }));
 
 /** The command line's replay of the same case, with the flags the window's
@@ -80,23 +80,23 @@ function commandLine(target: string, policy: string, extra: string[] = []) {
  * policy approving only a network the downstream is not on: what a
  * colleague's configuration of the wrong environment looks like. */
 async function configureRefusals(user: UserEvent, address: string): Promise<void> {
-  const panel = panelOf("Environment & Credential Configuration");
-  await press(user, panel.getByRole("button", { name: "Target & Diagnostics" }));
+  const panel = panelOf("Environments");
+  await press(user, panel.getByRole("button", { name: "Target" }));
   await enter(user, panel.getByLabelText("Target Config File"), "production-target.json");
   await enter(user, panel.getByLabelText("Environment Name"), "scheduling-production");
   await user.selectOptions(panel.getByLabelText("Classification"), "production");
   await enter(user, panel.getByLabelText("Destination Address"), address);
-  await press(user, panel.getByRole("button", { name: "Save Target Configuration" }));
+  await press(user, panel.getByRole("button", { name: "Save target" }));
   expect(await panel.findByText("Target configuration saved successfully.")).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Approved Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Send policy" }));
   await enter(user, panel.getByLabelText("Policy File"), "elsewhere-policy.json");
-  await press(user, await panel.findByRole("button", { name: "Start New Send Policy" }));
+  await press(user, await panel.findByRole("button", { name: "New send policy" }));
   await enter(user, panel.getByLabelText("Approved destination prefix"), "10.1.0.0/16{Enter}");
   await panel.findByText("10.1.0.0/16", { selector: "code" });
   for (const prefix of panel.queryAllByText(/^\d+\.\d+\.\d+\.\d+\/\d+$/, { selector: "code" })) {
     if (prefix.textContent !== "10.1.0.0/16") await press(user, within(prefix.closest("li") as HTMLElement).getByRole("button", { name: "Remove" }));
   }
-  await press(user, panel.getByRole("button", { name: "Save Approved Send Policy" }));
+  await press(user, panel.getByRole("button", { name: "Save policy" }));
   expect(await panel.findByText("Approved-destination policy saved.")).toBeTruthy();
   expect(JSON.parse(journey.readFile(`${PROJECT}/elsewhere-policy.json`))).toEqual({
     schema: "readmit-send-policy/v1",
@@ -191,7 +191,7 @@ test("selected case messages are previewed as readmit replay previews them and s
   // What the transformations change is named, and its values are shown only
   // on purpose.
   expect(rowsOf(/values hidden until revealed/)).toContainEqual(["s0001-e000001", "rebase-control-ids", "MSH[1]-10[1]", "present", "present"]);
-  await press(user, preview().getByRole("button", { name: "Reveal changed values" }));
+  await press(user, preview().getByRole("button", { name: "Show values" }));
   await replay().findByRole("table", { name: /values revealed/ });
   const revealed = rowsOf(/values revealed/);
   expect(revealed).toContainEqual(["s0001-e000001", "rebase-control-ids", "MSH[1]-10[1]", "OWN-BOOK-1 (present)", "READMIT000001 (present)"]);

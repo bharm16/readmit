@@ -619,7 +619,7 @@
       "inputs": ["readmit-runner-admission/v1"],
       "outputs": ["readmit-runner-admission/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/OperationAccess.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
+      "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
       "parity_test": {"package": "internal/desktop", "name": "TestRunnerAdmissionAdministrationShowsAndSettles"},
       "implemented": true
     },
@@ -635,7 +635,7 @@
       "inputs": ["readmit-runner-admission/v1"],
       "outputs": ["readmit-runner-admission/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/OperationAccess.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
+      "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
       "parity_test": {"package": "internal/desktop", "name": "TestRunnerAdmissionAdministrationShowsAndSettles"},
       "implemented": true
     },
@@ -664,7 +664,7 @@
       "inputs": ["readmit-runner-admission/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/OperationAccess.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
+      "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
       "parity_test": {"package": "internal/desktop", "name": "TestRunnerAdmissionAdministrationShowsAndSettles"},
       "implemented": true
     },
@@ -2882,7 +2882,7 @@
       "inputs": ["readmit-operation-policy/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1", "readmit-runner-admission/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/OperationAccess.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
+      "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
       "parity_test": {"package": "internal/desktop", "name": "TestRunnerAdmissionAdministrationShowsAndSettles"},
       "implemented": true
     },
@@ -2898,7 +2898,7 @@
       "inputs": ["readmit-operation-policy/v1", "readmit-entitlement/v2", "readmit-entitlement-trust/v1", "readmit-runner-admission/v1"],
       "outputs": ["readmit-runner-admission/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/OperationAccess.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
+      "gui_test": {"file": "desktop/frontend/src/RunnerPanel.test.tsx", "name": "runner capacity is shown and settled explicitly, never silently"},
       "parity_test": {"package": "internal/desktop", "name": "TestRunnerAdmissionAdministrationShowsAndSettles"},
       "implemented": true
     },
@@ -7795,6 +7795,30 @@
       "kind": "tooling",
       "capability": "Verify readmit against independent endpoints and an externally authored corpus",
       "owner": "bharm16/readmit#244",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
+      "id": "tooling.tools.label-coverage",
+      "source": "tools/label_coverage.py",
+      "kind": "tooling",
+      "capability": "Check implemented product-label decisions against the presentation sources and report unreviewed label candidates",
+      "owner": "bharm16/readmit#512",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository review tooling that reads docs/labels/inventory.json against the desktop, shell and site sources; it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
+      "id": "tooling.make.check-labels",
+      "source": "make check-labels",
+      "kind": "tooling",
+      "capability": "Run the product-label coverage check",
+      "owner": "bharm16/readmit#512",
       "inputs": [],
       "outputs": [],
       "prerequisites": [],

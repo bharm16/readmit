@@ -79,7 +79,7 @@ test(
     journey.makePrivateFolder("runner/documents");
 
     // The runner's configuration, generated from the form.
-    const view = await runnerView(user, "Runner", "Runner configuration and work");
+    const view = await runnerView(user, "Runner", "Runner");
     await enter(user, view.getByLabelText("Hub URL"), `https://${hub.address}`);
     const [configProject] = view.getAllByLabelText("Project");
     await enter(user, configProject!, HUB_PROJECT);
@@ -311,7 +311,7 @@ test(
     // The build this machine's runner is, as its installed executable says.
     const build = (await journey.commandLine(["--version"])).stdout.replace(/^readmit version (\S+)\n$/, "$1");
 
-    const view = await runnerView(user, "Runner", "Runner configuration and work");
+    const view = await runnerView(user, "Runner", "Runner");
     await fillRunnerForm(user, view, {
       hub: `https://${hub.address}`,
       project: HUB_PROJECT,

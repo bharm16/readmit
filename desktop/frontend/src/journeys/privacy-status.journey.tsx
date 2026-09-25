@@ -35,9 +35,9 @@ test("the privacy status shows the environment active while a connectivity check
   await createProject(user, journey, "investigations", "connectivity", "Scheduling interface");
   await configureTarget(user, downstream.address);
   const panel = within(
-    screen.getByRole("heading", { name: "Environment & Credential Configuration" }).closest("section") as HTMLElement,
+    screen.getByRole("heading", { name: "Environments" }).closest("section") as HTMLElement,
   );
-  const refresh = () => press(user, screen.getByRole("button", { name: "Refresh the states" }));
+  const refresh = () => press(user, screen.getByRole("button", { name: "Refresh privacy status" }));
 
   // The check configuring the environment ran is over: nothing holds a
   // connection to the downstream system, and the environment reads idle.
@@ -47,7 +47,7 @@ test("the privacy status shows the environment active while a connectivity check
 
   // Checked again, the check connects and waits out its quiet window with the
   // connection open. While the downstream system holds it, the status is read.
-  await press(user, panel.getByRole("button", { name: "Check Target Reachability & TLS" }));
+  await press(user, panel.getByRole("button", { name: "Test connection" }));
   await waitFor(() => expect(downstream.connected()).toBe(1));
   const asked = journey.callsTo("DisclosureStatus").length;
   await refresh();

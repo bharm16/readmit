@@ -1,5 +1,46 @@
 Unsigned preview of local HL7 incident reproduction and regression workflows.
 
+- This preview's product labels were reviewed label by label and shortened to
+  task-focused names across the desktop application, the shell's regions and
+  command palette, and the static website (#512). Sentence-length buttons and
+  field labels became conventional object and action names — Open case, Save
+  version, Reset fixture, Approve send, Check connection — and every syntax
+  requirement, default, optionality or safety scope a shortened label carried
+  now sits beside its control as persistent helper text. Reveal controls for
+  sensitive values stay text with their patient-data warning; approvals,
+  sends, deletes and resets stay text and stay distinct from one another.
+
+- Licensing is now one **License** page instead of a permanent form under the
+  privacy surface (#512). It shows this device's status with one primary
+  **Activate license…** or **Renew license…** action whose input methods — the
+  received file or its pasted contents — are choices inside the flow, an
+  explicit final **Activate** or **Install renewal**, and a **More actions**
+  disclosure holding the exact-byte **Export license…** and the confirmed
+  **Deactivate device…**. The administrator's supplied-folder activation, its
+  role assignments, clock resolution, renewal, release and export operations,
+  and configuring the account portal live behind the page's **Administrator
+  setup** subview. Runner capacity and stale-admission reconciliation moved to
+  the Runner panel beside the runner work they govern. Nothing was removed:
+  every workflow stays reachable in the window, payment still never activates
+  anything, and no URL, trial or online activation was invented.
+
+- The Suites page's views are real tabs — Configuration, Releases, Prepare,
+  Coverage, Promotion — with keyboard arrow, Home and End navigation and one
+  selected panel named by its tab, replacing the navigation buttons (#512).
+  Duplicate headings inside a selected tab were removed while each group kept
+  its accessible name.
+
+- A small set of conventional utility controls became icon buttons with an
+  explicit accessible name and a hover-and-focus tooltip: each region's help,
+  the editor and project-form close controls, plan-editor undo, review-page
+  pagination, and the scoped license, activation and privacy refreshes (#512).
+  The command palette stays text.
+
+- A repeatable label coverage check (`make check-labels`, strict closure via
+  `python3 tools/label_coverage.py --strict`) now holds the reviewed label
+  inventory in `docs/labels/` against the presentation sources, flagging a
+  renamed string that reappears or a reviewed label that drifts (#512).
+
 - Every single-file document readmit replaces in place now syncs the folder that
   holds it before the write is reported: protection and secret reference
   documents, target configurations, observation sources and windows, project,

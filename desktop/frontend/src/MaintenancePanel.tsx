@@ -210,7 +210,7 @@ export function MaintenancePanel({
   return (
     <div className="maintenance" aria-label="Project maintenance">
       <div className="maintenance-header">
-        <h3>Maintain this workspace</h3>
+        <h3>Maintenance</h3>
         <button type="button" disabled={blocked} onClick={onClose}>
           Close maintenance
         </button>
@@ -250,11 +250,12 @@ export function MaintenancePanel({
       {feedback ? <p className="reason" role="status">{feedback}</p> : null}
 
       {tab === "backup" ? (
-        <section aria-label="Create and verify a backup">
+        <section aria-label="Backups">
           {!project ? <p className="hint">Open a project before creating a backup.</p> : null}
           <button type="button" disabled={blocked || !project} onClick={() => void pick("backup-destination", setBackupDestination)}>
-            Choose backup destination…
+            Choose destination…
           </button>
+          <p className="hint">Destination for the backup.</p>
           <p className="hint">{backupDestination || "No destination chosen."}</p>
           <button
             type="button"
@@ -273,10 +274,10 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Create verified backup
+            Create backup
           </button>
           <button type="button" disabled={blocked} onClick={() => void pick("backup-source", setBackupPath)}>
-            Choose backup to verify…
+            Browse backup…
           </button>
           <p className="hint">{backupPath || "No backup chosen."}</p>
           <button
@@ -326,8 +327,9 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Restore into new destination and reopen
+            Restore backup
           </button>
+          <p className="hint">Restore into a new destination and reopen.</p>
           <BackupReport result={shownReport} />
         </section>
       ) : null}
@@ -368,7 +370,7 @@ export function MaintenancePanel({
           >
             Set retained-file quota
           </button>
-          <h4>Rebuild a disposable index</h4>
+          <h4>Index</h4>
           <p className="hint">
             Indexes are derived and disposable. This reuses the same BuildIndex / DescribeIndex controls as the
             explorer (#248); it does not create a second search path.
@@ -413,7 +415,7 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Rebuild index from case
+            Rebuild index
           </button>
           <Report indicators={indicators} progress={null} result={indexResult} />
         </section>
@@ -461,7 +463,7 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Preview archive or delete
+            Preview cleanup
           </button>
           {preview ? (
             <div className="maintenance-preview">
@@ -471,7 +473,7 @@ export function MaintenancePanel({
               <p className="hint">{preview.explain}</p>
               <p className="hint warning">{preview.not_erasure}</p>
               <button type="button" disabled={blocked} onClick={() => void pick("archive-destination", setArchiveDestination)}>
-                Choose recovery archive destination…
+                Choose archive destination…
               </button>
               <p className="hint">{archiveDestination || "No archive destination chosen."}</p>
               <button
@@ -492,8 +494,9 @@ export function MaintenancePanel({
                   })();
                 }}
               >
-                Archive (keep source)
+                Archive
               </button>
+              <p className="hint">Source is kept.</p>
               <label>
                 <input
                   type="checkbox"
@@ -501,8 +504,11 @@ export function MaintenancePanel({
                   disabled={blocked}
                   onChange={(e) => setConfirmDelete(e.target.checked)}
                 />{" "}
-                I understand delete unlinks the source after a verified archive and is not secure erasure
+                Confirm deletion
               </label>
+              <p className="hint warning">
+                Delete unlinks {preview.project} after a verified archive and is not secure erasure.
+              </p>
               <button
                 type="button"
                 disabled={blocked || !archiveDestination || !preview.selection || !confirmDelete}
@@ -527,7 +533,7 @@ export function MaintenancePanel({
                   })();
                 }}
               >
-                Delete after verified archive
+                Delete source
               </button>
             </div>
           ) : null}
@@ -599,19 +605,19 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Recover the selected copy
+            Recover copy
           </button>
         </section>
       ) : null}
 
       {tab === "upgrade" ? (
-        <section aria-label="Staged upgrade check and rollback archive">
+        <section aria-label="Upgrade and rollback">
           <p className="hint">
             Stage packages yourself. Opening this tab never checks a network, downloads anything, elevates, or
             interrupts a service.
           </p>
           <button type="button" disabled={blocked} onClick={() => void pick("upgrade-candidate", chooseCandidate)}>
-            Choose staged candidate folder…
+            Browse upgrade…
           </button>
           <p className="hint">{candidate || "No candidate chosen."}</p>
           <button
@@ -650,8 +656,9 @@ export function MaintenancePanel({
                       ))}
                     </ul>
                   </section>
-                  <section className="maintenance-inventory" aria-label="Reviewed on this machine">
-                    <h4>Reviewed on this machine</h4>
+                  <section className="maintenance-inventory" aria-label="Local review">
+                    <h4>Local review</h4>
+                    <p className="hint">Reviewed on this machine for candidate {upgrade.view.plan.candidate}.</p>
                     <ul>
                       {upgrade.view.plan.retained.map((retained) => (
                         <li key={`${retained.kind}-${retained.name}`}>
@@ -669,8 +676,9 @@ export function MaintenancePanel({
             Administrator approves taking a rollback archive (installing still uses the native installer)
           </label>
           <button type="button" disabled={blocked} onClick={() => void pick("archive-destination", setRollbackDestination)}>
-            Choose rollback archive destination…
+            Choose destination…
           </button>
+          <p className="hint">Destination for the rollback archive.</p>
           <p className="hint">{rollbackDestination || "No rollback destination chosen."}</p>
           <button
             type="button"
@@ -702,7 +710,7 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Prepare rollback archive
+            Create rollback archive
           </button>
           <Report indicators={indicators} progress={null} result={upgrade} />
           <BackupReport result={shownReport} />

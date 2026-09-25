@@ -82,14 +82,14 @@ test("TeamCollaboration loads history, posts a comment with service identity, an
 
   render(<TeamCollaboration project="cardio-study" />);
 
-  await user.click(screen.getByRole("button", { name: /Load review history/i }));
+  await user.click(screen.getByRole("button", { name: /Review history/i }));
   expect(facade.callsTo("ListHubReviews").length).toBe(1);
   expect(await screen.findByText(/Assigned for review/i)).toBeTruthy();
   expect(screen.getByText(/doctor@hospital\.org/i)).toBeTruthy();
 
   await user.type(screen.getByLabelText(/Evidence digest/i), evidence);
   await user.type(screen.getByLabelText(/Recipient subject/i), "reviewer@hospital.org");
-  await user.click(screen.getByRole("button", { name: /Submit review decision/i }));
+  await user.click(screen.getByRole("button", { name: /Post comment/i }));
   expect(facade.callsTo("PostHubReview").length).toBe(1);
   expect(captured?.evidence).toBe(evidence);
   expect(captured?.kind).toBe("comment");
@@ -101,7 +101,7 @@ test("TeamCollaboration loads history, posts a comment with service identity, an
   expect(facade.callsTo("ListHubReviews").length).toBe(2);
   expect(screen.getByText(/Assigned for review/i)).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: /Explain downloaded-copy limits/i }));
+  await user.click(screen.getByRole("button", { name: /Download limits/i }));
   expect(facade.callsTo("ExplainHubCustody").length).toBe(1);
   expect(await screen.findByText(/already-downloaded files/i)).toBeTruthy();
 
@@ -132,10 +132,10 @@ test("TeamCollaboration shows a recorded decision, never a refusal, when the his
   });
 
   render(<TeamCollaboration project="cardio-study" />);
-  await user.click(screen.getByRole("button", { name: /Load review history/i }));
+  await user.click(screen.getByRole("button", { name: /Review history/i }));
   expect(await screen.findByText(/Review history \(head 0\)/i)).toBeTruthy();
   await user.type(screen.getByLabelText(/Evidence digest/i), evidence);
-  await user.click(screen.getByRole("button", { name: /Submit review decision/i }));
+  await user.click(screen.getByRole("button", { name: /Post comment/i }));
 
   expect(await screen.findByText(/Recorded once/i)).toBeTruthy();
   expect(screen.getByText(/Review history \(head 1\)/i)).toBeTruthy();
@@ -201,7 +201,7 @@ test("TeamCollaboration shows concurrent tips, resolves explicitly, and retains 
 
   render(<TeamCollaboration project="cardio-study" workspace="/workspace-under-test" />);
 
-  await user.click(screen.getByRole("button", { name: /Load lifecycle and tips/i }));
+  await user.click(screen.getByRole("button", { name: /Version history/i }));
   expect(await screen.findByText(/edit-a, edit-b/i)).toBeTruthy();
   expect(screen.getByText(/Do not overwrite silently/i)).toBeTruthy();
 
@@ -212,11 +212,11 @@ test("TeamCollaboration shows concurrent tips, resolves explicitly, and retains 
   await user.type(lifeIds[0]!, "resolve-1");
   await user.type(screen.getByLabelText(/Artifact digest/i), evidence);
   await user.type(screen.getByLabelText(/Parents \(comma-separated tip ids\)/i), "edit-a, edit-b");
-  await user.click(screen.getByRole("button", { name: /Submit lifecycle command/i }));
+  await user.click(screen.getByRole("button", { name: /Resolve conflict/i }));
   expect(facade.callsTo("PostHubLifecycle").length).toBe(1);
 
   await user.type(screen.getByLabelText(/Local edited path/i), "/workspace-under-test/offline.bin");
-  await user.click(screen.getByRole("button", { name: /Retain offline draft/i }));
+  await user.click(screen.getByRole("button", { name: /Save offline draft/i }));
   expect(facade.callsTo("SaveHubOfflineDraft").length).toBe(1);
   expect(await screen.findByText(/Drafts retained: 1/i)).toBeTruthy();
 
@@ -277,20 +277,20 @@ test("a sharing policy is announced, a summary requested and approved, and the a
   await user.type(screen.getByLabelText(/Support command id/i), "sup-1");
   await user.type(screen.getByLabelText(/Reviewer to ask/i), "reviewer@hospital.org");
 
-  await user.click(screen.getByRole("button", { name: /Announce sharing policy/i }));
+  await user.click(screen.getByRole("button", { name: /Announce policy/i }));
   const announced = facade.callsTo("PostHubSupportReview")[0]?.args[0] as HubSupportReviewRequest;
   expect(announced.kind).toBe("support-policy");
   expect(announced.entry).toBe("sharing-policy.json");
   expect(announced.recipient).toBe("");
   expect(await screen.findByText(/Recorded: support-policy by author@hospital.org@https:\/\/idp\.example/)).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: /Request support approval/i }));
+  await user.click(screen.getByRole("button", { name: /Request approval/i }));
   const asked = facade.callsTo("PostHubSupportReview")[1]?.args[0] as HubSupportReviewRequest;
   expect(asked.kind).toBe("support-request");
   expect(asked.entry).toBe("support-bundle");
   expect(asked.recipient).toBe("reviewer@hospital.org");
 
-  await user.click(screen.getByRole("button", { name: /Approve this summary/i }));
+  await user.click(screen.getByRole("button", { name: /Approve summary/i }));
   const approved = facade.callsTo("PostHubSupportReview")[2]?.args[0] as HubSupportReviewRequest;
   expect(approved.kind).toBe("support-approval");
   expect(approved.recipient).toBe("");
@@ -299,7 +299,7 @@ test("a sharing policy is announced, a summary requested and approved, and the a
   // name a digest a teammate's approval recorded — the hub decides either way.
   expect((screen.getByLabelText(/Approved summary digest/i) as HTMLInputElement).value).toBe("e".repeat(64));
   await user.type(screen.getByLabelText(/Download the approved summary to/i), "/downloads/support.json");
-  await user.click(screen.getByRole("button", { name: /Download approved support summary/i }));
+  await user.click(screen.getByRole("button", { name: /Download summary/i }));
   expect(facade.callsTo("DownloadHubExport").length).toBe(1);
   expect(await screen.findByText(/Export completed — \/downloads\/support\.json/)).toBeTruthy();
 
@@ -384,7 +384,7 @@ test("history and notifications are searched with the person's query, and a quer
     SearchHubNotifications: async () => ({ state: "completed", project: "cardio-study", head: 3, events: [] }),
   });
   render(<TeamCollaboration project="cardio-study" />);
-  const form = within(screen.getByRole("form", { name: "Search history and notifications" }));
+  const form = within(screen.getByRole("form", { name: "Search team activity" }));
 
   await user.type(form.getByLabelText("After sequence"), "-1");
   await user.click(form.getByRole("button", { name: "Search history" }));
@@ -450,7 +450,7 @@ test("a support summary digest the hub refuses is reported as refused, and the a
           },
   });
   render(<TeamCollaboration project="cardio-study" workspace="/workspace-under-test" />);
-  const download = screen.getByRole("button", { name: "Download approved support summary" });
+  const download = screen.getByRole("button", { name: "Download summary" });
   expect(download.hasAttribute("disabled")).toBe(true);
 
   await user.type(screen.getByLabelText("Approved summary digest"), "d".repeat(64));

@@ -52,7 +52,7 @@ function licensedCommandLine(args: string[]) {
 /** Opens a folder of this machine as the workspace, from the window. */
 async function openWorkspace(user: UserEvent, folder: string): Promise<void> {
   await journey.chooseFolder(journey.path(folder), "Open a readmit workspace folder");
-  await press(user, screen.getByRole("button", { name: "Open a workspace folder…" }));
+  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByRole("region", { name: "Synthetic scenario authoring" })).toBeTruthy();
 }
 
@@ -79,14 +79,14 @@ test("a scenario is bound to a local profile, refused an unsupported one, saved,
   // A local profile of a family the reader does not know is refused in its
   // words and pins nothing: the document keeps the profile it had.
   await enter(user, scenarios().getByLabelText("Local profile entry"), "mdm-profile.json");
-  await press(user, scenarios().getByRole("button", { name: "Use local profile family" }));
+  await press(user, scenarios().getByRole("button", { name: "Use local profile" }));
   expect(await scenarios().findByText("a local profile names one of the message families ADT, SIU, ORM, ORU")).toBeTruthy();
   expect(scenarioDocument()).toBe(blank);
 
   // An ADT profile pins the ADT lifecycle; the SIU steps the document holds
   // are then refused on save exactly as the command refuses them.
   await enter(user, scenarios().getByLabelText("Local profile entry"), "adt-profile.json");
-  await press(user, scenarios().getByRole("button", { name: "Use local profile family" }));
+  await press(user, scenarios().getByRole("button", { name: "Use local profile" }));
   expect(await scenarios().findByText("Pinned fixture-local-siu@1 → readmit-adt-lifecycle-v1 (readmit-scenario-generator-v1)")).toBeTruthy();
   expect(scenarioDocument()).toContain('"profile": "readmit-adt-lifecycle-v1"');
   journey.writeFile("as-bound.json", scenarioDocument());
@@ -98,7 +98,7 @@ test("a scenario is bound to a local profile, refused an unsupported one, saved,
   // The SIU profile pins the SIU lifecycle back, and the scenario is saved
   // from the keyboard: Tab from its name reaches Save, and Enter saves.
   await enter(user, scenarios().getByLabelText("Local profile entry"), "siu-profile.json");
-  await press(user, scenarios().getByRole("button", { name: "Use local profile family" }));
+  await press(user, scenarios().getByRole("button", { name: "Use local profile" }));
   expect(await scenarios().findByText("Pinned fixture-local-siu@1 → readmit-siu-lifecycle-v1 (readmit-scenario-generator-v1)")).toBeTruthy();
   await enter(user, scenarios().getByLabelText("Save as"), "scenario.json");
   await user.tab();
@@ -252,7 +252,7 @@ test("SIU fixtures generated in the window are the command line's family byte fo
   await openWorkspace(user, "work");
   await openTab(user, "SIU fixtures");
 
-  const generate = scenarios().getByRole("button", { name: "Generate SIU fixtures" });
+  const generate = scenarios().getByRole("button", { name: "Generate fixtures" });
   await enter(user, scenarios().getByLabelText("Seed"), "7");
   await enter(user, scenarios().getByLabelText(/^Base time/), "2026-01-02T03:04:05");
   await user.selectOptions(scenarios().getByLabelText("Generator version"), "readmit-synth-v1");
