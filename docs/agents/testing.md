@@ -212,12 +212,14 @@ local investigation. They do not run on pull requests; normal Go tests, and so
 For a focused campaign use `python3 tools/fuzz.py --package ./internal/hl7`;
 `--list` shows the selected targets. CI discovers every target and partitions
 it across three shards; adding a fuzz function does not require editing a
-workflow list. To fuzz a changed target in CI before the next daily campaign,
-dispatch one on the branch with `gh workflow run ci.yml --ref BRANCH`.
+workflow list. To fuzz a changed target in CI, dispatch a campaign on the
+branch with `gh workflow run ci.yml --ref BRANCH`.
 
 Run `make test-tools`, `make verify`, or `make mutate` locally when changing those
 tools or their checked contracts. The verifier and mutation runner also support
-`--only NAME`. Every full verification and mutation check remains required in CI.
+`--only NAME`. Under [ADR-0011](../adr/0011-pre-product-ci-runs-only-correctness-checks.md)
+CI runs them only on a manual dispatch and a release tag, so these local runs
+are the only check a pull request that changes them gets.
 
 After a rebase, rerun tests for the integrated changes, then rely on fresh CI for
 the final revision. If a failure appears unrelated, retain its exact output and
@@ -226,13 +228,23 @@ flake or establish that a failing revision is correct.
 
 ## CI and merge
 
-Automatic journey execution is temporarily disabled by the owner's decision.
-Pull requests, pushes (including release tags), scheduled runs, and default
-manual runs skip frontend, hub, packaged CLI, and native accessibility journeys.
-Unit/component tests, race tests, independent verification, mutation checks,
-vulnerability checks, builds, archive smoke tests, and native installation,
-startup and removal checks remain required. A green automatic run therefore
-provides no journey or interactive-accessibility acceptance evidence.
+Until the product works, CI runs only correctness checks on pull requests and
+pushes to main ([ADR-0011](../adr/0011-pre-product-ci-runs-only-correctness-checks.md)):
+`go-tests` (formatting, vet and `make test`), `hub` and `desktop-shell` (frontend
+build and behavior tests, and the shell's Go build and tests on macOS). The
+shell's Windows-only code is tested only in the Windows `desktop-package` job.
+Tooling tests, independent
+verification, mutation checks, vulnerability scans, timed fuzzing, the release
+archives and their native smoke tests, and the native desktop packages and
+their installation checks run only on a manual dispatch
+(`gh workflow run ci.yml --ref BRANCH`, `gh workflow run desktop.yml --ref BRANCH`)
+and, for `ci.yml`, a release tag. Nothing runs on a schedule. A green automatic
+run is therefore no evidence about packaging, installation, the dependency
+advisories or the tools.
+
+Journeys are opt-in even then. Every event, a default manual run included,
+skips frontend, hub, packaged CLI, and native accessibility journeys, so a
+green run provides no journey or interactive-accessibility acceptance evidence.
 
 Journeys remain runnable locally. Explicitly opt into CI execution with
 `gh workflow run ci.yml --ref BRANCH -f run_journeys=true` for hub and packaged
@@ -240,16 +252,17 @@ CLI journeys, or `gh workflow run desktop.yml --ref BRANCH -f run_journeys=true`
 for frontend and native journeys. An opted-in failure still fails its aggregate;
 `quality` requires the hub-journeys job to be skipped when not opted in.
 
-The `quality` check aggregates Go tests, tooling/independent verification and
-mutations, the vulnerability scan, the hub, the hub journeys, and the three
-timed fuzz shards on the events that run them. It fails if any job its event runs fails, is skipped,
-or is cancelled, and if the fuzz shards ran on any other event. Packaging and
+The `quality` check aggregates Go tests and the hub, and on a manual or tag
+run also tooling/independent verification and mutations, the vulnerability
+scan and the three timed fuzz shards, plus the hub journeys when opted in. It
+fails if any job its event runs fails, is skipped, or is cancelled, and if a
+manual-or-tag job ran on any other event. On a manual or tag run, packaging and
 the five native smoke tests run concurrently, and test the exact archives later
 used for publication.
-The desktop module builds and scans separately, and `desktop` is that workflow's
-equivalent stable aggregate: it requires the macOS shell build and the five
-`desktop-package` jobs plus the five `desktop-install` jobs, which download,
-install, check and remove the exact unsigned artifacts on fresh native runners.
+The desktop module builds separately, and `desktop` is that workflow's
+equivalent stable aggregate: it requires the macOS shell job, and on a manual run the five `desktop-package` jobs plus the five
+`desktop-install` jobs, which download, install, check and remove the exact
+unsigned artifacts on fresh native runners.
 An install check never runs on the runner that built its package: that runner
 carries the Go, Node and WiX build setup, the build tree and the frontend's
 modules, which a person's machine does not, so a package that works only
@@ -273,21 +286,19 @@ checks the driver against a fake backend. Run it locally only on a machine
 where you can give up the keyboard: on macOS it answers folder and save panels
 with keystrokes, once the application is frontmost, and needs your terminal to
 hold the accessibility permission.
-The `desktop` aggregate fails the same way if any of them fails, is skipped or is cancelled. Release credentials remain exclusive to
+The `desktop` aggregate fails the same way if any job its event runs fails, is skipped or is cancelled. Release credentials remain exclusive to
 trusted tag runs; no signing credential reaches any workflow.
 
-Wait for `quality`, `package`, all five `native-smoke` checks, and `desktop` on
-the final PR revision before merging. That list is unchanged by the desktop
-packaging jobs, because they sit behind `desktop`. Require those stable contexts
-in the repository's main-branch protection. After splitting jobs, keep `quality`
+Wait for `quality` and `desktop` on the final PR revision before merging.
+Those two stable contexts are main's required checks in branch protection. After splitting jobs, keep `quality`
 and `desktop` as the stable aggregates of their workflows so another worktree
 never has to guess which new job names are mandatory. Each PR cancels only its
-own superseded workflow runs; main, tag, daily and dispatched runs keep
-independent groups.
+own superseded workflow runs; main, tag and dispatched runs keep independent
+groups.
 
-Timed fuzz campaigns run in the CI workflow daily at 07:41 UTC, when dispatched,
-and for every release tag, whose `publish` still requires them through
-`quality`; they never run on a pull request or a push to main. Each shard first
+Timed fuzz campaigns run in the CI workflow when dispatched and for every
+release tag, whose `publish` still requires them through `quality`; they never
+run on a schedule, a pull request or a push to main. Each shard first
 restores the corpus the latest campaigns on main retained as the
 `fuzz-corpus-1` to `fuzz-corpus-3` artifacts, all three of them, so a target
 keeps its corpus when a new target moves it to another shard and no cache
@@ -306,8 +317,8 @@ and its aggregate passes only because every one of them was skipped. That is
 the case when the pull request's last run was made against the main commit it
 merged onto. Every other push to main runs the whole workflow as the integration
 check: a merge on a stale base, a direct push, a record from a run that failed,
-is unfinished or has expired, and any error while looking. Tag, daily and
-dispatched runs are always complete. A pull request may merge on a stale base,
+is unfinished or has expired, and any error while looking. Tag and dispatched
+runs are always complete. A pull request may merge on a stale base,
 so the main run after it is the check that proves that merge.
 
 Each job has its own Go cache scope, including each fuzz shard. Keys include the

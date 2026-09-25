@@ -7766,6 +7766,18 @@
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
     },
     {
+      "id": "tooling.tools.release_notes",
+      "source": "tools/release_notes.py",
+      "kind": "tooling",
+      "capability": "Assemble the release notes from docs/release-notes.md and the per-change notes in docs/release-notes.d, and fold them in before a release",
+      "owner": "bharm16/readmit#244",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
       "id": "tooling.tools.smoke",
       "source": "tools/smoke.py",
       "kind": "tooling",

@@ -171,12 +171,12 @@ hashes and the fixture are not a published/signed release or provenance signatur
 
 A `desktop-install` job of the desktop workflow drives the application it has
 just installed — the exact package `desktop-package` built for that target —
-through the platform's own accessibility API, before removing it. A pull
-request's run, and a push to main that runs its jobs, does so only in the
-linux/amd64 install job, to keep pull requests fast; the daily run on main and
-a dispatched run do so on all five targets, and they are the runs to cite. The
-other targets of a pull request's run install, check and remove their
-packages without the journeys.
+through the platform's own accessibility API, before removing it. It does so on
+all five targets only in a manual dispatch that sets `run_journeys=true`, and
+that is the run to cite. Packages are built and installed only on manual runs
+([ADR-0011](adr/0011-pre-product-ci-runs-only-correctness-checks.md)); a manual
+run without `run_journeys` installs, checks and removes them without the
+journeys.
 
 ```sh
 python3 tools/native_journey.py --desktop /absolute/installed/readmit-desktop \
@@ -258,9 +258,9 @@ journey's `accessibility/`, the tree the window gave a screen reader at each
 checkpoint: every element's role, accessible name, text, value and enabled,
 focused and checked states. That is the screen-reader evidence an
 accessibility review can cite per platform, and each checkpoint records how
-many buttons in the page have no accessible name. Only the daily and
-dispatched runs publish it for every target; artifacts expire, and the daily
-run on main regenerates them from main's own packages, so cite that run.
+many buttons in the page have no accessible name. Only a dispatched run with
+`run_journeys=true` publishes it; artifacts expire, so dispatch one on main to
+regenerate them from main's own packages, and cite that run.
 The receipt file's contents are fsynced and named before the journey's temporary
 folder is removed. Cleanup waits up to 30 seconds for a WebView2 helper to
 release its files; if the folder is still held, the receipt retains the path,
@@ -324,8 +324,8 @@ real user events against the real `internal/desktop` facade over real files in
 a temporary root, with no stubbed answer; see
 [the desktop shell](desktop.md#interaction-journeys-against-the-real-facade)
 and [validation](agents/testing.md) for how. The macOS shell job of the desktop
-workflow runs them on every pull request and every push to main, and a failing
-journey fails the `desktop` check. They cover:
+workflow runs them only in a manual dispatch that sets `run_journeys=true`, and
+a failing journey fails that run's `desktop` check. They cover:
 
 - the interactive journey above, automated through the window in jsdom: the
   sample is created and `regression` verified with its index open, every
@@ -549,8 +549,8 @@ real IdP collaboration and revocation, and approved Paddle sandbox billing and
 entitlement failure scenarios. Re-run against the precise release candidate.
 The guided journey and a staged upgrade against the real candidate are driven
 through the accessibility API on the installed package of every target in the
-matrix, unsigned, in the daily and dispatched runs, and on linux/amd64 in every
-pull request's run; every other journey runs in jsdom over the real facade on the
-macOS shell job and drives no installed package. No owner
+matrix, unsigned, in a dispatched run with `run_journeys=true`; every other
+journey runs in jsdom over the real facade on the macOS shell job, when opted
+in, and drives no installed package. No owner
 choice about a permanent frontend test runner (#183) is made here. No result
 supplants #110 performance or #111 security/privacy/accessibility acceptance.

@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-17
-amended: 2026-09-17
+amended: 2026-09-25
 ---
 
 # Go single binary with a declared five-target release matrix
@@ -17,7 +17,7 @@ readmit must ship as one self-contained executable that an interop engineer can 
 ## Consequences
 
 - No cgo means pure-Go TLS and no native SQLite or similar. Any future storage or crypto need must have a pure-Go path or be dropped.
-- Windows arm64 and 32-bit targets are deliberately not built. Add a target only when a customer needs it, and add it to the CI smoke test at the same time.
+- Windows arm64 and 32-bit targets are deliberately not built. Add a target only when a customer needs it, and add it to the CI smoke test at the same time. Until the product works, that smoke test runs on manual and release-tag runs only ([ADR-0011](0011-pre-product-ci-runs-only-correctness-checks.md)).
 - Every later ticket inherits the release pipeline from issue #1. Adding a dependency means checking that it is pure Go and cross-compiles for all five targets.
 - Reopening this decision means a rewrite. The triggers that would justify it are a required native dependency with no pure-Go equivalent, or a GUI or web front end that must share code with the CLI.
 
