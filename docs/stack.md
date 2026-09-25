@@ -439,7 +439,7 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 ## CI
 
 Until the product works, pull requests and pushes to main run only the
-correctness checks: Go and race tests, the hub, and the frontend and desktop
+correctness checks: Go and race tests, and the frontend and desktop
 shell on macOS ([ADR-0011](adr/0011-pre-product-ci-runs-only-correctness-checks.md)).
 Independent verification, mutations, vulnerability scans, timed fuzzing,
 archive smoke and native package installation/startup/removal checks run on a
@@ -462,7 +462,7 @@ GitHub Actions, with the declared release matrix mapped to native runners:
 - A push to main skips its jobs only when a successful pull-request run already tested that exact tree; any other push to main runs everything. See [validation](agents/testing.md).
 - Each Go job owns one compiler/platform/dependency-scoped cache per deliberate epoch. Main saves it on an exact miss; pull requests, tags and other branches restore from main without saving. Source changes compile against that snapshot until an epoch bump or dependency change. Desktop cache identity includes both module checksum files. Superseded PR runs are cancelled; main, release-tag and dispatched runs are independent.
 - `make test` keeps the small observation boundary under race detection and runs the exact production-size boundary separately without instrumentation. See [validation](agents/testing.md) for the local loop.
-- PR checks: formatting, vet, race tests and the hub. The desktop shell is built and checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not. On a manual run that workflow also builds each native desktop package on the runner it targets and installs, checks and removes it there through the platform's own installer; `desktop` is that workflow's stable aggregate over the shell build and, when they run, the package and installation jobs. Installed packages also initialize the native webview with isolated temporary shell state and a bounded startup check; Linux uses Xvfb. That startup evidence is separate from full interactive acceptance.
+- PR checks: vet and race tests. The desktop shell is checked in a separate workflow, because it needs cgo and a platform webview that the release jobs deliberately do not. On a manual run that workflow also builds each native desktop package on the runner it targets and installs, checks and removes it there through the platform's own installer; `desktop` is that workflow's stable aggregate over the shell build and, when they run, the package and installation jobs. Installed packages also initialize the native webview with isolated temporary shell state and a bounded startup check; Linux uses Xvfb. That startup evidence is separate from full interactive acceptance.
 - Release jobs test the exact artifacts being published, not rebuilt equivalents.
 - Release credentials and signing never run in untrusted pull-request workflows.
 
