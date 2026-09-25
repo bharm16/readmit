@@ -6,13 +6,16 @@ date: 2026-09-25
 # Until the product works, CI runs only correctness checks
 
 Pull requests and pushes to main run the checks that say whether the code
-works: the Go suite with race detection (`go-tests`), the hub against
-PostgreSQL (`hub`), and the frontend build and behavior tests with the desktop
-shell's Go build and tests on macOS (`desktop-shell`). `quality` and `desktop`
-remain the two required aggregates.
+works: the Go suite with race detection (`go-tests`), and the frontend type
+check and behavior tests with the desktop shell's Go vet and tests on macOS
+(`desktop-shell`). These jobs test the product and nothing else: no product
+binary or frontend bundle is built, no formatting or label-coverage gate runs
+(both stay in `make check` locally), and nothing is uploaded beyond the
+tested-tree record a push to main reads. `quality` and `desktop` remain the two
+required aggregates.
 
-Everything that proves a release rather than the code runs only when the owner
-dispatches a workflow by hand: the release archives and their five native smoke
+Everything else runs only when the owner dispatches a workflow by hand: the
+team hub's tests against PostgreSQL, the release archives and their five native smoke
 tests, the five native desktop packages and their five fresh-runner
 installations, tooling tests with independent verification and mutation checks,
 vulnerability scans, timed fuzzing, and journeys. A `v*` release tag also runs

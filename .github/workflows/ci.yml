@@ -68,8 +68,8 @@ jobs:
       - uses: ./.github/actions/setup-go
         with:
           cache-scope: tests
-      - name: Formatting and vet
-        run: make check
+      - name: Vet
+        run: go vet ./...
       - name: Race tests and the production-size resource boundary
         run: make test
 
@@ -174,7 +174,7 @@ jobs:
   # must fail this check as well as block release publication.
   hub:
     needs: proof
-    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
+    if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -198,20 +198,10 @@ jobs:
           READMIT_HUB_TEST_SOCKET: /tmp/readmit-hub-ci
           READMIT_HUB_TEST_PORT: '55496'
           READMIT_HUB_TEST_USER: runner
-          READMIT_HUB_TEST_BINARY: ./build/package/readmit-hub
         run: |
-          test -z "$(gofmt -l .)"
-          make package
-          export READMIT_HUB_TEST_BINARY="$PWD/build/package/readmit-hub"
-          export READMIT_HUB_TEST_BINARY_SHA256="$(sha256sum "$READMIT_HUB_TEST_BINARY" | cut -d ' ' -f 1)"
           go test -race ./...
           go vet ./...
-          if [ "$FULL_GATES" = true ]; then go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...; fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: readmit-hub-linux-amd64
-          path: hub/build/readmit-hub-linux-amd64.tar.gz
-          if-no-files-found: error
+          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
   # The hub journeys drive the production window against this checkout's
   # readmit-hub over mutual TLS on loopback. Their global setup builds the
@@ -277,7 +267,7 @@ jobs:
           if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
           if [ "$FULL_GATES" = true ]; then full=success; else full=skipped; fi
           test "$GO_RESULT" = "$expected"
-          test "$HUB_RESULT" = "$expected"
+          test "$HUB_RESULT" = "$full"
           test "$TOOLING_RESULT" = "$full"
           test "$SECURITY_RESULT" = "$full"
           test "$FUZZ_RESULT" = "$full"

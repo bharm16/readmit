@@ -230,10 +230,11 @@ flake or establish that a failing revision is correct.
 
 Until the product works, CI runs only correctness checks on pull requests and
 pushes to main ([ADR-0011](../adr/0011-pre-product-ci-runs-only-correctness-checks.md)):
-`go-tests` (formatting, vet and `make test`), `hub` and `desktop-shell` (frontend
-build and behavior tests, and the shell's Go build and tests on macOS). The
-shell's Windows-only code is tested only in the Windows `desktop-package` job.
-Tooling tests, independent
+`go-tests` (vet and `make test`) and `desktop-shell` (frontend type check and
+behavior tests, and the shell's Go vet and tests on macOS; no binary or bundle
+is built). The shell's
+Windows-only code is tested only in the Windows `desktop-package` job. The
+hub's tests against PostgreSQL, tooling tests, independent
 verification, mutation checks, vulnerability scans, timed fuzzing, the release
 archives and their native smoke tests, and the native desktop packages and
 their installation checks run only on a manual dispatch
@@ -252,8 +253,8 @@ CLI journeys, or `gh workflow run desktop.yml --ref BRANCH -f run_journeys=true`
 for frontend and native journeys. An opted-in failure still fails its aggregate;
 `quality` requires the hub-journeys job to be skipped when not opted in.
 
-The `quality` check aggregates Go tests and the hub, and on a manual or tag
-run also tooling/independent verification and mutations, the vulnerability
+The `quality` check aggregates Go tests, and on a manual or tag run also the
+hub, tooling/independent verification and mutations, the vulnerability
 scan and the three timed fuzz shards, plus the hub journeys when opted in. It
 fails if any job its event runs fails, is skipped, or is cancelled, and if a
 manual-or-tag job ran on any other event. On a manual or tag run, packaging and
@@ -268,7 +269,7 @@ carries the Go, Node and WiX build setup, the build tree and the frontend's
 modules, which a person's machine does not, so a package that works only
 beside its build would pass there.
 The macOS shell job executes the frontend behavior tests, plus interaction
-journeys only when explicitly opted in, and publishes their output as an artifact.
+journeys only when explicitly opted in, and on a manual run publishes their output as an artifact.
 A failing enabled test fails the `desktop` aggregate. The Windows package job runs the shell's own Go tests
 on Windows, where its Windows-only code runs.
 An install job can also drive the application it installed through the

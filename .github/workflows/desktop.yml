@@ -84,11 +84,12 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: desktop/frontend/package-lock.json
-      - name: Type-check and build the embedded frontend from its lock file
+      # ADR-0011: type-check only; the frontend bundle is not built.
+      - name: Type-check the frontend from its lock file
         working-directory: desktop/frontend
         run: |
           npm ci
-          npm run build
+          npx tsc --noEmit
       # The behavior tests execute the real components against the typed facade
       # boundary, so they run here — not merely compile: a failing component
       # test fails this job and the desktop aggregate with it. The verbose
@@ -111,7 +112,7 @@ jobs:
           set -o pipefail
           npm run test:journeys -- --reporter=verbose 2>&1 | tee journeys-output.txt
       - name: Publish the frontend test output beside the build output
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-frontend-test-output
@@ -119,14 +120,16 @@ jobs:
             desktop/frontend/vitest-output.txt
             desktop/frontend/journeys-output.txt
           if-no-files-found: error
-      - name: Build the desktop shell against the platform webview
+      # ADR-0011: no desktop binary is built. The shell embeds frontend/dist,
+      # so an empty stand-in lets it compile for vet and tests.
+      - name: Vet and test the desktop shell against the platform webview
         working-directory: desktop
         env:
           CGO_ENABLED: '1'
         run: |
+          mkdir -p frontend/dist && touch frontend/dist/.keep
           go vet -tags production ./...
           go test -tags production ./...
-          go build -tags production -o build/readmit-desktop .
       - name: Vulnerability check for the desktop dependency graph
         if: github.event_name == 'workflow_dispatch'
         working-directory: desktop
