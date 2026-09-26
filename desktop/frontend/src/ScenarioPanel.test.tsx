@@ -633,9 +633,9 @@ test("ScenarioPanel withdraws a preview when its scenario changes and a generate
   await user.click(panel().getByLabelText("Generator plan"));
   await user.paste(PLAN);
   await user.click(panel().getByRole("button", { name: "Generate cases" }));
-  expect(await panel().findByRole("button", { name: "Open case" })).toBeTruthy();
+  expect(await panel().findByRole("button", { name: /^Open case(?: |$)/ })).toBeTruthy();
   await user.type(panel().getByLabelText("Generator plan"), " ");
-  expect(panel().queryByRole("button", { name: "Open case" })).toBeNull();
+  expect(panel().queryByRole("button", { name: /^Open case(?: |$)/ })).toBeNull();
   expect(panel().queryByRole("button", { name: "Create test" })).toBeNull();
   expect(facade.callsTo("GenerateScenario")).toHaveLength(1);
   uninstallFacade();

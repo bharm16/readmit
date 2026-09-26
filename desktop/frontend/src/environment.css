@@ -1,6 +1,6 @@
 .environment-banner {
-  background: color-mix(in srgb, var(--surface, #f9f9f9) 90%, CanvasText 10%);
-  border: 1px solid var(--line, #ccc);
+  background: color-mix(in srgb, var(--surface) 90%, CanvasText 10%);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.75rem 1rem;
   margin: 0.75rem 0;
@@ -32,39 +32,42 @@
 }
 
 .environment-classification-badge.nonproduction {
-  background: #1b5e20;
-  color: #ffffff;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--success);
 }
 
 .environment-classification-badge.production {
-  background: #b71c1c;
-  color: #ffffff;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--danger);
 }
 
 .environment-classification-badge.unclassified {
-  background: #e65100;
-  color: #ffffff;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--warning);
 }
 
 .environment-disclaimer {
   font-size: 0.85rem;
-  color: var(--muted, #666);
+  color: var(--muted);
   margin: 0;
 }
 
 .environment-disclaimer.warning {
-  color: #c62828;
+  color: var(--danger);
   font-weight: 500;
 }
 
 .environment-peer {
   font-family: monospace;
   font-size: 0.85rem;
-  color: var(--muted, #666);
+  color: var(--muted);
 }
 
 .environment-panel {
-  border-top: 1px solid var(--line, #ccc);
+  border-top: 1px solid var(--line);
   padding-top: 1rem;
   margin-top: 1.5rem;
 }
@@ -72,7 +75,7 @@
 .environment-tabs {
   display: flex;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--line, #ccc);
+  border-bottom: 1px solid var(--line);
   margin-bottom: 1rem;
   overflow-x: auto;
 }
@@ -84,22 +87,22 @@
   padding: 0.5rem 0.85rem;
   cursor: pointer;
   font-size: 0.95rem;
-  color: var(--muted, #666);
+  color: var(--muted);
 }
 
 .environment-tab:hover {
-  color: var(--text, inherit);
+  color: var(--text);
 }
 
 .environment-tab.active {
-  border-bottom-color: var(--accent, #0066cc);
-  color: var(--accent, #0066cc);
+  border-bottom-color: var(--accent);
+  color: var(--accent);
   font-weight: bold;
 }
 
 .environment-section {
-  background: color-mix(in srgb, var(--surface, #f9f9f9) 95%, CanvasText 5%);
-  border: 1px solid var(--line, #ccc);
+  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 1rem;
   margin: 1rem 0;
@@ -131,7 +134,7 @@
 .environment-field select,
 .environment-field textarea {
   padding: 0.4rem 0.5rem;
-  border: 1px solid var(--line, #ccc);
+  border: 1px solid var(--line);
   border-radius: 3px;
   font-size: 0.9rem;
   font-family: inherit;
@@ -142,7 +145,7 @@
 .environment-field input:focus,
 .environment-field select:focus,
 .environment-field textarea:focus {
-  outline: 2px solid var(--accent, #0066cc);
+  outline: 2px solid var(--accent);
 }
 
 .environment-actions {
@@ -161,13 +164,13 @@
 
 .environment-table th,
 .environment-table td {
-  border: 1px solid var(--line, #ccc);
+  border: 1px solid var(--line);
   padding: 0.5rem;
   text-align: left;
 }
 
 .environment-table th {
-  background: color-mix(in srgb, var(--surface, #f9f9f9) 85%, CanvasText 15%);
+  background: color-mix(in srgb, var(--surface) 85%, CanvasText 15%);
   font-weight: 600;
 }
 
@@ -181,18 +184,18 @@
 }
 
 .rotation-badge.current {
-  background: #2e7d32;
-  color: #ffffff;
+  border: 1px solid currentColor;
+  color: var(--success);
 }
 
 .rotation-badge.overdue {
-  background: #c62828;
-  color: #ffffff;
+  border: 1px solid currentColor;
+  color: var(--danger);
 }
 
 .rotation-badge.not-declared {
-  background: #757575;
-  color: #ffffff;
+  border: 1px solid currentColor;
+  color: var(--text-muted);
 }
 
 .authority-badge {
@@ -200,12 +203,12 @@
   font-size: 0.8rem;
   padding: 0.1rem 0.35rem;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--surface, #f9f9f9) 80%, CanvasText 20%);
+  background: color-mix(in srgb, var(--surface) 80%, CanvasText 20%);
 }
 
 .provisioning-box {
-  background: color-mix(in srgb, #e3f2fd 30%, var(--surface, #ffffff));
-  border-left: 4px solid #1976d2;
+  background: var(--panel);
+  border-left: 3px solid var(--accent);
   padding: 0.75rem 1rem;
   margin: 0.75rem 0;
   font-size: 0.88rem;
@@ -214,7 +217,7 @@
 .provisioning-box h5 {
   margin: 0 0 0.4rem 0;
   font-size: 0.92rem;
-  color: #0d47a1;
+  color: var(--text);
 }
 
 .provisioning-box ol {
@@ -227,8 +230,8 @@
 }
 
 .report-box {
-  background: color-mix(in srgb, var(--surface, #f9f9f9) 92%, CanvasText 8%);
-  border: 1px solid var(--line, #ccc);
+  background: color-mix(in srgb, var(--surface) 92%, CanvasText 8%);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.75rem 1rem;
   margin: 0.75rem 0;
@@ -248,7 +251,7 @@
 
 .report-label {
   font-weight: 600;
-  color: var(--muted, #666);
+  color: var(--muted);
 }
 
 .report-value {
@@ -256,22 +259,22 @@
 }
 
 .outcome-card {
-  border: 1px solid var(--line, #ccc);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.75rem;
   margin: 0.75rem 0;
 }
 
 .outcome-card.passed {
-  border-left: 5px solid #2e7d32;
+  border-left: 3px solid var(--success);
 }
 
 .outcome-card.failed {
-  border-left: 5px solid #c62828;
+  border-left: 3px solid var(--danger);
 }
 
 .action-item {
-  border: 1px solid var(--line, #ccc);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 0.6rem 0.8rem;
   margin-bottom: 0.5rem;
@@ -288,6 +291,6 @@
 
 .action-instructions {
   font-size: 0.85rem;
-  color: var(--muted, #666);
+  color: var(--muted);
   margin: 0.25rem 0;
 }

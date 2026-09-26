@@ -1,10 +1,11 @@
 // The project overview: the `readmit project show` of this window, rendered
-// from what the facade re-read from disk. Creating a project, editing its
-// settings, registering a case and updating what a case records are all typed
-// calls into the shared Go operations the command line runs; nothing here
-// decides what a project can hold. The panel shows positions and states —
-// titles, tags, statuses, identities — never evidence content.
-import { useEffect, useRef, useState } from "react";
+// from what the facade re-read from disk. Editing its settings, registering a
+// case and updating what a case records are all typed calls into the shared Go
+// operations the command line runs; nothing here decides what a project can
+// hold. The panel shows positions and states — titles, tags, statuses,
+// identities — never evidence content. Every edit happens in a sheet a person
+// opens; the page itself only shows what the project holds.
+import { useState } from "react";
 import type {
   Artifact,
   CaseChange,
@@ -12,464 +13,70 @@ import type {
   CaseStatus,
   ProjectOverview,
   ProjectOverviewResult,
+  RegisteredCase,
   RevisionsResult,
   SettingsChange,
 } from "./bindings";
-import { IconButton } from "./IconButton";
 import type { Indicators } from "./shell";
-import { Badge, Report } from "./shell";
+import { Report } from "./shell";
+import { EmptyState, FormDialog, humanize } from "./layout";
+import { Field } from "./ui";
 
-/** The entries of the open workspace a new case could come from: the listing's
- * case bundles the project does not register already. */
-function registrable(overview: ProjectOverview | null, entries: Artifact[]): Artifact[] {
-  const registered = new Set((overview?.cases ?? []).map((entry) => entry.name));
-  return entries.filter((artifact) => artifact.kind === "case" && !registered.has(artifact.name));
+const STATUSES: CaseStatus[] = ["open", "investigating", "resolved", "closed"];
+
+/** An operation's contract name as a person reads it: "readmit-reproducer/v1"
+ * is a reproducer. */
+function operationName(operation: string): string {
+  return humanize(operation.replace(/^readmit-/, "").replace(/\/v\d+$/, ""));
 }
 
-/** The breadcrumb trail of where the investigation is. Each earlier crumb is a
- * place the window can go back to, so the way in is also the way out. */
-export function Breadcrumbs({
-  project,
-  selectedCase,
-  importing,
-  capturing,
-  observing,
-  maintaining,
-  onWorkspace,
-  onProject,
-}: {
-  project: string | null;
-  selectedCase: string | null;
-  importing?: boolean;
-  capturing?: boolean;
-  observing?: boolean;
-  maintaining?: boolean;
-  onWorkspace: () => void;
-  onProject: () => void;
-}) {
-  if (!project) {
-    return null;
-  }
-  return (
-    <nav className="breadcrumbs" aria-label="Where you are">
-      <button type="button" onClick={onWorkspace}>
-        Workspace
-      </button>
-      <span aria-hidden="true">›</span>
-      {capturing ? (
-        <>
-          <button type="button" onClick={onProject}>
-            {project}
-          </button>
-          <span aria-hidden="true">›</span>
-          <span aria-current="page">Capture and collect</span>
-        </>
-      ) : maintaining ? (
-        <>
-          <button type="button" onClick={onProject}>
-            {project}
-          </button>
-          <span aria-hidden="true">›</span>
-          <span aria-current="page">Maintain workspace</span>
-        </>
-      ) : importing ? (
-        <>
-          <button type="button" onClick={onProject}>
-            {project}
-          </button>
-          <span aria-hidden="true">›</span>
-          <span aria-current="page">Import evidence</span>
-        </>
-      ) : observing ? (
-        <>
-          <button type="button" onClick={onProject}>
-            {project}
-          </button>
-          <span aria-hidden="true">›</span>
-          <span aria-current="page">Observation setup</span>
-        </>
-      ) : selectedCase ? (
-        <>
-          <button type="button" onClick={onProject}>
-            {project}
-          </button>
-          <span aria-hidden="true">›</span>
-          <span aria-current="page">{selectedCase}</span>
-        </>
-      ) : (
-        <span aria-current="page">{project}</span>
-      )}
-    </nav>
-  );
+/** Comma-separated text as the list it names. */
+function list(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
 }
 
-/** One registered case: what the project records beside what verification just
- * found, with the actions the investigation continues from. */
-function CaseRow({
-  caseEntry,
-  versions,
-  busy,
-  indicators,
-  onOpen,
-  onUpdate,
-}: {
-  caseEntry: ProjectOverview["cases"][number];
-  versions: string[];
-  busy: boolean;
-  indicators: Indicators;
-  onOpen: () => void;
-  onUpdate: (change: CaseChange) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<{
-    title: string;
-    owner: string;
-    status: CaseStatus;
-    interface_version: string;
-    tags: string;
-    incidents: string;
-  }>({
-    title: caseEntry.title,
-    owner: caseEntry.owner ?? "",
-    status: caseEntry.status,
-    interface_version: caseEntry.interface_version,
-    tags: caseEntry.tags.join(", "),
-    incidents: caseEntry.incidents.join(", "),
-  });
-  const list = (value: string) =>
-    value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== "");
-  return (
-    <li className="registered-case">
-      <span className="name">{caseEntry.title}</span>
-      <Badge indicator={indicators.get(caseEntry.status)} fallback={caseEntry.status} />
-      <span className="badge">{caseEntry.interface_version}</span>
-      <span className={`evidence evidence-${caseEntry.evidence}`}>{caseEntry.evidence}</span>
-      <button type="button" disabled={busy} onClick={onOpen}>
-        Open case
-      </button>
-      {editing ? (
-        <IconButton label="Close editor" icon="close" disabled={busy} onClick={() => setEditing(false)} />
-      ) : (
-        <button type="button" disabled={busy} aria-expanded={false} onClick={() => setEditing(true)}>
-          Edit details
-        </button>
-      )}
-      {editing ? (
-        <form
-          className="case-editor"
-          aria-label={`Edit ${caseEntry.title}`}
-          onSubmit={(event) => {
-            event.preventDefault();
-            // Only what changed is sent, so an edit changes exactly the
-            // members the person named and nothing beside them.
-            const change: CaseChange = {};
-            if (draft.title !== caseEntry.title) {
-              change.title = draft.title;
-            }
-            if (draft.owner !== (caseEntry.owner ?? "")) {
-              change.owner = draft.owner;
-            }
-            if (draft.status !== caseEntry.status) {
-              change.status = draft.status;
-            }
-            if (draft.interface_version !== caseEntry.interface_version) {
-              change.interface_version = draft.interface_version;
-            }
-            if (list(draft.tags).join(",") !== caseEntry.tags.join(",")) {
-              change.tags = list(draft.tags);
-            }
-            if (list(draft.incidents).join(",") !== caseEntry.incidents.join(",")) {
-              change.incidents = list(draft.incidents);
-            }
-            onUpdate(change);
-            setEditing(false);
-          }}
-        >
-          <label htmlFor={`case-title-${caseEntry.name}`}>Title</label>
-          <input
-            id={`case-title-${caseEntry.name}`}
-            type="text"
-            value={draft.title}
-            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-          />
-          <label htmlFor={`case-owner-${caseEntry.name}`}>Owner</label>
-          <input
-            id={`case-owner-${caseEntry.name}`}
-            type="text"
-            value={draft.owner}
-            onChange={(event) => setDraft({ ...draft, owner: event.target.value })}
-          />
-          <label htmlFor={`case-status-${caseEntry.name}`}>Status</label>
-          <select
-            id={`case-status-${caseEntry.name}`}
-            value={draft.status}
-            onChange={(event) => setDraft({ ...draft, status: event.target.value as CaseStatus })}
-          >
-            {(["open", "investigating", "resolved", "closed"] as CaseStatus[]).map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-          <label htmlFor={`case-version-${caseEntry.name}`}>Interface version</label>
-          <select
-            id={`case-version-${caseEntry.name}`}
-            value={draft.interface_version}
-            onChange={(event) => setDraft({ ...draft, interface_version: event.target.value })}
-          >
-            {versions.map((version) => (
-              <option key={version} value={version}>
-                {version}
-              </option>
-            ))}
-          </select>
-          <label htmlFor={`case-tags-${caseEntry.name}`}>Tags, comma-separated</label>
-          <input
-            id={`case-tags-${caseEntry.name}`}
-            type="text"
-            value={draft.tags}
-            onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
-          />
-          <label htmlFor={`case-incidents-${caseEntry.name}`}>Linked incidents, comma-separated</label>
-          <input
-            id={`case-incidents-${caseEntry.name}`}
-            type="text"
-            value={draft.incidents}
-            onChange={(event) => setDraft({ ...draft, incidents: event.target.value })}
-          />
-          <button type="submit" disabled={busy}>
-            Save details
-          </button>
-        </form>
-      ) : null}
-    </li>
-  );
-}
-
-/** The create form. Submitting asks the facade for the parent folder with the
- * host's own dialog; the fields here are only what the project document holds. */
-function CreateForm({
-  busy,
-  onCreate,
-}: {
-  busy: boolean;
-  onCreate: (name: string, title: string, owner: string, versions: string[]) => void;
-}) {
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [owner, setOwner] = useState("");
-  const [versions, setVersions] = useState("");
-  return (
-    <form
-      className="project-create"
-      aria-label="Create a project"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onCreate(
-          name.trim(),
-          title.trim(),
-          owner.trim(),
-          versions
-            .split(",")
-            .map((version) => version.trim())
-            .filter((version) => version !== ""),
-        );
-      }}
-    >
-      <h4>Create a project</h4>
-      <label htmlFor="project-name">Project folder</label>
-      <input
-        id="project-name"
-        type="text"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-      />
-      <p className="hint">A folder name, not a full path.</p>
-      <label htmlFor="project-title">Title</label>
-      <input
-        id="project-title"
-        type="text"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-      />
-      <label htmlFor="project-owner">Default owner</label>
-      <input
-        id="project-owner"
-        type="text"
-        value={owner}
-        onChange={(event) => setOwner(event.target.value)}
-      />
-      <label htmlFor="project-versions">Interface versions</label>
-      <input
-        id="project-versions"
-        type="text"
-        value={versions}
-        onChange={(event) => setVersions(event.target.value)}
-      />
-      <p className="hint">Separate versions with commas</p>
-      <button type="submit" disabled={busy}>
-        Create project
-      </button>
-      <p className="hint">The folder that holds it is chosen in your own folder dialog.</p>
-    </form>
-  );
-}
-
-/** The settings editor. A field left as it is sends nothing, so a settings
- * edit changes only what it names. Cancel, or Escape anywhere in the form,
- * discards the edit and writes nothing; Enter in a field stores it. A refused
- * store keeps everything typed, the further version included, beside the
- * refusal. */
-function SettingsForm({
-  overview,
-  busy,
-  onSave,
-  onCancel,
-}: {
-  overview: ProjectOverview;
-  busy: boolean;
-  onSave: (change: SettingsChange) => Promise<boolean>;
-  onCancel: () => void;
-}) {
-  const [title, setTitle] = useState(overview.title);
-  const [owner, setOwner] = useState(overview.default_owner ?? "");
-  const [version, setVersion] = useState(overview.default_version ?? "");
-  const [newVersion, setNewVersion] = useState("");
-  const first = useRef<HTMLInputElement | null>(null);
-  useEffect(() => {
-    first.current?.focus();
-  }, []);
-  return (
-    <form
-      className="project-settings"
-      aria-label="Project settings"
-      onKeyDown={(event) => {
-        // Escape discards this edit and goes no further: the window's own
-        // Escape cancels a running operation.
-        if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
-          event.preventDefault();
-          event.stopPropagation();
-          onCancel();
-        }
-      }}
-      onSubmit={(event) => {
-        event.preventDefault();
-        const declared = newVersion.trim();
-        // A field left as it was sends nothing, so a settings edit changes
-        // only what it names.
-        const change: SettingsChange = {};
-        if (title !== overview.title) {
-          change.title = title;
-        }
-        if (owner !== (overview.default_owner ?? "")) {
-          change.default_owner = owner;
-        }
-        if (version !== (overview.default_version ?? "")) {
-          change.default_interface_version = version;
-        }
-        if (declared !== "") {
-          change.declare_versions = [declared];
-        }
-        void onSave(change).then((stored) => {
-          if (stored) setNewVersion("");
-        });
-      }}
-    >
-      <h4>Project settings</h4>
-      <label htmlFor="settings-title">Title</label>
-      <input
-        id="settings-title"
-        ref={first}
-        type="text"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-      />
-      <label htmlFor="settings-owner">Default owner</label>
-      <input
-        id="settings-owner"
-        type="text"
-        value={owner}
-        onChange={(event) => setOwner(event.target.value)}
-      />
-      <label htmlFor="settings-version">Default interface version</label>
-      <select
-        id="settings-version"
-        value={version}
-        onChange={(event) => setVersion(event.target.value)}
-      >
-        <option value="">None</option>
-        {overview.interface_versions.map((declared) => (
-          <option key={declared} value={declared}>
-            {declared}
-          </option>
-        ))}
-      </select>
-      <label htmlFor="settings-declare">Add interface version</label>
-      <input
-        id="settings-declare"
-        type="text"
-        value={newVersion}
-        onChange={(event) => setNewVersion(event.target.value)}
-      />
-      <button type="submit" disabled={busy}>
-        Save settings
-      </button>
-      <button type="button" disabled={busy} onClick={onCancel}>
-        Cancel
-      </button>
-      <p className="hint">
-        A declared version is never removed: registered cases still name it. Declared here:{" "}
-        {overview.interface_versions.join(", ")}
-      </p>
-    </form>
-  );
-}
-
-/** The project's editable document exactly as it is recorded, read on request
- * beside the overview: every note and draft with its text, and every
- * revision's lineage with the identity its parent was registered under, which
- * is what names the exact evidence a revision came from even after the
- * parent's folder is replaced. It is read from disk each time it is opened
- * and verifies no evidence; the overview above is what re-verifies. */
+/** The project's editable document exactly as it is recorded, read on request:
+ * every note and draft with its text, and every revision's lineage with the
+ * identity its parent was registered under. */
 function EditableDocument({ result, indicators }: { result: RevisionsResult | null; indicators: Indicators }) {
   const recorded = result?.revisions ?? null;
   return (
     <section className="editable-document" aria-label="Editable project document">
       {result === null ? null : result.state === "empty" ? (
-        <p className="hint">This project has recorded no notes, drafts or revisions yet.</p>
+        <p className="hint">No notes, drafts or revisions recorded.</p>
       ) : result.state !== "completed" ? (
         <Report indicators={indicators} progress={null} result={result} />
       ) : null}
       {recorded && result?.state === "completed" ? (
         <>
           <h5>
-            {recorded.notes.length} {recorded.notes.length === 1 ? "note" : "notes"} as recorded
+            {recorded.notes.length} {recorded.notes.length === 1 ? "note" : "notes"}
           </h5>
           <ul className="recorded-notes">
             {recorded.notes.map((note) => (
               <li key={note.name}>
                 <span className="name">{note.name}</span>
-                <span className="badge">{note.subject ? `about ${note.subject}` : "project draft"}</span>
+                <span className="badge">{note.subject ? `About ${note.subject}` : "Project draft"}</span>
                 <p className="title">{note.title}</p>
                 <p className="body">{note.body}</p>
               </li>
             ))}
           </ul>
           <h5>
-            {recorded.revisions.length} {recorded.revisions.length === 1 ? "revision" : "revisions"} with recorded lineage
+            {recorded.revisions.length} {recorded.revisions.length === 1 ? "revision" : "revisions"}
           </h5>
           <ul className="recorded-lineage">
             {recorded.revisions.map((revision) => (
               <li key={revision.name}>
                 <span className="name">{revision.name}</span>
                 <span className="badge">
-                  {revision.operation.name} of {revision.operation.parent}
+                  {operationName(revision.operation.name)} of {revision.operation.parent}
                 </span>
-                <span className="identity">identity {revision.identity}</span>
-                <span className="identity">parent identity {revision.operation.parent_identity}</span>
+                <span className="identity">{revision.identity}</span>
+                <span className="identity">parent {revision.operation.parent_identity}</span>
               </li>
             ))}
           </ul>
@@ -479,147 +86,107 @@ function EditableDocument({ result, indicators }: { result: RevisionsResult | nu
   );
 }
 
-/** The registration form: pick one case bundle the workspace lists and the
- * project does not register yet, and record what a person maintains about it.
- * The evidence facts are read from the bundle by the shared reader. */
-function RegisterForm({
-  candidates,
+/** The details a person records about one case, as the edit and registration
+ * sheets collect them. */
+type CaseDetails = {
+  title: string;
+  owner: string;
+  status: CaseStatus | "";
+  interface_version: string;
+  tags: string;
+  incidents: string;
+};
+
+function CaseDetailFields({
+  prefix,
+  details,
   versions,
-  defaultVersion,
   defaultOwner,
-  busy,
-  onRegister,
+  defaultVersion,
+  statusRequired,
+  onChange,
 }: {
-  candidates: Artifact[];
+  prefix: string;
+  details: CaseDetails;
   versions: string[];
-  defaultVersion: string;
   defaultOwner: string;
-  busy: boolean;
-  onRegister: (name: string, registration: CaseRegistration) => void;
+  defaultVersion: string;
+  /** A registered case always has a status; a new registration may take the project's default. */
+  statusRequired: boolean;
+  onChange: (details: CaseDetails) => void;
 }) {
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [owner, setOwner] = useState("");
-  const [status, setStatus] = useState<CaseStatus | "">("");
-  const [version, setVersion] = useState("");
-  const [tags, setTags] = useState("");
-  const [incidents, setIncidents] = useState("");
-  const list = (value: string) =>
-    value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== "");
   return (
-    <form
-      className="project-register"
-      aria-label="Register a case"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (name === "") {
-          return;
-        }
-        const registration: CaseRegistration = { title: title.trim() };
-        if (owner.trim() !== "") {
-          registration.owner = owner.trim();
-        }
-        if (status !== "") {
-          registration.status = status;
-        }
-        if (version !== "") {
-          registration.interface_version = version;
-        }
-        registration.tags = list(tags);
-        registration.incidents = list(incidents);
-        onRegister(name, registration);
-        setTitle("");
-        setTags("");
-        setIncidents("");
-      }}
-    >
-      <h4>Register a case</h4>
-      <label htmlFor="register-case">Case</label>
-      <select
-        id="register-case"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        disabled={busy || candidates.length === 0}
-      >
-        <option value="">Choose a case bundle…</option>
-        {candidates.map((artifact) => (
-          <option key={artifact.name} value={artifact.name}>
-            {artifact.name}
-          </option>
-        ))}
-      </select>
-      <p className="hint">A case bundle from this workspace.</p>
-      <label htmlFor="register-title">Title</label>
-      <input
-        id="register-title"
-        type="text"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-      />
-      <label htmlFor="register-owner">Owner</label>
-      <input
-        id="register-owner"
-        type="text"
-        placeholder={defaultOwner}
-        value={owner}
-        onChange={(event) => setOwner(event.target.value)}
-      />
-      <label htmlFor="register-status">Status</label>
-      <select
-        id="register-status"
-        value={status}
-        onChange={(event) => setStatus(event.target.value as CaseStatus | "")}
-      >
-        <option value="">Open — the project default</option>
-        {(["open", "investigating", "resolved", "closed"] as CaseStatus[]).map((choice) => (
-          <option key={choice} value={choice}>
-            {choice}
-          </option>
-        ))}
-      </select>
-      <label htmlFor="register-version">Interface version</label>
-      <select
-        id="register-version"
-        value={version}
-        onChange={(event) => setVersion(event.target.value)}
-      >
-        <option value="">{defaultVersion} — the project default</option>
-        {versions.map((declared) => (
-          <option key={declared} value={declared}>
-            {declared}
-          </option>
-        ))}
-      </select>
-      <label htmlFor="register-tags">Tags, comma-separated</label>
-      <input
-        id="register-tags"
-        type="text"
-        value={tags}
-        onChange={(event) => setTags(event.target.value)}
-      />
-      <label htmlFor="register-incidents">Linked incidents, comma-separated</label>
-      <input
-        id="register-incidents"
-        type="text"
-        value={incidents}
-        onChange={(event) => setIncidents(event.target.value)}
-      />
-      <button type="submit" disabled={busy || name === ""}>
-        Add to project
-      </button>
-      <p className="hint">
-        The bundle is verified through the same reader the command line uses, and
-        the identity it declares is what the project records.
-      </p>
-    </form>
+    <>
+      <Field label="Title" htmlFor={`${prefix}-title`}>
+        <input
+          id={`${prefix}-title`}
+          type="text"
+          autoFocus
+          value={details.title}
+          onChange={(event) => onChange({ ...details, title: event.target.value })}
+        />
+      </Field>
+      <div className="fields">
+        <Field label="Owner" htmlFor={`${prefix}-owner`}>
+          <input
+            id={`${prefix}-owner`}
+            type="text"
+            placeholder={defaultOwner}
+            value={details.owner}
+            onChange={(event) => onChange({ ...details, owner: event.target.value })}
+          />
+        </Field>
+        <Field label="Status" htmlFor={`${prefix}-status`}>
+          <select
+            id={`${prefix}-status`}
+            value={details.status}
+            onChange={(event) => onChange({ ...details, status: event.target.value as CaseStatus | "" })}
+          >
+            {statusRequired ? null : <option value="">Open (default)</option>}
+            {STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {humanize(status)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Interface version" htmlFor={`${prefix}-version`}>
+          <select
+            id={`${prefix}-version`}
+            value={details.interface_version}
+            onChange={(event) => onChange({ ...details, interface_version: event.target.value })}
+          >
+            {statusRequired ? null : <option value="">{defaultVersion ? `${defaultVersion} (default)` : "Project default"}</option>}
+            {versions.map((version) => (
+              <option key={version} value={version}>
+                {version}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Tags" htmlFor={`${prefix}-tags`} hint="Separate with commas.">
+        <input
+          id={`${prefix}-tags`}
+          type="text"
+          value={details.tags}
+          onChange={(event) => onChange({ ...details, tags: event.target.value })}
+        />
+      </Field>
+      <Field label="Linked incidents" htmlFor={`${prefix}-incidents`} hint="Separate with commas.">
+        <input
+          id={`${prefix}-incidents`}
+          type="text"
+          value={details.incidents}
+          onChange={(event) => onChange({ ...details, incidents: event.target.value })}
+        />
+      </Field>
+    </>
   );
 }
 
-/** The whole project context: what the project holds, and the actions that
- * move the investigation forward from here. */
+/** The project: its cases — registered or only present in the folder — its
+ * revisions and notes, and its own details. */
 export function ProjectPanel({
   root,
   result,
@@ -629,16 +196,11 @@ export function ProjectPanel({
   progress,
   indicators,
   selectedCase,
-  onCreate,
   onUpdateSettings,
   onReadEditable,
   onRegister,
   onUpdateCase,
   onOpenCase,
-  onStartImport,
-  onStartCapture,
-  onStartObservation,
-  onStartMaintenance,
 }: {
   root: string | null;
   result: ProjectOverviewResult | null;
@@ -649,233 +211,385 @@ export function ProjectPanel({
   progress: string | null;
   indicators: Indicators;
   selectedCase: string | null;
-  onCreate: (name: string, title: string, owner: string, versions: string[]) => void;
   onUpdateSettings: (change: SettingsChange) => Promise<boolean>;
   onRegister: (name: string, registration: CaseRegistration) => void;
   onUpdateCase: (name: string, change: CaseChange) => void;
   onReadEditable: () => void;
   onOpenCase: (name: string) => void;
-  onStartImport?: () => void;
-  onStartCapture?: () => void;
-  onStartObservation?: () => void;
-  onStartMaintenance?: () => void;
 }) {
-  const [creating, setCreating] = useState(false);
-  const [editingSettings, setEditingSettings] = useState(false);
-  const [readingDocument, setReadingDocument] = useState(false);
-  const settingsToggle = useRef<HTMLButtonElement | null>(null);
-  // The editable document shown belongs to the folder it was read from, so
-  // another folder starts with it closed rather than open over nothing.
-  useEffect(() => {
-    setReadingDocument(false);
-  }, [root]);
-  const overview = result?.overview ?? null;
-  const candidates = registrable(overview, entries);
+  const overview: ProjectOverview | null = result?.overview ?? null;
+  const [editing, setEditing] = useState<{ entry: RegisteredCase; details: CaseDetails } | null>(null);
+  const [registering, setRegistering] = useState<{ name: string; details: CaseDetails } | null>(null);
+  const [settings, setSettings] = useState<{ title: string; owner: string; version: string; declare: string } | null>(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
 
   if (!root) {
-    return (
-      <p className="hint">
-        Open a workspace folder to begin. A folder that holds a project document
-        opens as that project; any folder can still be inspected as it is, and
-        the guided sample stays free.
-      </p>
-    );
+    return null;
   }
-  if (!result && !busy) {
-    return (
-      <div className="project">
-        <p className="hint">
-          This folder is open as a workspace. Open its project, or create one:
-          a project is where cases are registered, named and carried forward.
-        </p>
-        {creating ? (
-          <IconButton label="Close project form" icon="close" disabled={busy} onClick={() => setCreating(false)} />
-        ) : (
-          <button type="button" disabled={busy} aria-expanded={false} onClick={() => setCreating(true)}>
-            Create a project…
-          </button>
-        )}
-        {onStartImport ? (
-          <button type="button" disabled={busy} onClick={onStartImport} style={{ marginLeft: "0.5rem" }}>
-            Import
-          </button>
-        ) : null}
-        {onStartCapture ? (
-          <button type="button" disabled={busy} onClick={onStartCapture} style={{ marginLeft: "0.5rem" }}>
-            Capture
-          </button>
-        ) : null}
-        {onStartObservation ? (
-          <button type="button" disabled={busy} onClick={onStartObservation} style={{ marginLeft: "0.5rem" }}>
-            Observations
-          </button>
-        ) : null}
-        {creating ? <CreateForm busy={busy} onCreate={onCreate} /> : null}
-      </div>
-    );
-  }
-  return (
-    <div className="project">
+  if (!overview) {
+    // A read or write the project refused is reported where the project would be.
+    return result && result.state !== "empty" && result.state !== "completed" ? (
       <Report indicators={indicators} progress={progress} result={result} />
-      {overview ? (
-        <>
-          <h3>{overview.title}</h3>
-          <p className="reason">
-            {overview.default_version ? `default interface ${overview.default_version} · ` : ""}
-            {overview.cases.length} registered {overview.cases.length === 1 ? "case" : "cases"} ·{" "}
-            {overview.revisions.length} {overview.revisions.length === 1 ? "revision" : "revisions"} ·{" "}
-            {overview.notes.length} {overview.notes.length === 1 ? "note" : "notes"}
-          </p>
-          <button
-            type="button"
-            ref={settingsToggle}
-            disabled={busy}
-            aria-expanded={editingSettings}
-            onClick={() => setEditingSettings(!editingSettings)}
-          >
-            {editingSettings ? "Close the settings" : "Edit settings…"}
-          </button>
-          {editingSettings ? (
-            <SettingsForm
-              overview={overview}
-              busy={busy}
-              onSave={onUpdateSettings}
-              onCancel={() => {
-                setEditingSettings(false);
-                settingsToggle.current?.focus();
-              }}
-            />
-          ) : null}
+    ) : progress ? (
+      <Report indicators={indicators} progress={progress} result={null} />
+    ) : null;
+  }
 
-          <h4>Registered cases</h4>
-          {overview.cases.length === 0 ? (
-            <p className="hint">
-              Nothing is registered yet. Choose a case bundle from this workspace
-              below — the investigation starts from real evidence.
-            </p>
-          ) : (
-            <ul className="registered">
-              {overview.cases.map((caseEntry) => (
-                <CaseRow
-                  key={caseEntry.name}
-                  caseEntry={caseEntry}
-                  versions={overview.interface_versions}
-                  busy={busy}
-                  indicators={indicators}
-                  onOpen={() => onOpenCase(caseEntry.name)}
-                  onUpdate={(change) => onUpdateCase(caseEntry.name, change)}
-                />
-              ))}
-            </ul>
-          )}
-          <RegisterForm
-            candidates={candidates}
-            versions={overview.interface_versions}
-            defaultVersion={overview.default_version ?? ""}
-            defaultOwner={overview.default_owner ?? ""}
-            busy={busy}
-            onRegister={onRegister}
-          />
+  const registered = new Set(overview.cases.map((entry) => entry.name));
+  const unregistered = entries.filter((artifact) => artifact.kind === "case" && !registered.has(artifact.name));
+  const total = overview.cases.length + unregistered.length;
 
-          <div style={{ marginTop: "1rem" }}>
-            {onStartCapture ? (
-              <button type="button" disabled={busy} onClick={onStartCapture}>
-                Capture
-              </button>
-            ) : null}
-            {onStartImport ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onStartImport}
-                style={{ marginLeft: onStartCapture ? "0.5rem" : undefined }}
-              >
-                Import
-              </button>
-            ) : null}
-            {onStartObservation ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onStartObservation}
-                style={{ marginLeft: "0.5rem" }}
-              >
-                Observations
-              </button>
-            ) : null}
-            {onStartMaintenance ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={onStartMaintenance}
-                style={{ marginLeft: "0.5rem" }}
-              >
-                Maintenance
-              </button>
-            ) : null}
+  return (
+    <>
+      <section className="project-cases" aria-labelledby="project-cases-title">
+        <div className="group-header">
+          <h2 id="project-cases-title">
+            Cases <span className="count">{total}</span>
+          </h2>
+        </div>
+        <Report indicators={indicators} progress={progress} result={result && result.state !== "completed" && result.state !== "empty" ? result : null} />
+        {total === 0 ? (
+          <EmptyState title="No cases yet">Import or capture messages to start an investigation.</EmptyState>
+        ) : (
+          <div className="table-scroll">
+            <table className="data-table cases-table">
+              <thead>
+                <tr>
+                  <th scope="col">Case</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Owner</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Tags</th>
+                  <th scope="col">
+                    <span className="visually-hidden">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {overview.cases.map((entry) => (
+                  <tr key={entry.name} aria-current={selectedCase === entry.name ? "true" : undefined}>
+                    <th scope="row">
+                      <button type="button" className="row-link" disabled={busy} aria-label={`Open case ${entry.name}`} onClick={() => onOpenCase(entry.name)}>
+                        {entry.title || entry.name}
+                      </button>
+                      <span className="row-sub">{entry.name}</span>
+                    </th>
+                    <td>
+                      <span className={`badge status-${entry.status}`}>
+                        <span aria-hidden="true">{indicators.get(entry.status)?.symbol}</span> {humanize(entry.status)}
+                      </span>
+                      {entry.evidence !== "verified" ? <span className="badge warn">{humanize(entry.evidence)}</span> : null}
+                    </td>
+                    <td>{entry.owner || "—"}</td>
+                    <td>{entry.interface_version || "—"}</td>
+                    <td>
+                      {entry.tags.length === 0 ? "—" : entry.tags.map((tag) => <span key={tag} className="badge">{tag}</span>)}
+                    </td>
+                    <td className="row-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={`Edit ${entry.title || entry.name}`}
+                        onClick={() =>
+                          setEditing({
+                            entry,
+                            details: {
+                              title: entry.title,
+                              owner: entry.owner ?? "",
+                              status: entry.status,
+                              interface_version: entry.interface_version,
+                              tags: entry.tags.join(", "),
+                              incidents: entry.incidents.join(", "),
+                            },
+                          })
+                        }
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {unregistered.map((artifact) => (
+                  <tr key={artifact.name} aria-current={selectedCase === artifact.name ? "true" : undefined}>
+                    <th scope="row">
+                      <button type="button" className="row-link" disabled={busy} aria-label={`Open case ${artifact.name}`} onClick={() => onOpenCase(artifact.name)}>
+                        {artifact.name}
+                      </button>
+                      <span className="row-sub">{humanize(artifact.provenance ?? "")}</span>
+                    </th>
+                    <td>
+                      <span className="badge">Not in project</span>
+                    </td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td className="row-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-label={`Add ${artifact.name} to the project`}
+                        onClick={() =>
+                          setRegistering({
+                            name: artifact.name,
+                            details: { title: artifact.name, owner: "", status: "", interface_version: "", tags: "", incidents: "" },
+                          })
+                        }
+                      >
+                        Add to project…
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
+      </section>
 
-          <h4>Revisions</h4>
-          {overview.revisions.length === 0 ? (
-            <p className="hint">
-              No revisions registered. A reproducer you build can be registered
-              as a revision of its case from the reproducer panel beside the
-              verified case, and it is navigable here once it is.
-            </p>
-          ) : (
-            <ul className="revisions">
+      {overview.revisions.length > 0 ? (
+        <section className="project-revisions" aria-labelledby="project-revisions-title">
+          <h2 id="project-revisions-title">
+            Revisions <span className="count">{overview.revisions.length}</span>
+          </h2>
+          <table className="data-table revisions">
+            <thead>
+              <tr>
+                <th scope="col">Revision</th>
+                <th scope="col">Made from</th>
+                <th scope="col">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
               {overview.revisions.map((revision) => (
-                <li key={revision.name}>
-                  <span className="name">{revision.name}</span>
-                  <span className={`evidence evidence-${revision.evidence}`}>{revision.evidence}</span>
-                  <span className="badge">
-                    {revision.operation} of {revision.parent}
-                  </span>
-                  <button type="button" disabled={busy} onClick={() => onOpenCase(revision.name)}>
-                    Open this revision
-                  </button>
-                </li>
+                <tr key={revision.name}>
+                  <th scope="row">
+                    <button type="button" className="row-link" disabled={busy} aria-label={`Open revision ${revision.name}`} onClick={() => onOpenCase(revision.name)}>
+                      {revision.name}
+                    </button>
+                  </th>
+                  <td>
+                    {operationName(revision.operation)} of {revision.parent}
+                  </td>
+                  <td>{humanize(revision.evidence)}</td>
+                </tr>
               ))}
-            </ul>
-          )}
-
-          <h4>Notes</h4>
-          {overview.notes.length === 0 ? (
-            <p className="hint">
-              No notes yet. Notes you write below are stored in the project&apos;s
-              own editable document, never inside evidence.
-            </p>
-          ) : (
-            <ul className="notes">
-              {overview.notes.map((note) => (
-                <li key={note.name}>
-                  <span className="name">{note.title}</span>
-                  {note.subject ? <span className="badge">about {note.subject}</span> : null}
-                </li>
-              ))}
-            </ul>
-          )}
-          <button
-            type="button"
-            disabled={busy}
-            aria-expanded={readingDocument}
-            onClick={() => {
-              if (!readingDocument) onReadEditable();
-              setReadingDocument(!readingDocument);
-            }}
-          >
-            {readingDocument ? "Close the editable document" : "View source"}
-          </button>
-          {readingDocument ? <EditableDocument result={editable} indicators={indicators} /> : null}
-          {selectedCase ? (
-            <p className="hint">
-              {selectedCase} is open in the inspector. Continue from its
-              occurrences: the grid, the sequence and the authoring panels all
-              carry this case forward.
-            </p>
-          ) : null}
-        </>
+            </tbody>
+          </table>
+        </section>
       ) : null}
-    </div>
+
+      {overview.notes.length > 0 ? (
+        <section className="project-notes" aria-labelledby="project-notes-title">
+          <h2 id="project-notes-title">
+            Notes <span className="count">{overview.notes.length}</span>
+          </h2>
+          <ul className="item-list notes">
+            {overview.notes.map((note) => (
+              <li key={note.name}>
+                <span className="item-main">
+                  <span className="item-title">{note.title}</span>
+                  {note.subject ? <span className="item-sub">About {note.subject}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className="project-details" aria-labelledby="project-details-title">
+        <div className="group-header">
+          <h2 id="project-details-title">Project</h2>
+          <div className="group-aside">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                setSettings({
+                  title: overview.title,
+                  owner: overview.default_owner ?? "",
+                  version: overview.default_version ?? "",
+                  declare: "",
+                })
+              }
+            >
+              Edit…
+            </button>
+          </div>
+        </div>
+        <dl className="facts">
+          <div className="fact">
+            <dt>Title</dt>
+            <dd>{overview.title}</dd>
+          </div>
+          <div className="fact">
+            <dt>Default owner</dt>
+            <dd>{overview.default_owner || "—"}</dd>
+          </div>
+          <div className="fact">
+            <dt>Interface versions</dt>
+            <dd>
+              {overview.interface_versions.map((version) => (
+                <span key={version} className={version === overview.default_version ? "badge accent" : "badge"}>
+                  {version}
+                  {version === overview.default_version ? " · default" : ""}
+                </span>
+              ))}
+            </dd>
+          </div>
+          <div className="fact">
+            <dt>Folder</dt>
+            <dd className="root">{overview.root}</dd>
+          </div>
+        </dl>
+        <details
+          className="more"
+          open={sourceOpen}
+          onToggle={(event) => {
+            const open = (event.currentTarget as HTMLDetailsElement).open;
+            if (open && !sourceOpen) onReadEditable();
+            setSourceOpen(open);
+          }}
+        >
+          <summary>Project document</summary>
+          <div className="more-body">{sourceOpen ? <EditableDocument result={editable} indicators={indicators} /> : null}</div>
+        </details>
+      </section>
+
+      <FormDialog
+        open={editing !== null}
+        title={editing ? `Edit ${editing.entry.title || editing.entry.name}` : "Edit case"}
+        submitLabel="Save"
+        busy={busy}
+        onClose={() => setEditing(null)}
+        onSubmit={() => {
+          if (!editing) return;
+          const { entry, details } = editing;
+          // Only what changed is sent, so an edit changes exactly the members
+          // the person named and nothing beside them.
+          const change: CaseChange = {};
+          if (details.title !== entry.title) change.title = details.title;
+          if (details.owner !== (entry.owner ?? "")) change.owner = details.owner;
+          if (details.status !== "" && details.status !== entry.status) change.status = details.status;
+          if (details.interface_version !== entry.interface_version) change.interface_version = details.interface_version;
+          if (list(details.tags).join(",") !== entry.tags.join(",")) change.tags = list(details.tags);
+          if (list(details.incidents).join(",") !== entry.incidents.join(",")) change.incidents = list(details.incidents);
+          onUpdateCase(entry.name, change);
+          setEditing(null);
+        }}
+      >
+        {editing ? (
+          <CaseDetailFields
+            prefix="case"
+            details={editing.details}
+            versions={overview.interface_versions}
+            defaultOwner={overview.default_owner ?? ""}
+            defaultVersion={overview.default_version ?? ""}
+            statusRequired
+            onChange={(details) => setEditing({ ...editing, details })}
+          />
+        ) : null}
+      </FormDialog>
+
+      <FormDialog
+        open={registering !== null}
+        title={registering ? `Add ${registering.name} to the project` : "Add to the project"}
+        submitLabel="Add to project"
+        busy={busy}
+        onClose={() => setRegistering(null)}
+        onSubmit={() => {
+          if (!registering) return;
+          const { details } = registering;
+          const registration: CaseRegistration = { title: details.title.trim() };
+          if (details.owner.trim() !== "") registration.owner = details.owner.trim();
+          if (details.status !== "") registration.status = details.status;
+          if (details.interface_version !== "") registration.interface_version = details.interface_version;
+          registration.tags = list(details.tags);
+          registration.incidents = list(details.incidents);
+          onRegister(registering.name, registration);
+          setRegistering(null);
+        }}
+      >
+        {registering ? (
+          <CaseDetailFields
+            prefix="register"
+            details={registering.details}
+            versions={overview.interface_versions}
+            defaultOwner={overview.default_owner ?? ""}
+            defaultVersion={overview.default_version ?? ""}
+            statusRequired={false}
+            onChange={(details) => setRegistering({ ...registering, details })}
+          />
+        ) : null}
+      </FormDialog>
+
+      <FormDialog
+        open={settings !== null}
+        title="Project settings"
+        submitLabel="Save"
+        busy={busy}
+        onClose={() => setSettings(null)}
+        onSubmit={() => {
+          if (!settings) return;
+          // A field left as it was sends nothing, so a settings edit changes
+          // only what it names.
+          const change: SettingsChange = {};
+          if (settings.title !== overview.title) change.title = settings.title;
+          if (settings.owner !== (overview.default_owner ?? "")) change.default_owner = settings.owner;
+          if (settings.version !== (overview.default_version ?? "")) change.default_interface_version = settings.version;
+          const declared = settings.declare.trim();
+          if (declared !== "") change.declare_versions = [declared];
+          void onUpdateSettings(change).then((stored) => {
+            // A refused store keeps everything typed beside the refusal.
+            if (stored) setSettings(null);
+          });
+        }}
+        status={result && result.state !== "completed" && result.state !== "empty" ? <Report indicators={indicators} progress={null} result={result} /> : null}
+      >
+        {settings ? (
+          <>
+            <Field label="Title" htmlFor="settings-title">
+              <input
+                id="settings-title"
+                type="text"
+                autoFocus
+                value={settings.title}
+                onChange={(event) => setSettings({ ...settings, title: event.target.value })}
+              />
+            </Field>
+            <Field label="Default owner" htmlFor="settings-owner">
+              <input
+                id="settings-owner"
+                type="text"
+                value={settings.owner}
+                onChange={(event) => setSettings({ ...settings, owner: event.target.value })}
+              />
+            </Field>
+            <Field label="Default interface version" htmlFor="settings-version">
+              <select
+                id="settings-version"
+                value={settings.version}
+                onChange={(event) => setSettings({ ...settings, version: event.target.value })}
+              >
+                <option value="">None</option>
+                {overview.interface_versions.map((declared) => (
+                  <option key={declared} value={declared}>
+                    {declared}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Add an interface version" htmlFor="settings-declare" hint="Versions are never removed; registered cases name them.">
+              <input
+                id="settings-declare"
+                type="text"
+                placeholder="2.5.1"
+                value={settings.declare}
+                onChange={(event) => setSettings({ ...settings, declare: event.target.value })}
+              />
+            </Field>
+          </>
+        ) : null}
+      </FormDialog>
+    </>
   );
 }

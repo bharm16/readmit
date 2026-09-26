@@ -1,3 +1,4 @@
+import { goTo, goToView } from "./testkit/navigation";
 // The privacy region's per-operation disclosure: every deliberately
 // configurable activity is shown with its destination, data category,
 // authorization and its live connected/offline state, and each row's next
@@ -5,11 +6,16 @@
 import { expect, test } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderApp } from "./testkit/app";
+import { renderApp as baseRenderApp } from "./testkit/app";
 import { disclosureStatusResult, shellResult } from "./testkit/fixtures";
 
+async function renderApp(...args: Parameters<typeof baseRenderApp>) {
+ const rendered = await baseRenderApp(...args);
+ await goToView(userEvent.setup(), "Settings", "Security");
+ return rendered;
+}
 function privacyRegion() {
-  return within(screen.getByRole("region", { name: "Privacy" }));
+  return within(screen.getByRole("region", { name: "Main content" }));
 }
 
 test("every disclosed operation is drawn with destination, data, authorization and live state", async () => {
@@ -106,23 +112,27 @@ test("each activity's next action opens the screen where that activity lives", a
   });
   // The workspace is open first: capture and observation setup live behind
   // an open workspace, exactly as the disclosure says.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  await screen.findByText("/workspace-under-test");
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open…" }));
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText("/workspace-under-test");
+  await goToView(user, "Settings", "Security");
   const table = screen.getByRole("table", { name: /deliberately configured activities/i });
   const run = within(table).getByRole("row", { name: /Durable test execution/ });
   await user.click(within(run).getByRole("button", { name: "Runs" }));
   expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
   // Capture setup is a real screen: with a workspace open it opens directly.
+  await goToView(user, "Settings", "Security");
   const capture = within(table).getByRole("row", { name: /Capture and source collection/ });
   await user.click(within(capture).getByRole("button", { name: "Capture" }));
   expect(
-    within(screen.getByRole("region", { name: "Evidence" })).getByRole("heading", { name: "Capture" }),
+    within(screen.getByRole("region", { name: "Main content" })).getByRole("heading", { name: "Capture", level: 2 }),
   ).toBeTruthy();
   expect(facade.callsTo("StartCapture").length).toBe(0);
 });
 
 test("the support guidance names the ledger rows still open and the qualification refusals", async () => {
   await renderApp();
+  await goTo(userEvent.setup(), "Help");
   const privacy = privacyRegion();
   expect(privacy.getByRole("heading", { name: "Capabilities" })).toBeTruthy();
   expect(privacy.getByText(/generate reproducible SIU synthetic case bundles from declared inputs/i)).toBeTruthy();

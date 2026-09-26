@@ -122,11 +122,8 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = 
   });
   // The first-run card and the command region's action bar both offer the same
   // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  await screen.findByText(WORKSPACE_ROOT);
-  const readBtn = await screen.findByRole("button", { name: "Open project" });
-  await waitFor(() => expect((readBtn as HTMLButtonElement).disabled).toBe(false));
-  await user.click(readBtn);
+  await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
   await screen.findByRole("heading", { name: "Scheduling investigation" });
   return { facade };
 }
@@ -142,9 +139,9 @@ test("opening observation editor never queries and shows qualification state", a
     },
   });
 
-  const evidence = screen.getByRole("region", { name: "Evidence" });
+  const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
-  expect(await screen.findByRole("heading", { name: "Observations" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Observations", level: 3 })).toBeTruthy();
   expect(screen.getByText(/Editor opened locally/)).toBeTruthy();
   expect(screen.getByText(/postgresql/)).toBeTruthy();
   expect(screen.getAllByText(/not a production claim/).length).toBeGreaterThan(0);
@@ -187,9 +184,9 @@ test("local validation and unauthorized collect stay separate", async () => {
     },
   });
 
-  const evidence = screen.getByRole("region", { name: "Evidence" });
+  const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
-  await screen.findByRole("heading", { name: "Observations" });
+  await screen.findByRole("heading", { name: "Observations", level: 3 });
 
   await waitFor(() => expect(screen.getByText(byContent(/^Saved window ID/)).textContent).toBe("Saved window ID: window-identity (observation-window.json)"));
   await user.click(screen.getByRole("button", { name: "Validate saved configuration" }));
@@ -237,9 +234,9 @@ test("denied and stale completion summaries stay distinct from absence", async (
         },
       }),
   });
-  const evidence = screen.getByRole("region", { name: "Evidence" });
+  const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
-  await screen.findByRole("heading", { name: "Observations" });
+  await screen.findByRole("heading", { name: "Observations", level: 3 });
   await user.click(screen.getByRole("tab", { name: "Collect and results" }));
   await user.click(screen.getByRole("button", { name: "Explain completion" }));
   expect(await screen.findByText(/Status:/)).toBeTruthy();
@@ -262,9 +259,9 @@ test("a source the facade answered is saved again as the person's choices, never
     SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
   });
-  const evidence = screen.getByRole("region", { name: "Evidence" });
+  const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
-  await screen.findByRole("heading", { name: "Observations" });
+  await screen.findByRole("heading", { name: "Observations", level: 3 });
   await user.click(screen.getByRole("button", { name: "Save observation" }));
   expect(await screen.findByText(/^Saved through shared Go writers/)).toBeTruthy();
   await user.clear(screen.getByLabelText("Export file"));
@@ -342,7 +339,7 @@ async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLEleme
 }
 
 async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
-  const evidence = screen.getByRole("region", { name: "Evidence" });
+  const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   return within(await screen.findByRole("region", { name: "Observation setup" }));
 }

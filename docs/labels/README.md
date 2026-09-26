@@ -1,5 +1,12 @@
 # Product label inventory and coverage check
 
+> **Superseded.** [#532](https://github.com/bharm16/readmit/issues/532) replaced the
+> desktop interface these decisions were reviewed against, and it states that the
+> string replacements of #512 and #517–#525 are not requirements for the redesign.
+> The inventory below is kept as history. `make check` no longer runs the check;
+> `make check-labels` still runs it on request, and it reports the redesigned
+> interface's labels as regressions of the old decisions by design.
+
 This directory holds the reviewed product-label inventory required by
 [bharm16/readmit#512](https://github.com/bharm16/readmit/issues/512) and the
 repeatable coverage check that keeps it and the presentation sources honest.

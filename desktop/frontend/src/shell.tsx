@@ -1,5 +1,6 @@
 import { StateHelp } from "./ContextHelp";
 import { IconButton } from "./IconButton";
+import { Modal, MoreMenu } from "./layout";
 // The window furniture that renders the facade's description of the shell:
 // how a status reads, the command palette, the pane separator, and the message
 // grid. None of it decides anything about evidence; it draws what
@@ -52,7 +53,8 @@ export function Status({
       <span className="state">{indicator?.label ?? state}</span>
       {reason ? <span className="reason">{reason}</span> : null}
     </p>
-    <StateHelp state={state} />
+    {/* What to do next matters only when something did not complete. */}
+    {state === "failed" || state === "permission_denied" || state === "cancelled" ? <StateHelp state={state} /> : null}
     </>
   );
 }
@@ -96,7 +98,7 @@ export function Report({
   );
 }
 
-/** The separator between the evidence and inspector panes. It is in the tab
+/** The separator between the page and the message details beside it. It is in the tab
  * order and reports where it sits, so the panes resize with the arrow keys,
  * Home and End as well as with a pointer. */
 export function Separator({
@@ -122,7 +124,7 @@ export function Separator({
       style={{ gridArea: "separator" }}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize the evidence and inspector panes"
+      aria-label="Resize message details"
       aria-valuenow={split}
       aria-valuemin={min}
       aria-valuemax={max}
@@ -420,7 +422,7 @@ export function IndexSetup({
 
   return (
     <form
-      className="build-index-form"
+      className="build-index-form dialog-form"
       aria-label="Build index form"
       onSubmit={(e) => {
         e.preventDefault();
@@ -439,10 +441,9 @@ export function IndexSetup({
         });
       }}
     >
-      <h4>{rebuilding ? "Rebuild index" : "Build index"}</h4>
 
       <fieldset className="field-selection">
-        <legend>Indexed fields ({draft.fields.length} of 16 selected)</legend>
+        <legend>Fields ({draft.fields.length} of 16)</legend>
         <div className="common-fields">
           {COMMON_INDEX_FIELDS.map(({ selector, label }) => {
             const checked = draft.fields.includes(selector);
@@ -466,19 +467,17 @@ export function IndexSetup({
           })}
         </div>
         <div className="custom-field">
-          <label htmlFor={`${id}-custom`}>Field selector</label>
+          <label htmlFor={`${id}-custom`}>Another field</label>
           <input
             id={`${id}-custom`}
             ref={customInput}
             type="text"
-            aria-describedby={`${id}-custom-example`}
+            placeholder="OBX[1]-3"
             value={draft.custom}
             disabled={busy || draft.fields.length >= INDEX_FIELD_LIMIT}
             onChange={(e) => set({ custom: e.target.value })}
           />
-          <span id={`${id}-custom-example`} className="hint">
-            Example: OBX[1]-3
-          </span>
+
           <button
             type="button"
             disabled={busy || !custom || draft.fields.includes(custom) || draft.fields.length >= INDEX_FIELD_LIMIT}
@@ -511,7 +510,7 @@ export function IndexSetup({
       </fieldset>
 
       <fieldset className="retention-selection">
-        <legend>Stored content</legend>
+        <legend>Search mode</legend>
         <label className="radio-label">
           <input
             type="radio"
@@ -522,7 +521,8 @@ export function IndexSetup({
             onChange={() => set({ retention: "states" })}
           />
           <span>
-            <strong>States only</strong> — Least privilege. Records presence, absence, and byte spans. Zero clinical values or digests stored. Permitted queries: presence/absence checks.
+            <strong>Presence only</strong>
+            <span className="option-note">Stores field states, not values.</span>
           </span>
         </label>
         <label className="radio-label">
@@ -535,7 +535,8 @@ export function IndexSetup({
             onChange={() => set({ retention: "digests" })}
           />
           <span>
-            <strong>SHA-256 digests</strong> — Records SHA-256 hashes. Enables exact-match equality queries without storing plaintext. Substring queries not permitted.
+            <strong>Exact match</strong>
+            <span className="option-note">Stores hashes for exact matching. Treat them as sensitive.</span>
           </span>
         </label>
         <label className="radio-label">
@@ -548,13 +549,14 @@ export function IndexSetup({
             onChange={() => set({ retention: "values" })}
           />
           <span>
-            <strong>Plaintext values</strong> — Stores decoded string values (up to 4096 bytes). Enables full substring and text searches. Carries PHI exposure risk.
+            <strong>Full text</strong>
+            <span className="option-note">Stores searchable values. May contain patient data.</span>
           </span>
         </label>
       </fieldset>
 
       <fieldset className="expiry-selection">
-        <legend>Retention duration</legend>
+        <legend>Keep until</legend>
         <label className="checkbox-label">
           <input
             type="checkbox"
@@ -562,11 +564,11 @@ export function IndexSetup({
             disabled={busy}
             onChange={(e) => set({ indefinite: e.target.checked })}
           />
-          Retain indefinitely
+          No expiry
         </label>
         {!draft.indefinite ? (
           <div className="expiry-picker">
-            <label htmlFor={`${id}-until`}>Retain until (local time)</label>
+            <label htmlFor={`${id}-until`}>Keep until (local time)</label>
             <input
               id={`${id}-until`}
               type="datetime-local"
@@ -579,11 +581,11 @@ export function IndexSetup({
             <span id={`${id}-until-utc`} className="hint">
               {typeof until === "string"
                 ? `Stored as ${until} (UTC)`
-                : "Enter a complete date and time; nothing is built until you do."}
+                : "Enter a complete date and time."}
             </span>
             {passed ? (
               <span id={`${id}-until-passed`} className="hint">
-                {"This date and time has passed; enter a later one or choose Retain indefinitely. Nothing is built until you do."}
+                {"This date and time has passed. Enter a later one or choose No expiry."}
               </span>
             ) : null}
           </div>
@@ -591,7 +593,7 @@ export function IndexSetup({
       </fieldset>
 
       <div className="output-selection">
-        <label htmlFor={`${id}-output`}>Index file</label>
+        <label htmlFor={`${id}-output`}>File name</label>
         <input
           id={`${id}-output`}
           type="text"
@@ -620,14 +622,14 @@ export function IndexSetup({
         ) : null}
       </div>
 
-      <div className="form-actions">
-        <button type="submit" disabled={busy || draft.fields.length === 0 || !draft.output.trim() || !deadlineReady}>
-          {replacing ? "Rebuild index" : "Build index"}
-        </button>
-        {/* Hides the setup view; the definition above is kept and nothing
-            that is running is cancelled. */}
+      <div className="dialog-footer">
+        {/* Closes the sheet; the definition above is kept and nothing that is
+            running is cancelled. */}
         <button type="button" disabled={busy} onClick={onClose}>
-          Close setup
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={busy || draft.fields.length === 0 || !draft.output.trim() || !deadlineReady}>
+          {replacing ? "Rebuild index" : "Build index"}
         </button>
       </div>
     </form>
@@ -766,223 +768,216 @@ export function MessageGrid({
     setShowBuildForm(true);
   };
 
-  // The notices below offer their own setup action, so the toolbar offers it
-  // only where no notice does, or to close the open setup view.
-  const noticeOffersSetup = (rebuildableIndex || unindexed) && !showBuildForm;
-  const openIndex = grid?.index ?? (indexDetails?.applicable ? indexDetails.index_name : "");
-  const shownCase = caseEvidence?.name ?? grid?.case ?? "";
+  const filtered = Boolean(grid && grid.filter !== "");
+  const paged = Boolean(grid && (grid.offset > 0 || grid.offset + grid.rows.length < grid.matched));
+  const [indexSheet, setIndexSheet] = useState(false);
+  const closeFilter = () => {
+    discard();
+    setShowFilterEditor(false);
+  };
 
   return (
     <section className="grid" aria-label="Messages">
       <h3>Messages</h3>
-      {shownCase || openIndex || filters ? (
-        <p className="explorer-context">
-          {shownCase ? (
-            <span>
-              Case: <strong>{shownCase}</strong>
-            </span>
-          ) : null}
-          <span>
-            Showing index: <strong>{openIndex || "none"}</strong>
-          </span>
-          <span>
-            Active filter: <strong>{filters?.selected ? filters.selected : "No filter"}</strong>
-          </span>
-        </p>
-      ) : null}
-      <div className="grid-open">
-        <label htmlFor="grid-index">Index</label>
-        <select
-          id="grid-index"
-          value={indexName}
-          disabled={busy || entries.length === 0}
-          onChange={(event) => setIndexName(event.target.value)}
-        >
-          <option value="">Select an index…</option>
-          {entries.map((entry) => (
-            <option key={entry} value={entry}>
-              {entry}
-            </option>
-          ))}
-        </select>
-        {/* Opening names the index; the facade verifies it belongs to this
-            case, and selecting it alone admits nothing. */}
-        <button type="button" disabled={busy || indexName === ""} onClick={() => onOpen(indexName, 0)}>
-          Open index
-        </button>
-        {onBuildIndex && !noticeOffersSetup ? (
-          <button
-            type="button"
-            className="action-open-build"
-            aria-expanded={showBuildForm}
-            disabled={busy}
-            onClick={() => {
-              if (showBuildForm) {
-                setShowBuildForm(false);
-              } else if (rebuildableIndex) {
-                openRebuild();
-              } else {
-                openNewBuild();
-              }
-            }}
-          >
-            {showBuildForm ? "Close setup" : "Set up index"}
-          </button>
-        ) : null}
-      </div>
 
       {foreignIndex ? (
-        <div className="index-rebuild-banner" role="alert" aria-label="Index mismatch notice">
-          <span className="warning-badge">[Index belongs to different evidence]</span>
-          <p className="rebuild-reason">
-            This index describes another case and cannot be used for the open case. Build a separate index for this case.
-          </p>
+        <div className="notice warning" role="alert" aria-label="Index mismatch notice">
+          <p>This case's search index belongs to other evidence.</p>
+          {onBuildIndex && !showBuildForm ? (
+            <button type="button" disabled={busy} onClick={openNewBuild}>
+              Enable search…
+            </button>
+          ) : null}
         </div>
       ) : null}
 
       {unownedIndex && !foreignIndex ? (
-        <div className="index-rebuild-banner" role="alert" aria-label="Index ownership unknown notice">
-          <span className="warning-badge">[Index cannot be verified]</span>
-          <p className="rebuild-reason">
-            This index cannot be confirmed as belonging to the open case. Build a separate index for this case.
-          </p>
+        <div className="notice warning" role="alert" aria-label="Index ownership unknown notice">
+          <p>This case's search index can't be verified.</p>
+          {onBuildIndex && !showBuildForm ? (
+            <button type="button" disabled={busy} onClick={openNewBuild}>
+              Enable search…
+            </button>
+          ) : null}
         </div>
       ) : null}
 
       {rebuildableIndex ? (
-        <div className="index-rebuild-banner" role="alert" aria-label="Index rebuild notice">
-          <span className="warning-badge">[Index rebuild required]</span>
-          <p className="rebuild-reason">
-            {indexDetails?.stale && "The index was built from different evidence or is stale for this case."}
-            {indexDetails?.expired && "The retention period declared for this index has ended."}
-            {indexDetails?.damaged && "This index file does not match what was written for it."}
-            {indexDetails?.unsupported && "This index was written under an unsupported version."}
-            {" "}The case evidence is unchanged. Rebuild the index from this case to explore records.
+        <div className="notice warning" role="alert" aria-label="Index rebuild notice">
+          <p>
+            {indexDetails?.expired
+              ? "This case's search index has expired."
+              : indexDetails?.damaged
+                ? "This case's search index is damaged."
+                : indexDetails?.unsupported
+                  ? "This case's search index is from an unsupported version."
+                  : "This case's search index is out of date."}
           </p>
           {!showBuildForm && onBuildIndex ? (
-            <button
-              type="button"
-              className="action-rebuild-index"
-              disabled={busy}
-              onClick={openRebuild}
-            >
-              Set up rebuild
+            <button type="button" className="action-rebuild-index" disabled={busy} onClick={openRebuild}>
+              Rebuild…
             </button>
           ) : null}
         </div>
       ) : null}
 
       {unindexed && caseEvidence ? (
-        <div className="unindexed-case" aria-label="Unindexed case">
-          <h4>Case is unindexed</h4>
-          <p className="hint">
-            This case contains <strong>{caseEvidence.occurrences}</strong> occurrences ({caseEvidence.messages} messages, {caseEvidence.acknowledgements} ACKs, {caseEvidence.unparsed} unparsed) across <strong>{caseEvidence.sources}</strong> source{caseEvidence.sources === 1 ? "" : "s"}.
-          </p>
-          <p className="notice">
-            The case is not empty. Wire bytes, headers, and decoded segments can be inspected directly in the Inspector below without an index. Build an index to enable search, filter matching, and paged row navigation.
-          </p>
-          {!showBuildForm && onBuildIndex ? (
-            <button
-              type="button"
-              className="action-build-index"
-              disabled={busy}
-              onClick={openNewBuild}
-            >
-              Set up index
-            </button>
+        <div className="empty-state unindexed-case" aria-label="Unindexed case">
+          <p className="empty-title">Search is off for this case</p>
+          {onBuildIndex ? (
+            <div className="empty-action">
+              <button type="button" className="primary action-build-index" disabled={busy} onClick={openNewBuild}>
+                Enable search…
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}
 
-      {indexDetails && indexDetails.applicable ? (
-        <div className="active-index-details" aria-label="Active index details">
-          <div className="index-meta">
-            <span className="index-chip">Index: {indexDetails.index_name}</span>
-            <span className="retention-chip">Retention: {indexDetails.retention} ({indexDetails.retention_state})</span>
-            <span className="expiry-chip">Retain until: {indexDetails.retain_until || "indefinite"}</span>
-            <span className="records-chip">
-              {indexDetails.records} records ({indexDetails.decoded} decoded, {indexDetails.undecodable} undecodable)
-            </span>
+      {grid ? (
+        <>
+          <div className="toolbar">
+            <div className="toolbar-group grid-filter">
+              <label htmlFor="grid-filter" className="visually-hidden">
+                Filter
+              </label>
+              <select
+                id="grid-filter"
+                value={filters?.selected ?? ""}
+                disabled={busy}
+                onChange={(event) => onSelect(event.target.value)}
+              >
+                <option value="">All messages</option>
+                {(filters?.filters ?? []).map((saved) => (
+                  <option key={saved.name} value={saved.name}>
+                    {saved.name}
+                  </option>
+                ))}
+              </select>
+              {/* Opens a blank, unsaved filter definition; it edits no saved
+                  filter in place and reads nothing. */}
+              <button type="button" aria-haspopup="dialog" onClick={() => setShowFilterEditor(true)}>
+                New filter…
+              </button>
+            </div>
+            <div className="toolbar-group grid-window">
+              <span className="count">
+                {filtered
+                  ? `${grid.matched} of ${grid.total}`
+                  : `${grid.total} ${grid.total === 1 ? "message" : "messages"}`}
+              </span>
+              {paged ? (
+                <>
+                  <IconButton
+                    icon="previous"
+                    label={`Previous ${grid.limit} occurrences`}
+                    disabled={busy || grid.offset === 0}
+                    onClick={() => onOpen(grid.index, Math.max(0, grid.offset - grid.limit))}
+                  />
+                  <span className="count">
+                    {grid.rows.length === 0 ? grid.offset : grid.offset + 1}–{grid.offset + grid.rows.length}
+                  </span>
+                  <IconButton
+                    icon="next"
+                    label={`Next ${grid.limit} occurrences`}
+                    disabled={busy || grid.offset + grid.rows.length >= grid.matched}
+                    onClick={() => onOpen(grid.index, grid.offset + grid.limit)}
+                  />
+                </>
+              ) : null}
+              <MoreMenu label="More list actions" items={[{ label: "Search settings…", onSelect: () => setIndexSheet(true) }]} />
+            </div>
           </div>
-          <p className="index-fields">
-            Indexed fields: <code>{indexDetails.fields.join(", ")}</code>
-          </p>
-          <p className="permitted-searches">
-            {indexDetails.retention === "values" && "Permitted searches: full substring search, equality, presence, and absence"}
-            {indexDetails.retention === "digests" && "Permitted searches: exact digest match, presence, and absence"}
-            {indexDetails.retention === "states" && "Permitted searches: presence and absence checks only"}
-          </p>
-        </div>
+          {grid.undecided > 0 || grid.undecodable > 0 ? (
+            <p className="counts">
+              {grid.undecided > 0 ? <span className="warn">{grid.undecided} could not be matched by this index</span> : null}
+              {grid.undecodable > 0 ? <span className="warn">{grid.undecodable} could not be decoded</span> : null}
+            </p>
+          ) : null}
+          <div
+            className="grid-scroll"
+            ref={viewport}
+            style={{ maxHeight: `${rowHeight * GRID_VIEWPORT_ROWS}px` }}
+            onScroll={(event) =>
+              // The column headers scroll with the rows, so how far the rows
+              // have moved is the viewport's scroll position less where the
+              // rows begin inside it.
+              setScrolled(event.currentTarget.scrollTop - (body.current?.offsetTop ?? 0))
+            }
+          >
+            <table className="rows" aria-rowcount={rows.length + 1}>
+              <caption className="visually-hidden">
+                {grid.case} · {grid.index} · verified {grid.identity}
+              </caption>
+              <thead>
+                <tr aria-rowindex={1}>
+                  <th scope="col">Time</th>
+                  <th scope="col">Direction</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">ID</th>
+                </tr>
+              </thead>
+              <tbody ref={body}>
+                {first > 0 ? (
+                  <tr className="spacer" aria-hidden="true">
+                    <td colSpan={5} style={{ height: `${first * rowHeight}px` }} />
+                  </tr>
+                ) : null}
+                {rows.slice(first, last).map((row, index) => (
+                  <tr
+                    key={row.id}
+                    aria-rowindex={first + index + 2}
+                    aria-selected={selectedOccurrence === row.id}
+                    onClick={(event) => {
+                      // The row's own button is the keyboard's way in; a
+                      // click anywhere else on the row does the same.
+                      if (!busy && !(event.target as HTMLElement).closest("button")) onInspect(row.id);
+                    }}
+                  >
+                    <th scope="row">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        aria-pressed={selectedOccurrence === row.id}
+                        aria-label={`Inspect ${row.id}`}
+                        onClick={() => onInspect(row.id)}
+                      >
+                        {row.observed_at ? observedTime(row.observed_at) : "No time"}
+                      </button>
+                    </th>
+                    <td>
+                      <span className={`direction direction-${row.direction}`}>{DIRECTIONS[row.direction] ?? row.direction}</span>
+                    </td>
+                    <td>
+                      <span className="kind">{KIND_CAPTIONS[row.kind] ?? row.kind}</span>
+                      {row.decoded || row.kind === "unparsed" ? null : <span className="badge warn">Not decoded</span>}
+                    </td>
+                    <td>{row.source_id}</td>
+                    <td className="occurrence-id">{row.id}</td>
+                  </tr>
+                ))}
+                {last < rows.length ? (
+                  <tr className="spacer" aria-hidden="true">
+                    <td colSpan={5} style={{ height: `${(rows.length - last) * rowHeight}px` }} />
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : null}
 
-      {showBuildForm && onBuildIndex && caseEvidence ? (
-        <IndexSetup
-          mode={setupMode === "rebuild" && rebuildableIndex ? "rebuild" : "build"}
-          draft={indexDraft}
-          onDraft={setIndexDraft}
-          caseName={caseEvidence.name}
-          identity={caseEvidence.identity}
-          replaceTarget={rebuildableIndex && indexDetails ? indexDetails.index_name : null}
-          busy={busy}
-          now={now()}
-          onBuild={(request) => {
-            onBuildIndex(request);
-            setShowBuildForm(false);
-          }}
-          onClose={() => setShowBuildForm(false)}
-        />
-      ) : null}
-
-      <div className="grid-filter">
-        <label htmlFor="grid-filter">Saved filter</label>
-        <select
-          id="grid-filter"
-          value={filters?.selected ?? ""}
-          disabled={busy}
-          aria-describedby={filters?.selected ? undefined : "grid-filter-scope"}
-          onChange={(event) => onSelect(event.target.value)}
-        >
-          <option value="">No filter</option>
-          {(filters?.filters ?? []).map((saved) => (
-            <option key={saved.name} value={saved.name}>
-              {saved.name}
-            </option>
-          ))}
-        </select>
-        {filters?.selected ? null : (
-          <span id="grid-filter-scope" className="hint">
-            Show every occurrence
-          </span>
-        )}
-        {/* Opens a blank, unsaved filter definition; it edits no saved filter
-            in place and reads nothing. */}
-        <button
-          type="button"
-          aria-expanded={showFilterEditor}
-          aria-controls={filterEditor}
-          onClick={() => setShowFilterEditor((open) => !open)}
-        >
-          New filter
-        </button>
-      </div>
-      {filters && filters.state !== "completed" ? (
+      <Report indicators={indicators} progress={progress} result={result && result.state !== "completed" ? result : null} />
+      {filters && filters.state !== "completed" && filters.state !== "empty" ? (
         <Status indicator={indicators.get(filters.state)} state={filters.state} reason={filters.reason} />
       ) : null}
 
-      {showFilterEditor ? (
+      <Modal open={showFilterEditor} title="New filter" onClose={closeFilter}>
         <form
           id={filterEditor}
-          className="grid-save"
+          className="dialog-form grid-save"
           aria-label="Filter editor"
-          onKeyDown={(event) => {
-            // Escape discards the unsaved filter and goes no further: the
-            // window's own Escape cancels a running operation.
-            if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
-              event.preventDefault();
-              event.stopPropagation();
-              discard();
-            }
-          }}
           onSubmit={(event) => {
             event.preventDefault();
             const filter = compose(draft);
@@ -992,254 +987,277 @@ export function MessageGrid({
             }
             setInvalid(null);
             onSave(filter);
+            setShowFilterEditor(false);
           }}
         >
-          <h4>Filter editor</h4>
-          <label htmlFor="filter-name">Filter name</label>
-          <input
-            id="filter-name"
-            ref={filterName}
-            type="text"
-            value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-          />
-
-          <span id="filter-kinds-label">Occurrence type</span>
-          <div className="kinds" role="group" aria-labelledby="filter-kinds-label">
-            {(["message", "ack", "unparsed"] as OccurrenceKind[]).map((kind) => (
-              <label key={kind} htmlFor={`filter-kind-${kind}`}>
-                <input
-                  id={`filter-kind-${kind}`}
-                  type="checkbox"
-                  checked={draft.kinds.includes(kind)}
-                  onChange={(event) =>
-                    setDraft({
-                      ...draft,
-                      kinds: event.target.checked
-                        ? [...draft.kinds, kind]
-                        : draft.kinds.filter((chosen) => chosen !== kind),
-                    })
-                  }
-                />
-                {KIND_CAPTIONS[kind]}
-              </label>
-            ))}
-          </div>
-
-          <label htmlFor="filter-source">Source ID</label>
-          <input
-            id="filter-source"
-            type="text"
-            placeholder="s0001"
-            value={draft.source}
-            onChange={(event) => setDraft({ ...draft, source: event.target.value })}
-          />
-
-          <label htmlFor="filter-from">Observed from (local time)</label>
-          <input
-            id="filter-from"
-            type="datetime-local"
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          />
-          <label htmlFor="filter-until">Observed before (local time)</label>
-          <input
-            id="filter-until"
-            type="datetime-local"
-            aria-describedby="filter-until-bound"
-            value={draft.until}
-            onChange={(event) => setDraft({ ...draft, until: event.target.value })}
-          />
-          <p id="filter-until-bound" className="hint">
-            The upper bound is exclusive. Both bounds are stored as UTC instants.
-          </p>
-
-          <label htmlFor="filter-ack">ACK codes</label>
-          <input
-            id="filter-ack"
-            type="text"
-            placeholder="AA, AE, AR"
-            aria-describedby="filter-ack-example"
-            value={draft.ackCodes}
-            onChange={(event) => setDraft({ ...draft, ackCodes: event.target.value })}
-          />
-          <p id="filter-ack-example" className="hint">
-            Comma-separated, for example AA, AE, AR.
-          </p>
-
-          <label htmlFor="filter-selector">Field selector</label>
-          <input
-            id="filter-selector"
-            type="text"
-            placeholder="PID[1]-3[1]"
-            aria-describedby="filter-selector-example"
-            value={draft.selector}
-            onChange={(event) => setDraft({ ...draft, selector: event.target.value })}
-          />
-          <p id="filter-selector-example" className="hint">
-            Positional, for example PID[1]-3[1].
-          </p>
-          <label htmlFor="filter-match">Match type</label>
-          <select
-            id="filter-match"
-            value={draft.match}
-            onChange={(event) => setDraft({ ...draft, match: event.target.value as FieldMatch })}
-          >
-            <option value="contains">Contains</option>
-            <option value="equals">Equals</option>
-            <option value="state">Field state</option>
-          </select>
-          {draft.match === "state" ? (
-            <>
-              <label htmlFor="filter-state">Field state</label>
-              <select
-                id="filter-state"
-                value={draft.state}
-                onChange={(event) => setDraft({ ...draft, state: event.target.value as FieldState })}
-              >
-                <option value="present">Present</option>
-                <option value="empty">Empty</option>
-                <option value="null">Explicit null</option>
-                <option value="omitted">Omitted</option>
-              </select>
-            </>
-          ) : (
-            <>
-              <label htmlFor="filter-term">Match value</label>
+          <div className="dialog-fields">
+            <div className="field">
+              <label htmlFor="filter-name">Name</label>
               <input
-                id="filter-term"
+                id="filter-name"
+                ref={filterName}
                 type="text"
-                value={draft.term}
-                onChange={(event) => setDraft({ ...draft, term: event.target.value })}
+                autoFocus
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               />
-            </>
-          )}
-
-          <button type="submit" disabled={busy}>
-            Save and apply filter
-          </button>
-          <button type="button" disabled={busy} onClick={discard}>
-            Discard filter draft
-          </button>
-          {invalid ? <p className="unsupported">{invalid}</p> : null}
-          <p className="hint">
-            A saved filter is kept on this machine, with whatever you typed to filter by. It is never
-            written into evidence and never leaves this computer.
-          </p>
-        </form>
-      ) : null}
-
-      <Report indicators={indicators} progress={progress} result={result} />
-
-      {grid ? (
-        <>
-          <p className="counts">
-            <span>
-              Showing {grid.rows.length} of {grid.matched} matching
-            </span>
-            <span className="excluded">
-              {grid.excluded} of {grid.total} excluded by{" "}
-              {grid.filter === "" ? "no filter" : grid.filter}
-            </span>
-            <span>{grid.undecided} values the index could not settle</span>
-            <span>{grid.undecodable} the case could not decode</span>
-          </p>
-          <div className="grid-window">
-            <IconButton
-              icon="previous"
-              label={`Previous ${grid.limit} occurrences`}
-              disabled={busy || grid.offset === 0}
-              onClick={() => onOpen(grid.index, Math.max(0, grid.offset - grid.limit))}
-            />
-            <span>
-              Occurrences {grid.rows.length === 0 ? grid.offset : grid.offset + 1}–{grid.offset + grid.rows.length}
-            </span>
-            <IconButton
-              icon="next"
-              label={`Next ${grid.limit} occurrences`}
-              disabled={busy || grid.offset + grid.rows.length >= grid.matched}
-              onClick={() => onOpen(grid.index, grid.offset + grid.limit)}
-            />
-            <span className="hint">{grid.limit} per page</span>
-          </div>
-          <div
-            className="grid-scroll"
-            ref={viewport}
-            style={{ maxHeight: `${rowHeight * GRID_VIEWPORT_ROWS}px` }}
-            onScroll={(event) =>
-              // The caption and the column headers scroll with the rows, so how
-              // far the rows have moved is the viewport's scroll position less
-              // where the rows begin inside it. Measuring that rather than
-              // assuming it keeps the drawn window on the row the scrollbar is
-              // actually pointing at.
-              setScrolled(event.currentTarget.scrollTop - (body.current?.offsetTop ?? 0))
-            }
-          >
-            <table className="rows" aria-rowcount={rows.length + 1}>
-              <caption>
-                {grid.case} · {grid.index} · verified {grid.identity}
-              </caption>
-              <thead>
-                <tr aria-rowindex={1}>
-                  <th scope="col">Occurrence</th>
-                  <th scope="col">Source</th>
-                  <th scope="col">Occurrence type</th>
-                  <th scope="col">Direction</th>
-                  <th scope="col">Observed time</th>
-                  <th scope="col">Bytes</th>
-                </tr>
-              </thead>
-              <tbody ref={body}>
-                {first > 0 ? (
-                  <tr className="spacer" aria-hidden="true">
-                    <td colSpan={6} style={{ height: `${first * rowHeight}px` }} />
-                  </tr>
-                ) : null}
-                {rows.slice(first, last).map((row, index) => (
-                  <tr
-                    key={row.id}
-                    aria-rowindex={first + index + 2}
-                    aria-selected={selectedOccurrence === row.id}
-                  >
-                    <th scope="row">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-pressed={selectedOccurrence === row.id}
-                        onClick={() => onInspect(row.id)}
-                      >
-                        Inspect {row.id}
-                      </button>
-                    </th>
-                    <td>{row.source_id}</td>
-                    <td>
-                      <span className="kind">{row.kind}</span>
-                      {row.decoded ? null : <span className="unsupported">not decoded</span>}
-                    </td>
-                    <td>{row.direction}</td>
-                    <td>{row.observed_at ?? "not recorded"}</td>
-                    <td>
-                      {row.offset}+{row.size}
-                    </td>
-                  </tr>
+            </div>
+            <div className="field">
+              <span id="filter-kinds-label" className="field-label">
+                Type
+              </span>
+              <div className="kinds" role="group" aria-labelledby="filter-kinds-label">
+                {(["message", "ack", "unparsed"] as OccurrenceKind[]).map((kind) => (
+                  <label key={kind} htmlFor={`filter-kind-${kind}`} className="check">
+                    <input
+                      id={`filter-kind-${kind}`}
+                      type="checkbox"
+                      checked={draft.kinds.includes(kind)}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          kinds: event.target.checked
+                            ? [...draft.kinds, kind]
+                            : draft.kinds.filter((chosen) => chosen !== kind),
+                        })
+                      }
+                    />
+                    {KIND_CAPTIONS[kind]}
+                  </label>
                 ))}
-                {last < rows.length ? (
-                  <tr className="spacer" aria-hidden="true">
-                    <td colSpan={6} style={{ height: `${(rows.length - last) * rowHeight}px` }} />
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+              </div>
+            </div>
+            <div className="fields">
+              <div className="field">
+                <label htmlFor="filter-source">Source</label>
+                <input
+                  id="filter-source"
+                  type="text"
+                  placeholder="s0001"
+                  value={draft.source}
+                  onChange={(event) => setDraft({ ...draft, source: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="filter-ack">ACK codes</label>
+                <input
+                  id="filter-ack"
+                  type="text"
+                  placeholder="AA, AE, AR"
+                  value={draft.ackCodes}
+                  onChange={(event) => setDraft({ ...draft, ackCodes: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="filter-from">From</label>
+                <input
+                  id="filter-from"
+                  type="datetime-local"
+                  value={draft.from}
+                  onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="filter-until">Before</label>
+                <input
+                  id="filter-until"
+                  type="datetime-local"
+                  value={draft.until}
+                  onChange={(event) => setDraft({ ...draft, until: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="filter-selector">Field</label>
+                <input
+                  id="filter-selector"
+                  type="text"
+                  placeholder="PID[1]-3[1]"
+                  value={draft.selector}
+                  onChange={(event) => setDraft({ ...draft, selector: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="filter-match">Match</label>
+                <select
+                  id="filter-match"
+                  value={draft.match}
+                  onChange={(event) => setDraft({ ...draft, match: event.target.value as FieldMatch })}
+                >
+                  <option value="contains">Contains</option>
+                  <option value="equals">Equals</option>
+                  <option value="state">Field state</option>
+                </select>
+              </div>
+              {draft.match === "state" ? (
+                <div className="field">
+                  <label htmlFor="filter-state">State</label>
+                  <select
+                    id="filter-state"
+                    value={draft.state}
+                    onChange={(event) => setDraft({ ...draft, state: event.target.value as FieldState })}
+                  >
+                    <option value="present">Present</option>
+                    <option value="empty">Empty</option>
+                    <option value="null">Explicit null</option>
+                    <option value="omitted">Omitted</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="field">
+                  <label htmlFor="filter-term">Value</label>
+                  <input
+                    id="filter-term"
+                    type="text"
+                    value={draft.term}
+                    onChange={(event) => setDraft({ ...draft, term: event.target.value })}
+                  />
+                </div>
+              )}
+            </div>
           </div>
-        </>
-      ) : null}
+          {invalid ? <p className="unsupported">{invalid}</p> : null}
+          <p className="field-hint">Saved filters stay on this computer and may contain what you typed.</p>
+          <div className="dialog-footer">
+            <button type="button" disabled={busy} onClick={closeFilter}>
+              Cancel
+            </button>
+            <button type="submit" className="primary" disabled={busy}>
+              Save and apply
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={indexSheet} title="Search settings" onClose={() => setIndexSheet(false)}>
+        {indexDetails && indexDetails.applicable ? (
+          <dl className="facts active-index-details" aria-label="Active index details">
+            <div className="fact">
+              <dt>Index</dt>
+              <dd>{indexDetails.index_name}</dd>
+            </div>
+            <div className="fact">
+              <dt>Search mode</dt>
+              <dd>{RETENTION_NAMES[indexDetails.retention] ?? indexDetails.retention}</dd>
+            </div>
+            <div className="fact">
+              <dt>Kept until</dt>
+              <dd>{indexDetails.retain_until || "No expiry"}</dd>
+            </div>
+            <div className="fact">
+              <dt>Records</dt>
+              <dd>
+                {indexDetails.records} ({indexDetails.decoded} decoded)
+              </dd>
+            </div>
+            <div className="fact">
+              <dt>Fields</dt>
+              <dd>
+                <code>{indexDetails.fields.join(", ")}</code>
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="hint">No index is open.</p>
+        )}
+        {entries.length > 1 ? (
+          <div className="field index-switch">
+            <label htmlFor="grid-index">Use another index</label>
+            <div className="inline-control">
+              <select
+                id="grid-index"
+                value={indexName}
+                disabled={busy}
+                onChange={(event) => setIndexName(event.target.value)}
+              >
+                <option value="">Choose an index…</option>
+                {entries.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {entry}
+                  </option>
+                ))}
+              </select>
+              {/* Opening names the index; the facade verifies it belongs to
+                  this case, and selecting it alone admits nothing. */}
+              <button
+                type="button"
+                disabled={busy || indexName === ""}
+                onClick={() => {
+                  setIndexSheet(false);
+                  onOpen(indexName, 0);
+                }}
+              >
+                Open
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {onBuildIndex ? (
+          <div className="dialog-footer">
+            <button
+              type="button"
+              className="action-open-build"
+              disabled={busy}
+              onClick={() => {
+                setIndexSheet(false);
+                if (rebuildableIndex || ownedIndex) openRebuild();
+                else openNewBuild();
+              }}
+            >
+              {rebuildableIndex || ownedIndex ? "Rebuild index…" : "Set up an index…"}
+            </button>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={showBuildForm && Boolean(onBuildIndex) && Boolean(caseEvidence)}
+        title={setupMode === "rebuild" && rebuildableIndex ? "Rebuild search index" : "Enable search"}
+        onClose={() => setShowBuildForm(false)}
+      >
+        {showBuildForm && onBuildIndex && caseEvidence ? (
+          <IndexSetup
+            mode={setupMode === "rebuild" && rebuildableIndex ? "rebuild" : "build"}
+            draft={indexDraft}
+            onDraft={setIndexDraft}
+            caseName={caseEvidence.name}
+            identity={caseEvidence.identity}
+            replaceTarget={rebuildableIndex && indexDetails ? indexDetails.index_name : null}
+            busy={busy}
+            now={now()}
+            onBuild={(request) => {
+              onBuildIndex(request);
+              setShowBuildForm(false);
+            }}
+            onClose={() => setShowBuildForm(false)}
+          />
+        ) : null}
+      </Modal>
     </section>
   );
 }
 
+/** How a recorded direction reads in the table. */
+export const DIRECTIONS: Record<string, string> = {
+  outbound: "Sent",
+  inbound: "Received",
+  unknown: "—",
+};
+
+/** An observed instant as the table shows it: date and time, in UTC. */
+export function observedTime(value: string): string {
+  return value.replace("T", " ").replace(/Z$/, " UTC");
+}
+
+/** How each index search mode reads. */
+const RETENTION_NAMES: Record<string, string> = {
+  states: "Presence only",
+  digests: "Exact match",
+  values: "Full text",
+};
+
 /** How an occurrence kind reads in the filter editor. The value sent is the
  * kind itself; only its caption is capitalized. */
-const KIND_CAPTIONS: Record<OccurrenceKind, string> = {
+export const KIND_CAPTIONS: Record<OccurrenceKind, string> = {
   message: "Message",
   ack: "ACK",
   unparsed: "Unparsed",

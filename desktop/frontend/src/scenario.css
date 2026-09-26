@@ -13,7 +13,7 @@
 .scenario-note {
   margin: 0;
   max-width: 52rem;
-  color: var(--muted, #4a5560);
+  color: var(--muted);
 }
 
 .scenario-tabs {
@@ -25,16 +25,16 @@
 .scenario-tabs button,
 .scenario-actions button,
 .scenario-section button {
-  border: 1px solid var(--border, #c5ccd3);
-  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: inherit;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
 }
 
 .scenario-tabs button.active {
-  border-color: var(--accent, #245b6b);
-  box-shadow: inset 0 -2px 0 var(--accent, #245b6b);
+  border-color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .scenario-section {
@@ -52,8 +52,8 @@
 .scenario-section input:not([type]) {
   font: inherit;
   padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border, #c5ccd3);
-  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .scenario-section textarea {
@@ -68,7 +68,7 @@
 }
 
 .scenario-events .unavailable {
-  color: var(--danger, #8a2f2f);
+  color: var(--danger);
 }
 
 .scenario-actions {
@@ -86,7 +86,7 @@
 
 .scenario-section th,
 .scenario-section td {
-  border-bottom: 1px solid var(--border, #c5ccd3);
+  border-bottom: 1px solid var(--border);
   text-align: left;
   padding: 0.35rem 0.5rem;
   vertical-align: top;
@@ -95,7 +95,7 @@
 .scenario-section fieldset {
   display: grid;
   gap: 0.6rem;
-  border: 1px solid var(--border, #c5ccd3);
+  border: 1px solid var(--border);
   padding: 0.6rem 0.8rem;
   min-width: 0;
 }
@@ -107,7 +107,7 @@
 }
 
 .scenario-guard {
-  border-left: 4px solid var(--danger, #8a2f2f);
+  border-left: 4px solid var(--danger);
   padding: 0.5rem 0.75rem;
 }
 

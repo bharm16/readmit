@@ -69,9 +69,9 @@ func frontend(t *testing.T) string {
 	return sources.String()
 }
 
-// The investigation journey is open a workspace, move through what it holds,
-// read the evidence, inspect one case, and check what stays on the machine.
-// Focus moves in that order, which is the order the window renders.
+// Focus moves through the regions in the order they sit in the window: search
+// and navigation down the sidebar, the page, the details of an open message,
+// and the status line. That is the order the window renders.
 func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
 	journey := []desktop.RegionID{"commands", "navigation", "evidence", "inspector", "privacy"}
 	regions := shell(t).Regions
@@ -87,11 +87,21 @@ func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
 	}
 
 	source := frontend(t)
-	// The window walks the declared order rather than one of its own, and every
-	// declared region has an element, because the record holding them is keyed
-	// by the declared identifiers and ReactElement does not admit nothing.
-	if !strings.Contains(source, "regions.map(") {
-		t.Error("the interface does not render the regions in the order the facade declares")
+	// The window places every declared region, in the declared order, and
+	// every declared region has an element, because the record holding them
+	// is keyed by the declared identifiers and ReactElement does not admit
+	// nothing.
+	placed := -1
+	for _, region := range regions {
+		at := strings.Index(source, `region("`+string(region.ID)+`"`)
+		if at < 0 {
+			t.Errorf("the interface does not place region %q", region.ID)
+			continue
+		}
+		if at < placed {
+			t.Errorf("the interface places region %q out of the declared order", region.ID)
+		}
+		placed = at
 	}
 	if !strings.Contains(source, "Record<RegionId, ReactElement>") {
 		t.Error("region content is not keyed by the declared regions, so a region can be left out")
@@ -250,7 +260,7 @@ func TestTextScalesAndThemesAreOfferedAsChoices(t *testing.T) {
 	}
 
 	styles := read(t, stylesFile)
-	for _, token := range []string{"--text-scale", `[data-theme="light"]`, `[data-theme="dark"]`, "prefers-color-scheme"} {
+	for _, token := range []string{"--text-scale", `[data-theme="light"]`, `[data-theme="dark"]`, "color-scheme: light dark"} {
 		if !strings.Contains(styles, token) {
 			t.Errorf("%s carries no %s, so a declared choice changes nothing", stylesFile, token)
 		}

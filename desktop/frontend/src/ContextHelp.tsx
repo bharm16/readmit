@@ -1,15 +1,13 @@
-import { useState } from "react";
 import type { RegionId, State } from "./bindings";
-import { IconButton } from "./IconButton";
 
 // Fixed, bundled copy. Neither evidence nor diagnostic strings are used as
 // help lookup keys, URLs, or persisted context.
 const screens: Record<RegionId, { title: string; steps: string; guide: string }> = {
-  commands: { title: "Start or resume", steps: "Open your workspace folder, or create the synthetic sample in a new folder. The sample needs no activation. Use Commands to move between regions. If setup fails, check the status help below before trying again.", guide: "guided-sample.md" },
-  navigation: { title: "Choose evidence", steps: "A folder listing is not verification. Open a case to verify its identity. Unsupported entries are not empty cases. If a saved workspace moved, choose its new folder; never edit a sealed bundle to make it open.", guide: "project.md" },
-  evidence: { title: "Read and compare", steps: "Inspect original evidence before making a reproducer or test. Filters can hide occurrences; check excluded and undecided counts. Correlation links and missing-ACK windows describe retained coverage, not proof of loss. Compare like observation boundaries.", guide: "correlate.md" },
-  inspector: { title: "Investigate and author", steps: "Values are hidden until explicitly revealed. Choose occurrences, declare initial state and observation boundary, then review assertions before saving a test. A prepared test has sent nothing. A failed assertion differs from an execution error; an incomplete observation cannot prove absence.", guide: "test-authoring.md" },
-  privacy: { title: "Control access and disclosure", steps: "The per-operation table below names every destination this build can reach, what it carries, what it takes, and whether it is connected right now — nothing connects on its own. Evidence read, verify and export remain available after expiry. New paid work needs explicit local activation and a valid clock state. Keep credentials in their approved store. Derive a disclosure review from what the workspace really holds, approve its exact identity, and export or protect the result deliberately — a blocked review names every unresolved surface. Support summaries are value-free; review the preview before approving it, and verify any bundle you receive. Hidden values do not make screenshots or notes safe to share.", guide: "redact.md" },
+  commands: { title: "Search and commands", steps: "Search finds the cases, registered case details and indexed message content of the open project. Ctrl+K (⌘K on a Mac) lists every command the window offers, with its shortcut.", guide: "guided-sample.md" },
+  navigation: { title: "Moving around", steps: "Projects lists the projects you opened recently. With a project open, Cases, Tests, Runs, Environments and Reports hold its work; Tools, Settings and Help are always there. F6 moves between the sidebar, the page, message details and the status line. If a saved project moved, open its new folder; never edit a sealed bundle to make it open.", guide: "project.md" },
+  evidence: { title: "Cases and messages", steps: "Opening a case verifies it; unsupported entries are not empty cases. Inspect original evidence before making a reproducer or test. Filters can hide messages, so check the excluded and undecided counts. Correlation links and missing-ACK windows describe retained coverage, not proof of loss. Compare like observation boundaries.", guide: "correlate.md" },
+  inspector: { title: "Message details and tests", steps: "Values are hidden until you choose to show them. Choose messages, declare the initial state and observation boundary, then review assertions before saving a test. A prepared test has sent nothing. A failed assertion differs from an execution error; an incomplete observation cannot prove absence.", guide: "test-authoring.md" },
+  privacy: { title: "Privacy, connections and license", steps: "The status line shows what is running. Settings › Security lists every destination this build can reach, what it carries and whether it is connected right now; nothing connects on its own. Reading, verifying and exporting stay available after a license expires; new work needs an activated license and a valid clock. Keep credentials in their approved store. Derive a disclosure review from what the project really holds and approve its exact identity before exporting. Hidden values do not make screenshots or notes safe to share.", guide: "redact.md" },
 };
 
 const states: Record<State, { code: string; action: string }> = {
@@ -26,26 +24,29 @@ export function StateHelp({ state }: { state: State }) {
   return <details className="context-help"><summary>Help: {help.code}</summary><p>{help.action}</p><p>Offline reference: docs/workflow-help.md → {help.code}. Share the code and operation name, not the private diagnostic text.</p></details>;
 }
 
-export function ContextHelp({ region }: { region: RegionId }) {
-  const help = screens[region];
-  // A small utility control beside the region's title, not a sentence: its
-  // accessible name says what it opens, the tooltip repeats that name for a
-  // pointer or the keyboard, and the glyph itself is decorative.
-  const [open, setOpen] = useState(false);
+/** Every help topic, as the Help page shows them: one per area of the
+ * window, the HL7 guidance and where the offline references live. */
+export function HelpTopics() {
   return (
-    <div className={`context-help${open ? " open" : ""}`}>
-      <IconButton label={`Help for ${help.title}`} icon="help" expanded={open} onClick={() => setOpen(!open)} />
-      {open ? <div className="context-help-body">
-        <p>{help.steps}</p>
-        <details><summary>HL7 guidance</summary>
-          <p>ADT: retain registration/admission/transfer/discharge/merge evidence, select the lifecycle diagnosis profile, and check assigning authorities before interpreting missing visits.</p>
-          <p>SIU: use the synthetic sample to author one-appointment expectations, run the defective baseline, then the fixed receiver. AA alone does not prove the appointment was updated.</p>
-          <p>ORM: retain orders and their ACKs, select the order diagnosis profile, and compare placer/filler identifiers and declared acknowledgement stages.</p>
-          <p>ORU: retain the originating order and result groups, select the order diagnosis profile, and inspect result status progression and duplicate outputs. An unobserved order is not proof it never existed.</p>
-          <p>These are finite fixture profiles, not general HL7 conformance. Unknown versions, unsupported triggers, missing evidence and incomplete observations remain unsupported or undecided.</p>
-        </details>
-        <p>Offline references: docs/{help.guide} and docs/workflow-help.md in the matching CLI archive or source checkout. Help never opens a network connection.</p>
-      </div> : null}
-    </div>
+    <>
+      <div className="help-topics">
+        {(Object.keys(screens) as RegionId[]).map((region) => (
+          <section key={region} className="help-topic" aria-labelledby={`help-${region}`}>
+            <h3 id={`help-${region}`}>{screens[region].title}</h3>
+            <p>{screens[region].steps}</p>
+            <p className="hint">Reference: docs/{screens[region].guide}</p>
+          </section>
+        ))}
+      </div>
+      <section className="help-topic" aria-labelledby="help-hl7" style={{ marginTop: "1rem" }}>
+        <h3 id="help-hl7">HL7 guidance</h3>
+        <p>ADT: retain registration/admission/transfer/discharge/merge evidence, select the lifecycle diagnosis profile, and check assigning authorities before interpreting missing visits.</p>
+        <p>SIU: use the demo to author one-appointment expectations, run the defective baseline, then the fixed receiver. AA alone does not prove the appointment was updated.</p>
+        <p>ORM: retain orders and their ACKs, select the order diagnosis profile, and compare placer/filler identifiers and declared acknowledgement stages.</p>
+        <p>ORU: retain the originating order and result groups, select the order diagnosis profile, and inspect result status progression and duplicate outputs. An unobserved order is not proof it never existed.</p>
+        <p>These are finite fixture profiles, not general HL7 conformance. Unknown versions, unsupported triggers, missing evidence and incomplete observations remain unsupported or undecided.</p>
+        <p className="hint">Offline references: docs/workflow-help.md in the matching CLI archive or source checkout. Help never opens a network connection.</p>
+      </section>
+    </>
   );
 }

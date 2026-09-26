@@ -359,7 +359,7 @@ class PackagingTests(unittest.TestCase):
         # The native window keeps the product name, and the installed build
         # answers with the identity the packaging checks read.
         shell = (packaging.ROOT / "desktop" / "main.go").read_text(encoding="utf-8")
-        self.assertRegex(shell, r'\n\t\tTitle:\s+"readmit",\n')
+        self.assertRegex(shell, r'\n\t\tTitle:\s+"Readmit",\n')
         self.assertIn('fmt.Printf("readmit-desktop version %s\\n", engine.Version())', shell)
 
     def test_the_macos_bundle_carries_the_full_release_identity(self):

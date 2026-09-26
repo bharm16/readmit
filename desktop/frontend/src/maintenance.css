@@ -35,13 +35,13 @@
 }
 
 .maintenance .warning {
-  color: var(--danger, #8a1f1f);
+  color: var(--danger);
 }
 
 .maintenance-report,
 .maintenance-preview,
 .maintenance-upgrade {
-  border-top: 1px solid var(--border, #ccc);
+  border-top: 1px solid var(--border);
   padding-top: 0.75rem;
   margin-top: 0.5rem;
 }

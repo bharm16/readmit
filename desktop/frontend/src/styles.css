@@ -1,28 +1,80 @@
 /* Bundled with the executable. No web fonts, no remote stylesheets, no
    analytics: the shell renders entirely offline.
 
-   Light and dark are the platform's own colours, so the window follows the
-   system by default and an explicit choice switches the used colour scheme
-   rather than repainting every value. Nothing here distinguishes one status
-   from another by colour: every status is drawn with its word and its shape,
-   and colour is added on top of both. */
+   Every colour is the platform's own. The standard CSS system colours draw
+   the window everywhere; on macOS the system's semantic colours — the label,
+   separator and selection colours and the accent colour the person chose —
+   replace them, so the window looks like the rest of the Mac in light and
+   dark alike. An explicit theme choice switches the colour scheme those
+   colours resolve in rather than repainting anything. Nothing distinguishes
+   one status from another by colour alone: every status is drawn with its
+   word and its shape, and colour is added on top of both.
+
+   The older names (--surface, --ink, --muted, --line) are kept as aliases
+   because every panel's own stylesheet draws with them. */
 :root {
   color-scheme: light dark;
-  --surface: Canvas;
-  --ink: CanvasText;
-  --muted: color-mix(in srgb, CanvasText 60%, Canvas);
-  --line: color-mix(in srgb, CanvasText 20%, Canvas);
+  --bg: Canvas;
+  --sidebar: color-mix(in srgb, CanvasText 5%, Canvas);
+  --border: color-mix(in srgb, CanvasText 16%, Canvas);
+  --border-strong: color-mix(in srgb, CanvasText 28%, Canvas);
+  --text: CanvasText;
+  --text-muted: color-mix(in srgb, CanvasText 64%, Canvas);
+  --text-faint: GrayText;
+  --accent: Highlight;
+  --accent-ink: HighlightText;
+  --control: ButtonFace;
+  --control-text: ButtonText;
+  --field: Field;
+  --field-text: FieldText;
+  --selected: color-mix(in srgb, CanvasText 11%, transparent);
+  --hover: color-mix(in srgb, CanvasText 6%, transparent);
+  --danger: color-mix(in srgb, CanvasText 30%, red);
+  --warning: color-mix(in srgb, CanvasText 30%, darkorange);
+  --success: color-mix(in srgb, CanvasText 30%, green);
+
+  --panel: color-mix(in srgb, var(--text) 3.5%, var(--bg));
+  --raised: var(--bg);
+  --shadow: none;
+  --shadow-pop: 0 12px 36px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.2);
+
+  --surface: var(--bg);
+  --ink: var(--text);
+  --muted: var(--text-muted);
+  --line: var(--border);
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 9px;
+  --control-height: 1.875rem;
+  --sidebar-width: min(14.5rem, 30vw);
   --text-scale: 1;
-  font-family: system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
-/* A dark surface makes a faint hairline disappear, so the border and the muted
-   text hold more contrast there, whether dark came from the system or a
-   choice. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --muted: color-mix(in srgb, CanvasText 72%, Canvas);
-    --line: color-mix(in srgb, CanvasText 34%, Canvas);
+@supports (color: AccentColor) {
+  :root {
+    --accent: AccentColor;
+    --accent-ink: AccentColorText;
+  }
+}
+
+/* The Mac's own semantic colours, where the platform's engine has them. */
+@supports (color: -apple-system-label) {
+  :root {
+    --bg: -apple-system-text-background;
+    --sidebar: -apple-system-window-background;
+    --border: -apple-system-separator;
+    --text: -apple-system-label;
+    --text-muted: -apple-system-secondary-label;
+    --text-faint: -apple-system-tertiary-label;
+    --accent: -apple-system-control-accent;
+    --accent-ink: white;
+    --selected: -apple-system-unemphasized-selected-content-background;
+    --danger: -apple-system-red;
+    --warning: -apple-system-orange;
+    --success: -apple-system-green;
   }
 }
 
@@ -32,8 +84,6 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --muted: color-mix(in srgb, CanvasText 72%, Canvas);
-  --line: color-mix(in srgb, CanvasText 34%, Canvas);
 }
 
 /* Text scales from the root, so every length expressed in rem scales with it
@@ -42,90 +92,819 @@ html {
   font-size: calc(100% * var(--text-scale, 1));
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.875rem;
+  line-height: 1.45;
   margin: 0;
-  background: var(--surface);
-  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 /* Focus is always visible. A person moving through the window with a keyboard
    can see where they are without needing to guess from colour alone. */
 :focus-visible {
-  outline: 3px solid var(--ink);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.shell {
-  box-sizing: border-box;
-  display: grid;
-  gap: 0 0.75rem;
-  grid-template-areas:
-    "commands commands commands commands"
-    "navigation evidence separator inspector"
-    "privacy privacy privacy privacy";
-  grid-template-columns:
-    minmax(12rem, 20rem)
-    minmax(0, var(--evidence-fraction, 58fr))
-    0.75rem
-    minmax(0, var(--inspector-fraction, 42fr));
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 100vh;
-  padding: 1rem 1.25rem;
+[hidden] {
+  display: none !important;
 }
 
-/* Below this width the panes stop being side by side, so the separator has
-   nothing to move and is removed from the window and from the focus order. */
-@media (max-width: 60rem) {
-  .shell {
+/* ---------- The window frame ----------
+
+   A sidebar, the page, an optional details pane and a status line. The window
+   itself never scrolls: each pane scrolls inside itself, so a long page never
+   pushes navigation or status out of view. */
+.app {
+  display: grid;
+  grid-template-areas:
+    "sidebar workarea"
+    "sidebar status";
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  grid-area: sidebar;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.workarea {
+  display: grid;
+  grid-area: workarea;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.workarea.with-details {
+  grid-template-areas: "evidence separator inspector";
+  grid-template-columns:
+    minmax(0, var(--evidence-fraction, 58fr))
+    0.4rem
+    minmax(0, var(--inspector-fraction, 42fr));
+}
+
+.workarea.with-details > .region-evidence {
+  grid-area: evidence;
+}
+
+.workarea.with-details > .region-inspector {
+  grid-area: inspector;
+}
+
+.region {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* A region takes focus to move a person to it, as a landmark does; the
+   control that follows shows focus, the whole pane never does. */
+.region:focus,
+.region:focus-visible {
+  outline: none;
+}
+
+.region-evidence {
+  background: var(--bg);
+  overflow: auto;
+}
+
+.region-inspector {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow: auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.region-privacy {
+  align-items: center;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  display: flex;
+  font-size: 0.8125rem;
+  gap: 0.75rem;
+  grid-area: status;
+  min-height: 2rem;
+  padding: 0.25rem 1rem;
+}
+
+.starting {
+  padding: 2rem;
+}
+
+.separator {
+  align-self: stretch;
+  background: var(--border);
+  cursor: col-resize;
+  touch-action: none;
+  width: 0.4rem;
+}
+
+.separator:hover,
+.separator:focus-visible {
+  background: var(--accent);
+}
+
+/* In a narrow window the sidebar keeps only its icons — each still named for
+   assistive technology and by its tooltip — and message details follow the
+   page instead of sitting beside it. */
+@media (max-width: 50rem) {
+  :root {
+    --sidebar-width: 3.5rem;
+  }
+
+  .brand-name,
+  .region-commands .search,
+  .nav-section-label,
+  .project-switcher {
+    display: none;
+  }
+
+  .brand {
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .region-commands {
+    padding: 0.75rem 0.4rem 0.25rem;
+  }
+
+  .region-navigation {
+    padding: 0.25rem 0.4rem 0.6rem;
+  }
+
+  .nav-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .nav-label {
+    clip: rect(0 0 0 0);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .workarea.with-details {
     grid-template-areas:
-      "commands"
-      "navigation"
       "evidence"
-      "inspector"
-      "privacy";
+      "inspector";
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .separator {
     display: none;
   }
+
+  .region-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .page {
+    padding: 1rem 1.1rem 2rem;
+  }
 }
 
-.region {
-  border-top: 1px solid var(--line);
-  min-width: 0;
-  overflow: auto;
-  padding: 0.5rem 0 1rem;
+/* ---------- Sidebar ---------- */
+.region-commands {
+  padding: 0.85rem 0.75rem 0.5rem;
+  position: relative;
 }
 
-.starting {
-  padding: 1.5rem;
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+  padding: 0 0.25rem;
 }
 
-.separator {
-  align-self: stretch;
-  background: var(--line);
-  border-radius: 0.2rem;
-  cursor: col-resize;
-  touch-action: none;
+.brand-mark {
+  align-items: center;
+  background: var(--text);
+  border-radius: 7px;
+  color: var(--bg);
+  display: inline-flex;
+  flex: none;
+  font-size: 0.875rem;
+  font-weight: 700;
+  height: 1.6rem;
+  justify-content: center;
+  width: 1.6rem;
 }
 
-h1 {
-  font-size: 1.4rem;
-  margin: 0;
-}
-
-h2 {
+.brand-name {
+  flex: 1;
   font-size: 0.95rem;
-  letter-spacing: 0.04em;
-  margin: 0 0 0.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.command-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  display: inline-flex;
+  flex: none;
+  min-height: 1.6rem;
+  padding: 0 0.35rem;
+}
+
+.command-button kbd {
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.command-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.region-commands .search {
+  margin-top: 0.25rem;
+}
+
+.region-commands .search input {
+  width: 100%;
+}
+
+.search-results {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  left: 0.75rem;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.5rem;
+  position: absolute;
+  top: calc(100% - 0.25rem);
+  width: min(30rem, calc(100vw - 2rem));
+  z-index: 20;
+}
+
+.search-results-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0.25rem 0.25rem 0.5rem;
+}
+
+.search-results-header span {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.search-results .matches li {
+  border: 0;
+  padding: 0;
+}
+
+.search-results .matches button {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  height: auto;
+  padding: 0.45rem 0.5rem;
+  text-align: start;
+  width: 100%;
+}
+
+.search-results .matches button:hover {
+  background: var(--hover);
+}
+
+.region-navigation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0.25rem 0.75rem 0.75rem;
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-section-label {
+  color: var(--text-faint);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 1rem 0.5rem 0.35rem;
   text-transform: uppercase;
 }
 
+.nav-item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--text);
+  display: flex;
+  gap: 0.6rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  text-align: start;
+  width: 100%;
+}
+
+.nav-item:hover {
+  background: var(--hover);
+}
+
+.nav-item[aria-current="page"] {
+  background: var(--selected);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.nav-item[aria-current="page"] .nav-icon {
+  color: var(--accent);
+}
+
+.nav-icon {
+  color: var(--text-muted);
+  flex: none;
+}
+
+.nav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-footer {
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.project-switcher {
+  border-radius: var(--radius);
+  margin: 0.25rem 0 0.25rem;
+  padding: 0.35rem 0.55rem;
+}
+
+.project-switcher .project-name {
+  display: block;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-switcher .project-path {
+  color: var(--text-faint);
+  display: block;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Status line ---------- */
+.status-line {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.status-line .status {
+  margin: 0;
+}
+
+.status-line .context-help {
+  display: none;
+}
+
+.status-idle {
+  color: var(--text-faint);
+}
+
+.status-links {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  border-top-color: var(--accent);
+  display: inline-block;
+  flex: none;
+  height: 0.8rem;
+  width: 0.8rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+/* ---------- Pages ---------- */
+.page {
+  margin: 0 auto;
+  max-width: 76rem;
+  padding: 1.5rem 2rem 3rem;
+}
+
+.page-header {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.page-heading {
+  min-width: 0;
+}
+
+.page-eyebrow {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  gap: 0.35rem;
+  margin-bottom: 0.2rem;
+}
+
+.page-eyebrow button {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  height: auto;
+  padding: 0;
+}
+
+.page-eyebrow button:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.page-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.page-body > .task-tabs,
+.page-body > .view-tabs {
+  margin-bottom: 1.25rem;
+}
+
+/* Every panel placed directly on a page or in one of its views is one card.
+   Panels nested inside a card stay flat, so a page reads as a few blocks
+   rather than boxes in boxes. */
+.page-body > section,
+.page-body > .card,
+.page-body > .project,
+.page-body > .maintenance,
+.view-panel > section,
+.view-panel > .card,
+.view-panel > .project,
+.view-panel > .maintenance,
+.view-panel > .environment-panel,
+.cases-list > section,
+.cases-list > .project,
+.page-body > .environment-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  margin-bottom: 1rem;
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+/* A panel's own first heading repeats the view it now sits in, so it is kept
+   for the landmark it names and taken off the screen. A heading that is also
+   a control stays. */
+.view-panel > section:first-of-type > h2:first-child:not(:has(button)),
+.view-panel > section:first-of-type > h3:first-child:not(:has(button)),
+.page-body > section.environment-panel > h3:first-child {
+  clip: rect(0 0 0 0);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+h2 {
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  margin: 0 0 0.6rem;
+}
+
 h3 {
-  font-size: 0.95rem;
-  margin: 1rem 0 0.35rem;
+  font-size: 0.975rem;
+  font-weight: 650;
+  margin: 1.1rem 0 0.5rem;
+}
+
+section > h3:first-child,
+section > h2:first-child,
+.card > h3:first-child {
+  margin-top: 0;
+}
+
+h4 {
+  font-size: 0.875rem;
+  font-weight: 650;
+  margin: 1rem 0 0.4rem;
+}
+
+h5 {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+}
+
+p {
+  margin: 0.35rem 0 0.6rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+.section-title {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin: 1.5rem 0 0.6rem;
+}
+
+.section-title h2 {
+  margin: 0;
+}
+
+.section-title .count {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* ---------- Empty states ---------- */
+.empty-state {
+  align-items: center;
+  background: var(--panel);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 2.25rem 1.5rem;
+  text-align: center;
+}
+
+.empty-title {
+  font-size: 0.975rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.empty-body {
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 34rem;
+}
+
+.empty-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+/* ---------- Controls ---------- */
+button,
+select,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  align-items: center;
+  background: var(--control);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--control-text);
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 500;
+  gap: 0.35rem;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: var(--control-height);
+  padding: 0.3rem 0.8rem;
+  text-align: center;
+}
+
+button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--control) 92%, var(--text));
+  border-color: var(--text-faint);
+}
+
+button.primary,
+.modal button[type="submit"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+button.primary:hover:not(:disabled),
+.modal button[type="submit"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, var(--text));
+  border-color: color-mix(in srgb, var(--accent) 88%, var(--text));
+}
+
+button.quiet,
+button.link {
+  background: transparent;
+  border-color: transparent;
+}
+
+button.link {
+  color: var(--accent);
+  min-height: 0;
+  padding: 0;
+}
+
+button.link:hover:not(:disabled) {
+  background: transparent;
+  border-color: transparent;
+  text-decoration: underline;
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+select,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea {
+  background: var(--field);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--field-text);
+  max-width: 100%;
+  padding: 0.3rem 0.55rem;
+}
+
+select,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  min-height: var(--control-height);
+}
+
+textarea {
+  line-height: 1.45;
+  min-height: 5rem;
+  width: 100%;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+  outline: none;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: auto;
+  appearance: auto;
+  flex: none;
+  height: 1rem;
+  margin: 0 0.4rem 0 0;
+  min-height: 0;
+  vertical-align: -0.15rem;
+  width: 1rem;
+}
+
+input[type="checkbox"] {
+  -webkit-appearance: checkbox;
+}
+
+.kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+}
+
+/* The tooltip of a menu's button gives way to the menu once it is open. */
+.more-menu:has(.menu-popover) .icon-tooltip {
+  display: none;
+}
+
+label {
+  font-weight: 500;
+}
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.9rem 0.8rem;
+}
+
+legend {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+
+details > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+details > summary:hover {
+  color: var(--accent);
 }
 
 .actions,
@@ -138,30 +917,37 @@ h3 {
   gap: 0.5rem;
 }
 
-.appearance,
-.search {
-  margin-top: 0.5rem;
+.actions {
+  margin: 0.5rem 0;
 }
 
-button,
-select,
-input {
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  color: inherit;
-  font: inherit;
-  padding: 0.35rem 0.7rem;
+/* A form is a column of labelled fields, constrained to a readable width. */
+.form-stack {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 34rem;
 }
 
-button {
-  cursor: pointer;
+.field {
+  display: grid;
+  gap: 0.3rem;
 }
 
-button:disabled,
-input:disabled {
-  cursor: default;
-  opacity: 0.5;
+.field .hint {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.field input,
+.field select {
+  width: 100%;
+}
+
+.form-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
 }
 
 /* An icon-only utility button and its tooltip. The tooltip repeats the
@@ -176,24 +962,36 @@ input:disabled {
 
 .icon-button button {
   align-items: center;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
   display: inline-flex;
   justify-content: center;
-  padding: 0.25rem 0.3rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.3rem;
+}
+
+.icon-button button:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: transparent;
+  color: var(--text);
 }
 
 .icon-tooltip {
-  background: var(--ink);
-  border-radius: 0.3rem;
-  color: var(--surface);
-  font-size: 0.8rem;
+  background: var(--text);
+  border-radius: var(--radius-sm);
+  color: var(--panel);
+  font-size: 0.75rem;
+  font-weight: 500;
   left: 50%;
   max-width: 16rem;
-  padding: 0.15rem 0.45rem;
+  padding: 0.2rem 0.5rem;
+  pointer-events: none;
   position: absolute;
-  top: calc(100% + 0.25rem);
+  top: calc(100% + 0.3rem);
   transform: translateX(-50%);
   width: max-content;
-  z-index: 10;
+  z-index: 30;
 }
 
 .icon-button:not(:hover):not(:focus-within) .icon-tooltip {
@@ -201,24 +999,62 @@ input:disabled {
 }
 
 kbd {
-  border: 1px solid var(--line);
-  border-radius: 0.3rem;
-  font-family: ui-monospace, monospace;
-  font-size: 0.8em;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.75em;
   margin-left: 0.5rem;
-  padding: 0 0.3rem;
+  padding: 0.05rem 0.35rem;
 }
 
+/* ---------- Tabs (views within a page) ---------- */
+.task-tabs,
+.view-tabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  margin: 0 0 1rem;
+}
+
+.task-tabs > button[role="tab"],
+.view-tabs > button[role="tab"] {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-weight: 550;
+  margin-bottom: -1px;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.task-tabs > button[role="tab"]:hover,
+.view-tabs > button[role="tab"]:hover {
+  background: transparent;
+  color: var(--text);
+}
+
+.task-tabs > button[role="tab"][aria-selected="true"],
+.view-tabs > button[role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+/* ---------- Status, badges, text ---------- */
 .status {
   align-items: baseline;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.6rem 0 0;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
 }
 
 .symbol {
-  font-size: 1.05em;
+  font-size: 1em;
 }
 
 .state {
@@ -228,7 +1064,15 @@ kbd {
 /* Colour beside the word and the shape, never instead of them. */
 .status-failed .state,
 .status-permission_denied .state {
-  color: color-mix(in srgb, CanvasText 40%, red);
+  color: var(--danger);
+}
+
+.status-completed .state {
+  color: var(--success);
+}
+
+.status-busy .state {
+  color: var(--accent);
 }
 
 .hint,
@@ -237,22 +1081,24 @@ kbd {
 .unsupported,
 .root,
 .statement {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .root,
-.identity {
-  font-family: ui-monospace, monospace;
+.identity,
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
   overflow-wrap: anywhere;
 }
 
 /* The portable report's canonical text lines, revealed deliberately. */
 .report-lines {
-  font-family: ui-monospace, monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  font-family: var(--mono);
   max-height: 24rem;
+  overflow-wrap: anywhere;
   overflow-y: auto;
+  white-space: pre-wrap;
 }
 
 ul {
@@ -268,18 +1114,25 @@ ul {
 .absent li,
 .kept li {
   align-items: center;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border);
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  padding: 0.45rem 0;
+  padding: 0.55rem 0;
+}
+
+.artifacts li:first-child,
+.registered li:first-child,
+.absent li:first-child,
+.kept li:first-child {
+  border-top: 0;
 }
 
 /* What search or the palette selected is marked by a rule and heavier text, so
    it is still obvious with no colour perception at all. */
 .artifacts li[aria-current="true"],
 .registered li[aria-current="true"] {
-  border-inline-start: 4px solid var(--ink);
+  border-inline-start: 3px solid var(--accent);
   font-weight: 600;
   padding-inline-start: 0.5rem;
 }
@@ -291,12 +1144,22 @@ ul {
 
 .badge {
   align-items: baseline;
-  border: 1px solid var(--line);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 1rem;
+  color: var(--text-muted);
   display: inline-flex;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 500;
   gap: 0.3rem;
-  padding: 0.1rem 0.6rem;
+  line-height: 1.5;
+  padding: 0 0.55rem;
+}
+
+.badge.accent {
+  background: var(--selected);
+  border-color: transparent;
+  color: var(--text);
 }
 
 .evidence {
@@ -307,30 +1170,188 @@ ul {
 }
 
 dt {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 dd {
   margin: 0;
 }
 
-.palette {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  color: var(--ink);
-  max-height: 70vh;
-  max-width: 34rem;
-  padding: 1rem;
-  width: 90%;
+table {
+  border-collapse: collapse;
 }
 
+th,
+td {
+  text-align: start;
+  vertical-align: top;
+}
+
+/* ---------- Lists of things: projects, cases, folder items ---------- */
+.item-list {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.item-list > li {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+}
+
+.item-list > li:first-child {
+  border-top: 0;
+}
+
+.item-list > li:hover {
+  background: var(--hover);
+}
+
+.item-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-sub {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.item-actions {
+  align-items: center;
+  display: flex;
+  flex: none;
+  gap: 0.35rem;
+}
+
+.item-list .confirm {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.item-icon {
+  align-items: center;
+  background: var(--selected);
+  border-radius: var(--radius);
+  color: var(--accent);
+  display: inline-flex;
+  flex: none;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.callout {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.callout p {
+  margin: 0;
+}
+
+.notice {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding: 0.7rem 1rem;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.notice.warning {
+  border-left-color: var(--warning);
+}
+
+.notice.danger {
+  border-left-color: var(--danger);
+}
+
+/* ---------- Modal sheets and the palette ---------- */
+.modal,
+.palette {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  max-height: 80vh;
+  max-width: 34rem;
+  padding: 0;
+  width: calc(100% - 2rem);
+}
+
+.modal::backdrop,
 .palette::backdrop {
-  background: color-mix(in srgb, CanvasText 45%, transparent);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.modal-header {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+}
+
+.modal-body {
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+.palette {
+  padding: 0.75rem;
 }
 
 .palette label {
   display: block;
+  font-size: 0.8125rem;
   margin-bottom: 0.35rem;
 }
 
@@ -338,27 +1359,47 @@ dd {
   width: 100%;
 }
 
+.palette ul {
+  margin-top: 0.5rem;
+  max-height: 50vh;
+  overflow: auto;
+}
+
 .palette li button {
+  background: transparent;
   border: 0;
   display: flex;
+  justify-content: space-between;
   text-align: start;
   width: 100%;
 }
 
-/* The message grid. It renders one window of a case, so the table is as wide as
-   the occurrences it draws and scrolls sideways inside a narrow pane rather than
-   pushing the rest of the window out of view. */
+.palette li button:hover {
+  background: var(--hover);
+}
+
+.palette > .icon-button {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+}
+
+/* ---------- The message grid ----------
+   It renders one window of a case, so the table is as wide as the occurrences
+   it draws and scrolls sideways inside a narrow pane rather than pushing the
+   rest of the window out of view. */
 .grid {
-  border-top: 1px solid var(--line);
-  margin-top: 1rem;
+  margin-top: 0.5rem;
   min-width: 0;
 }
 
 /* What the explorer is showing: the case, the open index and the active
    filter, kept in view while setup or the filter editor is open. */
 .explorer-context {
+  color: var(--text-muted);
   display: flex;
   flex-wrap: wrap;
+  font-size: 0.8125rem;
   gap: 0.25rem 1rem;
   margin: 0.35rem 0;
   overflow-wrap: anywhere;
@@ -400,6 +1441,9 @@ dd {
    height is 2rem, the length gridRowHeight in shell.tsx divides a scroll
    position by at every text scale; the two must stay equal. */
 .grid-scroll {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   margin-top: 0.5rem;
   max-width: 100%;
   overflow: auto;
@@ -411,7 +1455,7 @@ dd {
 .rows {
   --grid-row-height: 2rem;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.8125rem;
   white-space: nowrap;
   width: 100%;
 }
@@ -420,8 +1464,16 @@ dd {
   height: var(--grid-row-height);
 }
 
+.rows tbody tr:hover {
+  background: var(--hover);
+}
+
 .rows tbody tr.spacer {
   height: auto;
+}
+
+.rows tbody tr.spacer:hover {
+  background: transparent;
 }
 
 .rows tbody tr.spacer td {
@@ -430,24 +1482,56 @@ dd {
 }
 
 .rows caption {
-  color: var(--muted);
+  color: var(--text-muted);
+  padding: 0.4rem 0.6rem;
   text-align: start;
 }
 
 .rows th,
 .rows td {
-  border-bottom: 1px solid var(--line);
-  padding: 0.2rem 0.6rem 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.2rem 0.75rem;
   text-align: start;
+  vertical-align: middle;
 }
 
 .rows thead th {
-  color: var(--muted);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 0.75rem;
   font-weight: 600;
+  letter-spacing: 0.03em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
 }
 
 .rows .kind {
-  text-transform: uppercase;
+  text-transform: capitalize;
+}
+
+.rows td.unknown {
+  color: var(--text-muted);
+}
+
+/* A row's own name opens it, so the button reads as the row's link and keeps
+   the row exactly one row tall. */
+.rows th button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: 0;
+  padding: 0;
+}
+
+.rows th button:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
+.rows tr[aria-selected="true"] {
+  background: var(--selected);
 }
 
 .grid-save {
@@ -465,112 +1549,83 @@ dd {
   margin: 0.35rem 0 0;
 }
 
-.grid-save h4 {
-  font-size: 0.95rem;
-}
-
 /* Unindexed case notice and active index metadata */
-.unindexed-case {
-  border: 1px solid var(--line);
-  padding: 0.75rem 1rem;
+.unindexed-case,
+.index-rebuild-banner,
+.active-index-details,
+.build-index-form {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   margin: 0.75rem 0;
-  border-radius: 4px;
+  padding: 0.85rem 1rem;
 }
 
-.unindexed-case h4 {
+.unindexed-case h4,
+.build-index-form h4 {
   margin: 0 0 0.35rem;
-  font-size: 0.95rem;
 }
 
 .unindexed-case .notice {
-  font-size: 0.9rem;
-  color: var(--muted);
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  display: block;
   margin: 0.35rem 0 0.5rem;
+  padding: 0;
 }
 
 .index-rebuild-banner {
-  border: 1px solid var(--line);
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
-  border-radius: 4px;
-  background: color-mix(in srgb, CanvasText 4%, Canvas);
+  border-left: 3px solid var(--warning);
 }
 
 .warning-badge {
-  font-weight: 700;
-  font-size: 0.85rem;
+  color: var(--warning);
   display: inline-block;
+  font-size: 0.8125rem;
+  font-weight: 700;
   margin-bottom: 0.25rem;
 }
 
 .rebuild-reason {
   margin: 0.25rem 0 0.5rem;
-  font-size: 0.9rem;
-}
-
-.active-index-details {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
-  margin: 0.5rem 0;
 }
 
 .index-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 500;
+  gap: 0.5rem 1rem;
 }
 
 .index-chip,
 .retention-chip,
 .expiry-chip,
 .records-chip {
-  display: inline-flex;
   align-items: center;
+  display: inline-flex;
 }
 
 .index-fields,
 .permitted-searches {
-  font-size: 0.85rem;
-  color: var(--muted);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
   margin: 0.35rem 0 0;
 }
 
-/* In-app index builder/rebuilder form */
 .build-index-form {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 1rem;
-  margin: 0.75rem 0;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.build-index-form h4 {
-  margin: 0;
-  font-size: 1rem;
-}
-
 .field-selection,
 .retention-selection,
 .expiry-selection {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 0.5rem 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-}
-
-.field-selection legend,
-.retention-selection legend,
-.expiry-selection legend {
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0 0.25rem;
 }
 
 .common-fields {
@@ -580,46 +1635,45 @@ dd {
 }
 
 .custom-field {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: center;
 }
 
 .selected-fields-list {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  align-items: center;
 }
 
 .field-tag {
-  display: inline-flex;
   align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  font-size: 0.8125rem;
   gap: 0.25rem;
-  padding: 0.15rem 0.4rem;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  font-size: 0.85rem;
-  background: color-mix(in srgb, CanvasText 6%, Canvas);
+  padding: 0.1rem 0.4rem;
 }
 
 .field-tag button {
-  padding: 0 0.25rem;
-  font-size: 0.85rem;
-  line-height: 1;
-  border: none;
   background: none;
-  cursor: pointer;
+  border: none;
+  font-size: 0.8125rem;
+  line-height: 1;
+  min-height: 0;
+  padding: 0 0.25rem;
 }
 
 .radio-label,
 .checkbox-label {
-  display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  font-size: 0.9rem;
   cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
 }
 
 .radio-label input,
@@ -628,8 +1682,8 @@ dd {
 }
 
 .expiry-picker {
-  display: flex;
   align-items: center;
+  display: flex;
   gap: 0.5rem;
   margin-top: 0.35rem;
 }
@@ -641,7 +1695,7 @@ dd {
 }
 
 .output-selection input[type="text"] {
-  max-width: 320px;
+  max-width: 20rem;
 }
 
 .form-actions {
@@ -652,65 +1706,30 @@ dd {
 
 /* Search match badges */
 .match-badge {
-  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
   font-weight: 600;
+  padding: 0 0.35rem;
   text-transform: uppercase;
-  margin: 0 0.35rem;
-  padding: 0.1rem 0.35rem;
-  border: 1px solid var(--line);
-  border-radius: 3px;
 }
 
 .content-badge {
-  background: color-mix(in srgb, CanvasText 8%, Canvas);
+  background: var(--selected);
+  border-color: transparent;
+  color: var(--text);
 }
 
 .metadata-badge {
-  color: var(--muted);
-}
-
-
-/* First-run choices */
-.first-run {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.first-run-choices {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.first-run-choice {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.5rem;
-}
-
-.first-run-choice p,
-.first-run-license p {
-  margin: 0.25rem 0 0.5rem;
-}
-
-.first-run-choice button {
-  margin-right: 0.5rem;
-}
-
-.first-run-license {
-  margin-top: 0.75rem;
-  border-top: 1px solid var(--line);
-  padding-top: 0.5rem;
+  color: var(--text-muted);
 }
 
 /* Contextual recovery actions beside a refusal */
 .recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin: 0.25rem 0 0.5rem;
-}
-
-.recovery-actions button {
-  margin-right: 0.5rem;
 }
 
 /* Per-operation privacy disclosure */
@@ -721,22 +1740,873 @@ dd {
 
 .disclosure-state .reason,
 td .reason {
+  color: var(--text-muted);
   display: block;
-  color: var(--muted);
 }
 
 /* Support guidance */
 .support-notes,
 .support-unavailable {
+  list-style: disc;
   margin: 0.25rem 0 0.75rem;
   padding-left: 1.25rem;
 }
 
+.support-notes li,
+.support-unavailable li {
+  margin: 0.2rem 0;
+}
+
+/* ---------- Help ---------- */
+.help-topics {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+}
+
+.help-topic {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.15rem;
+}
+
+.help-topic h3 {
+  margin-top: 0;
+}
+
+.plain-list {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.plain-list li {
+  margin: 0.25rem 0;
+}
+
 .visually-hidden {
-  position: absolute;
-  width: 1px;
+  clip: rect(0 0 0 0);
   height: 1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  position: absolute;
   white-space: nowrap;
+  width: 1px;
+}
+
+/* ---------- Case page ---------- */
+.case-summary {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: -0.5rem 0 1.25rem;
+}
+
+.case-summary strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.file-details {
+  flex-basis: 100%;
+}
+
+.file-details[open] {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.9rem;
+}
+
+.file-details summary {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.other-entries {
+  margin-top: 1rem;
+}
+
+.other-entries > summary {
+  color: var(--text-muted);
+  padding: 0.35rem 0;
+}
+
+.other-entries .artifacts {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-top: 0.5rem;
+  padding: 0 1rem;
+}
+
+
+
+.environment-unselected {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  padding: 0.6rem 0.9rem;
+}
+
+.environment-unselected strong {
+  color: var(--text);
+}
+
+/* ---------- Notices on the home page ---------- */
+.page-body > .notice.recovery {
+  align-items: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  padding: 0.9rem 1.1rem;
+}
+
+.notice.recovery h2 {
+  font-size: 0.975rem;
+  margin: 0 0 0.2rem;
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 14rem;
+}
+
+.notice-text p {
+  margin: 0.15rem 0;
+}
+
+.notice-actions {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+.notice-drafts {
+  border-top: 1px solid var(--border);
+  flex-basis: 100%;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.recovered-note {
+  margin: 0.5rem 0;
+}
+
+.page-body > section.retained-drafts {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* ---------- Connections ---------- */
+.connections {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.connections th,
+.connections td {
+  border-top: 1px solid var(--border);
+  padding: 0.65rem 0.75rem 0.65rem 0;
+}
+
+.connections thead th {
+  border-top: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding-bottom: 0.35rem;
+  text-transform: uppercase;
+}
+
+.connections tbody th {
+  font-weight: 600;
+  width: 45%;
+}
+
+.connections .activity {
+  display: block;
+}
+
+.activity-details {
+  font-weight: 400;
+  margin-top: 0.2rem;
+}
+
+.activity-details > summary {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.activity-details dl {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin: 0.4rem 0 0;
+}
+
+.activity-details dt {
+  color: var(--text);
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+/* ---------- Panel content ----------
+   Every panel reads in the same order: one sentence saying what it is for,
+   then titled groups — fields with their labels above them, one row of
+   actions — and what an action produced set apart underneath. Secondary
+   material comes last, folded. See ui.tsx. */
+.lead {
+  color: var(--text-muted);
+  margin: 0 0 1.1rem;
+  max-width: 68ch;
+}
+
+/* Groups after the first are divided by a rule, so a result reads apart from
+   the form that produced it. */
+* + .group,
+.group + .more {
+  border-top: 1px solid var(--border);
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+}
+
+.lead + .group,
+h2 + .group,
+h3 + .group,
+h4 + .group,
+.result-title + .group,
+.more-body > .group:first-child {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.group-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem 1.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+}
+
+.group-title {
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.group-description {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin: 0.2rem 0 0;
+  max-width: 68ch;
+}
+
+.group-aside {
+  flex: none;
+}
+
+.fields {
+  align-items: start;
+  display: grid;
+  gap: 0.9rem 1.1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  max-width: 52rem;
+}
+
+.field {
+  align-content: start;
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.field > label,
+.field-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.field > select,
+.field > input:not([type="checkbox"]):not([type="radio"]),
+.field > textarea {
+  width: 100%;
+}
+
+.field-hint {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.field .check {
+  align-items: center;
+  display: flex;
+  font-weight: 400;
+  gap: 0.1rem;
+}
+
+.actions-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.fields + .actions-bar {
+  margin-top: 1.1rem;
+}
+
+.actions-bar .hint {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2rem;
+  margin: 0 0 1rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column-reverse;
+  min-width: 4.5rem;
+}
+
+.stat dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.stat dd {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.stat-muted dd {
+  color: var(--text-muted);
+}
+
+.stat-warning dd {
+  color: var(--warning);
+}
+
+.stat-danger dd {
+  color: var(--danger);
+}
+
+.stat-success dd {
+  color: var(--success);
+}
+
+.facts {
+  display: grid;
+  gap: 0.35rem 1.5rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+  margin: 0;
+}
+
+.fact {
+  display: contents;
+}
+
+.facts dt {
+  color: var(--text-muted);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.result {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 1.1rem;
+  padding: 0.9rem 1rem 1rem;
+}
+
+.result-title {
+  color: var(--text);
+  font-size: 0.875rem;
+  margin: 0 0 0.6rem;
+}
+
+.result > :last-child {
+  margin-bottom: 0;
+}
+
+.note {
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: 0.8125rem;
+  margin: 0.75rem 0;
+  max-width: 68ch;
+  padding: 0.55rem 0.8rem;
+}
+
+.note p {
+  margin: 0;
+}
+
+.note-warning {
+  border-left-color: var(--warning);
+}
+
+.note-danger {
+  border-left-color: var(--danger);
+}
+
+.note-success {
+  border-left-color: var(--success);
+}
+
+.more {
+  margin-top: 1.1rem;
+}
+
+.more > summary {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.more[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.more-body {
+  border-left: 2px solid var(--border);
+  padding-left: 1rem;
+}
+
+/* A table of results: quiet column heads, rules between rows, and numbers
+   that line up. */
+.data-table {
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  width: 100%;
+}
+
+.data-table th,
+.data-table td {
+  border-top: 1px solid var(--border);
+  padding: 0.45rem 0.75rem 0.45rem 0;
+  text-align: start;
+  vertical-align: top;
+}
+
+.data-table thead th {
+  border-top: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.data-table td.number,
+.data-table th.number {
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+/* A toolbar above a list or table: what the list is showing on the left, how
+   much of it on the right. */
+.toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.toolbar-group {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.toolbar label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.toolbar .count {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.pager {
+  align-items: center;
+  display: flex;
+  gap: 0.25rem;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.pager span {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  padding: 0 0.35rem;
+}
+
+/* A button that opens the row it names, drawn as the row's link so the row
+   stays one line tall. */
+button.row-link {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 600;
+  min-height: 0;
+  padding: 0;
+}
+
+button.row-link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+
+.counts .warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Settings read as rows: the setting's name on the left, its value or
+   control on the right, the way a platform's own settings read. */
+.setting-rows {
+  display: flex;
+  flex-direction: column;
+  max-width: 44rem;
+}
+
+.setting-row {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-height: 2.75rem;
+  padding: 0.5rem 0;
+}
+
+.setting-row:first-child {
+  border-top: 0;
+}
+
+.setting-row > label,
+.setting-row > span:first-child {
+  font-weight: 500;
+}
+
+.setting-row select {
+  min-width: 12rem;
+}
+
+/* ---------- Dialog forms ---------- */
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dialog-fields {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.dialog-fields .field input:not([type="checkbox"]):not([type="radio"]),
+.dialog-fields .field select,
+.dialog-fields .field textarea {
+  width: 100%;
+}
+
+.dialog-status .status {
+  margin: 0;
+}
+
+.dialog-footer {
+  background: var(--raised);
+  border-top: 1px solid var(--border);
+  bottom: -1.25rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin: 0 -1.25rem -1.25rem;
+  padding: 0.85rem 1.25rem;
+  position: sticky;
+}
+
+button.danger.solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+.modal {
+  max-width: 36rem;
+}
+
+.modal.wide {
+  max-width: 52rem;
+}
+
+.modal-body {
+  max-height: calc(80vh - 3.5rem);
+  overflow: auto;
+}
+
+/* The search sheet: one field, the matches under it. */
+.search-button kbd {
+  margin-left: auto;
+}
+
+.search-form input {
+  width: 100%;
+}
+
+.search-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 0.75rem;
+}
+
+.search-matches button {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-start;
+  text-align: start;
+  width: 100%;
+}
+
+.search-matches button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.search-matches .reason {
+  margin-left: auto;
+}
+
+/* ---------- Tables of things ---------- */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.data-table th[scope="row"] {
+  font-weight: 500;
+}
+
+.row-sub {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.row-actions {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.row-actions button {
+  min-height: 1.6rem;
+  padding: 0.15rem 0.6rem;
+}
+
+.data-table tr[aria-current="true"] {
+  background: var(--selected);
+}
+
+.data-table td .badge + .badge {
+  margin-left: 0.25rem;
+}
+
+.badge.ok {
+  color: var(--success);
+}
+
+.badge.warn {
+  border-color: currentColor;
+  color: var(--warning);
+}
+
+.badge.danger {
+  border-color: currentColor;
+  color: var(--danger);
+}
+
+.group-header h2 .count,
+h2 .count {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-left: 0.35rem;
+}
+
+.facts dd .badge + .badge {
+  margin-left: 0.3rem;
+}
+
+/* ---------- More-actions menu ---------- */
+.more-menu {
+  display: inline-block;
+  position: relative;
+}
+
+.more-menu .icon-button button {
+  border: 1px solid var(--border-strong);
+  min-height: var(--control-height);
+  padding: 0 0.45rem;
+}
+
+.menu-popover {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: 0.3rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  z-index: 40;
+}
+
+.menu-popover button {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  justify-content: flex-start;
+  min-height: 1.9rem;
+  padding: 0.25rem 0.6rem;
+  text-align: start;
+  width: 100%;
+}
+
+.menu-popover button:hover:not(:disabled) {
+  background: var(--selected);
+}
+
+.menu-popover button.danger {
+  border: 0;
+}
+
+.page-subtitle {
+  color: var(--text-muted);
+  margin: 0.2rem 0 0;
+}
+
+/* ---------- Messages ---------- */
+/* In a view's card the table is the card's content: its rules and row
+   highlight run edge to edge, with no second box drawn inside the first. */
+.view-panel > .grid .grid-scroll {
+  background: none;
+  border: 0;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  margin: 0.5rem -1.25rem -1.25rem;
+  max-width: none;
+}
+
+.view-panel > .grid .rows thead th {
+  background: var(--panel);
+}
+
+.view-panel > .grid .rows th:first-child,
+.view-panel > .grid .rows td:first-child {
+  padding-left: 1.25rem;
+}
+
+.view-panel > .grid .rows th:last-child,
+.view-panel > .grid .rows td:last-child {
+  padding-right: 1.25rem;
+}
+
+.view-panel > .grid .rows tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.rows .direction-outbound::before {
+  content: "↑ ";
+  color: var(--text-muted);
+}
+
+.rows .direction-inbound::before {
+  content: "↓ ";
+  color: var(--text-muted);
+}
+
+.rows .occurrence-id {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.rows tbody tr {
+  cursor: default;
+}
+
+.rows th[scope="row"] button {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.rows tr[aria-selected="true"] th[scope="row"] button {
+  font-weight: 650;
+}
+
+.rows .badge {
+  margin-left: 0.4rem;
+}
+
+.inline-control {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inline-control select {
+  flex: 1;
+}
+
+.index-switch {
+  margin-top: 1rem;
+}
+
+.notice p {
+  flex: 1;
+}
+
+.option-note {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.8125rem;
 }

@@ -110,8 +110,8 @@
 }
 
 .import-engine-notice {
-  background: color-mix(in srgb, #fff3e0 25%, var(--surface));
-  border-left: 4px solid #f57c00;
+  background: var(--panel);
+  border-left: 3px solid var(--warning);
   padding: 0.75rem 1rem;
   margin-bottom: 1.5rem;
 }
@@ -210,8 +210,8 @@
 }
 
 .import-commit-success {
-  background: color-mix(in srgb, #e8f5e9 30%, var(--surface));
-  border-left: 4px solid #2e7d32;
+  background: var(--panel);
+  border-left: 3px solid var(--success);
   padding: 1rem;
   border-radius: 4px;
   margin-top: 1rem;

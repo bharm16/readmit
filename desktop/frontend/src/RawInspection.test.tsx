@@ -249,7 +249,7 @@ test("the palette opens raw inspection and a keyboard alone chooses, declares an
   const user = userEvent.setup();
   const { facade } = await renderApp(handlers());
   await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Search commands"), "Inspect HL7{Enter}");
+  await user.type(screen.getByLabelText("Search commands"), "Inspect file{Enter}");
   const toggle = screen.getByRole("button", { name: "Inspect HL7 file" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(toggle);

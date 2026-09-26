@@ -11,8 +11,8 @@ func TestContextHelpIsOfflineAndLinkedToEveryRegionAndStatus(t *testing.T) {
 	help := read(t, frontendDirectory+"/ContextHelp.tsx")
 	app := read(t, frontendDirectory+"/App.tsx")
 	status := read(t, frontendDirectory+"/shell.tsx")
-	if !strings.Contains(app, "<ContextHelp region={region.id}") || !strings.Contains(status, "<StateHelp state={state}") {
-		t.Fatal("help must follow the displayed region and typed operation state")
+	if !strings.Contains(app, "<HelpTopics") || !strings.Contains(status, "<StateHelp state={state}") {
+		t.Fatal("help must cover every region of the window and follow the typed operation state")
 	}
 	for _, region := range shell(t).Regions {
 		if !strings.Contains(help, string(region.ID)+":") {

@@ -1,6 +1,5 @@
-import { ContextHelp } from "./ContextHelp";
+import { HelpTopics } from "./ContextHelp";
 import { OperationAccess } from "./OperationAccess";
-import { FirstRun } from "./FirstRun";
 import { PrivacyDisclosure, SupportGuidance } from "./PrivacyDisclosure";
 import { HubPanel } from "./HubPanel";
 import { RunnerPanel } from "./RunnerPanel";
@@ -19,7 +18,7 @@ import { EnvironmentPanel } from "./EnvironmentPanel";
 import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
 import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import {
   authorTest,
@@ -145,7 +144,7 @@ import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAu
 import { Diagnosis } from "./Diagnosis";
 import { Badge, MessageGrid, Palette, Report, Separator, Status } from "./shell";
 import { VocabularyContext } from "./vocabulary";
-import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
+import { ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
@@ -154,6 +153,21 @@ import { RawInspection } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
 import { RecentWorkspaces } from "./RecentWorkspaces";
 import type { CaptureObservationBinding } from "./bindings";
+import { TaskPanel, TaskTabs } from "./TaskTabs";
+import { IconButton } from "./IconButton";
+import { DemoCallout, NewProjectForm } from "./Home";
+import {
+  EmptyState,
+  GLOBAL_DESTINATIONS,
+  Modal,
+  MoreMenu,
+  NavItem,
+  PROJECT_DESTINATIONS,
+  Page,
+  folderName,
+  humanize,
+  type Destination,
+} from "./layout";
 
 /** The panes never collapse to nothing: either one keeps a usable share of the
  * window, whether it is dragged or moved with a keyboard. */
@@ -193,6 +207,93 @@ type Running =
   | "normalize"
   | "recent"
   | "sample";
+
+/** The views inside a page. Each page keeps every view mounted, so an edit in
+ * one survives looking at another. */
+type CaseView = "messages" | "timeline" | "findings";
+/** What a person does to a case, each on its own page with a way back. */
+type CaseFlow = "test" | "replay" | "compare" | "reproduce" | "reduce";
+const CASE_FLOW_TITLES: Record<CaseFlow, string> = {
+  test: "New test",
+  replay: "Replay",
+  compare: "Compare",
+  reproduce: "Reproducer",
+  reduce: "Reduce",
+};
+type TestsView = "suites" | "tests" | "assertions" | "profiles" | "scenarios" | "baselines";
+type RunsView = "run" | "details" | "compare";
+type ReportsView = "packets" | "disclosure" | "export" | "notes";
+type ToolsView = "inspect" | "benchmarks";
+type SettingsView = "general" | "license" | "team" | "runners" | "security" | "storage";
+
+const CASE_VIEWS: { key: CaseView; label: string }[] = [
+  { key: "messages", label: "Messages" },
+  { key: "timeline", label: "Timeline" },
+  { key: "findings", label: "Findings" },
+];
+const TESTS_VIEWS: { key: TestsView; label: string }[] = [
+  { key: "suites", label: "Suites" },
+  { key: "tests", label: "Test files" },
+  { key: "assertions", label: "Assertion sets" },
+  { key: "profiles", label: "Profiles" },
+  { key: "scenarios", label: "Scenarios" },
+  { key: "baselines", label: "Baselines" },
+];
+const RUNS_VIEWS: { key: RunsView; label: string }[] = [
+  { key: "run", label: "Run a test" },
+  { key: "details", label: "Run details" },
+  { key: "compare", label: "Compare runs" },
+];
+const REPORTS_VIEWS: { key: ReportsView; label: string }[] = [
+  { key: "packets", label: "Packets" },
+  { key: "disclosure", label: "Disclosure review" },
+  { key: "export", label: "Transform and export" },
+  { key: "notes", label: "Notes" },
+];
+const TOOLS_VIEWS: { key: ToolsView; label: string }[] = [
+  { key: "inspect", label: "Inspect file" },
+  { key: "benchmarks", label: "Benchmarks" },
+];
+const SETTINGS_VIEWS: { key: SettingsView; label: string }[] = [
+  { key: "general", label: "General" },
+  { key: "license", label: "License" },
+  { key: "team", label: "Team" },
+  { key: "runners", label: "Runners" },
+  { key: "security", label: "Security" },
+  { key: "storage", label: "Storage" },
+];
+
+/** What the status line says while one of this window's operations runs. */
+const PROGRESS: Record<Running, string> = {
+  workspace: "Opening the folder…",
+  case: "Verifying the case…",
+  project: "Reading the project…",
+  search: "Searching this project…",
+  grid: "Reading messages…",
+  filters: "Saving the filter…",
+  inspect: "Reading the message…",
+  reproducer: "Updating the reproducer…",
+  authoring: "Updating the test…",
+  comparison: "Comparing…",
+  revisions: "Comparing revisions…",
+  practice: "Running the demo test…",
+  sequence: "Loading the timeline…",
+  "correlation-review": "Reviewing correlations…",
+  transformation: "Previewing the transformation…",
+  "transform-plan": "Saving the transformation plan…",
+  "transform-open": "Opening the transformation plan…",
+  "reduction-preview": "Previewing the reduction…",
+  reduction: "Running the reduction…",
+  review: "Reading the export review…",
+  diagnosis: "Running the diagnosis…",
+  "diagnosis-report": "Opening the report…",
+  "diagnosis-groups": "Grouping findings…",
+  "diagnosis-groups-report": "Opening the grouping report…",
+  "finding-review": "Reviewing findings…",
+  normalize: "Comparing under the policy…",
+  recent: "Updating recent projects…",
+  sample: "Importing the demo fixtures…",
+};
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
@@ -264,7 +365,6 @@ export default function App() {
   const [importing, setImporting] = useState(false);
   const [observing, setObserving] = useState(false);
   const [captureBinding, setCaptureBinding] = useState<CaptureObservationBinding | null>(null);
-  const [maintaining, setMaintaining] = useState(false);
   const [maintenanceTab, setMaintenanceTab] = useState<"backup" | "restore" | "storage" | "lifecycle" | "upgrade">("backup");
 
   // Refusals of navigation the window has not committed: the workspace and
@@ -283,6 +383,24 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>("system");
   const [scale, setScale] = useState(0);
   const [split, setSplit] = useState(58);
+
+  // Where the window is: one destination at a time and, inside some, one view.
+  // Every destination stays mounted, so an unfinished edit survives looking at
+  // another; only the shown one is drawn and announced.
+  const [destination, setDestination] = useState<Destination>("home");
+  const [caseView, setCaseView] = useState<CaseView>("messages");
+  const [caseFlow, setCaseFlow] = useState<CaseFlow | null>(null);
+  const [fileDetails, setFileDetails] = useState(false);
+  const [testsView, setTestsView] = useState<TestsView>("suites");
+  const [runsView, setRunsView] = useState<RunsView>("run");
+  const [reportsView, setReportsView] = useState<ReportsView>("packets");
+  const [toolsView, setToolsView] = useState<ToolsView>("inspect");
+  const [settingsView, setSettingsView] = useState<SettingsView>("general");
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [searching, setSearching] = useState(false);
+  // Counts requests to open storage on a named section, so the section asked
+  // for is the one shown even when storage is already open.
+  const [maintenanceRequest, setMaintenanceRequest] = useState(0);
 
   const regionElements = useRef<Partial<Record<RegionId, HTMLElement | null>>>({});
   const searchField = useRef<HTMLInputElement | null>(null);
@@ -461,9 +579,14 @@ export default function App() {
     regionElements.current[region]?.focus();
   }, []);
 
+  // F6 moves through the regions shown now: message details is a region only
+  // while it is open, so a step never lands on a pane that is not there.
   const step = useCallback(
     (direction: number) => {
-      const regions = described?.regions ?? [];
+      const regions = (described?.regions ?? []).filter((region) => {
+        const element = regionElements.current[region.id];
+        return element && !element.hidden;
+      });
       if (regions.length === 0) {
         return;
       }
@@ -529,14 +652,26 @@ export default function App() {
           setWorkspace(result);
           setPracticeResult(null);
           setSampleCapture(null);
+          setImporting(false);
+          setCapturing(false);
+          setObserving(false);
+          setCaptureBinding(null);
           opened = true;
           await refreshGuide(result.workspace.root);
+          // A folder that holds a project opens as that project: its cases and
+          // settings are read now rather than behind another button.
+          if (result.workspace.artifacts.some((artifact) => artifact.kind === "project")) {
+            setInvestigation(await openProjectOverview(result.workspace.root));
+          }
         } else {
           setOpenNotice(result);
         }
       });
       await refreshRecent();
-      focusRegion("navigation");
+      if (opened) {
+        setDestination("cases");
+        focusRegion("evidence");
+      }
       return opened;
     },
     [clearWorkspace, focusRegion, refreshGuide, refreshRecent, run],
@@ -614,6 +749,9 @@ export default function App() {
           clearCase();
           setSelected(name);
           setEvidence(result);
+          setDestination("cases");
+          setCaseView("messages");
+          setCaseFlow(null);
           outcome = result;
           const desc = await describeIndex(folder, name, "");
           setIndexResult(desc);
@@ -627,7 +765,7 @@ export default function App() {
       if (autoIndex && !options?.skipAutoGrid) {
         void showGrid(folder, name, autoIndex, 0);
       }
-      focusRegion("inspector");
+      focusRegion("evidence");
       return outcome;
     },
     [clearCase, focusRegion, run, showGrid],
@@ -702,6 +840,8 @@ export default function App() {
       setRunSpecPath(selection.entry);
       setRunEnvironment(selection.environment);
       if (root) setSuiteHandoff({ workspace: root, handoff: selection });
+      setDestination("runs");
+      setRunsView("run");
       focusRegion("evidence");
     },
     [focusRegion, root],
@@ -717,6 +857,7 @@ export default function App() {
         setInvestigation(null);
         setInvestigation(await openProjectOverview(folder));
       });
+      setDestination("cases");
       focusRegion("evidence");
     },
     [focusRegion, run],
@@ -732,17 +873,24 @@ export default function App() {
   const startProject = useCallback(
     async (name: string, title: string, owner: string, versions: string[]) => {
       let created = "";
+      let answer: ProjectOverviewResult = { state: "failed", reason: "The project was not created." };
       await run("project", async () => {
         const result = await createProject(name, title, owner, versions);
+        answer = result;
         setInvestigation(result);
         if (result.overview) created = result.overview.root;
       });
-      if (created === "" || created === root) return;
+      if (created === "") return answer;
+      if (created === root) {
+        setDestination("cases");
+        return answer;
+      }
       if (await openFolder(() => openWorkspace(created))) {
         await readProject(created);
       } else {
         setInvestigation(null);
       }
+      return answer;
     },
     [openFolder, readProject, root, run],
   );
@@ -818,8 +966,8 @@ export default function App() {
               case: verified.case.name,
               identity: verified.case.identity,
             });
+            focusRegion("inspector");
           }
-          focusRegion("inspector");
         })();
         return;
       }
@@ -836,6 +984,7 @@ export default function App() {
         void readProject(root);
         return;
       }
+      setDestination("cases");
       focusRegion(match.region);
     },
     [busy, focusRegion, inspect, opened, readProject, root, verifyCase],
@@ -849,22 +998,11 @@ export default function App() {
     setCapturing(false);
     setObserving(false);
     setCaptureBinding(null);
-    setMaintaining(false);
     clearCase();
+    setCaseFlow(null);
+    setDestination("cases");
     focusRegion("evidence");
   }, [clearCase, focusRegion]);
-
-  const backToWorkspace = useCallback(() => {
-    setImporting(false);
-    setCapturing(false);
-    setObserving(false);
-    setCaptureBinding(null);
-    setMaintaining(false);
-    clearWorkspace();
-    setSelected(null);
-    setInvestigation(null);
-    focusRegion("navigation");
-  }, [clearWorkspace, focusRegion]);
 
   const searchWorkspace = useCallback(
     async (folder: string, wanted: string) => {
@@ -1256,6 +1394,7 @@ export default function App() {
   // A build handed to the revision comparison becomes its later revision; the
   // comparison on screen belonged to other revisions, so it is withdrawn.
   const compareBuild = useCallback((built: string) => {
+    setCaseFlow("compare");
     setRevisionResult(null);
     setComparisonSeed((held) => ({ later: built, serial: (held?.serial ?? 0) + 1 }));
   }, []);
@@ -1493,7 +1632,8 @@ export default function App() {
           promotedDraftId.current = savedId(retained, "promoted-test-draft", root);
         }
       });
-      focusRegion("inspector");
+      setCaseFlow("test");
+      focusRegion("evidence");
     },
     [evidence, findingReviewResult, focusRegion, root, run],
   );
@@ -1656,6 +1796,33 @@ export default function App() {
   );
 
 
+  // Moves to a destination and, where it has views, to one of them. Focus goes
+  // to the page, so a keyboard user lands where the page now is.
+  const go = useCallback(
+    (to: Destination) => {
+      setDestination(to);
+      focusRegion("evidence");
+    },
+    [focusRegion],
+  );
+
+  const openSettings = useCallback(
+    (view: SettingsView) => {
+      setSettingsView(view);
+      go("settings");
+    },
+    [go],
+  );
+
+  const openStorage = useCallback(
+    (tab: "backup" | "restore" | "storage" | "lifecycle" | "upgrade") => {
+      setMaintenanceTab(tab);
+      setMaintenanceRequest((count) => count + 1);
+      openSettings("storage");
+    },
+    [openSettings],
+  );
+
   // Every command the facade declares has an action here. The record is keyed by
   // the declared identifiers, so a command the window forgot is a type error
   // rather than a palette entry that quietly does nothing. Which key reaches
@@ -1666,8 +1833,7 @@ export default function App() {
       setPaletteOpen(true);
     },
     "search-workspace": () => {
-      focusRegion("commands");
-      searchField.current?.focus();
+      if (root) setSearching(true);
     },
     "open-workspace": () => {
       if (!busy) {
@@ -1685,36 +1851,37 @@ export default function App() {
       }
     },
     "manage-profiles": () => {
-      focusRegion("inspector");
+      setTestsView("profiles");
+      go("tests");
     },
     "maintain-workspace": () => {
       if (!root) {
         return;
       }
-      setMaintenanceTab("backup");
-      setMaintaining(true);
-      focusRegion("evidence");
+      openStorage("backup");
     },
     "check-staged-upgrade": () => {
       if (!root) {
         return;
       }
-      setMaintenanceTab("upgrade");
-      setMaintaining(true);
-      focusRegion("evidence");
+      openStorage("upgrade");
     },
     "manage-scenarios": () => {
-      focusRegion("inspector");
+      setTestsView("scenarios");
+      go("tests");
     },
     "manage-assertions": () => {
-      focusRegion("inspector");
+      setTestsView("assertions");
+      go("tests");
     },
     "inspect-raw-file": () => {
-      focusRegion("inspector");
+      setToolsView("inspect");
+      go("tools");
       setRawRequest((count) => count + 1);
     },
     "performance-corpus": () => {
-      focusRegion("inspector");
+      setToolsView("benchmarks");
+      go("tools");
       setCorpusRequest((count) => count + 1);
     },
     "cancel-operation": () => cancel(),
@@ -1748,10 +1915,10 @@ export default function App() {
         if (event.key === "F6") {
           return event.shiftKey ? "previous-region" : "next-region";
         }
-        // The palette is a modal dialog and closes itself on Escape, so the
-        // key only cancels an operation while the palette is not open.
+        // An open native dialog owns Escape. Do not prevent its dismissal
+        // or cancel unrelated work behind it.
         if (event.key === "Escape") {
-          return paletteOpen ? null : "cancel-operation";
+          return document.querySelector("dialog[open]") ? null : "cancel-operation";
         }
         if (!(event.ctrlKey || event.metaKey)) {
           return null;
@@ -1794,6 +1961,47 @@ export default function App() {
     );
   });
 
+  const artifacts = opened?.artifacts ?? [];
+  const named = (kind: string) => artifacts.filter((artifact) => artifact.kind === kind).map((artifact) => artifact.name);
+  const caseBundles = artifacts.filter((artifact) => artifact.kind === "case");
+  const otherEntries = artifacts.filter((artifact) => artifact.kind !== "case");
+  const projectName = overview?.title || (root ? folderName(root) : "");
+  const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
+  const subpage = importing && root ? "import" : capturing && root ? "capture" : observing && root ? "observe" : null;
+  const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
+  const detailsShown = destination === "cases" && verified !== null && subpage === null && inspecting;
+  const inspected =
+    selectedOccurrence && inspectionResult?.inspection
+      ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
+      : null;
+  const closeDetails = () => {
+    setSelectedOccurrence(null);
+    setInspectionResult(null);
+    focusRegion("evidence");
+  };
+  const leaveSubpage = () => {
+    if (importing) {
+      setImporting(false);
+      void leaveImport();
+    }
+    setCapturing(false);
+    setObserving(false);
+    setCaptureBinding(null);
+  };
+  const noProject = (what: string) => (
+    <EmptyState
+      title={`Open a project to see its ${what}`}
+      action={
+        <>
+          <button type="button" className="primary" disabled={busy} onClick={() => go("home")}>
+            Go to projects
+          </button>
+        </>
+      }
+    />
+  );
+  const interruptible = running === "workspace" || running === "diagnosis-groups";
+
   // Every region the facade declares has an element here, for the same reason
   // every command has an action: a region the window forgot is a type error.
   // ReactElement rather than ReactNode, because ReactNode admits null and would
@@ -1801,918 +2009,1043 @@ export default function App() {
   const content: Record<RegionId, ReactElement> = {
     commands: (
       <>
-        {root ? null : (
-          <FirstRun
-            busy={busy}
-            onOpenWorkspace={actions["open-workspace"]}
-            onExploreSample={actions["create-sample-workspace"]}
-            onLicense={() => focusRegion("privacy")}
-          />
-        )}
-        <div className="actions">
-          <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
-            Open workspace…
-          </button>
-          <button type="button" disabled={busy} onClick={actions["create-sample-workspace"]}>
-            Create sample…
-          </button>
-          <button type="button" onClick={actions["command-palette"]}>
-            Commands (Ctrl+K)
-          </button>
-          <button
-            type="button"
-            disabled={running !== "workspace" && running !== "diagnosis-groups"}
-            onClick={() => cancel()}
-          >
-            Cancel
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            R
+          </span>
+          <span className="brand-name">Readmit</span>
+          <button type="button" className="command-button" title="Search commands (⌘K)" onClick={actions["command-palette"]}>
+            <span className="visually-hidden">Search commands</span>
+            <kbd aria-hidden="true">⌘K</kbd>
           </button>
         </div>
-        <div className="appearance">
-          <label htmlFor="theme">Theme</label>
-          <select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
-            {(described?.themes ?? []).map((choice) => (
-              <option key={choice} value={choice}>
-                {choice}
-              </option>
-            ))}
-          </select>
-          <span id="text-size-label">Text size</span>
-          <div className="text-size" role="group" aria-labelledby="text-size-label">
-            <button type="button" onClick={actions["smaller-text"]} disabled={scale === 0}>
-              Smaller
-            </button>
-            <span className="scale">{described?.text_scales[scale] ?? 100}%</span>
-            <button
-              type="button"
-              onClick={actions["larger-text"]}
-              disabled={scale >= (described?.text_scales.length ?? 1) - 1}
-            >
-              Larger
-            </button>
-          </div>
-        </div>
-        <form
-          className="search"
-          role="search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (root && !busy) {
-              void searchWorkspace(root, query);
-            }
-          }}
-        >
-          <label htmlFor="workspace-search">Search workspace</label>
-          <input
-            id="workspace-search"
-            ref={searchField}
-            type="search"
-            value={query}
-            disabled={!root || busy}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <button type="submit" disabled={!root || busy}>
-            Search
+        {root ? (
+          <button type="button" className="nav-item search-button" onClick={actions["search-workspace"]}>
+            <svg className="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <circle cx="7" cy="7" r="4.5" />
+              <path d="M10.5 10.5 14 14" />
+            </svg>
+            <span className="nav-label">Search</span>
+            <kbd aria-hidden="true">⌘F</kbd>
           </button>
-        </form>
-        {root ? null : <p className="hint">Open a workspace folder to search what it holds.</p>}
-        <Report
-          indicators={indicators}
-          progress={running === "search" ? "Searching this workspace." : null}
-          result={found && found.state !== "completed" ? found : null}
-        />
-        {found && found.matches.length > 0 ? (
-          <ul className="matches" aria-label="Search results">
-            {found.matches.map((match) => (
-              <li key={`${match.kind}:${match.name}:${match.field}:${match.occurrence ?? ""}`}>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setSelected(match.name);
-                    openMatch(match);
-                  }}
-                >
-                  <span className="name">{match.label}</span>
-                  <span className={`match-badge ${match.kind === "content" ? "content-badge" : "metadata-badge"}`}>
-                    {match.kind === "content" ? "[content]" : "[metadata]"}
-                  </span>
-                  <span className="reason">matched its {match.field}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
         ) : null}
       </>
     ),
     navigation: (
       <>
-        <GuidedSample
-          result={guideResult}
-          practice={practiceResult}
-          capture={sampleCapture}
-          busy={busy}
-          progress={
-            running === "practice"
-              ? "Running the saved test against the practice receiver."
-              : running === "sample"
-                ? "Importing the frozen receiver fixtures."
-                : null
-          }
-          indicators={indicators}
-          onCreateSample={actions["create-sample-workspace"]}
-          onOpenCase={(name: string) => {
-            if (root) void verifyCase(root, name);
-          }}
-          onRun={(trial, output) => void practise(trial, output)}
-          onCancel={cancelRunning}
-          onCapture={(output) => void importSample(output)}
-        />
-        <Report
-          indicators={indicators}
-          progress={running === "workspace" ? "Opening the folder." : null}
-          result={workspace}
-        />
-        {openNotice ? (
+        <ul className="nav-list">
+          <NavItem id="home" label="Projects" current={destination === "home"} onSelect={go} />
+        </ul>
+        {root ? (
           <>
-            <Report indicators={indicators} progress={null} result={openNotice} />
-            <p className="recovery-actions">
-              <button
-                type="button"
-                className="action-retry-folder"
-                disabled={busy}
-                onClick={actions["open-workspace"]}
-              >
-                Change folder…
-              </button>
-            </p>
+            <p className="nav-section-label">Project</p>
+            <div className="project-switcher">
+              <span className="project-name" title={projectName}>
+                {projectName}
+              </span>
+              <span className="project-path" title={root}>
+                {root}
+              </span>
+            </div>
+            <ul className="nav-list">
+              {PROJECT_DESTINATIONS.map((item) => (
+                <NavItem
+                  key={item.id}
+                  id={item.id}
+                  label={item.label}
+                  current={destination === item.id}
+                  onSelect={go}
+                />
+              ))}
+            </ul>
           </>
         ) : null}
-        {opened ? <p className="root">{opened.root}</p> : null}
-        {opened && opened.artifacts.length > 0 ? (
-          <ul className="artifacts">
-            {opened.artifacts.map((artifact) => (
-              <li key={artifact.name} aria-current={selected === artifact.name ? "true" : undefined}>
-                <span className="name">{artifact.name}</span>
-                <Badge indicator={indicators.get(artifact.kind)} fallback={artifact.kind} />
-                {artifact.kind === "case" ? (
-                  <>
-                    <span className="badge">{artifact.schema}</span>
-                    <span className="badge">{artifact.provenance}</span>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void verifyCase(opened.root, artifact.name)}
-                    >
-                      Open case
-                    </button>
-                  </>
-                ) : null}
-                {artifact.kind === "project" ? (
-                  <button type="button" disabled={busy} onClick={() => void readProject(opened.root)}>
-                    Open project
-                  </button>
-                ) : null}
-                {artifact.kind === "target" ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSelected(artifact.name);
-                      setEnvironmentArtifact({ name: artifact.name, kind: "target" });
-                    }}
-                  >
-                    Configure target
-                  </button>
-                ) : null}
-                {artifact.kind === "secret" ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSelected(artifact.name);
-                      setEnvironmentArtifact({ name: artifact.name, kind: "secrets" });
-                    }}
-                  >
-                    Manage secrets
-                  </button>
-                ) : null}
-                {artifact.kind === "policy" ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSelected(artifact.name);
-                      setEnvironmentArtifact({ name: artifact.name, kind: "policy" });
-                    }}
-                  >
-                    Review policy
-                  </button>
-                ) : null}
-                {artifact.kind === "reset" ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSelected(artifact.name);
-                      setEnvironmentArtifact({ name: artifact.name, kind: "reset" });
-                    }}
-                  >
-                    View reset plan
-                  </button>
-                ) : null}
-                {artifact.reason ? (
-                  <span className={artifact.kind === "unsupported" ? "unsupported" : "reason"}>{artifact.reason}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <RecentWorkspaces
-          recent={recent}
-          busy={busy}
-          indicators={indicators}
-          onReopen={(folder) => void openFolder(() => openWorkspace(folder))}
-          onForget={forget}
-        />
+        <ul className="nav-list nav-footer">
+          {GLOBAL_DESTINATIONS.map((item) => (
+            <NavItem key={item.id} id={item.id} label={item.label} current={destination === item.id} onSelect={go} />
+          ))}
+        </ul>
       </>
     ),
     evidence: (
       <>
-        <Breadcrumbs
-          project={overview?.title ?? null}
-          selectedCase={verified?.name ?? null}
-          importing={importing}
-          capturing={capturing}
-          observing={observing}
-          maintaining={maintaining}
-          onWorkspace={backToWorkspace}
-          onProject={backToProject}
-        />
-        {observing && root ? (
-          <ObservationPanel
-            workspace={root}
+        <Page
+          id="home"
+          shown={destination === "home"}
+          title="Projects"
+          actions={
+            <>
+              <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
+                Open…
+              </button>
+              <button type="button" className="primary" disabled={busy} onClick={() => setCreatingProject(true)}>
+                New project
+              </button>
+            </>
+          }
+        >
+          <Recovery restored={restored} onChanged={() => void restore()} onReopen={() => void reopen()} />
+          <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
+          {openNotice ? (
+            <div className="notice danger">
+              <Report indicators={indicators} progress={null} result={openNotice} />
+              <button type="button" className="action-retry-folder" disabled={busy} onClick={actions["open-workspace"]}>
+                Choose another folder…
+              </button>
+            </div>
+          ) : null}
+          <RecentWorkspaces
+            recent={recent}
             busy={busy}
             indicators={indicators}
-            drafts={drafts ?? []}
-            captureBinding={captureBinding}
-            onBindToTest={(observationFile) => {
-              setObserving(false);
-              setCaptureBinding(null);
-              void author((draft, open) =>
-                authorTest({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  draft,
-                  answer: { stage: "observation", observation: observationFile },
-                }),
-              );
-            }}
-            onClose={() => {
-              setObserving(false);
-              setCaptureBinding(null);
-            }}
+            onReopen={(folder) => void openFolder(() => openWorkspace(folder))}
+            onForget={forget}
           />
-        ) : capturing && root ? (
-          <CapturePanel
-            workspace={root}
-            project={investigation?.overview?.root ?? null}
-            busy={busy}
-            indicators={indicators}
-            onOpenCase={(name) => {
-              setCapturing(false);
-              void verifyCase(root, name);
-            }}
-            onSetupIndex={(name) => {
-              setCapturing(false);
-              void verifyCase(root, name);
-            }}
-            onBindObservation={(binding) => {
-              setCapturing(false);
-              setCaptureBinding(binding);
-              setObserving(true);
-            }}
-            onClose={() => setCapturing(false)}
-          />
-        ) : maintaining && root ? (
-          <MaintenancePanel
-            workspace={root}
-            project={investigation?.overview?.root ?? null}
-            busy={busy}
-            indicators={indicators}
-            initialTab={maintenanceTab}
-            onReopen={(path) => {
-              setMaintaining(false);
-              void openFolder(() => openWorkspace(path)).then(() => {
-                void openProjectOverview(path).then((result) => setInvestigation(result));
-              });
-            }}
-            onProjectChanged={(path) => {
-              // Only the project still open takes the answer: a person who
-              // moved on before it arrived keeps what they moved to.
-              void openProjectOverview(path).then((answer) =>
-                setInvestigation((held) =>
-                  held?.overview?.root !== path ? held : answer.overview ? answer : { ...answer, overview: held.overview },
-                ),
-              );
-            }}
-            onClose={() => setMaintaining(false)}
-          />
-        ) : importing && root ? (
-          <ImportPanel
-            workspace={root}
-            project={investigation?.overview?.root ?? null}
-            drafts={drafts}
-            busy={busy}
-            indicators={indicators}
-            onOpenCase={(name) => {
-              setImporting(false);
-              void leaveImport().then(() => verifyCase(root, name));
-            }}
-            onSetupIndex={(name) => {
-              setImporting(false);
-              void leaveImport().then(() => verifyCase(root, name));
-            }}
-            onClose={() => {
-              setImporting(false);
-              void leaveImport();
-            }}
-          />
-        ) : (
-          <>
-            <Recovery
-              restored={restored}
-              onChanged={() => void restore()}
-              onReopen={() => void reopen()}
-            />
-            <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
-            <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
-            {suiteHandoff && suiteHandoff.workspace === root ? <SuiteHandoffNotice handoff={suiteHandoff.handoff} /> : null}
-            <RunPanel
+          <DemoCallout busy={busy} onTryDemo={actions["create-sample-workspace"]} />
+        </Page>
+
+        <Page
+          id="cases"
+          shown={destination === "cases"}
+          eyebrow={
+            subpage !== null || verified ? (
+              <nav aria-label="Where you are" className="page-eyebrow">
+                <button type="button" onClick={subpage !== null ? leaveSubpage : backToProject}>
+                  {projectName || "Cases"}
+                </button>
+                <span aria-hidden="true">›</span>
+                {verified && caseFlow !== null && subpage === null ? (
+                  <>
+                    <button type="button" onClick={() => setCaseFlow(null)}>
+                      {caseTitle}
+                    </button>
+                    <span aria-hidden="true">›</span>
+                  </>
+                ) : null}
+              </nav>
+            ) : null
+          }
+          title={
+            subpage === "import"
+              ? "Import evidence"
+              : subpage === "capture"
+                ? "Capture"
+                : subpage === "observe"
+                  ? "Observations"
+                  : verified
+                    ? caseFlow !== null
+                      ? CASE_FLOW_TITLES[caseFlow]
+                      : caseTitle
+                    : projectName || "Cases"
+          }
+          subtitle={
+            verified && subpage === null && caseFlow === null ? (
+              <>
+                {verified.messages} {verified.messages === 1 ? "message" : "messages"} · {verified.acknowledgements}{" "}
+                {verified.acknowledgements === 1 ? "ACK" : "ACKs"} · {verified.sources} {verified.sources === 1 ? "source" : "sources"} ·{" "}
+                {humanize(verified.provenance)}
+              </>
+            ) : null
+          }
+          actions={
+            root && subpage === null && !verified ? (
+              <>
+                <button type="button" disabled={busy} onClick={() => setObserving(true)}>
+                  Observations
+                </button>
+                <button type="button" disabled={busy} onClick={() => setCapturing(true)}>
+                  Capture
+                </button>
+                <button type="button" className="primary" disabled={busy} onClick={() => setImporting(true)}>
+                  Import
+                </button>
+              </>
+            ) : verified && subpage === null && caseFlow === null ? (
+              <>
+                <button type="button" disabled={busy} onClick={() => setCaseFlow("replay")}>
+                  Replay…
+                </button>
+                <button type="button" className="primary" disabled={busy} onClick={() => setCaseFlow("test")}>
+                  Create test
+                </button>
+                <MoreMenu
+                  label="More case actions"
+                  items={[
+                    { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
+                    { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
+                    { label: "Reduce", onSelect: () => setCaseFlow("reduce") },
+                    { label: "File details", onSelect: () => setFileDetails(true) },
+                    { label: "Close case", onSelect: backToProject },
+                  ]}
+                />
+              </>
+            ) : null
+          }
+        >
+          {!root ? noProject("cases") : null}
+          {observing && root ? (
+            <ObservationPanel
               workspace={root}
-              entries={opened?.artifacts ?? []}
-              onWatch={watch}
-              onRefresh={() => void refreshListing()}
-              onOpenCase={(name: string) => {
-                if (root) void verifyCase(root, name);
-              }}
-              onConfigureEnvironment={() => focusRegion("inspector")}
-              onOpenLicense={() => focusRegion("privacy")}
-              {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
-              {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
-            />
-            {root ? <RunExplanation key={"explain-" + root} workspace={root} entries={opened?.artifacts ?? []} busy={busy} /> : null}
-            <PacketPanel
-              workspace={root}
-              entries={opened?.artifacts ?? []}
-              onRefresh={() => void refreshListing()}
-            />
-            <ProjectPanel
-              root={root}
-              result={investigation}
-              entries={opened?.artifacts ?? []}
               busy={busy}
-              progress={running === "project" ? "Reading the project." : null}
               indicators={indicators}
-              selectedCase={verified?.name ?? null}
-              onCreate={(name, title, owner, versions) => void startProject(name, title, owner, versions)}
-              editable={editable}
-              onUpdateSettings={editSettings}
-              onReadEditable={() => void readEditable()}
-              onRegister={(name, registration) => void register(name, registration)}
-              onUpdateCase={(name, change) => void updateCase(name, change)}
-              onOpenCase={(name: string) => {
-                if (root) void verifyCase(root, name);
-              }}
-              onStartImport={() => setImporting(true)}
-              onStartCapture={() => setCapturing(true)}
-              onStartObservation={() => {
+              drafts={drafts ?? []}
+              captureBinding={captureBinding}
+              onBindToTest={(observationFile) => {
+                setObserving(false);
                 setCaptureBinding(null);
+                void author((draft, open) =>
+                  authorTest({
+                    workspace: root ?? "",
+                    case: open.case,
+                    identity: open.identity,
+                    draft,
+                    answer: { stage: "observation", observation: observationFile },
+                  }),
+                );
+              }}
+              onClose={() => {
+                setObserving(false);
+                setCaptureBinding(null);
+              }}
+            />
+          ) : capturing && root ? (
+            <CapturePanel
+              workspace={root}
+              project={investigation?.overview?.root ?? null}
+              busy={busy}
+              indicators={indicators}
+              onOpenCase={(name) => {
+                setCapturing(false);
+                void verifyCase(root, name);
+              }}
+              onSetupIndex={(name) => {
+                setCapturing(false);
+                void verifyCase(root, name);
+              }}
+              onBindObservation={(binding) => {
+                setCapturing(false);
+                setCaptureBinding(binding);
                 setObserving(true);
               }}
-              onStartMaintenance={() => {
-                setMaintenanceTab("backup");
-                setMaintaining(true);
+              onClose={() => setCapturing(false)}
+            />
+          ) : importing && root ? (
+            <ImportPanel
+              workspace={root}
+              project={investigation?.overview?.root ?? null}
+              drafts={drafts}
+              busy={busy}
+              indicators={indicators}
+              onOpenCase={(name) => {
+                setImporting(false);
+                void leaveImport().then(() => verifyCase(root, name));
+              }}
+              onSetupIndex={(name) => {
+                setImporting(false);
+                void leaveImport().then(() => verifyCase(root, name));
+              }}
+              onClose={() => {
+                setImporting(false);
+                void leaveImport();
               }}
             />
-          </>
-        )}
+          ) : null}
+
+          {root ? (
+            <div className="cases-list" hidden={subpage !== null || verified !== null}>
+              {guideResult?.guide ? (
+                <GuidedSample
+                  result={guideResult}
+                  practice={practiceResult}
+                  capture={sampleCapture}
+                  busy={busy}
+                  progress={
+                    running === "practice"
+                      ? "Running the saved test against the practice receiver."
+                      : running === "sample"
+                        ? "Importing the frozen receiver fixtures."
+                        : null
+                  }
+                  indicators={indicators}
+                  onCreateSample={actions["create-sample-workspace"]}
+                  onOpenCase={(name: string) => {
+                    if (root) void verifyCase(root, name);
+                  }}
+                  onRun={(trial, output) => void practise(trial, output)}
+                  onCancel={cancelRunning}
+                  onCapture={(output) => void importSample(output)}
+                />
+              ) : null}
+              {workspace && workspace.state !== "completed" ? (
+                <Report indicators={indicators} progress={null} result={workspace} />
+              ) : null}
+              {openNotice ? (
+                <div className="notice danger">
+                  <Report indicators={indicators} progress={null} result={openNotice} />
+                  <button type="button" className="action-retry-folder" disabled={busy} onClick={actions["open-workspace"]}>
+                    Choose another folder…
+                  </button>
+                </div>
+              ) : null}
+              {caseNotice ? (
+                <div className="notice danger">
+                  <Report indicators={indicators} progress={null} result={caseNotice} />
+                </div>
+              ) : null}
+              {/* A folder holding a project lists its cases in the project's own
+                  table below, registered or not, so the page has one list. */}
+              {overview ? null : (
+              <>
+              <div className="section-title">
+                <h2>Cases</h2>
+                <span className="count">{caseBundles.length}</span>
+              </div>
+              {caseBundles.length === 0 ? (
+                <EmptyState
+                  title="No cases yet"
+                  action={
+                    <button type="button" className="primary" disabled={busy} onClick={() => setImporting(true)}>
+                      Import evidence
+                    </button>
+                  }
+                >
+                  Import exported messages or capture them from a feed to start an investigation.
+                </EmptyState>
+              ) : (
+                <ul className="item-list artifacts" aria-label="Cases in this folder">
+                  {caseBundles.map((artifact) => (
+                    <li key={artifact.name} aria-current={selected === artifact.name ? "true" : undefined}>
+                      <span className="item-main">
+                        <span className="item-title">{artifact.name}</span>
+                        <span className="item-sub">{humanize(artifact.provenance ?? "")}</span>
+                      </span>
+                      <span className="item-actions">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          aria-label={`Open case ${artifact.name}`}
+                          onClick={() => void verifyCase(opened?.root ?? root, artifact.name)}
+                        >
+                          Open
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              </>
+              )}
+              <ProjectPanel
+                root={root}
+                result={investigation}
+                entries={artifacts}
+                busy={busy}
+                progress={running === "project" ? "Reading the project." : null}
+                indicators={indicators}
+                selectedCase={verified?.name ?? null}
+                editable={editable}
+                onUpdateSettings={editSettings}
+                onReadEditable={() => void readEditable()}
+                onRegister={(name, registration) => void register(name, registration)}
+                onUpdateCase={(name, change) => void updateCase(name, change)}
+                onOpenCase={(name: string) => {
+                  if (root) void verifyCase(root, name);
+                }}
+              />
+              {otherEntries.length > 0 ? (
+                <details className="other-entries">
+                  <summary>Other files in this folder ({otherEntries.length})</summary>
+                  <ul className="artifacts">
+                    {otherEntries.map((artifact) => (
+                      <li key={artifact.name} aria-current={selected === artifact.name ? "true" : undefined}>
+                        <span className="name">{artifact.name}</span>
+                        <Badge indicator={indicators.get(artifact.kind)} fallback={artifact.kind} />
+                        {artifact.kind === "project" ? (
+                          <button type="button" disabled={busy} onClick={() => void readProject(root)}>
+                            Open project
+                          </button>
+                        ) : null}
+                        {artifact.kind === "target" || artifact.kind === "secret" || artifact.kind === "policy" || artifact.kind === "reset" ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setSelected(artifact.name);
+                              setEnvironmentArtifact({
+                                name: artifact.name,
+                                kind: artifact.kind === "secret" ? "secrets" : artifact.kind as "target" | "policy" | "reset",
+                              });
+                              go("environments");
+                            }}
+                          >
+                            {artifact.kind === "target"
+                              ? "Configure target"
+                              : artifact.kind === "secret"
+                                ? "Manage secrets"
+                                : artifact.kind === "policy"
+                                  ? "Review policy"
+                                  : "View reset plan"}
+                          </button>
+                        ) : null}
+                        {artifact.reason ? (
+                          <span className={artifact.kind === "unsupported" ? "unsupported" : "reason"}>{artifact.reason}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
+
+          {verified && root ? (
+            <div className="case-view" hidden={subpage !== null}>
+              {caseNotice ? (
+                <div className="notice danger">
+                  <Report indicators={indicators} progress={null} result={caseNotice} />
+                  <button type="button" className="action-back-to-listing" onClick={backToProject}>
+                    Back to cases
+                  </button>
+                </div>
+              ) : null}
+              <div hidden={caseFlow !== null}>
+              <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setCaseView} keepMounted>
+                <TaskPanel tabs="case-views" tab="messages" className="task-panel view-panel" shown={caseView === "messages"}>
+                  <Report indicators={indicators} progress={running === "case" ? "Verifying the case." : null} result={null} />
+                  <MessageGrid
+                    indicators={indicators}
+                    progress={running === "grid" ? "Reading this window of the case." : null}
+                    result={gridResult}
+                    filters={savedFilters}
+                    entries={named("index")}
+                    busy={busy}
+                    onOpen={(indexName, offset) => {
+                      if (root) void showGrid(root, verified.name, indexName, offset);
+                    }}
+                    onSelect={(name) => void changeFilters(() => selectFilter(name))}
+                    onSave={(filter) => void changeFilters(() => saveFilter(filter))}
+                    selectedOccurrence={selectedOccurrence}
+                    onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+                    caseEvidence={evidence?.case}
+                    indexDetails={indexResult?.index}
+                    onBuildIndex={handleBuildIndex}
+                  />
+                </TaskPanel>
+                <TaskPanel tabs="case-views" tab="timeline" className="task-panel view-panel" shown={caseView === "timeline"}>
+                  <Sequence
+                    workspace={root}
+                    caseIdentity={verified.identity}
+                    onSaved={() => void refreshListing()}
+                    onReview={async (request, write) => {
+                      let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
+                      await run("correlation-review", async () => {
+                        result = await (write ? decideCorrelation(request) : openCorrelationReview(request));
+                      });
+                      // A recorded decision is a new directory of the open folder, so
+                      // the listing is read again and the retained reviews offer it.
+                      if (write && result.state === "completed") await refreshListing();
+                      return result;
+                    }}
+                    rulesEntries={named("rules")}
+                    analyses={named("analysis")}
+                    reviews={named("correlation-review")}
+                    result={sequenceResult}
+                    busy={busy}
+                    active={destination === "cases" && caseView === "timeline" && caseFlow === null}
+                    progress={running === "sequence" ? "Loading the timeline." : null}
+                    indicators={indicators}
+                    onOpen={(rules, offset, analysis) => void layOutSequence(rules, offset, analysis)}
+                    onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+                  />
+                </TaskPanel>
+                <TaskPanel tabs="case-views" tab="findings" className="task-panel view-panel" shown={caseView === "findings"}>
+                  <Diagnosis
+                    workspace={root}
+                    caseName={verified.name}
+                    identity={verified.identity}
+                    configEntries={named("diagnose-config")}
+                    reportEntries={named("diagnosis")}
+                    groupsReportEntries={named("diagnosis-groups")}
+                    caseEntries={named("case")}
+                    decisionsEntries={named("finding-decisions")}
+                    result={diagnosisResult}
+                    groupsResult={diagnosisGroupsResult}
+                    reviewResult={findingReviewResult}
+                    busy={busy}
+                    progress={
+                      running === "diagnosis"
+                        ? "Running this diagnosis."
+                        : running === "diagnosis-report"
+                          ? "Opening this report."
+                          : running === "finding-review"
+                            ? "Reviewing these findings."
+                            : null
+                    }
+                    groupsProgress={
+                      running === "diagnosis-groups"
+                        ? "Grouping findings across these cases."
+                        : running === "diagnosis-groups-report"
+                          ? "Opening this grouping report."
+                          : null
+                    }
+                    indicators={indicators}
+                    onRun={(request) => void diagnose(request)}
+                    onOpen={(entry, offset) => void openReport(entry, offset)}
+                    onGroup={(request) => void groupCases(request)}
+                    onOpenGroups={(entry, offset) => void openGroupsReport(entry, offset)}
+                    onReview={(request, write) => void reviewDiagnosisFindings(request, write)}
+                    onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+                    onPromote={(status, reviewEntry, reportSHA256) =>
+                      void promoteFinding(status, reviewEntry, reportSHA256)
+                    }
+                    onManageProfiles={actions["manage-profiles"]}
+                    onSaved={() => void refreshListing()}
+                  />
+                </TaskPanel>
+              </TaskTabs>
+              </div>
+                <div className="view-panel case-flow" hidden={caseFlow !== "compare"}>
+                  <Comparison
+                    entries={named("case")}
+                    result={comparisonResult}
+                    busy={busy}
+                    progress={
+                      running === "comparison"
+                        ? "Comparing these collections."
+                        : running === "normalize"
+                          ? "Reading this comparison under the declared policy."
+                          : null
+                    }
+                    indicators={indicators}
+                    onCompare={(right, keys, fields, offset) =>
+                      void compareCollections(right, keys, fields, offset)
+                    }
+                    workspace={root}
+                    policyEntries={named("normalization-policy")}
+                    normalizeResult={normalizeResult}
+                    onNormalize={(right, policy, keys, fields, offset) =>
+                      void normalizeCollections(right, policy, keys, fields, offset)
+                    }
+                    onSaved={() => void refreshListing()}
+                  />
+                  <RevisionComparison
+                    entries={artifacts.map((artifact) => artifact.name)}
+                    seed={comparisonSeed}
+                    result={revisionResult}
+                    busy={busy}
+                    progress={running === "revisions" ? "Comparing these revisions." : null}
+                    indicators={indicators}
+                    onCompare={(left, right, leftResult, rightResult) =>
+                      void compareRevisions(left, right, leftResult, rightResult)
+                    }
+                  />
+                </div>
+                <div className="view-panel case-flow" hidden={caseFlow !== "reproduce"}>
+                  {gridResult?.grid ? (
+                    <Reproducer
+                      rows={gridResult.grid.rows}
+                      result={reproducerResult}
+                      restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
+                      onDiscardDraft={discardReproducerDraft}
+                      inspected={inspected}
+                      busy={busy}
+                      progress={running === "reproducer" ? "Resolving this reproducer against the case." : null}
+                      indicators={indicators}
+                      onStep={(step: ReproducerStep) =>
+                        void reproduce((plan, open) =>
+                          editReproducer({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            plan,
+                            step,
+                          }),
+                        )
+                      }
+                      onUndo={() =>
+                        void reproduce((plan, open) =>
+                          undoReproducer({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            plan,
+                          }),
+                        )
+                      }
+                      parentCase={gridResult.grid.case}
+                      onBuild={(output: string) =>
+                        void reproduce((plan, open) =>
+                          buildReproducer({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            plan,
+                            output,
+                          }),
+                        )
+                      }
+                      onRegister={registerBuiltRevision}
+                      onOpenRevision={(name) => {
+                        if (root) void verifyCase(root, name);
+                      }}
+                      onCompareRevision={(built) => {
+                        compareBuild(built);
+                        setCaseFlow("compare");
+                      }}
+                      onCreateTest={(name) => {
+                        // Open the revision as its own case. An existing test draft stays
+                        // bound to the original case identity and is not retargeted.
+                        if (root) void verifyCase(root, name);
+                      }}
+                    />
+                  ) : (
+                    <EmptyState title="Messages are not loaded yet">
+                      A reproducer is built from the messages of this case. Open them in Messages first.
+                    </EmptyState>
+                  )}
+                </div>
+                <div className="view-panel case-flow" hidden={caseFlow !== "test"}>
+                  {gridResult?.grid ? (
+                    <TestAuthoring
+                      rows={gridResult.grid.rows}
+                      result={testResult}
+                      restoredDraft={Boolean(testResult?.test && !testResult.test.resolution)}
+                      provenance={promotionProvenance}
+                      onDiscardDraft={discardTestDraft}
+                      inspected={inspected}
+                      busy={busy}
+                      progress={running === "authoring" ? "Resolving this test against the case." : null}
+                      indicators={indicators}
+                      onAnswer={(answer: TestAnswer) =>
+                        void author((draft, open) =>
+                          authorTest({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            draft,
+                            answer,
+                          }),
+                        )
+                      }
+                      onSave={(output: string) =>
+                        void author((draft, open) =>
+                          saveTest({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            draft,
+                            output,
+                          }),
+                        )
+                      }
+                      onSuggest={(suggest: TestSuggestionRequest) =>
+                        void author((draft, open) =>
+                          suggestExpectations({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            draft,
+                            suggest,
+                          }),
+                        )
+                      }
+                      onApprove={(suggest: TestSuggestionRequest, review: TestReview) =>
+                        void author((draft, open) =>
+                          approveExpectations({
+                            workspace: root ?? "",
+                            case: open.case,
+                            identity: open.identity,
+                            draft,
+                            suggest,
+                            review,
+                          }),
+                        )
+                      }
+                    />
+                  ) : (
+                    <EmptyState title="Messages are not loaded yet">
+                      A test is written over the messages of this case. Open them in Messages first.
+                    </EmptyState>
+                  )}
+                </div>
+                <div className="view-panel case-flow" hidden={caseFlow !== "reduce"}>
+                  <Reduction
+                    ruleEntries={named("rules")}
+                    specEntries={named("spec")}
+                    targetEntries={named("target")}
+                    resetEntries={named("reset")}
+                    policyEntries={named("policy")}
+                    result={reductionResult}
+                    busy={busy}
+                    progress={
+                      running === "reduction-preview"
+                        ? "Previewing how this reduction would take the sequence apart. Nothing is reset or sent."
+                        : running === "reduction"
+                          ? "Running this reduction: every trial resets the environment, then sends."
+                          : null
+                    }
+                    reducing={running === "reduction"}
+                    indicators={indicators}
+                    caseOpen={verified !== null}
+                    onPreview={(config) => void runReductionPreview(config)}
+                    onStart={(config) => void runReduction(config)}
+                    onCancel={cancelRunning}
+                  />
+                </div>
+                <div className="view-panel case-flow" hidden={caseFlow !== "replay"}>
+                  <ReplayPanel
+                    key={"replay-" + root + verified.identity}
+                    workspace={root}
+                    caseName={verified.name}
+                    identity={verified.identity}
+                    rows={gridResult?.grid?.case === verified.name && gridResult.grid.identity === verified.identity ? gridResult.grid.rows : []}
+                    entries={artifacts}
+                    busy={busy}
+                    onSent={() => void refreshListing()}
+                  />
+                </div>
+
+            </div>
+          ) : null}
+        </Page>
+
+        <Page id="tests" shown={destination === "tests"} title="Tests">
+          {root ? (
+            <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setTestsView} keepMounted>
+              <TaskPanel tabs="tests-views" tab="suites" className="task-panel view-panel" shown={testsView === "suites"}>
+                <SuitePanel
+                  key={"suite-" + root}
+                  workspace={root}
+                  busy={busy}
+                  entries={artifacts}
+                  drafts={drafts}
+                  onExecute={handoff}
+                  onSaved={() => void refreshListing()}
+                />
+              </TaskPanel>
+              <TaskPanel tabs="tests-views" tab="tests" className="task-panel view-panel" shown={testsView === "tests"}>
+                <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} />
+              </TaskPanel>
+              <TaskPanel tabs="tests-views" tab="assertions" className="task-panel view-panel" shown={testsView === "assertions"}>
+                <AssertionSetAuthoring key={"assertions-" + root} workspace={root} drafts={drafts} busy={busy} inspected={inspected} />
+              </TaskPanel>
+              <TaskPanel tabs="tests-views" tab="profiles" className="task-panel view-panel" shown={testsView === "profiles"}>
+                <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} />
+              </TaskPanel>
+              <TaskPanel tabs="tests-views" tab="scenarios" className="task-panel view-panel" shown={testsView === "scenarios"}>
+                <ScenarioPanel
+                  key={`scenario-${root}`}
+                  workspace={root}
+                  drafts={drafts}
+                  busy={busy}
+                  indicators={indicators}
+                  onOpenCase={(name) => {
+                    if (root) void verifyCase(root, name);
+                  }}
+                  onStartTestDraft={(name) => {
+                    if (root) void verifyCase(root, name);
+                  }}
+                />
+              </TaskPanel>
+              <TaskPanel tabs="tests-views" tab="baselines" className="task-panel view-panel" shown={testsView === "baselines"}>
+                <Baseline key={root} workspace={root} busy={busy} onSaved={() => void refreshListing()} />
+              </TaskPanel>
+            </TaskTabs>
+          ) : (
+            noProject("tests")
+          )}
+        </Page>
+
+        <Page id="runs" shown={destination === "runs"} title="Runs">
+          {root ? (
+            <TaskTabs label="Run views" id="runs-views" tabs={RUNS_VIEWS} selected={runsView} onSelect={setRunsView} keepMounted>
+              <TaskPanel tabs="runs-views" tab="run" className="task-panel view-panel" shown={runsView === "run"}>
+                {suiteHandoff && suiteHandoff.workspace === root ? <SuiteHandoffNotice handoff={suiteHandoff.handoff} /> : null}
+                <RunPanel
+                  workspace={root}
+                  entries={artifacts}
+                  onWatch={watch}
+                  onRefresh={() => void refreshListing()}
+                  onOpenCase={(name: string) => {
+                    if (root) void verifyCase(root, name);
+                  }}
+                  onConfigureEnvironment={() => go("environments")}
+                  onOpenLicense={() => openSettings("license")}
+                  {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
+                  {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
+                />
+              </TaskPanel>
+              <TaskPanel tabs="runs-views" tab="details" className="task-panel view-panel" shown={runsView === "details"}>
+                <RunExplanation key={"explain-" + root} workspace={root} entries={artifacts} busy={busy} />
+              </TaskPanel>
+              <TaskPanel tabs="runs-views" tab="compare" className="task-panel view-panel" shown={runsView === "compare"}>
+                <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={artifacts} />
+              </TaskPanel>
+            </TaskTabs>
+          ) : (
+            noProject("runs")
+          )}
+        </Page>
+
+        <Page id="environments" shown={destination === "environments"} title="Environments">
+          {opened ? (
+            <EnvironmentPanel
+              workspace={root ?? ""}
+              targetFile={environmentArtifact?.kind === "target" ? environmentArtifact.name : "targets/default.json"}
+              secretsFile={environmentArtifact?.kind === "secrets" ? environmentArtifact.name : "secrets.json"}
+              policyFile={environmentArtifact?.kind === "policy" ? environmentArtifact.name : "send-policy.json"}
+              planFile={environmentArtifact?.kind === "reset" ? environmentArtifact.name : "reset-plan.json"}
+              initialTab={environmentArtifact?.kind ?? "target"}
+              drafts={drafts}
+              onPlanSaved={() => void refreshListing()}
+            />
+          ) : (
+            noProject("environments")
+          )}
+        </Page>
+
+        <Page id="reports" shown={destination === "reports"} title="Reports">
+          {root ? (
+            <TaskTabs label="Report views" id="reports-views" tabs={REPORTS_VIEWS} selected={reportsView} onSelect={setReportsView} keepMounted>
+              <TaskPanel tabs="reports-views" tab="packets" className="task-panel view-panel" shown={reportsView === "packets"}>
+                <PacketPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} />
+              </TaskPanel>
+              <TaskPanel tabs="reports-views" tab="disclosure" className="task-panel view-panel" shown={reportsView === "disclosure"}>
+                <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} />
+              </TaskPanel>
+              <TaskPanel tabs="reports-views" tab="export" className="task-panel view-panel" shown={reportsView === "export"}>
+                <Review
+                  ruleEntries={named("rules")}
+                  planEntries={named("plan")}
+                  packEntries={named("pack")}
+                  reviewEntries={named("review")}
+                  transformResult={transformResult}
+                  planResult={planResult}
+                  reviewResult={reviewResult}
+                  caseOpen={verified !== null}
+                  caseIdentity={verified?.identity ?? ""}
+                  busy={busy}
+                  transformProgress={running === "transformation" ? "Previewing this transformation." : null}
+                  planProgress={
+                    running === "transform-plan"
+                      ? "Saving this transformation plan."
+                      : running === "transform-open"
+                        ? "Reading this transformation plan."
+                        : null
+                  }
+                  reviewProgress={running === "review" ? "Reading this export review." : null}
+                  indicators={indicators}
+                  onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
+                  onSavePlan={savePlan}
+                  onOpenPlan={openPlan}
+                  onReview={(review, approve, offset) => void readReview(review, approve, offset)}
+                />
+              </TaskPanel>
+              <TaskPanel tabs="reports-views" tab="notes" className="task-panel view-panel" shown={reportsView === "notes"}>
+                <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
+              </TaskPanel>
+            </TaskTabs>
+          ) : (
+            noProject("reports")
+          )}
+        </Page>
+
+        <Page
+          id="tools"
+          shown={destination === "tools"}
+          title="Tools"
+          actions={
+            <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
+              Open folder…
+            </button>
+          }
+        >
+          <TaskTabs
+            label="Tools"
+            id="tools-views"
+            tabs={TOOLS_VIEWS}
+            selected={toolsView}
+            onSelect={(view) => {
+              setToolsView(view);
+              if (view === "inspect") setRawRequest((count) => count + 1);
+              else setCorpusRequest((count) => count + 1);
+            }}
+            keepMounted
+          >
+            <TaskPanel tabs="tools-views" tab="inspect" className="task-panel view-panel" shown={toolsView === "inspect"}>
+              <RawInspection busy={busy} indicators={indicators} request={rawRequest} />
+            </TaskPanel>
+            <TaskPanel tabs="tools-views" tab="benchmarks" className="task-panel view-panel" shown={toolsView === "benchmarks"}>
+              <PerformanceCorpus busy={busy} indicators={indicators} request={corpusRequest} />
+            </TaskPanel>
+          </TaskTabs>
+        </Page>
+
+        <Page id="settings" shown={destination === "settings"} title="Settings">
+          <TaskTabs label="Settings" id="settings-views" tabs={SETTINGS_VIEWS} selected={settingsView} onSelect={setSettingsView} keepMounted>
+            <TaskPanel tabs="settings-views" tab="general" className="task-panel view-panel" shown={settingsView === "general"}>
+              <section className="card" aria-labelledby="appearance-title">
+                <h2 id="appearance-title">Appearance</h2>
+                <div className="setting-rows">
+                  <div className="setting-row">
+                    <label htmlFor="theme">Theme</label>
+                    <select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
+                      {(described?.themes ?? []).map((choice) => (
+                        <option key={choice} value={choice}>
+                          {choice === "system" ? "Match system" : choice === "light" ? "Light" : choice === "dark" ? "Dark" : humanize(choice)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="setting-row">
+                    <span id="text-size-label">Text size</span>
+                    <div className="text-size" role="group" aria-labelledby="text-size-label">
+                      <button type="button" onClick={actions["smaller-text"]} disabled={scale === 0}>
+                        Smaller
+                      </button>
+                      <span className="scale">{described?.text_scales[scale] ?? 100}%</span>
+                      <button
+                        type="button"
+                        onClick={actions["larger-text"]}
+                        disabled={scale >= (described?.text_scales.length ?? 1) - 1}
+                      >
+                        Larger
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </TaskPanel>
+            <TaskPanel tabs="settings-views" tab="license" className="task-panel view-panel" shown={settingsView === "license"}>
+              <OperationAccess />
+            </TaskPanel>
+            <TaskPanel tabs="settings-views" tab="team" className="task-panel view-panel" shown={settingsView === "team"}>
+              <HubPanel workspace={root} entries={artifacts} />
+            </TaskPanel>
+            <TaskPanel tabs="settings-views" tab="runners" className="task-panel view-panel" shown={settingsView === "runners"}>
+              <RunnerPanel />
+            </TaskPanel>
+            <TaskPanel tabs="settings-views" tab="security" className="task-panel view-panel" shown={settingsView === "security"}>
+              {described ? (
+                <PrivacyDisclosure
+                  operations={described.privacy.operations}
+                  workspaceOpen={root !== null}
+                  onOpenRunPanel={() => {
+                    setRunsView("run");
+                    go("runs");
+                  }}
+                  onStartCapture={() => {
+                    setCapturing(true);
+                    go("cases");
+                  }}
+                  onStartObservation={() => {
+                    setCaptureBinding(null);
+                    setObserving(true);
+                    go("cases");
+                  }}
+                />
+              ) : null}
+              {root ? (
+                <ProtectionPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} />
+              ) : null}
+            </TaskPanel>
+            <TaskPanel tabs="settings-views" tab="storage" className="task-panel view-panel" shown={settingsView === "storage"}>
+              {root ? (
+                <MaintenancePanel
+                  key={`maintenance-${root}-${maintenanceRequest}`}
+                  workspace={root}
+                  project={investigation?.overview?.root ?? null}
+                  busy={busy}
+                  indicators={indicators}
+                  initialTab={maintenanceTab}
+                  onReopen={(path) => {
+                    void openFolder(() => openWorkspace(path)).then(() => {
+                      void openProjectOverview(path).then((result) => setInvestigation(result));
+                    });
+                  }}
+                  onProjectChanged={(path) => {
+                    // Only the project still open takes the answer: a person who
+                    // moved on before it arrived keeps what they moved to.
+                    void openProjectOverview(path).then((answer) =>
+                      setInvestigation((held) =>
+                        held?.overview?.root !== path ? held : answer.overview ? answer : { ...answer, overview: held.overview },
+                      ),
+                    );
+                  }}
+                  onClose={() => {
+                    go("cases");
+                  }}
+                />
+              ) : (
+                noProject("storage and backups")
+              )}
+            </TaskPanel>
+          </TaskTabs>
+        </Page>
+
+        <Page id="help" shown={destination === "help"} title="Help">
+          <HelpTopics />
+          <section className="card" aria-labelledby="privacy-help-title" style={{ marginTop: "1rem" }}>
+            <h2 id="privacy-help-title">Privacy</h2>
+            <p className="statement">{described?.privacy.statement}</p>
+            <ul className="absent plain-list">
+              {(described?.privacy.absent ?? []).map((claim) => (
+                <li key={claim}>{claim}</li>
+              ))}
+            </ul>
+            <h3>Kept on this machine</h3>
+            <ul className="kept plain-list">
+              {(described?.privacy.kept ?? []).map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </section>
+          {described ? <SupportGuidance support={described.support} /> : null}
+        </Page>
       </>
     ),
     inspector: (
       <>
-        {root ? <Baseline key={root} workspace={root} busy={busy} onSaved={() => void refreshListing()} /> : null}
-        {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={opened?.artifacts ?? []} /> : null}
-        {root ? (
-          <SuitePanel
-            key={"suite-" + root}
-            workspace={root}
-            busy={busy}
-            entries={opened?.artifacts ?? []}
-            drafts={drafts}
-            onExecute={handoff}
-            onSaved={() => void refreshListing()}
-          />
-        ) : null}
-        <Report
-          indicators={indicators}
-          progress={running === "case" ? "Verifying the case." : null}
-          result={evidence}
-        />
-        {caseNotice ? (
-          <>
-            <Report indicators={indicators} progress={null} result={caseNotice} />
-            <p className="recovery-actions">
-              <button
-                type="button"
-                className="action-back-to-listing"
-                onClick={() => focusRegion("navigation")}
-              >
-                Back to files
-              </button>
-            </p>
-          </>
-        ) : null}
-        {evidence?.case ? (
-          <dl className="evidence">
-            <dt>Name</dt>
-            <dd>{evidence.case.name}</dd>
-            <dt>Contract</dt>
-            <dd>{evidence.case.schema}</dd>
-            <dt>Provenance</dt>
-            <dd>{evidence.case.provenance}</dd>
-            <dt>Identity</dt>
-            <dd className="identity">{evidence.case.identity}</dd>
-            <dt>Sources</dt>
-            <dd>{evidence.case.sources}</dd>
-            <dt>Occurrences</dt>
-            <dd>{evidence.case.occurrences}</dd>
-            <dt>Messages</dt>
-            <dd>{evidence.case.messages}</dd>
-            <dt>Acknowledgements</dt>
-            <dd>{evidence.case.acknowledgements}</dd>
-            <dt>Unparsed</dt>
-            <dd>{evidence.case.unparsed}</dd>
-          </dl>
-        ) : null}
-        {verified ? (
-          <MessageGrid
-            indicators={indicators}
-            progress={running === "grid" ? "Reading this window of the case." : null}
-            result={gridResult}
-            filters={savedFilters}
-            entries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "index")
-              .map((artifact) => artifact.name)}
-            busy={busy}
-            onOpen={(indexName, offset) => {
-              if (root) void showGrid(root, verified.name, indexName, offset);
-            }}
-            onSelect={(name) => void changeFilters(() => selectFilter(name))}
-            onSave={(filter) => void changeFilters(() => saveFilter(filter))}
-            selectedOccurrence={selectedOccurrence}
-            onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-            caseEvidence={evidence?.case}
-            indexDetails={indexResult?.index}
-            onBuildIndex={handleBuildIndex}
-          />
-        ) : null}
+        <div className="details-close">
+          <IconButton icon="close" label="Close message details" onClick={closeDetails} />
+        </div>
         {verified ? (
           <Inspector
             result={inspectionResult}
+            row={gridResult?.grid?.rows.find((row) => row.id === selectedOccurrence) ?? null}
             busy={busy}
-            progress={
-              running === "inspect" ? "Verifying and inspecting the selected occurrence." : null
-            }
+            progress={running === "inspect" ? "Verifying and inspecting the selected occurrence." : null}
             indicators={indicators}
             onInspect={(path, nodeOffset, byteOffset) => {
-              if (selectedOccurrence)
-                void inspect(selectedOccurrence, path, nodeOffset, byteOffset);
+              if (selectedOccurrence) void inspect(selectedOccurrence, path, nodeOffset, byteOffset);
             }}
           />
         ) : null}
-        {gridResult?.grid ? (
-          <Reproducer
-            rows={gridResult.grid.rows}
-            result={reproducerResult}
-            restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
-            onDiscardDraft={discardReproducerDraft}
-            inspected={
-              selectedOccurrence && inspectionResult?.inspection
-                ? {
-                    occurrence: selectedOccurrence,
-                    path: inspectionResult.inspection.selected.path,
-                  }
-                : null
-            }
-            busy={busy}
-            progress={running === "reproducer" ? "Resolving this reproducer against the case." : null}
-            indicators={indicators}
-            onStep={(step: ReproducerStep) =>
-              void reproduce((plan, open) =>
-                editReproducer({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  plan,
-                  step,
-                }),
-              )
-            }
-            onUndo={() =>
-              void reproduce((plan, open) =>
-                undoReproducer({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  plan,
-                }),
-              )
-            }
-            parentCase={gridResult.grid.case}
-            onBuild={(output: string) =>
-              void reproduce((plan, open) =>
-                buildReproducer({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  plan,
-                  output,
-                }),
-              )
-            }
-            onRegister={registerBuiltRevision}
-            onOpenRevision={(name) => {
-              if (root) void verifyCase(root, name);
-            }}
-            onCompareRevision={compareBuild}
-            onCreateTest={(name) => {
-              // Open the revision as its own case. An existing test draft stays
-              // bound to the original case identity and is not retargeted.
-              if (root) void verifyCase(root, name);
-            }}
-          />
-        ) : null}
-        {root ? <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} /> : null}
-        {root ? (
-          <AssertionSetAuthoring
-            key={"assertions-" + root}
-            workspace={root}
-            drafts={drafts}
-            busy={busy}
-            inspected={
-              selectedOccurrence && inspectionResult?.inspection
-                ? {
-                    occurrence: selectedOccurrence,
-                    path: inspectionResult.inspection.selected.path,
-                  }
-                : null
-            }
-          />
-        ) : null}
-        {root ? <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} /> : null}
-        {root ? (
-          <ScenarioPanel
-            key={`scenario-${root}`}
-            workspace={root}
-            drafts={drafts}
-            busy={busy}
-            indicators={indicators}
-            onOpenCase={(name) => {
-              if (root) void verifyCase(root, name);
-            }}
-            onStartTestDraft={(name) => {
-              if (root) void verifyCase(root, name);
-            }}
-          />
-        ) : null}
-        {gridResult?.grid ? (
-          <TestAuthoring
-            rows={gridResult.grid.rows}
-            result={testResult}
-            restoredDraft={Boolean(testResult?.test && !testResult.test.resolution)}
-            provenance={promotionProvenance}
-            onDiscardDraft={discardTestDraft}
-            inspected={
-              selectedOccurrence && inspectionResult?.inspection
-                ? {
-                    occurrence: selectedOccurrence,
-                    path: inspectionResult.inspection.selected.path,
-                  }
-                : null
-            }
-            busy={busy}
-            progress={running === "authoring" ? "Resolving this test against the case." : null}
-            indicators={indicators}
-            onAnswer={(answer: TestAnswer) =>
-              void author((draft, open) =>
-                authorTest({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  draft,
-                  answer,
-                }),
-              )
-            }
-            onSave={(output: string) =>
-              void author((draft, open) =>
-                saveTest({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  draft,
-                  output,
-                }),
-              )
-            }
-            onSuggest={(suggest: TestSuggestionRequest) =>
-              void author((draft, open) =>
-                suggestExpectations({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  draft,
-                  suggest,
-                }),
-              )
-            }
-            onApprove={(suggest: TestSuggestionRequest, review: TestReview) =>
-              void author((draft, open) =>
-                approveExpectations({
-                  workspace: root ?? "",
-                  case: open.case,
-                  identity: open.identity,
-                  draft,
-                  suggest,
-                  review,
-                }),
-              )
-            }
-          />
-        ) : null}
-        {verified ? (
-          <Sequence
-            workspace={root ?? ""}
-            caseIdentity={verified.identity}
-            onSaved={() => void refreshListing()}
-            onReview={async (request, write) => {
-              let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
-              await run("correlation-review", async () => {
-                result = await (write ? decideCorrelation(request) : openCorrelationReview(request));
-              });
-              // A recorded decision is a new directory of the open folder, so
-              // the listing is read again and the retained reviews offer it.
-              if (write && result.state === "completed") await refreshListing();
-              return result;
-            }}
-            rulesEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "rules")
-              .map((artifact) => artifact.name)}
-            analyses={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "analysis")
-              .map((artifact) => artifact.name)}
-            reviews={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "correlation-review")
-              .map((artifact) => artifact.name)}
-            result={sequenceResult}
-            busy={busy}
-            progress={running === "sequence" ? "Laying this case out as a sequence." : null}
-            indicators={indicators}
-            onOpen={(rules, offset, analysis) => void layOutSequence(rules, offset, analysis)}
-            onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-          />
-        ) : null}
-        {verified ? (
-          <Diagnosis
-            workspace={root ?? ""}
-            caseName={verified.name}
-            identity={verified.identity}
-            configEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "diagnose-config")
-              .map((artifact) => artifact.name)}
-            reportEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "diagnosis")
-              .map((artifact) => artifact.name)}
-            groupsReportEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "diagnosis-groups")
-              .map((artifact) => artifact.name)}
-            caseEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "case")
-              .map((artifact) => artifact.name)}
-            decisionsEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "finding-decisions")
-              .map((artifact) => artifact.name)}
-            result={diagnosisResult}
-            groupsResult={diagnosisGroupsResult}
-            reviewResult={findingReviewResult}
-            busy={busy}
-            progress={
-              running === "diagnosis"
-                ? "Running this diagnosis."
-                : running === "diagnosis-report"
-                  ? "Opening this report."
-                  : running === "finding-review"
-                    ? "Reviewing these findings."
-                    : null
-            }
-            groupsProgress={
-              running === "diagnosis-groups"
-                ? "Grouping findings across these cases."
-                : running === "diagnosis-groups-report"
-                  ? "Opening this grouping report."
-                  : null
-            }
-            indicators={indicators}
-            onRun={(request) => void diagnose(request)}
-            onOpen={(entry, offset) => void openReport(entry, offset)}
-            onGroup={(request) => void groupCases(request)}
-            onOpenGroups={(entry, offset) => void openGroupsReport(entry, offset)}
-            onReview={(request, write) => void reviewDiagnosisFindings(request, write)}
-            onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-            onPromote={(status, reviewEntry, reportSHA256) =>
-              void promoteFinding(status, reviewEntry, reportSHA256)
-            }
-            onManageProfiles={() => focusRegion("inspector")}
-            onSaved={() => void refreshListing()}
-          />
-        ) : null}
-        {verified ? (
-          <Comparison
-            entries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "case")
-              .map((artifact) => artifact.name)}
-            result={comparisonResult}
-            busy={busy}
-            progress={
-              running === "comparison"
-                ? "Comparing these collections."
-                : running === "normalize"
-                  ? "Reading this comparison under the declared policy."
-                  : null
-            }
-            indicators={indicators}
-            onCompare={(right, keys, fields, offset) =>
-              void compareCollections(right, keys, fields, offset)
-            }
-            workspace={root ?? ""}
-            policyEntries={(opened?.artifacts ?? [])
-              .filter((artifact) => artifact.kind === "normalization-policy")
-              .map((artifact) => artifact.name)}
-            normalizeResult={normalizeResult}
-            onNormalize={(right, policy, keys, fields, offset) =>
-              void normalizeCollections(right, policy, keys, fields, offset)
-            }
-            onSaved={() => void refreshListing()}
-          />
-        ) : null}
-        {verified ? (
-          <RevisionComparison
-            entries={(opened?.artifacts ?? []).map((artifact) => artifact.name)}
-            seed={comparisonSeed}
-            result={revisionResult}
-            busy={busy}
-            progress={running === "revisions" ? "Comparing these revisions." : null}
-            indicators={indicators}
-            onCompare={(left, right, leftResult, rightResult) =>
-              void compareRevisions(left, right, leftResult, rightResult)
-            }
-          />
-        ) : null}
-        {opened ? (
-          <>
-          <Review
-            ruleEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "rules").map((artifact) => artifact.name)}
-            planEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "plan").map((artifact) => artifact.name)}
-            packEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "pack").map((artifact) => artifact.name)}
-            reviewEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "review").map((artifact) => artifact.name)}
-            transformResult={transformResult}
-            planResult={planResult}
-            reviewResult={reviewResult}
-            caseOpen={verified !== null}
-            caseIdentity={verified?.identity ?? ""}
-            busy={busy}
-            transformProgress={
-              running === "transformation" ? "Previewing this transformation." : null
-            }
-            planProgress={
-              running === "transform-plan"
-                ? "Saving this transformation plan."
-                : running === "transform-open"
-                  ? "Reading this transformation plan."
-                  : null
-            }
-            reviewProgress={running === "review" ? "Reading this export review." : null}
-            indicators={indicators}
-            onPreview={(rules, plan, profile) => void previewPlan(rules, plan, profile)}
-            onSavePlan={savePlan}
-            onOpenPlan={openPlan}
-            onReview={(review, approve, offset) => void readReview(review, approve, offset)}
-          />
-          {verified ? (
-            <Reduction
-              ruleEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "rules").map((artifact) => artifact.name)}
-              specEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name)}
-              targetEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "target").map((artifact) => artifact.name)}
-              resetEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "reset").map((artifact) => artifact.name)}
-              policyEntries={(opened.artifacts ?? []).filter((artifact) => artifact.kind === "policy").map((artifact) => artifact.name)}
-              result={reductionResult}
-              busy={busy}
-              progress={
-                running === "reduction-preview"
-                  ? "Previewing how this reduction would take the sequence apart. Nothing is reset or sent."
-                  : running === "reduction"
-                    ? "Running this reduction: every trial resets the environment, then sends."
-                    : null
-              }
-              reducing={running === "reduction"}
-              indicators={indicators}
-              caseOpen={verified !== null}
-              onPreview={(config) => void runReductionPreview(config)}
-              onStart={(config) => void runReduction(config)}
-              onCancel={cancelRunning}
-            />
-          ) : null}
-          </>
-        ) : null}
-        {verified && root ? (
-          <ReplayPanel
-            key={"replay-" + root + verified.identity}
-            workspace={root}
-            caseName={verified.name}
-            identity={verified.identity}
-            rows={gridResult?.grid?.case === verified.name && gridResult.grid.identity === verified.identity ? gridResult.grid.rows : []}
-            entries={opened?.artifacts ?? []}
-            busy={busy}
-            onSent={() => void refreshListing()}
-          />
-        ) : null}
-        {opened ? (
-          <EnvironmentPanel
-            workspace={root ?? ""}
-            targetFile={environmentArtifact?.kind === "target" ? environmentArtifact.name : "targets/default.json"}
-            secretsFile={environmentArtifact?.kind === "secrets" ? environmentArtifact.name : "secrets.json"}
-            policyFile={environmentArtifact?.kind === "policy" ? environmentArtifact.name : "send-policy.json"}
-            planFile={environmentArtifact?.kind === "reset" ? environmentArtifact.name : "reset-plan.json"}
-            initialTab={environmentArtifact?.kind ?? "target"}
-            drafts={drafts}
-            onPlanSaved={() => void refreshListing()}
-          />
-        ) : null}
-        {!evidence && !busy ? <p className="hint">Open a case to see what it holds.</p> : null}
-        <RawInspection busy={busy} indicators={indicators} request={rawRequest} />
-        <PerformanceCorpus busy={busy} indicators={indicators} request={corpusRequest} />
       </>
     ),
     privacy: (
       <>
-        <OperationAccess />
-        <HubPanel workspace={root} entries={opened?.artifacts ?? []} />
-        <RunnerPanel />
-        {root ? (
-          <PrivacyPanel
-            workspace={root}
-            entries={opened?.artifacts ?? []}
-            drafts={drafts}
-            onRefresh={() => void refreshListing()}
-          />
-        ) : null}
-        {root ? (
-          <ProtectionPanel
-            workspace={root}
-            entries={opened?.artifacts ?? []}
-            onRefresh={() => void refreshListing()}
-          />
-        ) : null}
-        <p className="statement">{described?.privacy.statement}</p>
-        <ul className="absent">
-          {(described?.privacy.absent ?? []).map((claim) => (
-            <li key={claim}>{claim}</li>
-          ))}
-        </ul>
-        {described ? (
-          <PrivacyDisclosure
-            operations={described.privacy.operations}
-            workspaceOpen={root !== null}
-            onOpenRunPanel={() => focusRegion("evidence")}
-            onStartCapture={() => {
-              setCapturing(true);
-              focusRegion("evidence");
-            }}
-            onStartObservation={() => {
-              setCaptureBinding(null);
-              setObserving(true);
-              focusRegion("evidence");
-            }}
-          />
-        ) : null}
-        <h3>Kept on this machine</h3>
-        <ul className="kept">
-          {(described?.privacy.kept ?? []).map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-        {described ? <SupportGuidance support={described.support} /> : null}
+        <div className="status-line" aria-live="polite">
+          {busy ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              <span>{running ? PROGRESS[running] : "Working…"}</span>
+              {interruptible ? (
+                <button type="button" className="quiet" onClick={() => cancel()}>
+                  Cancel
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        <div className="status-links">
+          <button type="button" className="quiet" onClick={() => openSettings("security")}>
+            Privacy and connections
+          </button>
+          <button type="button" className="quiet" onClick={() => openSettings("license")}>
+            License
+          </button>
+        </div>
       </>
     ),
   };
@@ -2720,7 +3053,7 @@ export default function App() {
   if (!described) {
     return (
       <main className="starting">
-        <h1>readmit</h1>
+        <h1>Readmit</h1>
         <Status indicator={indicators.get(windowState)} state={windowState} reason={windowReason} />
       </main>
     );
@@ -2731,48 +3064,163 @@ export default function App() {
     "--inspector-fraction": `${100 - split}fr`,
   } as CSSProperties;
 
+  // Each region the facade declares, drawn where it sits: the sidebar holds
+  // search and navigation, the work area the page and message details, and the
+  // status line runs along the bottom. The order they are drawn in is the order
+  // the facade declares, which is the order Tab and F6 move through them.
+  const region = (id: RegionId, hidden = false) => {
+    const declared = described.regions.find((entry) => entry.id === id);
+    if (!declared) return null;
+    return (
+      <section
+        className={`region region-${id}`}
+        aria-label={declared.label}
+        tabIndex={-1}
+        hidden={hidden}
+        ref={(element) => {
+          regionElements.current[id] = element;
+        }}
+        onFocus={() => setFocused(id)}
+      >
+        {content[id]}
+      </section>
+    );
+  };
+
   return (
     <IndicatorsContext.Provider value={indicators}>
       <VocabularyContext.Provider value={described.vocabulary}>
-        <main className="shell" style={panes}>
-          {described.regions.map((region) => (
-            <Fragment key={region.id}>
-              <section
-                className={`region region-${region.id}`}
-                style={{ gridArea: region.id }}
-                aria-labelledby={`${region.id}-heading`}
-                tabIndex={-1}
-                ref={(element) => {
-                  regionElements.current[region.id] = element;
+        <div className="app">
+          <aside className="sidebar">
+            {region("commands")}
+            {region("navigation")}
+          </aside>
+          <div className={`workarea${detailsShown ? " with-details" : ""}`} style={panes}>
+            {region("evidence")}
+            {detailsShown ? (
+              <Separator
+                split={split}
+                min={MIN_SPLIT}
+                max={MAX_SPLIT}
+                step={SPLIT_STEP}
+                onSplit={setSplit}
+                bounds={() => {
+                  const left = regionElements.current.evidence?.getBoundingClientRect().left;
+                  const right = regionElements.current.inspector?.getBoundingClientRect().right;
+                  return left === undefined || right === undefined ? null : { left, right };
                 }}
-                onFocus={() => setFocused(region.id)}
-              >
-                {/* The commands region's caption is visual chrome: the palette,
-                 * search and action controls already name it, so the heading is
-                 * kept only to name the landmark. */}
-                <h2 id={`${region.id}-heading`} className={region.id === "commands" ? "visually-hidden" : undefined}>
-                  {region.label}
-                </h2>
-                <ContextHelp region={region.id} />
-                {content[region.id]}
-              </section>
-              {region.id === "evidence" ? (
-                <Separator
-                  split={split}
-                  min={MIN_SPLIT}
-                  max={MAX_SPLIT}
-                  step={SPLIT_STEP}
-                  onSplit={setSplit}
-                  bounds={() => {
-                    const left = regionElements.current.evidence?.getBoundingClientRect().left;
-                    const right = regionElements.current.inspector?.getBoundingClientRect().right;
-                    return left === undefined || right === undefined ? null : { left, right };
-                  }}
-                />
-              ) : null}
-            </Fragment>
-          ))}
-        </main>
+              />
+            ) : null}
+            {region("inspector", !detailsShown)}
+          </div>
+          {region("privacy")}
+        </div>
+
+        <Modal open={fileDetails && verified !== null} title="File details" onClose={() => setFileDetails(false)}>
+          {verified ? (
+            <dl className="facts">
+              <div className="fact">
+                <dt>Case</dt>
+                <dd>{verified.name}</dd>
+              </div>
+              <div className="fact">
+                <dt>Origin</dt>
+                <dd>{humanize(verified.provenance)}</dd>
+              </div>
+              <div className="fact">
+                <dt>Messages</dt>
+                <dd>{verified.messages}</dd>
+              </div>
+              <div className="fact">
+                <dt>ACKs</dt>
+                <dd>{verified.acknowledgements}</dd>
+              </div>
+              <div className="fact">
+                <dt>Unparsed</dt>
+                <dd>{verified.unparsed}</dd>
+              </div>
+              <div className="fact">
+                <dt>Sources</dt>
+                <dd>{verified.sources}</dd>
+              </div>
+              <div className="fact">
+                <dt>Format</dt>
+                <dd>{verified.schema}</dd>
+              </div>
+              <div className="fact">
+                <dt>SHA-256</dt>
+                <dd className="identity">{verified.identity}</dd>
+              </div>
+            </dl>
+          ) : null}
+        </Modal>
+
+        <Modal open={searching} title="Search this project" onClose={() => setSearching(false)}>
+          <form
+            className="search-form"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (root && !busy && query.trim() !== "") {
+                void searchWorkspace(root, query);
+              }
+            }}
+          >
+            <label htmlFor="workspace-search" className="visually-hidden">
+              Search this project
+            </label>
+            <input
+              id="workspace-search"
+              ref={searchField}
+              type="search"
+              autoFocus
+              placeholder="Cases, notes, message content…"
+              value={query}
+              disabled={busy}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </form>
+          <Report indicators={indicators} progress={running === "search" ? "Searching this project." : null} result={found && found.state !== "completed" ? found : null} />
+          {found && found.state === "completed" && found.matches.length === 0 ? <p className="hint">No matches.</p> : null}
+          {found && found.matches.length > 0 ? (
+            <ul className="search-matches" aria-label="Search results">
+              {found.matches.map((match) => (
+                <li key={`${match.kind}:${match.name}:${match.field}:${match.occurrence ?? ""}`}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSelected(match.name);
+                      setSearching(false);
+                      openMatch(match);
+                    }}
+                  >
+                    <span className="name">{match.label}</span>
+                    <span className="badge">{match.kind === "content" ? "Message" : "Details"}</span>
+                    <span className="reason">{humanize(match.field)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Modal>
+
+        <Modal open={creatingProject} title="New project" onClose={() => setCreatingProject(false)}>
+          <NewProjectForm
+            busy={busy}
+            onCancel={() => setCreatingProject(false)}
+            onCreate={async (name, title, owner, versions) => {
+              const answer = await startProject(name, title, owner, versions);
+              // A new project answers with its overview, whose state is empty
+              // until it registers a case: the overview is what says it exists.
+              if (answer.overview) {
+                setCreatingProject(false);
+                return { state: "completed" as const };
+              }
+              return { state: answer.state, reason: answer.reason };
+            }}
+          />
+        </Modal>
 
         <Palette
           open={paletteOpen}

@@ -1,13 +1,13 @@
-// The recent list of the navigation region: folders this viewer opened, most
-// recent first, read from the facade's own local list. Reopening one opens it
-// as a workspace again; forgetting one removes only its entry from the list,
-// after the person confirms it, and leaves the folder and everything in it
-// exactly where it is. The list holds folder paths and nothing read out of
-// them.
+// The recent projects on the home page: folders this viewer opened, most
+// recent first, read from the facade's own local list. Opening one opens it
+// again; removing one takes only its entry off the list, after the person
+// confirms it, and leaves the folder and everything in it exactly where it
+// is. The list holds folder paths and nothing read out of them.
 import { useEffect, useRef, useState } from "react";
 import type { RecentResult } from "./bindings";
 import type { Indicators } from "./shell";
 import { Status } from "./shell";
+import { EmptyState, folderName } from "./layout";
 
 export function RecentWorkspaces({
   recent,
@@ -55,20 +55,37 @@ export function RecentWorkspaces({
 
   return (
     <>
-      <h3 ref={heading} tabIndex={-1}>
-        Recent workspaces
-      </h3>
+      <div className="section-title">
+        <h2 ref={heading} tabIndex={-1}>
+          Recent projects
+        </h2>
+        {roots.length > 0 ? <span className="count">{roots.length}</span> : null}
+      </div>
       {recent && recent.state !== "completed" ? (
         <Status indicator={indicators.get(recent.state)} state={recent.state} reason={recent.reason} />
       ) : null}
-      <ul className="recent" aria-label="Recent workspaces">
+      {roots.length === 0 && recent?.state === "completed" ? (
+        <EmptyState title="No projects yet">
+          Create a project, open one you already have, or try the demo.
+        </EmptyState>
+      ) : null}
+      <ul className={roots.length > 0 ? "item-list recent" : "recent"} aria-label="Recent projects">
         {roots.map((folder) => (
           <li key={folder}>
-            <button type="button" disabled={busy} onClick={() => onReopen(folder)}>
-              {folder}
-            </button>
+            <span className="item-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+                <path d="M2.5 4.5h4l1.2 1.5h5.8v6.5h-11z" />
+              </svg>
+            </span>
+            <span className="item-main">
+              <span className="item-title">{folderName(folder)}</span>
+              <span className="item-sub" title={folder}>
+                {folder}
+              </span>
+            </span>
             {confirming === folder ? (
               <span
+                className="confirm"
                 role="group"
                 aria-label={`Forget ${folder}?`}
                 onKeyDown={(event) => {
@@ -81,7 +98,7 @@ export function RecentWorkspaces({
                   }
                 }}
               >
-                <span className="hint"> Forget this folder? It stays where it is, with everything in it.</span>
+                <span className="hint">Remove from this list? The folder is not changed.</span>
                 <button
                   type="button"
                   disabled={busy}
@@ -91,25 +108,27 @@ export function RecentWorkspaces({
                     void onForget(folder);
                   }}
                 >
-                  Forget it
+                  Remove
                 </button>
                 <button type="button" ref={keep} disabled={busy} onClick={() => cancelForget(folder)}>
-                  Keep it
+                  Keep
                 </button>
               </span>
             ) : (
-              <button
-                type="button"
-                aria-label={`Forget ${folder}`}
-                disabled={busy}
-                ref={(control) => {
-                  if (control) forgetControls.current.set(folder, control);
-                  else forgetControls.current.delete(folder);
-                }}
-                onClick={() => setConfirming(folder)}
-              >
-                Forget
-              </button>
+              <span className="item-actions">
+                <button type="button" aria-label={`Remove ${folder} from recent projects`} className="quiet" disabled={busy}
+                  ref={(control) => {
+                    if (control) forgetControls.current.set(folder, control);
+                    else forgetControls.current.delete(folder);
+                  }}
+                  onClick={() => setConfirming(folder)}
+                >
+                  Remove
+                </button>
+                <button type="button" aria-label={`Open ${folder}`} disabled={busy} onClick={() => onReopen(folder)}>
+                  Open
+                </button>
+              </span>
             )}
           </li>
         ))}

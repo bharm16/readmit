@@ -20,18 +20,20 @@
 }
 
 .hub-mode-badge.connected {
-  background: #1b5e20;
-  color: #ffffff;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--success);
 }
 
 .hub-mode-badge.offline {
-  background: #424242;
-  color: #ffffff;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: var(--text-muted);
 }
 
 .hub-custody-warning {
-  background: color-mix(in srgb, #fff3e0 20%, var(--surface));
-  border-left: 4px solid #f57c00;
+  background: var(--panel);
+  border-left: 3px solid var(--warning);
   padding: 0.75rem 1rem;
   margin: 0.75rem 0;
 }
@@ -106,13 +108,11 @@
 }
 
 .check-passed .check-indicator {
-  background: #2e7d32;
-  color: #ffffff;
+  color: var(--success);
 }
 
 .check-failed .check-indicator {
-  background: #c62828;
-  color: #ffffff;
+  color: var(--danger);
 }
 
 .hub-projects-list {
@@ -196,7 +196,7 @@
 }
 
 .hub-message {
-  color: var(--danger, #8a1f1f);
+  color: var(--danger);
 }
 
 .hub-operator-mode {

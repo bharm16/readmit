@@ -1,3 +1,5 @@
+import { openListedCase } from "./testkit/navigation";
+import { readCaseIdentity } from "./testkit/navigation";
 // Authoring, saving, reopening and previewing a transformation plan in the
 // review-and-transform panel, driven through the whole window as a person
 // drives it, over the stubbed facade. What a plan means, whether a document
@@ -99,10 +101,12 @@ function previewOf(planEntry: string, steps: TransformStep[]): TransformResult {
  * offers authoring over it. */
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getAllByRole("button", { name: "Open case" })[0]!);
-  await screen.findByText(CASE_IDENTITY);
+  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await user.click(screen.getAllByRole("button", { name: /^Open case(?: |$)/ })[0]!);
+  await readCaseIdentity(user, CASE_IDENTITY);
+  await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Reports" }));
+  await user.click(screen.getByRole("tab", { name: "Transform and export" }));
   return within(await screen.findByRole("region", { name: "Review and transform" }));
 }
 
@@ -283,8 +287,10 @@ test("a save this account cannot write is denied beside the steps, and a preview
   // Another case is opened: the preview, the refused save and the steps were
   // about the case before it, so none of them stays beside this one.
   facade.reply({ OpenCase: () => caseResult(OTHER_CASE_ENTRY, "other-identity-fixed-for-tests") });
-  await user.click(screen.getAllByRole("button", { name: "Open case" })[1]!);
-  await screen.findByText("other-identity-fixed-for-tests");
+  await openListedCase(user, OTHER_CASE_ENTRY);
+  await readCaseIdentity(user, "other-identity-fixed-for-tests");
+  await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Reports" }));
+  await user.click(screen.getByRole("tab", { name: "Transform and export" }));
   await waitFor(() => expect(panel.queryByText(/^Preview of /)).toBeNull());
   expect(panel.queryByText("this account cannot write into the open workspace")).toBeNull();
   expect(steps(panel)).toEqual([]);

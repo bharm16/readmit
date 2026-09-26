@@ -1,38 +1,134 @@
-.message-inspector {
-  border-top: 1px solid currentColor;
-  margin-top: 1rem;
-  padding-top: 1rem;
+.inspector-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin: 0 2.25rem 0.75rem 0;
 }
-.message-inspector nav {
+
+.inspector-heading {
+  min-width: 0;
+}
+
+.inspector-header h3 {
+  font-size: 1.0625rem;
+  margin: 0;
+}
+
+.inspector-meta {
+  color: var(--text-muted);
+  margin: 0.15rem 0 0;
+}
+
+.crumbs {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.crumbs button {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-family: inherit;
+  min-height: 0;
+  padding: 0;
+}
+
+.crumbs button:disabled {
+  color: var(--text);
+  opacity: 1;
+}
+
+.crumbs span[aria-hidden] {
+  color: var(--text-faint);
+}
+
+.selected-part {
+  margin-bottom: 1rem;
+}
+
+.part-title {
   align-items: center;
+  display: flex;
   gap: 0.5rem;
+  margin: 0 0 0.4rem;
+}
+
+pre.value {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.6rem 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* A message's parts: one row each, the part's path to open it and, only when
+   it is not simply present, its state. */
+.parts {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.parts li {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2rem;
+}
+
+.parts li:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.parts .row-link {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+}
+
+.part-state {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.part-facts {
+  font-size: 0.8125rem;
+}
+
+.inspector-bytes {
+  font-family: var(--mono);
+}
+
+.selected-byte {
+  background: var(--selected);
+}
+
+.message-inspector .pager {
+  justify-content: flex-start;
   margin: 0.5rem 0;
 }
-.message-inspector ul {
-  max-height: 20rem;
-  overflow: auto;
-  padding-left: 1.2rem;
+
+/* The close control sits in the pane's top corner, beside the title. */
+.details-close {
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+  z-index: 2;
 }
-.message-inspector dd {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-.inspector-bytes {
-  display: block;
-  max-height: 24rem;
-  overflow: auto;
-}
-.inspector-bytes th,
-.inspector-bytes td {
-  padding: 0.2rem 0.7rem;
-}
-.selected-byte {
-  font-weight: bold;
-  border-inline-start: 0.25rem solid currentColor;
-}
-.rows tr[aria-selected="true"] {
-  outline: 2px solid currentColor;
-  outline-offset: -2px;
+
+.region-inspector {
+  position: relative;
 }

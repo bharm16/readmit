@@ -17,7 +17,7 @@ import { useId, type ReactElement } from "react";
 /** The glyphs an icon button can carry. Each is decorative: its meaning is the
  * button's accessible name, so the shape is a second channel, never the only
  * one. */
-export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "refresh";
+export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "refresh" | "more";
 
 const glyphs: Record<IconGlyph, ReactElement> = {
   // Circle with a question mark.
@@ -51,6 +51,14 @@ const glyphs: Record<IconGlyph, ReactElement> = {
   next: (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
       <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Three dots (more actions).
+  more: (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
     </svg>
   ),
   // Clockwise circular arrow.

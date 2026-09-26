@@ -56,11 +56,8 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, handlers: F
   });
   // The first-run card and the command region's action bar both offer the same
   // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  await screen.findByText(WORKSPACE_ROOT);
-  const readBtn = await screen.findByRole("button", { name: "Open project" });
-  await waitFor(() => expect((readBtn as HTMLButtonElement).disabled).toBe(false));
-  await user.click(readBtn);
+  await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
   await screen.findByRole("heading", { name: "Scheduling investigation" });
   return { facade };
 }
@@ -68,18 +65,18 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, handlers: F
 test("opens capture panel and shows empty idle phase", async () => {
   const user = userEvent.setup();
   await openProject(user);
-  const evidence = screen.getByRole("region", { name: "Evidence" });
+  const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Capture" }));
-  expect(await screen.findByRole("heading", { name: "Capture" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Capture", level: 2 })).toBeTruthy();
   expect(screen.getByText(/Phase: idle/)).toBeTruthy();
   const crumbs = screen.getByRole("navigation", { name: "Where you are" });
-  expect(within(crumbs).getByText("Capture and collect")).toBeTruthy();
+  expect(within(crumbs).getByRole("button", { name: "Scheduling investigation" })).toBeTruthy();
 });
 
 test("source diagnose validation error and successful diagnose", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
 
   facade.reply({
     SaveSourceRegistration: (): Promise<SourceRegistrationResult> =>
@@ -115,7 +112,7 @@ test("source diagnose validation error and successful diagnose", async () => {
 test("collect preview, busy, cancel, and journal recovery", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
 
   facade.reply({
@@ -153,7 +150,7 @@ test("collect preview, busy, cancel, and journal recovery", async () => {
   });
   await user.click(screen.getByRole("button", { name: "Start collecting" }));
   expect(await screen.findByText(/Phase: collecting/)).toBeTruthy();
-  await user.click(within(screen.getByRole("heading", { name: "Capture" }).closest("section")!).getByRole("button", { name: "Cancel" }));
+  await user.click(within(screen.getByRole("heading", { name: "Capture", level: 2 }).closest("section")!).getByRole("button", { name: "Cancel" }));
   // The collector runs under StartCapture's own operation name; source
   // collection's name would not reach it.
   expect(facade.oneCall("Cancel")).toEqual(["capture"]);
@@ -192,7 +189,7 @@ test("collect preview, busy, cancel, and journal recovery", async () => {
 test("permission denied on start and fixture labelling", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
   expect(screen.getByText(/Separately labelled test fixture/)).toBeTruthy();
 
@@ -229,7 +226,7 @@ test("permission denied on start and fixture labelling", async () => {
 test("source collect finalize offers exploration", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
 
   facade.reply({
     ChooseCapturePath: (): Promise<PathChoiceResult> =>
@@ -299,14 +296,14 @@ test("source collect finalize offers exploration", async () => {
   expect(finalize.folder).toBe("collected");
   expect(finalize.collection_receipt).toBe("collection.json");
   expect("plan" in finalize).toBe(false);
-  await user.click(within(capturePanel()).getByRole("button", { name: "Open case" }));
+  await user.click(within(capturePanel()).getByRole("button", { name: /^Open case(?: |$)/ }));
   expect(facade.oneCall("OpenCase")[1]).toBe("imported-from-capture.case");
 });
 
 test("a collection that did not complete is not offered to finalize", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   facade.reply({
     CollectSource: (): Promise<SourceCollectionResult> =>
       Promise.resolve({
@@ -450,14 +447,14 @@ test("finalized capture offers observation binding into Observation setup", asyn
     },
   });
 
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("button", { name: "Choose folder…" }));
   await user.click(screen.getByRole("button", { name: "Save registration" }));
   await user.click(screen.getByRole("button", { name: "Collect" }));
   await user.click(screen.getByRole("button", { name: "Create case…" }));
   expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Set up observation" }));
-  expect(await screen.findByRole("heading", { name: "Observations" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Observations", level: 3 })).toBeTruthy();
   await waitFor(() => expect(binds.length).toBeGreaterThanOrEqual(1));
   expect(binds[0]?.binding.case_path).toBe("imported-from-capture.case");
   expect(
@@ -466,7 +463,7 @@ test("finalized capture offers observation binding into Observation setup", asyn
 });
 
 function capturePanel(): HTMLElement {
-  return screen.getByRole("heading", { name: "Capture" }).closest("section")!;
+  return screen.getByRole("heading", { name: "Capture", level: 2 }).closest("section")!;
 }
 
 async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLElement) {
@@ -494,7 +491,7 @@ const fixturePreview: CapturePreviewResult = {
 test("a running fixture listener shows where it listens, is cancelled from the keyboard and shows the ledger it sealed", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
   const panel = within(capturePanel());
   await user.selectOptions(panel.getByLabelText("Mode"), "defective");
@@ -566,7 +563,7 @@ test("a running fixture listener shows where it listens, is cancelled from the k
 test("the fixture tab listens on loopback only and never carries the collector tab's bind approval", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   const panel = within(capturePanel());
   // An approval ticked for the collector stays with the collector.
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
@@ -591,7 +588,7 @@ test.each(["delay", "missing-response", "reject", "disconnect", "malformed-ack"]
   async (action) => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
   const panel = within(capturePanel());
   facade.reply({
@@ -628,7 +625,7 @@ test("the fault controls offer the actions, waits and starting delay the facade 
     default_delay_ms: 70,
   };
   await openProject(user, { Shell: () => described });
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
   const panel = within(capturePanel());
   const fault = panel.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement;
@@ -642,7 +639,7 @@ test("the fault controls offer the actions, waits and starting delay the facade 
 test("a reader refusal at port zero stops preview, and a collector bind refusal names its checkbox", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
   const panel = within(capturePanel());
   await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), "reject");
@@ -710,7 +707,7 @@ const declaredControls: ReceiverPolicyChoices = {
 test("fault selection and opening a policy preserve an address the operator entered", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
   const panel = within(capturePanel());
   await user.clear(panel.getByLabelText("Listen address"));
@@ -737,7 +734,7 @@ test("fault selection and opening a policy preserve an address the operator ente
 test("a declared responder policy reopens for review, is previewed as it is and keeps what the form cannot show once edited", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
   const panel = within(capturePanel());
   const open = panel.getByRole("button", { name: "Open policy…" });
@@ -832,7 +829,7 @@ test("a declared responder policy reopens for review, is previewed as it is and 
 test("a declared source registration reopens for review and is saved with every member it declares", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
   const panel = within(capturePanel());
   const declared: EvidenceSource = {
     schema: "readmit-source/v1",

@@ -240,11 +240,22 @@ export function RunPanel({
 
   return <section aria-labelledby="durable-runs-title">
     <h3 id="durable-runs-title">Runs</h3>
-    <EnvironmentBanner
-      name={plan?.target.name}
-      classification={plan ? plan.target.classification : "nonproduction"}
-      disclaimer="Nonproduction environment: Synthetic test execution only. Execution occurs strictly into a fresh local output directory."
-    />
+    {/* The environment is the one the preflight read from the selected test:
+        until one is read there is no environment to classify, so none is
+        claimed, and a production or unclassified one reads as its refusal. */}
+    {plan ? (
+      <EnvironmentBanner
+        name={plan.target.name}
+        classification={plan.target.classification}
+        {...(plan.target.classification === "nonproduction"
+          ? { disclaimer: "Nonproduction environment: Synthetic test execution only. Execution occurs strictly into a fresh local output directory." }
+          : {})}
+      />
+    ) : (
+      <p className="environment-unselected">
+        <strong>Environment:</strong> select a saved test to see the environment it sends to.
+      </p>
+    )}
     <p>Send a saved test or suite once to its configured test target. Evidence stays in a new customer-local folder and can contain patient data.</p>
     <div className="actions">
       <label htmlFor="run-spec">Saved test or suite</label>

@@ -1,6 +1,6 @@
 # Desktop shell
 
-Commands that create or run work use [this computer's license](license.md#this-computers-license), the one the license pane activates, or the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
+Commands that create or run work use [this computer's license](license.md#this-computers-license), the one Settings › License activates, or the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
 
 
 The desktop application opens a workspace folder, lists what that folder
@@ -581,7 +581,7 @@ fail in the facade; it still carries a state, because the binding itself is
 unavailable while the application is starting, and the window says so rather
 than drawing itself with no commands and no privacy status. `DisclosureStatus`
 does not claim the slot either, because which operation holds it is what it
-reports; the privacy region below describes it.
+reports; Settings › Security describes it.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
@@ -1173,7 +1173,7 @@ anywhere in the form, empties the form without saving and changes no selection.
 match an HL7 field is the same patient data that field holds, and it does not
 become metadata by being convenient to store. It stays in one owner-readable
 file on this machine, it is never written into a case, a run, a result, a review
-or a report, and the privacy region names it. This is the one thing the grid
+or a report, and Settings › Security names it. This is the one thing the grid
 keeps that came from a person reading evidence; nothing read out of a case is
 kept anywhere.
 
@@ -2116,27 +2116,46 @@ and every place that draws one falls back to the plain status word — so that i
 checked in the facade, where every operation state, artifact kind and registered
 case status is required to have one.
 
-### Focus order
+### Layout and focus order
 
-The window has five regions and focus moves through them in the order the
-investigation runs:
+The window is a sidebar, the page, the details of an open message and a status
+line. The window itself never scrolls; each of them scrolls inside itself.
 
-| Region | What it holds |
+| Destination | What it holds |
 | --- | --- |
-| `commands` | The workspace actions, the appearance choices, and the search field. |
-| `navigation` | The open folder's listing and the recent workspaces. |
-| `evidence` | The project document and the cases it registers. |
-| `inspector` | The one case verification currently being read. |
-| `privacy` | What stays on this machine, and what this product does not do. |
+| Projects | The recent projects, New project, Open… and the demo. |
+| Cases | The open folder's cases and project; an open case's Messages, Timeline, Findings, Compare, Reproduce, Create test, Reduce and Replay; Import, Capture and Observations. |
+| Tests | Suites, test files, assertion sets, profiles, scenarios and baselines. |
+| Runs | Running a saved test or suite, run details and run comparison. |
+| Environments | Targets, credential references, send policies and reset plans. |
+| Reports | Packets, disclosure review, transform and export, and notes. |
+| Tools | Inspecting a file and benchmarks, over files the window has not opened. |
+| Settings | Appearance, license, team, runners, security and storage. |
+| Help | Help topics, the privacy statement and what this build supports. |
 
-The window renders the regions by walking that declared order and uses no
-positive tab index, so the controls inside them are tabbed through in document
-order, which is the order above. Every region is a labelled landmark that takes
+The project destinations are offered while a folder is open. One destination
+is shown at a time; the others stay mounted with what a person had typed, so
+moving away never discards an edit.
+
+The facade declares five regions, and focus moves through them in the order
+they sit in the window:
+
+| Region | Label | What it holds |
+| --- | --- | --- |
+| `commands` | Search | The command palette button and the project search field, at the top of the sidebar. |
+| `navigation` | Navigation | The sidebar's destinations. |
+| `evidence` | Main content | The page shown now. |
+| `inspector` | Message details | The occurrence opened from an open case, beside the page; present only while one is open. |
+| `privacy` | Status | The status line: what is running, with Cancel when it can be stopped. |
+
+The window places each declared region by its identifier, in the declared
+order, and uses no positive tab index, so the controls inside them are tabbed
+through in document order. Every region is a labelled landmark that takes
 focus itself without being a tab stop of its own: `F6` and `Shift+F6` move
-between the regions, and the palette lists a "Go to" command for each one. The
-evidence and inspector panes are separated by a separator that *is* a tab stop
-and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as with a
-pointer, so the panes resize without one.
+between the regions shown, and the palette lists a "Focus" command for each
+one. Message details is separated from the page by a separator that *is* a
+tab stop and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as
+with a pointer, so the panes resize without one.
 
 The region order, the statuses, the commands and their shortcuts are declared
 once in the facade and tested there, including that every shortcut the palette
@@ -2160,12 +2179,10 @@ selected row is marked with a rule and heavier text rather than a tint.
 
 ### Where you are, and back
 
-The evidence region opens with the trail of where the investigation is —
-`Workspace › <project> › <case>` — and each earlier crumb is a button that
-goes back there, clearing exactly what that step held: leaving the case keeps
-the project, leaving the project returns to the folder listing. Nothing derived
-from a case survives the case, so going back never leaves a panel beside
-evidence it was not read from.
+An open case's page names the case and, above it, the project it belongs to as
+a button that goes back to the case list, clearing exactly what the case held.
+Nothing derived from a case survives the case, so going back never leaves a
+panel beside evidence it was not read from.
 
 ### Commands and search
 
@@ -2173,14 +2190,14 @@ The command palette lists everything the window can be asked to do, with the
 shortcut for the ones that have one. `Ctrl+K` opens it and `Ctrl+F` moves to the
 search field; the platform command key is accepted wherever `Ctrl` is shown.
 
-While no workspace is open, the commands region presents the two real ways to
-begin as one choice: a real project over your own evidence — choose a folder
-this account can write to, and the project, import and capture screens follow —
-or the free guided sample, whose deterministic evidence and genuinely failing
-and passing saved tests are practice for the workflow and never a substitute
-for importing your own evidence. Beside the choices the window states the
-license state the activation store actually holds — free work, an active term,
-or a released activation — with its own action opening the activation pane.
+The window opens on Projects: the recent projects, *New project* — a name and
+the interface versions, then the folder that will hold it in the host's own
+dialog — *Open…* for a folder that already holds a project or evidence, and
+*Try demo*, whose deterministic evidence and genuinely failing and passing
+saved tests are practice for the workflow and never a substitute for importing
+your own evidence. Licensing and connections are Settings, never the first
+screen. A folder that holds a project document opens as that project, its
+overview read at once.
 
 `Search` navigates one open workspace. It is not the grid: it finds the things a
 workspace and its project declare, and the grid finds the occurrences inside one
@@ -2332,7 +2349,7 @@ value. A note is text a person typed on this machine: it is stored in the
 project's own document, retained in the working session while it is unstored, is
 never sent anywhere, and is never kept in browser storage.
 
-The window states this rather than leaving it to be assumed. The privacy region
+The window states this rather than leaving it to be assumed. Settings › Security
 names what this product does not do and everything the shell writes outside
 evidence, which is the recent folder list, the filters a person saved, the
 working session and editor drafts they have not stored, and the commercial
@@ -2343,7 +2360,7 @@ typed to filter by and the other a note whose subject is the evidence beside it.
 Because durable execution, source collection, environment connectivity checks
 and fixture resets, observation windows, the customer hub and the runner all
 genuinely reach configured destinations, a blanket no-network claim would be
-false, so the privacy region discloses each such
+false, so Settings › Security discloses each such
 activity separately: its destination, the data it carries, the authorization it
 requires, and — answered by the facade from the window's own connection state,
 contacting nothing — whether it is idle, active, configured, offline or
@@ -2461,11 +2478,10 @@ are not duplicated here.
 
 ## Raw inspection and the performance corpus
 
-Two screens in the inspector region look at HL7 files the window does not
-import. Both are collapsed until opened, from their own heading or from the
-palette's **Inspect a raw HL7 file…** and **Generate or scan a performance
-corpus…** commands, which move focus to the inspector and to the screen they
-open. Neither needs a workspace, and neither writes a case, an index or a
+Two screens under Tools look at HL7 files the window does not
+import: **Inspect file** and **Benchmarks**, reached from the Tools page or from
+the palette's commands of the same names, which open the screen and move focus
+to the page. Neither needs a workspace, and neither writes a case, an index or a
 project.
 
 **Raw inspection** is [`readmit inspect`](../README.md) in the window. A person
@@ -3329,7 +3345,7 @@ analysis of automatic rules only; analyst review decisions are not applied.
 The CLI timeline's existing output contract stays unchanged.
 ## Local evaluation and operation access
 
-This computer's license comes first in the license pane, handled the way any software purchase is ([D9](product-decisions.md#d9--one-license-per-computer-handled-as-any-software-purchase)). *Activate a license file…* opens the file received at purchase through the native file dialog, and *Paste a license…* takes its contents instead; the first activation also asks for the vendor's verification keys file, and later ones use the keys kept with the license. The received license is checked locally and described in plain words — licensee, plan, author seats, runner slots and its dates — and the person chooses who uses this computer, which of that person's computers it is, and optionally the runner pool its tests count against, from what the license itself assigns (a single choice is shown chosen). *Activate on this computer* installs it through the same operation `readmit license import` performs without `--output`, into the same folder in the account's configuration folder, and new work in the window and on the command line is then admitted through it; `readmit license show` reports it, and the pane reports a license the command line installed. The pane states the term in plain words, warns thirty days before the end, and while renewal is due offers *Get renewed license*, the operator-configured account address, opened only by a click. *Renew with a license file…* or *Paste a renewed license…* activates the renewed license, which replaces the installed one in place through `readmit license renew`'s own store renewal; the same issue, another organization's license, a transfer to another computer and a license the vendor's keys do not verify are refused in plain words, and a renewal signed after a key rotation can be checked against an updated keys file, which is then kept. *Save a copy of this license…* writes the installed license byte for byte into a chosen folder, as `readmit license export` does, even after expiry or deactivation. *Deactivate this computer…* asks first (Escape keeps the license), then releases it as `readmit license release` does: new work stops in the window and on the command line, reading, verifying and exporting go on, and the account is where the seat is reissued. A license in the earlier format is reported as one that cannot create or run new work. Every refusal and status names a license, never a contract. See [this computer's license](license.md#this-computers-license).
+This computer's license comes first in Settings › License, handled the way any software purchase is ([D9](product-decisions.md#d9--one-license-per-computer-handled-as-any-software-purchase)). *Activate a license file…* opens the file received at purchase through the native file dialog, and *Paste a license…* takes its contents instead; the first activation also asks for the vendor's verification keys file, and later ones use the keys kept with the license. The received license is checked locally and described in plain words — licensee, plan, author seats, runner slots and its dates — and the person chooses who uses this computer, which of that person's computers it is, and optionally the runner pool its tests count against, from what the license itself assigns (a single choice is shown chosen). *Activate on this computer* installs it through the same operation `readmit license import` performs without `--output`, into the same folder in the account's configuration folder, and new work in the window and on the command line is then admitted through it; `readmit license show` reports it, and the pane reports a license the command line installed. The pane states the term in plain words, warns thirty days before the end, and while renewal is due offers *Get renewed license*, the operator-configured account address, opened only by a click. *Renew with a license file…* or *Paste a renewed license…* activates the renewed license, which replaces the installed one in place through `readmit license renew`'s own store renewal; the same issue, another organization's license, a transfer to another computer and a license the vendor's keys do not verify are refused in plain words, and a renewal signed after a key rotation can be checked against an updated keys file, which is then kept. *Save a copy of this license…* writes the installed license byte for byte into a chosen folder, as `readmit license export` does, even after expiry or deactivation. *Deactivate this computer…* asks first (Escape keeps the license), then releases it as `readmit license release` does: new work stops in the window and on the command line, reading, verifying and exporting go on, and the account is where the seat is reissued. A license in the earlier format is reported as one that cannot create or run new work. Every refusal and status names a license, never a contract. See [this computer's license](license.md#this-computers-license).
 
 The earlier controls below remain for an activation folder an administrator supplies or builds; when the selected activation is this computer's license, renewing or releasing it there acts on the license as the controls above do.
 
@@ -3338,7 +3354,7 @@ current activation status and its release control remain visible; the reason
 appears beside them. The folder chooser rejects a symbolic link, and an
 occupied activation or export destination is refused rather than overwritten.
 
-The privacy pane carries the whole license journey. A received entitlement is verified against the vendor's trust document through two native file dialogs, using the same v1/v2 readers the command line uses; the report is what the document itself declares plus the term state decided from the local clock, and a tampered document, an unknown, retired or revoked key, and an expired term are each refused or reported by name. A verified v2 document then configures activation without hand-authored JSON: the author, the device and the runner authority are chosen from what the document itself assigns (an unused role is explicitly empty, as the policy contract requires), a private activation folder is chosen natively, and the pane writes the received documents and one `readmit-operation-policy/v1` into it. Creation re-verifies the documents at the moment it writes, never overwrites an occupied folder, and does not activate: activation stays the separate explicit action it is on the command line, after which the pane shows signed term dates and the visible UTC high-water/rollback state.
+Settings › License carries the whole license journey. A received entitlement is verified against the vendor's trust document through two native file dialogs, using the same v1/v2 readers the command line uses; the report is what the document itself declares plus the term state decided from the local clock, and a tampered document, an unknown, retired or revoked key, and an expired term are each refused or reported by name. A verified v2 document then configures activation without hand-authored JSON: the author, the device and the runner authority are chosen from what the document itself assigns (an unused role is explicitly empty, as the policy contract requires), a private activation folder is chosen natively, and the pane writes the received documents and one `readmit-operation-policy/v1` into it. Creation re-verifies the documents at the moment it writes, never overwrites an occupied folder, and does not activate: activation stays the separate explicit action it is on the command line, after which the pane shows signed term dates and the visible UTC high-water/rollback state.
 
 Renewal — a paid renewal or the one approved trial extension — chooses the later issue natively, verifies it against the same trust, refuses a transfer (a reissue that no longer assigns this device to this author, or no longer names the configured runner authority), a superseded or foreign-organization sequence, and a released activation, installs the new document beside the old one and rewrites the policy atomically; the retained clock state is never touched. The installed document exports byte for byte into a chosen folder and never overwrites. Runner capacity is shown per authority — active, stale and free against the granted instances — and an admission is released or reconciled explicitly, never silently; admitting and renewing instances is the runner host's own lifecycle, not the pane's. New authoring and execution are admitted through the shared operation guard; unconfigured, expired, released, corrupt or rollback-blocked state refuses them. The application still opens, reads/verifies/exports existing evidence, and runs its frozen synthetic practice without activation, and every license-management action works with no activation at all. Selection is persisted separately as `readmit-desktop-operation-selection/v1`. See [the local evaluation contract](license-v2.md#complete-local-evaluation-and-operation-admission).
 
@@ -3348,7 +3364,7 @@ resolved before writing; a chosen folder that is itself a link is refused.
 
 The runner's automatic claim and release follows [D10](product-decisions.md#d10--runner-instances-claim-purchased-capacity-automatically). The generated CI handoff still expects an agent's activated operation-policy path; it does not yet provision a signed license from a CI secret or establish one shared authority record across hosts. Do not copy an admission record to each host to simulate shared capacity.
 
-If the remembered operation selection cannot be read, the license pane reports
+If the remembered operation selection cannot be read, Settings › License reports
 that refusal at startup and asks the person to choose an activation folder
 again. It keeps the unreadable document until that explicit choice.
 
@@ -3370,7 +3386,7 @@ The journey after checkout is handled truthfully: completing a payment is not pr
 
 ## Customer artifact hub
 
-The Customer artifact hub panel in the application's privacy pane connects the
+The Customer artifact hub panel in Settings › Team connects the
 desktop client to an organization-controlled artifact hub. It supports discovery
 and verified transfer of authorized projects and artifacts without background
 synchronization, telemetry, or cloud dependencies.
@@ -3709,7 +3725,7 @@ in for the team's.
 
 ## Customer runners, recurring schedules and CI handoffs
 
-The **Runners, schedules and CI** panel sits in the privacy pane beside the
+The **Runners, schedules and CI** panel sits in Settings › Runners beside the
 artifact hub. It carries the application-facing half of the customer-runner
 workflow (#263): the documents a hub-enrolled runner and its schedules read are
 generated and validated in the window, a configured runner's state is displayed,
@@ -3870,7 +3886,7 @@ verdict; a cancelled verification is shown as cancelled, not refused.
 
 ## Interface profile management
 
-The interface profile management panel in the inspector region (`manage-profiles`
+The interface profile management panel under Tests › Profiles (`manage-profiles`
 command, `Ctrl+Shift+P` / `⌘+Shift+P`) enables viewing, structured authoring,
 validating, versioning, comparing, and exchanging local interface profiles
 ([`readmit-local-profile/v1`](local-profiles.md)) and profile packages
@@ -3973,7 +3989,7 @@ The panel provides five functional tabs:
 
 ## Synthetic scenario authoring
 
-The synthetic scenario panel in the inspector region (`manage-scenarios`
+The synthetic scenario panel under Tests › Scenarios (`manage-scenarios`
 command, `Ctrl+Shift+S` / `⌘+Shift+S`) finishes the graphical journey over the
 existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
 `readmit-scenario-generator/v1` and `readmit-scenario-library/v1` contracts.
