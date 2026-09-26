@@ -1,8 +1,9 @@
+import { DisplayTerm, FIELD_STATES } from "./display";
 import { useState } from "react";
 import type { GridRow, InspectionResult } from "./bindings";
 import { DIRECTIONS, KIND_CAPTIONS, observedTime, Report, type Indicators } from "./shell";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
-import { FormDialog, MoreMenu, humanize } from "./layout";
+import { FormDialog, Menu, humanize } from "./layout";
 import { Field } from "./ui";
 import { IconButton } from "./IconButton";
 import "./inspector.css";
@@ -61,7 +62,7 @@ export function Inspector({
               <h3>{row ? (row.kind === "unparsed" ? "Unparsed message" : KIND_CAPTIONS[row.kind]) : "Message"}</h3>
               <p className="inspector-meta">{summary.join(" · ")}</p>
             </div>
-            <MoreMenu
+            <Menu
               label="More message actions"
               items={[{ label: "Go to field…", onSelect: () => setGoingTo(true), disabled: busy || inspection.decode_state === "unparsed" }]}
             />
@@ -95,7 +96,7 @@ export function Inspector({
                 <div className="selected-part">
                   <p className="part-title">
                     <strong>{inspection.metadata.label || selected.path}</strong>
-                    {selected.state !== "present" ? <span className="badge warn">{humanize(selected.state)}</span> : null}
+                    {selected.state !== "present" ? <span className="badge warn"><DisplayTerm map={FIELD_STATES} code={selected.state} /></span> : null}
                   </p>
                   {inspection.decoded ? <pre className="value">{inspection.decoded}</pre> : null}
                 </div>
@@ -108,7 +109,7 @@ export function Inspector({
                         <button type="button" className="row-link" disabled={busy} onClick={() => onInspect(child.path, 0, -1)}>
                           {child.path}
                         </button>
-                        {child.state !== "present" ? <span className="part-state">{humanize(child.state)}</span> : null}
+                        {child.state !== "present" ? <span className="part-state"><DisplayTerm map={FIELD_STATES} code={child.state} /></span> : null}
                       </li>
                     ))}
                   </ul>

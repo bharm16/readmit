@@ -1,3 +1,4 @@
+import { HIDDEN_VALUE } from "./display";
 import "./suite.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1044,10 +1045,10 @@ export function SuitePanel({
                       <th>{change.part}</th>
                       <td>{change.kind}</td>
                       <td>
-                        <pre>{change.before ?? (impactShow ? "Absent" : "Hidden")}</pre>
+                        <pre>{change.before ?? (impactShow ? "Absent" : HIDDEN_VALUE)}</pre>
                       </td>
                       <td>
-                        <pre>{change.after ?? (impactShow ? "Absent" : "Hidden")}</pre>
+                        <pre>{change.after ?? (impactShow ? "Absent" : HIDDEN_VALUE)}</pre>
                       </td>
                     </tr>
                   ))}

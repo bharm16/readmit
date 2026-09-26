@@ -57,7 +57,7 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
     await authoring.findByText("Sent in the order the case records them: s0001-e000001, s0001-e000002."),
   ).toBeTruthy();
   await press(user, authoring.getByRole("button", { name: "Send to practice-target.json" }));
-  await press(user, await authoring.findByRole("button", { name: "appointment-ledger" }));
+  await press(user, await authoring.findByRole("button", { name: "Appointment records" }));
   expect(await authoring.findByText("Initial state: empty-ledger.")).toBeTruthy();
   await press(user, authoring.getByRole("button", { name: "Read the observation from this entry" }));
   await user.type(

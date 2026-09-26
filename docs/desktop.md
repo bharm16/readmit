@@ -150,7 +150,7 @@ panel's cancel cannot reach another panel's work. A running operation hands
 focus to the control it still offers, its cancel, and once it answers focus
 returns to the control that started it unless the person has moved it since; a
 read a panel starts on its own moves focus nowhere. Its `Outcome` draws an
-answer through the status line the window uses everywhere, with its state's
+answer through the status the window uses everywhere, with its state's
 word and shape and its reason; the environment panel shows every answer that
 did not complete that way and the runner panel every one that is neither a
 failure nor a refused admission, which it words as refusals, while the other
@@ -570,8 +570,8 @@ including after a failure or a cancellation, so the next request proceeds.
 `DiscardDraft`, `SaveEditorDraft`, `DiscardEditorDraft` and `EditorDrafts` are
 the exceptions. The first three read one small local file each — `Shell` reads
 nothing at all — so none of them claims the slot and all stay available while
-an operation runs: the recent list, the selected filter, the command palette
-and the privacy status work whenever the window is open. The rest write one
+an operation runs: the recent list, the selected filter and the command
+palette work whenever the window is open. The rest write one
 small local file each and do not claim it either, for a different reason: a
 crash while a case is being verified is exactly when unstored work has to
 survive, so refusing to retain it because an operation is running would lose
@@ -594,10 +594,11 @@ folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
 `SaveTransformPlan`, `OpenTransformPlan`, `PreviewReduction`, `OpenReview` and
 `RecoverSession` are not, because each runs to completion under
-its own size limits once it starts. The window enables the Cancel control only
-while an interruptible operation runs; `Escape` reaches the same operation
-whenever the palette is not open, and cancelling when nothing is running does
-nothing.
+its own size limits once it starts. While an operation runs, the sidebar shows
+it compactly, so it stays addressable from any page; **Stop** is offered there
+only for an interruptible one, and the palette then lists *Cancel* followed by
+that operation's name. `Escape` never cancels anything: it closes the topmost
+dialog or menu and goes no further.
 
 A cancellation reaches an interruptible operation from the moment it holds the
 slot: the slot, the operation's name and its cancellation are taken together, so
@@ -896,7 +897,8 @@ is still the evidence the project recorded is what `readmit project show`
 reports — and what the window's own project overview reports beside every
 registered entry, through the same shared verification.
 
-The window's **project overview** is the project's navigation home. It shows
+The window's **project overview**, under the Cases list and opened from the
+project switcher's *Project settings*, shows
 the settings and interface versions, every registered case and revision with
 its evidence state (`verified`, `changed`, `unreadable` or `missing`, the same
 four states the command line reports), and every note. From it the
@@ -1663,7 +1665,7 @@ exactly as [`readmit diagnose groups`](diagnose.md#comparing-recurring-failure-g
 does, writing nothing. The groups are shown 200 at a time with their total, and
 the next window is of the grouping on screen, whatever the form holds by then.
 A grouping reads several cases and is interruptible: while it runs the window
-says so, and its Cancel control and `Escape` stop it; a cancelled grouping is
+says so, and its Cancel control and the window's **Stop** stop it; a cancelled grouping is
 shown as cancelled, with no groups. When the live grouping has already
 evaluated a case from the open workspace, each member names that case's entry
 beside its identity. A reopened grouping names identities from its retained
@@ -2257,44 +2259,66 @@ case status is required to have one.
 
 ### Layout and focus order
 
-The window is a sidebar, the page, the details of an open message and a status
-line. The window itself never scrolls; each of them scrolls inside itself.
+The window is a sidebar, the page, and the details of a selection beside it.
+There is no status strip and no permanent footer. The window itself never
+scrolls; the page body and the details each scroll inside themselves.
+
+The sidebar lists, in this order: **Projects**; with a project open, its
+switcher and **Cases**, **Tests**, **Runs**, **Environments** and **Reports**;
+then **Tools**, **Settings** and **Help**. With no project open only Projects
+and the utilities are listed — no disabled project destinations. The project
+switcher names the open project and offers its recent projects, *Open
+project…*, *New project…* and *Project settings*.
 
 | Destination | What it holds |
 | --- | --- |
 | Projects | The recent projects, New project, Open… and the demo. |
-| Cases | The open folder's cases and project; an open case's Messages, Timeline, Findings, Compare, Reproduce, Create test, Reduce and Replay; Import, Capture and Observations. |
-| Tests | Suites, test files, assertion sets, profiles, scenarios and baselines. |
-| Runs | Running a saved test or suite, run details and run comparison. |
+| Cases | The open project's cases; an open case's Messages, Timeline and Findings, with Compare, Reproduce, Create test, Reduce and Replay as its actions; Import, Capture and Observations. |
+| Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios; *Baselines* is in its More menu. |
+| Runs | Run details; **Run test** and **Compare** open those flows. |
 | Environments | Targets, credential references, send policies and reset plans. |
-| Reports | Packets, disclosure review, transform and export, and notes. |
-| Tools | Inspecting a file and benchmarks, over files the window has not opened. |
-| Settings | Appearance, license, team, runners, security and storage. |
+| Reports | Packets; **Share** opens the disclosure review, and *Transform and export* and *Notes* are in its More menu. |
+| Tools | Inspect file, Sample data and Benchmarks, each opened from the list. |
+| Settings | General, License, Team, Runners, Security and Storage, as categories beside the selected one. |
 | Help | Help topics, the privacy statement and what this build supports. |
 
-The project destinations are offered while a folder is open. One destination
-is shown at a time; the others stay mounted with what a person had typed, so
-moving away never discards an edit.
+Where the window is, is one route: a destination (or a place reached from
+inside one, such as Library or Run test), the project, the object open in it
+and its local view. Going forward keeps the place left with its selection and
+scroll position, and **Back** returns exactly there; each sidebar destination
+keeps its own way back and returns to where it was left, so Back never jumps
+to another destination. Opening another project starts a new history: nothing
+selected, typed or revealed in one project is carried into another. One
+destination is shown at a time; the others stay mounted with what a person had
+typed, so moving away never discards an edit.
 
-The facade declares five regions, and focus moves through them in the order
+Below an effective width of 56.25rem the sidebar is a 3.25rem icon rail, each
+icon named for assistive technology and by a tooltip on hover and focus, and
+the project switcher moves into the page header, so it is never out of reach.
+Selection details open beside a list at the width chosen for that project
+(22.5rem to start, 20–27.5rem); when the list beside them would fall below
+30rem they are shown on their own, with **Back to messages**. Settings
+categories are a 10rem rail where the page is at least 45rem wide and
+otherwise one button that opens a picker. Every breakpoint is measured in the
+window's effective rem, so twice the text size means half the room.
+
+The facade declares three regions, and focus moves through them in the order
 they sit in the window:
 
 | Region | Label | What it holds |
 | --- | --- | --- |
-| `commands` | Search | The command palette button and the project search field, at the top of the sidebar. |
-| `navigation` | Navigation | The sidebar's destinations. |
+| `navigation` | Navigation | The sidebar: destinations, the project switcher and the running operation. |
 | `evidence` | Main content | The page shown now. |
-| `inspector` | Message details | The occurrence opened from an open case, beside the page; present only while one is open. |
-| `privacy` | Status | The status line: what is running, with Cancel when it can be stopped. |
+| `inspector` | Details | The selection opened beside the page; present only while one is open. |
 
 The window places each declared region by its identifier, in the declared
 order, and uses no positive tab index, so the controls inside them are tabbed
 through in document order. Every region is a labelled landmark that takes
 focus itself without being a tab stop of its own: `F6` and `Shift+F6` move
 between the regions shown, and the palette lists a "Focus" command for each
-one. Message details is separated from the page by a separator that *is* a
-tab stop and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as
-with a pointer, so the panes resize without one.
+one. The details are separated from the page by a separator that *is* a tab
+stop and moves with `ArrowLeft`, `ArrowRight`, `Home` and `End` as well as with
+a pointer, so the panes resize without one.
 
 The region order, the statuses, the commands and their shortcuts are declared
 once in the facade and tested there, including that every shortcut the palette
@@ -2305,6 +2329,61 @@ forgot to draw and a command with no action behind it are type errors rather
 than controls that quietly do nothing. Neither check inspects a rendered window,
 so what a region draws once it has an element is not among the things proved
 here.
+
+### Shared presentation
+
+The window's shared components are the ones each screen is drawn with as the
+redesign reaches it; a screen still showing its own table or form is one whose
+redesign has not landed yet.
+
+**The table.** One component draws a collection: a sticky header, 2.75rem rows
+with one line of primary text, sort buttons that expose their direction, and
+the selected row filled and marked at its edge (an outline in forced colours).
+A row is the navigation target — click or `Enter` opens it, the arrow keys move
+the selection and `Home` and `End` go to the ends; where several rows can be
+chosen for an action, `Space` toggles the focused row's checkbox and `Shift`
+with an arrow extends a choice already started. It measures its own viewport
+and the row height and draws only the visible rows plus eight on each side,
+recomputing when the window or its text size changes; it shows *Loading* only
+for a read that takes longer than 150ms, and a paged read can ask for its next
+page as the last rows are drawn. Metadata columns give way before the primary
+one in a narrow table. A paged window shows Previous and Next with its
+`first–last of total` range; one page shows no pager. The message list is drawn
+with it.
+
+**Sheets.** Every sheet is one family: a fixed title row with its Close button,
+a body that alone scrolls and one footer, *Cancel* then the commit. Focus goes
+to the first field, Tab stays inside, and closing returns focus to what opened
+it. An editor built on it — a registered case's Edit and Add to project,
+Project settings, and Settings › General — awaits its save: it cannot be
+pressed twice while pending, closes only once the save is stored, and a
+refused or failed save keeps every entered value. With unsaved changes it asks
+*Save changes?* before it closes, with *Keep editing* where focus starts,
+*Discard* and *Save*; the editor stays open underneath, unchanged. A chooser,
+such as Go to field, closes as soon as it is answered. Read-only values are
+label and value rows, with Edit opening the prefilled sheet, as Settings ›
+General shows.
+
+**Tokens.** Sizes come from one set of tokens in rem at a 16px root — 13rem
+sidebar, 3.5rem headers, 2.25rem tabs, 2.75rem toolbars and rows, 2rem buttons,
+2.25rem inputs, 30/35/45rem sheets — and colours from the system's own pairs
+(Canvas and CanvasText, Field and FieldText, ButtonFace and ButtonText, the
+accent and the text drawn on it), with rules, hover and selection mixed from
+them. A test of the stylesheets refuses colour literals, gradients, remote
+resources, a forced-colours opt-out and any panel stylesheet that sizes
+controls or table cells itself, and checks that the lengths the code decides
+layout with are the stylesheet's own tokens.
+
+**Vocabulary.** Closed vocabularies read through explicit captions keyed by
+their generated types, and a member without one reads *Unsupported* with its
+exact code behind a disclosure, never a guessed meaning. Field states read
+*Present*, *Empty*, *Null* and *Not present* (with *Hidden* for a value not
+shown), a target classification *Nonproduction*, *Production* or *Not
+classified*, and the test boundaries *Appointment records* and
+*Acknowledgements*; a permission refusal reads *Access denied*. The captions
+for an assertion failure (*Failed*), an execution error (*Error*) and a
+manual-confirmation reset (*Manual confirmation*) are defined for the screens
+that show those codes.
 
 ### Status without colour
 
@@ -2318,16 +2397,23 @@ selected row is marked with a rule and heavier text rather than a tint.
 
 ### Where you are, and back
 
-An open case's page names the case and, above it, the project it belongs to as
-a button that goes back to the case list, clearing exactly what the case held.
-Nothing derived from a case survives the case, so going back never leaves a
-panel beside evidence it was not read from.
+A page opened from inside another has a Back button before its title naming
+where it leads — an open case's goes back to its case list, clearing exactly
+what the case held. Nothing derived from a case survives the case, so going
+back never leaves a panel beside evidence it was not read from.
 
 ### Commands and search
 
-The command palette lists everything the window can be asked to do, with the
-shortcut for the ones that have one. `Ctrl+K` opens it and `Ctrl+F` moves to the
-search field; the platform command key is accepted wherever `Ctrl` is shown.
+The command palette is one search field over the actions of where the person
+is and then the destinations, with the platform's shortcut beside the ones
+that have one (`⌘` on a Mac, `Ctrl` elsewhere). `Ctrl+K` opens it and `Ctrl+F`
+opens project search. Results rank a label that starts with the query, then a
+later word that does, then one that contains it; arrow keys, `Home` and `End`
+choose and `Enter` runs the chosen one, which opens that action's own flow — a
+send or a delete is never done from `Enter`. It never lists itself, a project
+action with no project open, or Cancel while nothing cancellable runs, and it
+searches command names only, never message content. Nothing matching reads
+*No commands found* with *Clear search*.
 
 The window opens on Projects: the recent projects, *New project* — a name and
 the interface versions, then the folder that will hold it in the host's own
@@ -2699,8 +2785,7 @@ shown, as changing a generation input clears the corpus reported.
 While a generation or a scan runs, `CorpusProgress` answers the counts it has
 reached without waiting for the operation slot, and the screen shows them — the
 same counts `--progress` writes, naming no file. **Cancel generation** and
-**Cancel scan** stop exactly that operation, and `Escape` cancels whatever
-runs. A cancelled generation removes the partial corpus and writes no manifest.
+**Cancel scan** stop exactly that operation. A cancelled generation removes the partial corpus and writes no manifest.
 A cancelled scan answers with the counts it reached, the case bounds not
 evaluated and no benchmark, as the command prints `State: cancelled`.
 
@@ -3875,7 +3960,7 @@ line takes. Local use needs no hub and no runner; the panel stays inert until a
 configuration is selected, and it says so rather than offering a fake flow.
 Only a failure reads as a refusal: a refused admission keeps the sentence its
 step gives it, and an answer that is busy, cancelled, has nothing to show or
-was not permitted is shown as that state, through the window's status line.
+was not permitted is shown as that state, through the window's status.
 
 ### Generated documents, never hand-authored JSON
 
@@ -4022,7 +4107,7 @@ still passes nothing; and a snapshot past its retention end is refused as
 expired with nothing deleted. Verification reads only the snapshot and never
 sends, reruns or changes a byte. The focus moves to its **Cancel
 verification** control, which stops exactly that verification by the name it
-runs under (as `Escape` stops the window's one operation) and reaches no
+runs under and reaches no
 verdict; a cancelled verification is shown as cancelled, not refused.
 
 ## Interface profile management
@@ -4116,7 +4201,7 @@ The panel provides five functional tabs:
      and says nothing was activated: no project, saved-test pin or open editor
      changes and no message is evaluated. The same five documents are written
      byte for byte as the command writes them. A running import can be
-     cancelled with **Cancel import** or `Escape`: before its directory exists
+     cancelled with **Cancel import**: before its directory exists
      nothing is written; once it exists the panel says it holds an incomplete
      import with no `package.json`, which no import resumes into. The
      destination is a typed name, not a folder dialog.
@@ -4175,8 +4260,8 @@ existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
 - The fixture check is `readmit scenario check-library`: it reads the library
   and the expectations up to the command's 4 MiB bound, reports the sentence
   the command prints when every declared check passes, and fails a mismatch in
-  the checker's words. It is interruptible from its **Cancel check** control
-  or with `Escape`; a cancelled check passes nothing and says so, retains
+  the checker's words. It is interruptible from its **Cancel check** control;
+  a cancelled check passes nothing and says so, retains
   nothing — the check regenerates in memory and writes nothing anywhere — and
   the next check starts afresh.
 - The SIU fixture tab is `readmit synth`. The seed, base time, generator
@@ -4332,7 +4417,7 @@ capture after a crash. On completion the panel offers opening the case, setting
 up an index, and binding the retained case into Observation setup through
 `BindCaptureObservation`.
 
-While a collector or the fixture runs, the status line says where it listens,
+While a collector or the fixture runs, the capture panel says where it listens,
 `Listening on 127.0.0.1:PORT`: the address `readmit listen` and `readmit
 collect` print first, read through `CaptureProgress` once the listener is
 ready. Cancel holds the focus while a capture runs, and focus returns to the

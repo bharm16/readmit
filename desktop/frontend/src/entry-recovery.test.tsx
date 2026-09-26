@@ -5,7 +5,7 @@
 import { expect, test } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
-import { goTo, page, sidebar } from "./testkit/navigation";
+import { goToView, page, sidebar } from "./testkit/navigation";
 import { CASE_ENTRY, folderChosen, folderWithCase, refused, WORKSPACE_ROOT } from "./testkit/fixtures";
 import type { Artifact } from "./bindings";
 
@@ -27,7 +27,7 @@ test("a refused workspace open offers choosing a different folder as its next ac
   facade.reply({ SelectWorkspace: () => folderWithCase() });
   await user.click(page().getByRole("button", { name: "Choose another folder…" }));
   expect(facade.callsTo("SelectWorkspace").length).toBe(2);
-  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
 });
 
 test("a refused case verification offers the way back to the folder listing", async () => {
@@ -53,8 +53,8 @@ test("a run preflight refusal opens the configuration the refusal is about", asy
     PreflightRun: () => refused("the send policy refuses this destination"),
   });
   await user.click(page().getByRole("button", { name: "Open…" }));
-  await sidebar().findByTitle(WORKSPACE_ROOT);
-  await goTo(user, "Runs");
+  await sidebar().findByRole("button", { name: /^Project: / });
+  await goToView(user, "Runs", "Run test");
   await user.selectOptions(page().getByLabelText("Saved test or suite"), SAVED_SPEC);
   await user.click(page().getByRole("button", { name: "Preview run" }));
   expect(await page().findByText(/the send policy refuses this destination/i)).toBeTruthy();
@@ -62,10 +62,10 @@ test("a run preflight refusal opens the configuration the refusal is about", asy
   await user.click(page().getByRole("button", { name: "Environments" }));
   expect(page().getByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
   expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
-  await goTo(user, "Runs");
+  await goToView(user, "Runs", "Run test");
   await user.click(page().getByRole("button", { name: "License" }));
   expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
-  expect(page().getByRole("tab", { name: "License" }).getAttribute("aria-selected")).toBe("true");
+  expect(page().getByRole("button", { name: "License" }).getAttribute("aria-current")).toBe("page");
 });
 
 test("no supported journey ends in a CLI instruction", async () => {

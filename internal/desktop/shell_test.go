@@ -69,11 +69,11 @@ func frontend(t *testing.T) string {
 	return sources.String()
 }
 
-// Focus moves through the regions in the order they sit in the window: search
-// and navigation down the sidebar, the page, the details of an open message,
-// and the status line. That is the order the window renders.
+// Focus moves through the regions in the order they sit in the window: the
+// sidebar's navigation, the page, and the details of an open selection. That
+// is the order the window renders.
 func TestFocusOrderFollowsTheInvestigationJourney(t *testing.T) {
-	journey := []desktop.RegionID{"commands", "navigation", "evidence", "inspector", "privacy"}
+	journey := []desktop.RegionID{"navigation", "evidence", "inspector"}
 	regions := shell(t).Regions
 	ordered := make([]desktop.RegionID, 0, len(regions))
 	for _, region := range regions {
@@ -208,6 +208,10 @@ func TestEveryStatusIsDistinguishableWithoutColour(t *testing.T) {
 		if _, declared := indicators[string(state)]; !declared {
 			t.Errorf("operation state %q has no non-colour indicator", state)
 		}
+	}
+	// The redesign's display vocabulary names a permission refusal this way.
+	if got := indicators[string(desktop.PermissionDenied)].Label; got != "Access denied" {
+		t.Errorf("a permission refusal reads %q, not Access denied", got)
 	}
 	for _, kind := range []desktop.Kind{
 		desktop.CaseArtifact, desktop.ProjectArtifact, desktop.RevisionsArtifact,

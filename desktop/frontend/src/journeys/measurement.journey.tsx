@@ -13,7 +13,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GRID_OVERSCAN, GRID_VIEWPORT_ROWS } from "../shell";
+import { OVERSCAN } from "../DataTable";
 import { Journey, press, region } from "../testkit/journey";
 import { measuring } from "./probes.js";
 import { BOOKING, declareMllpImport, framed, GRID_WINDOW, licensedProject, logTiming } from "./steps";
@@ -32,7 +32,7 @@ const OCCURRENCES = 10_000;
 const SAMPLES = 20;
 /** The most rows the grid draws at once: its viewport plus overscan on each
  * side. */
-const DRAWN_ROWS_BOUND = GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN;
+const DRAWN_ROWS_BOUND = Math.ceil(window.innerHeight / 44) + 1 + 2 * OVERSCAN;
 
 async function timed(action: () => Promise<void>, outcome: () => Promise<void>): Promise<number> {
   const started = performance.now();
@@ -94,7 +94,7 @@ test.skipIf(!measuring())(
 
     // Bounded rendering: the window holds 200 occurrences of 10,000, and the
     // page draws only the rows its viewport shows.
-    const drawn = inspector.getAllByRole("button", { name: /^Inspect s\d+-e\d+$/ });
+    const drawn = inspector.getAllByRole("row", { name: /s\d+-e\d+$/ });
     expect(drawn.length).toBeGreaterThan(0);
     expect(drawn.length).toBeLessThanOrEqual(DRAWN_ROWS_BOUND);
 
@@ -113,7 +113,7 @@ test.skipIf(!measuring())(
       if (sample > 0) pages.push(elapsed);
       const called = journey.calls.slice(before).map((call) => call.method).join(", ");
       pageCalls.set(called, (pageCalls.get(called) ?? 0) + 1);
-      expect(inspector.getAllByRole("button", { name: /^Inspect s\d+-e\d+$/ }).length).toBeLessThanOrEqual(DRAWN_ROWS_BOUND);
+      expect(inspector.getAllByRole("row", { name: /s\d+-e\d+$/ }).length).toBeLessThanOrEqual(DRAWN_ROWS_BOUND);
     }
     logTiming(`grid next window of ${GRID_WINDOW} (not painted)`, pages);
     // What each click asked of the facade: the reads a person waits for.

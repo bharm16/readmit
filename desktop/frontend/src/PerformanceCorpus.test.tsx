@@ -383,12 +383,12 @@ test("corpus refusals, a denied stream and a dismissed dialog leave the screen u
   expect(screen.queryByText(/Benchmark written to/)).toBeNull();
 });
 
-test("the palette opens the performance corpus screen and Escape cancels a running scan from the keyboard", async () => {
+test("the palette opens the benchmarks screen and a running scan is cancelled from its own control, never by Escape", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp(handlers());
   const parked = facade.park("ScanCorpus");
   await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Search commands"), "Benchmarks{Enter}");
+  await user.type(screen.getByRole("combobox", { name: "Search commands" }), "Benchmarks{Enter}");
   const toggle = screen.getByRole("button", { name: "Performance corpus" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(toggle);
@@ -423,18 +423,21 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   expect(await screen.findByText("Scanning the stream.")).toBeTruthy();
   // While the scan holds the facade, the rest of the window is unavailable
   // rather than answered busy.
-  expect((screen.getByRole("button", { name: "Open folder…" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Back to tools" }) as HTMLButtonElement).disabled).toBe(false);
+  await user.click(screen.getByRole("button", { name: "Tools" }));
+  expect((screen.getByRole("button", { name: "Inspect file" }) as HTMLButtonElement).disabled).toBe(false);
+  await user.click(screen.getByRole("button", { name: "Benchmarks" }));
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").map((call) => call.args[0])).toEqual([""]);
+  expect(facade.callsTo("Cancel")).toEqual([]);
+  await user.click(screen.getByRole("button", { name: "Cancel scan" }));
+  expect(facade.callsTo("Cancel").map((call) => call.args[0])).toEqual(["corpus"]);
   parked.resolve({
     state: "cancelled",
     reason: "the scan was cancelled; these are the counts it reached, the case bounds were not evaluated and no benchmark was written",
     scan: scanView({ case_bounds: "not-evaluated", exceeded: [], window_limit: 0, rows: [] }),
   });
   expect(await screen.findByText("not evaluated; the scan was cancelled")).toBeTruthy();
-  await waitFor(() =>
-    expect((screen.getByRole("button", { name: "Open folder…" }) as HTMLButtonElement).disabled).toBe(false),
-  );
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Cancel scan" })).toBeNull());
 });
 
 const offered = (select: HTMLElement) =>

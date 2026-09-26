@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Inspector } from "./Inspector";
 import { renderApp } from "./testkit/app";
@@ -9,23 +9,16 @@ import {
   GRID_OCCURRENCE,
 } from "./testkit/fixtures";
 
-test("Escape in a modal remains available to native dismissal and does not cancel backend work", async () => {
+test("Escape closes the topmost dialog through its owner, cancels no backend work and returns focus", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
-  await user.click(screen.getByRole("button", { name: "New project" }));
-  const dialog = screen.getByRole("dialog", { name: "New project" });
-  // jsdom does not implement the platform's Escape default. Prove the app
-  // leaves that default intact, then supply the host's close notification.
-  expect(
-    fireEvent.keyDown(dialog, {
-      key: "Escape",
-      bubbles: true,
-      cancelable: true,
-    }),
-  ).toBe(true);
-  expect(facade.callsTo("Cancel")).toHaveLength(0);
-  fireEvent(dialog, new Event("close"));
+  const opener = screen.getByRole("button", { name: "New project" });
+  await user.click(opener);
+  expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
+  await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull();
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  expect(document.activeElement).toBe(opener);
 });
 
 for (const state of ["too_large", "unparsed"] as const) {

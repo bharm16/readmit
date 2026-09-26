@@ -6206,7 +6206,7 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-diagnose-config/v1"],
       "outputs": ["readmit-diagnosis-groups/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Diagnosis.test.tsx", "name": "recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping cancelled from the window's Cancel or Escape is shown as cancelled with no groups"},
+      "gui_test": {"file": "desktop/frontend/src/Diagnosis.test.tsx", "name": "recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping stopped from the window's Stop is shown as cancelled with no groups, and Escape stops nothing"},
       "parity_test": {"package": "tests", "name": "TestTheWindowGroupsTheCasesReadmitDiagnoseGroupsGroups"},
       "implemented": true
     },

@@ -1,3 +1,4 @@
+import { TARGET_CLASSIFICATIONS } from "./display";
 import { useEffect, useState, useCallback, useRef } from "react";
 import "./environment.css";
 import {
@@ -948,9 +949,11 @@ export function EnvironmentPanel({
                 disabled={blocked}
                 onChange={(e) => updateTarget({ classification: e.target.value as TargetClassification })}
               >
-                <option value="nonproduction">Nonproduction</option>
-                <option value="production">Production</option>
-                <option value="unclassified">Unclassified</option>
+                {(Object.keys(TARGET_CLASSIFICATIONS) as TargetClassification[]).map((code) => (
+                  <option key={code} value={code}>
+                    {TARGET_CLASSIFICATIONS[code]}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1603,9 +1606,11 @@ export function EnvironmentPanel({
                 disabled={blocked}
                 onChange={(e) => setEvalClassification(e.target.value as TargetClassification)}
               >
-                <option value="nonproduction">Nonproduction</option>
-                <option value="production">Production</option>
-                <option value="unclassified">Unclassified</option>
+                {(Object.keys(TARGET_CLASSIFICATIONS) as TargetClassification[]).map((code) => (
+                  <option key={code} value={code}>
+                    {TARGET_CLASSIFICATIONS[code]}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

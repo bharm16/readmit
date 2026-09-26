@@ -18,6 +18,6 @@
 .raw-facts dt { font-weight: 600; }
 .raw-facts dd { margin: 0; }
 .raw-window { width: 100%; border-collapse: collapse; }
-.raw-window th, .raw-window td { text-align: right; padding: .2rem .4rem; border-bottom: 1px solid currentColor; }
+.raw-window th, .raw-window td { text-align: right; border-bottom: 1px solid currentColor; }
 .raw-part { margin-block: 1rem; }
 .raw-running { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-block: .6rem; }

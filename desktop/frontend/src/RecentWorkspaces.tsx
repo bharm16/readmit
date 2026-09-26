@@ -65,9 +65,7 @@ export function RecentWorkspaces({
         <Status indicator={indicators.get(recent.state)} state={recent.state} reason={recent.reason} />
       ) : null}
       {roots.length === 0 && recent?.state === "completed" ? (
-        <EmptyState title="No projects yet">
-          Create a project, open one you already have, or try the demo.
-        </EmptyState>
+        <EmptyState title="No projects yet" />
       ) : null}
       <ul className={roots.length > 0 ? "item-list recent" : "recent"} aria-label="Recent projects">
         {roots.map((folder) => (

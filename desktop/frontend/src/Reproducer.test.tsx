@@ -86,11 +86,11 @@ async function openGrid(facade: Awaited<ReturnType<typeof renderApp>>["facade"],
   // Both the first-run block and the commands beside it offer Open workspace…,
   // so the first of them is clicked: both run the same open action.
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   facade.reply({ OpenCase: () => caseResult(), DescribeIndex: () => indexResultFixture(), OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
   await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   await readCaseIdentity(user, CASE_IDENTITY);
-  await screen.findByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` });
+  await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) });
   await user.click(screen.getByRole("button", { name: "More case actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Build a reproducer" }));
   return within(await screen.findByRole("region", { name: "Reproducer editor" }));

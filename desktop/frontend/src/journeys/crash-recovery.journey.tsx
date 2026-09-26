@@ -110,7 +110,7 @@ test("a test half authored when the application ended comes back for its case an
   // chosen and the boundary that decides the outcome.
   expect(panel.getByRole("button", { name: "Do not send s0001-e000001" })).toBeTruthy();
   expect(panel.getByRole("button", { name: "Do not send s0002-e000001" })).toBeTruthy();
-  expect(panel.getByRole("button", { name: "Chosen: ack-contract" })).toBeTruthy();
+  expect(panel.getByRole("button", { name: "Chosen: Acknowledgements" })).toBeTruthy();
 
   // Finishing it answers the remaining stages over the verified case and
   // saves the test, which then preflights like any other.

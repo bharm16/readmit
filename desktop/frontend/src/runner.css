@@ -54,7 +54,6 @@
 .runner-field textarea,
 .runner-field select {
   font: inherit;
-  padding: 0.2rem 0.35rem;
 }
 
 .runner-field textarea {
@@ -110,7 +109,6 @@
 .runner-table th,
 .runner-table td {
   border-bottom: 1px solid var(--border);
-  padding: 0.2rem 0.4rem;
   text-align: left;
 }
 

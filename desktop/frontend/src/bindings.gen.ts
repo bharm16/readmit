@@ -761,9 +761,12 @@ export interface Command {
 export type CommandId =
   | "command-palette"
   | "search-workspace"
+  | "new-project"
   | "open-workspace"
   | "create-sample-workspace"
   | "open-project"
+  | "create-test"
+  | "create-report"
   | "manage-profiles"
   | "manage-scenarios"
   | "maintain-workspace"
@@ -774,11 +777,9 @@ export type CommandId =
   | "cancel-operation"
   | "next-region"
   | "previous-region"
-  | "go-to-commands"
   | "go-to-navigation"
   | "go-to-evidence"
   | "go-to-inspector"
-  | "go-to-privacy"
   | "larger-text"
   | "smaller-text"
   | "switch-theme";
@@ -5067,7 +5068,7 @@ export interface Region {
 }
 
 /** internal/desktop.RegionID */
-export type RegionId = "commands" | "navigation" | "evidence" | "inspector" | "privacy";
+export type RegionId = "navigation" | "evidence" | "inspector";
 
 /** internal/desktop.RegisteredCase */
 export interface RegisteredCase {

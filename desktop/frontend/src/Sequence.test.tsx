@@ -66,7 +66,7 @@ function workspace() {
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("tab", { name: "Timeline" }));
@@ -128,7 +128,7 @@ async function tabTo(user: User, control: HTMLElement): Promise<void> {
   throw new Error(`${control.textContent ?? ""} is not reachable with Tab`);
 }
 
-test("a case is laid out under the rules document chosen in the sequence panel, a refused document leaves no sequence beside its refusal, and Escape while it is laid out reaches Cancel", async () => {
+test("a case is laid out under the rules document chosen in the sequence panel, a refused document leaves no sequence beside its refusal, and Escape while it is laid out cancels nothing", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
@@ -157,15 +157,15 @@ test("a case is laid out under the rules document chosen in the sequence panel, 
   expect(panel.queryByRole("region", { name: "Correlation review" })).toBeNull();
 
   // The chosen document: while the case is laid out the panel says so and
-  // holds its controls, Escape asks for a cancellation, and what the facade
-  // completes is drawn as completed.
+  // holds its controls, Escape cancels nothing, and what the facade completes
+  // is drawn as completed.
   const parked = facade.park("OpenSequence");
   await user.selectOptions(picker, RULES);
   expect(await panel.findByText("Loading the timeline.")).toBeTruthy();
   expect(picker.disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
+  expect(facade.callsTo("Cancel").slice(cancels)).toEqual([]);
   parked.resolve(laidOut());
   expect(await panel.findByRole("button", { name: GRID_OCCURRENCE })).toBeTruthy();
   const correlationCounts = within(panel.getByLabelText("Correlations", { selector: "dl" }));
@@ -324,7 +324,7 @@ test("a decision written over an existing directory is refused leaving no view b
   expect(review.queryByRole("table")).toBeNull();
 });
 
-test("while a review opens or a decision is saved the panel says so and holds its controls, Escape reaches Cancel, and what the facade completed is shown as completed", async () => {
+test("while a review opens or a decision is saved the panel says so and holds its controls, Escape cancels nothing, and what the facade completed is shown as completed", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
@@ -339,7 +339,7 @@ test("while a review opens or a decision is saved the panel says so and holds it
   expect((panel.getByLabelText("Correlation rules") as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
+  expect(facade.callsTo("Cancel").slice(cancels)).toEqual([]);
   opening.resolve({ state: "completed", view: reviewed() });
   expect(await review.findByText("Mapping verified locally.")).toBeTruthy();
 
@@ -352,7 +352,7 @@ test("while a review opens or a decision is saved the panel says so and holds it
   expect(await review.findByText("Saving this decision to review-2.")).toBeTruthy();
   expect((review.getByRole("button", { name: "Open mapping" }) as HTMLButtonElement).disabled).toBe(true);
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""], [""]]);
+  expect(facade.callsTo("Cancel").slice(cancels)).toEqual([]);
   const request = facade.oneCall("DecideCorrelation")[0] as CorrelationReviewRequest;
   saving.resolve({ state: "completed", output: request.output, view: reviewed({ mapping: DECIDED, total_decisions: 1 }) });
   expect(await review.findByText("Saved to review-2 · mapping verified locally.")).toBeTruthy();
@@ -501,7 +501,7 @@ test("a retained sequence-analysis declaration opens into the structured control
   const windows = () => editor.queryAllByRole("button", { name: /^Remove window / }).map((button) => button.textContent);
 
   // While the declaration is read the editor says so and holds its controls;
-  // Escape reaches the window's Cancel, and the completed open is shown.
+  // Escape cancels nothing, and the completed open is shown.
   const opening = facade.park("OpenSequenceAnalysis");
   await user.selectOptions(editor.getByLabelText("Retained analysis document"), ANALYSIS);
   await user.click(editor.getByRole("button", { name: "Open" }));
@@ -509,7 +509,7 @@ test("a retained sequence-analysis declaration opens into the structured control
   expect((editor.getByRole("button", { name: "Add window" }) as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(1);
+  expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(0);
   opening.resolve({ state: "completed", document: JSON.stringify(RETAINED_ANALYSIS, null, 2), sha256: ENTRY_SHA256, declaration: RETAINED_ANALYSIS });
   expect(await editor.findByText(`Opened ${ANALYSIS} · exact bytes hash to ${ENTRY_SHA256}`)).toBeTruthy();
   expect(windows()).toEqual(["Remove window s0001"]);

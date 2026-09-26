@@ -57,8 +57,8 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, handlers: F
   // The first-run card and the command region's action bar both offer the same
   // open-workspace action, so either button starts the same chooser.
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await screen.findByRole("heading", { name: "Scheduling investigation" });
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
   return { facade };
 }
 
@@ -69,8 +69,7 @@ test("opens capture panel and shows empty idle phase", async () => {
   await user.click(within(evidence).getByRole("button", { name: "Capture" }));
   expect(await screen.findByRole("heading", { name: "Capture", level: 2 })).toBeTruthy();
   expect(screen.getByText(/Phase: idle/)).toBeTruthy();
-  const crumbs = screen.getByRole("navigation", { name: "Where you are" });
-  expect(within(crumbs).getByRole("button", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Back to cases" })).toBeTruthy();
 });
 
 test("source diagnose validation error and successful diagnose", async () => {

@@ -43,7 +43,6 @@
 .panes th,
 .panes td {
   border-bottom: 1px solid var(--line);
-  padding: 0.2rem 0.6rem 0.2rem 0;
   text-align: start;
   vertical-align: top;
 }

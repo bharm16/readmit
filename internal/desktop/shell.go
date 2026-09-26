@@ -110,20 +110,17 @@ type ShellResult struct {
 type RegionID string
 
 const (
-	CommandsRegion   RegionID = "commands"
 	NavigationRegion RegionID = "navigation"
 	EvidenceRegion   RegionID = "evidence"
 	InspectorRegion  RegionID = "inspector"
-	PrivacyRegion    RegionID = "privacy"
 )
 
 // regions are declared in focus order. Adding one adds a step to the journey.
+// There is no status strip: an operation's progress is shown where it runs.
 var regions = []Region{
-	{ID: CommandsRegion, Label: "Search"},
 	{ID: NavigationRegion, Label: "Navigation"},
 	{ID: EvidenceRegion, Label: "Main content"},
-	{ID: InspectorRegion, Label: "Message details"},
-	{ID: PrivacyRegion, Label: "Status"},
+	{ID: InspectorRegion, Label: "Details"},
 }
 
 // indicators give every status a word and a shape. The word carries the meaning
@@ -135,7 +132,7 @@ var indicators = []Indicator{
 	{Status: string(Busy), Symbol: "⟳", Label: "Working"},
 	{Status: string(Cancelled), Symbol: "↩", Label: "Cancelled"},
 	{Status: string(Failed), Symbol: "✕", Label: "Failed"},
-	{Status: string(PermissionDenied), Symbol: "⊘", Label: "Permission denied"},
+	{Status: string(PermissionDenied), Symbol: "⊘", Label: "Access denied"},
 	{Status: string(Completed), Symbol: "✓", Label: "Completed"},
 
 	{Status: string(CaseArtifact), Symbol: "▣", Label: "Case evidence"},
@@ -182,9 +179,12 @@ type CommandID string
 const (
 	CommandPaletteCommand        CommandID = "command-palette"
 	SearchWorkspaceCommand       CommandID = "search-workspace"
+	NewProjectCommand            CommandID = "new-project"
 	OpenWorkspaceCommand         CommandID = "open-workspace"
 	CreateSampleWorkspaceCommand CommandID = "create-sample-workspace"
 	OpenProjectCommand           CommandID = "open-project"
+	CreateTestCommand            CommandID = "create-test"
+	CreateReportCommand          CommandID = "create-report"
 	ManageProfilesCommand        CommandID = "manage-profiles"
 	ManageScenariosCommand       CommandID = "manage-scenarios"
 	MaintainWorkspaceCommand     CommandID = "maintain-workspace"
@@ -195,40 +195,39 @@ const (
 	CancelOperationCommand       CommandID = "cancel-operation"
 	NextRegionCommand            CommandID = "next-region"
 	PreviousRegionCommand        CommandID = "previous-region"
-	GoToCommandsCommand          CommandID = "go-to-commands"
 	GoToNavigationCommand        CommandID = "go-to-navigation"
 	GoToEvidenceCommand          CommandID = "go-to-evidence"
 	GoToInspectorCommand         CommandID = "go-to-inspector"
-	GoToPrivacyCommand           CommandID = "go-to-privacy"
 	LargerTextCommand            CommandID = "larger-text"
 	SmallerTextCommand           CommandID = "smaller-text"
 	SwitchThemeCommand           CommandID = "switch-theme"
 )
 
-// commands are everything the window can be asked to do, in the order the
-// palette lists them. Ctrl is written for the shortcut key; the platform
-// command key is accepted wherever it is shown.
+// commands are everything the window can be asked to do. Ctrl is written for
+// the shortcut key; the platform command key is accepted wherever it is shown.
+// Which of them apply where the person is, is the window's decision.
 var commands = []Command{
-	{ID: CommandPaletteCommand, Title: "Command palette", Keys: "Ctrl+K", Region: CommandsRegion},
-	{ID: SearchWorkspaceCommand, Title: "Search this project", Keys: "Ctrl+F", Region: CommandsRegion},
-	{ID: OpenWorkspaceCommand, Title: "Open…", Keys: "Ctrl+O", Region: EvidenceRegion},
+	{ID: CommandPaletteCommand, Title: "Search commands", Keys: "Ctrl+K"},
+	{ID: SearchWorkspaceCommand, Title: "Search this project", Keys: "Ctrl+F", Region: EvidenceRegion},
+	{ID: NewProjectCommand, Title: "New project", Region: EvidenceRegion},
+	{ID: OpenWorkspaceCommand, Title: "Open project", Keys: "Ctrl+O", Region: EvidenceRegion},
 	{ID: CreateSampleWorkspaceCommand, Title: "Try demo", Region: EvidenceRegion},
-	{ID: OpenProjectCommand, Title: "Project overview", Region: EvidenceRegion},
+	{ID: OpenProjectCommand, Title: "Project settings", Region: EvidenceRegion},
+	{ID: CreateTestCommand, Title: "Create test", Region: EvidenceRegion},
+	{ID: CreateReportCommand, Title: "Create report", Region: EvidenceRegion},
 	{ID: ManageProfilesCommand, Title: "Profiles", Region: EvidenceRegion},
 	{ID: ManageScenariosCommand, Title: "Scenarios", Keys: "Ctrl+Shift+S", Region: EvidenceRegion},
-	{ID: MaintainWorkspaceCommand, Title: "Storage and backups", Region: EvidenceRegion},
+	{ID: MaintainWorkspaceCommand, Title: "Storage", Region: EvidenceRegion},
 	{ID: CheckStagedUpgradeCommand, Title: "Updates", Region: EvidenceRegion},
-	{ID: ManageAssertionsCommand, Title: "Assertion sets", Keys: "Ctrl+Shift+A", Region: EvidenceRegion},
+	{ID: ManageAssertionsCommand, Title: "Checks", Keys: "Ctrl+Shift+A", Region: EvidenceRegion},
 	{ID: InspectRawFileCommand, Title: "Inspect file", Region: EvidenceRegion},
 	{ID: PerformanceCorpusCommand, Title: "Benchmarks", Region: EvidenceRegion},
-	{ID: CancelOperationCommand, Title: "Cancel operation", Keys: "Escape"},
+	{ID: CancelOperationCommand, Title: "Cancel operation"},
 	{ID: NextRegionCommand, Title: "Next section", Keys: "F6"},
 	{ID: PreviousRegionCommand, Title: "Previous section", Keys: "Shift+F6"},
-	{ID: GoToCommandsCommand, Title: "Focus search", Region: CommandsRegion},
 	{ID: GoToNavigationCommand, Title: "Focus navigation", Region: NavigationRegion},
 	{ID: GoToEvidenceCommand, Title: "Focus content", Region: EvidenceRegion},
-	{ID: GoToInspectorCommand, Title: "Focus message details", Region: InspectorRegion},
-	{ID: GoToPrivacyCommand, Title: "Focus status", Region: PrivacyRegion},
+	{ID: GoToInspectorCommand, Title: "Focus details", Region: InspectorRegion},
 	{ID: LargerTextCommand, Title: "Increase text size", Keys: "Ctrl+="},
 	{ID: SmallerTextCommand, Title: "Decrease text size", Keys: "Ctrl+-"},
 	{ID: SwitchThemeCommand, Title: "Change theme"},

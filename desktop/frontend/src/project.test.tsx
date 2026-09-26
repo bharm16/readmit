@@ -52,7 +52,7 @@ async function openPlainWorkspace(
   // The commands region and the first-run surface both offer the workspace
   // opening under its shared reviewed name; either opens the same flow.
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   return { facade };
 }
 
@@ -111,9 +111,9 @@ test("a project is created, a case is registered from the listing, and the inves
   expect(facade.oneCall("OpenCase")).toEqual([WORKSPACE_ROOT, CASE_ENTRY]);
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Messages", selected: true })).toBeTruthy();
-  // The breadcrumb trail names where the investigation is, and the way out.
-  const trail = within(evidence).getByRole("navigation", { name: "Where you are" });
-  expect(within(trail).getByText("Scheduling investigation")).toBeTruthy();
+  // The project stays named in its switcher, and the case page has its way back.
+  expect(screen.getByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
+  expect(within(evidence).getByRole("button", { name: "Back to cases" })).toBeTruthy();
   expect(screen.getByRole("heading", { level: 1, name: /Duplicate appointment/ })).toBeTruthy();
 });
 
@@ -141,7 +141,7 @@ test("a project created in a folder inside the workspace becomes the open worksp
   await user.click(evidence.getByRole("button", { name: "Choose location and create…" }));
   // The window opens the new project's own folder and reads the project there,
   // so registering and importing act on it rather than the folder around it.
-  expect(await within(screen.getByRole("region", { name: "Navigation" })).findByText(CREATED)).toBeTruthy();
+  expect(await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(facade.oneCall("OpenWorkspace")).toEqual([CREATED]);
   await waitFor(() =>
     expect(facade.callsTo("OpenProjectOverview").at(-1)).toEqual({ method: "OpenProjectOverview", args: [CREATED] }),
@@ -163,7 +163,7 @@ test("a new project folder that cannot be opened leaves no project open over the
   await user.click(evidence.getByRole("button", { name: "Choose location and create…" }));
   expect(await screen.findAllByText("this account cannot read that folder")).toBeTruthy();
   // The workspace that was open stays open, and no project is shown over it.
-  expect(within(screen.getByRole("region", { name: "Navigation" })).getByText(WORKSPACE_ROOT)).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(evidence.queryByRole("button", { name: "Add to project" })).toBeNull();
   expect(facade.callsTo("OpenProjectOverview")).toHaveLength(0);
 });
@@ -234,7 +234,7 @@ test("a registration the project refuses reports the refusal and registers nothi
   ).toBeTruthy();
   expect(facade.callsTo("RegisterCase")).toHaveLength(1);
   // The refusal carries no overview; the project stays on the screen beside it.
-  expect(within(evidence).getByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
 });
 
 test("a refused settings change keeps the project and its controls on screen beside the refusal", async () => {
@@ -246,7 +246,7 @@ test("a refused settings change keeps the project and its controls on screen bes
   });
   const evidence = screen;
   await reopenProject(user);
-  expect(await evidence.findByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
   await user.click(evidence.getByRole("button", { name: "Edit…" }));
   await user.clear(evidence.getByLabelText("Title", { selector: "#settings-title" }));
   await user.type(evidence.getByLabelText("Title", { selector: "#settings-title" }), "Renamed");
@@ -254,7 +254,7 @@ test("a refused settings change keeps the project and its controls on screen bes
   expect(await evidence.findAllByText("this device released its entitlement activation")).toBeTruthy();
   // The refusal carries no overview; the project the window last read stays,
   // with the controls that act on it.
-  expect(evidence.getByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
   expect(evidence.getByRole("dialog", { name: "Project settings" })).toBeTruthy();
   expect((evidence.getByLabelText("Title", { selector: "#settings-title" }) as HTMLInputElement).value).toBe("Renamed");
   expect(facade.callsTo("UpdateProjectSettings")).toHaveLength(1);
@@ -288,7 +288,7 @@ test("the editable document shows each note's text and each revision's lineage w
   });
   const evidence = screen;
   await reopenProject(user);
-  expect(await evidence.findByRole("heading", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
   expect(facade.callsTo("OpenRevisions")).toHaveLength(0);
 
   await user.click(evidence.getByText("Project document"));
@@ -331,8 +331,8 @@ test("search results open the artifact they matched, not only its name", async (
     OpenCase: () => caseResult(OTHER_CASE_ENTRY),
   });
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await user.click(screen.getByRole("button", { name: "Search" }));
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await user.keyboard("{Control>}f{/Control}");
   await user.type(screen.getByRole("searchbox", { name: "Search this project" }), "other{Enter}");
   await user.click(within(await screen.findByRole("list", { name: "Search results" })).getByRole("button", { name: /other-case/ }));
   // Opening the result verified and opened the matched case, carrying its
@@ -358,8 +358,8 @@ test("a second navigation started while one runs starts nothing else, so no stal
     }),
   });
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await user.click(screen.getByRole("button", { name: "Search" }));
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await user.keyboard("{Control>}f{/Control}");
   await user.type(screen.getByRole("searchbox", { name: "Search this project" }), "case{Enter}");
   const results = within(await screen.findByRole("list", { name: "Search results" })).getAllByRole("button");
   // The first open parks mid-verification; the second result is offered but

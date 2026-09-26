@@ -28,7 +28,6 @@
   border: 1px solid var(--border);
   background: var(--surface);
   color: inherit;
-  padding: 0.4rem 0.75rem;
   cursor: pointer;
 }
 
@@ -51,7 +50,6 @@
 .scenario-section input[type="text"],
 .scenario-section input:not([type]) {
   font: inherit;
-  padding: 0.4rem 0.5rem;
   border: 1px solid var(--border);
   background: var(--surface);
 }
@@ -59,7 +57,6 @@
 .scenario-section textarea {
   width: min(100%, 52rem);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.85rem;
 }
 
 .scenario-events {
@@ -88,7 +85,6 @@
 .scenario-section td {
   border-bottom: 1px solid var(--border);
   text-align: left;
-  padding: 0.35rem 0.5rem;
   vertical-align: top;
 }
 

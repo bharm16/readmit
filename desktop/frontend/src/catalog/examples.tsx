@@ -67,14 +67,21 @@ import {
   NavItem,
   Modal,
   FormDialog,
-  MoreMenu,
+  Menu,
+  BackLink,
+  ProjectSwitcher,
+  OperationIndicator,
+  Categories,
+  ValueRows,
 } from "../layout";
+import { CommandPalette } from "../CommandPalette";
+import { DataTable, Pager } from "../DataTable";
+import { DisplayTerm, TEST_RESULTS } from "../display";
 import {
   Status,
   Badge,
   Report,
   Separator,
-  Palette,
   IndexSetup,
   MessageGrid,
   newIndexDraft,
@@ -273,8 +280,8 @@ export const examples: Example[] = [
       editable={f.revisionsResult()}
       selectedCase={null}
       onUpdateSettings={async () => true}
-      onRegister={noop}
-      onUpdateCase={noop}
+      onRegister={async () => true}
+      onUpdateCase={async () => true}
       onReadEditable={noop}
     />
   )),
@@ -453,7 +460,7 @@ export const examples: Example[] = [
     "error",
   ),
   e("Page", () => (
-    <Page id="example" shown title="Page title" subtitle="Page subtitle">
+    <Page id="example" shown title="Page title" back={<BackLink label="Cases" onBack={noop} />}>
       {content}
     </Page>
   )),
@@ -496,9 +503,9 @@ export const examples: Example[] = [
     "open",
   ),
   e(
-    "MoreMenu",
+    "Menu",
     () => (
-      <MoreMenu
+      <Menu
         label="More actions"
         items={[
           { label: "Edit", onSelect: noop },
@@ -555,31 +562,75 @@ export const examples: Example[] = [
       }}
     >
       <p>Messages</p>
-      <Separator
-        split={58}
-        min={20}
-        max={80}
-        step={1}
-        onSplit={noop}
-        bounds={() => ({ left: 0, right: 1000 })}
-      />
+      <Separator value={22.5} min={20} max={27.5} step={1} onChange={noop} edge={() => 1000} rem={() => 16} />
       <p>Details</p>
     </div>
   )),
   e(
-    "Palette",
+    "CommandPalette",
     () => (
-      <Palette
+      <CommandPalette
         open
-        commands={f.shellResult().shell!.commands}
-        query=""
-        onQuery={noop}
+        entries={["Create test", "Create report", "New project"].map((label) => ({ id: label, label, run: noop }))}
         onClose={noop}
-        onRun={noop}
       />
     ),
     "open",
   ),
+  e("DataTable", () => (
+    <div style={{ height: 240, display: "flex" }}>
+      <DataTable
+        label="Cases"
+        rows={["Duplicate appointment after reschedule", "Appointment cancellation", "Missing ACK"].map((name, i) => ({ id: `c${i}`, name, status: i ? "Open" : "Investigating" }))}
+        rowId={(row) => row.id}
+        rowLabel={(row) => row.name}
+        columns={[
+          { key: "name", header: "Case", priority: 1, minWidth: 16, render: (row) => row.name, sortable: true },
+          { key: "status", header: "Status", priority: 2, minWidth: 8, render: (row) => row.status },
+        ]}
+        selected="c0"
+        onSelect={noop}
+        onOpen={noop}
+        sort={{ column: "name", direction: "ascending" }}
+        onSort={noop}
+      />
+    </div>
+  )),
+  e("Pager", () => <Pager first={200} count={200} total={1000} noun="messages" onPrevious={noop} onNext={noop} />),
+  e("ValueRows", () => (
+    <ValueRows
+      rows={[
+        { label: "Theme", value: "System" },
+        { label: "Text size", value: "100%" },
+      ]}
+    />
+  )),
+  e("BackLink", () => <BackLink label="Messages" onBack={noop} />),
+  e("ProjectSwitcher", () => (
+    <ProjectSwitcher
+      name="Scheduling investigation"
+      recent={[{ key: "r", name: "Registration upgrade" }]}
+      onOpenRecent={noop}
+      onOpen={noop}
+      onNew={noop}
+      onSettings={noop}
+    />
+  )),
+  e("OperationIndicator", () => <OperationIndicator label="Opening the folder…" onStop={noop} />, "busy"),
+  e("Categories", () => (
+    <Categories
+      label="Settings categories"
+      categories={[
+        { key: "general", label: "General" },
+        { key: "license", label: "License" },
+      ]}
+      selected="general"
+      onSelect={noop}
+    >
+      {content}
+    </Categories>
+  )),
+  e("DisplayTerm", () => <DisplayTerm map={TEST_RESULTS} code="flaky_pass" />, "error"),
   e("IndexSetup", () => (
     <IndexSetup
       mode="build"

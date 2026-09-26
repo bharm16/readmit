@@ -74,7 +74,6 @@
 .suite-table th,
 .suite-table td {
   border: 1px solid currentColor;
-  padding: 0.15rem 0.35rem;
   text-align: left;
   vertical-align: top;
 }

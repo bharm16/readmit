@@ -133,10 +133,7 @@
 .environment-field input,
 .environment-field select,
 .environment-field textarea {
-  padding: 0.4rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: 3px;
-  font-size: 0.9rem;
   font-family: inherit;
   background: Canvas;
   color: CanvasText;
@@ -165,7 +162,6 @@
 .environment-table th,
 .environment-table td {
   border: 1px solid var(--line);
-  padding: 0.5rem;
   text-align: left;
 }
 

@@ -212,8 +212,9 @@ export function ProjectPanel({
   indicators: Indicators;
   selectedCase: string | null;
   onUpdateSettings: (change: SettingsChange) => Promise<boolean>;
-  onRegister: (name: string, registration: CaseRegistration) => void;
-  onUpdateCase: (name: string, change: CaseChange) => void;
+  /** Each answers whether the project stored the change. */
+  onRegister: (name: string, registration: CaseRegistration) => Promise<boolean>;
+  onUpdateCase: (name: string, change: CaseChange) => Promise<boolean>;
   onReadEditable: () => void;
   onOpenCase: (name: string) => void;
 }) {
@@ -249,7 +250,7 @@ export function ProjectPanel({
         </div>
         <Report indicators={indicators} progress={progress} result={result && result.state !== "completed" && result.state !== "empty" ? result : null} />
         {total === 0 ? (
-          <EmptyState title="No cases yet">Import or capture messages to start an investigation.</EmptyState>
+          <EmptyState title="No cases yet" />
         ) : (
           <div className="table-scroll">
             <table className="data-table cases-table">
@@ -291,17 +292,7 @@ export function ProjectPanel({
                         disabled={busy}
                         aria-label={`Edit ${entry.title || entry.name}`}
                         onClick={() =>
-                          setEditing({
-                            entry,
-                            details: {
-                              title: entry.title,
-                              owner: entry.owner ?? "",
-                              status: entry.status,
-                              interface_version: entry.interface_version,
-                              tags: entry.tags.join(", "),
-                              incidents: entry.incidents.join(", "),
-                            },
-                          })
+                          setEditing({ entry, details: detailsOf(entry) })
                         }
                       >
                         Edit
@@ -329,10 +320,7 @@ export function ProjectPanel({
                         disabled={busy}
                         aria-label={`Add ${artifact.name} to the project`}
                         onClick={() =>
-                          setRegistering({
-                            name: artifact.name,
-                            details: { title: artifact.name, owner: "", status: "", interface_version: "", tags: "", incidents: "" },
-                          })
+                          setRegistering({ name: artifact.name, details: newDetails(artifact.name) })
                         }
                       >
                         Add to project…
@@ -404,12 +392,7 @@ export function ProjectPanel({
               type="button"
               disabled={busy}
               onClick={() =>
-                setSettings({
-                  title: overview.title,
-                  owner: overview.default_owner ?? "",
-                  version: overview.default_version ?? "",
-                  declare: "",
-                })
+                setSettings(settingsOf(overview))
               }
             >
               Edit…
@@ -460,8 +443,9 @@ export function ProjectPanel({
         title={editing ? `Edit ${editing.entry.title || editing.entry.name}` : "Edit case"}
         submitLabel="Save"
         busy={busy}
+        dirty={editing !== null && differs(editing.details, detailsOf(editing.entry))}
         onClose={() => setEditing(null)}
-        onSubmit={() => {
+        onSubmit={async () => {
           if (!editing) return;
           const { entry, details } = editing;
           // Only what changed is sent, so an edit changes exactly the members
@@ -473,8 +457,9 @@ export function ProjectPanel({
           if (details.interface_version !== entry.interface_version) change.interface_version = details.interface_version;
           if (list(details.tags).join(",") !== entry.tags.join(",")) change.tags = list(details.tags);
           if (list(details.incidents).join(",") !== entry.incidents.join(",")) change.incidents = list(details.incidents);
-          onUpdateCase(entry.name, change);
-          setEditing(null);
+          // The sheet closes once the project has stored the change; a refusal
+          // keeps everything typed beside it.
+          if (await onUpdateCase(entry.name, change)) setEditing(null);
         }}
       >
         {editing ? (
@@ -495,8 +480,9 @@ export function ProjectPanel({
         title={registering ? `Add ${registering.name} to the project` : "Add to the project"}
         submitLabel="Add to project"
         busy={busy}
+        dirty={registering !== null && differs(registering.details, newDetails(registering.name))}
         onClose={() => setRegistering(null)}
-        onSubmit={() => {
+        onSubmit={async () => {
           if (!registering) return;
           const { details } = registering;
           const registration: CaseRegistration = { title: details.title.trim() };
@@ -505,8 +491,7 @@ export function ProjectPanel({
           if (details.interface_version !== "") registration.interface_version = details.interface_version;
           registration.tags = list(details.tags);
           registration.incidents = list(details.incidents);
-          onRegister(registering.name, registration);
-          setRegistering(null);
+          if (await onRegister(registering.name, registration)) setRegistering(null);
         }}
       >
         {registering ? (
@@ -527,8 +512,9 @@ export function ProjectPanel({
         title="Project settings"
         submitLabel="Save"
         busy={busy}
+        dirty={settings !== null && differs(settings, settingsOf(overview))}
         onClose={() => setSettings(null)}
-        onSubmit={() => {
+        onSubmit={async () => {
           if (!settings) return;
           // A field left as it was sends nothing, so a settings edit changes
           // only what it names.
@@ -538,10 +524,8 @@ export function ProjectPanel({
           if (settings.version !== (overview.default_version ?? "")) change.default_interface_version = settings.version;
           const declared = settings.declare.trim();
           if (declared !== "") change.declare_versions = [declared];
-          void onUpdateSettings(change).then((stored) => {
-            // A refused store keeps everything typed beside the refusal.
-            if (stored) setSettings(null);
-          });
+          // A refused store keeps everything typed beside the refusal.
+          if (await onUpdateSettings(change)) setSettings(null);
         }}
         status={result && result.state !== "completed" && result.state !== "empty" ? <Report indicators={indicators} progress={null} result={result} /> : null}
       >
@@ -592,4 +576,30 @@ export function ProjectPanel({
       </FormDialog>
     </>
   );
+}
+
+/** A registered case's details as its Edit sheet opens with them. */
+function detailsOf(entry: RegisteredCase): CaseDetails {
+  return {
+    title: entry.title,
+    owner: entry.owner ?? "",
+    status: entry.status,
+    interface_version: entry.interface_version,
+    tags: entry.tags.join(", "),
+    incidents: entry.incidents.join(", "),
+  };
+}
+
+/** A case's details as its Add sheet opens with them. */
+function newDetails(name: string): CaseDetails {
+  return { title: name, owner: "", status: "", interface_version: "", tags: "", incidents: "" };
+}
+
+/** The project's settings as their sheet opens with them. */
+function settingsOf(overview: { title: string; default_owner?: string; default_version?: string }) {
+  return { title: overview.title, owner: overview.default_owner ?? "", version: overview.default_version ?? "", declare: "" };
+}
+
+function differs<T extends object>(edited: T, opened: T): boolean {
+  return (Object.keys(opened) as (keyof T)[]).some((key) => edited[key] !== opened[key]);
 }

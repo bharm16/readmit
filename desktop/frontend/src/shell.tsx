@@ -1,6 +1,7 @@
+import { FIELD_STATES } from "./display";
 import { StateHelp } from "./ContextHelp";
 import { IconButton } from "./IconButton";
-import { Modal, MoreMenu } from "./layout";
+import { Modal, Menu } from "./layout";
 // The window furniture that renders the facade's description of the shell:
 // how a status reads, the command palette, the pane separator, and the message
 // grid. None of it decides anything about evidence; it draws what
@@ -10,16 +11,16 @@ import { Modal, MoreMenu } from "./layout";
 // that silently disappeared would widen the filter. Whether a filter is usable
 // is the facade's decision, and it reports it.
 import { useEffect, useId, useRef, useState } from "react";
+import { DataTable, Pager, type Column } from "./DataTable";
 import type {
   BuildIndexRequest,
   CaseEvidence,
-  Command,
-  CommandId,
   FieldMatch,
   FieldState,
   Filter,
   FiltersResult,
   GridResult,
+  GridRow,
   IndexDetails,
   IndexRetention,
   Indicator,
@@ -98,44 +99,48 @@ export function Report({
   );
 }
 
-/** The separator between the page and the message details beside it. It is in the tab
- * order and reports where it sits, so the panes resize with the arrow keys,
- * Home and End as well as with a pointer. */
+/** The separator between the list and the details beside it. It is in the tab
+ * order and reports the details' width in rem, so it resizes with the arrow
+ * keys, Home and End as well as with a pointer. Moving it left widens the
+ * details. */
 export function Separator({
-  split,
+  value,
   min,
   max,
   step,
-  onSplit,
-  bounds,
+  onChange,
+  edge,
+  rem,
 }: {
-  split: number;
+  value: number;
   min: number;
   max: number;
   step: number;
-  onSplit: (split: number) => void;
-  bounds: () => { left: number; right: number } | null;
+  onChange: (width: number) => void;
+  /** Where the details end, in CSS pixels from the left of the window. */
+  edge: () => number | null;
+  /** The root text size, in CSS pixels. */
+  rem: () => number;
 }) {
   const dragging = useRef(false);
-  const clamp = (value: number) => Math.min(max, Math.max(min, value));
+  const clamp = (width: number) => Math.min(max, Math.max(min, width));
   return (
     <div
       className="separator"
-      style={{ gridArea: "separator" }}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize message details"
-      aria-valuenow={split}
+      aria-label="Resize details"
+      aria-valuenow={Math.round(value * 10) / 10}
       aria-valuemin={min}
       aria-valuemax={max}
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           event.preventDefault();
-          onSplit(clamp(split + (event.key === "ArrowLeft" ? -step : step)));
+          onChange(clamp(value + (event.key === "ArrowLeft" ? step : -step)));
         } else if (event.key === "Home" || event.key === "End") {
           event.preventDefault();
-          onSplit(event.key === "Home" ? min : max);
+          onChange(event.key === "Home" ? max : min);
         }
       }}
       onPointerDown={(event) => {
@@ -147,147 +152,12 @@ export function Separator({
         dragging.current = false;
       }}
       onPointerMove={(event) => {
-        const pane = bounds();
-        if (!dragging.current || !pane || pane.right <= pane.left) {
-          return;
-        }
-        const width = pane.right - pane.left;
-        onSplit(clamp(Math.round(((event.clientX - pane.left) / width) * 100)));
+        const right = edge();
+        if (!dragging.current || right === null) return;
+        onChange(clamp(Math.round(((right - event.clientX) / rem()) * 4) / 4));
       }}
     />
   );
-}
-
-/** The command palette. A native modal dialog traps focus and closes on Escape
- * without any of that being reimplemented here. */
-export function Palette({
-  open,
-  commands,
-  query,
-  onQuery,
-  onClose,
-  onRun,
-}: {
-  open: boolean;
-  commands: Command[];
-  query: string;
-  onQuery: (query: string) => void;
-  onClose: () => void;
-  onRun: (command: CommandId) => void;
-}) {
-  const dialog = useRef<HTMLDialogElement | null>(null);
-
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) {
-      return;
-    }
-    if (open && !element.open) {
-      element.showModal();
-    } else if (!open && element.open) {
-      element.close();
-    }
-  }, [open]);
-
-  const choose = (command: CommandId | undefined) => {
-    onClose();
-    if (command) {
-      onRun(command);
-    }
-  };
-
-  return (
-    <dialog className="palette" ref={dialog} aria-label="Command palette" onClose={onClose}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          choose(commands[0]?.id);
-        }}
-      >
-        <label htmlFor="palette-query">Search commands</label>
-        <input
-          id="palette-query"
-          type="text"
-          autoFocus
-          value={query}
-          onChange={(event) => onQuery(event.target.value)}
-        />
-      </form>
-      <ul aria-label="Commands">
-        {commands.map((command) => (
-          <li key={command.id}>
-            <button type="button" onClick={() => choose(command.id)}>
-              <span className="name">{command.title}</span>
-              {command.keys ? <kbd>{command.keys}</kbd> : null}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {/* Closing dismisses the palette and hands focus back to where it was;
-          it cancels nothing that is running. The entries above stay text. */}
-      <IconButton icon="close" label="Close command palette" onClick={onClose} />
-    </dialog>
-  );
-}
-
-/** The virtualized row geometry. GRID_ROW_HEIGHT is the height one row is
- * given at the window's normal text size, and --grid-row-height in styles.css
- * is the same length in rem, so both grow together when the text is scaled:
- * how far the rows have been scrolled is turned into a row number by dividing
- * by the row height the text scale gives (gridRowHeight), so a row drawn taller
- * than the division assumes would drift away from the scrollbar.
- *
- * GRID_VIEWPORT_ROWS is how tall the scrolling viewport is, counted in rows and
- * including the caption and the column headers above them, so it shows fewer
- * than that many occurrences at once. GRID_OVERSCAN is how many rows are drawn on
- * either side of what is visible, so that a scroll does not reach the edge of
- * what has been drawn before the next render replaces it.
- *
- * Together they bound the rows in the document: a window of any size draws at
- * most GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN of them, and a window no larger
- * than that is drawn whole. */
-export const GRID_ROW_HEIGHT = 32;
-export const GRID_VIEWPORT_ROWS = 16;
-export const GRID_OVERSCAN = 8;
-
-/** The pixel height of one grid row at the window's current text scale. The
- * row is 2rem tall in styles.css, so this is twice the root font size the
- * document computes; where that cannot be read, the scale the window set is
- * applied to the normal height. */
-export function gridRowHeight(): number {
-  const root = document.documentElement;
-  const computed = Number.parseFloat(getComputedStyle(root).fontSize);
-  if (Number.isFinite(computed) && computed > 0) {
-    return (GRID_ROW_HEIGHT * computed) / 16;
-  }
-  const scale = Number.parseFloat(root.style.getPropertyValue("--text-scale"));
-  return GRID_ROW_HEIGHT * (Number.isFinite(scale) && scale > 0 ? scale : 1);
-}
-
-/** The row height, read again whenever the window changes its text scale on
- * the document root, so the drawn rows and the scroll arithmetic always agree. */
-function useGridRowHeight(): number {
-  const [height, setHeight] = useState(gridRowHeight);
-  useEffect(() => {
-    const observer = new MutationObserver(() => setHeight(gridRowHeight()));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
-    return () => observer.disconnect();
-  }, []);
-  return height;
-}
-
-/** The rows of one window that a scroll position puts on screen, with the rows
- * before and after them left as measured space rather than as elements.
- * scrolled is how far the rows themselves have moved, which is the viewport's
- * own scroll position less the caption and headers above them. */
-export function visibleRows(total: number, scrolled: number, rowHeight: number = GRID_ROW_HEIGHT) {
-  const drawn = GRID_VIEWPORT_ROWS + 2 * GRID_OVERSCAN;
-  if (total <= drawn) {
-    return { first: 0, last: total };
-  }
-  const centre = Math.floor(Math.max(0, scrolled) / rowHeight);
-  const first = Math.min(Math.max(0, centre - GRID_OVERSCAN), total - drawn);
-  return { first, last: first + drawn };
 }
 
 /** The common HL7 fields an index can be asked to retain, captioned for a
@@ -687,16 +557,12 @@ export function MessageGrid({
   const [indexName, setIndexName] = useState("");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [invalid, setInvalid] = useState<string | null>(null);
-  const [scrolled, setScrolled] = useState(0);
   const [showBuildForm, setShowBuildForm] = useState(false);
   const [setupMode, setSetupMode] = useState<"build" | "rebuild">("build");
   const [indexDraft, setIndexDraft] = useState<IndexDraft>(() => newIndexDraft(""));
   const [showFilterEditor, setShowFilterEditor] = useState(false);
-  const rowHeight = useGridRowHeight();
   const filterEditor = useId();
 
-  const viewport = useRef<HTMLDivElement | null>(null);
-  const body = useRef<HTMLTableSectionElement | null>(null);
   const filterName = useRef<HTMLInputElement | null>(null);
   const grid = result?.grid ?? null;
   const ownedIndex = Boolean(caseEvidence && indexDetails?.identity && indexDetails.identity === caseEvidence.identity);
@@ -736,16 +602,7 @@ export function MessageGrid({
     setIndexDraft((held) => ({ ...held, output: caseName ? freshIndexName(caseName) : "", replace: false }));
   }, [caseName, caseIdentity]);
 
-  // A new window is a new list, so it starts at its own first row rather than
-  // wherever the previous one had been scrolled to.
-  useEffect(() => {
-    setScrolled(0);
-    if (viewport.current) {
-      viewport.current.scrollTop = 0;
-    }
-  }, [grid?.index, grid?.offset, grid?.filter]);
   const rows = grid?.rows ?? [];
-  const { first, last } = visibleRows(rows.length, scrolled, rowHeight);
 
   // Setting up a rebuild selects the described index's own settings and opens
   // the form; it has rebuilt nothing.
@@ -769,7 +626,6 @@ export function MessageGrid({
   };
 
   const filtered = Boolean(grid && grid.filter !== "");
-  const paged = Boolean(grid && (grid.offset > 0 || grid.offset + grid.rows.length < grid.matched));
   const [indexSheet, setIndexSheet] = useState(false);
   const closeFilter = () => {
     discard();
@@ -866,26 +722,16 @@ export function MessageGrid({
                   ? `${grid.matched} of ${grid.total}`
                   : `${grid.total} ${grid.total === 1 ? "message" : "messages"}`}
               </span>
-              {paged ? (
-                <>
-                  <IconButton
-                    icon="previous"
-                    label={`Previous ${grid.limit} occurrences`}
-                    disabled={busy || grid.offset === 0}
-                    onClick={() => onOpen(grid.index, Math.max(0, grid.offset - grid.limit))}
-                  />
-                  <span className="count">
-                    {grid.rows.length === 0 ? grid.offset : grid.offset + 1}–{grid.offset + grid.rows.length}
-                  </span>
-                  <IconButton
-                    icon="next"
-                    label={`Next ${grid.limit} occurrences`}
-                    disabled={busy || grid.offset + grid.rows.length >= grid.matched}
-                    onClick={() => onOpen(grid.index, grid.offset + grid.limit)}
-                  />
-                </>
-              ) : null}
-              <MoreMenu label="More list actions" items={[{ label: "Search settings…", onSelect: () => setIndexSheet(true) }]} />
+              <Pager
+                first={grid.offset}
+                count={grid.rows.length}
+                total={grid.matched}
+                noun={`${grid.limit} occurrences`}
+                disabled={busy}
+                onPrevious={() => onOpen(grid.index, Math.max(0, grid.offset - grid.limit))}
+                onNext={() => onOpen(grid.index, grid.offset + grid.limit)}
+              />
+              <Menu label="More list actions" items={[{ label: "Search settings…", onSelect: () => setIndexSheet(true) }]} />
             </div>
           </div>
           {grid.undecided > 0 || grid.undecodable > 0 ? (
@@ -894,77 +740,21 @@ export function MessageGrid({
               {grid.undecodable > 0 ? <span className="warn">{grid.undecodable} could not be decoded</span> : null}
             </p>
           ) : null}
-          <div
-            className="grid-scroll"
-            ref={viewport}
-            style={{ maxHeight: `${rowHeight * GRID_VIEWPORT_ROWS}px` }}
-            onScroll={(event) =>
-              // The column headers scroll with the rows, so how far the rows
-              // have moved is the viewport's scroll position less where the
-              // rows begin inside it.
-              setScrolled(event.currentTarget.scrollTop - (body.current?.offsetTop ?? 0))
-            }
-          >
-            <table className="rows" aria-rowcount={rows.length + 1}>
-              <caption className="visually-hidden">
-                {grid.case} · {grid.index} · verified {grid.identity}
-              </caption>
-              <thead>
-                <tr aria-rowindex={1}>
-                  <th scope="col">Time</th>
-                  <th scope="col">Direction</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Source</th>
-                  <th scope="col">ID</th>
-                </tr>
-              </thead>
-              <tbody ref={body}>
-                {first > 0 ? (
-                  <tr className="spacer" aria-hidden="true">
-                    <td colSpan={5} style={{ height: `${first * rowHeight}px` }} />
-                  </tr>
-                ) : null}
-                {rows.slice(first, last).map((row, index) => (
-                  <tr
-                    key={row.id}
-                    aria-rowindex={first + index + 2}
-                    aria-selected={selectedOccurrence === row.id}
-                    onClick={(event) => {
-                      // The row's own button is the keyboard's way in; a
-                      // click anywhere else on the row does the same.
-                      if (!busy && !(event.target as HTMLElement).closest("button")) onInspect(row.id);
-                    }}
-                  >
-                    <th scope="row">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-pressed={selectedOccurrence === row.id}
-                        aria-label={`Inspect ${row.id}`}
-                        onClick={() => onInspect(row.id)}
-                      >
-                        {row.observed_at ? observedTime(row.observed_at) : "No time"}
-                      </button>
-                    </th>
-                    <td>
-                      <span className={`direction direction-${row.direction}`}>{DIRECTIONS[row.direction] ?? row.direction}</span>
-                    </td>
-                    <td>
-                      <span className="kind">{KIND_CAPTIONS[row.kind] ?? row.kind}</span>
-                      {row.decoded || row.kind === "unparsed" ? null : <span className="badge warn">Not decoded</span>}
-                    </td>
-                    <td>{row.source_id}</td>
-                    <td className="occurrence-id">{row.id}</td>
-                  </tr>
-                ))}
-                {last < rows.length ? (
-                  <tr className="spacer" aria-hidden="true">
-                    <td colSpan={5} style={{ height: `${(rows.length - last) * rowHeight}px` }} />
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+          {/* A new window is a new list, so it starts at its own first row. */}
+          <DataTable
+            key={`${grid.index}:${grid.offset}:${grid.filter}`}
+            label="Messages"
+            rows={rows}
+            rowId={(row) => row.id}
+            rowLabel={(row) => `${row.observed_at ? observedTime(row.observed_at) : "No time"} · ${KIND_CAPTIONS[row.kind] ?? row.kind} · ${row.id}`}
+            columns={MESSAGE_COLUMNS}
+            selected={selectedOccurrence}
+            // Selecting a message is what opens it in the details.
+            onSelect={(id) => {
+              if (!busy && id !== selectedOccurrence) onInspect(id);
+            }}
+            onOpen={() => undefined}
+          />
         </>
       ) : null}
 
@@ -1096,10 +886,11 @@ export function MessageGrid({
                     value={draft.state}
                     onChange={(event) => setDraft({ ...draft, state: event.target.value as FieldState })}
                   >
-                    <option value="present">Present</option>
-                    <option value="empty">Empty</option>
-                    <option value="null">Explicit null</option>
-                    <option value="omitted">Omitted</option>
+                    {(Object.keys(FIELD_STATES) as (keyof typeof FIELD_STATES)[]).map((state) => (
+                      <option key={state} value={state}>
+                        {FIELD_STATES[state]}
+                      </option>
+                    ))}
                   </select>
                 </div>
               ) : (
@@ -1235,6 +1026,39 @@ export function MessageGrid({
     </section>
   );
 }
+
+/** The message list's columns, primary first; the identifier is the first to
+ * give way in a narrow list. */
+const MESSAGE_COLUMNS: Column<GridRow>[] = [
+  {
+    key: "time",
+    header: "Time",
+    priority: 1,
+    minWidth: 11,
+    render: (row) => (row.observed_at ? observedTime(row.observed_at) : "No time"),
+  },
+  {
+    key: "type",
+    header: "Type",
+    priority: 2,
+    minWidth: 7,
+    render: (row) => (
+      <>
+        <span className="kind">{KIND_CAPTIONS[row.kind] ?? row.kind}</span>
+        {row.decoded || row.kind === "unparsed" ? null : <span className="badge warn">Not decoded</span>}
+      </>
+    ),
+  },
+  {
+    key: "direction",
+    header: "Direction",
+    priority: 3,
+    minWidth: 6,
+    render: (row) => <span className={`direction direction-${row.direction}`}>{DIRECTIONS[row.direction] ?? row.direction}</span>,
+  },
+  { key: "source", header: "Source", priority: 4, minWidth: 8, render: (row) => row.source_id },
+  { key: "id", header: "ID", priority: 5, minWidth: 10, render: (row) => <span className="occurrence-id">{row.id}</span> },
+];
 
 /** How a recorded direction reads in the table. */
 export const DIRECTIONS: Record<string, string> = {
