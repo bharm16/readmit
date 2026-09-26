@@ -60,3 +60,8 @@ test-performance:
 	READMIT_PERFORMANCE=1 go test ./internal/desktop -run '^TestPerformanceEnvelope$$' -count=1 -v
 	CGO_ENABLED=1 go test -race -short ./internal/suite ./internal/durablerun -run 'TestSuiteNetworkBlackholeRetainsUncertaintyAndRecovers|TestSuiteUsesActualQueueStateIsolation|TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume|TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent|TestDiskFullDuring|TestTornTrailingRecord|TestCleanupRemovesOnlyAStaleLease' -count=1 -v
 	CGO_ENABLED=1 go test -race -short ./internal/desktop ./internal/artifactdir ./tests -run 'TestAcknowledgedEditorDraftsSurviveAKill|TestReopeningAfterAKillStartsNoListener|TestAKilledImportLeavesNoRegistered|TestADiskRefusalDuringAnImport|TestCancellingAnImportWhileItWrites|TestCancellingAReplacingRebuild|TestCancellingACollectionPartWay|TestACollectorIsCancelledByTheCaptureName|TestACancellationDuringExecutionAdmission|TestControlledCrashRestoresUnstoredWork|TestWriteContextStopsBetweenFiles|TestInterruptingAnImportWhileItWrites' -count=1 -v
+
+# Build and refresh the local Mac app; ordinary launches never run this target.
+.PHONY: install-desktop
+install-desktop:
+	python3 tools/install_desktop.py $(ARGS)

@@ -40,6 +40,7 @@ BUNDLE_NAME = "readmit-desktop.app"
 ROOT = Path(__file__).resolve().parent.parent
 DECLARATION = ROOT / "desktop" / "packaging" / "packages.json"
 WIX_SOURCE = ROOT / "desktop" / "packaging" / "readmit-desktop.wxs"
+APP_ICON = ROOT / "desktop" / "packaging" / "readmit.icns"
 
 DECLARATION_MEMBERS = (
     "schema", "product", "display_name", "summary", "manufacturer", "maintainer",
@@ -307,6 +308,7 @@ def application_bundle(declaration, binary, version, output):
     executable.write_bytes(binary.read_bytes())
     executable.chmod(0o755)
     stage_legal_material(bundle / "Contents" / "Resources")
+    shutil.copyfile(APP_ICON, bundle / "Contents" / "Resources" / APP_ICON.name)
     with (bundle / "Contents" / "Info.plist").open("wb") as plist:
         plistlib.dump({
             "CFBundleName": declaration["display_name"],
@@ -315,6 +317,7 @@ def application_bundle(declaration, binary, version, output):
             "CFBundleIdentifier": declaration["bundle_identifier"],
             "CFBundleInfoDictionaryVersion": "6.0",
             "CFBundlePackageType": "APPL",
+            "CFBundleIconFile": APP_ICON.name,
             "CFBundleShortVersionString": numeric_version(version),
             "CFBundleVersion": numeric_version(version),
             "LSMinimumSystemVersion": declaration["minimum_macos_version"],
@@ -754,6 +757,10 @@ def verify_bundle(declaration, version, bundle):
     if not executable.is_file() or not executable.stat().st_mode & 0o111:
         raise Refused(f"{BUNDLE_NAME} holds no executable")
     verify_legal_material(bundle / "Contents" / "Resources")
+    icon = bundle / "Contents" / "Resources" / APP_ICON.name
+    if (information.get("CFBundleIconFile") != APP_ICON.name or
+            not icon.is_file() or icon.read_bytes() != APP_ICON.read_bytes()):
+        raise Refused(f"{bundle.name} holds no matching application icon")
     # Every manifest this tool verifies records the package as not signed for
     # distribution, so a signing authority here contradicts what it claims.
     authority = distribution_authority(bundle)

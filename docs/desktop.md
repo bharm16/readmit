@@ -15,6 +15,45 @@ webview. The released command line stays a static `CGO_ENABLED=0` build and does
 not contain any of this. See
 [ADR-0005](adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md).
 
+## Install on your Mac
+
+From the repository root, run:
+
+```sh
+make install-desktop
+```
+
+This builds the current checkout and installs `/Applications/Readmit.app` with
+an R icon and a `~/Desktop/Readmit.app` shortcut. Double-click the Desktop icon
+or open Readmit in Applications. While it is open, choose **Options → Keep in
+Dock** from its Dock menu if wanted. Launching the installed app needs no
+Terminal, Go, Node, repository or development server.
+
+To refresh it, quit Readmit and run the same command again. The command uses
+this checkout exactly as it stands; it does not fetch or switch branches.
+The app reports `0.0.0+local.<commit>` as its build identity, with `.dirty`
+when the checkout has uncommitted changes. It leaves saved application state,
+licenses and workspace data alone. Only an app previously installed by this
+command is replaced; unrelated applications and Desktop items are refused.
+A failed build leaves the installed app in place.
+
+Building requires the repository's pinned Go toolchain, Node/npm, Python 3,
+and Xcode Command Line Tools on macOS. The local bundle is ad-hoc signed without
+credentials; it is not Developer ID signed or notarized for distribution.
+The icon artwork is maintained in `desktop/packaging/icon.swift`; its header
+shows how to regenerate the committed `readmit.icns`.
+
+The command never invokes sudo. If `/Applications` is not writable, use your
+account's Applications folder:
+
+```sh
+make install-desktop ARGS="--applications-dir ~/Applications"
+```
+
+`ARGS="--no-desktop-shortcut"` installs without creating a Desktop shortcut.
+Moving between installation folders is not a migration: an existing shortcut
+to a different folder is refused, so move or remove that shortcut explicitly.
+
 ## Building it
 
 ```sh

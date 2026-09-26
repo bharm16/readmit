@@ -7908,6 +7908,36 @@
       "prerequisites": [],
       "implemented": false,
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
+      "id": "tooling.make.install-desktop",
+      "source": "make install-desktop",
+      "kind": "tooling",
+      "capability": "Build and refresh the local macOS application and Desktop shortcut",
+      "owner": "bharm16/readmit#542",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {
+        "kind": "developer-tooling",
+        "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"
+      }
+    },
+    {
+      "id": "tooling.tools.install_desktop",
+      "source": "tools/install_desktop.py",
+      "kind": "tooling",
+      "capability": "Build and refresh the local macOS application and Desktop shortcut",
+      "owner": "bharm16/readmit#542",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {
+        "kind": "developer-tooling",
+        "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"
+      }
     }
   ]
 }
