@@ -208,6 +208,27 @@ It runs the full race suite with small resource fixtures and the actual 8 MiB
 observation boundary once without race instrumentation. The small boundary and
 production boundary assert the same retained-prefix and refused-ACK behavior.
 `make test-boundary` addresses the latter directly when that contract changes.
+The race command lists `./tests` and `./internal/desktop` before `./...` so the
+long packages start early; Go de-duplicates the package list.
+
+Desktop tests that need a CLI process share one lazily built executable per
+package run, with the same `readmit_nosync` build tag as the facade. Each
+invocation keeps its own state and files. The independent gate, schedule,
+scenario-library and collector tests can run in parallel; tests that change
+process globals or measure process-wide allocation remain serial.
+
+The secret-provider test helpers re-execute the race-instrumented test binary.
+Their locators set `GORACE=atexit_sleep_ms=0` for child processes (preserving
+other options), because these synchronous helpers have no background work to
+drain. The parent race runtime and production provider behavior are unchanged.
+The backup quota fixture keeps sparse ordinary files below the project root,
+where they count toward the real byte limit without being probed as indexes.
+
+The retained-suite gate mutation matrix executes its baseline/current pair once
+and copies the sealed fixture for each refusal. An unchanged relocated copy must
+retain and verify successfully before those refusals count. Report tests with
+independent state run in parallel; sender-hook tests remain serial, including
+the six-second storage stall that crosses the historical five-second idle limit.
 
 Timed fuzz campaigns belong in CI unless a fuzz failure or target change needs
 local investigation. They do not run on pull requests; normal Go tests, and so

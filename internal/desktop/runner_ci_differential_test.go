@@ -82,18 +82,6 @@ func suiteFixtureDir(t *testing.T, address string) string {
 	return dir
 }
 
-// cliExecutable builds the exact command-line executable this module ships.
-func cliExecutable(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "readmit")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/readmit")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v %s", err, out)
-	}
-	return bin
-}
-
 // TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI proves the
 // differential the ticket promises: a suite the window authored and a CI
 // handoff the window generated execute through the unchanged command-line
@@ -101,6 +89,7 @@ func cliExecutable(t *testing.T) string {
 // reaches. The GUI path adds no second execution path; it only prepares
 // reviewed inputs and the exact documented command around them.
 func TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI(t *testing.T) {
+	t.Parallel()
 	for _, code := range []string{"AA", "AE"} {
 		t.Run(code, func(t *testing.T) {
 			// AA passes and passes its coverage requirement. AE fails the

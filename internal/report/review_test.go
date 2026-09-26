@@ -20,6 +20,7 @@ import (
 )
 
 func TestReviewExportsAndVerifiesActualPacketOffline(t *testing.T) {
+	t.Parallel()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
 		t.Fatal(err)
@@ -76,6 +77,7 @@ func TestReviewExportsAndVerifiesActualPacketOffline(t *testing.T) {
 }
 
 func TestReviewEscapesHostileEvidenceAndRejectsResealedReports(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(ctx, report.Scenario, source); err != nil {
@@ -208,6 +210,7 @@ func TestReviewEscapesHostileEvidenceAndRejectsResealedReports(t *testing.T) {
 }
 
 func TestReviewCLIFormatsAndIncompleteRecovery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(ctx, report.Scenario, source); err != nil {

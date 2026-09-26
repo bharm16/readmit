@@ -40,6 +40,10 @@ func testOnlyProvider(mode string, args []string) int {
 
 func providerCommand(t *testing.T) string {
 	t.Helper()
+	// The provider is this race-instrumented binary re-executed. It has no
+	// background work to drain; avoid a one-second race-runtime exit sleep
+	// on every lookup. The parent race runtime keeps its default settings.
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 	path, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		t.Fatal(err)

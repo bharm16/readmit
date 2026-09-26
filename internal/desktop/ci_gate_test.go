@@ -253,6 +253,7 @@ func reviewedWorkflow(t *testing.T, document string) string {
 // after the suite whether or not it failed. The gated POSIX workflow is the
 // one docs/customer-ci.md documents, byte for byte.
 func TestTheGeneratedGateStepRetainsTheVerdictAHandRunGateRetains(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("the POSIX workflow runs on Linux and macOS agents")
 	}
@@ -364,6 +365,7 @@ func TestTheGeneratedGateStepRetainsTheVerdictAHandRunGateRetains(t *testing.T) 
 // the same instant, and a cancelled verification reaches no verdict. None of
 // it changes a retained byte or sends.
 func TestTheWindowVerifiesRetainedGatesAsReadmitSuiteVerifyGateDoes(t *testing.T) {
+	t.Parallel()
 	bin := cliExecutable(t)
 	fixture := gatedSuiteFixture(t, bin)
 	current := filepath.Join(fixture.dir, "current")

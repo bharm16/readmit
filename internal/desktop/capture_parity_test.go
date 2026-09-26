@@ -18,6 +18,7 @@ import (
 // TestDesktopCollectMatchesCLI verifies the desktop collector and
 // `readmit collect status` agree on retained journal counts for the same capture.
 func TestDesktopCollectMatchesCLI(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	root := t.TempDir()
 	policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
@@ -74,15 +75,8 @@ func TestDesktopCollectMatchesCLI(t *testing.T) {
 		t.Fatalf("desktop/CLI journal disagree: desktop=%+v cli=%+v", session.Journal, cliSummary)
 	}
 
-	// If a readmit binary is on PATH in this module tree, also exercise the CLI
-	// status subcommand against the same journal.
-	bin := filepath.Join(t.TempDir(), "readmit")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/readmit")
-	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Logf("skipping CLI binary check: %v\n%s", err, out)
-		return
-	}
+	// Read the same journal through the shared command-line executable.
+	bin := cliExecutable(t)
 	cmd := exec.Command(bin, "collect", "status", filepath.Join(root, "journal"), "--json")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

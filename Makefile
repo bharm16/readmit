@@ -20,8 +20,10 @@ test-focused:
 # The small resource boundary and the small stream keep race coverage; their
 # production-sized variants run once without instrumentation. No behavior is
 # omitted from the full gate, and each variant asserts the same contract.
+# Start the long packages first; Go de-duplicates them from ./... so each
+# still runs once, overlapping the short packages instead of trailing them.
 test:
-	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./...
+	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./tests ./internal/desktop ./...
 	$(MAKE) test-boundary
 	$(MAKE) test-corpus
 

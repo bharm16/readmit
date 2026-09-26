@@ -15,6 +15,7 @@ import (
 )
 
 func TestPacketRejectsLinksDevicesAndSymlinkOutputTraversal(t *testing.T) {
+	t.Parallel()
 	parent := t.TempDir()
 	original := filepath.Join(parent, "packet")
 	if _, err := report.Create(context.Background(), report.Scenario, original); err != nil {
