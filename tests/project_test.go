@@ -843,17 +843,18 @@ func field(t *testing.T, out, label string) string {
 func TestApplicationCreatedProjectReadsThroughTheCommandLine(t *testing.T) {
 	parent := t.TempDir()
 	app := desktopApp(t, parent)
-	created := app.CreateProject("investigation", "Epic scheduling interface", "integration-team", []string{"siu-2.5.1-v1"})
-	if created.State != desktop.Empty && created.State != desktop.Completed {
+	app.ChooseProjectLocation()
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Epic scheduling interface"})
+	if created.State != desktop.Completed || created.Project == nil {
 		t.Fatalf("the shell could not create the project: %+v", created)
 	}
-	root := created.Overview.Root
+	root := created.Context.Project
 
 	stdout, stderr, err := run(t, "project", "show", root)
 	if err != nil || stderr != "" {
 		t.Fatalf("project show: %v %s", err, stderr)
 	}
-	for _, want := range []string{"Project: Epic scheduling interface", "Document: readmit-project/v1", "Interface versions: siu-2.5.1-v1", "Default owner: integration-team", "Cases: 0"} {
+	for _, want := range []string{"Project: Epic scheduling interface", "Document: readmit-project/v2", "Cases: 0"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("project show omitted %q of the application-created project:\n%s", want, stdout)
 		}
@@ -877,6 +878,7 @@ func TestApplicationCreatedProjectReadsThroughTheCommandLine(t *testing.T) {
 func TestANamedProjectReadsThroughTheCommandLine(t *testing.T) {
 	parent := t.TempDir()
 	app := desktopApp(t, parent)
+	app.ChooseProjectLocation()
 	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
 	if created.State != desktop.Completed || created.Project == nil {
 		t.Fatalf("the shell could not create the project: %+v", created)

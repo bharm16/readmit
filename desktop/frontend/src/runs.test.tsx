@@ -6,7 +6,6 @@
 import { expect, test } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Recovery } from "./Recovery";
 import { RunPanel } from "./RunPanel";
 import { RunComparison } from "./RunComparison";
 import { installFacade } from "./testkit/wails";
@@ -14,8 +13,6 @@ import type { FacadeHandlers } from "./testkit/wails";
 import type { Artifact } from "./bindings";
 import {
   durableRunResult,
-  recoveryResult,
-  retainedDraft,
   runComparisonResult,
   runEvidenceResult,
   runPreflightResult,
@@ -466,56 +463,6 @@ test("an empty workspace offers nothing to select and explains the empty history
   expect(select.value).toBe("");
   const preflightButton = screen.getByRole("button", { name: "Preview run" }) as HTMLButtonElement;
   expect(preflightButton.disabled).toBe(true);
-});
-
-test("recovery after an interruption shows the run and never resumes it", async () => {
-  const user = userEvent.setup();
-  const events: string[] = [];
-  const facade = installFacade({
-    Cancel: async () => {
-      events.push("cancel");
-    },
-    DiscardDraft: async () => ({ state: "completed" }),
-  });
-  render(
-    <Recovery
-      restored={recoveryResult(
-        {
-          schema: "readmit-desktop-session/v1",
-          view: { workspace: WORKSPACE_ROOT, region: "evidence", case: "sample-case", run: "baseline-run" },
-          drafts: [retainedDraft(WORKSPACE_ROOT, "triage")],
-        },
-        {
-          schema: "readmit-run/v1",
-          state: "delivery_uncertain",
-          stop_reason: "interrupted",
-          delivery_uncertain: true,
-          planned: 2,
-          recorded: 1,
-          recovered: true,
-          journal_incomplete: false,
-        },
-      )}
-      onChanged={() => undefined}
-      onReopen={() => undefined}
-    />,
-  );
-  expect(screen.getByText("Pick up where you left off")).toBeTruthy();
-  expect(screen.getByText("delivery_uncertain")).toBeTruthy();
-  expect(screen.getByText(/inspect the receiver before any new execution/)).toBeTruthy();
-  expect(screen.getByText("Nothing was resumed or resent. Recovery only read the retained evidence.")).toBeTruthy();
-  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
-  // An unstored note is offered back, and dropping it is the person's act.
-  expect(screen.getByText("still writing this")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Discard draft" }));
-  await waitFor(() => expect(facade.callsTo("DiscardDraft")).toHaveLength(1));
-  expect(facade.oneCall("DiscardDraft")).toEqual([WORKSPACE_ROOT, "triage"]);
-});
-
-test("recovery of an empty session draws nothing", () => {
-  installFacade({});
-  render(<Recovery restored={null} onChanged={() => undefined} onReopen={() => undefined} />);
-  expect(screen.queryByText("Pick up where you left off")).toBeNull();
 });
 
 test("a comparison selects actual retained executions of the workspace", async () => {

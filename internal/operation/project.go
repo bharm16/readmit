@@ -317,3 +317,35 @@ func UpdateRegisteredCase(path, name string, change CaseChange) (project.Case, e
 	}
 	return stored, nil
 }
+
+// UnregisterCase removes one case's registration from the project document.
+// The evidence stays exactly where it is. A case a note or a registered
+// revision names is refused with project.ErrCaseNamed, because removing it
+// would leave that note or lineage naming evidence the project no longer
+// registers.
+func UnregisterCase(path, name string) error {
+	root, document, revisions, err := openProjectDocuments(path)
+	if err != nil {
+		return err
+	}
+	updated, err := project.RemoveCase(document, revisions, name)
+	if err != nil {
+		return invalidChange(err)
+	}
+	return saveProject(root, updated)
+}
+
+// ReplaceProjectDocument stores a whole project document a caller composed
+// from the one it read, once the project validates it. It writes only the
+// project document, through the same atomic replacement every change of it
+// uses, and never touches evidence.
+func ReplaceProjectDocument(path string, document project.Document) error {
+	root, _, _, err := openProjectDocuments(path)
+	if err != nil {
+		return err
+	}
+	if err := project.Validate(document); err != nil {
+		return invalidChange(err)
+	}
+	return saveProject(root, document)
+}

@@ -311,7 +311,7 @@ func associated(document *catalog.Document, discovered []found) bool {
 func (c *loadedCatalog) list(kind ItemKind) []CatalogItem {
 	items := []CatalogItem{}
 	for _, item := range c.document.Items {
-		if item.Kind == string(kind) {
+		if item.Kind == string(kind) && !c.removed(item) {
 			items = append(items, c.read(item))
 		}
 	}
@@ -333,7 +333,10 @@ func (c *loadedCatalog) incompleteSaves() []IncompleteSave {
 
 // view is what one object's reader established.
 type view struct {
-	name      string
+	name string
+	// revision is the revision of an object whose current state the
+	// project document holds rather than a saved revision.
+	revision  string
 	summary   ItemSummary
 	createdAt *time.Time
 	updatedAt *time.Time
@@ -369,10 +372,22 @@ func (c *loadedCatalog) read(item catalog.Item) CatalogItem {
 		}
 	}
 	out.Availability, out.Reason = availability, reason
+	if kind == CaseItem && read.summary.Case == nil {
+		// A case that cannot be read keeps its entry, so its row can still
+		// be located and its reason shown where it is.
+		evidence := operation.EvidenceUnreadable
+		if availability == ItemMissing {
+			evidence = operation.EvidenceMissing
+		}
+		read.summary.Case = &CaseSummary{Entry: item.Entry, Tags: []string{}, Incidents: []string{}, Evidence: evidence}
+	}
 	// A name is one a person gave the object here or one the object declares
 	// itself; a file name is never made into one.
 	out.Name = cmp.Or(item.Name, read.name)
 	out.Summary = read.summary
+	if read.revision != "" {
+		out.Ref.Revision = read.revision
+	}
 	if out.CreatedAt == nil && read.createdAt != nil {
 		out.CreatedAt = stampedTime(*read.createdAt)
 	}
@@ -524,6 +539,15 @@ func (c *loadedCatalog) registered(entry string) bool {
 	return registered != nil || revision != nil
 }
 
+// removed reports an object a person removed from the project. A case the
+// project document still registers is not removed, whatever the catalog
+// marks: removing one records the mark and then unregisters it, so a removal
+// interrupted between the two leaves the case listed, registered, and
+// removable again.
+func (c *loadedCatalog) removed(item catalog.Item) bool {
+	return item.RemovedAt != "" && !(item.Kind == string(CaseItem) && c.registered(item.Entry))
+}
+
 // registeredCase is the project's registration of the case object id, or nil.
 func (c *loadedCatalog) registeredCase(id string) *project.Case {
 	index := c.document.Find(id)
@@ -541,8 +565,9 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 	var read view
 	switch {
 	case registered != nil:
-		read = view{name: registered.Title, summary: ItemSummary{Case: &CaseSummary{Registered: true, Status: registered.Status, Owner: registered.Owner,
-			InterfaceVersion: registered.InterfaceVersion, Provenance: registered.Provenance}}}
+		read = view{name: registered.Title, revision: caseRevision(*registered, item.Name), summary: ItemSummary{Case: &CaseSummary{Registered: true,
+			Entry: item.Entry, Status: registered.Status, Owner: registered.Owner, Tags: orEmpty(registered.Tags), Incidents: orEmpty(registered.Incidents),
+			InterfaceVersion: registered.InterfaceVersion, InterfaceRevision: registered.InterfaceVersion, Provenance: provenanceMarker(registered.Provenance)}}}
 	case revision != nil:
 		parent := c.entryRef(CaseItem, revision.Operation.Parent)
 		if parent == nil {
@@ -557,6 +582,7 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 	}
 	if manifest, err := bundle.Describe(filepath.Join(c.root, item.Entry)); err == nil {
 		read.createdAt = provenanceTime(manifest.Provenance)
+		read.updatedAt = read.createdAt
 	}
 	switch state {
 	case operation.EvidenceVerified:
@@ -590,7 +616,7 @@ func (c *loadedCatalog) entryRef(kind ItemKind, entry string) *ItemRef {
 		return nil
 	}
 	index := c.document.ByEntry(string(kind), entry)
-	if index < 0 {
+	if index < 0 || c.removed(c.document.Items[index]) {
 		return nil
 	}
 	item := c.document.Items[index]
@@ -604,7 +630,7 @@ func (c *loadedCatalog) caseByIdentity(identity string) *ItemRef {
 		return nil
 	}
 	for _, item := range c.document.Items {
-		if item.Kind != string(CaseItem) || item.Entry == "" {
+		if item.Kind != string(CaseItem) || item.Entry == "" || c.removed(item) {
 			continue
 		}
 		known, ok := c.identities[item.Entry]
@@ -650,9 +676,11 @@ func readCase(c *loadedCatalog, item catalog.Item, paths map[string]string) (vie
 		return view{}, err
 	}
 	c.identities[item.Entry] = facts.Identity
-	read := view{summary: ItemSummary{Case: &CaseSummary{Evidence: state, Provenance: facts.Provenance}}}
+	read := view{summary: ItemSummary{Case: &CaseSummary{Entry: item.Entry, Tags: []string{}, Incidents: []string{}, Evidence: state,
+		Provenance: provenanceMarker(facts.Provenance)}}}
 	if manifest, err := bundle.Describe(paths[primaryRole(CaseItem)]); err == nil {
 		read.createdAt = provenanceTime(manifest.Provenance)
+		read.updatedAt = read.createdAt
 	}
 	return read, nil
 }

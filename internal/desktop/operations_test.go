@@ -10,7 +10,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/operationguard"
-	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
 
@@ -23,19 +22,19 @@ func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
 	if result := app.StartDurableRun(desktop.DurableRunRequest{Workspace: "absent", Spec: "absent", Output: "absent", Expected: strings.Repeat("0", 64)}); result.State != desktop.PermissionDenied {
 		t.Fatal(result)
 	}
-	if result := app.SaveNote("absent", project.Note{}); result.State != desktop.PermissionDenied {
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: "absent"}, IntentID: "absent"}); result.State != desktop.PermissionDenied {
 		t.Fatal(result)
 	}
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}
-	if result := app.SaveNote("absent", project.Note{}); result.State == desktop.PermissionDenied {
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: "absent"}, IntentID: "absent"}); result.State == desktop.PermissionDenied {
 		t.Fatal("valid trial did not admit authoring", result)
 	}
 	if result := app.ReleaseOperations(); result.State != desktop.Completed {
 		t.Fatal(result)
 	}
-	if result := app.SaveNote("absent", project.Note{}); result.State != desktop.PermissionDenied {
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: "absent"}, IntentID: "absent"}); result.State != desktop.PermissionDenied {
 		t.Fatal(result)
 	}
 	if result := app.OpenWorkspace(sample.Workspace.Root); result.State != desktop.Completed {
@@ -59,7 +58,7 @@ func TestDesktopOperationSelectionSurvivesRestartWithoutReactivation(t *testing.
 	if result := next.ReleaseOperations(); result.State != desktop.Completed {
 		t.Fatal(result)
 	}
-	if result := app.SaveNote("absent", project.Note{}); result.State != desktop.PermissionDenied {
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: "absent"}, IntentID: "absent"}); result.State != desktop.PermissionDenied {
 		t.Fatal("another window cached released authority", result)
 	}
 }

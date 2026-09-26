@@ -2,6 +2,7 @@ package desktop_test
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"io"
 	"net"
@@ -18,7 +19,6 @@ import (
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
-	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -195,30 +195,31 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 		t.Fatalf("the killed process sent %d frames over %d connections", frames, accepted)
 	}
 
-	// Restarting the shell is a new facade over the same local state.
+	// Restarting the shell is a new facade over the same local state. The
+	// unstored note comes back from the editor draft store, and the view the
+	// window recorded is still retained.
 	restarted := activatedApp(t, &chooser{}, state)
-	restored := restarted.RecoverSession()
-	if restored.State != desktop.Completed || restored.Session == nil {
-		t.Fatalf("the restarted shell restored nothing: %+v", restored)
+	drafts := restarted.EditorDrafts()
+	if drafts.State != desktop.Completed || len(drafts.Drafts) != 1 {
+		t.Fatalf("the unstored note did not survive the crash: %+v", drafts)
 	}
-	if len(restored.Session.Drafts) != 1 {
-		t.Fatalf("the unstored note did not survive the crash: %+v", restored.Session.Drafts)
+	var note desktop.NoteDraft
+	if err := json.Unmarshal(drafts.Drafts[0].Content, &note); err != nil || note.Body != draftBody {
+		t.Fatalf("the restored draft is not what was typed: %+v %v", note, err)
 	}
-	if body := restored.Session.Drafts[0].Note.Body; body != draftBody {
-		t.Fatalf("the restored draft is not what was typed: %q", body)
-	}
-	if restored.Session.Drafts[0].Project != workspace {
-		t.Fatalf("the restored draft names another project: %q", restored.Session.Drafts[0].Project)
+	if drafts.Drafts[0].Workspace != workspace {
+		t.Fatalf("the restored draft names another project: %q", drafts.Drafts[0].Workspace)
 	}
 	want := desktop.View{Workspace: workspace, Region: "evidence", Case: "case", Run: output}
-	if restored.Session.View != want {
-		t.Fatalf("restored view %+v, recorded %+v", restored.Session.View, want)
+	if stored := storedSession(t, session); stored.View != want {
+		t.Fatalf("retained view %+v, recorded %+v", stored.View, want)
 	}
 
-	// The run is recovered as what it is: interrupted, with a delivery whose
+	// The run is reopened as what it is: interrupted, with a delivery whose
 	// effect is unknown. Neither becomes a pass because the window reopened.
-	if restored.Run == nil {
-		t.Fatalf("the run the session was watching was not recovered: %q", restored.RunReason)
+	restored := restarted.OpenDurableRun(output)
+	if restored.State != desktop.Completed || restored.Run == nil {
+		t.Fatalf("the run the window was watching was not reopened: %+v", restored)
 	}
 	if restored.Run.State != durablerun.DeliveryUncertain {
 		t.Fatalf("an interrupted send was reported as %q", restored.Run.State)
@@ -237,7 +238,7 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 
 	// Recovery reads. Repeating it changes no retained byte and opens no
 	// connection, so the receiver never sees the message a second time.
-	if again := restarted.RecoverSession(); again.Run == nil || again.Run.State != durablerun.DeliveryUncertain {
+	if again := restarted.OpenDurableRun(output); again.Run == nil || again.Run.State != durablerun.DeliveryUncertain {
 		t.Fatalf("repeated recovery did not report the same uncertain run: %+v", again)
 	}
 	if after, err := os.ReadFile(journal); err != nil || !bytes.Equal(before, after) {
@@ -269,8 +270,9 @@ func crashChildRun(t *testing.T) {
 	if recorded := app.RecordView(view); recorded.State != desktop.Completed {
 		t.Fatalf("child could not record its view: %+v", recorded)
 	}
-	retained := app.SaveDraft(desktop.Draft{Project: workspace,
-		Note: project.Note{Name: "triage", Subject: "case", Title: "Reschedule triage", Body: draftBody}})
+	draft := desktop.EditorDraft{Kind: "note", Workspace: workspace, Case: "case", ContentSchema: desktop.NoteDraftSchema,
+		Content: jsontext.Value(`{"schema":"readmit-note-draft/v1","name":"triage","subject":"case","title":"Reschedule triage","body":"` + draftBody + `"}`)}
+	retained := app.SaveEditorDraft(draft)
 	if retained.State != desktop.Completed {
 		t.Fatalf("child could not retain its draft: %+v", retained)
 	}
@@ -311,9 +313,9 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 		t.Fatal("cancelling did not stop the run")
 	}
 
-	restored := app.RecoverSession()
+	restored := app.OpenDurableRun(output)
 	if restored.State != desktop.Completed || restored.Run == nil {
-		t.Fatalf("the cancelled run was not recovered: %+v", restored)
+		t.Fatalf("the cancelled run was not reopened: %+v", restored)
 	}
 	if restored.Run.StopReason != durablerun.Cancelled {
 		t.Fatalf("recovery lost why the run stopped: %+v", restored.Run)
@@ -332,7 +334,7 @@ const reopenAddress = "READMIT_DESKTOP_REOPEN_ADDRESS"
 
 // Reopening after an interruption is a read. The process is killed while its
 // collector is listening, and the window opens the same folder again: it
-// recovers the session, reopens the workspace, verifies the case, reads the
+// reads the view it retained, reopens the workspace, verifies the case, reads the
 // project and the collector's retained journal, and states what is connected.
 // None of that listens, sends or starts anything that keeps running: the
 // collector's address stays free, the test endpoint the workspace's target
@@ -385,8 +387,8 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 
 	before := runtime.NumGoroutine()
 	restarted := activatedApp(t, &chooser{}, state)
-	if restored := restarted.RecoverSession(); restored.State != desktop.Completed || restored.Session == nil || restored.Session.View.Workspace != workspace {
-		t.Fatalf("the session was not recovered: %+v", restored)
+	if stored := storedSession(t, session); stored.View.Workspace != workspace {
+		t.Fatalf("the recorded view was not retained: %+v", stored)
 	}
 	if opened := restarted.OpenWorkspace(workspace); opened.State != desktop.Completed {
 		t.Fatalf("the workspace did not reopen: %+v", opened)

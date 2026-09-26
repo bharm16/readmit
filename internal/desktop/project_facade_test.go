@@ -7,100 +7,36 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
 )
 
-// createdProject creates a project through the facade's native create flow and
-// returns the created root and the overview it reported. A fresh project holds
-// nothing yet, so the state is Empty: the operation succeeded, and the
-// overview is the answer a person acts from.
+// createdProject writes the project `readmit project init` writes into a new
+// folder of parent — two declared interface versions, the first the default —
+// and returns its root and the overview the window reads of it. A fresh
+// project holds nothing yet, so the overview's state is Empty.
 func createdProject(t *testing.T, app *desktop.App, parent string) (string, *desktop.ProjectOverview) {
 	t.Helper()
-	result := app.CreateProject("scheduling-investigation", "Epic scheduling interface", "integration-team", []string{"siu-2.5.1-v1", "siu-2.5.1-v2"})
-	if (result.State != desktop.Completed && result.State != desktop.Empty) || result.Overview == nil {
-		t.Fatalf("create project: %+v", result)
-	}
-	root := result.Overview.Root
-	if filepath.Base(root) != "scheduling-investigation" || filepath.Dir(root) != resolved(t, parent) {
-		t.Fatalf("the project was not created in the chosen folder: %s", root)
-	}
-	return root, result.Overview
-}
-
-// The native create flow writes the same document the command line writes, and
-// what it returns is read back from disk rather than from the request.
-func TestCreateProjectWritesTheSharedDocumentAndReadsItBack(t *testing.T) {
-	parent := t.TempDir()
-	app := newApp(t, &chooser{folder: parent})
-	root, overview := createdProject(t, app, parent)
-
-	if overview.Title != "Epic scheduling interface" || overview.DefaultOwner != "integration-team" {
-		t.Fatalf("the overview does not report the settings that were written: %+v", overview)
-	}
-	if len(overview.InterfaceVersions) != 2 || overview.DefaultVersion != "siu-2.5.1-v1" {
-		t.Fatalf("the first declared version is not the default: %+v", overview.InterfaceVersions)
-	}
-	// What the application created reads through the same project reader the
-	// command line opens, under the same contract.
-	opened, err := project.Open(root)
+	created, err := project.Create(filepath.Join(parent, "scheduling-investigation"), project.Document{Schema: project.Schema,
+		Settings:          project.Settings{Title: "Epic scheduling interface", DefaultOwner: "integration-team", DefaultInterfaceVersion: "siu-2.5.1-v1"},
+		InterfaceVersions: []string{"siu-2.5.1-v1", "siu-2.5.1-v2"}})
 	if err != nil {
-		t.Fatalf("the created project does not open as a project: %v", err)
+		t.Fatalf("create project: %v", err)
 	}
-	if opened.Document.Settings.Title != "Epic scheduling interface" || opened.Document.Settings.DefaultInterfaceVersion != "siu-2.5.1-v1" {
-		t.Fatalf("the stored document is not what the flow recorded: %+v", opened.Document.Settings)
+	result := app.OpenProjectOverview(created.Root)
+	if result.State != desktop.Empty || result.Overview == nil {
+		t.Fatalf("overview: %+v", result)
 	}
-	// The state is Empty, not Completed, because nothing is registered yet.
-	if result := app.OpenProjectOverview(root); result.State != desktop.Empty || result.Overview == nil {
-		t.Fatalf("an empty project is a state a person acts from, not a refusal: %+v", result)
-	}
+	return created.Root, result.Overview
 }
 
-func TestCreateProjectRefusalsLeaveTheChosenFolderAsItWas(t *testing.T) {
-	parent := t.TempDir()
-	app := newApp(t, &chooser{folder: parent})
-	if result := app.CreateProject("", "Title", "", []string{"v1"}); result.State != desktop.Failed || !strings.Contains(result.Reason, "folder name") {
-		t.Fatalf("an unnamed project was not refused by name: %+v", result)
-	}
-	if result := app.CreateProject("new-project", "Title", "", nil); result.State != desktop.Failed || !strings.Contains(result.Reason, "at least one interface version") {
-		t.Fatalf("a project without an interface version was not refused by name: %+v", result)
-	}
-	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
-		t.Fatalf("a refused create left something behind: %v %v", entries, err)
-	}
-	// A dismissed dialog is cancelled, like every other dialog flow.
-	dismissed := newApp(t, &chooser{})
-	if result := dismissed.CreateProject("new-project", "Title", "", []string{"v1"}); result.State != desktop.Cancelled {
-		t.Fatalf("a dismissed dialog was not cancelled: %+v", result)
-	}
-}
-
-func TestCreateProjectRefusesAnExistingDestination(t *testing.T) {
-	parent := t.TempDir()
-	app := newApp(t, &chooser{folder: parent})
-	root, _ := createdProject(t, app, parent)
-	before := bytesUnder(t, root)
-
-	retry := app.CreateProject("scheduling-investigation", "Different title", "", []string{"siu-2.5.1-v1"})
-	if retry.State != desktop.Failed || retry.Overview != nil {
-		t.Fatalf("an existing destination was not refused: %+v", retry)
-	}
-	if after := bytesUnder(t, root); len(before) != len(after) || string(before["project.json"]) != string(after["project.json"]) {
-		t.Fatal("a refused create changed the project already there")
-	}
-}
-
-func TestCreateProjectReportsBusyAndRecovers(t *testing.T) {
-	parent := t.TempDir()
-	reentrant := &chooser{folder: parent}
-	app := activatedApp(t, reentrant, t.TempDir())
-	var concurrent desktop.ProjectOverviewResult
-	reentrant.before = func() { concurrent = app.CreateProject("other", "Title", "", []string{"v1"}) }
-	if first := app.CreateProject("first", "Title", "", []string{"v1"}); first.State != desktop.Completed && first.State != desktop.Empty {
-		t.Fatalf("the first create did not complete: %+v", first)
-	}
-	if concurrent.State != desktop.Busy || concurrent.Overview != nil {
-		t.Fatalf("a second create ran while the first held the facade: %+v", concurrent)
+// registerCase registers one case of a project through the shared operation
+// `readmit project add` runs, for a test whose subject is what follows.
+func registerCase(t *testing.T, root, name, title string) {
+	t.Helper()
+	if _, err := operation.RegisterCase(root, name, operation.CaseRegistration{Title: title}); err != nil {
+		t.Fatalf("register %s: %v", name, err)
 	}
 }
 
@@ -109,25 +45,31 @@ func TestRegisterCaseRecordsWhatTheSharedReaderAccepted(t *testing.T) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	written := writeCase(t, root, "incident-4821", framed("MSH|^~\\&|Scheduling|Acme|EHR|Acme|20260101120000||SIU^S12|1|P|2.5.1\r"))
+	opened := app.OpenNamedProject(root)
+	if opened.State != desktop.Completed {
+		t.Fatalf("open: %+v", opened)
+	}
 
-	result := app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{
-		Title: "Duplicate appointment after reschedule",
-		Tags:  []string{"duplicate", "scheduling"},
-	})
-	if result.State != desktop.Completed || result.Overview == nil {
+	// Saving the details of a case the project has not registered registers
+	// it through the operation `readmit project add` runs.
+	item := caseAt(t, app, opened.Context, "incident-4821")
+	result := saveCase(app, opened.Context, item, "register", desktop.CaseDraft{Name: "Duplicate appointment after reschedule",
+		Status: project.StatusOpen, Tags: []string{"duplicate", "scheduling"}, InterfaceRevision: "siu-2.5.1-v1"})
+	if result.State != desktop.Completed {
 		t.Fatalf("register case: %+v", result)
 	}
-	if len(result.Overview.Cases) != 1 {
-		t.Fatalf("the overview the registration returned does not carry the case: %+v", result.Overview)
+	overview := app.OpenProjectOverview(root)
+	if overview.State != desktop.Completed || len(overview.Overview.Cases) != 1 {
+		t.Fatalf("the overview does not carry the case: %+v", overview)
 	}
-	registered := result.Overview.Cases[0]
+	registered := overview.Overview.Cases[0]
 	if registered.Identity != written.Identity || registered.Schema != written.Manifest.Schema {
 		t.Fatalf("the project did not record what the reader accepted: %+v", registered)
 	}
 	if registered.Provenance != "imported" {
 		t.Fatalf("the provenance mode was not read from the evidence: %+v", registered)
 	}
-	// Defaults the registration left empty are inherited from the project.
+	// An owner the details left empty is inherited from the project.
 	if registered.Status != "open" || registered.Owner != "integration-team" || registered.InterfaceVersion != "siu-2.5.1-v1" {
 		t.Fatalf("the project defaults were not inherited: %+v", registered)
 	}
@@ -135,34 +77,9 @@ func TestRegisterCaseRecordsWhatTheSharedReaderAccepted(t *testing.T) {
 		t.Fatalf("freshly registered evidence is not verified: %+v", registered)
 	}
 	// The stored document is what the command line reads back.
-	opened, err := project.Open(root)
-	if err != nil || len(opened.Document.Cases) != 1 || opened.Document.Cases[0].Identity != written.Identity {
-		t.Fatalf("the stored project document does not hold the registered case: %v %+v", err, opened)
-	}
-}
-
-func TestRegisterCaseRefusalsAreReportedInWords(t *testing.T) {
-	parent := t.TempDir()
-	app := newApp(t, &chooser{folder: parent})
-	root, _ := createdProject(t, app, parent)
-	writeCase(t, root, "incident-4821", framed("MSH|^~\\&|Scheduling|Acme|EHR|Acme|20260101120000||SIU^S12|1|P|2.5.1\r"))
-
-	// A case is named by one directory entry of the project.
-	if result := app.RegisterCase(root, "../escape", desktop.CaseRegistration{}); result.State != desktop.Failed || result.Overview != nil {
-		t.Fatalf("a path outside the project was not refused: %+v", result)
-	}
-	// An unknown status is the project's own refusal, not a silent rewrite.
-	if result := app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment", Status: "ended"}); result.State != desktop.Failed || !strings.Contains(result.Reason, "status") {
-		t.Fatalf("an unknown status was not refused by name: %+v", result)
-	}
-	// The registration the project refused changed nothing.
-	if result := app.OpenProjectOverview(root); result.State != desktop.Empty || len(result.Overview.Cases) != 0 {
-		t.Fatalf("a refused registration changed the project: %+v", result)
-	}
-	// Registering twice is refused under the same name.
-	app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment"})
-	if again := app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment"}); again.State != desktop.Failed || !strings.Contains(again.Reason, "already registered") {
-		t.Fatalf("a second registration under one name was not refused: %+v", again)
+	stored, err := project.Open(root)
+	if err != nil || len(stored.Document.Cases) != 1 || stored.Document.Cases[0].Identity != written.Identity {
+		t.Fatalf("the stored project document does not hold the registered case: %v %+v", err, stored)
 	}
 }
 
@@ -171,26 +88,39 @@ func TestUpdateRegisteredCaseChangesOnlyWhatItNames(t *testing.T) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	writeCase(t, root, "incident-4821", framed("MSH|^~\\&|Scheduling|Acme|EHR|Acme|20260101120000||SIU^S12|1|P|2.5.1\r"))
-	app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment", Tags: []string{"scheduling"}})
+	if _, err := operation.RegisterCase(root, "incident-4821", operation.CaseRegistration{Title: "Duplicate appointment", Tags: []string{"scheduling"}}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := project.Open(root)
+	opened := app.OpenNamedProject(root)
+	item := caseAt(t, app, opened.Context, "incident-4821")
 
-	status := project.StatusInvestigating
-	result := app.UpdateRegisteredCase(root, "incident-4821", desktop.CaseChange{Status: &status})
-	if result.State != desktop.Completed || result.Overview == nil {
+	// The case's details are saved whole, through the operation `readmit
+	// project update` runs: what the draft states is stored, and the
+	// evidence facts are out of its reach.
+	result := saveCase(app, opened.Context, item, "status", desktop.CaseDraft{Name: "Duplicate appointment", Status: project.StatusInvestigating,
+		Owner: "integration-team", Tags: []string{"scheduling"}, InterfaceRevision: "siu-2.5.1-v1"})
+	if result.State != desktop.Completed {
 		t.Fatalf("update case: %+v", result)
 	}
-	updated := result.Overview.Cases[0]
-	if updated.Status != "investigating" {
-		t.Fatalf("the status was not changed: %+v", updated)
+	updated, err := project.Open(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(updated.Tags) != 1 || updated.Tags[0] != "scheduling" {
-		t.Fatalf("changing the status restated the tags: %+v", updated.Tags)
+	stored, was := updated.Document.Cases[0], before.Document.Cases[0]
+	if stored.Status != "investigating" || len(stored.Tags) != 1 || stored.Tags[0] != "scheduling" {
+		t.Fatalf("the details were not stored as saved: %+v", stored)
 	}
-	if updated.Evidence != "verified" {
-		t.Fatalf("a metadata edit changed what the evidence is: %+v", updated)
+	if stored.Name != was.Name || stored.Identity != was.Identity || stored.Schema != was.Schema || stored.Provenance != was.Provenance {
+		t.Fatalf("a metadata edit changed what the evidence is: %+v", stored)
 	}
-	// An unknown status is refused in the project's own words.
-	ended := project.Status("ended")
-	if refused := app.UpdateRegisteredCase(root, "incident-4821", desktop.CaseChange{Status: &ended}); refused.State != desktop.Failed || !strings.Contains(refused.Reason, "status") {
+	if overview := app.OpenProjectOverview(root); overview.Overview.Cases[0].Evidence != "verified" {
+		t.Fatalf("a metadata edit changed the evidence state: %+v", overview.Overview.Cases[0])
+	}
+	// An unknown status is refused at its member, and nothing is written.
+	now := caseAt(t, app, opened.Context, "incident-4821")
+	refused := saveCase(app, opened.Context, now, "ended", desktop.CaseDraft{Name: "Duplicate appointment", Status: "ended", InterfaceRevision: "siu-2.5.1-v1"})
+	if refused.Outcome != desktop.InvalidOutcome || len(refused.Problems) != 1 || refused.Problems[0].Field != "case.status" {
 		t.Fatalf("an unknown status change was not refused by name: %+v", refused)
 	}
 }
@@ -200,7 +130,7 @@ func TestProjectOverviewReVerifiesRegisteredEvidence(t *testing.T) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	writeCase(t, root, "incident-4821", framed("MSH|^~\\&|Scheduling|Acme|EHR|Acme|20260101120000||SIU^S12|1|P|2.5.1\r"))
-	app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment"})
+	registerCase(t, root, "incident-4821", "Duplicate appointment")
 
 	if result := app.OpenProjectOverview(root); result.State != desktop.Completed || result.Overview.Cases[0].Evidence != "verified" {
 		t.Fatalf("registered evidence did not verify: %+v", result)
@@ -227,42 +157,6 @@ func TestProjectOverviewReVerifiesRegisteredEvidence(t *testing.T) {
 	}
 }
 
-func TestUpdateProjectSettingsDeclaresAndApplies(t *testing.T) {
-	parent := t.TempDir()
-	app := newApp(t, &chooser{folder: parent})
-	root, _ := createdProject(t, app, parent)
-
-	owner := "scheduling-team"
-	version := "siu-2.5.1-v2"
-	result := app.UpdateProjectSettings(root, desktop.SettingsChange{
-		Title:                   strPtr("Epic scheduling interface, 2026"),
-		DefaultOwner:            &owner,
-		DefaultInterfaceVersion: &version,
-		DeclareVersions:         &[]string{"siu-2.5.1-v2"},
-	})
-	if result.State != desktop.Completed || result.Overview == nil {
-		t.Fatalf("update settings: %+v", result)
-	}
-	overview := result.Overview
-	if overview.Title != "Epic scheduling interface, 2026" || overview.DefaultOwner != "scheduling-team" || overview.DefaultVersion != "siu-2.5.1-v2" {
-		t.Fatalf("the settings were not applied: %+v", overview)
-	}
-	if len(overview.InterfaceVersions) != 2 || overview.InterfaceVersions[1] != "siu-2.5.1-v2" {
-		t.Fatalf("the further version was not declared: %+v", overview.InterfaceVersions)
-	}
-	// The default must be a declared version; a typo invents nothing.
-	undeclared := "siu-2.6.0-v1"
-	if refused := app.UpdateProjectSettings(root, desktop.SettingsChange{DefaultInterfaceVersion: &undeclared}); refused.State != desktop.Failed || !strings.Contains(refused.Reason, "declared") {
-		t.Fatalf("an undeclared default was not refused by name: %+v", refused)
-	}
-	// Declaring an already-declared version declares it once.
-	same := "siu-2.5.1-v2"
-	again := app.UpdateProjectSettings(root, desktop.SettingsChange{DeclareVersions: &[]string{"siu-2.5.1-v2", same}})
-	if again.State != desktop.Completed || len(again.Overview.InterfaceVersions) != 2 {
-		t.Fatalf("declaring a declared version changed the project: %+v", again.Overview.InterfaceVersions)
-	}
-}
-
 func TestProjectOverviewReportsDocumentsThisReleaseCannotRead(t *testing.T) {
 	parent := t.TempDir()
 	app := newApp(t, &chooser{folder: parent})
@@ -277,8 +171,10 @@ func TestProjectOverviewReportsDocumentsThisReleaseCannotRead(t *testing.T) {
 	if data, err := os.ReadFile(filepath.Join(root, "project.json")); err != nil || string(data) != future {
 		t.Fatalf("an unreadable project document was changed: %v", err)
 	}
-	if result := app.RegisterCase(root, "anything", desktop.CaseRegistration{}); result.State != desktop.Failed || !strings.Contains(result.Reason, "version this release cannot read") {
-		t.Fatalf("registration into an unreadable project was not refused by name: %+v", result)
+	if result := app.SaveItem(desktop.SaveItemRequest{Context: desktop.RequestContext{Project: root}, Kind: desktop.CaseItem, Item: strings.Repeat("a", 24),
+		IntentID: "anything", Draft: desktop.ItemDraft{Case: &desktop.CaseDraft{Name: "x", Status: project.StatusOpen}}}); result.State != desktop.Failed ||
+		!strings.Contains(result.Reason, "version this release cannot read") {
+		t.Fatalf("a save into an unreadable project was not refused by name: %+v", result)
 	}
 }
 
@@ -399,10 +295,7 @@ func TestRegisterRevisionRecordsLineageFromABuiltReproducer(t *testing.T) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
-	registered := app.RegisterCase(root, "incident", desktop.CaseRegistration{Title: "Original incident"})
-	if registered.State != desktop.Completed {
-		t.Fatalf("register parent: %+v", registered)
-	}
+	registerCase(t, root, "incident", "Original incident")
 
 	selected := app.EditReproducer(desktop.ReproducerRequest{
 		Workspace: root, Case: "incident", Identity: incident.Identity,
@@ -457,7 +350,7 @@ func TestRegisterRevisionRefusesWhatItCannotStandBehind(t *testing.T) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	incident := writeCase(t, root, "incident", framed(repBooking))
-	app.RegisterCase(root, "incident", desktop.CaseRegistration{Title: "Original"})
+	registerCase(t, root, "incident", "Original")
 	selected := app.EditReproducer(desktop.ReproducerRequest{
 		Workspace: root, Case: "incident", Identity: incident.Identity,
 		Step: reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repBookingID},

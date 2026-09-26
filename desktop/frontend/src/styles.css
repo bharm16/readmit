@@ -2780,3 +2780,143 @@ h2 .count {
     border-bottom-color: Highlight;
   }
 }
+
+/* ---------- Collection pages ----------
+   A list page's table fills the page below its header and scrolls inside
+   itself, edge to edge. */
+.page-body:has(> .page-table) {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.page-body > .page-table {
+  flex: 1;
+  min-height: 0;
+}
+
+.page-body > .chips,
+.page-body > .drafts-to-restore {
+  flex: none;
+  padding: var(--s2) var(--inset);
+}
+
+.page-table th:first-child,
+.page-table td:first-child {
+  padding-left: var(--inset);
+}
+
+.page-table th:last-child,
+.page-table td:last-child {
+  padding-right: var(--inset);
+  text-align: end;
+}
+
+.row-actions {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--s2);
+}
+
+.row-problem,
+.case-name {
+  align-items: baseline;
+  display: inline-flex;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.row-reason {
+  color: var(--muted);
+  font-size: var(--text-support);
+}
+
+.value-with-action {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+  justify-content: space-between;
+  min-height: var(--input);
+}
+
+.location-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drafts-to-restore {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: var(--s3);
+  justify-content: space-between;
+}
+
+.chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.chip {
+  align-items: center;
+  background: var(--selection);
+  border-radius: var(--radius-control);
+  display: inline-flex;
+  gap: var(--s1);
+  min-height: var(--button);
+  padding: 0 0 0 var(--s2);
+}
+
+.chip-remove {
+  background: transparent;
+  border-color: transparent;
+  padding: 0 var(--s2);
+}
+
+.chips-input .chips {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  margin-top: var(--label-gap);
+  min-height: var(--input);
+  padding: var(--s1);
+}
+
+.chips-input input[type="text"] {
+  border: 0;
+  flex: 1;
+  min-width: 8rem;
+}
+
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+}
+
+.checks > legend {
+  flex-basis: 100%;
+}
+
+.check {
+  align-items: center;
+  display: inline-flex;
+}
+
+.revision-row {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+}
+
+.revision-row > input[type="text"] {
+  flex: 1;
+}
+
+.drafts-table {
+  width: 100%;
+}

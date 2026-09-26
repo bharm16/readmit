@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
@@ -19,7 +20,7 @@ import (
 
 // DraftsSchema is the versioned contract of the editor draft store: the
 // unstored work every editor of this window retains while it is being edited.
-// It is the fourth local shell document, beside the recent workspace list, the
+// It is a local shell document, beside the remembered projects, the
 // saved filters and the working session, and like all of them it is per-viewer
 // state rather than evidence: no case, run, result, review or report ever holds
 // it, and nothing in it is read out of a case bundle.
@@ -47,6 +48,9 @@ const DraftsSchema = "readmit-desktop-drafts/v1"
 // draft returns to that object and a save of it is checked against that
 // revision. The store is written as v2 only while it holds such a draft; a
 // store of v1 drafts is written as v1, exactly as before, and both are read.
+//
+// A draft that names its object also carries saved_at, when the application
+// last retained it, so recovery lists it by object, time and project.
 const DraftsSchemaV2 = "readmit-desktop-drafts/v2"
 
 // MaxEditorDrafts bounds the unstored editor drafts one viewer retains. Past
@@ -95,6 +99,11 @@ type EditorDraft struct {
 	// Item names the object this draft edits and the revision the edit
 	// began from, when it edits a catalog object.
 	Item *DraftItem `json:"item,omitzero"`
+	// SavedAt is when the application last retained this draft of a
+	// catalog object, RFC 3339. The store sets it on every retention of a
+	// draft that names its object, and never takes one from the window; a
+	// plain draft, which a v1 store holds, has none.
+	SavedAt *string `json:"saved_at,omitzero"`
 }
 
 // DraftItem is the object one draft edits: the project's identity, and the
@@ -151,6 +160,10 @@ func (a *App) SaveEditorDraft(draft EditorDraft) EditorDraftsResult {
 	drafts, declined := a.retainedDrafts()
 	if declined.state != "" {
 		return EditorDraftsResult{State: declined.state, Reason: declined.reason}
+	}
+	draft.SavedAt = nil
+	if draft.Item != nil {
+		draft.SavedAt = stamped(catalog.Stamp(a.now()))
 	}
 	if err := validateEditorDraft(draft); err != nil {
 		return a.draftsFailure(refusal{Failed, "the draft was not retained: it needs a kind, the workspace folder it belongs to by absolute path, the contract its content declares, and bounded content"})
@@ -317,7 +330,7 @@ func decodeEditorDrafts(data []byte) ([]EditorDraft, error) {
 		if i > 0 && strings.Compare(store.Drafts[i-1].ID, draft.ID) >= 0 {
 			return nil, errors.New("drafts must carry distinct identities and be sorted by them")
 		}
-		if draft.Item != nil && declared.Schema == DraftsSchema {
+		if (draft.Item != nil || draft.SavedAt != nil) && declared.Schema == DraftsSchema || draft.SavedAt != nil && draft.Item == nil {
 			return nil, errors.New("invalid retained editor drafts")
 		}
 	}
@@ -409,6 +422,11 @@ func validateEditorDraft(draft EditorDraft) error {
 	}
 	if !draft.Content.IsValid() {
 		return errors.New("a draft carries its content as a JSON value")
+	}
+	if draft.SavedAt != nil {
+		if _, err := time.Parse(time.RFC3339, *draft.SavedAt); err != nil {
+			return errors.New("a draft records when it was retained as an RFC 3339 time")
+		}
 	}
 	if item := draft.Item; item != nil && (!catalog.ValidID(item.ProjectID) || !slices.Contains(itemKinds, item.Ref.Kind) ||
 		item.Ref.Kind == ProjectItem || !catalog.ValidID(item.Ref.ID) || len(item.Ref.Revision) > 16) {

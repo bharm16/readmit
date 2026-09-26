@@ -58,6 +58,7 @@ func TestAnInterruptedSaveNeverExposesAMixedObservation(t *testing.T) {
 				return app
 			}
 			app := window()
+			app.ChooseProjectLocation()
 			created := app.CreateNamedProject(NewProjectRequest{Name: "Faults"})
 			if created.State != Completed {
 				t.Fatalf("%+v", created)

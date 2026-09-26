@@ -553,6 +553,10 @@ func notNamedInAnExistingFolder(path string) string {
 
 // ChooseFolder answers the folder dialog. A dismissed dialog returns an empty
 // folder and no error, as the native dialog does.
+// Reveal answers as the host's file manager would, opening nothing: a
+// journey has no file manager to show a place in.
+func (d *scriptedDialogs) Reveal(string) error { return nil }
+
 func (d *scriptedDialogs) ChooseFolder(title string) (string, error) {
 	paths, err := d.take(folderDialog, title, notAnExistingFolder)
 	if err != nil || len(paths) == 0 {

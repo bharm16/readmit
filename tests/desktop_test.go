@@ -267,39 +267,6 @@ func TestDesktopDependenciesStayOutOfTheReleasedModule(t *testing.T) {
 	}
 }
 
-// The recent workspace list is local shell state. It records folders the person
-// opened and nothing read out of them.
-func TestRecentWorkspacesRecordFoldersAndNoEvidence(t *testing.T) {
-	store := filepath.Join(t.TempDir(), "recent.json")
-	parent := t.TempDir()
-	app := desktop.New(chosenFolder(parent), desktop.ShellDocuments{Folder: filepath.Dir(store)})
-	created := app.CreateSampleWorkspace()
-	if created.State != desktop.Completed {
-		t.Fatalf("sample workspace: %+v", created)
-	}
-	recent := app.RecentWorkspaces()
-	if recent.State != desktop.Completed || !reflect.DeepEqual(recent.Roots, []string{created.Workspace.Root}) {
-		t.Fatalf("the sample workspace was not recorded for reopening: %+v", recent)
-	}
-	stored, err := os.ReadFile(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, leaked := range []string{"MSH", "SCH", "SYNTH-", "regression", "identity"} {
-		if strings.Contains(string(stored), leaked) {
-			t.Fatalf("the recent workspace list recorded %q: %s", leaked, stored)
-		}
-	}
-	// Reopening from the recorded folder returns the same workspace.
-	reopened := desktop.New(chosenFolder(""), desktop.ShellDocuments{Folder: filepath.Dir(store)}).OpenWorkspace(recent.Roots[0])
-	if reopened.State != desktop.Completed || reopened.Workspace == nil || reopened.Workspace.Root != created.Workspace.Root {
-		t.Fatalf("a recorded workspace could not be reopened: %+v", reopened)
-	}
-	if len(reopened.Workspace.Artifacts) != len(created.Workspace.Artifacts) {
-		t.Fatalf("reopening changed the listing: %+v", reopened.Workspace.Artifacts)
-	}
-}
-
 func goCommand(t *testing.T, environment []string, args ...string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)

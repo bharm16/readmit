@@ -29,6 +29,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"os/exec"
+	goruntime "runtime"
 )
 
 // The window renders only these bundled files. The shell fetches nothing at
@@ -66,6 +68,26 @@ func (d *dialog) ChooseFolder(title string) (string, error) {
 		return "", errors.New("the application window is not ready")
 	}
 	return runtime.OpenDirectoryDialog(ctx, runtime.OpenDialogOptions{Title: title})
+}
+
+// Reveal selects path in the host's file manager — Finder on macOS, Explorer
+// on Windows, and elsewhere the folder that holds it — without waiting for it.
+// It is a host action beside the dialogs, as choosing a folder is.
+func (d *dialog) Reveal(path string) error {
+	var command *exec.Cmd
+	switch goruntime.GOOS {
+	case "darwin":
+		command = exec.Command("open", "-R", path)
+	case "windows":
+		command = exec.Command("explorer", "/select,"+path)
+	default:
+		command = exec.Command("xdg-open", filepath.Dir(path))
+	}
+	if err := command.Start(); err != nil {
+		return err
+	}
+	go command.Wait()
+	return nil
 }
 
 func (d *dialog) ChooseFiles(title, filterName, filterPattern string) ([]string, error) {

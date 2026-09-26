@@ -1,3 +1,4 @@
+import { findCaseRow } from "./testkit/navigation";
 import { readCaseIdentity } from "./testkit/navigation";
 // The sequence panel driven through the window, as a person drives it: the
 // real App over the stubbed facade, so choosing a rules document reaches
@@ -65,9 +66,9 @@ function workspace() {
  * sequence panel is offered at all. */
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  await user.click(await findCaseRow(CASE_ENTRY));
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("tab", { name: "Timeline" }));
   return within(await screen.findByRole("region", { name: "Sequence" }));

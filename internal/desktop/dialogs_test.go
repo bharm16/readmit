@@ -71,9 +71,7 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 	dialogs := []dialog{
 		{name: "SelectWorkspace", call: func(a *desktop.App) any { return a.SelectWorkspace() }, opens: "folder", folder: workspace, title: "Open workspace"},
 		{name: "CreateSampleWorkspace", call: func(a *desktop.App) any { return a.CreateSampleWorkspace() }, opens: "folder", folder: fresh(), title: "Choose sample location"},
-		{name: "CreateProject", call: func(a *desktop.App) any {
-			return a.CreateProject("investigation", "Scheduling interface", "integration-team", []string{"siu-2.5.1-v1"})
-		}, opens: "folder", folder: fresh()},
+		{name: "ChooseProjectLocation", call: func(a *desktop.App) any { return a.ChooseProjectLocation() }, opens: "folder", folder: fresh(), title: "Choose where projects are kept"},
 		{name: "ChooseCapturePath", call: func(a *desktop.App) any { return a.ChooseCapturePath("source-root") }, opens: "folder", folder: fresh()},
 		{name: "ChooseImportSources", call: func(a *desktop.App) any { return a.ChooseImportSources("folder") }, opens: "folder", folder: fresh()},
 		{name: "ChooseHubConfig", call: func(a *desktop.App) any { return a.ChooseHubConfig() }, opens: "folder", folder: hubFolder},

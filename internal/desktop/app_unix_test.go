@@ -5,7 +5,6 @@ package desktop_test
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
@@ -53,19 +52,6 @@ func TestSampleWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(parent, desktop.SampleName)); !os.IsNotExist(err) {
 		t.Fatal("a refused sample workspace left output behind")
-	}
-}
-
-func TestRecentWorkspacesSeparatesPermissionFromFailure(t *testing.T) {
-	directory := t.TempDir()
-	store := filepath.Join(directory, "recent.json")
-	if err := os.WriteFile(store, []byte(`{"schema":"readmit-desktop-recent/v1","roots":[]}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	unreadable(t, store)
-	result := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: filepath.Dir(store)}).RecentWorkspaces()
-	if result.State != desktop.PermissionDenied || len(result.Roots) != 0 {
-		t.Fatalf("an unreadable recent list was not reported as permission denied: %+v", result)
 	}
 }
 
@@ -156,35 +142,5 @@ func TestSavedFiltersSeparatePermissionFromAnUnreadableDocument(t *testing.T) {
 	root := t.TempDir()
 	if result := app.OpenGrid(root, "case", "case.index.json", 0, 10); result.State == desktop.Completed {
 		t.Fatalf("a grid was rendered while the selection could not be read: %+v", result)
-	}
-}
-
-// A list this account cannot replace is a different answer from one this
-// release cannot read, and forgetting says which. The list stays as it was.
-func TestForgettingSeparatesAnUnwritableListFromAFailure(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("a privileged account bypasses directory permissions")
-	}
-	directory := t.TempDir()
-	store := filepath.Join(directory, "recent.json")
-	app := activatedApp(t, &chooser{}, filepath.Dir(store))
-	root := t.TempDir()
-	if result := app.OpenWorkspace(root); result.State != desktop.Empty {
-		t.Fatalf("open: %+v", result)
-	}
-	before, err := os.ReadFile(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(directory, 0500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(directory, 0700) })
-	result := app.ForgetWorkspace(resolved(t, root))
-	if result.State != desktop.PermissionDenied || result.Reason != "this account cannot write the recent workspace list" || !reflect.DeepEqual(result.Roots, []string{resolved(t, root)}) {
-		t.Fatalf("an unwritable recent list: %+v", result)
-	}
-	if after, err := os.ReadFile(store); err != nil || string(after) != string(before) {
-		t.Fatalf("a refused forget changed the list: %q", after)
 	}
 }

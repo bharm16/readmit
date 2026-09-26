@@ -3,8 +3,6 @@ package desktop
 import (
 	"path/filepath"
 	"testing"
-
-	"github.com/bharm16/readmit/internal/project"
 )
 
 func FuzzSession(f *testing.F) {
@@ -27,12 +25,9 @@ func FuzzSession(f *testing.F) {
 		if session.Schema != SessionSchema {
 			t.Fatal("accepted a working session under another contract version")
 		}
-		if len(session.Drafts) > MaxDrafts {
-			t.Fatal("accepted an unbounded number of retained drafts")
-		}
-		// Nothing accepted here may be a location the shell would not open or
-		// working text the project would not store: a retained session is
-		// restored into the window, so an accepted one has to be restorable.
+		// Nothing accepted here may be a location the shell would not open: a
+		// retained view is restored into the window, so an accepted one has to
+		// be restorable.
 		for _, folder := range []string{session.View.Workspace, session.View.Run} {
 			if folder != "" && (!filepath.IsAbs(folder) || !printable(folder, maxRootBytes)) {
 				t.Fatal("accepted a relative, oversized or unprintable folder")
@@ -40,17 +35,6 @@ func FuzzSession(f *testing.F) {
 		}
 		if session.View.Case != "" && (session.View.Workspace == "" || !printable(session.View.Case, maxEntryBytes)) {
 			t.Fatal("accepted a case with no workspace or past its bound")
-		}
-		for i, draft := range session.Drafts {
-			if err := project.ValidateNote(draft.Note); err != nil {
-				t.Fatalf("accepted working text the project would refuse: %v", err)
-			}
-			if !filepath.IsAbs(draft.Project) {
-				t.Fatal("accepted a draft of a relative project folder")
-			}
-			if i > 0 && compareDrafts(session.Drafts[i-1], draft) >= 0 {
-				t.Fatal("accepted unsorted or duplicated drafts")
-			}
 		}
 		// Whatever the decoder accepts must round-trip through the writer, so a
 		// session the shell retains is a session it can restore.
@@ -62,14 +46,8 @@ func FuzzSession(f *testing.F) {
 		if err != nil {
 			t.Fatalf("a retained session cannot be read back: %v", err)
 		}
-		if restored.View != session.View || len(restored.Drafts) != len(session.Drafts) {
+		if restored != session {
 			t.Fatal("a retained session did not read back as it was written")
-		}
-		// The decoder normalizes nothing: a document that declared no draft
-		// decodes to no draft, and turning that into the empty list the facade
-		// hands out is the reader's job, not the decoder's.
-		if len(session.Drafts) == 0 && len(restored.Drafts) != 0 {
-			t.Fatal("the decoder invented a draft list")
 		}
 	})
 }

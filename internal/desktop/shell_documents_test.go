@@ -21,7 +21,7 @@ import (
 // cannot read from any other refusal.
 func TestTheStoreReportsAMissingShellDocumentAsAbsent(t *testing.T) {
 	documents := ShellDocuments{Folder: t.TempDir()}
-	if _, err := documents.read(recentName, maxRecentBytes); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := documents.read(filtersName, maxFiltersBytes); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("a missing document read as %v", err)
 	}
 	if err := documents.write(sessionName, []byte("{}\n")); err != nil {
@@ -37,17 +37,17 @@ func TestTheStoreReportsAMissingShellDocumentAsAbsent(t *testing.T) {
 // into memory.
 func TestTheStoreRefusesAShellDocumentPastItsBound(t *testing.T) {
 	documents := ShellDocuments{Folder: t.TempDir()}
-	oversized := strings.Repeat("x", maxRecentBytes+1)
-	if err := os.WriteFile(documents.path(recentName), []byte(oversized), 0600); err != nil {
+	oversized := strings.Repeat("x", maxFiltersBytes+1)
+	if err := os.WriteFile(documents.path(filtersName), []byte(oversized), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := documents.read(recentName, maxRecentBytes); !errors.Is(err, errNotADocument) {
+	if _, err := documents.read(filtersName, maxFiltersBytes); !errors.Is(err, errNotADocument) {
 		t.Fatalf("an oversized document read as %v", err)
 	}
-	if err := os.WriteFile(documents.path(recentName), []byte(strings.Repeat("x", maxRecentBytes)), 0600); err != nil {
+	if err := os.WriteFile(documents.path(filtersName), []byte(strings.Repeat("x", maxFiltersBytes)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := documents.read(recentName, maxRecentBytes); err != nil {
+	if _, err := documents.read(filtersName, maxFiltersBytes); err != nil {
 		t.Fatalf("a document exactly at its bound was refused: %v", err)
 	}
 }

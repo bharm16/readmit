@@ -1,3 +1,4 @@
+import { findCaseRow } from "./testkit/navigation";
 import { openListedCase, openView } from "./testkit/navigation";
 import { readCaseIdentity } from "./testkit/navigation";
 // Authoring, saving, reopening and previewing a transformation plan in the
@@ -101,9 +102,9 @@ function previewOf(planEntry: string, steps: TransformStep[]): TransformResult {
  * offers authoring over it. */
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(screen.getAllByRole("button", { name: /^Open case(?: |$)/ })[0]!);
+  await user.click(await findCaseRow());
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Reports" }));
   await openView(user, "Transform and export");

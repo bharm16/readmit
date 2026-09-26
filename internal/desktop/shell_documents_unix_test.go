@@ -27,22 +27,22 @@ func TestTheStoreRefusesALinkAtAShellDocumentsName(t *testing.T) {
 	if err := os.WriteFile(victim, []byte(`{"led":"to"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(victim, documents.path(recentName)); err != nil {
+	if err := os.Symlink(victim, documents.path(filtersName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := documents.read(recentName, maxRecentBytes); !errors.Is(err, errNotADocument) {
+	if _, err := documents.read(filtersName, maxFiltersBytes); !errors.Is(err, errNotADocument) {
 		t.Fatalf("a link was read through: %v", err)
 	}
 	if led, err := os.ReadFile(victim); err != nil || string(led) != `{"led":"to"}` {
 		t.Fatalf("reading the link disturbed the document it led to: %q %v", led, err)
 	}
-	if err := os.Remove(documents.path(recentName)); err != nil {
+	if err := os.Remove(documents.path(filtersName)); err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Mkfifo(documents.path(recentName), 0600); err != nil {
+	if err := syscall.Mkfifo(documents.path(filtersName), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := documents.read(recentName, maxRecentBytes); !errors.Is(err, errNotADocument) {
+	if _, err := documents.read(filtersName, maxFiltersBytes); !errors.Is(err, errNotADocument) {
 		t.Fatalf("a FIFO was read, blocking or otherwise: %v", err)
 	}
 }

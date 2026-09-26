@@ -56,7 +56,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, handlers: F
   });
   // The first-run card and the command region's action bar both offer the same
   // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0]!);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await screen.findByRole("button", { name: "Project: Scheduling investigation" });
   return { facade };

@@ -1012,7 +1012,7 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v4", "readmit-case/v5"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a project is created, a case is registered from the listing, and the investigation continues from it"},
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Edit details sends one whole case at the revision it opened with, and a refusal keeps every value"},
       "parity_test": {"package": "internal/desktop", "name": "TestRegisterCaseRecordsWhatTheSharedReaderAccepted"},
       "implemented": true
     },
@@ -1060,7 +1060,7 @@
       "inputs": [],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a project is created, a case is registered from the listing, and the investigation continues from it"},
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "a new project asks only for a name, goes into the remembered location, and opens on its empty Cases"},
       "parity_test": {"package": "tests", "name": "TestApplicationCreatedProjectReadsThroughTheCommandLine"},
       "implemented": true
     },
@@ -1092,7 +1092,7 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1"],
       "outputs": ["readmit-revisions/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/NoteDraft.test.tsx", "name": "storing the note drops the draft only once the project has taken it"},
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a case's notes are listed, and a new note is one sheet with one Save about that case"},
       "parity_test": {"package": "internal/desktop", "name": "TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence"},
       "implemented": true
     },
@@ -1150,13 +1150,13 @@
       "kind": "cli",
       "capability": "Change project-level settings and declare interface versions",
       "owner": "bharm16/readmit#291",
-      "screen": "the project overview panel's settings form",
-      "action": "change project settings and declare interface versions",
+      "screen": "the project switcher's Project settings sheet",
+      "action": "change project settings and name interface revisions",
       "backend": {"package": "internal/operation", "name": "UpdateProjectSettings"},
       "inputs": ["readmit-project/v1"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/project-settings.journey.tsx", "name": "project settings are stored from the keyboard, refused, cancelled and left alone when unreadable, as the command line reads them"},
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Project settings saves name, owner, tags and revisions as one project, and a removed revision in use asks where its cases go"},
       "parity_test": {"package": "tests", "name": "TestProjectSettingsEditedInTheWindowMatchTheCommandLine"},
       "implemented": true
     },
@@ -1172,7 +1172,7 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "case details edited in the project reach the shared operation and only the changed members"},
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "the Cases list fills the page with Case, Status, Owner and Updated, and no project form, guide or file tree"},
       "parity_test": {"package": "tests", "name": "TestApplicationCreatedProjectReadsThroughTheCommandLine"},
       "implemented": true
     },
@@ -1188,7 +1188,7 @@
       "inputs": ["readmit-project/v1"],
       "outputs": ["readmit-project/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "case details edited in the project reach the shared operation and only the changed members"},
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Edit details sends one whole case at the revision it opened with, and a refusal keeps every value"},
       "parity_test": {"package": "internal/desktop", "name": "TestUpdateRegisteredCaseChangesOnlyWhatItNames"},
       "implemented": true
     },
@@ -3136,22 +3136,6 @@
       "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: the durable-run panel reopens retained run evidence read-only through desktop.App.OpenRunEvidence and reads its progress through desktop.App.DurableRunProgress", "successor": "desktop.App.OpenRunEvidence"}
     },
     {
-      "id": "desktop.RecoverSession",
-      "source": "desktop.App.RecoverSession",
-      "kind": "desktop",
-      "capability": "recoverSession application operation",
-      "owner": "bharm16/readmit#246",
-      "screen": "the restored-after-an-interruption panel",
-      "action": "restore the retained view and unstored notes read-only",
-      "backend": {"package": "internal/desktop", "name": "App.recoverSession"},
-      "inputs": ["readmit-desktop-session/v1", "readmit-job/v1"],
-      "outputs": [],
-      "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "recovery after an interruption never resumes or resends the run it was watching"},
-      "parity_test": {"package": "internal/desktop", "name": "TestRecoverSessionRestoresUnstoredWorkAndWhereItWas"},
-      "implemented": true
-    },
-    {
       "id": "desktop.RecordView",
       "source": "desktop.App.RecordView",
       "kind": "desktop",
@@ -3168,35 +3152,6 @@
       "implemented": true
     },
     {
-      "id": "desktop.SaveDraft",
-      "source": "desktop.App.SaveDraft",
-      "kind": "desktop",
-      "capability": "saveDraft application operation",
-      "owner": "bharm16/readmit#246",
-      "backend": {"package": "internal/desktop", "name": "App.SaveDraft"},
-      "inputs": ["readmit-desktop-session/v1"],
-      "outputs": ["readmit-desktop-session/v1"],
-      "prerequisites": ["author"],
-      "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: the window retains every unstored note, from its first letter, through the editor draft store (desktop.App.SaveEditorDraft); DiscardDraft still clears a restored session draft", "successor": "desktop.App.SaveEditorDraft"}
-    },
-    {
-      "id": "desktop.DiscardDraft",
-      "source": "desktop.App.DiscardDraft",
-      "kind": "desktop",
-      "capability": "discardDraft application operation",
-      "owner": "bharm16/readmit#246",
-      "screen": "the note editor of the evidence region",
-      "action": "drop a retained draft once the note is stored",
-      "backend": {"package": "internal/desktop", "name": "App.DiscardDraft"},
-      "inputs": ["readmit-desktop-session/v1"],
-      "outputs": ["readmit-desktop-session/v1"],
-      "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "a retained draft comes back after an interruption and is stored only by a deliberate act"},
-      "parity_test": {"package": "internal/desktop", "name": "TestARestoredDraftIsStoredThroughTheProjectDocument"},
-      "implemented": true
-    },
-    {
       "id": "desktop.SaveEditorDraft",
       "source": "desktop.App.SaveEditorDraft",
       "kind": "desktop",
@@ -3208,7 +3163,7 @@
       "inputs": ["readmit-desktop-drafts/v1"],
       "outputs": ["readmit-desktop-drafts/v1"],
       "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/NoteDraft.test.tsx", "name": "typing retains the edit from the first letter, with no name and no title yet"},
+      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "closing asks before dropping text the store refused to retain, and not afterwards"},
       "parity_test": {"package": "internal/desktop", "name": "TestEditorDraftsRoundTripIncludingAnUnfinishedNote"},
       "implemented": true
     },
@@ -3224,7 +3179,7 @@
       "inputs": ["readmit-desktop-drafts/v1"],
       "outputs": ["readmit-desktop-drafts/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/NoteDraft.test.tsx", "name": "emptying the editor discards the draft instead of retaining nothing"},
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "unsaved work is one compact item on Projects, reviewed in a sheet, resumed or discarded by hand"},
       "parity_test": {"package": "internal/desktop", "name": "TestARestoredNoteDraftIsStoredThroughTheProjectDocument"},
       "implemented": true
     },
@@ -3240,7 +3195,7 @@
       "inputs": ["readmit-desktop-drafts/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "a note retained in the draft store comes back after an interruption"},
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "unsaved work is one compact item on Projects, reviewed in a sheet, resumed or discarded by hand"},
       "parity_test": {"package": "internal/desktop", "name": "TestEditorDraftsRoundTripIncludingAnUnfinishedNote"},
       "implemented": true
     },
@@ -3397,72 +3352,8 @@
       "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "case details edited in the project reach the shared operation and only the changed members"},
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "the Cases list fills the page with Case, Status, Owner and Updated, and no project form, guide or file tree"},
       "parity_test": {"package": "internal/desktop", "name": "TestProjectOverviewReVerifiesRegisteredEvidence"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.CreateProject",
-      "source": "desktop.App.CreateProject",
-      "kind": "desktop",
-      "capability": "createProject application operation",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel's create form",
-      "action": "create a project through the native folder chooser and the shared operation",
-      "backend": {"package": "internal/project", "name": "Create"},
-      "inputs": [],
-      "outputs": ["readmit-project/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a project is created, a case is registered from the listing, and the investigation continues from it"},
-      "parity_test": {"package": "tests", "name": "TestApplicationCreatedProjectReadsThroughTheCommandLine"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.UpdateProjectSettings",
-      "source": "desktop.App.UpdateProjectSettings",
-      "kind": "desktop",
-      "capability": "updateProjectSettings application operation",
-      "owner": "bharm16/readmit#291",
-      "screen": "the project overview panel's settings form",
-      "action": "change project settings and declare interface versions",
-      "backend": {"package": "internal/operation", "name": "UpdateProjectSettings"},
-      "inputs": ["readmit-project/v1"],
-      "outputs": ["readmit-project/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/journeys/project-settings.journey.tsx", "name": "project settings are stored from the keyboard, refused, cancelled and left alone when unreadable, as the command line reads them"},
-      "parity_test": {"package": "tests", "name": "TestProjectSettingsEditedInTheWindowMatchTheCommandLine"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.RegisterCase",
-      "source": "desktop.App.RegisterCase",
-      "kind": "desktop",
-      "capability": "registerCase application operation",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel's registration form",
-      "action": "verify a workspace case and register it through the shared operation",
-      "backend": {"package": "internal/operation", "name": "RegisterCase"},
-      "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v4", "readmit-case/v5"],
-      "outputs": ["readmit-project/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a project is created, a case is registered from the listing, and the investigation continues from it"},
-      "parity_test": {"package": "internal/desktop", "name": "TestRegisterCaseRecordsWhatTheSharedReaderAccepted"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.UpdateRegisteredCase",
-      "source": "desktop.App.UpdateRegisteredCase",
-      "kind": "desktop",
-      "capability": "updateRegisteredCase application operation",
-      "owner": "bharm16/readmit#245",
-      "screen": "the project overview panel's case editor",
-      "action": "change a registered case's mutable metadata through the shared operation",
-      "backend": {"package": "internal/operation", "name": "UpdateRegisteredCase"},
-      "inputs": ["readmit-project/v1"],
-      "outputs": ["readmit-project/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "case details edited in the project reach the shared operation and only the changed members"},
-      "parity_test": {"package": "internal/desktop", "name": "TestUpdateRegisteredCaseChangesOnlyWhatItNames"},
       "implemented": true
     },
     {
@@ -3530,22 +3421,6 @@
       "implemented": true
     },
     {
-      "id": "desktop.OpenRevisions",
-      "source": "desktop.App.OpenRevisions",
-      "kind": "desktop",
-      "capability": "openRevisions application operation",
-      "owner": "bharm16/readmit#291",
-      "screen": "the project overview panel of the evidence region",
-      "action": "read the editable project document beside the evidence",
-      "backend": {"package": "internal/project", "name": "ReadRevisions"},
-      "inputs": ["readmit-project/v1", "readmit-revisions/v1"],
-      "outputs": [],
-      "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/project-settings.journey.tsx", "name": "the editable project document is read beside the overview as recorded, as project show prints it, and refused when unreadable"},
-      "parity_test": {"package": "tests", "name": "TestTheWindowReadsTheEditableDocumentProjectShowPrints"},
-      "implemented": true
-    },
-    {
       "id": "desktop.OpenWorkspace",
       "source": "desktop.App.OpenWorkspace",
       "kind": "desktop",
@@ -3554,43 +3429,11 @@
       "screen": "the navigation region",
       "action": "open a known folder and list what it declares",
       "backend": {"package": "internal/bundle", "name": "Describe"},
-      "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-desktop-recent/v1"],
-      "outputs": ["readmit-desktop-recent/v1"],
+      "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-project/v2", "readmit-catalog/v1", "readmit-desktop-projects/v1"],
+      "outputs": ["readmit-desktop-projects/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "reopening where you were is an explicit act that reopens and re-verifies"},
+      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "opening a workspace lists every entry as it declares itself, evidence or not"},
       "parity_test": {"package": "internal/desktop", "name": "TestWorkspaceListingDeclaresAndNeverVerifies"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.ForgetWorkspace",
-      "source": "desktop.App.ForgetWorkspace",
-      "kind": "desktop",
-      "capability": "forgetWorkspace application operation",
-      "owner": "bharm16/readmit#291",
-      "screen": "the navigation region's recent list",
-      "action": "forget one previously opened folder while leaving the folder itself untouched",
-      "backend": {"package": "internal/desktop", "name": "App.ForgetWorkspace"},
-      "inputs": ["readmit-desktop-recent/v1"],
-      "outputs": ["readmit-desktop-recent/v1"],
-      "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/recent-folders.journey.tsx", "name": "recent folders are listed, reopened after a restart with the keyboard, and forgotten only when confirmed"},
-      "parity_test": {"package": "internal/desktop", "name": "TestForgettingARecentFolderRemovesOnlyItsEntry"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.RecentWorkspaces",
-      "source": "desktop.App.RecentWorkspaces",
-      "kind": "desktop",
-      "capability": "recentWorkspaces application operation",
-      "owner": "bharm16/readmit#291",
-      "screen": "the navigation region's recent list",
-      "action": "list previously opened folders most recent first",
-      "backend": {"package": "internal/desktop", "name": "App.RecentWorkspaces"},
-      "inputs": ["readmit-desktop-recent/v1"],
-      "outputs": [],
-      "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/recent-folders.journey.tsx", "name": "recent folders are listed, reopened after a restart with the keyboard, and forgotten only when confirmed"},
-      "parity_test": {"package": "tests", "name": "TestRecentWorkspacesRecordFoldersAndNoEvidence"},
       "implemented": true
     },
     {
@@ -3607,22 +3450,6 @@
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/journeys/saved-filters.journey.tsx", "name": "named filters are saved from the keyboard, listed and selected, and each regrids exactly what index search finds"},
       "parity_test": {"package": "tests", "name": "TestDesktopGridRendersExactlyWhatTheCommandLineIndexSearchFinds"},
-      "implemented": true
-    },
-    {
-      "id": "desktop.SaveNote",
-      "source": "desktop.App.SaveNote",
-      "kind": "desktop",
-      "capability": "saveNote application operation",
-      "owner": "bharm16/readmit#245",
-      "screen": "the note editor of the evidence region",
-      "action": "store one editable note into the project's own document",
-      "backend": {"package": "internal/operation", "name": "SetProjectNote"},
-      "inputs": ["readmit-project/v1", "readmit-revisions/v1"],
-      "outputs": ["readmit-revisions/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/NoteDraft.test.tsx", "name": "storing the note drops the draft only once the project has taken it"},
-      "parity_test": {"package": "internal/desktop", "name": "TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence"},
       "implemented": true
     },
     {
@@ -3666,8 +3493,8 @@
       "screen": "the commands region's open action",
       "action": "choose a folder in the host dialog and open it",
       "backend": {"package": "internal/bundle", "name": "Describe"},
-      "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-desktop-recent/v1"],
-      "outputs": ["readmit-desktop-recent/v1"],
+      "inputs": ["readmit-project/v1", "readmit-revisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-project/v2", "readmit-catalog/v1", "readmit-desktop-projects/v1"],
+      "outputs": ["readmit-desktop-projects/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "opening a workspace lists every entry as it declares itself, evidence or not"},
       "parity_test": {"package": "internal/desktop", "name": "TestSelectWorkspaceReportsDismissedAndFailedDialogs"},
@@ -7262,14 +7089,16 @@
       "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-desktop-projects/v1", "readmit-case/v1", "readmit-test/v1", "readmit-suite/v1", "readmit-run/v1", "readmit-result/v1", "readmit-target/v3"],
       "outputs": ["readmit-desktop-projects/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "projects this viewer opened are listed newest first; a row opens its project and a missing one offers Locate"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTheCatalogListsEveryKindThroughItsOwnReader"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenItem",
       "source": "desktop.App.OpenItem",
       "kind": "desktop",
       "capability": "read one named object now through its own reader",
-      "owner": "bharm16/readmit#548",
+      "owner": "bharm16/readmit#549",
       "screen": "the detail view of any catalog object",
       "action": "open one object by its reference",
       "backend": {"package": "internal/desktop", "name": "App.OpenItem"},
@@ -7283,7 +7112,7 @@
       "source": "desktop.App.RenameItem",
       "kind": "desktop",
       "capability": "change one object's display name as metadata alone",
-      "owner": "bharm16/readmit#548",
+      "owner": "bharm16/readmit#567",
       "screen": "the rename sheet of any catalog object",
       "action": "rename an object without touching its files",
       "backend": {"package": "internal/desktop", "name": "App.RenameItem"},
@@ -7304,7 +7133,9 @@
       "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1"],
       "outputs": ["readmit-catalog/v1", "readmit-desktop-projects/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "projects this viewer opened are listed newest first; a row opens its project and a missing one offers Locate"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAMovedObjectStaysVisibleAndIsLocatedUnderItsIdentity"},
+      "implemented": true
     },
     {
       "id": "desktop.CreateNamedProject",
@@ -7318,7 +7149,9 @@
       "inputs": ["readmit-desktop-projects/v1"],
       "outputs": ["readmit-project/v2", "readmit-catalog/v1", "readmit-desktop-projects/v1"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "a new project asks only for a name, goes into the remembered location, and opens on its empty Cases"},
+      "parity_test": {"package": "internal/desktop", "name": "TestANewProjectNeedsOnlyAName"},
+      "implemented": true
     },
     {
       "id": "desktop.OpenNamedProject",
@@ -7332,7 +7165,9 @@
       "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1"],
       "outputs": ["readmit-catalog/v1", "readmit-desktop-projects/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "the Cases list fills the page with Case, Status, Owner and Updated, and no project form, guide or file tree"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAProjectIsRenamedAndMovedWithoutRewritingEvidence"},
+      "implemented": true
     },
     {
       "id": "desktop.ChooseProjectLocation",
@@ -7346,7 +7181,9 @@
       "inputs": [],
       "outputs": ["readmit-desktop-projects/v1"],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "with no remembered location, Change chooses one in the host's dialog while the sheet stays open"},
+      "parity_test": {"package": "internal/desktop", "name": "TestANewProjectNeedsOnlyAName"},
+      "implemented": true
     },
     {
       "id": "desktop.ProjectLocation",
@@ -7360,7 +7197,9 @@
       "inputs": ["readmit-desktop-projects/v1"],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "a new project asks only for a name, goes into the remembered location, and opens on its empty Cases"},
+      "parity_test": {"package": "internal/desktop", "name": "TestANewProjectNeedsOnlyAName"},
+      "implemented": true
     },
     {
       "id": "desktop.MigrateProjectDocument",
@@ -7385,7 +7224,7 @@
       "screen": "every whole-object editor sheet",
       "action": "show field problems while editing",
       "backend": {"package": "internal/desktop", "name": "App.ValidateDraft"},
-      "inputs": ["readmit-target/v3", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1"],
+      "inputs": ["readmit-target/v3", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2"],
       "outputs": [],
       "prerequisites": [],
       "implemented": false
@@ -7397,12 +7236,14 @@
       "capability": "publish one whole object draft as one revision, or nothing",
       "owner": "bharm16/readmit#553",
       "screen": "every whole-object editor sheet's Save",
-      "action": "save an environment, test or observation whole",
+      "action": "save an environment, test, observation, case's details or project's settings whole",
       "backend": {"package": "internal/catalog", "name": "Store.Save"},
-      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1"],
-      "outputs": ["readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-target/v3", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1"],
+      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2"],
+      "outputs": ["readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-target/v3", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2"],
       "prerequisites": ["author"],
-      "implemented": false
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Edit details sends one whole case at the revision it opened with, and a refusal keeps every value"},
+      "parity_test": {"package": "internal/desktop", "name": "TestASaveIsOneWholeRevisionAndOneClickSavesOnce"},
+      "implemented": true
     },
     {
       "id": "desktop.DiscardIncompleteSave",
@@ -7473,6 +7314,150 @@
       "outputs": [],
       "prerequisites": [],
       "implemented": false
+    },
+    {
+      "id": "desktop.ForgetProject",
+      "source": "desktop.App.ForgetProject",
+      "kind": "desktop",
+      "capability": "forget one remembered project while leaving the project itself untouched",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Projects list row menu",
+      "action": "remove a project from recents",
+      "backend": {"package": "internal/desktop", "name": "App.ForgetProject"},
+      "inputs": ["readmit-desktop-projects/v1"],
+      "outputs": ["readmit-desktop-projects/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "projects this viewer opened are listed newest first; a row opens its project and a missing one offers Locate"},
+      "parity_test": {"package": "internal/desktop", "name": "TestForgettingAProjectForgetsOnlyTheEntry"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.RevealItem",
+      "source": "desktop.App.RevealItem",
+      "kind": "desktop",
+      "capability": "show a project, case or attachment in the host's file manager without answering its path",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Show in Finder item of a project, case or attachment",
+      "action": "reveal an object where it is",
+      "backend": {"package": "internal/desktop", "name": "App.RevealItem"},
+      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-catalog/v1", "readmit-attachments/v1", "readmit-desktop-projects/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "the project's location is a value that Show reveals in the host's file browser"},
+      "parity_test": {"package": "internal/desktop", "name": "TestRevealShowsAnObjectsPlaceWithoutAnsweringIt"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.RemoveCaseFromProject",
+      "source": "desktop.App.RemoveCaseFromProject",
+      "kind": "desktop",
+      "capability": "take a case off its project while its files stay where they are",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Remove from project confirmation of a case",
+      "action": "remove a case from a project",
+      "backend": {"package": "internal/operation", "name": "UnregisterCase"},
+      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1"],
+      "outputs": ["readmit-project/v1", "readmit-project/v2", "readmit-catalog/v1"],
+      "prerequisites": ["author"],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Remove from project names the case and its one consequence, and removes only the association"},
+      "parity_test": {"package": "internal/desktop", "name": "TestRemovingACaseFromTheProjectKeepsItsFiles"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ListNotes",
+      "source": "desktop.App.ListNotes",
+      "kind": "desktop",
+      "capability": "list the notes of a case or the project's own notes",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Notes view of a case and the Notes of Project settings",
+      "action": "read notes",
+      "backend": {"package": "internal/desktop", "name": "App.ListNotes"},
+      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a case's notes are listed, and a new note is one sheet with one Save about that case"},
+      "parity_test": {"package": "internal/desktop", "name": "TestNotesAreSavedOnceAndListedPerCase"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.SaveNoteItem",
+      "source": "desktop.App.SaveNoteItem",
+      "kind": "desktop",
+      "capability": "save one whole note under an identity the application gives it",
+      "owner": "bharm16/readmit#548",
+      "screen": "the note editor sheet's Save",
+      "action": "save a note",
+      "backend": {"package": "internal/operation", "name": "SetProjectNote"},
+      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1"],
+      "outputs": ["readmit-revisions/v1"],
+      "prerequisites": ["author"],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "a case's notes are listed, and a new note is one sheet with one Save about that case"},
+      "parity_test": {"package": "internal/desktop", "name": "TestNotesAreSavedOnceAndListedPerCase"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ListAttachments",
+      "source": "desktop.App.ListAttachments",
+      "kind": "desktop",
+      "capability": "list the files attached to a case",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Attachments view of a case",
+      "action": "read a case's attachments",
+      "backend": {"package": "internal/catalog", "name": "Store.Attachments"},
+      "inputs": ["readmit-catalog/v1", "readmit-attachments/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "attachments are added through the host's file dialog, and removing one only unlinks it from the case"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAttachmentsAreCopiedIntoTheProjectAndRemovedAsAssociations"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.AddAttachments",
+      "source": "desktop.App.AddAttachments",
+      "kind": "desktop",
+      "capability": "copy chosen files into the project's storage as attachments of a case",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Add attachment control of a case",
+      "action": "attach files to a case",
+      "backend": {"package": "internal/catalog", "name": "Store.Attach"},
+      "inputs": ["readmit-catalog/v1", "readmit-attachments/v1", "readmit-project-quota/v1"],
+      "outputs": ["readmit-attachments/v1"],
+      "prerequisites": ["author"],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "attachments are added through the host's file dialog, and removing one only unlinks it from the case"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAttachmentsAreCopiedIntoTheProjectAndRemovedAsAssociations"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.RemoveAttachment",
+      "source": "desktop.App.RemoveAttachment",
+      "kind": "desktop",
+      "capability": "remove one attachment's association with its case, deleting nothing",
+      "owner": "bharm16/readmit#548",
+      "screen": "the remove control of an attachment",
+      "action": "remove an attachment from a case",
+      "backend": {"package": "internal/catalog", "name": "Store.Detach"},
+      "inputs": ["readmit-catalog/v1", "readmit-attachments/v1"],
+      "outputs": ["readmit-attachments/v1"],
+      "prerequisites": ["author"],
+      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "attachments are added through the host's file dialog, and removing one only unlinks it from the case"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAttachmentsAreCopiedIntoTheProjectAndRemovedAsAssociations"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ProjectFiles",
+      "source": "desktop.App.ProjectFiles",
+      "kind": "desktop",
+      "capability": "list by name the entries of a project that are none of its objects",
+      "owner": "bharm16/readmit#548",
+      "screen": "the Files list of the project menu",
+      "action": "read a project's loose files",
+      "backend": {"package": "internal/desktop", "name": "App.ProjectFiles"},
+      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-catalog/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/App.test.tsx", "name": "opening a workspace lists every entry as it declares itself, evidence or not"},
+      "parity_test": {"package": "internal/desktop", "name": "TestProjectFilesListsLooseEntriesByName"},
+      "implemented": true
     },
     {
       "id": "portal.event.payment.completed",
@@ -8155,10 +8140,7 @@
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {
-        "kind": "developer-tooling",
-        "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"
-      }
+      "disposition": {"kind": "developer-tooling", "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"}
     },
     {
       "id": "tooling.tools.install_desktop",
@@ -8170,10 +8152,7 @@
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {
-        "kind": "developer-tooling",
-        "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"
-      }
+      "disposition": {"kind": "developer-tooling", "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"}
     }
   ]
 }

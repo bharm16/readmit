@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,9 +31,10 @@ func stateApp(folder, state string) *desktop.App {
 	return desktop.New(chosenFolder(folder), desktop.ShellDocuments{Folder: state})
 }
 
-// A settings edit through the window writes the project document the command
-// writes for the same edit, byte for byte, and each refusal is the command's
-// own sentence with both documents left exactly as they were.
+// A settings Save in the window writes the project document the command
+// writes for the same edit, byte for byte. A draft either refuses is left
+// unwritten by both, and a document a later release wrote is refused by both
+// and replaced by neither.
 func TestProjectSettingsEditedInTheWindowMatchTheCommandLine(t *testing.T) {
 	command, window := newProject(t), newProject(t)
 	if !bytes.Equal(mustRead(t, filepath.Join(command, project.DocumentName)), mustRead(t, filepath.Join(window, project.DocumentName))) {
@@ -43,36 +45,43 @@ func TestProjectSettingsEditedInTheWindowMatchTheCommandLine(t *testing.T) {
 		t.Fatalf("project settings: %v %s", err, stderr)
 	}
 	app := desktopApp(t, t.TempDir())
-	title, owner, version := "Epic scheduling handover", "integration-team", "siu-2.5.1-v2"
-	declared := []string{"siu-2.5.1-v2"}
-	stored := app.UpdateProjectSettings(window, desktop.SettingsChange{Title: &title, DefaultOwner: &owner, DefaultInterfaceVersion: &version, DeclareVersions: &declared})
-	if stored.State != desktop.Completed || stored.Overview == nil || stored.Overview.Title != title ||
-		!reflect.DeepEqual(stored.Overview.InterfaceVersions, []string{"siu-2.5.1-v1", "siu-2.5.1-v2"}) || stored.Overview.DefaultVersion != version {
-		t.Fatalf("the window's settings edit: %+v", stored)
+	opened := app.OpenNamedProject(window)
+	if opened.State != desktop.Completed || opened.Project == nil {
+		t.Fatalf("open: %+v", opened)
+	}
+	save := func(intent string, draft desktop.ProjectDraft) desktop.SaveItemResult {
+		current := app.OpenItem(desktop.ItemRequest{Context: opened.Context, Ref: opened.Project.Ref})
+		base := ""
+		if current.Item != nil {
+			base = current.Item.Ref.Revision
+		}
+		return app.SaveItem(desktop.SaveItemRequest{Context: opened.Context, Kind: desktop.ProjectItem, Item: opened.Project.Ref.ID,
+			BaseRevision: base, IntentID: intent, Draft: desktop.ItemDraft{Project: &draft}})
+	}
+	kept := []desktop.RevisionDraft{{ID: "siu-2.5.1-v1", Name: "siu-2.5.1-v1"}, {ID: "siu-2.5.1-v2", Name: "siu-2.5.1-v2", Default: true}}
+	stored := save("settings", desktop.ProjectDraft{Name: "Epic scheduling handover", Owner: "integration-team",
+		Revisions: []desktop.RevisionDraft{{ID: "siu-2.5.1-v1", Name: "siu-2.5.1-v1"}, {Name: "siu-2.5.1-v2", Default: true}}})
+	if stored.State != desktop.Completed || stored.Projection == nil || !reflect.DeepEqual(stored.Projection.Project.Revisions, kept) {
+		t.Fatalf("the window's settings Save: %+v", stored)
 	}
 	edited := mustRead(t, filepath.Join(command, project.DocumentName))
 	if !bytes.Equal(edited, mustRead(t, filepath.Join(window, project.DocumentName))) {
 		t.Fatalf("the window wrote another document than the command for the same edit:\n%s\n%s", edited, mustRead(t, filepath.Join(window, project.DocumentName)))
 	}
 
-	empty, undeclared := "", "siu-9.9-v1"
 	for name, refusal := range map[string]struct {
-		change desktop.SettingsChange
-		flags  []string
-		reason string
+		draft desktop.ProjectDraft
+		flags []string
 	}{
-		"an empty title":           {desktop.SettingsChange{Title: &empty}, []string{"--title", ""}, "project title: must not be empty"},
-		"an undeclared default":    {desktop.SettingsChange{DefaultInterfaceVersion: &undeclared}, []string{"--default-interface-version", undeclared}, "the default interface version is not declared by this project"},
-		"an empty further version": {desktop.SettingsChange{DeclareVersions: &[]string{""}}, []string{"--interface-version", ""}, "interface version: "},
+		"an empty title":           {desktop.ProjectDraft{Name: "", Revisions: kept}, []string{"--title", ""}},
+		"an empty further version": {desktop.ProjectDraft{Name: "Epic scheduling handover", Revisions: append(kept[:2:2], desktop.RevisionDraft{Name: ""})}, []string{"--interface-version", ""}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			result := app.UpdateProjectSettings(window, refusal.change)
-			if result.State != desktop.Failed || !strings.HasPrefix(result.Reason, refusal.reason) {
-				t.Fatalf("the window: %+v, want a refusal beginning %q", result, refusal.reason)
+			if result := save("refused-"+strings.ReplaceAll(name, " ", "-"), refusal.draft); result.Outcome != desktop.InvalidOutcome || len(result.Problems) == 0 {
+				t.Fatalf("the window: %+v", result)
 			}
-			_, stderr, err := run(t, append([]string{"project", "settings", command}, refusal.flags...)...)
-			if err == nil || !strings.Contains(stderr, result.Reason) {
-				t.Fatalf("the command did not refuse in the window's words %q: %v %s", result.Reason, err, stderr)
+			if _, stderr, err := run(t, append([]string{"project", "settings", command}, refusal.flags...)...); err == nil || stderr == "" {
+				t.Fatal("the command accepted the refused edit")
 			}
 			for _, root := range []string{command, window} {
 				if !bytes.Equal(mustRead(t, filepath.Join(root, project.DocumentName)), edited) {
@@ -90,11 +99,11 @@ func TestProjectSettingsEditedInTheWindowMatchTheCommandLine(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if result := app.UpdateProjectSettings(window, desktop.SettingsChange{Title: &title}); result.State != desktop.Failed ||
+	if result := save("later", desktop.ProjectDraft{Name: "Epic scheduling handover", Revisions: kept}); result.State != desktop.Failed ||
 		result.Reason != "the project document was written by a version this release cannot read" {
 		t.Fatalf("the window over a later document: %+v", result)
 	}
-	if _, stderr, err := run(t, "project", "settings", command, "--title", title); err == nil || stderr == "" {
+	if _, stderr, err := run(t, "project", "settings", command, "--title", "Epic scheduling handover"); err == nil || stderr == "" {
 		t.Fatal("the command changed a document a later release wrote")
 	}
 	for _, root := range []string{command, window} {
@@ -104,10 +113,10 @@ func TestProjectSettingsEditedInTheWindowMatchTheCommandLine(t *testing.T) {
 	}
 }
 
-// The window reads the editable project document through the reader `readmit
-// project show` reads it with: every note and draft with its text, and every
-// revision's lineage with the identity its parent was registered under, which
-// the project overview does not carry.
+// The window reads a project's notes from the editable document `readmit
+// project show` prints: each note with its text, about the case it names or
+// about the project, and the overview names each revision's parent as the
+// document records it.
 func TestTheWindowReadsTheEditableDocumentProjectShowPrints(t *testing.T) {
 	original, derived := redactedRevision(t)
 	root := newProject(t)
@@ -124,46 +133,36 @@ func TestTheWindowReadsTheEditableDocumentProjectShowPrints(t *testing.T) {
 		}
 	}
 	app := desktopApp(t, t.TempDir())
-	opened := app.OpenRevisions(root)
-	if opened.State != desktop.Completed || opened.Revisions == nil {
-		t.Fatalf("the window's read of the editable document: %+v", opened)
+	context := desktop.RequestContext{Project: root}
+	unbound := app.ListNotes(desktop.NotesRequest{Context: context})
+	cases := app.ListCatalog(desktop.CatalogQuery{Context: context, Kind: desktop.CaseItem})
+	if unbound.State != desktop.Completed || cases.Page == nil || len(cases.Page.Items) != 1 {
+		t.Fatalf("the window's read of the project: %+v %+v", unbound, cases)
 	}
+	about := app.ListNotes(desktop.NotesRequest{Context: context, Case: &cases.Page.Items[0].Ref})
 	recorded, err := project.ReadRevisions(root)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(*opened.Revisions, recorded) {
-		t.Fatalf("the window read another document than the one recorded:\n%+v\n%+v", *opened.Revisions, recorded)
 	}
 	shown, stderr, err := run(t, "project", "show", root)
 	if err != nil || stderr != "" {
 		t.Fatalf("project show: %v %s", err, stderr)
 	}
-	if len(opened.Revisions.Revisions) != 1 || len(opened.Revisions.Notes) != 2 {
-		t.Fatalf("the window read %d revisions and %d notes", len(opened.Revisions.Revisions), len(opened.Revisions.Notes))
+	read := append(slices.Clone(unbound.Notes), about.Notes...)
+	if len(read) != len(recorded.Notes) {
+		t.Fatalf("the window read %d notes, the document records %d", len(read), len(recorded.Notes))
 	}
-	for _, revision := range opened.Revisions.Revisions {
-		if want := fmt.Sprintf("    operation=%s parent=%s parent_identity=%s\n", revision.Operation.Name, revision.Operation.Parent, revision.Operation.ParentIdentity); !strings.Contains(shown, want) {
-			t.Errorf("project show does not print the lineage the window read, %q:\n%s", want, shown)
+	for _, note := range read {
+		at := slices.IndexFunc(recorded.Notes, func(held project.Note) bool { return held.Name == note.ID })
+		if at < 0 || recorded.Notes[at].Title != note.Name || recorded.Notes[at].Body != note.Content || (recorded.Notes[at].Subject != "") != (note.Case != nil) {
+			t.Fatalf("the window read another note than the one recorded: %+v", note)
 		}
-	}
-	for _, note := range opened.Revisions.Notes {
-		subject := note.Subject
-		if subject == "" {
-			subject = "none"
-		}
-		body := "    body: none\n"
-		if note.Body != "" {
-			body = "    body:\n      " + strings.ReplaceAll(note.Body, "\n", "\n      ") + "\n"
-		}
-		if want := fmt.Sprintf("  %s subject=%s\n    title: %s\n%s", note.Name, subject, note.Title, body); !strings.Contains(shown, want) {
-			t.Errorf("project show does not print the note the window read, %q:\n%s", want, shown)
+		if !strings.Contains(shown, fmt.Sprintf("    title: %s\n", note.Name)) {
+			t.Errorf("project show does not print the note the window read, %q:\n%s", note.Name, shown)
 		}
 	}
-	// The overview beside it names the parent, and only this document names
-	// the identity the parent was registered under.
 	if overview := app.OpenProjectOverview(root); overview.Overview == nil || len(overview.Overview.Revisions) != 1 ||
-		overview.Overview.Revisions[0].Parent != opened.Revisions.Revisions[0].Operation.Parent {
+		overview.Overview.Revisions[0].Parent != recorded.Revisions[0].Operation.Parent {
 		t.Fatalf("the overview does not list the revision the document records: %+v", overview)
 	}
 
@@ -172,7 +171,7 @@ func TestTheWindowReadsTheEditableDocumentProjectShowPrints(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, project.RevisionsDocumentName), later, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if refused := app.OpenRevisions(root); refused.State != desktop.Failed || refused.Revisions != nil ||
+	if refused := app.ListNotes(desktop.NotesRequest{Context: context}); refused.State != desktop.Failed || len(refused.Notes) != 0 ||
 		refused.Reason != "the editable project document was written by a version this release cannot read" {
 		t.Fatalf("the window over a later editable document: %+v", refused)
 	}

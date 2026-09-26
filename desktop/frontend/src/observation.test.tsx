@@ -1,3 +1,4 @@
+import { goTo } from "./testkit/navigation";
 import { expect, test, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -122,7 +123,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = 
   });
   // The first-run card and the command region's action bar both offer the same
   // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0]!);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await screen.findByRole("button", { name: "Project: Scheduling investigation" });
   return { facade };
@@ -140,6 +141,7 @@ test("opening observation editor never queries and shows qualification state", a
   });
 
   const evidence = screen.getByRole("region", { name: "Main content" });
+  await goTo(user, "Environments");
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   expect(await screen.findByRole("heading", { name: "Observations", level: 3 })).toBeTruthy();
   expect(screen.getByText(/Editor opened locally/)).toBeTruthy();
@@ -185,6 +187,7 @@ test("local validation and unauthorized collect stay separate", async () => {
   });
 
   const evidence = screen.getByRole("region", { name: "Main content" });
+  await goTo(user, "Environments");
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   await screen.findByRole("heading", { name: "Observations", level: 3 });
 
@@ -235,6 +238,7 @@ test("denied and stale completion summaries stay distinct from absence", async (
       }),
   });
   const evidence = screen.getByRole("region", { name: "Main content" });
+  await goTo(user, "Environments");
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   await screen.findByRole("heading", { name: "Observations", level: 3 });
   await user.click(screen.getByRole("tab", { name: "Collect and results" }));
@@ -260,6 +264,7 @@ test("a source the facade answered is saved again as the person's choices, never
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
   });
   const evidence = screen.getByRole("region", { name: "Main content" });
+  await goTo(user, "Environments");
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   await screen.findByRole("heading", { name: "Observations", level: 3 });
   await user.click(screen.getByRole("button", { name: "Save observation" }));
@@ -340,6 +345,7 @@ async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLEleme
 
 async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
   const evidence = screen.getByRole("region", { name: "Main content" });
+  await goTo(user, "Environments");
   await user.click(within(evidence).getByRole("button", { name: "Observations" }));
   return within(await screen.findByRole("region", { name: "Observation setup" }));
 }

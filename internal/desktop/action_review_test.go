@@ -181,6 +181,7 @@ func TestAReviewDoesNotSurviveARestartOrAWithdrawal(t *testing.T) {
 	state := t.TempDir()
 	folder := t.TempDir()
 	app := activatedApp(t, &chooser{folder: folder}, state)
+	app.ChooseProjectLocation()
 	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Restarts"})
 	incident, lab := sendProject(t, app, created.Context, receiver.address)
 	review := prepared(t, app, sendRequest(created.Context, incident, lab))

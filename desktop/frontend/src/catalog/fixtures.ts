@@ -23,10 +23,7 @@ export const unhandledMethods = new Set<string>();
 export function installCatalogFixtures() {
   const handlers: FacadeHandlers = {
     Shell: f.shellResult,
-    RecentWorkspaces: () =>
-      f.recentResult([f.WORKSPACE_ROOT, "/synthetic-second-project"]),
     Filters: f.filtersResult,
-    RecoverSession: () => ({ state: "empty" }),
     EditorDrafts: () => ({ state: "empty", drafts: [] }),
     OperationStatus: () => ({
       state: "empty",
@@ -39,8 +36,6 @@ export function installCatalogFixtures() {
     HubStatus: () => f.defaultHubResult(),
     DisclosureStatus: f.disclosureStatusResult,
     RecordView: () => f.sessionStored,
-    SaveDraft: () => f.sessionStored,
-    DiscardDraft: () => f.sessionStored,
     SaveEditorDraft: () => ({ state: "completed" }),
     DiscardEditorDraft: () => ({ state: "completed" }),
     Cancel: async () => {},

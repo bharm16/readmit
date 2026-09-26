@@ -16,6 +16,8 @@ import type {
   ActionReviewResult,
   AssertionSetRequest,
   AssertionSetResult,
+  AttachmentRemoveRequest,
+  AttachmentsResult,
   BackupCreateRequest,
   BackupRestoreRequest,
   BackupResult,
@@ -36,8 +38,6 @@ import type {
   CaptureProgressResult,
   CaptureRequest,
   CaptureSessionResult,
-  CaseChange,
-  CaseRegistration,
   CaseResult,
   CaseStatus,
   CatalogQuery,
@@ -61,7 +61,6 @@ import type {
   DiagnosisRequest,
   DiagnosisResult,
   DisclosureStatusResult,
-  Draft,
   DraftRequest,
   DraftValidation,
   DurableRunRequest,
@@ -131,6 +130,9 @@ import type {
   NormalizationPolicyResult,
   NormalizeRequest,
   NormalizeResult,
+  NoteSaveRequest,
+  NotesRequest,
+  NotesResult,
   ObservationCaptureBindRequest,
   ObservationCollectFacadeRequest,
   ObservationCompletionResult,
@@ -173,8 +175,9 @@ import type {
   ProfileUpgradePinResult,
   ProfileValidateRequest,
   ProjectArchiveRequest,
+  ProjectFilesResult,
+  ProjectForgetResult,
   ProjectLocationResult,
-  ProjectNote,
   ProjectOpenResult,
   ProjectOverviewResult,
   ProjectQuotaChange,
@@ -194,8 +197,6 @@ import type {
   RawInspectionResult,
   ReceiverPolicyRequest,
   ReceiverPolicyResult,
-  RecentResult,
-  RecoveryResult,
   RedactInventoryRequest,
   RedactInventoryResult,
   RedactPolicyRequest,
@@ -222,11 +223,11 @@ import type {
   ResumeRunRequest,
   ResumeRunResult,
   RetirementPreviewResult,
+  RevealResult,
   ReviewRequest,
   ReviewResult,
   ReviewedActionResult,
   RevisionRegistration,
-  RevisionsResult,
   RoundTripRequest,
   RoundTripResult,
   RuleDocumentSaveRequest,
@@ -284,7 +285,6 @@ import type {
   SequenceRequest,
   SequenceResult,
   SessionResult,
-  SettingsChange,
   ShellResult,
   SourceAccessResult,
   SourceCollectionResult,
@@ -496,50 +496,8 @@ export function openProjectOverview(path: string): Promise<ProjectOverviewResult
   return retryingRead(() => facade().OpenProjectOverview(path), { state: "failed" });
 }
 
-/** Creating a project asks the host for its folder, then writes the same
- * document the command line writes. The answer is the new project re-read
- * from disk. */
-export function createProject(
-  name: string,
-  title: string,
-  owner: string,
-  versions: string[],
-): Promise<ProjectOverviewResult> {
-  return guard(() => facade().CreateProject(name, title, owner, versions), { state: "failed" });
-}
-
-/** A settings edit returns the project re-read from disk, so the window
- * renders what is stored rather than what the edit hoped for. */
-export function updateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult> {
-  return guard(() => facade().UpdateProjectSettings(path, change), { state: "failed" });
-}
-
-/** Registering a case verifies the bundle through the shared reader and
- * records what it declared; the metadata a person typed is only the part the
- * project maintains. The answer is the project re-read from disk. */
-export function registerCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult> {
-  return guard(() => facade().RegisterCase(path, name, registration), { state: "failed" });
-}
-
 export function registerRevision(request: RevisionRegistration): Promise<ProjectOverviewResult> {
   return guard(() => facade().RegisterRevision(request), { state: "failed" });
-}
-
-/** Updating a registered case changes only the members the form filled; the
- * recorded evidence facts are out of reach. The answer is the project
- * re-read from disk. */
-export function updateRegisteredCase(path: string, name: string, change: CaseChange): Promise<ProjectOverviewResult> {
-  return guard(() => facade().UpdateRegisteredCase(path, name, change), { state: "failed" });
-}
-
-export function openRevisions(path: string): Promise<RevisionsResult> {
-  return guard(() => facade().OpenRevisions(path), { state: "failed" });
-}
-
-/** The only write the shell makes into a project. It replaces one editable
- * note; it never writes inside a case, a run, or any other retained artifact. */
-export function saveNote(path: string, note: ProjectNote): Promise<RevisionsResult> {
-  return guard(() => facade().SaveNote(path, note), { state: "failed" });
 }
 
 /** The saved filters of this viewer and the one selected now. */
@@ -587,16 +545,6 @@ export function selectFilter(name: string): Promise<FiltersResult> {
 
 export function openWorkspace(path: string): Promise<WorkspaceResult> {
   return retryingRead(() => facade().OpenWorkspace(path), { state: "failed" });
-}
-
-export function recentWorkspaces(): Promise<RecentResult> {
-  return guard(() => facade().RecentWorkspaces(), { state: "failed", roots: [] });
-}
-
-/** Removes one folder from the recent list and answers the list as it now
- * stands. The folder itself is left exactly where it is. */
-export function forgetWorkspace(root: string): Promise<RecentResult> {
-  return guard(() => facade().ForgetWorkspace(root), { state: "failed", roots: [] });
 }
 
 export function search(path: string, query: string): Promise<SearchResult> {
@@ -722,25 +670,9 @@ export function inspectOccurrence(request: InspectRequest): Promise<InspectionRe
   return guard(() => facade().InspectOccurrence(request), { state: "failed" });
 }
 
-/** Restores the retained session and reports the state of the run it was
- * watching. Recovery only reads: it never resumes, restarts or resends. */
-export function recoverSession(): Promise<RecoveryResult> {
-  return retryingRead(() => facade().RecoverSession(), { state: "failed" });
-}
-
 /** Retains where this viewer is, so an interruption does not also lose it. */
 export function recordView(view: View): Promise<SessionResult> {
   return guard(() => facade().RecordView(view), { state: "failed" });
-}
-
-/** Retains one note that has been typed and not stored yet. */
-export function saveDraft(draft: Draft): Promise<SessionResult> {
-  return guard(() => facade().SaveDraft(draft), { state: "failed" });
-}
-
-/** Drops one retained draft, once the note it was an edit of has been stored. */
-export function discardDraft(project: string, name: string): Promise<SessionResult> {
-  return guard(() => facade().DiscardDraft(project, name), { state: "failed" });
 }
 
 /** Retains one editor's unstored work, replacing the draft it is an edit of. An
@@ -1943,4 +1875,49 @@ export function cancelOperation(operation: string): void {
   } catch {
     // Nothing is running if the facade is not bound yet.
   }
+}
+
+// Projects and Cases (#548).
+
+/** Removes a project from the projects this viewer remembers; the project
+ * itself is untouched. */
+export function forgetProject(id: string): Promise<ProjectForgetResult> {
+  return guard(() => facade().ForgetProject(id), { state: "failed" });
+}
+
+/** Shows an object in the host's file manager. The place is never answered. */
+export function revealItem(request: ItemRequest): Promise<RevealResult> {
+  return guard(() => facade().RevealItem(request), { state: "failed", context: request.context });
+}
+
+/** Takes a case off its project; its files stay where they are. */
+export function removeCaseFromProject(request: ItemRequest): Promise<ItemResult> {
+  return guard(() => facade().RemoveCaseFromProject(request), { state: "failed", context: request.context });
+}
+
+export function listNotes(request: NotesRequest): Promise<NotesResult> {
+  return retryingRead(() => facade().ListNotes(request), { state: "failed", context: request.context, notes: [] });
+}
+
+/** One Save of a whole note, under the intent its click allocated. */
+export function saveNoteItem(request: NoteSaveRequest): Promise<NotesResult> {
+  return submitted(() => facade().SaveNoteItem(request), { state: "failed", context: request.context, notes: [] });
+}
+
+export function listAttachments(request: ItemRequest): Promise<AttachmentsResult> {
+  return retryingRead(() => facade().ListAttachments(request), { state: "failed", context: request.context, attachments: [] });
+}
+
+/** Opens the host's file dialog and attaches the files chosen to the case. */
+export function addAttachments(request: ItemRequest): Promise<AttachmentsResult> {
+  return guard(() => facade().AddAttachments(request), { state: "failed", context: request.context, attachments: [] });
+}
+
+/** Removes one attachment's association with its case; nothing is deleted. */
+export function removeAttachment(request: AttachmentRemoveRequest): Promise<AttachmentsResult> {
+  return guard(() => facade().RemoveAttachment(request), { state: "failed", context: request.context, attachments: [] });
+}
+
+export function projectFiles(request: ItemRequest): Promise<ProjectFilesResult> {
+  return retryingRead(() => facade().ProjectFiles(request), { state: "failed", context: request.context, files: [] });
 }

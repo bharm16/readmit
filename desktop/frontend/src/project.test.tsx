@@ -1,12 +1,10 @@
-import { goTo } from "./testkit/navigation";
-import { readCaseIdentity } from "./testkit/navigation";
-// The project journey, driven as a person drives it: create a project,
-// register an existing case of the workspace, choose the artifacts the
-// actions apply to, and continue from what was retained — every step a real
-// user event over the real components, with only the typed facade stubbed.
-// What a project can hold and what a registration means is decided on the Go
-// side; these tests prove the window reaches the shared operations and draws
-// every outcome they can return.
+// The project's Cases, driven as a person drives them: the list the catalog
+// reads, each case's tasks from its menu — Edit details, Notes, Attachments,
+// Remove from project — and the project's own settings from its switcher.
+// Every step is a real user event over the real components, with only the
+// typed facade stubbed; what a save or removal means is decided on the Go
+// side, and these tests prove the window sends exactly what was edited and
+// keeps what was typed when it is refused.
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -15,303 +13,267 @@ import {
   CASE_IDENTITY,
   OTHER_CASE_ENTRY,
   WORKSPACE_ROOT,
+  caseCatalogItem,
   caseResult,
-  dialogDismissed,
   folderChosen,
   projectOverviewResult,
-  refused,
-  registeredCase,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
+import { findCaseRow, page, readCaseIdentity, sidebar } from "./testkit/navigation";
+import type { CatalogItem, CatalogQuery, CatalogResult } from "./bindings";
+import type { FacadeHandlers } from "./testkit/wails";
 
-async function startProject(user: ReturnType<typeof userEvent.setup>) {
- await goTo(user, "Projects");
- await user.click(screen.getByRole("button", { name: "New project" }));
-}
-async function reopenProject(user: ReturnType<typeof userEvent.setup>) {
- await goTo(user, "Projects");
- await user.click(screen.getByRole("button", { name: "Open…" }));
+type User = ReturnType<typeof userEvent.setup>;
+
+const PROJECT: CatalogItem = {
+  ref: { kind: "project", id: "p1", revision: "rev-project-1" },
+  name: "Scheduling investigation",
+  created_at: null,
+  updated_at: null,
+  last_opened_at: "2026-09-26T10:00:00Z",
+  availability: "available",
+  capabilities: [],
+  summary: {
+    project: {
+      folder: WORKSPACE_ROOT,
+      schema: "readmit-project/v2",
+      cases: 1,
+      interface_versions: ["v1"],
+      owner: "Integration team",
+      tags: ["scheduling"],
+      revisions: [
+        { id: "v1", name: "v1", default: true },
+        { id: "upgrade", name: "Upgrade 2027", default: false },
+      ],
+    },
+  },
+};
+
+function registered(entry: string): CatalogItem {
+  const item = caseCatalogItem(entry, "", "investigating");
+  return {
+    ...item,
+    ref: { ...item.ref, revision: `rev-${entry}` },
+    name: entry === CASE_ENTRY ? "Duplicate appointment after reschedule" : entry,
+    summary: { case: { ...item.summary.case!, owner: "Integration team", tags: ["scheduling"], incidents: ["INC-42"], interface_revision: "v1" } },
+  };
 }
 
-async function openPlainWorkspace(
-  user: ReturnType<typeof userEvent.setup>,
-  withProject = false,
-) {
+function catalog(cases: CatalogItem[]) {
+  return (query: CatalogQuery): CatalogResult => {
+    const items = query.kind === "project" ? [PROJECT] : query.kind === "case" ? cases : [];
+    return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+  };
+}
+
+/** Opens the project with its registered cases listed. */
+async function openProject(user: User, handlers: FacadeHandlers = {}, cases = [registered(CASE_ENTRY)]) {
   const { facade } = await renderApp({
-    OpenWorkspace: () => folderChosen(WORKSPACE_ROOT, [
-      { name: "project.json", kind: "project", schema: "readmit-project/v1" },
-      { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-    ]),
-    OpenProjectOverview: () => projectOverviewResult([]),
     SelectWorkspace: () =>
       folderChosen(WORKSPACE_ROOT, [
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-        ...(withProject ? [{ name: "project.json", kind: "project" as const, schema: "readmit-project/v1" }] : []),
+        { name: "project.json", kind: "project", schema: "readmit-project/v2" },
+        ...cases.map((item) => ({ name: item.summary.case!.entry, kind: "case" as const, schema: "readmit-case/v3", provenance: "generated" })),
       ]),
+    OpenProjectOverview: () => projectOverviewResult([]),
+    OpenNamedProject: () => ({ state: "completed", context: { project: "", generation: 0 }, recorded: true }),
+    ListCatalog: catalog(cases),
+    ...handlers,
   });
-  // The commands region and the first-run surface both offer the workspace
-  // opening under its shared reviewed name; either opens the same flow.
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
+  await sidebar().findByRole("button", { name: "Project: Scheduling investigation" });
   return { facade };
 }
 
-test("a project is created, a case is registered from the listing, and the investigation continues from it", async () => {
+async function caseMenu(user: User, name: string, action: string) {
+  const row = await findCaseRow(name);
+  await user.click(within(row).getByRole("button", { name: `More actions for ${name}` }));
+  await user.click(screen.getByRole("menuitem", { name: action }));
+}
+
+test("the Cases list fills the page with Case, Status, Owner and Updated, and no project form, guide or file tree", async () => {
   const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user);
+  await openProject(user);
+  const row = await findCaseRow("Duplicate appointment after reschedule");
+  expect(within(row).getByText("Investigating")).toBeTruthy();
+  expect(within(row).getByText("Integration team")).toBeTruthy();
+  expect(page().queryByText(/Other files in this folder/)).toBeNull();
+  expect(page().queryByRole("button", { name: "Observations" })).toBeNull();
+  expect(page().queryAllByRole("textbox")).toHaveLength(0);
+});
 
-  // Start: no project is open, and the window says what to do next.
-  const evidence = document.body;
-  expect(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` })).toBeTruthy();
-
-  // Create the project: the form asks for what the project document holds,
-  // and the folder that holds it is chosen in the host's own dialog.
-  facade.reply({
-    CreateProject: (name, title, owner, versions) => {
-      expect(name).toBe("scheduling-investigation");
-      expect(versions).toEqual(["siu-2.5.1-v1"]);
-      expect(title).toBe("Epic scheduling interface");
-      expect(owner).toBe("");
-      return projectOverviewResult([]);
-    },
+test("Edit details sends one whole case at the revision it opened with, and a refusal keeps every value", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    SaveItem: (request) => ({
+      state: "failed",
+      context: request.context,
+      outcome: "invalid",
+      replayed: false,
+      problems: [{ field: "name", problem: "A case needs a name." }],
+    }),
   });
-  await startProject(user);
-  await user.type(within(evidence).getByLabelText("Name"), "scheduling-investigation");
-  await user.type(within(evidence).getByLabelText("Title", { selector: "#new-project-title" }), "Epic scheduling interface");
-  await user.type(within(evidence).getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  await user.click(within(evidence).getByRole("button", { name: "Choose location and create…" }));
-  expect(facade.oneCall("CreateProject")).toBeTruthy();
-  expect(await screen.findByRole("button", { name: `Add ${CASE_ENTRY} to the project` })).toBeTruthy();
-
-  // Register an existing case: the picker offers the case bundles the
-  // workspace lists, and the registration carries what the person records.
-  facade.reply({
-    RegisterCase: (root, name, registration) => {
-      expect(root).toBe(WORKSPACE_ROOT);
-      expect(name).toBe(CASE_ENTRY);
-      expect(registration.title).toBe("Duplicate appointment");
-      expect(registration.tags).toEqual(["scheduling"]);
-      return projectOverviewResult([registeredCase()]);
-    },
+  await caseMenu(user, "Duplicate appointment after reschedule", "Edit details");
+  const sheet = within(await screen.findByRole("dialog", { name: "Edit details" }));
+  expect((sheet.getByLabelText("Status") as HTMLSelectElement).value).toBe("investigating");
+  expect(within(sheet.getByLabelText("Status")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Open", "Investigating", "Resolved", "Closed"]);
+  await user.selectOptions(sheet.getByLabelText("Status"), "resolved");
+  await user.clear(sheet.getByLabelText("Owner"));
+  await user.type(sheet.getByLabelText("Owner"), "Scheduling desk");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  const [request] = facade.oneCall("SaveItem");
+  expect(request).toMatchObject({
+    kind: "case",
+    item: `case-${CASE_ENTRY}`,
+    base_revision: `rev-${CASE_ENTRY}`,
+    draft: { case: { name: "Duplicate appointment after reschedule", status: "resolved", owner: "Scheduling desk", tags: ["scheduling"], interface_revision: "v1", incidents: ["INC-42"] } },
   });
-  await user.click(screen.getByRole("button", { name: `Add ${CASE_ENTRY} to the project` }));
-  await user.clear(within(evidence).getByLabelText("Title", { selector: "#register-title" }));
-  await user.type(within(evidence).getByLabelText("Title", { selector: "#register-title" }), "Duplicate appointment");
-  await user.type(within(evidence).getByLabelText("Tags", { selector: "#register-tags" }), "scheduling");
-  await user.click(within(evidence).getByRole("button", { name: "Add to project" }));
-  expect(
-    await within(evidence).findByText("Duplicate appointment after reschedule"),
-  ).toBeTruthy();
-  expect(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` })).toBeTruthy();
+  expect(request.intent_id).not.toBe("");
+  expect(await sheet.findByText("A case needs a name.")).toBeTruthy();
+  expect((sheet.getByLabelText("Owner") as HTMLInputElement).value).toBe("Scheduling desk");
+  // Saved, the sheet closes and the list is read again.
+  const before = facade.callsTo("ListCatalog").length;
+  facade.reply({ SaveItem: (retry) => ({ state: "completed", context: retry.context, outcome: "saved", replayed: false, problems: [], saved: retry.draft.case ? { kind: "case", id: `case-${CASE_ENTRY}` } : undefined }) as never });
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull());
+  expect(facade.callsTo("ListCatalog").length).toBeGreaterThan(before);
+});
 
-  // Continue: opening the registered case verifies it and names the next
-  // action the investigation continues from.
-  facade.reply({ OpenCase: () => caseResult() });
-  await user.click(within(evidence).getByRole("button", { name: /^Open case(?: |$)/ }));
+test("Remove from project names the case and its one consequence, and removes only the association", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    RemoveCaseFromProject: (request) => ({ state: "completed", context: request.context }),
+  });
+  await caseMenu(user, "Duplicate appointment after reschedule", "Remove from project");
+  const sheet = within(await screen.findByRole("dialog", { name: "Remove Duplicate appointment after reschedule?" }));
+  expect(sheet.getByText("Removes this case from the project; files stay on this computer.")).toBeTruthy();
+  await user.click(sheet.getByRole("button", { name: "Remove" }));
+  expect(facade.oneCall("RemoveCaseFromProject")[0]).toMatchObject({ ref: { kind: "case", id: `case-${CASE_ENTRY}` } });
+  expect(facade.callsTo("DeleteProjectFiles" as never)).toHaveLength(0);
+});
+
+test("Project settings saves name, owner, tags and revisions as one project, and a removed revision in use asks where its cases go", async () => {
+  const user = userEvent.setup();
+  let asked = 0;
+  const { facade } = await openProject(user, {
+    SaveItem: (request) =>
+      ++asked === 1
+        ? {
+            state: "failed",
+            context: request.context,
+            outcome: "invalid",
+            replayed: false,
+            problems: [{ field: "revisions.upgrade", problem: "Cases still use this revision.", referring: [{ ref: { kind: "case", id: "c2" }, name: "Cancellation rejected" }] }],
+          }
+        : { state: "completed", context: request.context, outcome: "saved", replayed: false, problems: [], saved: { kind: "project", id: "p1" } },
+  });
+  await user.click(sidebar().getByRole("button", { name: "Project: Scheduling investigation" }));
+  await user.click(screen.getByRole("menuitem", { name: "Project settings" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Project settings" }));
+  expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("Scheduling investigation");
+  expect(sheet.getByText(WORKSPACE_ROOT)).toBeTruthy();
+  await user.click(sheet.getByRole("button", { name: "Remove Upgrade 2027" }));
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.callsTo("SaveItem")[0]?.args[0]).toMatchObject({
+    kind: "project",
+    item: "p1",
+    base_revision: "rev-project-1",
+    draft: { project: { name: "Scheduling investigation", owner: "Integration team", tags: ["scheduling"], revisions: [{ id: "v1", name: "v1", default: true }], reassign: [] } },
+  });
+  expect(await sheet.findByText(/Upgrade 2027 is used by Cancellation rejected/)).toBeTruthy();
+  await user.selectOptions(sheet.getByLabelText("Move these cases to"), "v1");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.callsTo("SaveItem")[1]?.args[0]).toMatchObject({ draft: { project: { reassign: [{ from: "upgrade", to: "v1" }] } } });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).toBeNull());
+});
+
+test("the project's location is a value that Show reveals in the host's file browser", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, { RevealItem: (request) => ({ state: "completed", context: request.context }) });
+  await user.click(sidebar().getByRole("button", { name: "Project: Scheduling investigation" }));
+  await user.click(screen.getByRole("menuitem", { name: "Project settings" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Project settings" }));
+  await user.click(sheet.getByRole("button", { name: "Show" }));
+  expect(facade.oneCall("RevealItem")[0]).toMatchObject({ ref: { kind: "project", id: "p1" } });
+});
+
+test("a case's notes are listed, and a new note is one sheet with one Save about that case", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    ListNotes: (request) => ({ state: "completed", context: request.context, notes: [{ id: "n1", name: "First look", content: "The second S12 arrives before the ACK.", case: { kind: "case", id: `case-${CASE_ENTRY}` }, updated_at: null }] }),
+    SaveNoteItem: (request) => ({ state: "completed", context: request.context, notes: [], saved: { id: "n2", name: request.note.name, content: request.note.content, updated_at: null } }),
+  });
+  await caseMenu(user, "Duplicate appointment after reschedule", "Notes");
+  expect(await page().findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
+  expect(facade.callsTo("ListNotes")[0]?.args[0]).toMatchObject({ case: { kind: "case", id: `case-${CASE_ENTRY}` } });
+  await user.click(await within(page().getByRole("table", { name: "Notes" })).findByRole("row", { name: "First look" }));
+  expect(page().getByText("The second S12 arrives before the ACK.")).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "New note" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "New note" }));
+  expect(sheet.getByText("Duplicate appointment after reschedule")).toBeTruthy();
+  await user.type(sheet.getByLabelText("Name"), "Hypothesis");
+  await user.type(sheet.getByLabelText("Content"), "The receiver keys on SCH-1 only.");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.oneCall("SaveNoteItem")[0]).toMatchObject({ note: { name: "Hypothesis", content: "The receiver keys on SCH-1 only.", case: { kind: "case", id: `case-${CASE_ENTRY}` } } });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New note" })).toBeNull());
+  // Back returns to the case list.
+  await user.click(page().getByRole("button", { name: "Back to Duplicate appointment after reschedule" }));
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+});
+
+test("attachments are added through the host's file dialog, and removing one only unlinks it from the case", async () => {
+  const user = userEvent.setup();
+  const file = { id: "a1", name: "receiver-log.txt", type: "Text", added_at: null };
+  const { facade } = await openProject(user, {
+    ListAttachments: (request) => ({ state: "completed", context: request.context, attachments: [] }),
+    AddAttachments: (request) => ({ state: "completed", context: request.context, attachments: [file] }),
+    RemoveAttachment: (request) => ({ state: "completed", context: request.context, attachments: [] }),
+  });
+  await caseMenu(user, "Duplicate appointment after reschedule", "Attachments");
+  await user.click(await page().findByRole("button", { name: "Add attachment" }));
+  expect(facade.callsTo("AddAttachments")).toHaveLength(1);
+  const row = await within(page().getByRole("table", { name: "Attachments" })).findByRole("row", { name: "receiver-log.txt" });
+  await user.click(within(row).getByRole("button", { name: "More actions for receiver-log.txt" }));
+  await user.click(screen.getByRole("menuitem", { name: "Remove from case" }));
+  expect(facade.oneCall("RemoveAttachment")[0]).toMatchObject({ case: { kind: "case", id: `case-${CASE_ENTRY}` }, id: "a1" });
+  expect(await page().findByText("No attachments")).toBeTruthy();
+});
+
+test("search and filters narrow the list without saving anything, and chips take them off", async () => {
+  const user = userEvent.setup();
+  const other = { ...registered(OTHER_CASE_ENTRY), name: "Cancellation rejected", summary: { case: { ...registered(OTHER_CASE_ENTRY).summary.case!, status: "open" as const, owner: "", tags: [] } } };
+  const { facade } = await openProject(user, {}, [registered(CASE_ENTRY), other]);
+  await findCaseRow("Cancellation rejected");
+  await user.click(page().getByRole("button", { name: "Filter cases" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Filter cases" }));
+  await user.click(sheet.getByRole("checkbox", { name: "Open" }));
+  await user.click(sheet.getByRole("button", { name: "Apply" }));
+  expect(page().queryByRole("row", { name: "Duplicate appointment after reschedule" })).toBeNull();
+  expect(page().getByRole("row", { name: "Cancellation rejected" })).toBeTruthy();
+  await user.click(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Open" }));
+  expect(await findCaseRow("Duplicate appointment after reschedule")).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Search cases" }));
+  await user.type(within(await screen.findByRole("dialog", { name: "Search cases" })).getByLabelText("Search"), "nothing like this{Enter}");
+  expect(await page().findByText("No matching cases")).toBeTruthy();
+  await user.click(page().getAllByRole("button", { name: "Clear filters" })[0]!);
+  expect(await findCaseRow("Cancellation rejected")).toBeTruthy();
+  // Nothing about the view was written anywhere.
+  expect(facade.callsTo("SaveFilter")).toHaveLength(0);
+});
+
+test("a row opens its case on Messages, and Back returns to the list with that case selected and its sort", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, { OpenCase: () => caseResult() });
+  await findCaseRow("Duplicate appointment after reschedule");
+  await user.click(page().getByRole("button", { name: "Case" }));
+  await user.click(page().getByRole("button", { name: /Case/ }));
+  await user.click(await findCaseRow("Duplicate appointment after reschedule"));
   expect(facade.oneCall("OpenCase")).toEqual([WORKSPACE_ROOT, CASE_ENTRY]);
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
   expect(screen.getByRole("tab", { name: "Messages", selected: true })).toBeTruthy();
-  // The project stays named in its switcher, and the case page has its way back.
-  expect(screen.getByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
-  expect(within(evidence).getByRole("button", { name: "Back to cases" })).toBeTruthy();
-  expect(screen.getByRole("heading", { level: 1, name: /Duplicate appointment/ })).toBeTruthy();
-});
-
-/** The new project's own folder inside the open workspace, the way the
- * facade creates it, and its overview read from there. */
-const CREATED = `${WORKSPACE_ROOT}/scheduling-investigation`;
-function createdOverview() {
-  const result = projectOverviewResult([]);
-  return { ...result, overview: { ...result.overview!, root: CREATED } };
-}
-
-test("a project created in a folder inside the workspace becomes the open workspace", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user);
-  facade.reply({
-    CreateProject: () => createdOverview(),
-    OpenWorkspace: () =>
-      folderChosen(CREATED, [{ name: "project.json", kind: "project", schema: "readmit-project/v1" }]),
-    OpenProjectOverview: () => createdOverview(),
-  });
-  const evidence = screen;
-  await startProject(user);
-  await user.type(evidence.getByLabelText("Name"), "scheduling-investigation");
-  await user.type(evidence.getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  await user.click(evidence.getByRole("button", { name: "Choose location and create…" }));
-  // The window opens the new project's own folder and reads the project there,
-  // so registering and importing act on it rather than the folder around it.
-  expect(await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / })).toBeTruthy();
-  expect(facade.oneCall("OpenWorkspace")).toEqual([CREATED]);
-  await waitFor(() =>
-    expect(facade.callsTo("OpenProjectOverview").at(-1)).toEqual({ method: "OpenProjectOverview", args: [CREATED] }),
-  );
-  expect(await evidence.findByText("No cases yet")).toBeTruthy();
-});
-
-test("a new project folder that cannot be opened leaves no project open over the folder around it", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user);
-  facade.reply({
-    CreateProject: () => createdOverview(),
-    OpenWorkspace: () => refused("this account cannot read that folder"),
-  });
-  const evidence = screen;
-  await startProject(user);
-  await user.type(evidence.getByLabelText("Name"), "scheduling-investigation");
-  await user.type(evidence.getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  await user.click(evidence.getByRole("button", { name: "Choose location and create…" }));
-  expect(await screen.findAllByText("this account cannot read that folder")).toBeTruthy();
-  // The workspace that was open stays open, and no project is shown over it.
-  expect(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: /^Project: / })).toBeTruthy();
-  expect(evidence.queryByRole("button", { name: "Add to project" })).toBeNull();
-  expect(facade.callsTo("OpenProjectOverview")).toHaveLength(0);
-});
-
-test("a dismissed folder dialog is a cancelled create that opened nothing", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user);
-  facade.reply({ CreateProject: () => dialogDismissed });
-  const evidence = document.body;
-  await startProject(user);
-  await user.type(within(evidence).getByLabelText("Name"), "scheduling-investigation");
-  await user.type(within(evidence).getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  await user.click(within(evidence).getByRole("button", { name: "Choose location and create…" }));
-  expect(await within(evidence).findByText("The project was not created.")).toBeTruthy();
-  expect(facade.callsTo("OpenCase")).toHaveLength(0);
-});
-
-test("a folder this account cannot create in is reported as denied, in words and shape", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user);
-  facade.reply({
-    CreateProject: () => ({ state: "permission_denied" as const, reason: "this account cannot create a folder in the chosen folder" }),
-  });
-  const evidence = document.body;
-  await startProject(user);
-  await user.type(within(evidence).getByLabelText("Name"), "scheduling-investigation");
-  await user.type(within(evidence).getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  await user.click(within(evidence).getByRole("button", { name: "Choose location and create…" }));
-  expect(await within(evidence).findByText("Not created")).toBeTruthy();
-  expect(
-    within(evidence).getAllByText("this account cannot create a folder in the chosen folder"),
-  ).toBeTruthy();
-});
-
-test("a project document this release cannot read is reported and changes nothing", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user, true);
-  facade.reply({
-    OpenProjectOverview: () =>
-      refused("the project document was written by a version this release cannot read"),
-  });
-  const evidence = document.body;
-  await reopenProject(user);
-  expect(
-    await within(evidence).findByText(
-      "the project document was written by a version this release cannot read",
-    ),
-  ).toBeTruthy();
-  expect(facade.callsTo("RegisterCase")).toHaveLength(0);
-  expect(facade.callsTo("UpdateProjectSettings")).toHaveLength(0);
-});
-
-test("a registration the project refuses reports the refusal and registers nothing else", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user, true);
-  facade.reply({
-    OpenProjectOverview: () => projectOverviewResult([]),
-    RegisterCase: () => refused("that name is already registered in this project"),
-  });
-  const evidence = document.body;
-  await reopenProject(user);
-  await user.click(await screen.findByRole("button", { name: `Add ${CASE_ENTRY} to the project` }));
-  await user.clear(within(evidence).getByLabelText("Title", { selector: "#register-title" }));
-  await user.type(within(evidence).getByLabelText("Title", { selector: "#register-title" }), "Duplicate appointment");
-  await user.click(within(evidence).getByRole("button", { name: "Add to project" }));
-  expect(
-    await within(evidence).findByText("that name is already registered in this project"),
-  ).toBeTruthy();
-  expect(facade.callsTo("RegisterCase")).toHaveLength(1);
-  // The refusal carries no overview; the project stays on the screen beside it.
-  expect(screen.getByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
-});
-
-test("a refused settings change keeps the project and its controls on screen beside the refusal", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user, true);
-  facade.reply({
-    OpenProjectOverview: () => projectOverviewResult([]),
-    UpdateProjectSettings: () => ({ state: "permission_denied" as const, reason: "this device released its entitlement activation" }),
-  });
-  const evidence = screen;
-  await reopenProject(user);
-  expect(await screen.findByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
-  await user.click(evidence.getByRole("button", { name: "Edit…" }));
-  await user.clear(evidence.getByLabelText("Title", { selector: "#settings-title" }));
-  await user.type(evidence.getByLabelText("Title", { selector: "#settings-title" }), "Renamed");
-  await user.click(evidence.getByRole("button", { name: "Save" }));
-  expect(await evidence.findAllByText("this device released its entitlement activation")).toBeTruthy();
-  // The refusal carries no overview; the project the window last read stays,
-  // with the controls that act on it.
-  expect(screen.getByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
-  expect(evidence.getByRole("dialog", { name: "Project settings" })).toBeTruthy();
-  expect((evidence.getByLabelText("Title", { selector: "#settings-title" }) as HTMLInputElement).value).toBe("Renamed");
-  expect(facade.callsTo("UpdateProjectSettings")).toHaveLength(1);
-});
-
-test("the editable document shows each note's text and each revision's lineage with the identity its parent was registered under", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user, true);
-  facade.reply({
-    OpenProjectOverview: () => projectOverviewResult([registeredCase()]),
-    OpenRevisions: () => ({
-      state: "completed" as const,
-      root: WORKSPACE_ROOT,
-      revisions: {
-        schema: "readmit-revisions/v1",
-        notes: [
-          { name: "handover", title: "Handover checklist", body: "Confirm the reschedule reaches the ledger once." },
-          { name: "about-the-case", subject: CASE_ENTRY, title: "Why it doubled", body: "" },
-        ],
-        revisions: [
-          {
-            name: "reduced-case",
-            identity: "revision-identity-fixed-for-tests",
-            schema: "readmit-case/v3",
-            provenance: "derived",
-            operation: { name: "readmit-reproducer/v1", parent: CASE_ENTRY, parent_identity: CASE_IDENTITY },
-          },
-        ],
-      },
-    }),
-  });
-  const evidence = screen;
-  await reopenProject(user);
-  expect(await screen.findByRole("button", { name: "Project: Scheduling investigation" })).toBeTruthy();
-  expect(facade.callsTo("OpenRevisions")).toHaveLength(0);
-
-  await user.click(evidence.getByText("Project document"));
-  const recorded = within(await evidence.findByRole("region", { name: "Editable project document" }));
-  expect(await recorded.findByText("2 notes")).toBeTruthy();
-  expect(recorded.getByText("Project draft")).toBeTruthy();
-  expect(recorded.getByText(`About ${CASE_ENTRY}`)).toBeTruthy();
-  expect(recorded.getByText("Confirm the reschedule reaches the ledger once.")).toBeTruthy();
-  expect(recorded.getByText("1 revision")).toBeTruthy();
-  expect(recorded.getByText(`Reproducer of ${CASE_ENTRY}`)).toBeTruthy();
-  expect(recorded.getByText("revision-identity-fixed-for-tests")).toBeTruthy();
-  expect(recorded.getByText(`parent ${CASE_IDENTITY}`)).toBeTruthy();
-  expect(facade.oneCall("OpenRevisions")).toEqual([WORKSPACE_ROOT]);
-
-  // Closing it and asking again reads it again; a refusal is shown as the
-  // refusal and nothing from the earlier read stands in for it.
-  await user.click(evidence.getByText("Project document"));
-  facade.reply({ OpenRevisions: () => ({ state: "permission_denied" as const, reason: "this account cannot open the chosen folder" }) });
-  await user.click(evidence.getByText("Project document"));
-  const denied = within(await evidence.findByRole("region", { name: "Editable project document" }));
-  expect(await denied.findByText("this account cannot open the chosen folder")).toBeTruthy();
-  expect(denied.queryByText("Handover checklist")).toBeNull();
-  expect(facade.callsTo("OpenRevisions")).toHaveLength(2);
+  await user.click(page().getByRole("button", { name: "Back to cases" }));
+  expect((await findCaseRow("Duplicate appointment after reschedule")).getAttribute("aria-selected")).toBe("true");
+  // The column the list was sorted by comes back with it.
+  expect(page().getByRole("columnheader", { name: /Case/ }).getAttribute("aria-sort")).toBe("descending");
 });
 
 test("search results open the artifact they matched, not only its name", async () => {
@@ -330,7 +292,7 @@ test("search results open the artifact they matched, not only its name", async (
     }),
     OpenCase: () => caseResult(OTHER_CASE_ENTRY),
   });
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.keyboard("{Control>}f{/Control}");
   await user.type(screen.getByRole("searchbox", { name: "Search this project" }), "other{Enter}");
@@ -357,7 +319,7 @@ test("a second navigation started while one runs starts nothing else, so no stal
       ],
     }),
   });
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.keyboard("{Control>}f{/Control}");
   await user.type(screen.getByRole("searchbox", { name: "Search this project" }), "case{Enter}");
@@ -374,52 +336,3 @@ test("a second navigation started while one runs starts nothing else, so no stal
   expect(facade.callsTo("OpenCase")[0]?.args[1]).toBe(CASE_ENTRY);
 });
 
-test("case details edited in the project reach the shared operation and only the changed members", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user, true);
-  facade.reply({
-    OpenProjectOverview: () => projectOverviewResult([registeredCase()]),
-    UpdateRegisteredCase: (root, name, change) => {
-      expect(root).toBe(WORKSPACE_ROOT);
-      expect(name).toBe(CASE_ENTRY);
-      expect(change.status).toBe("investigating");
-      expect(change.title).toBeUndefined();
-      expect(change.tags).toBeUndefined();
-      return projectOverviewResult([{ ...registeredCase(), status: "investigating" }]);
-    },
-  });
-  const evidence = document.body;
-  await reopenProject(user);
-  await user.click(
-    await within(evidence).findByRole("button", { name: /^Edit Duplicate appointment/ }),
-  );
-  await user.selectOptions(
-    within(evidence).getByLabelText("Status", { selector: "#case-status" }),
-    "investigating",
-  );
-  await user.click(within(evidence).getByRole("button", { name: "Save" }));
-  // The refreshed overview is what renders, so the edit shows in the status
-  // badge the project now reports.
-  expect(
-    await within(evidence).findAllByText("Investigating"),
-  ).not.toHaveLength(0);
-  expect(facade.oneCall("UpdateRegisteredCase")).toBeTruthy();
-});
-
-test("the project forms are reachable and operable with the keyboard alone", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openPlainWorkspace(user);
-  facade.reply({ CreateProject: (name) => {
-    expect(name).toBe("project-from-keys");
-    return projectOverviewResult([]);
-  } });
-  const evidence = document.body;
-  await startProject(user);
-  const name = within(evidence).getByLabelText("Name");
-  name.focus();
-  await user.keyboard("project-from-keys");
-  await user.type(within(evidence).getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  await user.keyboard("{Enter}");
-  expect(facade.oneCall("CreateProject")).toBeTruthy();
-  expect(await screen.findByRole("button", { name: `Add ${CASE_ENTRY} to the project` })).toBeTruthy();
-});

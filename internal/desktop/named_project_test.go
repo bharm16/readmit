@@ -5,6 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -14,12 +15,22 @@ import (
 )
 
 // A project is created from a name alone: no interface revision is asked for
-// or invented, its folder is the application's, and the folder new projects
-// are kept in is asked for once and remembered.
+// or invented, its folder is the application's, and it is created in the
+// folder chosen beforehand to keep projects in. Create never opens a dialog.
 func TestANewProjectNeedsOnlyAName(t *testing.T) {
 	location := t.TempDir()
 	dialogs := &chooser{folder: location}
 	app := newApp(t, dialogs)
+	if refused := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"}); refused.State != desktop.Failed || refused.Reason == "" ||
+		len(dialogs.titles) != 0 {
+		t.Fatalf("a project was created, or a dialog opened, with no projects folder chosen: %+v %v", refused, dialogs.titles)
+	}
+	if unset := app.ProjectLocation(); unset.State != desktop.Empty {
+		t.Fatalf("location before one was chosen: %+v", unset)
+	}
+	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed || len(dialogs.titles) != 1 {
+		t.Fatalf("choose: %+v", chosen)
+	}
 	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
 	if created.State != desktop.Completed || created.Project == nil || created.Project.Name != "Scheduling QA" {
 		t.Fatalf("create: %+v", created)
@@ -35,12 +46,19 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 	if created.Project.Summary.Project.Cases != 0 || len(created.Project.Summary.Project.InterfaceVersions) != 0 {
 		t.Fatalf("summary: %+v", created.Project.Summary.Project)
 	}
-	// The second project is created in the remembered folder without a
-	// dialog, and an overview reads the empty project as it is.
-	dialogs.folder = ""
+	// A name is 1 to 200 characters in any script.
+	long := strings.Repeat("調", 150)
+	if wide := app.CreateNamedProject(desktop.NewProjectRequest{Name: long}); wide.State != desktop.Completed || wide.Project.Name != long {
+		t.Fatalf("a 150-character name was refused: %+v", wide)
+	}
+	if tooLong := app.CreateNamedProject(desktop.NewProjectRequest{Name: strings.Repeat("調", 201)}); tooLong.State != desktop.Failed {
+		t.Fatalf("a 201-character name was accepted: %+v", tooLong)
+	}
+	// Further projects are created in the same folder without a dialog, and
+	// an overview reads the empty project as it is.
 	second := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Order interface"})
 	if second.State != desktop.Completed || len(dialogs.titles) != 1 {
-		t.Fatalf("the remembered folder was asked for again: %+v %v", second, dialogs.titles)
+		t.Fatalf("a dialog opened for a second project: %+v %v", second, dialogs.titles)
 	}
 	if overview := app.OpenProjectOverview(folder); overview.State != desktop.Empty || overview.Overview == nil || len(overview.Overview.InterfaceVersions) != 0 {
 		t.Fatalf("overview of an empty v2 project: %+v", overview)
@@ -48,7 +66,8 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 	if remembered := app.ProjectLocation(); remembered.State != desktop.Completed || remembered.Location != location {
 		t.Fatalf("location: %+v", remembered)
 	}
-	// A remembered folder that is gone is asked for again, never created.
+	// A remembered folder that is gone is not offered and not created; the
+	// remembered value stays, so the folder coming back is offered again.
 	gone := filepath.Join(t.TempDir(), "gone")
 	if err := os.Mkdir(gone, 0o700); err != nil {
 		t.Fatal(err)
@@ -60,12 +79,30 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 	if err := os.Remove(gone); err != nil {
 		t.Fatal(err)
 	}
-	dialogs.folder = ""
-	if refused := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Third"}); refused.State != desktop.Cancelled {
-		t.Fatalf("a missing projects folder was not asked for again: %+v", refused)
+	if missing := app.ProjectLocation(); missing.State != desktop.Empty || missing.Location != "" {
+		t.Fatalf("a missing projects folder was offered: %+v", missing)
+	}
+	if refused := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Third"}); refused.State != desktop.Failed || len(dialogs.titles) != 2 {
+		t.Fatalf("a missing projects folder was not refused without a dialog: %+v %v", refused, dialogs.titles)
 	}
 	if _, err := os.Lstat(gone); !os.IsNotExist(err) {
 		t.Fatal("a remembered projects folder that was gone was created")
+	}
+	if err := os.Mkdir(gone, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if back := app.ProjectLocation(); back.State != desktop.Completed || back.Location != gone {
+		t.Fatalf("the remembered folder was not kept: %+v", back)
+	}
+	// A folder this account cannot write in is not offered either.
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		if err := os.Chmod(gone, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(gone, 0o700) })
+		if unwritable := app.ProjectLocation(); unwritable.State != desktop.Empty {
+			t.Fatalf("an unwritable projects folder was offered: %+v", unwritable)
+		}
 	}
 }
 
@@ -75,6 +112,7 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 func TestAProjectIsRenamedAndMovedWithoutRewritingEvidence(t *testing.T) {
 	location := t.TempDir()
 	app := newApp(t, &chooser{folder: location})
+	app.ChooseProjectLocation()
 	first := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
 	second := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
 	if first.State != desktop.Completed || second.State != desktop.Completed {

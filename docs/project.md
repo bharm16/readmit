@@ -75,7 +75,7 @@ case inherits when it is registered without them:
 
 | Setting | Meaning |
 | --- | --- |
-| `title` | The project title, 1–200 bytes of printable text |
+| `title` | The project title, 1–200 bytes of printable text (1–200 characters, at most 800 bytes, in a `readmit-project/v2` document) |
 | `default_owner` | The owner a case inherits when `--owner` is absent |
 | `default_interface_version` | The declared interface version a case inherits when `--interface-version` is absent |
 
@@ -86,7 +86,8 @@ same interface stays separable and a typo cannot invent a version. `project
 settings --interface-version ID` declares a further one; a declared version is
 never removed, and the first one declared at `init` becomes the default. A
 project created by name (`readmit-project/v2`, below) may declare none yet, and
-its cases may leave theirs unassigned.
+its cases may leave theirs unassigned; a v2 version no case is assigned to can
+be removed from the desktop's project settings.
 
 ## Case metadata
 
@@ -215,10 +216,11 @@ exactly as they were. A note is not evidence, so it carries no identity and is
 never sealed.
 
 A note that has been typed and not stored yet is not in this document at all.
-The desktop shell retains such a draft in its own per-viewer working session,
-outside the project and outside evidence, so an interruption returns the text
-instead of losing it; storing it is still `project note` or `SaveNote`, which is
-where the subject is checked against what this project registers. See
+The desktop shell retains such a draft in its own per-viewer editor draft
+store, outside the project and outside evidence, so an interruption returns the
+text instead of losing it; storing it is still `project note` or the desktop's
+`SaveNoteItem`, which run the same operation and are where the subject is
+checked against what this project registers. See
 [recovering after an interruption](desktop.md).
 
 ## The document: readmit-project/v1
@@ -264,21 +266,57 @@ bytes on every machine. It is bounded at 1 MiB and 256 registered cases; a
 project past a bound is refused rather than truncated. Titles are valid UTF-8
 with no control characters, and every identifier — owner, tag, incident
 reference, interface version — uses letters, digits, `.`, `_` and `-` only, so
-none of them can carry a separator or a line break into a rendered report.
+none of them can carry a separator or a line break into a rendered report. In
+a `readmit-project/v2` document (below), owners, tags and incident references
+are instead text a person typed, such as `Integration team`, stored exactly as
+entered: an owner is 1–100 characters and each tag or incident reference 1–64,
+with no control character and no leading or trailing space, and a list holds
+each value once. Interface version identifiers keep the identifier rule in
+both contracts.
 
 ## A project created by name: readmit-project/v2
 
 A project created from the desktop by naming it is a `readmit-project/v2`
-document. It has exactly the members of v1; what differs is what it allows. A
-v2 project may declare no interface version at all, and a case registered in
-it may leave its interface version unassigned — an empty
+document. It has the members of v1 and two more; what differs is what it
+allows. A v2 project may declare no interface version at all, and a case
+registered in it may leave its interface version unassigned — an empty
 `interface_version` — until a person assigns one. Nothing invents a version
 for either. A version that is assigned must still be one the project
-declares.
+declares. A v2 project also takes owners, tags and incident references as
+text rather than identifiers, as described above.
+
+The two further members are optional and only a v2 document holds them:
+`settings.tags`, the project's own tags (a sorted set, as a case's), and `interface_version_names`, the name a person gave each declared
+version, sorted by version. A version's identifier is what every case
+assigned to it records, and it never changes: renaming a version changes only
+its name, and a version without a name is named by its identifier. Both
+members were added before any release carried v2, so v2 was never read
+without them.
 
 ```json
 {"schema":"readmit-project/v2","settings":{"title":"Scheduling QA"},"interface_versions":[],"cases":[]}
+{"schema":"readmit-project/v2","settings":{"title":"Scheduling QA","default_interface_version":"upgrade-2027","tags":["siu"]},
+ "interface_versions":["siu-2.5.1-v1","upgrade-2027"],
+ "interface_version_names":[{"version":"upgrade-2027","name":"Upgrade 2027"}],"cases":[]}
 ```
+
+The desktop saves a project's settings whole — name, owner, tags and the
+interface versions with their names and default — in one replacement of this
+document; the folder is never moved or renamed. A version it adds is given an
+identifier made from its name, never one another version of the project has
+had. A version a case is still assigned to is not removed: the save is
+refused naming those cases, unless the same save reassigns them to a version
+the project keeps or leaves them unassigned. A v1 project's settings are
+saved under v1's rules: no tags, an owner that is an identifier, a version
+named by its identifier, and no version removed.
+
+A case's details — title, status, owner, tags, interface version and linked
+incidents — are likewise saved whole, and saving the details of a case the
+project has not registered registers it. Removing a case from a project
+removes its registration only, and is refused while a note or a registered
+revision names it; its evidence stays exactly where it is. In a v2 document,
+a title, a case title and a version name are 1–200 characters in any script,
+at most 800 bytes.
 
 Every reader of a project reads both contracts, each as the version it
 declares, so `readmit project show` and every other command read a v2
@@ -305,9 +343,25 @@ what evidence contains: an object is read through its own reader every time
 it is listed. Each saved revision names the files it consists of — new
 entries of the project the application named — with their SHA-256, and a
 `readmit-catalog-pending/v1` record under `.readmit/pending` holds a save
-until it is published or discarded. Deleting the catalog loses the names
+until it is published or discarded. An object a person removed from the
+project keeps its item with `removed_at`, when it was removed, so its entry
+is not discovered again as a new object; nothing behind it is touched.
+Deleting the catalog loses the names
 and dates the application recorded and the association of saved revisions,
 never evidence; the objects are discovered again under derived identities.
+
+A case's attachments live beside the catalog. Each file a person attaches is
+copied into `.readmit/attachments/` under a name the application generates,
+and `.readmit/attachments.json`, a strict-JSON `readmit-attachments/v1`
+document, records each association: its identity, the catalog object it
+belongs to, the name and type it was added under, the stored copy with its
+SHA-256 and size, and when it was added. A copy is at most 16 MiB and is
+read from a regular file, never through a symbolic link; a project's quota,
+when it declares one, bounds the copies as it bounds every other file, and is
+decided under the catalog's writer lock. Removing an attachment removes its
+association and leaves the copy, which no longer counts against adding
+another. Nothing
+opens, interprets or runs an attachment.
 
 ## The editable document: readmit-revisions/v1
 
@@ -417,18 +471,18 @@ restored canonical case. See [backing up a workspace](backup.md).
 The shell reads a project through the same documents. Opening a workspace folder
 lists a `project.json` entry as a `project` artifact and a `revisions.json`
 entry as a `revisions` artifact, each with the contract it declares.
-`OpenProject` returns the recorded project document and `OpenRevisions` the
-editable one: the same settings, the same interface versions, the same case and
+`OpenProject` returns the recorded project document and `ListNotes` the notes
+of the editable one: the same settings, the same interface versions, the same case and
 revision identities, and the same notes the command line wrote. The project
 overview shows the editable document on request as `project show` prints it,
 every note with its text and every revision with the identity its parent was
 registered under.
 
-`SaveNote` is the only thing the shell writes into the editable document. It
-replaces one note, so a UI edit reaches working text and nothing else: it
-cannot overwrite an import, a finalized run, or any other retained artifact.
-A draft the shell retains before that write goes into its own local working
-session, never here.
+`SaveNoteItem` is the only thing the shell writes into the editable document's
+notes. It replaces one note, through the operation `project note` runs, so a
+UI edit reaches working text and nothing else: it cannot overwrite an import, a
+finalized run, or any other retained artifact. A draft the shell retains
+before that write goes into its own local editor draft store, never here.
 
 The shell also reaches the recorded document through the same shared
 operations the commands above run: it can create a project (native folder

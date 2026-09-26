@@ -1,3 +1,4 @@
+import { findCaseRow } from "./testkit/navigation";
 import { readCaseIdentity } from "./testkit/navigation";
 // The diagnosis panel, pinned first over its typed callbacks — which request a
 // person's act produces and what the panel does with the engine's answer —
@@ -409,9 +410,9 @@ function workspace() {
  * the diagnosis panel is offered at all. */
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  await user.click(await findCaseRow(CASE_ENTRY));
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("tab", { name: "Findings" }));
   return within(await screen.findByRole("region", { name: "Diagnosis" }));

@@ -129,8 +129,8 @@ func TestSearchDeclaresVerifiesNothingAndOpensNothing(t *testing.T) {
 	if result := elsewhere.Search(root, "regression"); result.State != desktop.Completed {
 		t.Fatalf("search needs the folder to have been opened first: %+v", result)
 	}
-	if recent := elsewhere.RecentWorkspaces(); recent.State != desktop.Empty || len(recent.Roots) != 0 {
-		t.Fatalf("searching a folder recorded it as opened: %+v", recent)
+	if known := elsewhere.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem}); known.State != desktop.Empty {
+		t.Fatalf("searching a folder recorded it as opened: %+v", known)
 	}
 }
 

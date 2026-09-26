@@ -168,6 +168,7 @@ export function ProjectSwitcher({
   onOpen,
   onNew,
   onSettings,
+  onFiles,
   disabled,
 }: {
   name: string;
@@ -176,6 +177,8 @@ export function ProjectSwitcher({
   onOpen: () => void;
   onNew: () => void;
   onSettings: () => void;
+  /** The project's other files, read-only. */
+  onFiles?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -195,6 +198,7 @@ export function ProjectSwitcher({
         { label: "Open project…", onSelect: onOpen, disabled, separated: recent.length > 0 },
         { label: "New project…", onSelect: onNew, disabled },
         { label: "Project settings", onSelect: onSettings, disabled },
+        ...(onFiles ? [{ label: "Files", onSelect: onFiles }] : []),
       ]}
     />
   );

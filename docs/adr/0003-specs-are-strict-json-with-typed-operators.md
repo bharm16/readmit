@@ -26,9 +26,13 @@ Test specs, semantic profiles, observations, and run results are JSON documents 
 for every reader: no reader converts what it reads. It is narrowed for one
 mutable metadata document. The project document gains `readmit-project/v2`
 (#547), read beside `readmit-project/v1` by the same reader, each as the
-version it declares; v2 has v1's members and only relaxes two rules — a
+version it declares; v2 has v1's members and relaxes two rules — a
 project may declare no interface version yet, and a case may leave its
-interface version unassigned. A v1 project becomes v2 only when a person
+interface version unassigned. Before any release carried v2, it also gained
+two optional members only v2 holds (#548) — the project's tags and the names
+people give its interface versions, whose identifiers never change — and
+takes owners, tags and incident references as bounded text a person typed
+rather than identifiers. A v1 project becomes v2 only when a person
 explicitly asks (`MigrateProjectDocument` in the desktop): the conversion
 changes the declared contract and nothing else, is written through the
 project's atomic replacement, and retains the exact v1 bytes as the

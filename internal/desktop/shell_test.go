@@ -297,14 +297,14 @@ func TestPrivacyStatusNamesWhatIsAbsentAndWhatIsKept(t *testing.T) {
 		}
 	}
 	if len(privacy.Kept) == 0 {
-		t.Fatal("the privacy status claims nothing is kept, but the recent folder list is")
+		t.Fatal("the privacy status claims nothing is kept, but the shell keeps documents")
 	}
 	kept := strings.ToLower(strings.Join(privacy.Kept, "\n"))
 	// Every document the shell writes outside evidence is named here. Two of
 	// them hold what a person typed — a filter term and an unstored note — which
 	// is the same patient data the evidence beside them holds, so leaving either
 	// unnamed would be the reassurance this status exists to avoid.
-	for _, document := range []string{"readmit-desktop-recent/v1", "readmit-filters/v1", desktop.SessionSchema, desktop.DraftsSchema, desktop.DraftsSchemaV2, "readmit-desktop-projects/v1", "readmit-catalog/v1", "readmit-desktop-commercial-selection/v1", "readmit-desktop-hub-selection/v1", "readmit-correlation-review/v1"} {
+	for _, document := range []string{"readmit-attachments/v1", "readmit-filters/v1", desktop.SessionSchema, desktop.DraftsSchema, desktop.DraftsSchemaV2, "readmit-desktop-projects/v1", "readmit-catalog/v1", "readmit-desktop-commercial-selection/v1", "readmit-desktop-hub-selection/v1", "readmit-correlation-review/v1"} {
 		if !strings.Contains(kept, strings.ToLower(document)) {
 			t.Errorf("the privacy status does not name %s, which the shell keeps: %v", document, privacy.Kept)
 		}

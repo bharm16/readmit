@@ -72,33 +72,33 @@ export async function activateLicense(user: UserEvent, journey: Journey): Promis
 
 /** Chooses a folder for a new project, creates the project in it and lands
  * in the project's own folder. Returns the project's folder. */
-export async function createProject(user: UserEvent, journey: Journey, parent: string, name: string, title: string): Promise<string> {
+export async function createProject(user: UserEvent, journey: Journey, parent: string, _name: string, title: string): Promise<string> {
   journey.makeFolder(parent);
-  await journey.chooseFolder(journey.path(parent), "Open workspace");
-  await press(user, screen.getByRole("button", { name: "Create project…" }));
-  const evidence = within(region("Evidence"));
-  await press(user, await evidence.findByRole("button", { name: "Create a project…" }));
-  await submitProject(user, journey, parent, name, title, true);
-  const project = journey.path(parent, name);
-  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
-  // The project overview has drawn, so its controls are the ones a person sees.
-  expect(await evidence.findByText(/Nothing is registered yet/)).toBeTruthy();
-  return project;
+  const answer = await submitProject(user, journey, parent, _name, title, true);
+  const folder = (answer as { project?: { summary: { project?: { folder: string } } } }).project?.summary.project?.folder;
+  expect(folder).toBeTruthy();
+  // The new project opens on its empty Cases.
+  expect(await screen.findByText("No cases yet")).toBeTruthy();
+  return folder!;
 }
 
-/** Fills in the open new-project form for a project in parent and submits
- * it. Work the license admits asks for the new project's folder; work it
- * refuses is refused before any dialog opens. Returns the facade's answer. */
-export async function submitProject(user: UserEvent, journey: Journey, parent: string, name: string, title: string, admitted: boolean) {
-  const evidence = within(region("Evidence"));
-  await enter(user, evidence.getByLabelText("Project folder"), name);
-  await enter(user, evidence.getByLabelText("Title", { selector: "#project-title" }), title);
-  await enter(user, evidence.getByLabelText("Interface versions"), "siu-2.5.1-v1");
-  if (admitted) await journey.chooseFolder(journey.path(parent), "Choose a folder for the new project");
-  const asked = journey.callsTo("CreateProject").length;
-  await press(user, evidence.getByRole("button", { name: "Create project" }));
-  await waitFor(() => expect(journey.callsTo("CreateProject")[asked]?.settled).toBe(true));
-  return journey.callsTo("CreateProject")[asked]?.result as { state: string; reason?: string };
+/** Creates a project from Projects' New project sheet: the name, and the
+ * folder it goes into chosen in the host's dialog. Work the license admits
+ * asks for that folder; work it refuses is refused in the sheet. Returns the
+ * facade's answer. */
+export async function submitProject(user: UserEvent, journey: Journey, parent: string, _name: string, title: string, admitted: boolean) {
+  await press(user, screen.getByRole("button", { name: "Projects" }));
+  await press(user, screen.getAllByRole("button", { name: "New project" })[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  await enter(user, sheet.getByLabelText("Name"), title);
+  if (admitted) {
+    await journey.chooseFolder(journey.path(parent), "Choose where projects are kept");
+    await press(user, sheet.getByRole("button", { name: /^(Choose…|Change)$/ }));
+  }
+  const asked = journey.callsTo("CreateNamedProject").length;
+  await press(user, sheet.getByRole("button", { name: "Create" }));
+  await waitFor(() => expect(journey.callsTo("CreateNamedProject")[asked]?.settled).toBe(true));
+  return journey.callsTo("CreateNamedProject")[asked]?.result as { state: string; reason?: string };
 }
 
 /** A licensed project over the person's own export, with the downstream

@@ -28,6 +28,9 @@ export type ChildDestination =
   | "share-report"
   | "export-report"
   | "notes"
+  | "case-notes"
+  | "case-attachments"
+  | "project-files"
   | "inspect-file"
   | "sample-data"
   | "benchmarks";
@@ -39,7 +42,10 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   "compare-runs": "runs",
   "share-report": "reports",
   "export-report": "reports",
-  notes: "reports",
+  notes: "cases",
+  "case-notes": "cases",
+  "case-attachments": "cases",
+  "project-files": "cases",
   "inspect-file": "tools",
   "sample-data": "tools",
   benchmarks: "tools",

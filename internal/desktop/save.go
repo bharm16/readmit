@@ -28,17 +28,26 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem}
+
+// documentKinds are the saved kinds whose state the project document holds
+// rather than a revision the catalog publishes.
+var documentKinds = []ItemKind{CaseItem, ProjectItem}
 
 // ItemDraft is the whole of one object as its editor holds it: the name a
 // person gives it and the one member of its kind. Environment is a target
 // configuration, Test a test draft answered against its source case, and
 // Observation a source together with the window it is collected through.
+//
+// Case and Project are the details of a case and the settings of a project,
+// which the project document holds; each carries its own name.
 type ItemDraft struct {
 	Name        string            `json:"name,omitzero"`
 	Environment *replay.Target    `json:"environment,omitzero"`
 	Test        *testauthor.Draft `json:"test,omitzero"`
 	Observation *ObservationDraft `json:"observation,omitzero"`
+	Case        *CaseDraft        `json:"case,omitzero"`
+	Project     *ProjectDraft     `json:"project,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -50,9 +59,18 @@ type ObservationDraft struct {
 
 // FieldProblem is one reason a draft cannot be saved, at the member it is
 // about.
+// Referring names the objects that hold the member where it is, such as the
+// cases still assigned to a revision a project save would remove.
 type FieldProblem struct {
-	Field   string `json:"field"`
-	Problem string `json:"problem"`
+	Field     string     `json:"field"`
+	Problem   string     `json:"problem"`
+	Referring []Referrer `json:"referring,omitzero"`
+}
+
+// Referrer is one object a problem names, by reference and by its name.
+type Referrer struct {
+	Ref  ItemRef `json:"ref"`
+	Name string  `json:"name"`
 }
 
 // DraftRequest is one draft to validate.
@@ -80,6 +98,9 @@ func (r *DraftValidation) refuse(state State, reason string) { r.State, r.Reason
 func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 	return run(a, false, false, func(ctx context.Context) DraftValidation {
 		result := DraftValidation{Context: request.Context, Problems: []FieldProblem{}}
+		if slices.Contains(documentKinds, request.Kind) {
+			return a.validateDocumentDraft(ctx, request)
+		}
 		root, declined := a.projectRoot(ctx, request.Context)
 		if root == "" {
 			result.refuse(declined.state, declined.reason)
@@ -152,8 +173,11 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 	return run(a, false, true, func(ctx context.Context) SaveItemResult {
 		result := SaveItemResult{Context: request.Context, Problems: []FieldProblem{}}
 		if !slices.Contains(savedKinds, request.Kind) {
-			result.refuse(Failed, "this release saves environments, tests and observations whole")
+			result.refuse(Failed, "this release saves environments, tests, observations, case details and project settings whole")
 			return result
+		}
+		if slices.Contains(documentKinds, request.Kind) {
+			return a.saveDocumentItem(ctx, request)
 		}
 		// Recording the catalog first settles interrupted saves and records
 		// the object this save edits, if it was only discovered so far.
@@ -273,41 +297,41 @@ func submissionDigest(request SaveItemRequest, staged []catalog.Staged) string {
 func validateItemDraft(root string, kind ItemKind, draft ItemDraft) ([]catalog.Staged, *ItemDraft, []FieldProblem) {
 	problems := []FieldProblem{}
 	if draft.Name != "" && !catalog.ValidName(draft.Name) {
-		problems = append(problems, FieldProblem{"name", "a name is 1 to 200 bytes of printable text"})
+		problems = append(problems, FieldProblem{Field: "name", Problem: nameRule})
 	}
 	var staged []catalog.Staged
 	normalized := ItemDraft{Name: draft.Name}
 	switch kind {
 	case EnvironmentItem:
 		if draft.Environment == nil {
-			return nil, nil, append(problems, FieldProblem{"environment", "an environment is a target configuration"})
+			return nil, nil, append(problems, FieldProblem{Field: "environment", Problem: "an environment is a target configuration"})
 		}
 		target, data, err := declaredTarget(*draft.Environment)
 		if err != nil {
-			problems = append(problems, FieldProblem{"environment", err.Error()})
+			problems = append(problems, FieldProblem{Field: "environment", Problem: err.Error()})
 			break
 		}
 		normalized.Environment = &target
 		staged = []catalog.Staged{{Role: "target", File: "target.json", Data: data}}
 	case TestItem:
 		if draft.Test == nil {
-			return nil, nil, append(problems, FieldProblem{"test", "a test is answered from its source case"})
+			return nil, nil, append(problems, FieldProblem{Field: "test", Problem: "a test is answered from its source case"})
 		}
 		_, source, declined := openedCase(root, draft.Test.Case.Entry, draft.Test.Case.Identity)
 		if source == nil {
-			problems = append(problems, FieldProblem{"test.case", declined.reason})
+			problems = append(problems, FieldProblem{Field: "test.case", Problem: declined.reason})
 			break
 		}
 		if _, err := testauthor.Resolve(root, source, *draft.Test); err != nil {
-			problems = append(problems, FieldProblem{"test", err.Error()})
+			problems = append(problems, FieldProblem{Field: "test", Problem: err.Error()})
 			break
 		}
 		data, err := testauthor.Generate(*draft.Test)
 		if err != nil {
-			problems = append(problems, FieldProblem{"test", err.Error()})
+			problems = append(problems, FieldProblem{Field: "test", Problem: err.Error()})
 			for i, stage := range testauthor.Missing(*draft.Test) {
 				if i > 0 {
-					problems = append(problems, FieldProblem{"test." + stage, "not answered yet"})
+					problems = append(problems, FieldProblem{Field: "test." + stage, Problem: "not answered yet"})
 				}
 			}
 			break
@@ -317,14 +341,14 @@ func validateItemDraft(root string, kind ItemKind, draft ItemDraft) ([]catalog.S
 		staged = []catalog.Staged{{Role: "test", File: "test.json", Data: data}}
 	case ObservationItem:
 		if draft.Observation == nil {
-			return nil, nil, append(problems, FieldProblem{"observation", "an observation is a source and its window"})
+			return nil, nil, append(problems, FieldProblem{Field: "observation", Problem: "an observation is a source and its window"})
 		}
 		source, err := observesource.EncodeSource(draft.Observation.Source)
 		if err == nil {
 			_, err = observesource.DecodeSource(source)
 		}
 		if err != nil {
-			problems = append(problems, FieldProblem{"observation.source", err.Error()})
+			problems = append(problems, FieldProblem{Field: "observation.source", Problem: err.Error()})
 		}
 		window := draft.Observation.Window
 		if window.Schema == "" {
@@ -335,17 +359,17 @@ func validateItemDraft(root string, kind ItemKind, draft ItemDraft) ([]catalog.S
 			_, windowErr = observewindow.DecodeWindow(windowData)
 		}
 		if windowErr != nil {
-			problems = append(problems, FieldProblem{"observation.window", windowErr.Error()})
+			problems = append(problems, FieldProblem{Field: "observation.window", Problem: windowErr.Error()})
 		}
 		if err == nil && windowErr == nil && draft.Observation.Source.Observes != window.Source {
-			problems = append(problems, FieldProblem{"observation.window.source", operation.ErrObservationPairMismatch.Error()})
+			problems = append(problems, FieldProblem{Field: "observation.window.source", Problem: operation.ErrObservationPairMismatch.Error()})
 		}
 		if len(problems) == 0 {
 			normalized.Observation = &ObservationDraft{Source: draft.Observation.Source, Window: window}
 			staged = []catalog.Staged{{Role: "source", File: "source.json", Data: source}, {Role: "window", File: "window.json", Data: windowData}}
 		}
 	default:
-		return nil, nil, append(problems, FieldProblem{"kind", "this release saves environments, tests and observations whole"})
+		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: "this release saves environments, tests, observations, case details and project settings whole"})
 	}
 	if len(problems) > 0 {
 		return nil, nil, problems

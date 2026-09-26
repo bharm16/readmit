@@ -1,3 +1,4 @@
+import { findCaseRow } from "./testkit/navigation";
 import { openListedCase } from "./testkit/navigation";
 import { readCaseIdentity } from "./testkit/navigation";
 // The controlled reduction panel, driven through the whole window as a person
@@ -101,9 +102,9 @@ function reported(state: ReductionResult["state"], report: Partial<ReductionRepo
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
   // The toolbar's Open workspace…, which the first-run panel names identically.
-  await user.click(screen.getAllByRole("button", { name: "Open…" }).at(-1)!);
+  await user.click(screen.getAllByRole("button", { name: "Open" }).at(-1)!);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(screen.getAllByRole("button", { name: /^Open case(?: |$)/ })[0]!);
+  await user.click(await findCaseRow());
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("button", { name: "More case actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Reduce" }));
