@@ -46,12 +46,12 @@ func (s *Store) runnerHandler(access *Access, policyPath string, clock func() ti
 			http.Error(w, "access refused", 403)
 			return
 		}
-		p, err := s.authorize(access, r, parts[2], "enrollment")
+		p, proj, err := s.authorizeProject(access, r, parts[2], "enrollment")
 		if err != nil || p.Kind != "runner" {
 			http.Error(w, "access refused", 403)
 			return
 		}
-		if _, err = s.authorize(access, r, parts[2], "execution"); err != nil {
+		if _, err = s.authorize(access, r, proj, "execution"); err != nil {
 			http.Error(w, "access refused", 403)
 			return
 		}

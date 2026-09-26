@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/acklink"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -118,12 +119,7 @@ func promote(source *bundle.Bundle, finding diagnose.Finding, base testauthor.Dr
 	for _, event := range source.Events {
 		events[event.ID] = event
 	}
-	acknowledged := make(map[string]string, len(source.Correlations))
-	for _, link := range source.Correlations {
-		if link.Kind == bundle.Matched && len(link.MessageIDs) == 1 {
-			acknowledged[link.ACKID] = link.MessageIDs[0]
-		}
-	}
+	acknowledged := acknowledgedBy(source)
 	candidates := make([]candidate, 0, len(finding.Evidence))
 	for i, reference := range finding.Evidence {
 		found, item := candidateFor(source, events[reference.Occurrence], acknowledged, finding, reference, i+1)
@@ -143,6 +139,76 @@ func promote(source *bundle.Bundle, finding diagnose.Finding, base testauthor.Dr
 	}
 	promotion.Messages, promotion.Expectations = draft.Messages, draft.Expectations
 	return promotion
+}
+
+// acknowledgedBy resolves, exactly as the diagnosis did, which sent
+// occurrence each captured acknowledgement answers. A diagnosis links an
+// acknowledgement to the occurrence whose decoded MSH-10 is the decoded
+// MSA-2 it echoes, compared across the whole case whatever source captured
+// each; [acklink.NewDiagnosis] is that pairing of scope and comparison, held
+// once so a promotion and the diagnosis it promotes cannot disagree about a
+// linkage. Occurrences are admitted the way the diagnosis admits them: an
+// occurrence whose message type is ACK is read as an acknowledgement through
+// its single echoed identifier, and every other parsed occurrence as a
+// message through its control identifier. An acknowledgement with no single
+// answer links to nothing, and is named downstream.
+func acknowledgedBy(source *bundle.Bundle) map[string]string {
+	documents := make(map[string]*hl7.Document, len(source.Events))
+	text := func(event bundle.Event, path string) (string, bool) {
+		document, cached := documents[event.ID]
+		if !cached {
+			document, _ = source.Document(event)
+			documents[event.ID] = document
+		}
+		if document == nil {
+			return "", false
+		}
+		selector, err := hl7.ParseSelector(path)
+		if err != nil {
+			return "", false
+		}
+		// The diagnosis holds a linked value to the character set MSH-18
+		// declares; a promotion reads it under the same rule.
+		reading, err := document.Read(0, selector, hl7.EnforceMSH18)
+		if err != nil || reading.State != hl7.Present {
+			return "", false
+		}
+		if value, ok := reading.Text(); ok && value != "" {
+			return value, true
+		}
+		return "", false
+	}
+	linked := acklink.NewDiagnosis[string]()
+	for _, event := range source.Events {
+		if event.Kind == bundle.Unparsed {
+			continue
+		}
+		if kind, _ := text(event, "MSH-9.1"); kind == "ACK" {
+			continue
+		}
+		control, ok := text(event, "MSH-10")
+		if !ok {
+			continue
+		}
+		linked.Add(event.SourceID, acklink.Value{Text: control, Decoded: true}, event.ID)
+	}
+	answered := make(map[string]string)
+	for _, event := range source.Events {
+		if event.Kind != bundle.Acknowledgement {
+			continue
+		}
+		if kind, _ := text(event, "MSH-9.1"); kind != "ACK" {
+			continue
+		}
+		echoed, ok := text(event, "MSA-2")
+		if !ok {
+			continue
+		}
+		if found := linked.Answer(event.SourceID, acklink.Value{Text: echoed, Decoded: true}); len(found) == 1 {
+			answered[event.ID] = found[0]
+		}
+	}
+	return answered
 }
 
 // candidateFor reports the expectation one evidence reference supports, or the

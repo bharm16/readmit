@@ -6,7 +6,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/scenario"
@@ -341,8 +339,10 @@ func (a *App) SaveScenario(request ScenarioSaveRequest) ScenarioDocumentResult {
 	})
 }
 
-// GenerateScenario materializes deterministic streams, retains generation.json,
-// writes a new generated case beside them, and may register that case.
+// GenerateScenario materializes deterministic streams, retains generation.json
+// and writes a new generated case beside them through the one operation that
+// owns both the streams and the case's provenance, then may register that
+// case.
 func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerateResult {
 	return run(a, true, true, func(ctx context.Context) ScenarioGenerateResult {
 		root, declined := resolveFolder(request.Workspace)
@@ -366,79 +366,42 @@ func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerate
 		if err != nil {
 			data = []byte(request.Document)
 		}
-		plan, err := scenariogen.Decode(data)
-		if err != nil {
+		// The plan is refused in its own words before any destination is
+		// resolved, exactly as the generator's reader refuses it.
+		if _, err := scenariogen.Decode(data); err != nil {
 			return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
 		}
 		outputPath, err := artifactpath.Destination(filepath.Join(root, request.OutputName))
 		if err != nil {
 			return ScenarioGenerateResult{State: Failed, Reason: "generation destination must be a new directory entry of the open workspace"}
 		}
-		if _, err := scenariogen.Write(ctx, outputPath, data); err != nil {
+		casePath, err := artifactpath.Destination(filepath.Join(root, caseName))
+		if err != nil {
+			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
+		}
+		written, err := scenariogen.WriteCase(ctx, data, outputPath, casePath)
+		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 				return ScenarioGenerateResult{State: Cancelled, Reason: cancelledRefusal.reason}
 			}
 			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioGenerateResult{State: PermissionDenied, Reason: "this account cannot write generation output into the open workspace"}
+				return ScenarioGenerateResult{State: PermissionDenied, Reason: "this account cannot write a generated case into the open workspace"}
 			}
-			return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
-		}
-		timeline, err := scenario.PreviewDocument(plan.Template)
-		if err != nil {
 			return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
 		}
 		result := ScenarioGenerateResult{
 			State:            Completed,
 			OutputPath:       outputPath,
 			GenerationPath:   filepath.Join(outputPath, "generation.json"),
-			GeneratorSeed:    plan.Seed,
-			GeneratorVersion: plan.GeneratorVersion,
-			ProfileVersion:   string(timeline.Profile),
-			BaseTime:         timeline.BaseTime.Format(time.RFC3339),
+			StreamCount:      written.Streams,
+			CaseName:         caseName,
+			CaseIdentity:     written.Identity,
+			ProvenanceMode:   string(bundle.Generated),
+			GeneratorSeed:    written.Seed,
+			GeneratorVersion: written.GeneratorVersion,
+			ProfileVersion:   written.ProfileVersion,
+			BaseTime:         written.BaseTime.Format(time.RFC3339),
 		}
-		entries, err := os.ReadDir(outputPath)
-		if err != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: "cannot read generation output"}
-		}
-		var streams []string
-		for _, entry := range entries {
-			if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".mllp") {
-				continue
-			}
-			streams = append(streams, filepath.Join(outputPath, entry.Name()))
-		}
-		result.StreamCount = len(streams)
-		casePath, err := artifactpath.Destination(filepath.Join(root, caseName))
-		if err != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
-		}
-		inputs := make([]bundle.Input, 0, len(streams))
-		for _, stream := range streams {
-			raw, err := os.ReadFile(stream)
-			if err != nil {
-				return ScenarioGenerateResult{State: Failed, Reason: "cannot read generated stream"}
-			}
-			inputs = append(inputs, bundle.Input{Data: raw, Options: hl7.Options{Format: hl7.MLLP, Terminator: hl7.CR}})
-		}
-		if len(inputs) == 0 {
-			return ScenarioGenerateResult{State: Failed, Reason: "generation produced no streams"}
-		}
-		generator := bundle.GeneratorInputs{
-			Seed:             plan.Seed,
-			BaseTime:         timeline.BaseTime.UTC(),
-			GeneratorVersion: plan.GeneratorVersion,
-			ProfileVersion:   string(timeline.Profile),
-		}
-		written, err := bundle.Write(casePath, inputs, bundle.Provenance{Mode: bundle.Generated, Generator: &generator})
-		if err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioGenerateResult{State: PermissionDenied, Reason: "this account cannot write a generated case into the open workspace"}
-			}
-			return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
-		}
-		result.CaseName = caseName
-		result.CaseIdentity = written.Identity
-		result.ProvenanceMode = string(bundle.Generated)
 		if request.RegisterInProject {
 			if _, err := operation.RegisterCase(root, caseName, operation.CaseRegistration{
 				Title:            request.CaseTitle,
@@ -603,7 +566,8 @@ const scenarioCheckOperation = "scenario-check"
 // CheckScenarioLibrary is `readmit scenario check-library`: it reads the
 // library and the independent expectations under the command's 4 MiB bound
 // and runs scenariolibrary.Check on them. It is interruptible; a cancelled
-// check removes its private regeneration and passes nothing.
+// check passes nothing and retains nothing, because the check regenerates in
+// memory and writes nothing anywhere.
 func (a *App) CheckScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibraryResult {
 	return runNamed[ScenarioLibraryResult, *ScenarioLibraryResult](a, profiles["CheckScenarioLibrary"], func(ctx context.Context) ScenarioLibraryResult {
 		library, err := a.resolveScenarioDocument(request.Workspace, request.Library, scenariolibrary.MaxBytes)
@@ -617,7 +581,7 @@ func (a *App) CheckScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibra
 		result, err := scenariolibrary.Check(ctx, library, expectations)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-				return ScenarioLibraryResult{State: Cancelled, Reason: "the fixture check was cancelled before it finished; its private regeneration was removed and it passed nothing"}
+				return ScenarioLibraryResult{State: Cancelled, Reason: "the fixture check was cancelled before it finished; it passed nothing"}
 			}
 			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
 		}
@@ -851,27 +815,20 @@ func presentTimeline(timeline scenario.Timeline, reveal bool) ScenarioPreviewRes
 }
 
 func presentScenarioDocument(data []byte) ScenarioDocumentResult {
-	if orders, err := scenario.DecodeOrders(data); err == nil {
-		canonical, err := json.Marshal(orders, json.Deterministic(true), jsontext.WithIndent("  "))
-		if err != nil {
-			return ScenarioDocumentResult{State: Failed, Reason: "scenario could not be canonicalized"}
-		}
-		return ScenarioDocumentResult{
-			State: Completed, Document: string(append(canonical, '\n')),
-			Profile: string(orders.Profile), ID: orders.Scenario.ID, Version: orders.Scenario.Version,
-		}
-	}
-	designed, err := scenario.Decode(data)
+	// One read for either contract, dispatched by the contract name the
+	// document declares; a document of neither contract is refused as
+	// neither, never decoded as whichever contract would take it.
+	workflow, err := scenario.DecodeDocument(data)
 	if err != nil {
 		return ScenarioDocumentResult{State: Failed, Reason: err.Error()}
 	}
-	canonical, err := json.Marshal(designed, json.Deterministic(true), jsontext.WithIndent("  "))
+	canonical, err := json.Marshal(workflow, json.Deterministic(true), jsontext.WithIndent("  "))
 	if err != nil {
 		return ScenarioDocumentResult{State: Failed, Reason: "scenario could not be canonicalized"}
 	}
 	return ScenarioDocumentResult{
 		State: Completed, Document: string(append(canonical, '\n')),
-		Profile: string(designed.Profile), ID: designed.Scenario.ID, Version: designed.Scenario.Version,
+		Profile: string(workflow.Profile), ID: workflow.Identity().ID, Version: workflow.Identity().Version,
 	}
 }
 

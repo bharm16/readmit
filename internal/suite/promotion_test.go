@@ -131,7 +131,7 @@ func TestPromotionRefusesChangedInputsBeforeAnySend(t *testing.T) {
 				pin = strings.Repeat("0", 64)
 			}
 			out := filepath.Join(dir, "out")
-			if _, e := suite.RunPromoted(t.Context(), filepath.Join(dir, "suite.json"), "east", out, filepath.Join(dir, "releases.json"), filepath.Join(dir, "promotion.json"), pin, revision); e == nil {
+			if _, e := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out, References: filepath.Join(dir, "releases.json"), Promotion: filepath.Join(dir, "promotion.json"), PromotionIdentity: pin, Revision: revision}); e == nil {
 				t.Fatal("changed approval accepted")
 			}
 			if sends.Load() != 0 {
@@ -198,7 +198,7 @@ func TestPromotedSuiteCancellationRetainsApprovalAndUncertainRecovery(t *testing
 		}
 	}()
 	out := filepath.Join(dir, "cancelled")
-	report, e := suite.RunPromoted(ctx, filepath.Join(dir, "suite.json"), "east", out, filepath.Join(dir, "releases.json"), filepath.Join(dir, "promotion.json"), p.Identity(), "fixture-v1")
+	report, e := suite.Run(ctx, suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out, References: filepath.Join(dir, "releases.json"), Promotion: filepath.Join(dir, "promotion.json"), PromotionIdentity: p.Identity(), Revision: "fixture-v1"})
 	if e != nil || report.ExitCode() != 2 || report.Jobs[0].Run.State != durablerun.DeliveryUncertain {
 		t.Fatalf("%+v %v", report, e)
 	}
@@ -211,7 +211,7 @@ func TestPromotedSuiteCancellationRetainsApprovalAndUncertainRecovery(t *testing
 	if e != nil || got.Identity() != p.Identity() {
 		t.Fatal("lost approval", e)
 	}
-	if _, e = suite.RunPromoted(t.Context(), filepath.Join(dir, "suite.json"), "east", out, filepath.Join(dir, "releases.json"), filepath.Join(dir, "promotion.json"), p.Identity(), "fixture-v1"); e == nil {
+	if _, e = suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out, References: filepath.Join(dir, "releases.json"), Promotion: filepath.Join(dir, "promotion.json"), PromotionIdentity: p.Identity(), Revision: "fixture-v1"}); e == nil {
 		t.Fatal("uncertain execution resumed")
 	}
 }
@@ -226,7 +226,7 @@ func TestApprovedQueueRefusesAllJobsWhenLastPinDiffers(t *testing.T) {
 	doc.Tables[0].Rows = append(doc.Tables[0].Rows, suite.Row{ID: "two", Case: "case-one"})
 	write(t, filepath.Join(dir, "suite.json"), doc)
 	p := approveFixture(t, dir)
-	prepared, e := suite.PrepareApproved(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out"), filepath.Join(dir, "releases.json"))
+	prepared, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out"), References: filepath.Join(dir, "releases.json")})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -261,7 +261,7 @@ func TestPromotionCommitsCredentialRegistrationWithoutResolvingAValue(t *testing
 	p := approveFixture(t, dir)
 	store.References[0].Generation = 2
 	write(t, filepath.Join(dir, "secrets.json"), store)
-	if _, e := suite.RunPromoted(t.Context(), filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out"), filepath.Join(dir, "releases.json"), filepath.Join(dir, "promotion.json"), p.Identity(), "fixture-v1"); e == nil {
+	if _, e := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out"), References: filepath.Join(dir, "releases.json"), Promotion: filepath.Join(dir, "promotion.json"), PromotionIdentity: p.Identity(), Revision: "fixture-v1"}); e == nil {
 		t.Fatal("changed credential registration kept approval")
 	}
 }

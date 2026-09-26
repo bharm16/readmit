@@ -160,8 +160,7 @@ func TestPostgresTwoDesktopUsersEnforceRolesConflictsRevocationAndExpiry(t *test
 	// installations do.
 	window := func(state string) *desktop.App {
 		t.Helper()
-		app := desktop.New(silentChooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-			filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+		app := desktop.New(silentChooser{}, desktop.ShellDocuments{Folder: state})
 		if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 			t.Fatal(result)
 		}
@@ -383,8 +382,7 @@ func TestPostgresTwoDesktopUsersEnforceRolesConflictsRevocationAndExpiry(t *test
 	// sign-in, and the hub still refuses the removed person.
 	analystState := t.TempDir()
 	restart := func() *desktop.App {
-		return desktop.NewWithOperationSelection(silentChooser{}, filepath.Join(analystState, "recent.json"), filepath.Join(analystState, "filters.json"),
-			filepath.Join(analystState, "session.json"), filepath.Join(analystState, "drafts.json"), filepath.Join(analystState, "operations.json"))
+		return desktop.NewWithOperationSelection(silentChooser{}, desktop.ShellDocuments{Folder: analystState})
 	}
 	offline := restart()
 	if result := offline.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {

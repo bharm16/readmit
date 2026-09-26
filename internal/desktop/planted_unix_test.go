@@ -45,8 +45,7 @@ func TestPlantedPatientValuesAndCredentialsStayOutOfResultsAndShellState(t *test
 		t.Fatal("the fixture no longer carries the fields the planted values replace")
 	}
 	writeCase(t, workspace, "case", framed(message))
-	app := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"), filepath.Join(state, "operations.json"))
+	app := desktop.NewWithOperationSelection(&chooser{}, desktop.ShellDocuments{Folder: state})
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}

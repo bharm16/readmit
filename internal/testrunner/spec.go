@@ -146,12 +146,32 @@ func PrepareWithDurability(specPath string, durability artifactdir.Durability) (
 	if err != nil {
 		return nil, errors.New("cannot read test spec")
 	}
+	plan, err := prepareSpec(raw, filepath.Dir(resolved), durability)
+	if err != nil {
+		return nil, err
+	}
+	plan.specPath = resolved
+	return plan, nil
+}
+
+// PrepareSpec prepares the exact specification bytes resolved from dir: the
+// plan Prepare builds for the file holding those bytes, without the bytes
+// having to be on disk. A caller that compiles a specification itself — a
+// suite expansion binds rows to templates it does not retain — asks the same
+// input preparation of the compiled bytes, so its evidence send order and its
+// target are decided by this one reader before anything retains or executes
+// them. The plan carries no spec path: it is for inspection, never a start.
+func PrepareSpec(raw []byte, dir string) (*Plan, error) {
+	return prepareSpec(raw, dir, artifactdir.Durable)
+}
+
+func prepareSpec(raw []byte, dir string, durability artifactdir.Durability) (*Plan, error) {
 	spec, err := DecodeSpec(raw)
 	if err != nil {
 		return nil, err
 	}
-	source := artifactpath.JoinReference(filepath.Dir(resolved), spec.Input.Case)
-	target, err := replay.ReadTarget(artifactpath.JoinReference(filepath.Dir(resolved), spec.Target))
+	source := artifactpath.JoinReference(dir, spec.Input.Case)
+	target, err := replay.ReadTarget(artifactpath.JoinReference(dir, spec.Target))
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +185,7 @@ func PrepareWithDurability(specPath string, durability artifactdir.Durability) (
 	}
 	path := ""
 	if spec.Observation.Boundary == LedgerBoundary {
-		path = artifactpath.JoinReference(filepath.Dir(resolved), spec.Observation.Path)
+		path = artifactpath.JoinReference(dir, spec.Observation.Path)
 	}
-	return &Plan{spec: spec, raw: raw, specPath: resolved, sourcePath: source, sourceInfo: sourceInfo, observationPath: path, replay: prepared, durability: durability}, nil
+	return &Plan{spec: spec, raw: raw, sourcePath: source, sourceInfo: sourceInfo, observationPath: path, replay: prepared, durability: durability}, nil
 }

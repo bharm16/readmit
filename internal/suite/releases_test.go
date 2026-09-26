@@ -44,7 +44,7 @@ func releasedFixture(t *testing.T) (string, suite.Document, expectation.Release)
 func TestApprovedSuitePinsHistoryAndReportsImpactWithoutMovingPins(t *testing.T) {
 	dir, doc, first := releasedFixture(t)
 	out := filepath.Join(dir, "prepared")
-	if _, e := suite.PrepareApproved(filepath.Join(dir, "suite.json"), "east", out, filepath.Join(dir, "releases.json")); e != nil {
+	if _, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out, References: filepath.Join(dir, "releases.json")}); e != nil {
 		t.Fatal(e)
 	}
 	retained, e := expectation.Read(filepath.Join(out, "release-booking.json"))
@@ -73,7 +73,7 @@ func TestApprovedSuitePinsHistoryAndReportsImpactWithoutMovingPins(t *testing.T)
 	doc.Tables[0].Rows[0].Expected = map[string]testrunner.Value{"ack": {Field: &testrunner.FieldValue{State: hl7.Present, Text: &value}}}
 	write(t, filepath.Join(dir, "suite.json"), doc)
 	refused := filepath.Join(dir, "refused")
-	if _, e := suite.PrepareApproved(filepath.Join(dir, "suite.json"), "east", refused, filepath.Join(dir, "releases.json")); e == nil {
+	if _, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: refused, References: filepath.Join(dir, "releases.json")}); e == nil {
 		t.Fatal("table weakened approval")
 	}
 	if _, e := os.Stat(refused); !os.IsNotExist(e) {
@@ -81,7 +81,7 @@ func TestApprovedSuitePinsHistoryAndReportsImpactWithoutMovingPins(t *testing.T)
 	}
 	value = "AA"
 	write(t, filepath.Join(dir, "suite.json"), doc)
-	if _, e := suite.PrepareApproved(filepath.Join(dir, "suite.json"), "east", refused, filepath.Join(dir, "releases.json")); e != nil {
+	if _, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: refused, References: filepath.Join(dir, "releases.json")}); e != nil {
 		t.Fatal("identical value refused", e)
 	}
 }
@@ -105,7 +105,7 @@ func TestReleasedSuiteRejectsChangedTemplatePinAndIncompleteCoverage(t *testing.
 			case "truncated":
 				os.WriteFile(filepath.Join(dir, "release.json"), []byte(`{"schema":`), 0600)
 			}
-			if _, e := suite.PrepareApproved(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out"), filepath.Join(dir, "releases.json")); e == nil {
+			if _, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out"), References: filepath.Join(dir, "releases.json")}); e == nil {
 				t.Fatal("unapproved suite accepted")
 			}
 		})
@@ -142,7 +142,7 @@ func TestApprovedSuiteCancellationRetainsApprovalAndUncertainEvidence(t *testing
 		}
 	}()
 	out := filepath.Join(dir, "cancelled")
-	report, err := suite.RunApproved(ctx, filepath.Join(dir, "suite.json"), "east", out, filepath.Join(dir, "releases.json"))
+	report, err := suite.Run(ctx, suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out, References: filepath.Join(dir, "releases.json")})
 	if err != nil || len(report.Jobs) != 1 || report.Jobs[0].Run == nil || report.Jobs[0].Run.State != durablerun.DeliveryUncertain || report.Jobs[0].Run.StopReason != durablerun.Cancelled {
 		t.Fatalf("%+v %v", report, err)
 	}
@@ -154,7 +154,7 @@ func TestApprovedSuiteCancellationRetainsApprovalAndUncertainEvidence(t *testing
 	if err != nil || recovered.Uncertain != 1 || recovered.SafeToRepeat {
 		t.Fatalf("%+v %v", recovered, err)
 	}
-	if _, err := suite.RunApproved(t.Context(), filepath.Join(dir, "suite.json"), "east", out, filepath.Join(dir, "releases.json")); err == nil {
+	if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out, References: filepath.Join(dir, "releases.json")}); err == nil {
 		t.Fatal("cancelled suite resumed")
 	}
 }

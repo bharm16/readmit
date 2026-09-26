@@ -136,6 +136,19 @@ func TestCancelledMaintenancePathAndStaleDelete(t *testing.T) {
 	if _, err := os.Stat(root); err != nil {
 		t.Fatal("stale delete must retain the source")
 	}
+	// The same stale selection is refused for an archive that deletes
+	// nothing, before anything is written.
+	staleArchive := app.ArchiveOrDeleteProject(desktop.ProjectArchiveRequest{
+		Project:     root,
+		Destination: filepath.Join(t.TempDir(), "archive-stale"),
+		Selection:   preview.Preview.Selection,
+	})
+	if staleArchive.State != desktop.Failed {
+		t.Fatalf("stale archive: %+v", staleArchive)
+	}
+	if _, err := os.Lstat(filepath.Join(t.TempDir(), "archive-stale")); !os.IsNotExist(err) {
+		t.Fatal("a stale archive wrote its recovery archive anyway")
+	}
 	fresh := app.PreviewProjectRetirement(root)
 	if fresh.State != desktop.Completed {
 		t.Fatalf("fresh preview: %+v", fresh)

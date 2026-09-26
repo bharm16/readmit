@@ -123,7 +123,7 @@ func TestInstalledLicenseDoesNotHideAnUnreadableOperationSelection(t *testing.T)
 	if err := os.WriteFile(operationguard.InstalledPolicyIn(license), []byte("invalid policy"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	app := desktop.NewWithInstalledLicense(&queueChooser{}, filepath.Join(root, "recent"), filepath.Join(root, "filters"), filepath.Join(root, "session"), filepath.Join(root, "drafts"), selection, license)
+	app := desktop.NewWithInstalledLicense(&queueChooser{}, desktop.ShellDocuments{Folder: root}, license)
 	if got := app.OperationStatus(); got.State != desktop.Failed || !strings.Contains(got.Reason, "remembered operation selection cannot be read") {
 		t.Fatalf("installed license hid the remembered selection refusal: %+v", got)
 	}

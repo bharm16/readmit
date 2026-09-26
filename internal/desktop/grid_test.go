@@ -64,21 +64,20 @@ func writeIndex(t *testing.T, root, name string, opened *bundle.Bundle, until *t
 	return name
 }
 
-// gridWorkspace is the two-case workspace above, with the filters file the app
-// keeps this viewer's saved filters in.
+// gridWorkspace is the two-case workspace above, with the shell document
+// store folder the app keeps this viewer's saved filters in.
 func gridWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	state := t.TempDir()
-	filters := filepath.Join(state, "filters.json")
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters, filepath.Join(state, "session.json"), filepath.Join(filepath.Dir(filepath.Join(state, "session.json")), "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 
 	incident := writeCase(t, root, "incident",
 		framed(gridBooking)+framed(gridAccepted)+framed(gridRebooked)+framed(gridRejected)+framed(gridGarbage))
 	writeIndex(t, root, "incident.index.json", incident, nil)
 	followup := writeCase(t, root, "followup", framed(gridBooking))
 	writeIndex(t, root, "followup.index.json", followup, nil)
-	return app, root, filters
+	return app, root, state
 }
 
 func acknowledgements() grid.Filter {
@@ -199,7 +198,7 @@ func TestTheGridRendersAWindowAndNamesHowManyRecordsItExcluded(t *testing.T) {
 // case, and it survives the window being closed and opened again, because it is
 // stored rather than held in the interface.
 func TestTheSelectedFilterSurvivesNavigatingToAnotherCaseAndReopeningTheShell(t *testing.T) {
-	app, root, filters := gridWorkspace(t)
+	app, root, state := gridWorkspace(t)
 	saveFilter(t, app, acknowledgements())
 
 	incident := openGrid(t, app, root, "incident", 0, grid.MaxRows)
@@ -218,7 +217,7 @@ func TestTheSelectedFilterSurvivesNavigatingToAnotherCaseAndReopeningTheShell(t 
 	}
 
 	// A new window over the same viewer state reads the same selection back.
-	reopened := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	reopened := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	listed := reopened.Filters()
 	if listed.State != desktop.Completed || listed.Selected != "acknowledgements" || len(listed.Filters) != 1 {
 		t.Fatalf("reopening the shell lost the saved filters: %+v", listed)
@@ -287,7 +286,7 @@ func TestAnUnreadableSavedFilterDocumentIsReportedAndNeverReplaced(t *testing.T)
 		if err := os.WriteFile(filters, []byte(contents), 0600); err != nil {
 			t.Fatal(err)
 		}
-		app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters, filepath.Join(state, "session.json"), filepath.Join(filepath.Dir(filepath.Join(state, "session.json")), "drafts.json"))
+		app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 		if listed := app.Filters(); listed.State != desktop.Failed || len(listed.Filters) != 0 || listed.Reason == "" {
 			t.Fatalf("%s was read: %+v", name, listed)
 		}
@@ -437,10 +436,10 @@ func TestAGridCarriesNoMessageContent(t *testing.T) {
 // The grid verifies a case, so it holds the one operation slot for as long as
 // it runs, and the slot is released whatever the outcome.
 func TestTheGridHoldsTheSameOperationSlot(t *testing.T) {
-	app, root, filters := gridWorkspace(t)
+	app, root, _ := gridWorkspace(t)
 
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	second := desktop.New(reentrant, desktop.ShellDocuments{Folder: t.TempDir()})
 	var concurrent desktop.GridResult
 	var saved desktop.FiltersResult
 	reentrant.before = func() {
@@ -493,10 +492,10 @@ func TestCancelNeverInterruptsAGridAndTheFacadeStaysUsable(t *testing.T) {
 func TestFailedFilterWriteKeepsTheAppliedSelection(t *testing.T) {
 	for _, action := range []string{"select", "save", "replace"} {
 		t.Run(action, func(t *testing.T) {
-			app, root, filters := gridWorkspace(t)
+			app, root, state := gridWorkspace(t)
 			saveFilter(t, app, acknowledgements())
 			before := app.Filters()
-			if err := os.WriteFile(filters+".incomplete", []byte("interrupted"), 0600); err != nil {
+			if err := os.WriteFile(filepath.Join(state, "filters.json.incomplete"), []byte("interrupted"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			var result desktop.FiltersResult
@@ -705,8 +704,8 @@ func TestAWindowDescribesTheIndexItsOwnReadChecked(t *testing.T) {
 				Fields: []grid.FieldPredicate{{Selector: patientField, Match: index.Equals, Term: "MRN-1"}}})
 			return "states.index.json"
 		}, desktop.Failed, "this index retains no values", func(d *desktop.IndexDetails) bool { return d != nil && d.Applicable }},
-		{"saved filters it cannot read", func(t *testing.T, _ *desktop.App, _, filters string) string {
-			if err := os.WriteFile(filters, []byte("{"), 0600); err != nil {
+		{"saved filters it cannot read", func(t *testing.T, _ *desktop.App, _, state string) string {
+			if err := os.WriteFile(filepath.Join(state, "filters.json"), []byte("{"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			return "incident.index.json"
@@ -1029,7 +1028,7 @@ func TestBuildIndexValidationAndNegativePaths(t *testing.T) {
 func TestDescribeIndexStaleExpiredDamagedUnsupported(t *testing.T) {
 	root := t.TempDir()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 
 	incident := writeCase(t, root, "incident", framed(gridBooking))
 	other := writeCase(t, root, "other", framed(gridRebooked))
@@ -1075,8 +1074,7 @@ func TestDescribeIndexStaleExpiredDamagedUnsupported(t *testing.T) {
 func TestRefusedQueryClarity(t *testing.T) {
 	root := t.TempDir()
 	state := t.TempDir()
-	filters := filepath.Join(state, "filters.json")
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filters, filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 
 	incident := writeCase(t, root, "incident", framed(gridBooking))
 

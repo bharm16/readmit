@@ -31,8 +31,10 @@ const (
 		"PID|1||||SYNTHETIC^ONLY\r"
 )
 
-// frame wraps occurrences as one MLLP source, which is the only way a captured
-// acknowledgement is correlated to the message it answers.
+// frame wraps occurrences as one MLLP source. The case's own correlations
+// are per source, but the promotion links the way its diagnosis does: across
+// the whole case, so a review does not depend on which source captured the
+// acknowledgement.
 func frame(messages ...string) []byte {
 	var raw []byte
 	for _, message := range messages {

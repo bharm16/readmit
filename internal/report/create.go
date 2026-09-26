@@ -3,7 +3,6 @@ package report
 import (
 	"context"
 	"errors"
-	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,8 +10,8 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/fixturetrial"
 	"github.com/bharm16/readmit/internal/observation"
-	"github.com/bharm16/readmit/internal/receiver"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/synth"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -32,7 +31,8 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 	if scenario != Scenario {
 		return nil, errors.New("report supports only --scenario siu-reschedule-v1; customer-derived packets are unsupported")
 	}
-	if _, err := testrunner.DecodeSpec(scenarioSpec); err != nil {
+	spec, err := testrunner.DecodeSpec(scenarioSpec)
+	if err != nil {
 		return nil, errors.New("invalid embedded report scenario")
 	}
 	packet, err := artifactdir.Create(output, packetFamily, artifactdir.Durable)
@@ -70,7 +70,7 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 		mode observation.Mode
 	}{{"baseline", observation.Defective}, {"post-fix", observation.Fixed}} {
 		trialDir := filepath.Join(work, trial.name)
-		if err := runTrial(ctx, trialDir, caseFiles, trial.mode); err != nil {
+		if err := runTrial(ctx, trialDir, caseFiles, trial.mode, spec); err != nil {
 			return nil, err
 		}
 		files, err := readTree(filepath.Join(trialDir, "result"))
@@ -119,7 +119,7 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 
 // runTrial runs one trial in its own scratch workspace at dir: the case and
 // spec it sends and the fixture it sends them to.
-func runTrial(ctx context.Context, dir string, caseFiles map[string][]byte, mode observation.Mode) error {
+func runTrial(ctx context.Context, dir string, caseFiles map[string][]byte, mode observation.Mode, spec testrunner.Spec) error {
 	workspace, err := artifactdir.Create(dir, trialFamily, artifactdir.Scratch)
 	if err != nil {
 		return err
@@ -131,7 +131,32 @@ func runTrial(ctx context.Context, dir string, caseFiles map[string][]byte, mode
 	if err := workspace.WriteFile("spec.json", scenarioSpec); err != nil {
 		return err
 	}
-	return executeFixture(ctx, workspace, mode)
+	// The fixture's live ledger is read back only by this process, inside the
+	// execution workspace Create removes, and the packet keeps its copies in
+	// synced writes. So the trial installs it in process: flushing it before
+	// each ACK put the disk's latency inside the target's message timeout,
+	// which every packet records and Open checks. Its case is scratch too.
+	outcome := fixturetrial.Run(ctx, fixturetrial.Trial{
+		Mode: mode, Dir: workspace.Path(), Spec: spec,
+		CasePath:        filepath.Join(workspace.Path(), "receiver"),
+		ObservationPath: filepath.Join(workspace.Path(), "observation.json"),
+		Durability:      artifactdir.Scratch,
+		Budget:          fixtureBudget,
+		Configure: func(session fixturetrial.Session) error {
+			config, err := encode(target(session.Address()))
+			if err != nil {
+				return err
+			}
+			return workspace.WriteFile("target.json", config)
+		},
+	})
+	if outcome.ConfigErr != nil {
+		return outcome.ConfigErr
+	}
+	if outcome.SenderErr != nil || outcome.ServeErr != nil || outcome.Artifact == nil || outcome.Artifact.Result.Status == testrunner.ExecutionError {
+		return errors.New("report fixture execution failed; incomplete packet retained")
+	}
+	return nil
 }
 
 // fixtureBudget bounds one trial. The fixture receiver waits as long for this
@@ -139,47 +164,3 @@ func runTrial(ctx context.Context, dir string, caseFiles map[string][]byte, mode
 // before sending the next message: a shorter idle limit let that sender's
 // storage, rather than the fixture, end the trial.
 const fixtureBudget = 20 * time.Second
-
-// sendTrial sends one trial's spec to its fixture. It is the ordinary test
-// runner, writing its result as scratch; it is the one seam this package's
-// tests take, to stand in a sender whose own storage stalls.
-var sendTrial = func(ctx context.Context, specPath, output string) (*testrunner.Artifact, error) {
-	return testrunner.RunWithDurability(ctx, specPath, output, artifactdir.Scratch)
-}
-
-func executeFixture(ctx context.Context, workspace *artifactdir.Writer, mode observation.Mode) error {
-	dir := workspace.Path()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return errors.New("cannot start report loopback fixture")
-	}
-	defer listener.Close()
-	config, err := encode(target(listener.Addr().String()))
-	if err != nil {
-		return err
-	}
-	if err := workspace.WriteFile("target.json", config); err != nil {
-		return err
-	}
-	// The fixture's live ledger is read back only by this process, inside the
-	// execution workspace Create removes, and the packet keeps its copies in
-	// synced writes. So it is installed in process: flushing it before each ACK
-	// put the disk's latency inside the target's message timeout, which every
-	// packet records and Open checks. Its case is scratch too.
-	fixture, err := receiver.New(receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver"), ObservationPath: filepath.Join(dir, "observation.json"), MaxMessages: 2, MaxFrameBytes: 1 << 20, IdleTimeout: fixtureBudget, InProcess: true, Durability: artifactdir.Scratch})
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, fixtureBudget)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { _, err := fixture.Serve(ctx, listener); done <- err }()
-	// New has installed the empty observation before Execute can connect.
-	artifact, runErr := sendTrial(ctx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
-	cancel()
-	serveErr := <-done
-	if runErr != nil || serveErr != nil || artifact == nil || artifact.Result.Status == testrunner.ExecutionError {
-		return errors.New("report fixture execution failed; incomplete packet retained")
-	}
-	return nil
-}

@@ -96,14 +96,17 @@ func (s *Store) admitAuthor(r *http.Request, p Principal) (func() error, error) 
 // the store's one slot when the declaration says the request writes,
 // authorize again, and require any further grant the route declared the same
 // request must hold — so a write that queued behind another operation cannot
-// retain a grant that was revoked while it waited. False means the response
-// is already written, and a caller that defers the returned release writes
-// inside both answers.
-func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project string, adm teamAdmission) (Principal, func() error, bool) {
-	principal, e := s.authorize(a, r, project, adm.action)
+// retain a grant that was revoked while it waited. Every decision reads the
+// project's lifecycle log once, and the request is answered from that read;
+// only a write that waited for admission without the store lock reads it
+// again afterwards, since a removal may have committed meanwhile. False means
+// the response is already written, and a caller that defers the returned
+// release writes inside both answers.
+func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter, project string, adm teamAdmission) (Principal, projectView, func() error, bool) {
+	principal, proj, e := s.authorizeProject(a, r, project, adm.action)
 	if e != nil {
 		http.Error(w, "access refused", 403)
-		return Principal{}, nil, false
+		return Principal{}, proj, nil, false
 	}
 	if adm.accept != nil {
 		if admitted, sentence := adm.accept(principal); !admitted {
@@ -111,35 +114,38 @@ func (s *Store) authorizeWrite(a *Access, r *http.Request, w http.ResponseWriter
 				sentence = "access refused"
 			}
 			http.Error(w, sentence, 403)
-			return Principal{}, nil, false
+			return Principal{}, proj, nil, false
 		}
 	}
 	var release func() error
+	refuse := func(sentence string) (Principal, projectView, func() error, bool) {
+		if release != nil {
+			release()
+		}
+		http.Error(w, sentence, 403)
+		return Principal{}, proj, nil, false
+	}
 	if adm.writes {
 		release, e = s.admitAuthor(r, principal)
 		if e != nil {
 			http.Error(w, "operation admission refused", 403)
-			return Principal{}, nil, false
+			return Principal{}, proj, nil, false
+		}
+		if !adm.serialized {
+			if proj, e = s.projects().open(r.Context(), project); e != nil {
+				return refuse("access refused")
+			}
 		}
 	}
-	principal, e = s.authorize(a, r, project, adm.action)
-	if e != nil {
-		if release != nil {
-			release()
-		}
-		http.Error(w, "access refused", 403)
-		return Principal{}, nil, false
+	if principal, e = s.authorize(a, r, proj, adm.action); e != nil {
+		return refuse("access refused")
 	}
 	for _, grant := range adm.further {
-		if _, e := s.authorize(a, r, project, grant.action); e != nil {
-			if release != nil {
-				release()
-			}
-			http.Error(w, grant.refusal, 403)
-			return Principal{}, nil, false
+		if _, e := s.authorize(a, r, proj, grant.action); e != nil {
+			return refuse(grant.refusal)
 		}
 	}
-	return principal, release, true
+	return principal, proj, release, true
 }
 
 func (s *Store) operationGuard() *operationguard.Guard {

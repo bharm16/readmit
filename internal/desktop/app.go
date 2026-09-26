@@ -265,17 +265,21 @@ type DestinationChooser interface {
 // rather than racing the first, and a finished operation always releases the
 // slot, including after a failure or a cancellation.
 type App struct {
-	operationMu            sync.Mutex
-	operationGuard         *operationguard.Guard
-	operationPolicy        string
-	operationSelectionPath string
+	operationMu     sync.Mutex
+	operationGuard  *operationguard.Guard
+	operationPolicy string
 	// operationRestoreRefusal remains visible until a policy is chosen again.
 	operationRestoreRefusal string
 	chooser                 FolderChooser
-	recentPath              string
-	filtersPath             string
-	sessionPath             string
-	draftsPath              string
+
+	// documents is the shell document store: the folder the shell's seven
+	// local documents live in, the names they are kept under, and the one
+	// rule they are read and replaced by.
+	documents ShellDocuments
+	// selections, when not nil, are the operation, commercial and hub
+	// selections remembered in the store for the next window. New wires none;
+	// NewWithOperationSelection restores all three.
+	selections *rememberedSelections
 
 	// licenseRoot is where this computer's license lives, the folder the
 	// command line reads it from too; empty when the shell was given none.
@@ -295,9 +299,8 @@ type App struct {
 	// commercialMu guards the retained commercial destinations selection: a
 	// local path the operator chose, read again for each status. It is never
 	// a connection and never restored into an active request.
-	commercialMu            sync.Mutex
-	commercialSelectionPath string
-	commercialConfigPath    string
+	commercialMu         sync.Mutex
+	commercialConfigPath string
 	// commercialRestoreRefusal remains visible until destinations are chosen again.
 	commercialRestoreRefusal string
 
@@ -341,12 +344,12 @@ type App struct {
 	captureProgress *CaptureProgress
 }
 
-// New binds the facade to a host folder dialog and four of the shell's seven
-// local documents: recent workspaces, saved filters, working session and editor
-// drafts. NewWithOperationSelection adds the operation, commercial and hub
-// selection documents. None holds evidence.
-func New(chooser FolderChooser, recentPath, filtersPath, sessionPath, draftsPath string) *App {
-	return &App{operationGuard: operationguard.New(""), chooser: chooser, recentPath: recentPath, filtersPath: filtersPath, sessionPath: sessionPath, draftsPath: draftsPath, hub: hubclient.NewConnection(nil)}
+// New binds the facade to a host folder dialog and the shell document store
+// over the folder given, where the shell keeps its seven local documents.
+// NewWithOperationSelection restores the three remembered selections from the
+// same store. None holds evidence.
+func New(chooser FolderChooser, documents ShellDocuments) *App {
+	return &App{operationGuard: operationguard.New(""), chooser: chooser, documents: documents, hub: hubclient.NewConnection(nil)}
 }
 
 // Cancel stops the operation that is running now, when that operation can be
@@ -681,10 +684,12 @@ func readRevisions(root string) (*project.Revisions, refusal) {
 // operation slot, so the shell can still offer the list while an operation
 // runs. A list this release cannot read is reported, never replaced.
 func (a *App) RecentWorkspaces() RecentResult {
-	roots, err := readRecent(a.recentPath)
+	roots, err := a.readRecent()
 	switch {
 	case errors.Is(err, fs.ErrPermission):
 		return RecentResult{State: PermissionDenied, Reason: "this account cannot read the recent workspace list", Roots: []string{}}
+	case errors.Is(err, errNotADocument):
+		return RecentResult{State: Failed, Reason: "the recent workspace list cannot be read; it is left exactly as written", Roots: []string{}}
 	case err != nil:
 		return RecentResult{State: Failed, Reason: "the recent workspace list was written by a version this release cannot read", Roots: []string{}}
 	case len(roots) == 0:

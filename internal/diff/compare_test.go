@@ -107,7 +107,7 @@ func executeRun(t *testing.T, source string, options replay.Options, count int, 
 	path := filepath.Join(t.TempDir(), "run")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := replay.Execute(ctx, plan, path); err != nil {
+	if _, err := replay.Send(ctx, plan, path, replay.SendOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	finish()
@@ -261,7 +261,7 @@ func TestNoSentAndMalformedReceivedBytesStayUncompared(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "refused")
-	if _, err := replay.Execute(context.Background(), plan, path); err != nil {
+	if _, err := replay.Send(context.Background(), plan, path, replay.SendOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	report := compare(t, source, path, diff.Options{})
@@ -355,7 +355,7 @@ func TestDiffAcceptsVerifiedManifestsLargerThanConfigurationFiles(t *testing.T) 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		path := filepath.Join(t.TempDir(), "run")
-		if _, err := replay.Execute(ctx, plan, path); err != nil {
+		if _, err := replay.Send(ctx, plan, path, replay.SendOptions{}); err != nil {
 			t.Fatal(err)
 		}
 		info, err := os.Stat(filepath.Join(path, "manifest.json"))

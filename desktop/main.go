@@ -127,28 +127,24 @@ func runShell(arguments []string) error {
 	// Seven local shell documents hold no evidence: recent folders, saved
 	// filters, the working session, editor drafts, and the selected paths of
 	// the operation policy, commercial destinations and customer hub config.
-	// The last two selection paths live beside the operation selection.
+	// The store owns their folder and their names; the shell names only that.
 	startupCheck := len(arguments) == 1 && arguments[0] == "--startup-check"
-	var recent, filters, session, drafts, operationSelection, license string
+	var documents desktop.ShellDocuments
+	var license string
 	if startupCheck {
 		directory, err := os.MkdirTemp("", "readmit-startup-check-")
 		if err != nil {
 			return errors.New("readmit: startup check storage unavailable")
 		}
 		defer os.RemoveAll(directory)
-		recent, filters, session = filepath.Join(directory, "recent.json"), filepath.Join(directory, "filters.json"), filepath.Join(directory, "session.json")
-		drafts, operationSelection = filepath.Join(directory, "drafts.json"), filepath.Join(directory, "operations.json")
+		documents = desktop.ShellDocuments{Folder: directory}
 		license = filepath.Join(directory, "license")
 	} else {
-		var err, filtersErr, sessionErr, draftsErr, licenseErr error
-		recent, err = desktop.DefaultRecentPath()
-		filters, filtersErr = desktop.DefaultFiltersPath()
-		session, sessionErr = desktop.DefaultSessionPath()
-		drafts, draftsErr = desktop.DefaultDraftsPath()
-		operationSelection, err = desktop.DefaultOperationSelectionPath()
+		var err, licenseErr error
+		documents, err = desktop.DefaultShellDocuments()
 		// This computer's license, the one the command line reads too.
 		license, licenseErr = desktop.DefaultInstalledLicensePath()
-		if err != nil || filtersErr != nil || sessionErr != nil || draftsErr != nil || licenseErr != nil {
+		if err != nil || licenseErr != nil {
 			return errors.New("readmit: cannot resolve the user configuration directory")
 		}
 	}
@@ -169,7 +165,7 @@ func runShell(arguments []string) error {
 		MinHeight:   480,
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   startup,
-		Bind:        []any{desktop.NewWithInstalledLicense(folders, recent, filters, session, drafts, operationSelection, license), new(hubadmin.Admin)},
+		Bind:        []any{desktop.NewWithInstalledLicense(folders, documents, license), new(hubadmin.Admin)},
 		// The shell adds no logging of its own, reports no telemetry, no crash
 		// reports and no update checks, and sends nothing to a network. The
 		// window host is held to errors so it emits no routine output either.

@@ -311,28 +311,79 @@ func PreviewOrders(d OrderScenario) (Timeline, error) {
 	return preview(d.sequence(), p)
 }
 
-// PreviewDocument dispatches by contract name, never by a permissive union of
-// fields. Each reader retains its own strict vocabulary.
-func PreviewDocument(data []byte) (Timeline, error) {
+// Workflow is one designed workflow of either contract, read once from the
+// contract name its document declares. Every workflow is the sequence of
+// steps over linked subjects both contracts share; a workflow of the order
+// contract additionally binds placer and filler identities to its order
+// subjects and repeats textual observations on its ORU steps. Those members
+// belong to the order contract alone: a sequence document carrying them is
+// refused by the sequence reader, and a document of neither contract is
+// refused as neither, never read as whichever contract would take it.
+type Workflow struct {
+	Scenario
+	Orders  []Order  `json:"orders,omitzero"`
+	Results []Result `json:"results,omitzero"`
+}
+
+// DecodeDocument reads one designed workflow of either contract, dispatching
+// on the contract name the document declares. Each reader retains its own
+// strict vocabulary, so the contract a Workflow follows is the one its bytes
+// declared; a caller reads the members of the other through the same value
+// without ever decoding a document permissively.
+func DecodeDocument(data []byte) (Workflow, error) {
 	if len(data) > MaxBytes {
-		return Timeline{}, errors.New("a scenario exceeds its size limit")
+		return Workflow{}, errors.New("a scenario exceeds its size limit")
 	}
 	var header struct {
 		Schema string `json:"schema"`
 	}
 	if err := json.Unmarshal(data, &header); err != nil {
-		return Timeline{}, errors.New("invalid scenario JSON")
+		return Workflow{}, errors.New("invalid scenario JSON")
 	}
-	if header.Schema == OrderSchema {
-		d, err := DecodeOrders(data)
+	switch header.Schema {
+	case OrderSchema:
+		orders, err := DecodeOrders(data)
 		if err != nil {
-			return Timeline{}, err
+			return Workflow{}, err
 		}
-		return PreviewOrders(d)
+		return Workflow{
+			Scenario: Scenario{Schema: orders.Schema, Scenario: orders.Scenario, Profile: orders.Profile,
+				BaseTime: orders.BaseTime, Subjects: orders.Subjects, Steps: orders.Steps},
+			Orders: orders.Orders, Results: orders.Results,
+		}, nil
+	case Schema:
+		designed, err := Decode(data)
+		if err != nil {
+			return Workflow{}, err
+		}
+		return Workflow{Scenario: designed}, nil
+	default:
+		return Workflow{}, errors.New("a scenario must declare " + Schema + " or " + OrderSchema)
 	}
-	d, err := Decode(data)
+}
+
+// Identity is what this workflow is referred to by, whichever contract
+// declared it.
+func (w Workflow) Identity() Identity { return w.Scenario.Scenario }
+
+// Preview walks the sequence through its profile's typed transition
+// operators, exactly as the contract the document declared previews it.
+func (w Workflow) Preview() (Timeline, error) {
+	if w.Schema == OrderSchema {
+		return PreviewOrders(OrderScenario{
+			Schema: w.Schema, Scenario: w.Scenario.Scenario, Profile: w.Profile, BaseTime: w.BaseTime,
+			Subjects: w.Subjects, Steps: w.Steps, Orders: w.Orders, Results: w.Results,
+		})
+	}
+	return Preview(w.Scenario)
+}
+
+// PreviewDocument dispatches by contract name, never by a permissive union of
+// fields. Each reader retains its own strict vocabulary.
+func PreviewDocument(data []byte) (Timeline, error) {
+	workflow, err := DecodeDocument(data)
 	if err != nil {
 		return Timeline{}, err
 	}
-	return Preview(d)
+	return workflow.Preview()
 }

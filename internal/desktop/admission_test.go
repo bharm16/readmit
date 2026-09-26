@@ -53,7 +53,7 @@ func authorOnlyPolicy(t *testing.T) string {
 func windowWith(t *testing.T, policy string) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	if policy != "" {
 		if result := app.SelectOperationPolicy(policy); result.State != desktop.Completed {
 			t.Fatal(result)

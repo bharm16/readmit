@@ -1,0 +1,1 @@
+- Suite preview and execution now use the same expansion rules. A suite with an invalid evidence send order is refused during preview instead of appearing ready and failing during preparation.

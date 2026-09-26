@@ -1,0 +1,1 @@
+- The desktop's seven local state documents use one bounded, atomic store. An oversized or linked recent-workspace list is reported as unreadable and is not silently replaced; existing document formats and retained workspace state remain unchanged.

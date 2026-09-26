@@ -28,7 +28,7 @@ func unreadable(t *testing.T, path string) {
 func TestOpenWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 	root := t.TempDir()
 	unreadable(t, root)
-	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json")).OpenWorkspace(root)
+	result := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()}).OpenWorkspace(root)
 	if result.State != desktop.PermissionDenied || result.Workspace != nil {
 		t.Fatalf("an unreadable folder was not reported as permission denied: %+v", result)
 	}
@@ -39,7 +39,7 @@ func TestOpenWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 
 func TestSampleWorkspaceSeparatesPermissionFromFailure(t *testing.T) {
 	parent := t.TempDir()
-	app := desktop.New(&chooser{folder: parent}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	app := desktop.New(&chooser{folder: parent}, desktop.ShellDocuments{Folder: t.TempDir()})
 	if os.Geteuid() == 0 {
 		t.Skip("a privileged account bypasses directory permissions")
 	}
@@ -63,7 +63,7 @@ func TestRecentWorkspacesSeparatesPermissionFromFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	unreadable(t, store)
-	result := desktop.New(&chooser{}, store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"), filepath.Join(filepath.Dir(filepath.Join(filepath.Dir(store), "session.json")), "drafts.json")).RecentWorkspaces()
+	result := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: filepath.Dir(store)}).RecentWorkspaces()
 	if result.State != desktop.PermissionDenied || len(result.Roots) != 0 {
 		t.Fatalf("an unreadable recent list was not reported as permission denied: %+v", result)
 	}
@@ -71,7 +71,7 @@ func TestRecentWorkspacesSeparatesPermissionFromFailure(t *testing.T) {
 
 func TestWorkspaceListingRefusesToFollowSymbolicLinks(t *testing.T) {
 	parent := t.TempDir()
-	app := desktop.New(&chooser{folder: parent}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	app := desktop.New(&chooser{folder: parent}, desktop.ShellDocuments{Folder: t.TempDir()})
 	root := sample(t, app).Workspace.Root
 	alias := filepath.Join(root, "alias")
 	if err := os.Symlink(filepath.Join(root, "regression"), alias); err != nil {
@@ -115,7 +115,7 @@ func TestOpenProjectSeparatesPermissionFromFailure(t *testing.T) {
 		root := t.TempDir()
 		writeProject(t, root, "")
 		deny(t, root)
-		result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json")).OpenProject(root)
+		result := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()}).OpenProject(root)
 		if result.State != desktop.PermissionDenied || result.Project != nil {
 			t.Fatalf("an unreadable %s was not reported as permission denied: %+v", name, result)
 		}
@@ -128,7 +128,7 @@ func TestOpenProjectSeparatesPermissionFromFailure(t *testing.T) {
 func TestSearchSeparatesPermissionFromFailure(t *testing.T) {
 	root := t.TempDir()
 	unreadable(t, root)
-	result := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json")).Search(root, "regression")
+	result := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()}).Search(root, "regression")
 	if result.State != desktop.PermissionDenied || len(result.Matches) != 0 {
 		t.Fatalf("an unreadable folder was not reported as permission denied: %+v", result)
 	}
@@ -147,7 +147,7 @@ func TestSavedFiltersSeparatePermissionFromAnUnreadableDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	unreadable(t, store)
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), store, filepath.Join(state, "session.json"), filepath.Join(filepath.Dir(filepath.Join(state, "session.json")), "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	if result := app.Filters(); result.State != desktop.PermissionDenied || len(result.Filters) != 0 {
 		t.Fatalf("an unreadable saved-filter document was not reported as permission denied: %+v", result)
 	}
@@ -167,7 +167,7 @@ func TestForgettingSeparatesAnUnwritableListFromAFailure(t *testing.T) {
 	}
 	directory := t.TempDir()
 	store := filepath.Join(directory, "recent.json")
-	app := activatedApp(t, &chooser{}, store, filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, &chooser{}, filepath.Dir(store))
 	root := t.TempDir()
 	if result := app.OpenWorkspace(root); result.State != desktop.Empty {
 		t.Fatalf("open: %+v", result)

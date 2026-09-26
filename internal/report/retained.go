@@ -12,12 +12,20 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/runcompare"
 	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 const RetainedSchema = "readmit-retained-packet/v1"
+
+// The packet's own sensitivity statements, stated once and reported by both
+// the preview and the sealed manifest.
+const (
+	retainedExportPolicy         = "customer-local-only"
+	retainedContainsSourceValues = true
+)
 
 // RetainedInput selects historical artifacts; no path is executed. BaselineCase
 // defaults to Case. Spec must be the exact specification retained by Current.
@@ -52,24 +60,20 @@ type RetainedPacket struct {
 // Assemble copies bounded snapshots into a new private directory and verifies
 // those copies before sealing. Failure retains an incomplete directory; retry
 // always requires a new destination. It never manufactures missing evidence.
+// The sections it copies and the checks its sealed manifest must satisfy are
+// the one layout and the one set of checks PreviewRetained reports, so a
+// preview cannot describe a packet assembly would not seal.
 func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPacket, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if in.Case == "" || in.Spec == "" || in.Current == "" || (in.Baseline == "" && in.BaselineCase != "") {
-		return nil, errors.New("select case, exact retained spec and current result; baseline case requires baseline result")
+	sections, err := retainedSections(in)
+	if err != nil {
+		return nil, err
 	}
 	files := map[string][]byte{}
 	total := 0
-	inputs := map[string]string{"case": in.Case, "current": in.Current}
-	if in.Baseline != "" {
-		inputs["baseline"] = in.Baseline
-		inputs["baseline-case"] = in.BaselineCase
-		if in.BaselineCase == "" {
-			inputs["baseline-case"] = in.Case
-		}
-	}
-	for prefix, source := range inputs {
+	for prefix, source := range sections {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -135,6 +139,286 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	return OpenRetained(ctx, dir)
 }
 
+// retainedSections is the one packet layout the preview and the assembly
+// share: the section each selected input is copied under. A baseline's own
+// case defaults to the current case. It is also the one admission check both
+// make of a request, in the one sentence.
+func retainedSections(in RetainedInput) (map[string]string, error) {
+	if in.Case == "" || in.Spec == "" || in.Current == "" || (in.Baseline == "" && in.BaselineCase != "") {
+		return nil, errors.New("select case, exact retained spec and current result; baseline case requires baseline result")
+	}
+	sections := map[string]string{"case": in.Case, "current": in.Current}
+	if in.Baseline != "" {
+		sections["baseline"] = in.Baseline
+		sections["baseline-case"] = in.BaselineCase
+		if in.BaselineCase == "" {
+			sections["baseline-case"] = in.Case
+		}
+	}
+	return sections, nil
+}
+
+// RetainedInputView is one selected input as the preview verified it. Found is
+// what the shared reader could open; Match members compare the input against
+// what the current execution retained, so a historical specification that is
+// not the exact one the run kept is visible before assembly instead of
+// silently replaced. Problems are fixed sentences; none of them is ever
+// resolved by substituting different evidence.
+type RetainedInputView struct {
+	Found             bool
+	Identity          string
+	Provenance        string
+	Status            string
+	ErrorClass        string
+	Boundary          string
+	RunState          string
+	Durable           bool
+	JournalIncomplete bool
+	DeliveryUncertain bool
+	ResultIdentity    string
+	SpecIdentity      string
+	CaseIdentity      string
+	TargetIdentity    string
+	SpecMatch         bool
+	CaseMatch         bool
+	Problems          []string
+}
+
+// RetainedPreview is what one assembly would copy, read from the inputs
+// themselves: each input as the shared readers verified it, the problems
+// assembly refuses on, the sections the packet will hold, and what a supplied
+// baseline does and does not establish. It writes nothing and contacts
+// nothing. A preview with no problems is exactly the input assembly accepts;
+// every problem names an input assembly would refuse.
+type RetainedPreview struct {
+	Case                 *RetainedInputView
+	Spec                 *RetainedInputView
+	Current              *RetainedInputView
+	Baseline             *RetainedInputView
+	BaselineCase         *RetainedInputView
+	BaselineSupplied     bool
+	ExportPolicy         string
+	ContainsSourceValues bool
+	Problems             []string
+	Limitations          []string
+	Inventory            []string
+}
+
+// PreviewRetained verifies the exact inputs one retained-packet assembly would
+// copy, through the same readers assembly verifies them with — the case
+// bundle, the bounded specification and its decoder, the retained execution —
+// and reports what it found without writing anything. The sections it names
+// are the ones Assemble copies and the checks it reports are the ones
+// Assemble's sealed manifest must satisfy.
+func PreviewRetained(ctx context.Context, in RetainedInput) (*RetainedPreview, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	sections, err := retainedSections(in)
+	if err != nil {
+		return nil, err
+	}
+	p := &RetainedPreview{
+		BaselineSupplied:     in.Baseline != "",
+		ExportPolicy:         retainedExportPolicy,
+		ContainsSourceValues: retainedContainsSourceValues,
+		Problems:             []string{},
+		Limitations:          []string{},
+		Inventory:            []string{},
+	}
+	p.Case = previewCase(sections["case"])
+	current, currentView := previewRun(sections["current"])
+	p.Current = currentView
+	if current != nil && current.Artifact != nil && p.Case.Found {
+		p.Case.CaseMatch = p.Case.Identity == current.Artifact.Result.InputBundleIdentity
+		if !p.Case.CaseMatch {
+			p.Case.Problems = append(p.Case.Problems, "the case is not the case the current result retained")
+		}
+	}
+	p.Spec = previewSpec(in.Spec, current)
+	p.Inventory = retainedPacketInventory(p, current)
+	if in.Baseline != "" {
+		baseline, baselineView := previewRun(sections["baseline"])
+		p.Baseline = baselineView
+		p.BaselineCase = previewCase(sections["baseline-case"])
+		if baseline != nil && current != nil {
+			if baseline.Artifact != nil && current.Artifact != nil && baseline.Artifact.Identity == current.Artifact.Identity {
+				p.Problems = append(p.Problems, "the baseline and the current result are the same retained execution; a baseline must be a distinct retained execution")
+			}
+			if baseline.Artifact != nil && p.BaselineCase.Found {
+				p.BaselineCase.CaseMatch = p.BaselineCase.Identity == baseline.Artifact.Result.InputBundleIdentity
+				if !p.BaselineCase.CaseMatch {
+					p.BaselineCase.Problems = append(p.BaselineCase.Problems, "the baseline case is not the case the baseline execution retained")
+				}
+			}
+		}
+		p.Inventory = append(p.Inventory, retainedBaselineInventory(p, baseline)...)
+		p.Limitations = append(p.Limitations, retainedBaselineBoundaries(baseline, current)...)
+	} else {
+		p.Limitations = append(p.Limitations,
+			"No observed baseline was supplied. This single-run report proves no before/after improvement or regression.")
+	}
+	p.Problems = append(p.Problems, inputProblems(p.Case, p.Spec, p.Current)...)
+	if p.Baseline != nil {
+		p.Problems = append(p.Problems, inputProblems(p.Baseline)...)
+	}
+	if p.BaselineCase != nil {
+		p.Problems = append(p.Problems, inputProblems(p.BaselineCase)...)
+	}
+	return p, nil
+}
+
+// previewCase verifies one case input through the same bundle reader
+// assembly's inspection opens the copied case with.
+func previewCase(path string) *RetainedInputView {
+	view := &RetainedInputView{Problems: []string{}}
+	opened, err := bundle.Open(path)
+	if err != nil {
+		view.Problems = append(view.Problems, "the case is not a case bundle this release verifies")
+		return view
+	}
+	view.Found = true
+	view.Identity = opened.Identity
+	view.Provenance = string(opened.Manifest.Provenance.Mode)
+	return view
+}
+
+// previewSpec reads and decodes one specification input through the same
+// bounded reader and decoder assembly reads the copied specification with,
+// and compares its identity with the specification the current execution
+// retained, so the exact historical bytes are what assembly sees — never the
+// current editable test.
+func previewSpec(path string, current *runresult.Result) *RetainedInputView {
+	view := &RetainedInputView{Problems: []string{}}
+	raw, err := retainedSpecFile.Read(path)
+	if err != nil {
+		view.Problems = append(view.Problems, "the specification is not a bounded regular file")
+		return view
+	}
+	if _, err := testrunner.DecodeSpec(raw); err != nil {
+		view.Problems = append(view.Problems, "the specification is not one this release assembles")
+		return view
+	}
+	view.Found = true
+	view.Identity = digest(raw)
+	if current != nil && current.Artifact != nil {
+		view.SpecMatch = view.Identity == current.Artifact.Result.SpecIdentity
+		if !view.SpecMatch {
+			view.Problems = append(view.Problems, "the specification is not the exact one the current result retained; assembly never substitutes the current editable test for a historical one")
+		}
+	}
+	return view
+}
+
+// previewRun opens one retained execution through the same reader assembly's
+// inspection opens the copied execution with and reports its separate facts.
+func previewRun(path string) (*runresult.Result, *RetainedInputView) {
+	view := &RetainedInputView{Problems: []string{}}
+	retained, err := runresult.Open(path)
+	if errors.Is(err, engine.ErrUnsupportedVersion) {
+		view.Problems = append(view.Problems, "the retained execution was evaluated by a version this release cannot read")
+		return nil, view
+	}
+	if err != nil {
+		view.Problems = append(view.Problems, "the entry is not a retained execution this release verifies")
+		return nil, view
+	}
+	view.Found = true
+	view.Durable = retained.Durable
+	if retained.Durable {
+		view.RunState = string(retained.Lifecycle.State)
+		view.JournalIncomplete = retained.Lifecycle.JournalIncomplete
+		view.DeliveryUncertain = retained.Lifecycle.DeliveryUncertain
+	}
+	if retained.Artifact == nil {
+		view.Problems = append(view.Problems, "the retained execution has no finalized result; assembly refuses an incomplete job")
+		return retained, view
+	}
+	if usable, _ := retained.Usable(); !usable {
+		view.Problems = append(view.Problems, "the retained execution is incomplete or its delivery is uncertain; assembly refuses it")
+	}
+	artifact := retained.Artifact
+	view.Status = string(artifact.Result.Status)
+	view.ErrorClass = artifact.Result.ErrorClass
+	view.Boundary = artifact.Result.ObservationBoundary
+	view.ResultIdentity = artifact.Identity
+	view.SpecIdentity = artifact.Result.SpecIdentity
+	view.CaseIdentity = artifact.Result.InputBundleIdentity
+	view.TargetIdentity = artifact.Result.TargetIdentity
+	return retained, view
+}
+
+// inputProblems collects the input views' own sentences into the preview's one
+// problem list.
+func inputProblems(views ...*RetainedInputView) []string {
+	problems := []string{}
+	for _, view := range views {
+		if view == nil {
+			continue
+		}
+		problems = append(problems, view.Problems...)
+	}
+	return problems
+}
+
+// retainedBaselineBoundaries states what a supplied baseline does and does not
+// establish, from the two runs' own verified facts.
+func retainedBaselineBoundaries(baseline, current *runresult.Result) []string {
+	limitations := []string{}
+	if baseline == nil || baseline.Artifact == nil || current == nil || current.Artifact == nil {
+		return limitations
+	}
+	sameCase := baseline.Artifact.Result.InputBundleIdentity == current.Artifact.Result.InputBundleIdentity
+	sameTarget := baseline.Artifact.Result.TargetIdentity == current.Artifact.Result.TargetIdentity
+	if sameCase && sameTarget {
+		limitations = append(limitations, "Baseline and current share one input and one target configuration identity; their outcomes differ only as the retained evidence records.")
+	} else if sameCase {
+		limitations = append(limitations, "The baseline input identity matches the current one; the target configuration identity changed between the two executions.")
+	} else {
+		limitations = append(limitations, "The baseline was executed against a different case identity than the current result; the comparison spans changed inputs.")
+	}
+	return limitations
+}
+
+// retainedPacketInventory names the sections the packet will hold, with the
+// counts the verified evidence itself reports, from the same layout assembly
+// copies. Every evidence file is copied byte for byte; the assembled packet's
+// manifest is the complete index.
+func retainedPacketInventory(p *RetainedPreview, current *runresult.Result) []string {
+	inventory := []string{}
+	if p.Case != nil && p.Case.Found {
+		inventory = append(inventory, "case/ — the verified case bundle, copied byte for byte")
+	}
+	inventory = append(inventory, "spec.json — the exact historical specification bytes")
+	if current != nil && current.Artifact != nil && p.Current != nil {
+		summary := "current/ — the retained execution, byte for byte"
+		summary += " (" + string(current.Artifact.Result.Status) + ", boundary " + current.Artifact.Result.ObservationBoundary
+		if current.Spec != nil {
+			summary += fmt.Sprintf(", %d selected messages", len(current.Spec.Input.Messages))
+		}
+		summary += ")"
+		inventory = append(inventory, summary)
+	}
+	inventory = append(inventory, "SUMMARY.md and RERUN.md — regenerated outcomes, limitations and rerun instructions")
+	return inventory
+}
+
+// retainedBaselineInventory names the sections a supplied baseline adds.
+func retainedBaselineInventory(p *RetainedPreview, baseline *runresult.Result) []string {
+	inventory := []string{}
+	if p.Baseline != nil && p.Baseline.Found {
+		summary := "baseline/ — the retained baseline execution, byte for byte"
+		if baseline != nil && baseline.Artifact != nil {
+			summary += " (" + string(baseline.Artifact.Result.Status) + ")"
+		}
+		inventory = append(inventory, summary)
+	}
+	if p.BaselineCase != nil && p.BaselineCase.Found {
+		inventory = append(inventory, "baseline-case/ — the baseline's own source case, byte for byte")
+	}
+	return inventory
+}
+
 func retainedSpec(path string) ([]byte, error) {
 	raw, err := retainedSpecFile.Read(path)
 	if err != nil {
@@ -192,7 +476,7 @@ func OpenRetained(ctx context.Context, dir string) (*RetainedPacket, error) {
 }
 
 func inspectRetained(ctx context.Context, dir string, files map[string][]byte) (RetainedManifest, []byte, error) {
-	m := RetainedManifest{Schema: RetainedSchema, State: "complete", ExportPolicy: "customer-local-only", ContainsSourceValues: true}
+	m := RetainedManifest{Schema: RetainedSchema, State: "complete", ExportPolicy: retainedExportPolicy, ContainsSourceValues: retainedContainsSourceValues}
 	invalid := errors.New("retained case, specification and execution identity or provenance mismatch")
 	current, err := inspectRetainedRun(dir, "case", "current")
 	if err != nil {

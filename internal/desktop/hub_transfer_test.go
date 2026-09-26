@@ -313,8 +313,7 @@ func TestPublishingEvidenceNeedsAuthorAdmissionAndASessionAndStoresTheExactBytes
 	// or not, before anything is sent.
 	identity.issue(writer, 30*time.Minute)
 	state := t.TempDir()
-	unlicensed := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	unlicensed := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	if result := unlicensed.SelectHubConfig(filepath.Join(fixture.dir, "hub-client.json")); result.State != desktop.Completed {
 		t.Fatalf("select: %+v", result)
 	}

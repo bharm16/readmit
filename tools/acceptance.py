@@ -4,7 +4,6 @@ This is partial system acceptance, not native desktop or external lab proof.
 Only the test driver needs Go. No customer data or target is accepted.
 """
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,7 +11,9 @@ import platform
 import re
 import subprocess
 
-from smoke import check_build_info, member_bytes, verify_distribution
+from release_candidate import (ARCHITECTURES, OPERATING_SYSTEMS, VERSION_STAMP, binary_name, check_build_info,
+                               checksums, digest, member_bytes, native_candidate, native_target, target,
+                               verify_membership)
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNEYS = (
@@ -57,20 +58,16 @@ def verify_events(text, expected):
         raise ValueError("test package did not pass")
 
 
-def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def execute(archive, expected_digest, version, output):
     archive = archive.resolve()
     if digest(archive) != expected_digest:
         raise ValueError("archive checksum mismatch")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+-]{0,127}", version):
         raise ValueError("invalid candidate version")
-    verify_distribution(archive)
+    verify_membership(archive)
     check_build_info([archive])
     output.mkdir(mode=0o700, parents=False)  # Never overwrite an earlier receipt.
-    name = "readmit.exe" if platform.system() == "Windows" else "readmit"
+    name = binary_name(native_target()[0])
     binary = output / name
     binary.write_bytes(member_bytes(archive, name))
     binary.chmod(0o700)
@@ -90,7 +87,7 @@ def execute(archive, expected_digest, version, output):
     (output / "inputs.sha256").write_text(inventory)
     selected = "^(" + "|".join(JOURNEYS) + ")$"
     command = ["go", "test", "-count=1", "-json", "-timeout=10m", "-ldflags",
-               "-X github.com/bharm16/readmit/internal/engine.version=" + version,
+               "-X " + VERSION_STAMP + "=" + version,
                "./tests", "-run", selected]
     env = dict(os.environ, GOTOOLCHAIN="local", GOTELEMETRY="off",
                READMIT_ACCEPTANCE_BINARY=str(binary), READMIT_ACCEPTANCE_BINARY_SHA256=binary_digest)
@@ -125,12 +122,23 @@ def execute(archive, expected_digest, version, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--archive", required=True, type=Path)
-    parser.add_argument("--sha256", required=True)
-    parser.add_argument("--version", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--archive", type=Path, help="an exact candidate archive, with --sha256 and --version")
+    parser.add_argument("--sha256")
+    parser.add_argument("--version")
+    parser.add_argument("--artifacts", type=Path, help="a release-candidate folder; selects this machine's archive")
+    parser.add_argument("--os", choices=OPERATING_SYSTEMS)
+    parser.add_argument("--arch", choices=ARCHITECTURES)
     args = parser.parse_args()
-    execute(args.archive, args.sha256, args.version, args.output.resolve())
+    if args.artifacts:
+        if args.archive or args.sha256 or args.version or not (args.os and args.arch):
+            parser.error("--artifacts takes --os and --arch, and no --archive, --sha256 or --version")
+        archive = native_candidate(args.artifacts, args.os, args.arch)
+        execute(archive, checksums(args.artifacts)[archive.name], target(archive)[2], args.output.resolve())
+    elif args.archive and args.sha256 and args.version and not (args.os or args.arch):
+        execute(args.archive, args.sha256, args.version, args.output.resolve())
+    else:
+        parser.error("give --archive with --sha256 and --version, or --artifacts with --os and --arch")
 
 
 if __name__ == "__main__":

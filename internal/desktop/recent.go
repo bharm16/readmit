@@ -4,11 +4,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
-
-	"github.com/bharm16/readmit/internal/artifactdir"
 )
 
 // RecentSchema is the versioned contract of the recent workspace list. The list
@@ -20,34 +17,23 @@ const RecentSchema = "readmit-desktop-recent/v1"
 // MaxRecentWorkspaces bounds the list the shell keeps and rereads.
 const MaxRecentWorkspaces = 10
 
-const (
-	maxRecentBytes = 1 << 16
-	maxRootBytes   = 4096
-)
+// maxRecentBytes bounds the list this release reads; the store refuses a
+// larger file before it is read into memory.
+const maxRecentBytes = 1 << 16
+
+const maxRootBytes = 4096
 
 type recentList struct {
 	Schema string   `json:"schema"`
 	Roots  []string `json:"roots"`
 }
 
-// DefaultRecentPath is the owner-only file the shell keeps the list in.
-func DefaultRecentPath() (string, error) { return configPath("recent.json") }
-
-// configPath locates one file of local shell state. Every file the shell keeps
-// lives beside the others under one owner-only directory, and none is derived
-// from another: each is named explicitly where the application is wired up.
-func configPath(name string) (string, error) {
-	directory, err := os.UserConfigDir()
-	if err != nil {
-		return "", errors.New("cannot resolve the user configuration directory")
-	}
-	return filepath.Join(directory, "readmit", name), nil
-}
-
-// readRecent treats a missing list as an empty one and returns every other
+// readRecent reads the recent workspace list out of the shell document store:
+// the store's bounded, never-through-a-link read, then this document's
+// decoder. It treats a missing list as an empty one and returns every other
 // failure so the caller can separate permission from an unreadable contract.
-func readRecent(path string) ([]string, error) {
-	data, err := os.ReadFile(path)
+func (a *App) readRecent() ([]string, error) {
+	data, err := a.documents.read(recentName, maxRecentBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -87,7 +73,7 @@ func decodeRecent(data []byte) ([]string, error) {
 // cannot read is never replaced: RecentWorkspaces reports the same refusal, so
 // the person keeps whatever wrote it.
 func (a *App) recordRecent(root string) {
-	existing, err := readRecent(a.recentPath)
+	existing, err := a.readRecent()
 	if err != nil {
 		return
 	}
@@ -95,7 +81,7 @@ func (a *App) recordRecent(root string) {
 	if len(roots) > MaxRecentWorkspaces {
 		roots = roots[:MaxRecentWorkspaces]
 	}
-	writeRecent(a.recentPath, roots)
+	a.writeRecentList(roots)
 }
 
 // ForgetWorkspace removes one folder from the recent workspace list and
@@ -125,7 +111,7 @@ func (a *App) ForgetWorkspace(root string) RecentResult {
 		return listed
 	}
 	remaining := slices.DeleteFunc(slices.Clone(listed.Roots), func(entry string) bool { return entry == root })
-	if err := writeRecent(a.recentPath, remaining); errors.Is(err, fs.ErrPermission) {
+	if err := a.writeRecentList(remaining); errors.Is(err, fs.ErrPermission) {
 		listed.State, listed.Reason = PermissionDenied, "this account cannot write the recent workspace list"
 		return listed
 	} else if err != nil {
@@ -135,30 +121,17 @@ func (a *App) ForgetWorkspace(root string) RecentResult {
 	return a.RecentWorkspaces()
 }
 
-// writeRecent installs a complete list or leaves the previous one in place,
-// through the shared document store. A reader never observes a partially
-// written list. A failure is returned as the filesystem reported it, so a
-// caller can tell a list this account cannot write from any other failure;
-// recording a folder ignores it.
-func writeRecent(path string, roots []string) error {
+// writeRecentList installs a complete list or leaves the previous one in
+// place, through the shell document store, exactly as every other shell
+// document is replaced: a reader never observes a partially written list, an
+// interrupted replacement is reported rather than reused, and the folder
+// naming the list is synced before the write answers. A failure is returned
+// as the store reported it, so a caller can tell a list this account cannot
+// write from any other failure; recording a folder ignores it.
+func (a *App) writeRecentList(roots []string) error {
 	data, err := json.Marshal(recentList{Schema: RecentSchema, Roots: roots}, json.Deterministic(true))
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	return recentFile.Replace(path, append(data, '\n'))
-}
-
-// recentFile is how the recent workspace list is replaced. Each replacement
-// is staged under a fresh name, so one a crash left behind never refuses the
-// next.
-var recentFile = artifactdir.Document{
-	Staging: artifactdir.StagingTemp(".recent-*.incomplete"),
-	Errors: artifactdir.DocumentErrors{
-		Create:  artifactdir.FilesystemReport,
-		Write:   artifactdir.FilesystemReport,
-		Install: artifactdir.FilesystemReport,
-	},
+	return a.documents.write(recentName, append(data, '\n'))
 }

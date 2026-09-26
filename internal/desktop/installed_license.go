@@ -116,8 +116,8 @@ type LicenseActivateRequest struct {
 // new work in the window is admitted through this computer's license, the one
 // the command line uses. An unreadable selection is reported, not hidden by
 // falling back to the installed license.
-func NewWithInstalledLicense(chooser FolderChooser, recent, filters, session, drafts, selection, license string) *App {
-	a := NewWithOperationSelection(chooser, recent, filters, session, drafts, selection)
+func NewWithInstalledLicense(chooser FolderChooser, documents ShellDocuments, license string) *App {
+	a := NewWithOperationSelection(chooser, documents)
 	a.licenseRoot = license
 	if license != "" && a.operationPolicy == "" && a.operationRestoreRefusal == "" {
 		policy := operationguard.InstalledPolicyIn(license)

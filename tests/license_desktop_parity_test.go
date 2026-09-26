@@ -43,8 +43,7 @@ func (r *receivedFiles) ChooseFiles(string, string, string) ([]string, error) {
 func licensedWindow(t *testing.T, root string, chooser *receivedFiles) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	return desktop.NewWithInstalledLicense(chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"), filepath.Join(state, "operations.json"), root)
+	return desktop.NewWithInstalledLicense(chooser, desktop.ShellDocuments{Folder: state}, root)
 }
 
 func TestAWindowActivationIsTheLicenseTheCommandLineShows(t *testing.T) {

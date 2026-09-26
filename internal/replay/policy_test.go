@@ -25,7 +25,7 @@ func TestExecuteRequiresPolicyForNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(t.TempDir(), "run")
-	if _, err := replay.Execute(context.Background(), plan, output); err == nil || !strings.Contains(err.Error(), "policy_required") {
+	if _, err := replay.Send(context.Background(), plan, output, replay.SendOptions{}); err == nil || !strings.Contains(err.Error(), "policy_required") {
 		t.Fatalf("name was not refused before connecting: %v", err)
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {
@@ -82,7 +82,7 @@ func TestPolicyRecordingFailurePreventsConnection(t *testing.T) {
 	}
 	output := filepath.Join(t.TempDir(), "run")
 	refused := errors.New("cannot retain decision")
-	_, err = replay.ExecuteWithPolicy(t.Context(), plan, output, nil, func(sendpolicy.Decision) error { return refused })
+	_, err = replay.Send(t.Context(), plan, output, replay.SendOptions{Record: func(sendpolicy.Decision) error { return refused }})
 	if !errors.Is(err, refused) {
 		t.Fatalf("record failure: %v", err)
 	}

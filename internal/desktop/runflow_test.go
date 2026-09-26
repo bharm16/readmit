@@ -235,7 +235,7 @@ func TestPreflightReportsDeniedAdmissionAndExecutionRefuses(t *testing.T) {
 	peer := newAckingPeer(t, "AA")
 	workspace := ackWorkspace(t, peer.address)
 	writeAckSpec(t, workspace, "reschedule.json", "AA")
-	app := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
 
 	preflight := app.PreflightRun(desktop.RunPreflightRequest{Workspace: workspace, Spec: "reschedule.json"})
 	if preflight.State != desktop.Completed || preflight.Preflight == nil {

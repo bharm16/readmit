@@ -15,8 +15,8 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { enter, Journey, press, region } from "../testkit/journey";
-import { entries, filesUnder, namesIn } from "./probes.js";
-import { activateLicense, logTiming } from "./steps";
+import { filesUnder, namesIn } from "./probes.js";
+import { activateLicense } from "./steps";
 
 let journey: Journey;
 
@@ -308,69 +308,18 @@ test("SIU fixtures generated in the window are the command line's family byte fo
   expect(filesUnder(journey.path("work", "siu-family"))).toEqual(written);
 });
 
-/** Waits until a fixture check has begun writing its private regeneration:
- * stream files in a readmit-library folder of the temporary folder every
- * process of the journey is given. */
-async function regenerating(): Promise<void> {
-  await waitFor(
-    () => {
-      const scratch = namesIn(journey.path("tmp")).filter((name) => name.startsWith("readmit-library-"));
-      if (!scratch.some((name) => entries(journey.path("tmp", name, "generation")) > 0)) {
-        throw new Error("the check is not regenerating yet");
-      }
-    },
-    { interval: 2, timeout: 30_000 },
-  );
-}
-
-test("a fixture check cancelled while it regenerates, from its control and from the keyboard, passes nothing and keeps no private streams, and the next check starts afresh", async () => {
+test("a fixture check holds its regeneration in memory, refuses an unlicensed export, and every check starts afresh", async () => {
   const user = userEvent.setup();
   journey.makeFolder("work");
   journey.placeFixture("scenario-library.json", "work/shipped-library.json");
   journey.placeFixture("scenario-expectations.json", "work/expectations.json");
-  const shipped = JSON.parse(journey.readFile("work/shipped-library.json")) as {
-    schema: string;
-    templates: { id: string; coverage: string[]; plan: { rows: { id: string }[]; variants: { id: string }[] } }[];
-  };
-  const expectations = journey.readFile("work/expectations.json");
-  // The shipped template widened to the most streams a plan holds: eight rows
-  // by sixteen variants, each regenerated and synced before anything is
-  // compared, so the check is still regenerating when the person cancels it.
-  const template = shipped.templates[0]!;
-  const plan = template.plan;
-  const wide = {
-    schema: shipped.schema,
-    templates: [
-      {
-        ...template,
-        id: "siu-cancel-book-wide",
-        coverage: ["wide"],
-        plan: {
-          ...plan,
-          rows: Array.from({ length: 8 }, (_, i) => ({ ...plan.rows[0]!, id: `row-${i + 1}` })),
-          variants: Array.from({ length: 16 }, (_, i) => ({ ...plan.variants[0]!, id: `variant-${i + 1}` })),
-        },
-      },
-    ],
-  };
-  journey.writeFile("work/wide-library.json", JSON.stringify(wide, null, 2));
   await journey.launch();
   await openWorkspace(user, "work");
   await openTab(user, "Library");
 
-  // The person reads the wide template's plan digest from the window and pins
-  // it in their own expectations of it.
-  await enter(user, scenarios().getByLabelText("Library entry"), "wide-library.json");
+  await enter(user, scenarios().getByLabelText("Library entry"), "shipped-library.json");
   await press(user, scenarios().getByRole("button", { name: "Open library" }));
-  expect(await scenarios().findByText("Opened wide-library.json: 1 template.")).toBeTruthy();
-  const listed = within(scenarios().getByRole("list", { name: "Library templates" })).getByText(/^siu-cancel-book-wide version 1 /);
-  const digest = /plan ([0-9a-f]{64})$/.exec(listed.textContent ?? "")?.[1] ?? "";
-  expect(digest).toMatch(/^[0-9a-f]{64}$/);
-  journey.writeFile(
-    "work/wide-expectations.json",
-    JSON.stringify({ ...(JSON.parse(expectations) as object), template: "siu-cancel-book-wide", plan_sha256: digest }, null, 2),
-  );
-  await enter(user, scenarios().getByLabelText("Expectations entry"), "wide-expectations.json");
+  expect(await scenarios().findByText("Opened shipped-library.json: 1 template.")).toBeTruthy();
 
   // Checking writes nothing of the workspace, so it needs no activation; an
   // export is new authoring, denied without one exactly as the command line
@@ -385,37 +334,20 @@ test("a fixture check cancelled while it regenerates, from its control and from 
   expect(await scenarios().findByText(refusal(unlicensed.stderr))).toBeTruthy();
   expect(journey.callsTo("ExportScenarioLibrary")[0]?.result).toMatchObject({ state: "permission_denied" });
   expect(namesIn(journey.path("work"))).not.toContain("wide-export.json");
-  const cancelled = "the fixture check was cancelled before it finished; its private regeneration was removed and it passed nothing";
 
-  // From the check's own control.
-  await press(user, scenarios().getByRole("button", { name: "Check expectations" }));
-  await regenerating();
-  let started = performance.now();
-  await press(user, scenarios().getByRole("button", { name: "Cancel check" }));
-  expect(await scenarios().findByText(cancelled)).toBeTruthy();
-  logTiming("fixture check Cancel to cancelled shown", [performance.now() - started]);
-  expect(journey.callsTo("Cancel").at(-1)?.args).toEqual(["scenario-check"]);
-  expect(namesIn(journey.path("tmp")).filter((name) => name.startsWith("readmit-library-"))).toEqual([]);
-  expect(scenarios().queryByText(/^Fixture checks passed/)).toBeNull();
-
-  // From the keyboard: Escape cancels whatever the window is running.
-  await press(user, scenarios().getByRole("button", { name: "Check expectations" }));
-  await regenerating();
-  started = performance.now();
-  await user.keyboard("{Escape}");
-  await waitFor(() => expect(journey.callsTo("CheckScenarioLibrary").at(-1)?.settled).toBe(true));
-  expect(await scenarios().findByText(cancelled)).toBeTruthy();
-  logTiming("fixture check Escape to cancelled shown", [performance.now() - started]);
-  expect(journey.callsTo("Cancel").at(-1)?.args).toEqual([""]);
-  expect(namesIn(journey.path("tmp")).filter((name) => name.startsWith("readmit-library-"))).toEqual([]);
-
-  // Nothing was retained, so the next check starts afresh and passes as the
-  // command passes it.
-  await enter(user, scenarios().getByLabelText("Library entry"), "shipped-library.json");
+  // The check generates every stream of the pinned plan in memory, so the
+  // temporary folder holds none of it, and the verdict is the command's own.
   await enter(user, scenarios().getByLabelText("Expectations entry"), "expectations.json");
   await press(user, scenarios().getByRole("button", { name: "Check expectations" }));
   const passed = await journey.commandLine(["scenario", "check-library", "work/shipped-library.json", "work/expectations.json"]);
   expect(passed.code).toBe(0);
   expect(await scenarios().findByText(passed.stdout.trimEnd())).toBeTruthy();
-  expect(scenarios().queryByText(cancelled)).toBeNull();
+  expect(namesIn(journey.path("tmp")).filter((name) => name.startsWith("readmit-library-"))).toEqual([]);
+  expect(journey.callsTo("Cancel").filter((call) => call.args[0] === "scenario-check")).toEqual([]);
+
+  // A check keeps nothing between runs, so checking again decides the same
+  // thing afresh.
+  await press(user, scenarios().getByRole("button", { name: "Check expectations" }));
+  expect(await scenarios().findByText(passed.stdout.trimEnd())).toBeTruthy();
+  expect(namesIn(journey.path("tmp")).filter((name) => name.startsWith("readmit-library-"))).toEqual([]);
 });

@@ -7,7 +7,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -40,10 +39,6 @@ import (
 // [ADR-0003](../../docs/adr/0003-specs-are-strict-json-with-typed-operators.md)
 // and [ADR-0005](../../docs/adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md).
 const DraftsSchema = "readmit-desktop-drafts/v1"
-
-// draftsName is the fixed name of the editor draft store, beside the working
-// session in the user configuration directory.
-const draftsName = "drafts.json"
 
 // MaxEditorDrafts bounds the unstored editor drafts one viewer retains. Past
 // the bound the new draft is refused rather than an existing one being dropped,
@@ -110,9 +105,6 @@ type NoteDraft struct {
 	Title   string `json:"title"`
 	Body    string `json:"body"`
 }
-
-// DefaultDraftsPath is the owner-only file the shell retains editor drafts in.
-func DefaultDraftsPath() (string, error) { return configPath(draftsName) }
 
 // emptyDrafts is a viewer who has retained no editor draft: a complete document
 // rather than a missing one, so reading never writes.
@@ -214,13 +206,13 @@ func mintDraftID(held []EditorDraft) (string, error) {
 	return "", errors.New("no unused draft identity")
 }
 
-// retainedDrafts reads the document this viewer's editor drafts live in. A
-// missing file is a viewer who has retained nothing, which is a complete
-// document rather than a failure; every other refusal is reported so the caller
-// can separate a file this account cannot read from one this release cannot
-// read.
+// retainedDrafts reads the document this viewer's editor drafts live in,
+// through the shell document store. A missing file is a viewer who has
+// retained nothing, which is a complete document rather than a failure; every
+// other refusal is reported so the caller can separate a file this account
+// cannot read from one this release cannot read.
 func (a *App) retainedDrafts() ([]EditorDraft, refusal) {
-	drafts, err := readEditorDrafts(a.draftsPath)
+	drafts, err := readEditorDrafts(a.documents)
 	switch {
 	case errors.Is(err, fs.ErrPermission):
 		return nil, refusal{PermissionDenied, "this account cannot read the retained editor drafts"}
@@ -238,7 +230,7 @@ func (a *App) storeDrafts(drafts []EditorDraft) EditorDraftsResult {
 	if err != nil {
 		return a.draftsFailure(refusal{Failed, "these editor drafts no longer fit the bounded document this release retains; store or discard some of them"})
 	}
-	if err := writeShellDocument(a.draftsPath, data); err != nil {
+	if err := a.documents.write(draftsName, data); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
 			return a.draftsFailure(refusal{PermissionDenied, "this account cannot write the retained editor drafts"})
 		}
@@ -259,19 +251,13 @@ func (a *App) draftsFailure(failure refusal) EditorDraftsResult {
 
 // readEditorDrafts treats a missing document as a viewer who has retained
 // nothing and returns every other failure, so the caller can say which one it
-// was.
-func readEditorDrafts(path string) ([]EditorDraft, error) {
-	info, err := os.Stat(path)
+// was. The reading is the store's one rule: a bounded regular file, never a
+// link.
+func readEditorDrafts(documents ShellDocuments) ([]EditorDraft, error) {
+	data, err := documents.read(draftsName, maxDraftsBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return emptyDrafts(), nil
 	}
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxDraftsBytes {
-		return nil, errors.New("a retained editor draft store must be a bounded regular file")
-	}
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

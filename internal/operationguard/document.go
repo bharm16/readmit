@@ -41,8 +41,13 @@ type State struct {
 	Released     bool      `json:"released"`
 }
 
+// MaxDocumentBytes is the bound every control document of the guard is read
+// within: the entitlement document bound this package enforces on its own
+// reads, re-exported so a caller of the guard needs no entitlement import.
+const MaxDocumentBytes = entitlement.MaxDocumentBytes
+
 func strict(data []byte, schema string, members []string, out any) error {
-	if len(data) > entitlement.MaxDocumentBytes {
+	if len(data) > MaxDocumentBytes {
 		return ErrUnavailable
 	}
 	var raw map[string]jsontext.Value
@@ -126,7 +131,7 @@ func readFile(path string) ([]byte, error) {
 // controlFile is how every local control is read: a link at its name is
 // refused, and every refusal is ErrUnavailable.
 var controlFile = artifactdir.Document{
-	MaxBytes: entitlement.MaxDocumentBytes,
+	MaxBytes: MaxDocumentBytes,
 	Refusals: artifactdir.DocumentRefusals{Irregular: ErrUnavailable, Read: ErrUnavailable},
 }
 

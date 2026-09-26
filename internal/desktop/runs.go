@@ -455,6 +455,16 @@ func (a *App) preflightSuite(ctx context.Context, root string, request RunPrefli
 	if refused.state != "" {
 		return RunPreflightResult{State: refused.state, Reason: refused.reason}
 	}
+	if selected != nil {
+		// What this preflight answers is what one execution would do, so it asks
+		// the one expansion execution compiles: templates, bindings, expectation
+		// overrides and the send order the selected evidence supports. A suite
+		// preparation would refuse is refused here, before it is ever shown as
+		// executable.
+		if _, err := suite.Preview(root, document, request.Environment, ""); err != nil {
+			return RunPreflightResult{State: Failed, Reason: err.Error()}
+		}
+	}
 	view := SuitePreflight{ID: document.ID, Environments: environments, Parallelism: document.Parallelism, Jobs: []SuiteJobView{}, Targets: []RunTargetView{}}
 	if selected != nil {
 		view.Environment, view.Site = selected.ID, selected.Site
@@ -616,9 +626,9 @@ type suiteRunJob struct {
 // every refusal are the queue's own; this panel adds no parallelism and
 // relaxes no rule. Cancel stops future jobs; what already ran is retained
 // exactly as the queue retains it. A start that names no preflight identity
-// is refused before admission is asked, and the suite compiles only the
-// document that still has it, checked on the bytes it compiles
-// (suite.RunPinned).
+// is refused before admission is asked, and the suite executes only the
+// document that still has the preflighted identity, checked on the bytes it
+// compiles (suite.Run with the request's Identity).
 func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 	preflighted := func() (SuiteRunResult, bool) {
 		if request.Expected == "" {
@@ -647,7 +657,8 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 			}
 			references = referencePath
 		}
-		report, runErr := suite.RunPinned(ctx, suitePath, request.Environment, output, references, request.Expected)
+		report, runErr := suite.Run(ctx, suite.Request{Path: suitePath, Environment: request.Environment,
+			Output: output, References: references, Identity: request.Expected})
 		if errors.Is(runErr, suite.ErrChanged) {
 			return SuiteRunResult{State: Failed, Reason: "the selected suite changed after the preflight; preflight it again before executing"}
 		}

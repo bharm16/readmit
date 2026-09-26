@@ -38,7 +38,7 @@ func coveragePolicy(t *testing.T, dir string) string {
 func TestCoverageDeclaredDenominatorAndQuarantineNeverPass(t *testing.T) {
 	dir, _ := fixture(t, peer(t, func(c net.Conn) { ack(c, "AA") }))
 	out := filepath.Join(dir, "out")
-	if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	path := coveragePolicy(t, out)
@@ -67,7 +67,7 @@ func TestCoverageCancelledSuiteShowsSkippedAndMissingReportStaysUnknown(t *testi
 	out := filepath.Join(dir, "out")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := suite.Run(ctx, filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Run(ctx, suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	path := coveragePolicy(t, out)
@@ -87,7 +87,7 @@ func TestCoverageCancelledSuiteShowsSkippedAndMissingReportStaysUnknown(t *testi
 func TestCoverageRefusesUnknownDuplicateNullAndMissingDeclarations(t *testing.T) {
 	dir, _ := fixture(t, "127.0.0.1:1")
 	out := filepath.Join(dir, "out")
-	if _, err := suite.Prepare(filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	path := coveragePolicy(t, out)
@@ -158,13 +158,13 @@ func TestCoverageFlakinessUsesRetainedComparableRuns(t *testing.T) {
 	dir, _ := fixture(t, peer(t, func(c net.Conn) { mu.Lock(); selected := code; mu.Unlock(); ack(c, selected) }))
 	previous := filepath.Join(dir, "previous")
 	current := filepath.Join(dir, "current")
-	if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", previous); err != nil {
+	if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: previous}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
 	code = "AA"
 	mu.Unlock()
-	if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", current); err != nil {
+	if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: current}); err != nil {
 		t.Fatal(err)
 	}
 	path := coveragePolicy(t, current)
@@ -187,7 +187,7 @@ func TestCoverageFlakinessUsesRetainedComparableRuns(t *testing.T) {
 func TestCoveragePublicCLIAndAllExclusions(t *testing.T) {
 	dir, _ := fixture(t, peer(t, func(c net.Conn) { ack(c, "AA") }))
 	out := filepath.Join(dir, "out")
-	if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	path := coveragePolicy(t, out)
@@ -228,7 +228,7 @@ func TestCoverageRefusesTamperedSuiteAndRetainedEvidence(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			dir, _ := fixture(t, peer(t, func(c net.Conn) { ack(c, "AA") }))
 			out := filepath.Join(dir, "out")
-			if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err != nil {
+			if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 				t.Fatal(err)
 			}
 			path := coveragePolicy(t, out)
@@ -286,7 +286,7 @@ func TestCoverageRejectsDeclaredEnvironmentRelabelAndCoherentTransplant(t *testi
 			doc.Environments = append(doc.Environments, suite.Environment{ID: "west", Site: "hospital-b", Bindings: []suite.Binding{{Parameter: "interface", Target: "west.json"}}})
 			write(t, filepath.Join(dir, "suite.json"), doc)
 			out := filepath.Join(dir, "out")
-			if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err != nil {
+			if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 				t.Fatal(err)
 			}
 			path := coveragePolicy(t, out)
@@ -296,7 +296,7 @@ func TestCoverageRejectsDeclaredEnvironmentRelabelAndCoherentTransplant(t *testi
 			case "coherent-transplant":
 				other, _ := fixture(t, peer(t, func(c net.Conn) { ack(c, "AA") }))
 				otherOut := filepath.Join(other, "out")
-				if _, err := suite.Run(t.Context(), filepath.Join(other, "suite.json"), "east", otherOut); err != nil {
+				if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(other, "suite.json"), Environment: "east", Output: otherOut}); err != nil {
 					t.Fatal(err)
 				}
 				raw, err := os.ReadFile(filepath.Join(otherOut, "booking-one.json"))
@@ -348,7 +348,7 @@ func FuzzDecodeCoverage(f *testing.F) {
 func TestCoverageInterruptedJournalNeverInheritsPassingResult(t *testing.T) {
 	dir, _ := fixture(t, peer(t, func(c net.Conn) { ack(c, "AA") }))
 	out := filepath.Join(dir, "out")
-	if _, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	path := coveragePolicy(t, out)
@@ -407,7 +407,7 @@ func TestCoverageReadsApprovedSuiteWithoutChangingApproval(t *testing.T) {
 func TestBuildCoveragePinsTheExactRetainedBytes(t *testing.T) {
 	dir, _ := fixture(t, "127.0.0.1:1")
 	out := filepath.Join(dir, "out")
-	if _, err := suite.Prepare(filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := suite.BuildCoverage(out, []suite.Requirement{{ID: "accept-booking", Jobs: []string{"booking-one"}}, {ID: "downstream", Jobs: []string{}}}, []suite.Exclusion{{Job: "booking-one", State: "quarantined", Reason: "fixture under investigation", Expires: "2026-10-01T00:00:00Z"}})
@@ -439,7 +439,7 @@ func TestBuildCoveragePinsTheExactRetainedBytes(t *testing.T) {
 func TestBuildCoverageRefusesDeclarationsTheRetainedSuiteDoesNotSupport(t *testing.T) {
 	dir, _ := fixture(t, "127.0.0.1:1")
 	out := filepath.Join(dir, "out")
-	if _, err := suite.Prepare(filepath.Join(dir, "suite.json"), "east", out); err != nil {
+	if _, err := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err != nil {
 		t.Fatal(err)
 	}
 	for _, kind := range []string{"unknown-job", "unknown-exclusion", "empty-denominator", "duplicate-requirement", "missing-reason", "bad-expiry", "bad-state"} {

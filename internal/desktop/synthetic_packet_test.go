@@ -34,8 +34,7 @@ import (
 func unactivatedWindow(t *testing.T, c *chooser) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	return desktop.New(c, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	return desktop.New(c, desktop.ShellDocuments{Folder: state})
 }
 
 // generated generates one synthetic packet through the window into a new

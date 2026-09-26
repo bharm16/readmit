@@ -72,7 +72,7 @@ func TestFixtureACKRecognitionRequiresTheReceiverRequestSubset(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 			defer cancel()
-			run, err := replay.Execute(ctx, plan, filepath.Join(dir, "run"))
+			run, err := replay.Send(ctx, plan, filepath.Join(dir, "run"), replay.SendOptions{})
 			if err != nil || !run.Successful() {
 				t.Fatalf("scripted transport must succeed: %v", err)
 			}

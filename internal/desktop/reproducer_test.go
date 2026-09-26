@@ -219,7 +219,7 @@ func TestBuildingAReproducerRefusesWhatItCannotStandBehind(t *testing.T) {
 func TestReproducerOperationsRunOneAtATime(t *testing.T) {
 	app, root, identity := reproducerWorkspace(t)
 	reentrant := &chooser{folder: root}
-	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, t.TempDir())
 	var edited, undone, built desktop.ReproducerResult
 	reentrant.before = func() {
 		start := request(root, identity, reproducer.Plan{}, reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repBookingID})
@@ -393,7 +393,7 @@ func TestComparingRevisionsRunsOneAtATime(t *testing.T) {
 	revision := buildRevision(t, app, root, identity, "revision",
 		reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID})
 	reentrant := &chooser{folder: root}
-	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, t.TempDir())
 	var compared desktop.ReproducerComparisonResult
 	reentrant.before = func() {
 		compared = second.CompareReproducers(desktop.ReproducerComparisonRequest{Workspace: root, Left: revision, Right: revision})

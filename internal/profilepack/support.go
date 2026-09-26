@@ -1,11 +1,6 @@
 package profilepack
 
-import (
-	"bytes"
-	"errors"
-
-	"github.com/bharm16/readmit/internal/hl7"
-)
+import "errors"
 
 // Outcome is the one answer a pack gives about one level of one combination.
 // Only OutcomeSupported passes; every other outcome is a reason the consumer
@@ -30,13 +25,6 @@ const (
 // is the only place that question is answered, so a consumer cannot treat
 // unknown, untested or unsupported as anything but not passing.
 func (o Outcome) Passing() bool { return o == OutcomeSupported }
-
-// Combination is one HL7 version and message family, as a message declares
-// them in MSH-12 and MSH-9.
-type Combination struct {
-	Version string
-	Family  string
-}
 
 // FieldLabel is a pack's answer about one field position. Name is nonempty
 // only when Outcome is OutcomeSupported and the pack carries a name for the
@@ -153,35 +141,4 @@ func (p Pack) Label(version, family, segment string, position int) FieldLabel {
 		}
 	}
 	return label
-}
-
-// Declared reads the combination one parsed message declares: the first
-// component of MSH-12 and of MSH-9, as the bytes are written. Nothing is
-// normalized and nothing is inferred from the segments present, so a message
-// that declares neither, one that does not begin with MSH, or one outside the
-// document declares nothing and every question about it is unknown.
-func Declared(doc *hl7.Document, messageIndex int) Combination {
-	if doc == nil || messageIndex < 0 || messageIndex >= len(doc.Messages) {
-		return Combination{}
-	}
-	message := doc.Messages[messageIndex]
-	if len(message.Segments) == 0 || message.Segments[0].ID != "MSH" {
-		return Combination{}
-	}
-	return Combination{
-		Version: firstComponent(doc, message, 12),
-		Family:  firstComponent(doc, message, 9),
-	}
-}
-
-func firstComponent(doc *hl7.Document, message hl7.Message, field int) string {
-	value := message.Segments[0].Field(field)
-	if value.State != hl7.Present || len(value.Repetitions) == 0 {
-		return ""
-	}
-	raw := doc.Bytes(value.Repetitions[0].Span)
-	if component := message.Delimiters.Component; component != 0 {
-		raw, _, _ = bytes.Cut(raw, []byte{component})
-	}
-	return string(raw)
 }

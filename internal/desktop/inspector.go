@@ -219,45 +219,30 @@ func escapeBytes(raw []byte) string {
 	return out.String()
 }
 
-// The bundled dictionary supplies field labels only. It does not supply
-// segment names, datatypes, cardinality, clinical meaning or conformance.
+// fieldMetadata asks the one label module what applies here: the declared
+// version is read once through the shared selector, and the label, status and
+// provenance of the selected position are the module's answer, so the window
+// reports a position exactly as the command line does.
 func fieldMetadata(doc *hl7.Document, selected hl7.Node) FieldMetadata {
-	metadata := FieldMetadata{Status: "unsupported_version"}
-	versionSelector, _ := hl7.ParseSelector("MSH-12.1")
-	version, _ := doc.Select(0, versionSelector)
-	versionBytes := doc.Bytes(version.Span)
+	declared := dictionary.Declared(doc, 0)
+	metadata := FieldMetadata{Status: dictionary.StatusUnsupportedVersion}
 	// A declaration is shown escaped and bounded even when labels are unsupported.
 	metadata.HL7Version = "declaration exceeds the 128-byte metadata display limit"
-	if len(versionBytes) <= 128 {
-		metadata.HL7Version = escapeBytes(versionBytes)
+	if len(declared.Version) <= 128 {
+		metadata.HL7Version = escapeBytes([]byte(declared.Version))
 	}
 	labels, err := dictionary.Load()
 	if err != nil {
-		metadata.Status = "unavailable"
+		metadata.Status = dictionary.StatusUnavailable
 		return metadata
 	}
-	if string(versionBytes) != labels.HL7Version {
+	if !labels.Applies(declared) {
 		return metadata
 	}
 	metadata.Contract = labels.Contract
-	metadata.Provenance = "nHapi 2495edd1e23a85ab9146cb03947c17d45120cf1f; MPL-2.0; docs/dictionary-provenance.md"
-	metadata.Status = "unlabeled_position"
-	if selected.Kind == "message" {
-		metadata.Status = "field_labels_only"
-		return metadata
-	}
-	fields, ok := labels.Segments[selected.Segment]
-	if !ok {
-		metadata.Status = "unsupported_segment"
-		return metadata
-	}
-	if selected.Kind == "segment" {
-		metadata.Status = "field_labels_only"
-		return metadata
-	}
-	if label, ok := fields[selected.Field]; ok {
-		metadata.Label = label
-		metadata.Status = "labeled_field"
-	}
+	metadata.Provenance = dictionary.Provenance
+	answer := labels.At(dictionary.Position{Kind: selected.Kind, Segment: selected.Segment, Field: selected.Field})
+	metadata.Status = answer.Status
+	metadata.Label = answer.Label
 	return metadata
 }

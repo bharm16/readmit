@@ -40,7 +40,7 @@ func (c chosenFolder) ChooseFolder(string) (string, error) { return string(c), n
 
 func unlicensedDesktopApp(t *testing.T, folder string) *desktop.App {
 	t.Helper()
-	return desktop.New(chosenFolder(folder), filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	return desktop.New(chosenFolder(folder), desktop.ShellDocuments{Folder: t.TempDir()})
 }
 
 // The desktop shell and the command line are two entry points into one engine.
@@ -272,7 +272,7 @@ func TestDesktopDependenciesStayOutOfTheReleasedModule(t *testing.T) {
 func TestRecentWorkspacesRecordFoldersAndNoEvidence(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "recent.json")
 	parent := t.TempDir()
-	app := desktop.New(chosenFolder(parent), store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"), filepath.Join(filepath.Dir(store), "drafts.json"))
+	app := desktop.New(chosenFolder(parent), desktop.ShellDocuments{Folder: filepath.Dir(store)})
 	created := app.CreateSampleWorkspace()
 	if created.State != desktop.Completed {
 		t.Fatalf("sample workspace: %+v", created)
@@ -291,7 +291,7 @@ func TestRecentWorkspacesRecordFoldersAndNoEvidence(t *testing.T) {
 		}
 	}
 	// Reopening from the recorded folder returns the same workspace.
-	reopened := desktop.New(chosenFolder(""), store, filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"), filepath.Join(filepath.Dir(store), "drafts.json")).OpenWorkspace(recent.Roots[0])
+	reopened := desktop.New(chosenFolder(""), desktop.ShellDocuments{Folder: filepath.Dir(store)}).OpenWorkspace(recent.Roots[0])
 	if reopened.State != desktop.Completed || reopened.Workspace == nil || reopened.Workspace.Root != created.Workspace.Root {
 		t.Fatalf("a recorded workspace could not be reopened: %+v", reopened)
 	}

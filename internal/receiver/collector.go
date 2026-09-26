@@ -236,7 +236,8 @@ func (c *Collector) Journal() *capturejournal.Summary { return c.summary }
 
 func (c *Collector) bounds() limits {
 	return limits{maxFrameBytes: c.config.MaxFrameBytes, maxMessages: c.config.MaxMessages,
-		maxConnections: c.config.MaxConnections, maxSessions: c.config.MaxSessions, maxCaptureBytes: c.config.MaxCaptureBytes}
+		maxConnections: c.config.MaxConnections, maxSessions: c.config.MaxSessions,
+		maxCaptureBytes: c.config.MaxCaptureBytes, idle: c.config.IdleTimeout}
 }
 
 // Serve owns and closes listener. Cancellation interrupts a blocked accept,
@@ -308,97 +309,24 @@ func (c *Collector) finalizeJournal(ctx context.Context, err error) {
 	_ = c.journal.Close()
 }
 
+// connection serves one peer through the shared frame loop; what one complete
+// inbound frame does is the handler below.
 func (c *Collector) connection(ctx context.Context, connection net.Conn, state *stream) (bool, error) {
-	bounds := c.bounds()
-	reader, _ := mllp.NewReader(deadlineReader{connection, &c.recorder, c.config.IdleTimeout}, c.config.MaxFrameBytes)
-	var refused []byte
-	defer func() {
-		// A coalesced TCP read may include frames beyond --max-messages, and a
-		// refusal drains the frame its peer had already begun. Both are
-		// retained as received evidence, never claimed as acknowledged.
-		c.close(state, append(reader.Buffered(), refused...))
-	}()
-	for {
-		admitted, err := c.admitFrame(state, bounds)
-		if err != nil {
-			return false, err
-		}
-		// A reached quota or a stop another connection decided ends this one
-		// before a frame is read, so a message this capture would not retain
-		// stays in the sender's socket rather than being consumed and dropped.
-		if !admitted {
-			return c.complete(ctx, c.config.MaxMessages), nil
-		}
-		if !c.awaiting(state, connection) {
-			return true, nil
-		}
-		// The slot in a declared message limit is claimed only once this peer
-		// has actually begun the next frame. A slot claimed while merely
-		// waiting is promised on behalf of a peer that may have finished
-		// sending, and a limit spent on promises like that starves a peer whose
-		// frame has already arrived.
-		if err := reader.Await(); err != nil {
-			c.engaged(state)
-			// An idle or disconnected peer never began another frame. Anything
-			// it did send is read-ahead the deferred close still retains.
-			return false, nil
-		}
-		if !c.reserveFrame(bounds) {
-			// Every frame still to come is promised to a peer already reading
-			// one, so this peer's is refused. It is drained rather than left in
-			// the socket: closing over it would reset this connection instead
-			// of ending it, and the reset would take the acknowledgements this
-			// capture has already sent along with it.
-			buffered := reader.Buffered()
-			refused = append(buffered, c.drainRefused(connection, bounds.maxFrameBytes+frameReserve-len(buffered))...)
-			c.engaged(state)
-			// A refusal is not the end of the session: the frames it is still
-			// waiting for have not arrived. Only a session that has read every
-			// frame it was asked for finishes here.
-			return c.complete(ctx, c.config.MaxMessages), nil
-		}
-		raw, readErr := reader.ReadFrame()
-		c.engaged(state)
-		if readErr != nil {
-			c.releaseFrame()
-			raw = append(raw, reader.Buffered()...)
-			if len(raw) > 0 {
-				c.retain(state, raw, bundle.Inbound)
-			}
-			// A malformed, oversized, idle, or disconnected peer leaves its
-			// consumed prefix in the final case without any receipt claim.
-			return false, nil
-		}
-		stop, usable, err := c.frame(ctx, connection, state, raw)
-		if err != nil {
-			return false, err
-		}
-		if stop {
-			return c.complete(ctx, c.config.MaxMessages), nil
-		}
-		if c.complete(ctx, c.config.MaxMessages) {
-			return true, nil
-		}
-		if !usable {
-			// A header this receiver cannot answer safely ends the connection
-			// rather than guessing a correlation for the next frame.
-			return false, nil
-		}
-	}
+	return c.frameLoop(ctx, connection, state, c.bounds(), c.frame)
 }
 
 // frame handles one complete inbound frame on the connection that carried it.
 // The receipt is preflighted and, when a journal is configured, the frame's
 // bytes are synced before any stage is answered, so the evidence of what was
 // received always survives the acknowledgement that claims it.
-func (c *Collector) frame(ctx context.Context, connection net.Conn, state *stream, raw []byte) (stop bool, usableHeader bool, err error) {
+func (c *Collector) frame(ctx context.Context, connection net.Conn, state *stream, raw []byte) frameDecision {
 	id := c.retain(state, raw, bundle.Inbound)
 	ordinal := c.nextFrame()
 	session := sessionName(state.ordinal)
 	result := c.decide(raw, ordinal)
 	if c.journal != nil {
 		if err := c.journal.Received(session, id, result.controlID, raw); err != nil {
-			return false, false, err
+			return frameDecision{err: err}
 		}
 	}
 	entry := collection.Received{SessionID: session, OccurrenceID: id, ControlID: result.controlID, Mode: result.mode, Accept: result.accept, Application: result.application}
@@ -407,7 +335,7 @@ func (c *Collector) frame(ctx context.Context, connection net.Conn, state *strea
 	}
 	index, err := c.commit(entry)
 	if err != nil {
-		return false, false, err
+		return frameDecision{err: err}
 	}
 	// The receipt is updated in one place when the frame is done, so a stage
 	// that downgrades never publishes a half-written entry to a concurrent
@@ -417,13 +345,13 @@ func (c *Collector) frame(ctx context.Context, connection net.Conn, state *strea
 	for _, stage := range []string{collection.AcceptStage, collection.ApplicationStage} {
 		stop := c.answerStage(ctx, state, connection, result, stage, ordinal, &entry)
 		if err := c.journalError(); err != nil {
-			return false, false, err
+			return frameDecision{err: err}
 		}
 		if stop {
-			return true, result.usableHeader, nil
+			return frameDecision{stop: true, usable: result.usableHeader}
 		}
 	}
-	return false, result.usableHeader, nil
+	return frameDecision{usable: result.usableHeader}
 }
 
 // sendJournal records one acknowledgement stage around the write that sends it.
@@ -523,14 +451,13 @@ func (c *Collector) deliverApplication(ctx context.Context, state *stream, conne
 // sendStage writes one acknowledgement on the connection that delivered the
 // message and retains exactly the bytes the socket took.
 func (c *Collector) sendStage(connection net.Conn, state *stream, entry *collection.Received, stage string, ack []byte) error {
-	if err := connection.SetWriteDeadline(time.Now().Add(c.config.IdleTimeout)); err != nil {
-		return errors.New("cannot set collector write deadline")
+	deadlineErr, answerErr := c.writeAnswer(connection, state, c.config.IdleTimeout, ack, "collector", func() (int, error) {
+		return c.sendJournal(entry, stage, func() (int, error) { return writeAll(connection, ack) })
+	})
+	if deadlineErr != nil {
+		return deadlineErr
 	}
-	sent, err := c.sendJournal(entry, stage, func() (int, error) { return writeAll(connection, ack) })
-	if sent > 0 {
-		c.retain(state, ack[:sent], bundle.Outbound)
-	}
-	return err
+	return answerErr
 }
 
 // downgrade records that a stage this session intended to answer did not reach

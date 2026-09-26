@@ -11,23 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/mllp"
-	"github.com/bharm16/readmit/internal/sendpolicy"
 )
-
-// Execute is the only replay operation that accesses the network. A new run is
-// reserved before dialing; transport failures are finalized evidence in Events,
-// not returned errors. Errors indicate invalid input or failure to store evidence.
-// There is one dial operation, one outstanding message, and no reconnect/retry.
-func Execute(ctx context.Context, plan *Plan, output string) (*Run, error) {
-	return ExecuteWithPolicy(ctx, plan, output, nil, nil)
-}
-
-// ExecuteWithPolicy checks the actual destination and records its decision before
-// opening a connection. A selected policy requires a recorder; a failed record
-// prevents sending. Execute uses the same boundary with loopback-only defaults.
-func ExecuteWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error) (*Run, error) {
-	return ExecuteObserved(ctx, plan, output, policy, record, nil)
-}
 
 // Observer is a synchronous durability boundary. Errors halt execution, retaining
 // incomplete evidence. BeforeSend runs before any payload write; Sent runs after
@@ -37,40 +21,6 @@ type Observer interface {
 	BeforeSend(occurrence string) error
 	Sent(occurrence string, raw []byte) error
 	Recorded(event Event) error
-}
-
-func ExecuteObserved(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, observer Observer) (*Run, error) {
-	return executeObservedPolicy(ctx, plan, output, policy, record, nil, observer)
-}
-
-func executeWithPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver) (*Run, error) {
-	return executeObservedPolicy(ctx, plan, output, policy, record, resolve, nil)
-}
-
-func executeObservedPolicy(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver, observer Observer) (*Run, error) {
-	if plan == nil || len(plan.messages) == 0 {
-		return nil, errors.New("replay requires a prepared plan")
-	}
-	if policy != nil && record == nil {
-		return nil, errors.New("a selected send policy requires a decision recorder")
-	}
-	duration, _ := time.ParseDuration(plan.target.ConnectTimeout)
-	decision, err := destination.Decide(ctx, destination.Request{
-		Purpose: destination.Send, Address: plan.target.Address, Classification: string(plan.target.Environment().Classification),
-		Policy: policy, Budget: duration, Record: record, Resolve: resolve,
-	})
-	if err != nil {
-		return nil, err
-	}
-	route, admitted := decision.Route()
-	if !admitted {
-		return nil, errors.New("the send was refused by policy before anything was sent: " + string(decision.Reason))
-	}
-	// File persistence is not network connection time. DNS consumes the
-	// connection budget; recording and reserving evidence do not.
-	return executeObserved(ctx, plan, output, observer, func(ctx context.Context, p *Plan) (net.Conn, *TransportError) {
-		return connect(ctx, p, route)
-	})
 }
 
 func execute(ctx context.Context, plan *Plan, output string, dial func(context.Context, *Plan) (net.Conn, *TransportError)) (*Run, error) {

@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/profilepack"
 )
 
@@ -59,7 +60,7 @@ const MaxPacks = 32
 // carries.
 type Library struct {
 	packs   []profilepack.Pack
-	answers map[profilepack.Combination]int
+	answers map[dictionary.Combination]int
 }
 
 // Entry is one pack the library holds, with the provenance its publisher
@@ -119,7 +120,7 @@ func Open(directory string) (Library, error) {
 		return Library{}, errors.New("a profile library holds at most 32 packs")
 	}
 	slices.Sort(names)
-	library := Library{answers: make(map[profilepack.Combination]int)}
+	library := Library{answers: make(map[dictionary.Combination]int)}
 	for _, name := range names {
 		data, err := read(filepath.Join(directory, name))
 		if err != nil {
@@ -206,9 +207,9 @@ func (l *Library) add(pack profilepack.Pack) error {
 			return errors.New("a profile library holds one version of each pack id, and holds " + pack.Identity.ID + " more than once")
 		}
 	}
-	combinations := make([]profilepack.Combination, 0, len(pack.Coverage))
+	combinations := make([]dictionary.Combination, 0, len(pack.Coverage))
 	for _, coverage := range pack.Coverage {
-		combination := profilepack.Combination{Version: coverage.HL7Version, Family: coverage.Family}
+		combination := dictionary.Combination{Version: coverage.HL7Version, Family: coverage.Family}
 		if held, ok := l.answers[combination]; ok {
 			return errors.New("the packs " + l.packs[held].Identity.ID + " and " + pack.Identity.ID +
 				" both declare HL7 " + combination.Version + " " + combination.Family + ", and a library chooses between neither")
@@ -313,7 +314,7 @@ func (l Library) Bundleable() error {
 // declaring finds the one pack that declares a combination. A zero Library has
 // no map and therefore declares nothing.
 func (l Library) declaring(version, family string) (profilepack.Pack, bool) {
-	index, ok := l.answers[profilepack.Combination{Version: version, Family: family}]
+	index, ok := l.answers[dictionary.Combination{Version: version, Family: family}]
 	if !ok {
 		return profilepack.Pack{}, false
 	}

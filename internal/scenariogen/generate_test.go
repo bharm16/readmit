@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/scenariogen"
 )
 
@@ -191,6 +193,111 @@ func TestGenerationCancellationAndRefusalNeverOverwrites(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(incomplete, "generation.json")); !os.IsNotExist(err) {
 		t.Fatal("incomplete output acquired completion record")
+	}
+}
+
+// The family a check holds in memory is exactly what Write installs: the
+// same completion record and the same framed bytes per stream, produced
+// without creating anything anywhere.
+func TestProduceMatchesWrittenBytesWithoutCreatingAnything(t *testing.T) {
+	parent := t.TempDir()
+	t.Setenv("TMPDIR", parent)
+	t.Setenv("TMP", parent)
+	t.Setenv("TEMP", parent)
+	input := plan(t)
+	family, err := scenariogen.Produce(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := os.ReadDir(parent); err != nil || len(entries) != 0 {
+		t.Fatalf("producing wrote %v: %v", entries, err)
+	}
+	path := filepath.Join(t.TempDir(), "family")
+	record, err := scenariogen.Write(context.Background(), path, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(family.Manifest, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(append(encoded, '\n'), record) {
+		t.Fatal("the in-memory manifest is not the completion record Write installs")
+	}
+	for i, row := range family.Manifest.Streams {
+		written, err := os.ReadFile(filepath.Join(path, row.File))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(written, family.Stream(i)) {
+			t.Fatalf("stream %d differs from the bytes Write installed", i)
+		}
+		sum := sha256.Sum256(family.Stream(i))
+		if row.SHA256 != hex.EncodeToString(sum[:]) {
+			t.Fatalf("stream %d digest disagrees with its bytes", i)
+		}
+	}
+}
+
+// WriteCase is the one operation for a generated case: the streams and their
+// completion record are the ones Write writes, and the case bundle beside
+// them opens as generated from the plan's declared generator inputs.
+func TestWriteCaseWritesStreamsAndGeneratedCaseThroughOneOperation(t *testing.T) {
+	root := t.TempDir()
+	written, err := scenariogen.WriteCase(context.Background(), plan(t), filepath.Join(root, "family"), filepath.Join(root, "case"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written.Streams != 1 || written.Identity == "" {
+		t.Fatalf("written: %+v", written)
+	}
+	record, err := os.ReadFile(filepath.Join(root, "family", "generation.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(written.Record, record) {
+		t.Fatal("the operation did not retain the record it installed")
+	}
+	other, err := scenariogen.Write(context.Background(), filepath.Join(root, "elsewhere"), plan(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(written.Record, other) {
+		t.Fatal("WriteCase and Write disagree on the completion record")
+	}
+	if written.GeneratorVersion != "readmit-scenario-generator-v1" || written.ProfileVersion != "readmit-siu-lifecycle-v1" {
+		t.Fatalf("the template's inputs: %+v", written)
+	}
+	if written.BaseTime.Format(time.RFC3339) != "2026-01-01T12:00:00Z" {
+		t.Fatalf("the template's base time: %+v", written.BaseTime)
+	}
+	opened, err := bundle.Open(filepath.Join(root, "case"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	provenance := opened.Manifest.Provenance
+	if provenance.Mode != bundle.Generated || provenance.Generator == nil {
+		t.Fatalf("the case's provenance: %+v", provenance)
+	}
+	generator := provenance.Generator
+	if generator.Seed != 0 || generator.GeneratorVersion != written.GeneratorVersion ||
+		generator.ProfileVersion != written.ProfileVersion ||
+		!generator.BaseTime.Equal(written.BaseTime.UTC()) {
+		t.Fatalf("the case's generator inputs: %+v", generator)
+	}
+}
+
+// A cancelled case write retains nothing: nothing of the generation and no
+// case bundle.
+func TestWriteCaseCancelledCreatesNothing(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := scenariogen.WriteCase(ctx, plan(t), filepath.Join(root, "family"), filepath.Join(root, "case")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancel: %v", err)
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+		t.Fatalf("a cancelled case write retained %v: %v", entries, err)
 	}
 }
 

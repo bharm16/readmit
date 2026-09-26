@@ -11,7 +11,6 @@ import (
 	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/bharm16/readmit/internal/scenariolibrary"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -186,42 +185,60 @@ func TestOtherSupportedProfilesUseTheirOwnIndependentExpectations(t *testing.T) 
 	}
 }
 
-// Cancellation is injected at the public context boundary after real stream
-// bytes exist, not at an internal helper or by racing a timer against I/O.
-type cancelAfterFirstStream struct {
+// cancelAfterCalls cancels itself the Nth time Check consults it, which is
+// once before and once between produced streams, so a cancellation lands
+// after real stream bytes exist in memory without a filesystem seam.
+type cancelAfterCalls struct {
 	context.Context
-	parent   string
-	observed bool
+	calls int
+	limit int
 }
 
-func (c *cancelAfterFirstStream) Err() error {
-	files, _ := filepath.Glob(filepath.Join(c.parent, "readmit-library-*", "generation", "stream-001.mllp"))
-	if len(files) > 0 {
-		c.observed = true
+func (c *cancelAfterCalls) Err() error {
+	c.calls++
+	if c.calls >= c.limit {
 		return context.Canceled
 	}
-	return nil
+	return c.Context.Err()
 }
-func TestInterruptedCheckRemovesPrivateStreamsAndCanRetry(t *testing.T) {
+
+// A check regenerates in memory, so it writes nothing anywhere. Over a watched
+// temporary folder a passing check, a cancelled one and the retry after it
+// each leave it empty, and a cancellation that lands between produced streams
+// answers cancelled without retaining a byte.
+func TestCheckWritesNothingAndCancelledCheckCanRetry(t *testing.T) {
 	parent := t.TempDir()
 	t.Setenv("TMPDIR", parent)
 	t.Setenv("TMP", parent)
 	t.Setenv("TEMP", parent)
 	l, o := fixtures(t)
-	ctx := &cancelAfterFirstStream{Context: context.Background(), parent: parent}
-	if _, err := scenariolibrary.Check(ctx, l, o); !errors.Is(err, context.Canceled) || !ctx.observed {
-		t.Fatalf("did not cancel after creating stream: %v", err)
+	if _, err := scenariolibrary.Check(context.Background(), l, o); err != nil {
+		t.Fatal(err)
 	}
 	files, err := os.ReadDir(parent)
 	if err != nil || len(files) != 0 {
-		t.Fatalf("retained private data after interruption: %v %v", files, err)
+		t.Fatalf("a passing check wrote %v: %v", files, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := scenariolibrary.Check(ctx, l, o); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if files, err = os.ReadDir(parent); err != nil || len(files) != 0 {
+		t.Fatalf("a cancelled check wrote %v: %v", files, err)
+	}
+	interrupted := &cancelAfterCalls{Context: context.Background(), limit: 3}
+	if _, err := scenariolibrary.Check(interrupted, l, o); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a cancellation between streams: %v", err)
+	}
+	if files, err = os.ReadDir(parent); err != nil || len(files) != 0 {
+		t.Fatalf("an interrupted check wrote %v: %v", files, err)
 	}
 	if _, err := scenariolibrary.Check(context.Background(), l, o); err != nil {
 		t.Fatal(err)
 	}
-	files, err = os.ReadDir(parent)
-	if err != nil || len(files) != 0 {
-		t.Fatal("retry retained temporary streams")
+	if files, err = os.ReadDir(parent); err != nil || len(files) != 0 {
+		t.Fatalf("a retry wrote %v: %v", files, err)
 	}
 }
 

@@ -2,39 +2,25 @@ package desktop
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/backup"
-	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/lifecycle"
 	"github.com/bharm16/readmit/internal/project"
-	"github.com/bharm16/readmit/internal/protect"
-	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/upgrade"
 )
 
-// Path class labels for one backup inventory row. They separate what a backup
-// holds without exporting secret values or treating indexes as the only copy.
-const (
-	BackupClassEvidence   = "canonical-evidence"
-	BackupClassMutable    = "mutable-project-document"
-	BackupClassExclusion  = "declared-exclusion"
-	BackupClassCredential = "credential-reference"
-	BackupClassProtection = "protection-key-reference"
-	BackupClassOther      = "other-project-file"
-)
+// Path class labels for one backup inventory row. The evidence label is this
+// view's name for what a backup manifest records; the classes of a project
+// directory's own files are the project package's.
+const BackupClassEvidence = "canonical-evidence"
 
 // MaintenancePathResult is one native folder choice for backup, restore or upgrade.
 type MaintenancePathResult struct {
@@ -412,21 +398,17 @@ func (a *App) PreviewProjectMigration(path string) MigrationPreviewResult {
 	})
 }
 
-// PreviewProjectRetirement inventories what archive or delete would affect.
+// PreviewProjectRetirement inventories what archive or delete would affect,
+// through lifecycle's own retirement preview: the compatibility plan, the
+// source as the backup limits measure it, and the selection token a later
+// archive or delete must present.
 func (a *App) PreviewProjectRetirement(path string) RetirementPreviewResult {
 	return run(a, true, false, func(ctx context.Context) RetirementPreviewResult {
 		root, declined := resolveProjectPath(path)
 		if root == "" {
 			return RetirementPreviewResult{State: declined.state, Reason: declined.reason}
 		}
-		plan, err := lifecycle.Preview(ctx, root)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return RetirementPreviewResult{State: Cancelled, Reason: cancelledRefusal.reason}
-			}
-			return RetirementPreviewResult{State: Failed, Reason: err.Error()}
-		}
-		selection, files, bytes, err := retirementSelection(ctx, root)
+		retirement, err := lifecycle.PreviewRetirement(ctx, root)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				return RetirementPreviewResult{State: Cancelled, Reason: cancelledRefusal.reason}
@@ -436,12 +418,12 @@ func (a *App) PreviewProjectRetirement(path string) RetirementPreviewResult {
 		return RetirementPreviewResult{
 			State: Completed,
 			Preview: &RetirementPreview{
-				Selection:  selection,
+				Selection:  retirement.Selection,
 				Project:    root,
-				Compatible: plan.Compatible,
-				Files:      files,
-				Bytes:      bytes,
-				Documents:  plan.Documents,
+				Compatible: retirement.Compatible,
+				Files:      retirement.Files,
+				Bytes:      retirement.Bytes,
+				Documents:  retirement.Documents,
 				Explain:    "Archive writes a verified recovery backup and keeps the source. Delete does the same, then unlinks the source only when this selection still matches.",
 				NotErasure: retirementNotErasure,
 			},
@@ -465,17 +447,10 @@ func (a *App) ArchiveOrDeleteProject(request ProjectArchiveRequest) BackupResult
 		if request.Delete && !request.Confirm {
 			return BackupResult{State: Failed, Reason: "project delete requires explicit confirmation; the recovery archive will be retained"}
 		}
-		current, _, _, err := retirementSelection(ctx, root)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return BackupResult{State: Cancelled, Reason: cancelledRefusal.reason}
-			}
-			return BackupResult{State: Failed, Reason: err.Error()}
-		}
-		if current != request.Selection {
-			return BackupResult{State: Failed, Reason: "the project changed since the retirement preview; nothing was deleted"}
-		}
-		report, operationErr := lifecycle.Archive(ctx, root, request.Destination, request.Delete)
+		// The selection the person previewed is what lifecycle binds the
+		// operation to: a project changed after the preview is refused before
+		// anything is written.
+		report, operationErr := lifecycle.Archive(ctx, root, request.Destination, request.Selection, request.Delete)
 		view := BackupReportView{}
 		if report.Root != "" {
 			view = viewFromReport(report)
@@ -614,7 +589,14 @@ func (a *App) PrepareStagedUpgrade(request UpgradePrepareRequest) UpgradeResult 
 		if !plan.RetainedReadable() {
 			return UpgradeResult{State: Failed, Reason: upgrade.ErrNotReadable.Error(), View: view}
 		}
-		report, operationErr := lifecycle.Archive(ctx, root, request.Destination, false)
+		retirement, err := lifecycle.PreviewRetirement(ctx, root)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return UpgradeResult{State: Cancelled, Reason: cancelledRefusal.reason, View: view}
+			}
+			return UpgradeResult{State: Failed, Reason: err.Error(), View: view}
+		}
+		report, operationErr := lifecycle.Archive(ctx, root, request.Destination, retirement.Selection, false)
 		var reportView *BackupReportView
 		if report.Root != "" {
 			v := viewFromReport(report)
@@ -669,58 +651,6 @@ func readQuotaView(root string) (ProjectQuotaView, error) {
 	return view, nil
 }
 
-func retirementSelection(ctx context.Context, root string) (string, int, int64, error) {
-	opened, err := os.OpenRoot(root)
-	if err != nil {
-		return "", 0, 0, errors.New("cannot inspect retirement source")
-	}
-	defer opened.Close()
-	type row struct {
-		Name   string
-		Size   int64
-		Digest string
-	}
-	var rows []row
-	var total int64
-	err = fs.WalkDir(opened.FS(), ".", func(name string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return errors.New("cannot enumerate retirement source")
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil || !info.Mode().IsRegular() {
-			return errors.New("retirement refuses nonregular entries")
-		}
-		total += info.Size()
-		f, err := opened.Open(name)
-		if err != nil {
-			return errors.New("cannot read retirement source")
-		}
-		h := sha256.New()
-		n, err := io.Copy(h, io.LimitReader(f, backup.MaxFileBytes+1))
-		closeErr := f.Close()
-		if err != nil || closeErr != nil || n != info.Size() {
-			return errors.New("retirement source changed or could not be read")
-		}
-		rows = append(rows, row{Name: name, Size: n, Digest: hex.EncodeToString(h.Sum(nil))})
-		return nil
-	})
-	if err != nil {
-		return "", 0, 0, err
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
-	h := sha256.New()
-	for _, entry := range rows {
-		_, _ = io.WriteString(h, entry.Name+"\n"+entry.Digest+"\n")
-	}
-	return hex.EncodeToString(h.Sum(nil)), len(rows), total, nil
-}
-
 func viewFromReport(report backup.Report) BackupReportView {
 	view := BackupReportView{
 		Root:        report.Root,
@@ -748,7 +678,7 @@ func viewFromReport(report backup.Report) BackupReportView {
 	for _, entry := range report.Indexes {
 		view.Exclusions = append(view.Exclusions, BackupInventoryEntry{
 			Path:        entry.Name,
-			Class:       BackupClassExclusion,
+			Class:       string(project.ClassDeclaredExclusion),
 			Case:        entry.Case,
 			State:       string(entry.State),
 			Explanation: "Derived index declarations only. Disposable; rebuilt from canonical evidence. Never the only copy of work.",
@@ -773,21 +703,21 @@ func viewFromDocument(root string, document backup.Document) BackupReportView {
 	for _, file := range document.Files {
 		bytes += file.Size
 		entry := BackupInventoryEntry{Path: file.Path, Size: file.Size, SHA256: file.SHA256}
-		switch classOfProjectFile(file.Path, schemaOfStoredFile(root, file.Path)) {
-		case BackupClassMutable:
-			entry.Class = BackupClassMutable
+		switch class := project.ClassifyFile(file.Path, schemaOfStoredFile(root, file.Path)); class {
+		case project.ClassMutableDocument:
+			entry.Class = string(class)
 			entry.Explanation = "Mutable project document. Edited separately from immutable evidence."
 			view.Mutable = append(view.Mutable, entry)
-		case BackupClassCredential:
-			entry.Class = BackupClassCredential
+		case project.ClassCredentialReference:
+			entry.Class = string(class)
 			entry.Explanation = "Credential reference document. References only; secret values are never exported."
 			view.Credentials = append(view.Credentials, entry)
-		case BackupClassProtection:
-			entry.Class = BackupClassProtection
+		case project.ClassProtectionKeyReference:
+			entry.Class = string(class)
 			entry.Explanation = "Protection control with an external key reference. Key material is never stored or rendered."
 			view.Protection = append(view.Protection, entry)
 		default:
-			entry.Class = BackupClassOther
+			entry.Class = string(class)
 			view.Other = append(view.Other, entry)
 		}
 	}
@@ -805,7 +735,7 @@ func viewFromDocument(root string, document backup.Document) BackupReportView {
 	for _, entry := range document.Indexes {
 		view.Exclusions = append(view.Exclusions, BackupInventoryEntry{
 			Path:        entry.Name,
-			Class:       BackupClassExclusion,
+			Class:       string(project.ClassDeclaredExclusion),
 			Case:        entry.Case,
 			Retention:   string(entry.Retention),
 			State:       string(recordedIndex(entry)),
@@ -840,49 +770,26 @@ func classifyProjectFiles(root string, view *BackupReportView) {
 			continue
 		}
 		schema := peekSchema(filepath.Join(root, name))
-		class := classOfProjectFile(name, schema)
-		row := BackupInventoryEntry{Path: name, Class: class, Size: info.Size()}
+		class := project.ClassifyFile(name, schema)
+		row := BackupInventoryEntry{Path: name, Class: string(class), Size: info.Size()}
 		switch class {
-		case BackupClassMutable:
+		case project.ClassMutableDocument:
 			row.Explanation = "Mutable project document."
 			if !containsPath(view.Mutable, name) {
 				view.Mutable = append(view.Mutable, row)
 			}
-		case BackupClassCredential:
+		case project.ClassCredentialReference:
 			row.Explanation = "Credential reference document. Values stay in the external store."
 			if !containsPath(view.Credentials, name) {
 				view.Credentials = append(view.Credentials, row)
 			}
-		case BackupClassProtection:
+		case project.ClassProtectionKeyReference:
 			row.Explanation = "Protection key reference. Key material is never exported."
 			if !containsPath(view.Protection, name) {
 				view.Protection = append(view.Protection, row)
 			}
 		}
 	}
-}
-
-func classOfProjectFile(name, schema string) string {
-	base := path.Base(name)
-	switch base {
-	case project.DocumentName, project.RevisionsDocumentName, project.QuotaDocumentName:
-		return BackupClassMutable
-	}
-	if document, _, ok := artifactdir.ParsePreviousName(base); ok {
-		switch document {
-		case project.DocumentName, project.RevisionsDocumentName, project.QuotaDocumentName:
-			return BackupClassMutable
-		}
-	}
-	switch schema {
-	case secret.Schema:
-		return BackupClassCredential
-	case protect.Schema:
-		return BackupClassProtection
-	case index.Schema:
-		return BackupClassExclusion
-	}
-	return BackupClassOther
 }
 
 func peekSchema(path string) string {

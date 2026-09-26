@@ -16,7 +16,7 @@ import (
 // can close the shell by dropping the App and open it again over the same file.
 func sessionApp(t *testing.T, store string) *desktop.App {
 	t.Helper()
-	return activatedApp(t, &chooser{}, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), store)
+	return activatedApp(t, &chooser{}, filepath.Dir(store))
 }
 
 func sessionStore(t *testing.T) string {
@@ -260,9 +260,10 @@ func TestDiscardingADraftThatIsNotHeldIsRefused(t *testing.T) {
 	}
 }
 
-// The session is one owner-readable file replaced in full, so a reader never
-// observes a partial document and an interrupted write is reported rather than
-// overwritten.
+// The session is one owner-readable file whose stored bytes are the strict
+// document this release reads. What a replacement owes a reader — never a
+// partial document, an interrupted write reported rather than reused — is the
+// shell document store's, tested once where the store lives.
 func TestSessionIsWrittenCompletelyAndPrivately(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "state", "session.json")
 	app := sessionApp(t, store)
@@ -287,21 +288,6 @@ func TestSessionIsWrittenCompletelyAndPrivately(t *testing.T) {
 	}
 	if stored.Schema != desktop.SessionSchema {
 		t.Fatalf("the stored session declares %q", stored.Schema)
-	}
-
-	incomplete := store + ".incomplete"
-	if err := os.WriteFile(incomplete, []byte("partial"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	result := app.SaveDraft(draft(root, "vendor-call", "Ask about MSH-15", ""))
-	if result.State != desktop.Failed {
-		t.Fatalf("a retained interrupted write was reused: %+v", result)
-	}
-	if retained, err := os.ReadFile(incomplete); err != nil || string(retained) != "partial" {
-		t.Fatalf("the interrupted write was overwritten: %q %v", retained, err)
-	}
-	if kept, err := os.ReadFile(store); err != nil || string(kept) != string(data) {
-		t.Fatalf("a refused write changed the retained session: %q", kept)
 	}
 }
 
@@ -345,7 +331,7 @@ func TestRetainingWorkDoesNotWaitForTheOperationSlot(t *testing.T) {
 		during = app.SaveDraft(draft(root, "triage", "First pass", "typed while busy"))
 		recovering = app.RecoverSession()
 	}}
-	app = activatedApp(t, reentrant, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), store)
+	app = activatedApp(t, reentrant, filepath.Dir(store))
 	if opened := app.SelectWorkspace(); opened.State != desktop.Empty {
 		t.Fatalf("select workspace: %+v", opened)
 	}

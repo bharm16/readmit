@@ -195,35 +195,149 @@ func (d Document) validate() error {
 	return err
 }
 
-// Each template dependency means all of that setup's data rows must pass.
-// runqueue owns cycle, duplicate, isolation, identifier and total-job bounds.
-func (d Document) queue() (runqueue.Plan, error) {
+// jobID is the identity of one TEST-ROW job: the test id and the row id,
+// joined once. The queue, the expansion, coverage verification and the gate
+// all name a job — and its compiled specification beside it — through here.
+func jobID(test, row string) string { return test + "-" + row }
+
+// specName is the file name one job's compiled specification is retained under.
+func specName(job string) string { return job + ".json" }
+
+// rowPlan is one TEST-ROW job a document declares before an environment is
+// selected: the enumeration the queue is built from and every expansion walks.
+type rowPlan struct {
+	job   string
+	test  Test
+	row   Row
+	after []string
+}
+
+// rows enumerates the TEST-ROW jobs one document declares, in declared test
+// and row order, expanding every test's dependencies into the job ids they
+// depend on. runqueue owns cycle, duplicate, isolation, identifier and
+// total-job bounds.
+func (d Document) rows() ([]rowPlan, error) {
 	ids := map[string][]string{}
 	for _, test := range d.Tests {
 		for _, table := range d.Tables {
 			if table.ID == test.Table {
 				for _, row := range table.Rows {
-					ids[test.ID] = append(ids[test.ID], test.ID+"-"+row.ID)
+					ids[test.ID] = append(ids[test.ID], jobID(test.ID, row.ID))
 				}
 			}
 		}
 	}
-	q := runqueue.Plan{Schema: runqueue.PlanSchema, Parallelism: d.Parallelism}
+	declared := make([]rowPlan, 0, len(d.Tests))
 	for _, test := range d.Tests {
 		var after []string
 		for _, dep := range test.After {
 			if len(ids[dep]) == 0 {
-				return q, errors.New("suite depends on an undeclared test")
+				return nil, errors.New("suite depends on an undeclared test")
 			}
 			after = append(after, ids[dep]...)
 		}
-		for _, id := range ids[test.ID] {
-			q.Jobs = append(q.Jobs, runqueue.Job{ID: id, Spec: id + ".json", Isolation: test.Isolation, After: after})
+		for _, table := range d.Tables {
+			if table.ID != test.Table {
+				continue
+			}
+			for _, row := range table.Rows {
+				declared = append(declared, rowPlan{job: jobID(test.ID, row.ID), test: test, row: row, after: after})
+			}
 		}
+	}
+	return declared, nil
+}
+
+// Each template dependency means all of that setup's data rows must pass.
+// runqueue owns cycle, duplicate, isolation, identifier and total-job bounds.
+func (d Document) queue() (runqueue.Plan, error) {
+	declared, err := d.rows()
+	if err != nil {
+		return runqueue.Plan{}, err
+	}
+	q := runqueue.Plan{Schema: runqueue.PlanSchema, Parallelism: d.Parallelism}
+	for _, row := range declared {
+		q.Jobs = append(q.Jobs, runqueue.Job{ID: row.job, Spec: specName(row.job), Isolation: row.test.Isolation, After: row.after})
 	}
 	raw, err := json.Marshal(q)
 	if err != nil {
 		return q, err
 	}
 	return runqueue.DecodePlan(raw)
+}
+
+// Declaration is one TEST-ROW job a document and one environment expand to,
+// decided without reading a template or any evidence: the identifiers, the
+// template and case references, the environment binding the test's parameter
+// resolves to, the send order, isolation and dependency declarations, and the
+// expected-value overrides the row declares. The expansion compiles each
+// declaration against its template and its evidence; coverage verification
+// and the gate walk the declarations of a retained suite, whose templates and
+// evidence may be long gone.
+type Declaration struct {
+	Job         string
+	Test        string
+	Row         string
+	Spec        string
+	Case        string
+	Parameter   string
+	Target      string
+	Observation string
+	Sequence    []string
+	Isolation   runqueue.Isolation
+	After       []string
+	Expected    map[string]testrunner.Value
+}
+
+// declare resolves the ordered declarations one selected environment expands
+// to. It refuses an environment the document does not declare.
+func (d Document) declare(environment string) ([]Declaration, error) {
+	var selected *Environment
+	for i := range d.Environments {
+		if d.Environments[i].ID == environment {
+			selected = &d.Environments[i]
+		}
+	}
+	if selected == nil {
+		return nil, errors.New("suite does not declare the selected environment")
+	}
+	declared, err := d.rows()
+	if err != nil {
+		return nil, err
+	}
+	expanded := make([]Declaration, 0, len(declared))
+	for _, row := range declared {
+		declaration := Declaration{
+			Job: row.job, Test: row.test.ID, Row: row.row.ID, Spec: row.test.Spec,
+			Case: row.row.Case, Parameter: row.test.Parameter,
+			Sequence: row.test.Sequence, Isolation: row.test.Isolation,
+			After: row.after, Expected: row.row.Expected,
+		}
+		for _, binding := range selected.Bindings {
+			if binding.Parameter == row.test.Parameter {
+				declaration.Target = binding.Target
+				declaration.Observation = binding.Observation
+			}
+		}
+		expanded = append(expanded, declaration)
+	}
+	return expanded, nil
+}
+
+// bindObservation resolves one environment's observation binding for the
+// boundary a template declares: a ledger boundary requires the environment's
+// observation path, and only a ledger boundary can consume one. The reference
+// returned is the binding's own; the caller anchors it to the root its paths
+// resolve from.
+func bindObservation(boundary, observation string) (string, error) {
+	if boundary == testrunner.LedgerBoundary {
+		if observation == "" {
+			return "", errors.New("ledger template requires an environment observation path")
+		}
+		return observation, nil
+	}
+	if observation != "" {
+		return "", errors.New("ACK template cannot consume an observation binding")
+	}
+	return "", nil
 }

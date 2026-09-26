@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/fixturetrial"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -12,15 +14,15 @@ import (
 // the ordinary test runner reporting to observer, which stands in for the
 // sender's own evidence storage. The returned function restores the runner.
 func ObserveSenderForTest(observer replay.Observer) (restore func()) {
-	original := sendPractice
-	sendPractice = func(ctx context.Context, specPath, output string) (*testrunner.Artifact, error) {
+	original := fixturetrial.Sender
+	fixturetrial.Sender = func(ctx context.Context, specPath, output string, durability artifactdir.Durability) (*testrunner.Artifact, error) {
 		plan, err := testrunner.Prepare(specPath)
 		if err != nil {
 			return nil, err
 		}
 		return testrunner.ExecuteObserved(ctx, plan, output, observer)
 	}
-	return func() { sendPractice = original }
+	return func() { fixturetrial.Sender = original }
 }
 
 // ObserveLedgerSyncForTest calls observe with the path of the ledger each

@@ -65,7 +65,11 @@ func TestAnArchiveDeletesItsSourceOnlyOnceItsBackupIsSynced(t *testing.T) {
 		return nil
 	}))
 
-	report, err := lifecycle.Archive(context.Background(), source, archive, true)
+	retirement, err := lifecycle.PreviewRetirement(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := lifecycle.Archive(context.Background(), source, archive, retirement.Selection, true)
 	if err != nil || !report.Complete() {
 		t.Fatalf("archive: %+v %v", report, err)
 	}
@@ -129,7 +133,11 @@ func TestAnArchiveWhoseBackupCannotBeSyncedRetainsItsSource(t *testing.T) {
 		}
 		return nil
 	}))
-	if _, err := lifecycle.Archive(context.Background(), source, archive, true); err == nil || !strings.Contains(err.Error(), "the backup was written in full but a power loss could still lose it") {
+	retirement, err := lifecycle.PreviewRetirement(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.Archive(context.Background(), source, archive, retirement.Selection, true); err == nil || !strings.Contains(err.Error(), "the backup was written in full but a power loss could still lose it") {
 		t.Fatalf("an archive whose backup could not be synced answered %v", err)
 	}
 	if _, err := project.Open(source); err != nil {

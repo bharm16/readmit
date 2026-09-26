@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/bharm16/readmit/internal/replay"
 	"maps"
 	"os"
 	"path/filepath"
@@ -84,7 +85,7 @@ func Export(ctx context.Context, request ExportRequest) (*ExportManifest, error)
 	if err != nil || copy.Identity != review.DerivedIdentity {
 		return nil, errors.New("approved derived evidence could not be regenerated")
 	}
-	proof, err := runProof(ctx, spec, casePath, filepath.Join(stageDir, "proof"), review.OriginalFailedAssertions)
+	proof, err := FixtureProver{}.Prove(ctx, spec, casePath, filepath.Join(stageDir, "proof"), review.OriginalFailedAssertions)
 	if err != nil {
 		// The located attempt stays the record; the proof's own explanation,
 		// which names steps and verdicts but no path or value, is said here only.
@@ -94,8 +95,8 @@ func Export(ctx context.Context, request ExportRequest) (*ExportManifest, error)
 	// export contract. Keep them beside the private staging directory before
 	// enumerating packet contents; do not weaken the packet allowlist.
 	for _, session := range []string{"baseline", "postfix"} {
-		from := filepath.Join(stageDir, "proof", session, "result.decision.json")
-		to := stageDir + "." + session + ".decision.json"
+		from := filepath.Join(stageDir, "proof", session, "result"+replay.DecisionSuffix)
+		to := stageDir + "." + session + replay.DecisionSuffix
 		if err := os.Rename(from, to); err != nil {
 			return nil, errors.New("cannot retain private proof send decision")
 		}

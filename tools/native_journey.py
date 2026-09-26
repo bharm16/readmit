@@ -36,6 +36,7 @@ import time
 from pathlib import Path
 
 from package_desktop import MANIFEST_NAME
+from release_candidate import MACHINES
 
 ROOT = Path(__file__).resolve().parents[1]
 # The object-replacement character AT-SPI puts where a child element sits in
@@ -443,7 +444,7 @@ class Application:
 
 def machine():
     arch = platform.machine().lower()
-    return {"x86_64": "amd64", "amd64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(arch, arch)
+    return MACHINES.get(arch, arch)
 
 
 def command_line(executable, *arguments, cwd):

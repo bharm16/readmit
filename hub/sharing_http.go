@@ -1,23 +1,11 @@
 package hub
 
 import (
-	"context"
+	"errors"
 	"log"
 	"net/http"
-
-	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
-func (s *Store) supportArtifact(ctx context.Context, project, digest string) ([]byte, error) {
-	if !s.linked(ctx, project, digest) {
-		return nil, ErrMissing
-	}
-	retired, e := s.retired(ctx, project, digest)
-	if e != nil || retired {
-		return nil, ErrMissing
-	}
-	return s.Get(ctx, digest)
-}
 func (s *Store) supportExport(w http.ResponseWriter, r *http.Request, a *Access, project, digest string) {
 	// The log vocabulary is fixed, never derived from a request, identity, path,
 	// artifact, credential or backend error. HTTP response loss never retries.
@@ -31,16 +19,16 @@ func (s *Store) supportExport(w http.ResponseWriter, r *http.Request, a *Access,
 	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, e := s.authorize(a, r, project, "export"); e != nil {
+	_, proj, e := s.authorizeProject(a, r, project, "export")
+	if e != nil {
 		http.Error(w, "access refused", 403)
 		return
 	}
-	events, e := s.reviewEvents(r.Context(), project)
-	if e != nil {
+	data, e := s.projects().approvedSupport(r.Context(), proj, digest)
+	if errors.Is(e, errLogUnavailable) {
 		http.Error(w, "sharing unavailable", 503)
 		return
 	}
-	data, e := hubprotocol.DeriveReviews(events).Approved(digest, func(d string) ([]byte, error) { return s.supportArtifact(r.Context(), project, d) })
 	if e != nil {
 		http.Error(w, "exact reviewed support unavailable", 403)
 		return

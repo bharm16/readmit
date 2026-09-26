@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/authority"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -18,7 +19,7 @@ type evaluator struct {
 	profile       profileDefinition
 	report        Report
 	rules         map[string]bool
-	namespaces    map[authority]string
+	namespaces    *authority.Table
 	unsupported   map[string]bool
 	requiredRule  string
 	findingWindow string
@@ -48,7 +49,7 @@ func Run(path string, config Config) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	e := evaluator{profile: profile, requiredRule: set.requiredRule, report: Report{Schema: Schema, CaseIdentity: b.Identity, Profile: config.Profile, Ruleset: config.Ruleset, Rules: []string{}, Findings: []Finding{}, Unsupported: []Unsupported{}, Scope: "Only the listed rules of the named readmit fixture profile were examined over the stated observed case window. This is not HL7 conformance validation and is not proof of correctness. The capture may omit earlier or later events; observed times, declared message times, and import times are distinct."}, rules: make(map[string]bool), namespaces: make(map[authority]string), unsupported: make(map[string]bool)}
+	e := evaluator{profile: profile, requiredRule: set.requiredRule, report: Report{Schema: Schema, CaseIdentity: b.Identity, Profile: config.Profile, Ruleset: config.Ruleset, Rules: []string{}, Findings: []Finding{}, Unsupported: []Unsupported{}, Scope: "Only the listed rules of the named readmit fixture profile were examined over the stated observed case window. This is not HL7 conformance validation and is not proof of correctness. The capture may omit earlier or later events; observed times, declared message times, and import times are distinct."}, rules: make(map[string]bool), namespaces: authority.NewTable(mappingsOf(config.Namespaces)), unsupported: make(map[string]bool)}
 	configJSON, err := json.Marshal(config, json.Deterministic(true))
 	if err != nil {
 		return Report{}, errors.New("cannot encode diagnosis configuration")
@@ -56,9 +57,6 @@ func Run(path string, config Config) (Report, error) {
 	configHash := sha256.Sum256(configJSON)
 	e.report.ConfigSHA256 = hex.EncodeToString(configHash[:])
 	e.report.Window = caseWindow(b)
-	for _, ns := range config.Namespaces {
-		e.namespaces[authority{ns.Namespace, ns.UniversalID, ns.UniversalIDType}] = ns.Key
-	}
 	// Without a named ruleset no rule identifier has a meaning here, so a rule is
 	// only unsupported when no registered ruleset defines it, and a profile only
 	// when no registered ruleset names it. Nothing is evaluated either way.
@@ -328,7 +326,9 @@ func (e *evaluator) required(m message) {
 
 // authorityFor preserves the complete EI/HD authority tuple. A namespace mapping
 // is an explicit customer assertion of equivalence; raw identifier strings never
-// establish equivalence across different or unknown authorities.
+// establish equivalence across different or unknown authorities. What one is
+// and when it resolves is the one rule internal/authority owns; the reading of
+// the tuple, under MSH-18, stays here.
 func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) (string, bool) {
 	parts := [3]string{}
 	for i, path := range paths {
@@ -340,7 +340,7 @@ func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) 
 			if reportMissing {
 				e.finding(e.requiredRule, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority; explicit null is not an authority.", e.profile.Profile), e.findingWindow, m.evidence(path))
 			}
-			e.unsupportedItem("unknown_assigning_authority", m.event.ID, path, "Explicit-null assigning authority cannot be used for correlation.")
+			e.unsupportedItem(authority.UnknownCode, m.event.ID, path, "Explicit-null assigning authority cannot be used for correlation.")
 			return "", false
 		}
 		if v.State == hl7.Present {
@@ -351,16 +351,17 @@ func (e *evaluator) authorityFor(m message, paths []string, reportMissing bool) 
 			}
 		}
 	}
-	if parts[0] == "" && parts[1] == "" || (parts[1] == "") != (parts[2] == "") {
+	tuple := authority.Parts{Namespace: parts[0], UniversalID: parts[1], UniversalIDType: parts[2]}
+	if !tuple.Complete() {
 		if reportMissing {
 			e.finding(e.requiredRule, "profile_violation", fmt.Sprintf("Profile %s requires an assigning authority (namespace or universal identifier and type).", e.profile.Profile), e.findingWindow, m.evidence(paths[0]), m.evidence(paths[1]), m.evidence(paths[2]))
 		}
-		e.unsupportedItem("unknown_assigning_authority", m.event.ID, paths[0], "The assigning authority is missing or incomplete; identifier correlation was not evaluated.")
+		e.unsupportedItem(authority.UnknownCode, m.event.ID, paths[0], "The assigning authority is missing or incomplete; identifier correlation was not evaluated.")
 		return "", false
 	}
-	key, ok := e.namespaces[authority{parts[0], parts[1], parts[2]}]
+	key, ok := e.namespaces.Resolve(tuple)
 	if !ok {
-		e.unsupportedItem("unconfigured_assigning_authority", m.event.ID, paths[0], "The assigning authority has no configured namespace mapping; identifier correlation was not evaluated.")
+		e.unsupportedItem(authority.UnconfiguredCode, m.event.ID, paths[0], "The assigning authority has no configured namespace mapping; identifier correlation was not evaluated.")
 	}
 	return key, ok
 }

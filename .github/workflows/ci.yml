@@ -28,8 +28,12 @@ env:
   GOTOOLCHAIN: local
   GOTELEMETRY: 'off'
   READMIT_RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+  # The gates a job's condition can name, computed once. A job's `if:` cannot
+  # read env, so it repeats a gate's expression; tools/proven_tree.py reads
+  # which gates each job repeats to know what quality must require of it.
   # ADR-0011: true only on the events that run the full gate set.
   FULL_GATES: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
+  RUN_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys }}
 
 jobs:
   # A push to main repeats a pull request's work only when the pull request's
@@ -54,7 +58,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/proven_tree.py --artifact proven-tree-ci
+        run: python3 tools/proven_tree.py check
 
   go-tests:
     needs: proof
@@ -93,7 +97,7 @@ jobs:
         run: make mutate
 
   # Timed campaigns never run on a pull request or a push; go-tests runs every
-  # target's seed corpus there. Keep this condition identical to FULL_GATES.
+  # target's seed corpus there. The condition is FULL_GATES.
   # Each shard starts from the latest corpus a campaign on main retained, and
   # retains its own, so no cache eviction loses it.
   fuzz:
@@ -165,10 +169,7 @@ jobs:
       - uses: ./.github/actions/setup-go
         with:
           cache-scope: security
-      - name: Vulnerability check
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-          govulncheck ./...
+      - uses: ./.github/actions/govulncheck
 
   # Keep one stable required context. A skipped, cancelled or failed prerequisite
   # must fail this check as well as block release publication.
@@ -201,7 +202,9 @@ jobs:
         run: |
           go test -race ./...
           go vet ./...
-          go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - uses: ./.github/actions/govulncheck
+        with:
+          working-directory: hub
 
   # The hub journeys drive the production window against this checkout's
   # readmit-hub over mutual TLS on loopback. Their global setup builds the
@@ -230,11 +233,7 @@ jobs:
             sudo apt-get install -y postgresql-16
           fi
           /usr/lib/postgresql/16/bin/initdb --version
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: desktop/frontend/package-lock.json
+      - uses: ./.github/actions/setup-node
       - name: Hub journeys through the window against the real hub
         working-directory: desktop/frontend
         env:
@@ -251,48 +250,18 @@ jobs:
     steps:
       # Only a push to main whose tree a pull-request run proved skips its jobs,
       # and then every one of them must have been skipped. Otherwise the
-      # correctness jobs must succeed, and the full-gate jobs (ADR-0011) must
-      # succeed exactly on the events that run them and be skipped otherwise.
-      - name: Require every quality job this event runs to succeed
-        env:
-          PROVEN: ${{ needs.proof.result == 'success' && needs.proof.outputs.proven == 'true' }}
-          GO_RESULT: ${{ needs.go-tests.result }}
-          TOOLING_RESULT: ${{ needs.tooling.result }}
-          FUZZ_RESULT: ${{ needs.fuzz.result }}
-          SECURITY_RESULT: ${{ needs.security.result }}
-          HUB_RESULT: ${{ needs.hub.result }}
-          HUB_JOURNEYS_RESULT: ${{ needs.hub-journeys.result }}
-          RUN_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys }}
-        run: |
-          if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
-          if [ "$FULL_GATES" = true ]; then full=success; else full=skipped; fi
-          test "$GO_RESULT" = "$expected"
-          test "$HUB_RESULT" = "$full"
-          test "$TOOLING_RESULT" = "$full"
-          test "$SECURITY_RESULT" = "$full"
-          test "$FUZZ_RESULT" = "$full"
-          if [ "$RUN_JOURNEYS" = true ]; then test "$HUB_JOURNEYS_RESULT" = success; else test "$HUB_JOURNEYS_RESULT" = skipped; fi
-      # The record a later push to main looks for. Failing to write it only
-      # means that push runs in full, so it never fails this check.
-      - name: Record the tree this pull-request run tested
-        id: tested
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
-          test -n "$tree"
-          printf '%s\n' "$GITHUB_SHA" > tested-commit.txt
-          echo "tree=$tree" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.event_name == 'pull_request' && steps.tested.outputs.tree != ''
-        continue-on-error: true
+      # correctness jobs must succeed, and the full-gate jobs (ADR-0011) and
+      # the opted-in journeys must succeed exactly on the events that run them
+      # and be skipped otherwise.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          name: proven-tree-ci-${{ steps.tested.outputs.tree }}
-          path: tested-commit.txt
-          if-no-files-found: error
-          overwrite: true
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            tools
+      - uses: ./.github/actions/proven-tree
+        with:
+          needs: ${{ toJSON(needs) }}
 
   package:
     needs: proof
@@ -350,32 +319,14 @@ jobs:
       - name: Run the archived executable without a toolchain on PATH
         run: python3 tools/smoke.py --artifacts dist --os ${{ matrix.os }} --arch ${{ matrix.arch }}
       - uses: ./.github/actions/setup-go
-        if: github.event_name == 'workflow_dispatch' && inputs.run_journeys
+        if: env.RUN_JOURNEYS == 'true'
         with:
           cache-scope: native-acceptance-${{ matrix.os }}-${{ matrix.arch }}
       - name: Require the packaged public CLI journeys without skipped tests
-        if: github.event_name == 'workflow_dispatch' && inputs.run_journeys
-        shell: python
-        env:
-          TARGET_OS: ${{ matrix.os }}
-          TARGET_ARCH: ${{ matrix.arch }}
-        run: |
-          import os
-          from pathlib import Path
-          import sys
-          sys.path.insert(0, str(Path("tools").resolve()))
-          from acceptance import digest, execute
-          from smoke import verified_archives
-          extension = ".zip" if os.environ["TARGET_OS"] == "windows" else ".tar.gz"
-          suffix = "_" + os.environ["TARGET_OS"] + "_" + os.environ["TARGET_ARCH"] + extension
-          archives = [p for p in verified_archives(Path("dist")) if p.name.endswith(suffix)]
-          if len(archives) != 1:
-              raise RuntimeError("expected one native candidate")
-          archive = archives[0]
-          version = archive.name.removeprefix("readmit_").removesuffix(suffix)
-          execute(archive, digest(archive), version, Path("native-acceptance").resolve())
+        if: env.RUN_JOURNEYS == 'true'
+        run: python3 tools/acceptance.py --artifacts dist --os ${{ matrix.os }} --arch ${{ matrix.arch }} --output native-acceptance
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.run_journeys
+        if: always() && env.RUN_JOURNEYS == 'true'
         with:
           name: native-acceptance-${{ matrix.os }}-${{ matrix.arch }}
           path: native-acceptance/

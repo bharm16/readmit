@@ -193,7 +193,7 @@ func TestTheGuidedSampleTakesTheSameOperationSlot(t *testing.T) {
 	spec := authorGuidedTest(t, app, root, "reschedule-test.json", 1)
 
 	reentrant := &chooser{folder: root}
-	second := desktop.New(reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	second := desktop.New(reentrant, desktop.ShellDocuments{Folder: t.TempDir()})
 	var progress desktop.GuideResult
 	var practice desktop.PracticeResult
 	reentrant.before = func() {
@@ -234,7 +234,7 @@ func TestTheGuidedSampleImportsTheFrozenReceiverFixtures(t *testing.T) {
 	fixtures := receiverFixtures(t)
 	root := t.TempDir()
 	host := &chooser{folder: fixtures}
-	unlicensed := desktop.New(host, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	unlicensed := desktop.New(host, desktop.ShellDocuments{Folder: t.TempDir()})
 	before := bytesUnder(t, fixtures)
 	result := unlicensed.CaptureSample(desktop.SampleCaptureRequest{Workspace: root, Output: "receiver-sample"})
 	if result.State != desktop.Completed || result.Case == nil {

@@ -1,25 +1,15 @@
 package hub
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"io"
 	"log"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/bharm16/readmit/internal/hubprotocol"
 )
 
-func (s *Store) reviewEvents(ctx context.Context, project string) ([]ReviewEvent, error) {
-	return reviewLog.read(ctx, s.db, project)
-}
-func (s *Store) linked(ctx context.Context, project, digest string) bool {
-	exists, e := s.linkedProjectArtifact(ctx, project, digest)
-	return e == nil && exists
-}
 func sendReview(w http.ResponseWriter, status int, v any) {
 	data, e := json.Marshal(v)
 	if e != nil {
@@ -110,27 +100,24 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 		return
 	}
 	adm := reviewAdmission(route, c, a, r, project)
+	adm.serialized = true
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	principal, release, ok := s.authorizeWrite(a, r, w, project, adm)
+	principal, proj, release, ok := s.authorizeWrite(a, r, w, project, adm)
 	if !ok {
 		return
 	}
 	if release != nil {
 		defer release()
 	}
-	events, e := s.reviewEvents(r.Context(), project)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	reviews := hubprotocol.DeriveReviews(events)
-	if !v2 && reviews.HasSupport() {
+	projects := s.projects()
+	reviews, e := projects.reviews(r.Context(), proj, v2)
+	if errors.Is(e, errSupportNeedsV2) {
 		http.Error(w, "history requires v2", 409)
 		return
 	}
-	if route == "reviews" && hubprotocol.IsSupport(c) && !reviews.Current(c) {
-		http.Error(w, "sharing policy changed", 409)
+	if e != nil {
+		http.Error(w, "metadata unavailable", 503)
 		return
 	}
 	if route != "reviews" {
@@ -145,67 +132,22 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 				return
 			}
 		}
-		filtered := []ReviewEvent{}
-		for _, event := range events {
-			if event.Sequence <= query.After || (query.Evidence != "" && event.Command.Evidence != query.Evidence) || (route == "notifications" && (event.Command.Recipient != principal.Subject || event.Issuer != principal.Issuer)) || !strings.Contains(strings.ToLower(event.Command.Text), strings.ToLower(query.Text)) {
-				continue
-			}
-			filtered = append(filtered, event)
-		}
-		sendReview(w, 200, hubprotocol.ReviewHistory{Schema: reviews.HistorySchema(v2), Head: len(events), Events: filtered})
+		sendReview(w, 200, reviews.history(principal, route == "notifications", query, v2))
 		return
 	}
-	total, e := reviewLog.total(r.Context(), s.db)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	existing, replay, e := reviewLog.admit(events, total, c, principal.Subject, principal.Issuer)
-	if errors.Is(e, errLogIDConflict) {
+	event, replayed, e := projects.recordReview(r.Context(), proj, reviews, principal, c, a.roles(project))
+	switch {
+	case errors.Is(e, errPolicyChanged):
+		http.Error(w, "sharing policy changed", 409)
+	case errors.Is(e, errLogIDConflict):
 		http.Error(w, "review id conflict", 409)
-		return
-	}
-	if errors.Is(e, errLogHead) {
+	case errors.Is(e, errLogHead):
 		http.Error(w, "review head conflict or limit", 409)
-		return
-	}
-	if replay {
-		supportRecorded = true
-		sendReview(w, 200, existing)
-		return
-	}
-	policy, e := a.policy()
-	if e != nil {
+	case errors.Is(e, errPolicyUnavailable):
 		http.Error(w, "access refused", 403)
-		return
-	}
-	if c.Recipient != "" {
-		if hubprotocol.IsSupport(c) {
-			lifecycle, e := s.lifecycleEvents(r.Context(), project)
-			if e != nil {
-				http.Error(w, "recipient unavailable", 403)
-				return
-			}
-			if hubprotocol.DeriveLifecycle(lifecycle).Removed(principal.Issuer, c.Recipient) {
-				http.Error(w, "recipient refused", 403)
-				return
-			}
-		}
-		role := policy.role(c.Recipient, project)
-		if role == "" || role == "runner" || ((c.Kind == "review-request" || hubprotocol.IsSupportRequest(c)) && (!roleAllows(role, "approval") || c.Recipient == principal.Subject)) {
-			http.Error(w, "recipient refused", 403)
-			return
-		}
-	}
-	if e = hubSentinel(reviews.Validate(c, principal.Subject, principal.Issuer, func(d string) ([]byte, error) {
-		if hubprotocol.IsSupport(c) {
-			return s.supportArtifact(r.Context(), project, d)
-		}
-		if !s.linked(r.Context(), project, d) {
-			return nil, ErrMissing
-		}
-		return s.Get(r.Context(), d)
-	})); e != nil {
+	case errors.Is(e, errRecipient):
+		http.Error(w, "recipient refused", 403)
+	case errors.Is(e, errReviewRefused):
 		status := 409
 		if errors.Is(e, ErrMissing) {
 			status = 404
@@ -214,17 +156,15 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			status = 403
 		}
 		http.Error(w, "review refused", status)
-		return
-	}
-	eventSchema := hubprotocol.ReviewEventV1
-	if hubprotocol.IsSupport(c) {
-		eventSchema = hubprotocol.ReviewEventV2
-	}
-	event := ReviewEvent{Schema: eventSchema, Project: project, Sequence: len(events) + 1, Issuer: principal.Issuer, Actor: principal.Subject, At: time.Now().UTC().Format(time.RFC3339Nano), Command: c}
-	if e := reviewLog.commit(r.Context(), s.db, project, event); e != nil {
+	case errors.Is(e, errCommitUnavailable):
 		http.Error(w, "review commit unavailable; retry same id", 503)
-		return
+	case e != nil:
+		http.Error(w, "metadata unavailable", 503)
+	case replayed:
+		supportRecorded = true
+		sendReview(w, 200, event)
+	default:
+		supportRecorded = true
+		sendReview(w, 201, event)
 	}
-	supportRecorded = true
-	sendReview(w, 201, event)
 }

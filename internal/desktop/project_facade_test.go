@@ -93,7 +93,7 @@ func TestCreateProjectRefusesAnExistingDestination(t *testing.T) {
 func TestCreateProjectReportsBusyAndRecovers(t *testing.T) {
 	parent := t.TempDir()
 	reentrant := &chooser{folder: parent}
-	app := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	app := activatedApp(t, reentrant, t.TempDir())
 	var concurrent desktop.ProjectOverviewResult
 	reentrant.before = func() { concurrent = app.CreateProject("other", "Title", "", []string{"v1"}) }
 	if first := app.CreateProject("first", "Title", "", []string{"v1"}); first.State != desktop.Completed && first.State != desktop.Empty {

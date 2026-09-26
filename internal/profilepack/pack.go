@@ -35,6 +35,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/strictdoc"
 )
 
@@ -408,13 +409,13 @@ func validate(pack Pack) error {
 		}
 		labelled[labels.HL7Version] = true
 	}
-	declared := make(map[Combination]bool, len(pack.Coverage))
+	declared := make(map[dictionary.Combination]bool, len(pack.Coverage))
 	claimsLabels := make(map[string]bool, len(pack.Labels))
 	for _, coverage := range pack.Coverage {
 		if err := validateCoverage(coverage, labelled); err != nil {
 			return err
 		}
-		combination := Combination{Version: coverage.HL7Version, Family: coverage.Family}
+		combination := dictionary.Combination{Version: coverage.HL7Version, Family: coverage.Family}
 		if declared[combination] {
 			return errors.New("a profile pack declares one HL7 version and family combination twice")
 		}

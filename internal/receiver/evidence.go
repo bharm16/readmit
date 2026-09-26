@@ -191,13 +191,15 @@ func (r *recorder) sources() []bundle.Input {
 // limits are the bounds one session serves under. maxFrameBytes and maxMessages
 // are what this session was configured with; maxConnections, maxSessions and
 // maxCaptureBytes are the operator's declared capacity, and reaching one of
-// those is a controlled stop rather than an error.
+// those is a controlled stop rather than an error. idle bounds one read and one
+// acknowledgement write.
 type limits struct {
 	maxFrameBytes   int
 	maxMessages     int
 	maxConnections  int
 	maxSessions     int
 	maxCaptureBytes int
+	idle            time.Duration
 }
 
 // sessions serves bounded connections over listener, which it owns and closes.

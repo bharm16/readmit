@@ -522,7 +522,7 @@ func TestCancellingACorpusGenerationLeavesNeitherCorpusNorManifest(t *testing.T)
 // writes no evidence and needs no activation, as the command does not.
 func TestCorpusGenerationNeedsAuthorAdmissionAndAScanDoesNot(t *testing.T) {
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	folder := t.TempDir()
 	framed := corpusPlan(importer.MLLPFraming, "", importer.USASCII)
 	if denied := app.GenerateCorpus(generationRequest(folder, "corpus", "7", 10, framed)); denied.State != desktop.PermissionDenied {

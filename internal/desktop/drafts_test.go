@@ -21,7 +21,7 @@ import (
 // where the application names it.
 func draftsApp(t *testing.T, store string) *desktop.App {
 	t.Helper()
-	return activatedApp(t, &chooser{}, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+	return activatedApp(t, &chooser{}, filepath.Dir(store))
 }
 
 func draftsStore(t *testing.T) string {
@@ -146,7 +146,7 @@ func TestRetainingEditorDraftsDoesNotWaitForTheOperationSlot(t *testing.T) {
 	reentrant := &chooser{folder: root, before: func() {
 		during = app.SaveEditorDraft(editorDraft("note", desktop.NoteDraftSchema, unfinishedNote))
 	}}
-	app = activatedApp(t, reentrant, filepath.Join(filepath.Dir(store), "recent.json"), filepath.Join(filepath.Dir(store), "filters.json"), filepath.Join(filepath.Dir(store), "session.json"))
+	app = activatedApp(t, reentrant, filepath.Dir(store))
 	if opened := app.SelectWorkspace(); opened.State != desktop.Empty {
 		t.Fatalf("select workspace: %+v", opened)
 	}
@@ -328,9 +328,10 @@ func TestStaleEditorDraftIdentitiesAreRefused(t *testing.T) {
 	}
 }
 
-// The store is one owner-readable file replaced in full, so a reader never
-// observes a partial document and an interrupted write is reported rather than
-// overwritten or reused.
+// The draft store is one owner-readable file whose stored bytes are the strict
+// document this release reads. What a replacement owes a reader — never a
+// partial document, an interrupted write reported rather than reused — is the
+// shell document store's, tested once where the store lives.
 func TestEditorDraftsAreWrittenCompletelyAndPrivately(t *testing.T) {
 	store := draftsStore(t)
 	app := draftsApp(t, store)
@@ -357,21 +358,6 @@ func TestEditorDraftsAreWrittenCompletelyAndPrivately(t *testing.T) {
 	}
 	if stored.Schema != desktop.DraftsSchema {
 		t.Fatalf("the stored drafts declare %q", stored.Schema)
-	}
-
-	incomplete := store + ".incomplete"
-	if err := os.WriteFile(incomplete, []byte("partial"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	result := app.SaveEditorDraft(editorDraft("test-draft", "readmit-test-draft/v1", answeredTestDraft))
-	if result.State != desktop.Failed {
-		t.Fatalf("a retained interrupted write was reused: %+v", result)
-	}
-	if retained, err := os.ReadFile(incomplete); err != nil || string(retained) != "partial" {
-		t.Fatalf("the interrupted write was overwritten: %q %v", retained, err)
-	}
-	if kept, err := os.ReadFile(store); err != nil || string(kept) != string(data) {
-		t.Fatalf("a refused write changed the retained drafts: %q", kept)
 	}
 }
 

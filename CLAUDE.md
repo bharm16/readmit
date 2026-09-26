@@ -41,6 +41,6 @@ These apply to every commit, pull request and issue edit, whichever tool made it
 - A customer-visible change adds its release note as its own `docs/release-notes.d/N-slug.md` and never edits
   `docs/release-notes.md`; see that directory's README.
 - Rebase onto `origin/main` once before the first push and resolve conflicts locally, keeping both sides of shared
-  lists (workflow steps, README tables, third-party notices, the three shipped-doc lists). After that, rebase only
+  lists (workflow steps, README tables, third-party notices, the shipped-file list in `tools/distribution.json`). After that, rebase only
   when GitHub reports the pull request as conflicting: a green pull request merges even if `main` has moved since,
   and the run on `main` after the merge is the integration check.

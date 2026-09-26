@@ -359,10 +359,10 @@ test("ScenarioPanel checks expectations, shows a failing check in the reader's w
   expect(facade.oneCall("Cancel")).toEqual(["scenario-check"]);
   parked.resolve({
     state: "cancelled",
-    reason: "the fixture check was cancelled before it finished; its private regeneration was removed and it passed nothing",
+    reason: "the fixture check was cancelled before it finished; it passed nothing",
   });
   expect(
-    await panel().findByText("the fixture check was cancelled before it finished; its private regeneration was removed and it passed nothing"),
+    await panel().findByText("the fixture check was cancelled before it finished; it passed nothing"),
   ).toBeTruthy();
   expect(panel().getByText("cancelled")).toBeTruthy();
   expect(panel().queryByRole("button", { name: "Cancel check" })).toBeNull();

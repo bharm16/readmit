@@ -86,15 +86,13 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 	// The window creates its own state folder, as it does in the user
 	// configuration directory on first launch.
 	state := filepath.Join(t.TempDir(), "readmit")
-	operations := filepath.Join(state, "operations.json")
 	configuration := t.TempDir()
 	destinations := filepath.Join(configuration, "destinations.json")
 	writeDocument(t, configuration, "destinations.json",
 		`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://`+portal.address+`/checkouts"}`)
 	hubConfig := writeHubClientConfig(t, configuration, "https://"+hub.address)
 	window := func(chooser desktop.FolderChooser) *desktop.App {
-		return desktop.NewWithOperationSelection(chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-			filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"), operations)
+		return desktop.NewWithOperationSelection(chooser, desktop.ShellDocuments{Folder: state})
 	}
 
 	// The first window configures every destination and executes once.

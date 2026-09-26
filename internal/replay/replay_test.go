@@ -93,7 +93,7 @@ func execute(t *testing.T, source string, target replay.Target, options replay.O
 	path := filepath.Join(t.TempDir(), "run")
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
-	r, err := replay.Execute(ctx, plan, path)
+	r, err := replay.Send(ctx, plan, path, replay.SendOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestLocalDurabilityIsNotChargedToTheMessageTimeout(t *testing.T) {
 			// timer ended the network exchange.
 			observer := &persistingObserver{ctx: ctx, pause: pause, recordedPause: 4 * budget}
 			path := filepath.Join(t.TempDir(), "run")
-			r, err := replay.ExecuteObserved(ctx, plan, path, nil, nil, observer)
+			r, err := replay.Send(ctx, plan, path, replay.SendOptions{Observer: observer})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -584,7 +584,7 @@ func TestTargetStrictnessAndSourceDestinationAliases(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, out := range []string{filepath.Join(source, "run"), filepath.Join(source, "payloads", "run")} {
-		if _, err := replay.Execute(context.Background(), plan, out); err == nil {
+		if _, err := replay.Send(context.Background(), plan, out, replay.SendOptions{}); err == nil {
 			t.Fatal("run modified source bundle")
 		}
 	}
@@ -593,7 +593,7 @@ func TestTargetStrictnessAndSourceDestinationAliases(t *testing.T) {
 		if err := os.Symlink(source, alias); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := replay.Execute(context.Background(), plan, filepath.Join(alias, "run")); err == nil {
+		if _, err := replay.Send(context.Background(), plan, filepath.Join(alias, "run"), replay.SendOptions{}); err == nil {
 			t.Fatal("symlink bypassed source protection")
 		}
 	}
@@ -610,7 +610,7 @@ func TestCancelledRunFinalizesWithoutSending(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	path := filepath.Join(t.TempDir(), "run")
-	r, err := replay.Execute(ctx, plan, path)
+	r, err := replay.Send(ctx, plan, path, replay.SendOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

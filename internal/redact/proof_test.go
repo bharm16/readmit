@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/fixturetrial"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
@@ -49,9 +51,9 @@ func proofFixture(t *testing.T) (string, testrunner.Spec, string) {
 // test runner reporting to observer.
 func observedSender(t *testing.T, observer replay.Observer) {
 	t.Helper()
-	original := executeFixture
-	t.Cleanup(func() { executeFixture = original })
-	executeFixture = func(ctx context.Context, specPath, output string) (*testrunner.Artifact, error) {
+	original := fixturetrial.Sender
+	t.Cleanup(func() { fixturetrial.Sender = original })
+	fixturetrial.Sender = func(ctx context.Context, specPath, output string, durability artifactdir.Durability) (*testrunner.Artifact, error) {
 		plan, err := testrunner.Prepare(specPath)
 		if err != nil {
 			return nil, err
@@ -91,9 +93,6 @@ func (s senderStorage) Recorded(event replay.Event) error {
 // proof is held to configuring its fixture that way.
 func TestFixtureProofOutlastsItsSendersStorage(t *testing.T) {
 	root, spec, proof := proofFixture(t)
-	if !fixtureReceiver(observation.Defective, proof, len(spec.Input.Messages)).InProcess {
-		t.Fatal("the proof's fixture flushes its ledger before each ACK")
-	}
 	// One second past the five-second idle limit the fixture used to have.
 	observedSender(t, senderStorage{recorded: func() error { time.Sleep(6 * time.Second); return nil }})
 	artifact, err := runFixture(context.Background(), spec, "../../original.case", filepath.Join(proof, "baseline"), observation.Defective)

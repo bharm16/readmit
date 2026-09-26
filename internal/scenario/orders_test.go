@@ -2,6 +2,7 @@ package scenario_test
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"os"
 	"reflect"
@@ -191,5 +192,91 @@ func TestOrderBoundsAndDistinctIdentityNamespaces(t *testing.T) {
 	d.Orders[1].Filler.Namespace = "OTHER-FILLER"
 	if _, err := scenario.PreviewOrders(d); err != nil {
 		t.Fatal("distinct namespaces refused", err)
+	}
+}
+
+// DecodeDocument reads either contract by the name its bytes declare, and a
+// document of neither contract is refused as neither. The one value it
+// returns previews exactly as its own contract previews it and canonicalizes
+// byte for byte as that contract does, so a caller that saves what it read
+// saves the contract's own form.
+func TestDecodeDocumentDispatchesByContractName(t *testing.T) {
+	for _, tc := range []struct {
+		name, file string
+	}{
+		{"sequence", "scenario-siu.json"},
+		{"order", "scenario-orm.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile("../../testdata/fixtures/" + tc.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			workflow, err := scenario.DecodeDocument(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			timeline, err := workflow.Preview()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want scenario.Timeline
+			var canonical []byte
+			if tc.name == "order" {
+				designed, err := scenario.DecodeOrders(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(workflow.Orders) != len(designed.Orders) {
+					t.Fatal("an order workflow carries its order bindings")
+				}
+				if want, err = scenario.PreviewOrders(designed); err != nil {
+					t.Fatal(err)
+				}
+				if canonical, err = json.Marshal(designed, json.Deterministic(true), jsontext.WithIndent("  ")); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				designed, err := scenario.Decode(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(workflow.Orders) != 0 || len(workflow.Results) != 0 {
+					t.Fatal("a sequence workflow carries order members")
+				}
+				if want, err = scenario.Preview(designed); err != nil {
+					t.Fatal(err)
+				}
+				if canonical, err = json.Marshal(designed, json.Deterministic(true), jsontext.WithIndent("  ")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !reflect.DeepEqual(want, timeline) {
+				t.Fatal("the workflow did not preview as its own contract does")
+			}
+			viaWorkflow, err := json.Marshal(workflow, json.Deterministic(true), jsontext.WithIndent("  "))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(canonical, viaWorkflow) {
+				t.Fatal("the workflow did not canonicalize as its own contract does")
+			}
+		})
+	}
+	for name, document := range map[string]string{
+		"another version": `{"schema":"readmit-scenario/v2","scenario":{"id":"s","version":"1"}}`,
+		"no contract":     `{"not":"a scenario"}`,
+		"no schema":       `{"scenario":{"id":"s","version":"1"}}`,
+	} {
+		_, err := scenario.DecodeDocument([]byte(document))
+		if err == nil || !strings.Contains(err.Error(), "readmit-order-scenario/v1") || !strings.Contains(err.Error(), "readmit-scenario/v1") {
+			t.Errorf("%s was not refused as declaring neither contract: %v", name, err)
+		}
+	}
+	if _, err := scenario.DecodeDocument([]byte(`[]`)); err == nil {
+		t.Fatal("bytes that name no object were accepted")
+	}
+	if _, err := scenario.DecodeDocument(bytes.Repeat([]byte(" "), scenario.MaxBytes+1)); err == nil {
+		t.Fatal("size limit ignored")
 	}
 }

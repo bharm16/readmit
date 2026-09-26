@@ -60,7 +60,7 @@ func TestPrepareBindsRowsAndEnvironmentWithoutChangingTemplates(t *testing.T) {
 	doc.Tests[1].After = []string{"setup"}
 	write(t, filepath.Join(dir, "suite.json"), doc)
 	out := filepath.Join(dir, "compiled")
-	p, e := suite.Prepare(filepath.Join(dir, "suite.json"), "east", out)
+	p, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -78,37 +78,20 @@ func TestPrepareBindsRowsAndEnvironmentWithoutChangingTemplates(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("template mutated")
 	}
-	if _, e = suite.Prepare(filepath.Join(dir, "suite.json"), "east", out); e == nil {
+	if _, e = suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); e == nil {
 		t.Fatal("overwrote compiled suite")
 	}
 }
 
+// Refusals the suite reader itself makes — duplicate rows, unsupported
+// versions — never reach the expansion; the expansion's own refusal table
+// lives in expansion_test.go. A refused preparation writes nothing.
 func TestPreparationRefusalsWriteNothingAndDoNotDropAnExpectation(t *testing.T) {
-	for _, kind := range []string{"unknown-environment", "unknown-assertion", "wrong-value", "observation", "sequence", "missing-case", "template-member", "duplicate-row", "production-version"} {
+	for _, kind := range []string{"duplicate-row", "production-version"} {
 		t.Run(kind, func(t *testing.T) {
 			dir, doc := fixture(t, "127.0.0.1:1")
 			env := "east"
 			switch kind {
-			case "unknown-environment":
-				env = "absent"
-			case "unknown-assertion":
-				n := 1
-				doc.Tables[0].Rows[0].Expected = map[string]testrunner.Value{"absent": {Count: &n}}
-			case "wrong-value":
-				n := 1
-				doc.Tables[0].Rows[0].Expected = map[string]testrunner.Value{"ack": {Count: &n}}
-			case "observation":
-				doc.Environments[0].Bindings[0].Observation = "ledger.json"
-			case "sequence":
-				doc.Tests[0].Sequence = []string{"s0001-e000002"}
-			case "missing-case":
-				doc.Tables[0].Rows[0].Case = "missing"
-			case "template-member":
-				raw, _ := os.ReadFile(filepath.Join(dir, "booking.json"))
-				raw = append([]byte(`{"unknown":1,`), raw[1:]...)
-				if e := os.WriteFile(filepath.Join(dir, "booking.json"), raw, 0600); e != nil {
-					t.Fatal(e)
-				}
 			case "duplicate-row":
 				doc.Tables[0].Rows = append(doc.Tables[0].Rows, doc.Tables[0].Rows[0])
 			case "production-version":
@@ -116,7 +99,7 @@ func TestPreparationRefusalsWriteNothingAndDoNotDropAnExpectation(t *testing.T) 
 			}
 			write(t, filepath.Join(dir, "suite.json"), doc)
 			out := filepath.Join(dir, "refused")
-			if _, e := suite.Prepare(filepath.Join(dir, "suite.json"), env, out); e == nil {
+			if _, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: env, Output: out}); e == nil {
 				t.Fatal("accepted invalid suite")
 			}
 			if _, e := os.Stat(out); !os.IsNotExist(e) {
@@ -128,7 +111,7 @@ func TestPreparationRefusalsWriteNothingAndDoNotDropAnExpectation(t *testing.T) 
 
 func TestSuiteOutputCannotEnterRetainedEvidence(t *testing.T) {
 	dir, _ := fixture(t, "127.0.0.1:1")
-	if _, e := suite.Prepare(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "case-one", "nested")); e == nil {
+	if _, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "case-one", "nested")}); e == nil {
 		t.Fatal("wrote into evidence")
 	}
 }
@@ -152,7 +135,7 @@ func TestSuiteSequenceMustMatchEvidenceOrderNotOnlyTemplateOrder(t *testing.T) {
 	doc.Tables[0].Rows[0].Case = "two-messages"
 	write(t, filepath.Join(dir, "booking.json"), spec)
 	write(t, filepath.Join(dir, "suite.json"), doc)
-	if _, e = suite.Prepare(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out")); e == nil {
+	if _, e = suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out")}); e == nil {
 		t.Fatal("claimed reversed source order was executable")
 	}
 }
@@ -168,12 +151,12 @@ func TestSuiteBindsLedgerObservationWithoutEditingExpectations(t *testing.T) {
 	spec.Observation = testrunner.Observation{Boundary: testrunner.LedgerBoundary, Path: "unbound.json"}
 	spec.Assertions = []testrunner.Assertion{{ID: "count", Operator: "ledger_count", Expected: testrunner.Value{Count: &n}}}
 	write(t, filepath.Join(dir, "booking.json"), spec)
-	if _, e = suite.Prepare(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "missing")); e == nil {
+	if _, e = suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "missing")}); e == nil {
 		t.Fatal("ledger binding omitted")
 	}
 	doc.Environments[0].Bindings[0].Observation = "east-observation.json"
 	write(t, filepath.Join(dir, "suite.json"), doc)
-	prepared, e := suite.Prepare(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out"))
+	prepared, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out")})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -185,8 +168,8 @@ func TestSuiteBindsLedgerObservationWithoutEditingExpectations(t *testing.T) {
 
 // A pinned run compiles only the suite document it was pinned to, checked on
 // the bytes it then compiles, so nothing can change between the check and the
-// read: a document rewritten since its identity was taken, or no identity at
-// all, is refused before the output exists, and the unchanged document runs.
+// read: a document rewritten since its identity was taken is refused before
+// the output exists, and the unchanged document runs.
 func TestAPinnedSuiteRunRefusesADocumentThatChangedSinceItsIdentity(t *testing.T) {
 	dir, doc := fixture(t, "127.0.0.1:1")
 	path := filepath.Join(dir, "suite.json")
@@ -198,18 +181,16 @@ func TestAPinnedSuiteRunRefusesADocumentThatChangedSinceItsIdentity(t *testing.T
 	doc.Parallelism++
 	write(t, path, doc)
 	out := filepath.Join(dir, "out")
-	for name, pinned := range map[string]string{"a rewritten suite": identity, "no identity": ""} {
-		if _, e := suite.RunPinned(t.Context(), path, "east", out, "", pinned); !errors.Is(e, suite.ErrChanged) {
-			t.Fatalf("%s was run: %v", name, e)
-		}
-		if _, e := os.Lstat(out); !os.IsNotExist(e) {
-			t.Fatalf("%s created its output", name)
-		}
+	if _, e := suite.Run(t.Context(), suite.Request{Path: path, Environment: "east", Output: out, Identity: identity}); !errors.Is(e, suite.ErrChanged) {
+		t.Fatalf("a rewritten suite was run: %v", e)
+	}
+	if _, e := os.Lstat(out); !os.IsNotExist(e) {
+		t.Fatal("the refused run created its output")
 	}
 	if e := os.WriteFile(path, original, 0600); e != nil {
 		t.Fatal(e)
 	}
-	report, e := suite.RunPinned(t.Context(), path, "east", out, "", identity)
+	report, e := suite.Run(t.Context(), suite.Request{Path: path, Environment: "east", Output: out, Identity: identity})
 	if e != nil || report.Schema == "" || len(report.Jobs) != 1 {
 		t.Fatalf("the pinned suite did not run: %+v %v", report, e)
 	}

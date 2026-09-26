@@ -126,7 +126,7 @@ declares no structural support for it to stand on.
 pack, err := profilepack.Decode(data)          // strict; refuses what it cannot stand behind
 err = pack.Satisfies(profilepack.Identity{ID: "fixture-siu", Version: "1"})
 
-declared := profilepack.Declared(doc, 0)       // MSH-12.1 and MSH-9.1 of one parsed message
+declared := dictionary.Declared(doc, 0)        // MSH-12.1 and MSH-9.1 of one parsed message
 outcome := pack.Support(declared.Version, declared.Family, profilepack.LevelLabels)
 if !outcome.Passing() { /* state the outcome; do not report a verdict */ }
 
@@ -138,8 +138,7 @@ label := pack.Label(declared.Version, declared.Family, "SCH", 1)
 | --- | --- |
 | `Decode(data)` | The pack exactly as written, or an error. A document that is not the contract's JSON is refused as such; a document that is and still cannot be stood behind is refused with the reason. |
 | `Identity`, `Satisfies(pin)` | The `{id, version}` a consumer pins, and whether this pack is exactly the pinned one. The error repeats neither identity; the caller holds both. |
-| `Declared(doc, index)` | The `{Version, Family}` one parsed message declares: the first component of MSH-12 and of MSH-9, as the bytes are written. A message that declares neither declares nothing; nothing is inferred from the segments present. |
-| `Support(version, family, level)` | One `Outcome` for one level of one combination. |
+| `Support(version, family, level)` | One `Outcome` for one level of one combination. The combination a message declares is `dictionary.Declared`'s answer — `internal/dictionary`, the one label module every caller asks. The bundled dictionary is unchanged by this. |
 | `Outcomes(version, family)` | All four levels of one combination as one `Outcomes` value, each exactly as `Support` answers it; `Covered()` says whether the pack declares the combination at all. Every consumer that reports the four levels — a local profile's resolution, the library's matrix, a transformation preview — carries this one type. |
 | `Label(version, family, segment, position)` | `{Outcome, Name}`. The name is withheld unless the combination's labels level is `supported`, so content the pack carries for a version cannot reach a family it was not verified for. A supported combination may still leave a position unlabelled. |
 | `HL7Versions()`, `Families()`, `Levels()` | Copies of the closed sets, for an editor that offers them or a consumer that walks all four levels. |

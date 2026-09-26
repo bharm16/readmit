@@ -56,7 +56,7 @@ func TestReadTargetThenPrepareRefusesProduction(t *testing.T) {
 	}
 	// Without a plan there is nothing to execute, so no run directory is
 	// reserved for a replay that was refused before it was planned.
-	if _, err := replay.Execute(context.Background(), nil, filepath.Join(directory, "run")); err == nil {
+	if _, err := replay.Send(context.Background(), nil, filepath.Join(directory, "run"), replay.SendOptions{}); err == nil {
 		t.Fatal("executed without a plan")
 	}
 }

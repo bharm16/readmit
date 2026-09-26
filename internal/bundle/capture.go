@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/acklink"
 	"github.com/bharm16/readmit/internal/hl7"
 )
 
@@ -193,12 +194,13 @@ func fieldReference(f hl7.Field) Field {
 }
 
 func correlate(b *Bundle) []Correlation {
-	type key struct{ source, control string }
-	messages := make(map[key][]string)
+	// The bundle's own rule (docs/correlate.md, "What equality means"): two
+	// control identifiers are the same when their exact field bytes are, and
+	// an acknowledgement is answered only inside the source that captured it.
+	index := acklink.New[string](acklink.PerSource, acklink.FieldBytes)
 	for _, event := range b.Events {
 		if event.Kind == Message && event.Fields.ControlID.State == hl7.Present {
-			k := key{event.SourceID, string(b.Value(event.ID, event.Fields.ControlID))}
-			messages[k] = append(messages[k], event.ID)
+			index.Add(event.SourceID, acklink.Value{Bytes: b.Value(event.ID, event.Fields.ControlID)}, event.ID)
 		}
 	}
 	var links []Correlation
@@ -210,7 +212,7 @@ func correlate(b *Bundle) []Correlation {
 		link := Correlation{Kind: UnmatchedACK, ACKID: event.ID}
 		// Multiple MSA segments cannot choose a single initiating occurrence.
 		if targets := event.Fields.AcknowledgedControlIDs; len(targets) == 1 && targets[0].State == hl7.Present {
-			link.MessageIDs = messages[key{event.SourceID, string(b.Value(event.ID, targets[0]))}]
+			link.MessageIDs = index.Answer(event.SourceID, acklink.Value{Bytes: b.Value(event.ID, targets[0])})
 		}
 		switch len(link.MessageIDs) {
 		case 0:

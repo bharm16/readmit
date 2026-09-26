@@ -2,7 +2,6 @@ package desktop
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -18,12 +17,12 @@ import (
 // The replay screen is `readmit replay` in the window: it previews selected
 // messages of the verified case against one target configuration and, only
 // once that preview is explicitly approved, sends them once. Both halves go
-// through operation.PrepareReplay, the path the command takes, and a send
-// through replay.ExecuteWithPolicy, which decides the send policy again at the
-// point of the send and retains that decision before anything is opened. The
-// run and its decision are written as new entries of the open workspace, as
-// the command writes them. Nothing here retries, resumes or resends: a new
-// send is always a new preview, a new approval and a new run folder.
+// through replay's preview and prepare, the path the command takes, and a send
+// through replay.Send, which decides the send policy again at the point of the
+// send and retains that decision before anything is opened. The run and its
+// decision are written as new entries of the open workspace, as the command
+// writes them. Nothing here retries, resumes or resends: a new send is always
+// a new preview, a new approval and a new run folder.
 
 const (
 	// replayPreviewOperation is the name a replay preview holds the slot
@@ -34,9 +33,6 @@ const (
 	// replayOperation is the name a replay's send holds the slot under, and
 	// the name its cancel gives.
 	replayOperation = "replay"
-	// replayDecisionSuffix names the decision a send retains beside its run
-	// folder, as `readmit replay --send` does when no --decision is given.
-	replayDecisionSuffix = ".decision.json"
 )
 
 // ReplayRequest is one replay of the verified case, as `readmit replay` takes
@@ -176,8 +172,10 @@ func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
 			return ReplayResult{State: declined.state, Reason: declined.reason}
 		}
 		var decision sendpolicy.Decision
-		plan, err := operation.PrepareReplay(ctx, inputs.casePath, inputs.target, inputs.options, inputs.policy, false,
-			func(value sendpolicy.Decision) error { decision = value; return nil }, sendpolicy.SystemResolver)
+		plan, err := replay.Preview(ctx, inputs.casePath, inputs.target, inputs.options, replay.SendOptions{
+			Policy: inputs.policy,
+			Record: func(value sendpolicy.Decision) error { decision = value; return nil },
+		})
 		if ctx.Err() != nil {
 			// A cancelled lookup reads as an unresolvable destination; it is
 			// the person's cancellation, and nothing was decided.
@@ -189,7 +187,7 @@ func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
 		if plan.SourceIdentity() != request.Identity {
 			return ReplayResult{State: Failed, Reason: operation.ErrCaseIdentityChanged.Error()}
 		}
-		identity, err := replayIdentity(plan, inputs)
+		identity, err := plan.Identity(inputs.policy)
 		if err != nil {
 			return ReplayResult{State: Failed, Reason: "the replay plan could not be identified"}
 		}
@@ -197,7 +195,7 @@ func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
 			Case: request.Case, Identity: identity, SourceIdentity: plan.SourceIdentity(),
 			Target: targetView(plan.Configuration()), Messages: []ReplayMessage{},
 			Transformations: slices.Clone(inputs.options.Transformations), Changes: []ReplayChange{},
-			Destination: destination, DecisionFile: destination.Name + replayDecisionSuffix, Revealed: request.Reveal,
+			Destination: destination, DecisionFile: destination.Name + replay.DecisionSuffix, Revealed: request.Reveal,
 		}
 		if preview.Transformations == nil {
 			preview.Transformations = []replay.Transformation{}
@@ -263,20 +261,26 @@ func (a *App) SendReplay(request ReplaySendRequest) ReplayResult {
 			return ReplayResult{State: Failed, Reason: destination.Reason + ". Nothing was sent"}
 		}
 		output := filepath.Join(inputs.root, destination.Name)
-		decisionFile := destination.Name + replayDecisionSuffix
+		decisionFile := destination.Name + replay.DecisionSuffix
+		decisionPath := filepath.Join(inputs.root, decisionFile)
 		var decision sendpolicy.Decision
-		record := func(value sendpolicy.Decision) error {
-			decision = value
-			return sendpolicy.WriteDecision(filepath.Join(inputs.root, decisionFile), value)
+		execution := replay.SendOptions{
+			Policy: inputs.policy,
+			Record: func(value sendpolicy.Decision) error { decision = value; return nil },
 		}
-		plan, err := operation.PrepareReplay(ctx, inputs.casePath, inputs.target, inputs.options, inputs.policy, true, record, sendpolicy.SystemResolver)
+		if request.Replay.Output != "" {
+			// A send retains its decision beside the run folder before any
+			// connection is opened, including a denial; replay writes it.
+			execution.DecisionPath = decisionPath
+		}
+		plan, err := replay.PrepareSend(ctx, inputs.casePath, inputs.target, inputs.options, execution)
 		if err != nil {
 			return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
 		}
-		if identity, err := replayIdentity(plan, inputs); err != nil || identity != request.Expected || plan.SourceIdentity() != request.Replay.Identity {
+		if identity, err := plan.Identity(inputs.policy); err != nil || identity != request.Expected || plan.SourceIdentity() != request.Replay.Identity {
 			return ReplayResult{State: Failed, Reason: "the replay changed after its preview; preview it again before sending. Nothing was sent"}
 		}
-		run, err := replay.ExecuteWithPolicy(ctx, plan, output, inputs.policy, record)
+		run, err := replay.Send(ctx, plan, output, execution)
 		if err != nil && errors.Is(ctx.Err(), context.Canceled) {
 			// A lookup the cancellation interrupted decides nothing about the
 			// destination; the person cancelled, and nothing was sent.
@@ -342,43 +346,11 @@ func replayInputsOf(request ReplayRequest) (replayInputs, refusal) {
 // A proposed name is free for both, since a refused send retains a decision
 // without a run. A name already taken is reported, not refused: a preview
 // still shows what would be sent, and the send is what refuses.
-var replayOutput = outputRule{prefix: "replay", beside: replayDecisionSuffix,
+var replayOutput = outputRule{prefix: "replay", beside: replay.DecisionSuffix,
 	invalid:     "a replay's run folder must be one new entry of the open workspace",
 	exhausted:   "the workspace holds more generated replay folders than this release proposes",
 	taken:       "that run folder or the decision file beside it already exists; a send writes both as new entries",
 	reportTaken: true,
-}
-
-// replayIdentity is what a send pins itself to: the case the plan was sealed
-// from, the target configuration and the transport it records, the send
-// policy, the transformations and every outbound message with the bytes it
-// would put on the wire. Any of them changing changes the identity.
-func replayIdentity(plan *replay.Plan, inputs replayInputs) (string, error) {
-	type message struct {
-		Mapping replay.Mapping `json:"mapping"`
-		Wire    string         `json:"wire_sha256"`
-	}
-	pinned := struct {
-		Source          string                  `json:"source"`
-		Target          replay.Target           `json:"target"`
-		Transport       replay.TargetRecord     `json:"transport"`
-		Policy          *sendpolicy.Policy      `json:"policy"`
-		Transformations []replay.Transformation `json:"transformations"`
-		Messages        []message               `json:"messages"`
-	}{Source: plan.SourceIdentity(), Target: plan.Configuration(), Transport: plan.Target(), Policy: inputs.policy,
-		Transformations: inputs.options.Transformations, Messages: []message{}}
-	for _, mapping := range plan.Mappings() {
-		wire, err := plan.Outbound(mapping.OutboundOccurrence)
-		if err != nil {
-			return "", err
-		}
-		pinned.Messages = append(pinned.Messages, message{Mapping: mapping, Wire: digestOf(wire)})
-	}
-	encoded, err := json.Marshal(pinned, json.Deterministic(true))
-	if err != nil {
-		return "", err
-	}
-	return digestOf(encoded), nil
 }
 
 // replayRunView is one retained run as the command's summary reads it.

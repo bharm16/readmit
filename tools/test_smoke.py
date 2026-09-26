@@ -2,7 +2,6 @@
 
 import hashlib
 import io
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -13,21 +12,15 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
+from distribution import members, source
+
 
 SMOKE = Path(__file__).with_name("smoke.py")
-ROOT = SMOKE.parent.parent
-# The member list is declared once in distribution.json and read here
-# unmodified. The verification this file owns stays independent of smoke.py:
-# it builds its own archives, omits each member, and requires smoke.py to
-# reject every omission with its own checking logic.
-def distribution_files():
-    manifest = json.loads(Path(__file__).with_name("distribution.json").read_text())
-    if manifest.get("schema") != "readmit-distribution/v1" or not isinstance(manifest.get("members"), list) or not manifest["members"]:
-        raise RuntimeError("distribution manifest is invalid")
-    return tuple(manifest["members"])
-
-
-DISTRIBUTION_FILES = distribution_files()
+# The member list is declared once in distribution.json. The verification this
+# file owns stays independent of smoke.py: it builds its own archives, omits
+# each member or adds an undeclared one, and requires smoke.py to reject every
+# difference with its own checking logic.
+DISTRIBUTION_FILES = members()
 
 
 class ArchiveTests(unittest.TestCase):
@@ -52,25 +45,27 @@ class ArchiveTests(unittest.TestCase):
             )
             cls.binaries[target_os] = binary.read_bytes()
 
-    def archive(self, directory, target_os, omitted=None):
+    def archive(self, directory, target_os, omitted=None, undeclared=None):
         name = "readmit.exe" if target_os == "windows" else "readmit"
         suffix = "zip" if target_os == "windows" else "tar.gz"
         archive = directory / f"readmit_0.1.0-test_{target_os}_amd64.{suffix}"
         # Missing-member checks run before build-info inspection. Tiny contents
         # preserve every omission case without recompressing a real binary and
         # the complete distribution for each one. Compiler tests use real bytes.
-        members = {name: b"fixture" if omitted else self.binaries[target_os]}
+        tiny = bool(omitted or undeclared)
+        contents = {name: b"fixture" if tiny else self.binaries[target_os]}
         for member in DISTRIBUTION_FILES:
             if member != omitted:
-                source = "internal/" + member if member.startswith("dictionary/") else member
-                members[member] = b"fixture" if omitted else (ROOT / source).read_bytes()
+                contents[member] = b"fixture" if tiny else source(member).read_bytes()
+        if undeclared:
+            contents[undeclared] = b"fixture"
         if suffix == "zip":
             with zipfile.ZipFile(archive, "w") as output:
-                for member, payload in members.items():
+                for member, payload in contents.items():
                     output.writestr(member, payload)
         else:
             with tarfile.open(archive, "w:gz") as output:
-                for member, payload in members.items():
+                for member, payload in contents.items():
                     info = tarfile.TarInfo(member)
                     info.size = len(payload)
                     output.addfile(info, io.BytesIO(payload))
@@ -109,6 +104,17 @@ class ArchiveTests(unittest.TestCase):
                     self.assertNotEqual(rejected.returncode, 0)
                     self.assertIn("Missing distribution members", rejected.stderr)
                     self.assertIn(missing, rejected.stderr)
+
+    def test_undeclared_members_fail_even_with_a_matching_checksum(self):
+        for target_os in ("linux", "windows"):
+            for undeclared in ("testdata/fixtures/undeclared.hl7", "licenses/undeclared.txt", "readmit-extra"):
+                with self.subTest(target_os=target_os, undeclared=undeclared), tempfile.TemporaryDirectory() as name:
+                    directory = Path(name)
+                    self.archive(directory, target_os, undeclared=undeclared)
+                    rejected = self.verify(directory, self.compiler)
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn("Undeclared distribution members", rejected.stderr)
+                    self.assertIn(undeclared, rejected.stderr)
 
 
 class WorkRootTests(unittest.TestCase):

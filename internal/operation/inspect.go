@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"strconv"
-	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/dictionary"
@@ -110,13 +108,10 @@ type Inspected struct {
 	labels   *dictionary.Dictionary
 }
 
-// loadLabels reads the bundled field labels from the executable once: they
-// never change while it runs, and every inspection names fields by them.
-var loadLabels = sync.OnceValues(dictionary.Load)
-
 // InspectFile is `readmit inspect`: it reads one regular file within the
 // parser's input bound, parses it under the declared options, loads the
-// bundled field labels, and writes the byte-identical round trip to a new file
+// bundled field labels — read from the executable once and shared with every
+// other caller — and writes the byte-identical round trip to a new file
 // when one is named. A refusal at any step writes nothing, and the round trip
 // is written only once the file parsed, before anything is reported.
 func InspectFile(path string, options hl7.Options, roundtrip string) (*Inspected, error) {
@@ -128,7 +123,7 @@ func InspectFile(path string, options hl7.Options, roundtrip string) (*Inspected
 	if err != nil {
 		return nil, err
 	}
-	named, err := loadLabels()
+	named, err := dictionary.Load()
 	if err != nil {
 		return nil, err
 	}
@@ -185,16 +180,17 @@ func (i *Inspected) Value(row InspectionRow, limit int) (string, bool, int) {
 }
 
 // Rows visits every row the command prints, in its order, until visit
-// returns false. A field is reported at every position the segment holds and
-// at every further position the dictionary labels, so a labelled field the
-// message omits is named as omitted rather than left out. Repetitions are
-// listed only for a field that repeats.
+// returns false. Which labels apply is the dictionary's one answer about what
+// the message declares; when they apply, a field is reported at every
+// position the segment holds and at every further position the labels name,
+// so a labelled field the message omits is named as omitted rather than left
+// out. Repetitions are listed only for a field that repeats.
 func (i *Inspected) Rows(visit func(InspectionRow) bool) {
 	for m, message := range i.document.Messages {
 		number := m + 1
-		labels := messageLabels(i.document, message, i.labels)
+		labelled := i.labels.Applies(dictionary.Declared(i.document, m))
 		profile := InspectPositional
-		if labels != nil {
+		if labelled {
 			profile = InspectLabelled
 		}
 		if !visit(InspectionRow{Kind: InspectMessageRow, Message: number, Terminator: message.Terminator, Profile: profile, Start: message.Span.Start, End: message.Span.End}) {
@@ -205,12 +201,16 @@ func (i *Inspected) Rows(visit func(InspectionRow) bool) {
 				return
 			}
 			last := len(segment.Fields)
-			for position := range labels[segment.ID] {
-				last = max(last, position)
+			if labelled {
+				last = max(last, i.labels.LastPosition(segment.ID))
 			}
 			for position := 1; position <= last; position++ {
 				field := segment.Field(position)
-				row := InspectionRow{Kind: InspectFieldRow, Message: number, Segment: segment.ID, Field: position, Label: labels[segment.ID][position], State: field.State}
+				var label string
+				if labelled {
+					label = i.labels.Label(segment.ID, position)
+				}
+				row := InspectionRow{Kind: InspectFieldRow, Message: number, Segment: segment.ID, Field: position, Label: label, State: field.State}
 				if field.State != hl7.Omitted {
 					row.Start, row.End = field.Span.Start, field.Span.End
 				}
@@ -236,14 +236,4 @@ func selection(value string) string {
 		return InspectDetected
 	}
 	return InspectDeclared
-}
-
-// messageLabels are the dictionary's labels when the message declares the
-// dictionary's version in MSH-12, and nil otherwise.
-func messageLabels(doc *hl7.Document, message hl7.Message, labels *dictionary.Dictionary) map[string]map[int]string {
-	version := doc.Bytes(message.Segments[0].Field(12).Span)
-	if strings.SplitN(string(version), string(message.Delimiters.Component), 2)[0] == labels.HL7Version {
-		return labels.Segments
-	}
-	return nil
 }

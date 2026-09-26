@@ -21,6 +21,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from distribution import source
 import package_desktop as packaging
 
 
@@ -90,7 +91,7 @@ class PackagingTests(unittest.TestCase):
         for name in ("licenses/react-MIT.txt", "licenses/wails-MIT.txt",
                      "dictionary/fields-v251.json", "docs/dictionary-provenance.md"):
             self.assertEqual(data["usr/share/doc/readmit-desktop/" + name][1],
-                             (packaging.ROOT / ("internal/" + name if name.startswith("dictionary/") else name)).read_bytes())
+                             source(name).read_bytes())
 
     def test_missing_or_altered_legal_material_is_refused_even_with_a_new_checksum(self):
         for index, name in enumerate(("licenses/react-MIT.txt", "dictionary/fields-v251.json")):

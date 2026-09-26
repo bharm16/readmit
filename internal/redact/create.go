@@ -13,7 +13,6 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/exportreview"
-	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -61,38 +60,125 @@ var reviewFamily = artifactdir.Family{
 // Create performs local review first. A fully handled case is tested privately
 // against fresh built-in fixture sessions before its review becomes approvable.
 // Blocked reviews contain findings only; no partially handled case is emitted.
+//
+// Create is the wiring of the three steps: prepare reads and verifies the
+// request's files, derive turns them into derived evidence without touching
+// disk or sockets, prove reaches the built-in fixture through [FixtureProver],
+// and seal writes the review, the private state and the identity binding them.
 func Create(ctx context.Context, request Request) (*Review, error) {
-	t, source, spec, inputDigests, err := prepare(request)
+	return createWithProver(ctx, request, FixtureProver{})
+}
+
+// createWithProver is Create with the prove step's adapter chosen by the
+// caller. Production wiring always hands it [FixtureProver]; tests stand in a
+// fake, so no test swaps a package variable to reach this step.
+func createWithProver(ctx context.Context, request Request, prover Prover) (*Review, error) {
+	prepared, err := prepare(request)
 	if err != nil {
 		return nil, err
 	}
-	inputs, err := t.transformCase(source)
+	derived, err := derive(prepared.inputs)
 	if err != nil {
 		return nil, err
 	}
-	derivedSpec, err := t.transformSpec(spec)
-	if err != nil {
-		return nil, err
-	}
-	specBytes, err := encode(derivedSpec)
+	specBytes, err := encode(derived.Spec)
 	if err != nil || len(specBytes) > testrunner.MaxSpecBytes {
 		return nil, errors.New("derived spec exceeds limits")
 	}
-	output, err := destination(request.Output, protectedPaths(t.local))
+	return seal(ctx, request, prover, prepared, &derived, specBytes)
+}
+
+// prepared is what reading a request establishes before any derivation: the
+// verified derive inputs and the commitment binding the exact reviewed bytes.
+type prepared struct {
+	inputs     deriveInputs
+	commitment string
+}
+
+func prepare(request Request) (prepared, error) {
+	fail := func(err error) (prepared, error) { return prepared{}, err }
+	source, err := bundle.Open(request.CasePath)
+	if err != nil {
+		return fail(err)
+	}
+	if len(source.Events) > 256 || len(source.Manifest.Sources) > 64 {
+		return fail(errors.New("redaction fixture proof v1 supports at most 256 occurrences and 64 sources"))
+	}
+	paths := []struct{ kind, path string }{{"case", request.CasePath}, {"spec", request.SpecPath}, {"policy", request.PolicyPath}, {"inventory", request.InventoryPath}}
+	values := map[string][]byte{}
+	resolved := map[string]string{}
+	sources := []sourceReference{}
+	for _, entry := range paths {
+		path, err := artifactpath.Resolve(entry.path)
+		if err != nil {
+			return fail(err)
+		}
+		resolved[entry.kind] = path
+		id := source.Identity
+		if entry.kind != "case" {
+			raw, err := readLocal(path, maxConfigBytes)
+			if err != nil {
+				return fail(err)
+			}
+			values[entry.kind] = raw
+			id = digest(raw)
+		}
+		sources = append(sources, sourceReference{Kind: entry.kind, Path: path, Identity: id})
+	}
+	policy, err := DecodePolicy(values["policy"])
+	if err != nil {
+		return fail(err)
+	}
+	spec, err := testrunner.DecodeSpec(values["spec"])
+	if err != nil {
+		return fail(err)
+	}
+	if len(spec.Input.Messages) != 2 {
+		return fail(errors.New("redaction fixture proof v1 requires exactly two selected messages"))
+	}
+	input, err := bundle.Open(artifactpath.JoinReference(filepath.Dir(resolved["spec"]), spec.Input.Case))
+	if err != nil || input.Identity != source.Identity {
+		return fail(errors.New("spec input must match the reviewed case"))
+	}
+	inventory, err := DecodeInventory(values["inventory"])
+	if err != nil {
+		return fail(err)
+	}
+	facts, err := verifyArtifacts(inventory, filepath.Dir(resolved["inventory"]), source.Identity)
+	if err != nil {
+		return fail(err)
+	}
+	commitment, _ := encode(Inputs{PolicySHA256: digest(values["policy"]), InventorySHA256: digest(values["inventory"]), SpecSHA256: digest(values["spec"])})
+	return prepared{
+		inputs: deriveInputs{
+			Case: source, CasePath: request.CasePath, Spec: spec, Policy: policy,
+			Inventory: inventory, Artifacts: facts, Sources: sources,
+		},
+		commitment: digest(commitment),
+	}, nil
+}
+
+// seal writes the review and its private state: the derived case and spec when
+// every finding was handled, the fresh fixture proof of the original case, the
+// identity binding all of them, and the located findings when anything stayed
+// unresolved. A proof or residual failure blocks the review rather than
+// widening it, and the proof's own explanation is said to the caller only.
+func seal(ctx context.Context, request Request, prover Prover, prepared prepared, derived *derivation, specBytes []byte) (*Review, error) {
+	output, err := destination(request.Output, protectedPaths(derived.Local))
 	if err != nil {
 		return nil, err
 	}
-	private, err := destination(request.LocalState, protectedPaths(t.local))
+	private, err := destination(request.LocalState, protectedPaths(derived.Local))
 	if err != nil {
 		return nil, err
 	}
 	if output == private {
 		return nil, errors.New("private mapping state and review must be separate directories")
 	}
-	review := &Review{Schema: ReviewSchema, State: "blocked", DataOrigin: "derived-testing-data", InputCommitment: inputDigests, RequiredFailures: slices.Clone(t.policy.RequiredFailures), OriginalFailedAssertions: []int{}, Scope: exportreview.Scope, Residual: exportreview.Scan{Status: "not-run", Locations: []string{}, Limitations: "Unresolved findings block generation and scanning."}}
+	review := &Review{Schema: ReviewSchema, State: "blocked", DataOrigin: "derived-testing-data", InputCommitment: prepared.commitment, RequiredFailures: slices.Clone(prepared.inputs.Policy.RequiredFailures), OriginalFailedAssertions: []int{}, Scope: exportreview.Scope, Residual: exportreview.Scan{Status: "not-run", Locations: []string{}, Limitations: "Unresolved findings block generation and scanning."}}
 	// Encoding the complete private state also bounds retained mapping material
 	// before reserving any destination. No mapping bytes enter a derived artifact.
-	localBytes, err := encode(t.local)
+	localBytes, err := encode(derived.Local)
 	if err != nil || len(localBytes) > maxReviewBytes {
 		return nil, errors.New("private transformation state exceeds limit")
 	}
@@ -101,22 +187,22 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		return nil, err
 	}
 	defer state.Close()
-	if !hasUnresolved(t.findings) {
+	if !hasUnresolved(derived.Findings) {
 		proofDir := filepath.Join(private, "original-proof")
-		proof, err := runProof(ctx, spec, request.CasePath, proofDir, t.policy.RequiredFailures)
-		if err != nil {
-			review.OriginalProofFailure = err.Error()
-			if err := t.finding("proof/original-assertions", "other-unique-identifiers", "original-fixture-proof-failed", "", false); err != nil {
+		proof, proveErr := prover.Prove(ctx, prepared.inputs.Spec, request.CasePath, proofDir, prepared.inputs.Policy.RequiredFailures)
+		if proveErr != nil {
+			review.OriginalProofFailure = proveErr.Error()
+			if err := derived.finding("proof/original-assertions", "other-unique-identifiers", "original-fixture-proof-failed", "", false); err != nil {
 				return nil, err
 			}
 		} else {
-			t.local.OriginalProof = proof
+			derived.Local.OriginalProof = proof
 			review.OriginalFailedAssertions = slices.Clone(proof.FailedAssertions)
-			t.local.Sources = append(t.local.Sources, sourceReference{Kind: "original-baseline", Path: filepath.Join(proofDir, "baseline", "result"), Identity: proof.BaselineIdentity}, sourceReference{Kind: "original-postfix", Path: filepath.Join(proofDir, "postfix", "result"), Identity: proof.PostfixIdentity})
+			derived.Local.Sources = append(derived.Local.Sources, sourceReference{Kind: "original-baseline", Path: filepath.Join(proofDir, "baseline", "result"), Identity: proof.BaselineIdentity}, sourceReference{Kind: "original-postfix", Path: filepath.Join(proofDir, "postfix", "result"), Identity: proof.PostfixIdentity})
 		}
 	}
 	// Revalidate after private execution, before deriving from the sealed snapshot.
-	if err := revalidate(t.local); err != nil {
+	if err := revalidate(derived.Local); err != nil {
 		return nil, err
 	}
 	written, err := artifactdir.Create(output, reviewFamily, artifactdir.Durable)
@@ -124,15 +210,15 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		return nil, err
 	}
 	defer written.Close()
-	if !hasUnresolved(t.findings) {
-		derived, err := bundle.Write(filepath.Join(output, "case"), inputs, bundle.Provenance{Mode: bundle.Derived, Derivation: "readmit-redact/v1"})
+	if !hasUnresolved(derived.Findings) {
+		writtenCase, err := bundle.Write(filepath.Join(output, "case"), derived.Occurrences, bundle.Provenance{Mode: bundle.Derived, Derivation: "readmit-redact/v1"})
 		if err != nil {
 			return nil, err
 		}
-		if !reflect.DeepEqual(derived.Correlations, source.Correlations) {
+		if !reflect.DeepEqual(writtenCase.Correlations, prepared.inputs.Case.Correlations) {
 			return nil, errors.New("transformation changed source correlations; no completed review produced")
 		}
-		review.DerivedIdentity = derived.Identity
+		review.DerivedIdentity = writtenCase.Identity
 		review.DerivedSpecSHA256 = digest(specBytes)
 		if err := written.WriteFile("spec.json", specBytes); err != nil {
 			return nil, err
@@ -141,25 +227,25 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		if err != nil {
 			return nil, err
 		}
-		review.Residual = exportreview.Residual(files, t.local.ResidualValues)
+		review.Residual = exportreview.Residual(files, derived.Local.ResidualValues)
 		for _, location := range review.Residual.Locations {
-			if err := t.finding(location, "other-unique-identifiers", "known-residual", "", false); err != nil {
+			if err := derived.finding(location, "other-unique-identifiers", "known-residual", "", false); err != nil {
 				return nil, err
 			}
 		}
-		if !hasUnresolved(t.findings) {
+		if !hasUnresolved(derived.Findings) {
 			review.State = "ready-for-approval"
 		}
 	}
-	localBytes, err = encode(t.local)
+	localBytes, err = encode(derived.Local)
 	if err != nil || len(localBytes) > maxReviewBytes {
 		return nil, errors.New("private transformation state exceeds limit")
 	}
 	review.LocalStateCommitment = digest(localBytes)
-	review.Findings = t.findings
+	review.Findings = derived.Findings
 	review.Coverage, review.Uncovered = exportreview.Checklist(review.Findings)
 	review.Policies = []string{}
-	for name := range t.policies {
+	for name := range derived.Policies {
 		review.Policies = append(review.Policies, name)
 	}
 	slices.Sort(review.Policies)
@@ -174,7 +260,7 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 	// Scan includes the public manifest itself. No scan result can clear a
 	// structural or policy finding, and a hit cannot complete an approvable review.
 	files["review.json"] = raw
-	if scan := exportreview.Residual(files, t.local.ResidualValues); review.State == "ready-for-approval" && scan.Status != "passed" {
+	if scan := exportreview.Residual(files, derived.Local.ResidualValues); review.State == "ready-for-approval" && scan.Status != "passed" {
 		if len(review.Findings)+len(scan.Locations) > maxFindings {
 			return nil, errors.New("public review exceeds finding limit")
 		}
@@ -219,64 +305,6 @@ func Create(ctx context.Context, request Request) (*Review, error) {
 		return nil, err
 	}
 	return review, nil
-}
-
-func prepare(request Request) (*transformer, *bundle.Bundle, testrunner.Spec, string, error) {
-	t := &transformer{policies: map[string]bool{}, original: map[string]*hl7.Document{}, derived: map[string]*hl7.Document{}, local: localState{Schema: PrivateSchema, Sources: []sourceReference{}, Mappings: []mapping{}, Shifts: []shift{}, ResidualValues: [][]byte{}}}
-	fail := func(err error) (*transformer, *bundle.Bundle, testrunner.Spec, string, error) {
-		return nil, nil, testrunner.Spec{}, "", err
-	}
-	source, err := bundle.Open(request.CasePath)
-	if err != nil {
-		return fail(err)
-	}
-	if len(source.Events) > 256 || len(source.Manifest.Sources) > 64 {
-		return fail(errors.New("redaction fixture proof v1 supports at most 256 occurrences and 64 sources"))
-	}
-	paths := []struct{ kind, path string }{{"case", request.CasePath}, {"spec", request.SpecPath}, {"policy", request.PolicyPath}, {"inventory", request.InventoryPath}}
-	values := map[string][]byte{}
-	resolved := map[string]string{}
-	for _, entry := range paths {
-		path, err := artifactpath.Resolve(entry.path)
-		if err != nil {
-			return fail(err)
-		}
-		resolved[entry.kind] = path
-		id := source.Identity
-		if entry.kind != "case" {
-			raw, err := readLocal(path, maxConfigBytes)
-			if err != nil {
-				return fail(err)
-			}
-			values[entry.kind] = raw
-			id = digest(raw)
-		}
-		t.local.Sources = append(t.local.Sources, sourceReference{Kind: entry.kind, Path: path, Identity: id})
-	}
-	t.policy, err = DecodePolicy(values["policy"])
-	if err != nil {
-		return fail(err)
-	}
-	spec, err := testrunner.DecodeSpec(values["spec"])
-	if err != nil {
-		return fail(err)
-	}
-	if len(spec.Input.Messages) != 2 {
-		return fail(errors.New("redaction fixture proof v1 requires exactly two selected messages"))
-	}
-	input, err := bundle.Open(artifactpath.JoinReference(filepath.Dir(resolved["spec"]), spec.Input.Case))
-	if err != nil || input.Identity != source.Identity {
-		return fail(errors.New("spec input must match the reviewed case"))
-	}
-	inventory, err := DecodeInventory(values["inventory"])
-	if err != nil {
-		return fail(err)
-	}
-	if err := t.reviewInventory(inventory, filepath.Dir(resolved["inventory"]), source.Identity); err != nil {
-		return fail(err)
-	}
-	commitment, _ := encode(Inputs{PolicySHA256: digest(values["policy"]), InventorySHA256: digest(values["inventory"]), SpecSHA256: digest(values["spec"])})
-	return t, source, spec, digest(commitment), nil
 }
 
 func hasUnresolved(findings []exportreview.Finding) bool {

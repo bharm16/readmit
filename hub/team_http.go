@@ -40,6 +40,10 @@ type teamAdmission struct {
 	writes  bool
 	accept  identityRule // nil admits any authorized principal
 	further []furtherGrant
+	// serialized says the caller holds the store lock, so no command changes
+	// the project's log while the request waits for operation admission and
+	// the log is read once for it.
+	serialized bool
 }
 
 func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Access) {
@@ -126,7 +130,7 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 			return true, ""
 		}
 	}
-	_, release, ok := s.authorizeWrite(access, r, w, project, adm)
+	_, proj, release, ok := s.authorizeWrite(access, r, w, project, adm)
 	if !ok {
 		return
 	}
@@ -150,10 +154,7 @@ func (s *Store) teamRequest(w http.ResponseWriter, r *http.Request, access *Acce
 		return
 	}
 	d := parts[4]
-	if retired, e := s.retired(ctx, project, d); e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	} else if retired {
+	if proj.retired(d) {
 		http.Error(w, "artifact retired; recovery copy retained", 410)
 		return
 	}

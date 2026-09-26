@@ -352,7 +352,7 @@ func TestComparingHoldsTheSameOperationSlot(t *testing.T) {
 	app, root, identity := comparisonWorkspace(t)
 
 	reentrant := &chooser{folder: root}
-	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, t.TempDir())
 	var concurrent desktop.CompareResult
 	reentrant.before = func() { concurrent = second.Compare(compareRequest(root, identity, "after", cmpKey)) }
 	if opened := second.SelectWorkspace(); opened.State != desktop.Completed {

@@ -215,13 +215,8 @@ func (a *App) PrepareSuite(request SuitePrepareRequest) SuitePreparedResult {
 			references = filepath.Join(root, request.Releases)
 		}
 		path := filepath.Join(root, request.Entry)
-		var prepared suite.Prepared
-		var err error
-		if references != "" {
-			prepared, err = suite.PrepareApproved(path, request.Environment, filepath.Join(root, request.Output), references)
-		} else {
-			prepared, err = suite.Prepare(path, request.Environment, filepath.Join(root, request.Output))
-		}
+		prepared, err := suite.Prepare(suite.Request{Path: path, Environment: request.Environment,
+			Output: filepath.Join(root, request.Output), References: references})
 		if err != nil {
 			return SuitePreparedResult{State: Failed, Reason: err.Error()}
 		}

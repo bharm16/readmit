@@ -81,7 +81,7 @@ func TestCIGateExclusionsAndInvalidDeclarationsNeverPass(t *testing.T) {
 	for _, exclusion := range []string{"", "quarantined", "disabled", "unsupported", "skipped", "uncovered", "invalid"} {
 		t.Run(exclusion, func(t *testing.T) {
 			dir, _ := fixture(t, peer(t, func(c net.Conn) { ack(c, "AA") }))
-			prepared, e := suite.Prepare(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "preview"))
+			prepared, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "preview")})
 			if e != nil {
 				t.Fatal(e)
 			}

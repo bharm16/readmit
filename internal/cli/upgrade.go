@@ -105,7 +105,11 @@ func upgradePrepare() *cobra.Command {
 			if !plan.RetainedReadable() {
 				return upgrade.ErrNotReadable
 			}
-			report, operationErr := lifecycle.Archive(ctx, args[0], output, false)
+			retirement, err := lifecycle.PreviewRetirement(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			report, operationErr := lifecycle.Archive(ctx, args[0], output, retirement.Selection, false)
 			if report.Root != "" {
 				if err := writeBackupReport(cmd.OutOrStdout(), report); err != nil {
 					return err
