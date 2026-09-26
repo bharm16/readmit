@@ -15,14 +15,12 @@ import { CorrelationReview } from "../CorrelationReview";
 import { Diagnosis } from "../Diagnosis";
 import { EnvironmentBanner, EnvironmentPanel } from "../EnvironmentPanel";
 import { GuidedSample } from "../GuidedSample";
-import { NewProjectForm, DemoCallout } from "../Home";
 import { HubAdministration } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
 import { ImportPanel } from "../ImportPanel";
 import { Inspector } from "../Inspector";
 import { MaintenancePanel } from "../MaintenancePanel";
-import { NoteDraft } from "../NoteDraft";
 import { ObservationPanel } from "../ObservationPanel";
 import { OperationAccess } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
@@ -32,11 +30,8 @@ import { PrivacyDisclosure, SupportGuidance } from "../PrivacyDisclosure";
 import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
 import { ProfileEditor } from "../ProfileEditor";
-import { ProjectPanel } from "../ProjectPanel";
 import { ProtectionPanel } from "../ProtectionPanel";
 import { RawInspection } from "../RawInspection";
-import { RecentWorkspaces } from "../RecentWorkspaces";
-import { Recovery, RetainedDrafts } from "../Recovery";
 import { Reduction } from "../Reduction";
 import { Reexecution } from "../Reexecution";
 import { ReplayPanel } from "../ReplayPanel";
@@ -123,16 +118,6 @@ const resultProps = {
   result: null,
 };
 const content = <p>Synthetic example content for visual inspection.</p>;
-const recovered = f.recoveryResult({
-  schema: "readmit-desktop-session/v1",
-  view: {
-    workspace: f.WORKSPACE_ROOT,
-    region: "evidence",
-    case: f.CASE_ENTRY,
-    run: "",
-  },
-  drafts: [f.retainedDraft()],
-});
 export interface Example {
   name: string;
   state: string;
@@ -228,10 +213,6 @@ export const examples: Example[] = [
       onCancel={noop}
     />
   )),
-  e("NewProjectForm", () => (
-    <NewProjectForm busy={false} onCreate={empty} onCancel={noop} />
-  )),
-  e("DemoCallout", () => <DemoCallout busy={false} onTryDemo={noop} />),
   e("HubAdministration", () => <HubAdministration />),
   e("HubPanel", () => <HubPanel {...common} />),
   e("IconButton", () => (
@@ -244,7 +225,6 @@ export const examples: Example[] = [
   e("MaintenancePanel", () => (
     <MaintenancePanel {...common} onReopen={noop} onProjectChanged={noop} />
   )),
-  e("NoteDraft", () => <NoteDraft {...common} restored={recovered} />),
   e("ObservationPanel", () => <ObservationPanel {...common} />),
   e("OperationAccess", () => <OperationAccess />),
   e("OperatorHub", () => <OperatorHub />),
@@ -273,37 +253,8 @@ export const examples: Example[] = [
   )),
   e("PrivacyPanel", () => <PrivacyPanel {...common} />),
   e("ProfileEditor", () => <ProfileEditor {...common} />),
-  e("ProjectPanel", () => (
-    <ProjectPanel
-      {...common}
-      result={f.projectOverviewResult([f.registeredCase()])}
-      editable={f.revisionsResult()}
-      selectedCase={null}
-      onUpdateSettings={async () => true}
-      onRegister={async () => true}
-      onUpdateCase={async () => true}
-      onReadEditable={noop}
-    />
-  )),
   e("ProtectionPanel", () => <ProtectionPanel {...common} />),
   e("RawInspection", () => <RawInspection {...common} request={1} />),
-  e("RecentWorkspaces", () => (
-    <RecentWorkspaces
-      {...common}
-      recent={f.recentResult([f.WORKSPACE_ROOT])}
-      onReopen={noop}
-      onForget={async () => {}}
-    />
-  )),
-  e("Recovery", () => (
-    <Recovery restored={recovered} onChanged={noop} onReopen={noop} />
-  )),
-  e("RetainedDrafts", () => (
-    <RetainedDrafts
-      drafts={[f.editorDraft("draft-1", "test-draft", f.EMPTY_DRAFT)]}
-      onDiscardDraft={noop}
-    />
-  )),
   e("Reduction", () => (
     <Reduction
       {...resultProps}
@@ -715,39 +666,6 @@ export const examples: Example[] = [
       () => <Status state={state} indicator={f.indicatorTable().get(state)} />,
       state,
     ),
-  ),
-  e(
-    "RecentWorkspaces",
-    () => (
-      <RecentWorkspaces
-        {...common}
-        recent={f.recentResult([])}
-        onReopen={noop}
-        onForget={async () => {}}
-      />
-    ),
-    "empty",
-  ),
-  e(
-    "RecentWorkspaces",
-    () => (
-      <RecentWorkspaces
-        {...common}
-        recent={{
-          state: "failed",
-          roots: [],
-          reason: "Synthetic folder unavailable",
-        }}
-        onReopen={noop}
-        onForget={async () => {}}
-      />
-    ),
-    "error",
-  ),
-  e(
-    "NewProjectForm",
-    () => <NewProjectForm busy onCreate={empty} onCancel={noop} />,
-    "disabled",
   ),
   e(
     "MessageGrid",

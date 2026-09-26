@@ -964,9 +964,10 @@ func TestAuthoringAndComparisonReadersRefuseALinkToAnEntryOfTheirKind(t *testing
 	})
 }
 
-// The cases a project registers, as a case of its own and as a revision and
-// the case a revision is derived from, which the engine's own registration
-// reads.
+// The cases a project registers as a revision and the case a revision is
+// derived from, which the engine's own registration reads. (A case's own
+// registration is a save of its details, of a case the catalog discovered,
+// and the catalog never discovers a link as a case.)
 func TestProjectRegistrationRefusesALinkToACaseOfTheProject(t *testing.T) {
 	parent := t.TempDir()
 	app := newApp(t, &chooser{folder: parent})
@@ -984,15 +985,9 @@ func TestProjectRegistrationRefusesALinkToACaseOfTheProject(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if registered := app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment after reschedule"}); registered.State != desktop.Completed {
-		t.Fatalf("a registered case: %+v", registered)
-	}
+	registerCase(t, root, "incident-4821", "Duplicate appointment after reschedule")
 	projectCase := []string{"a case must be named by one directory entry of the project"}
 	refusesLinksToEntriesItAccepts(t, root, []ownReader{
-		{"RegisterCase(name)", "another", projectCase, func(entry string) refused {
-			result := app.RegisterCase(root, entry, desktop.CaseRegistration{Title: "Another appointment"})
-			return refused{result.State, result.Reason}
-		}},
 		{"RegisterRevision(Name)", "revised", projectCase, func(entry string) refused {
 			result := app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Name: entry, Parent: "incident-4821"})
 			return refused{result.State, result.Reason}

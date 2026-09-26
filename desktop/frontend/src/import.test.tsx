@@ -47,7 +47,7 @@ async function openWorkspaceWithProject(user: ReturnType<typeof userEvent.setup>
       ]),
     ...handlers,
   });
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await screen.findByRole("button", { name: "Project: Scheduling investigation" });
   return { facade };
@@ -58,7 +58,7 @@ test("opening import panel from project, selecting sources via native dialogs, a
   const { facade } = await openWorkspaceWithProject(user);
 
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   // Import panel is open and shows breadcrumbs
   expect(await screen.findByRole("heading", { name: "Import evidence", level: 3 })).toBeTruthy();
@@ -114,7 +114,7 @@ test("plan authoring, extraction preview with deliberate reveal toggle, and inva
   const { facade } = await openWorkspaceWithProject(user);
 
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   // Add source file
   facade.reply({
@@ -214,7 +214,7 @@ test("engine export authoring displays unqualified compatibility notice and prev
   const { facade } = await openWorkspaceWithProject(user);
   const evidence = screen.getByRole("region", { name: "Main content" });
 
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   // Switch to engine tab
   await user.click(screen.getByRole("tab", { name: "Engine adapter" }));
@@ -284,7 +284,7 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
   const { facade } = await openWorkspaceWithProject(user);
   const evidence = screen.getByRole("region", { name: "Main content" });
 
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   // Switch to Recipe tab
   await user.click(screen.getByRole("tab", { name: "Envelope mapping" }));
@@ -380,7 +380,7 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
     },
   });
 
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   // Check commit completion card
   expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
@@ -423,7 +423,7 @@ test("every member of every declared source has its own row in the extraction pr
   const user = userEvent.setup();
   const { facade } = await openWorkspaceWithProject(user);
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
   facade.reply({
     ChooseImportSources: () => Promise.resolve({ state: "completed", kind: "files", paths: ["booking.mllp", "reschedule.mllp"] }),
   });
@@ -501,12 +501,12 @@ test("draft retention restores draft state and handles cancellation", async () =
     },
   });
 
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await screen.findByRole("button", { name: "Project: Scheduling investigation" });
 
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   // Verify restored draft values
   expect(await screen.findByText("retained-stream.mllp")).toBeTruthy();
@@ -536,7 +536,7 @@ test("dropping a message file and a zip declares both sources", async () => {
   const user = userEvent.setup();
   await openWorkspaceWithProject(user);
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
 
   const zone = await screen.findByLabelText("Drop files or ZIP archives here");
   const message = new File(["synthetic"], "evidence.hl7");
@@ -590,7 +590,7 @@ test("a committed import's draft is dropped before the window reports it stored,
       }),
   });
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
   await screen.findByText("scheduling-feed.hl7");
   await user.type(screen.getByLabelText("Case title"), "Reschedule duplicate");
@@ -652,7 +652,7 @@ test("a committed import whose retention was refused leaves no retention reporte
       }),
   });
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
   await user.click(screen.getByRole("button", { name: "Select Files…" }));
   await screen.findByText("scheduling-feed.hl7");
   await user.type(screen.getByLabelText("Case title"), "Reschedule duplicate");
@@ -678,7 +678,7 @@ test("a refused discard of the import draft keeps the text and still offers Retr
     DiscardEditorDraft: async () => ({ state: "failed" as const, reason: "the draft store is locked", drafts: [held] }),
   });
   const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
   const title = screen.getByLabelText("Case title") as HTMLInputElement;
   fireEvent.change(title, { target: { value: "Reschedule" } });
   expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();

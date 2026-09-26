@@ -129,3 +129,10 @@ func DiagnosisBuiltinForTest(id string) (diagnose.Config, bool) {
 func CredentialFileForTest(workspace, secretsFile string) string {
 	return credentialFile(workspace, secretsFile)
 }
+
+// SetRevealForTest has RevealItem hand the place it would show to reveal
+// instead of the host's file manager. It is a function rather than a method
+// so the bound facade stays exactly what the application binds.
+func SetRevealForTest(a *App, reveal func(path string) error) {
+	a.reveal = reveal
+}

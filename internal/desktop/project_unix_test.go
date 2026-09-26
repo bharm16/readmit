@@ -17,6 +17,11 @@ func TestProjectWritesSeparatePermissionFromFailure(t *testing.T) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	writeCase(t, root, "incident-4821", framed("MSH|^~\\&|Scheduling|Acme|EHR|Acme|20260101120000||SIU^S12|1|P|2.5.1\r"))
+	opened := app.OpenNamedProject(root)
+	if opened.State != desktop.Completed {
+		t.Fatalf("open: %+v", opened)
+	}
+	item := caseAt(t, app, opened.Context, "incident-4821")
 	if os.Geteuid() == 0 {
 		t.Skip("a privileged account bypasses directory permissions")
 	}
@@ -25,14 +30,14 @@ func TestProjectWritesSeparatePermissionFromFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(root, 0o700) })
 
-	result := app.RegisterCase(root, "incident-4821", desktop.CaseRegistration{Title: "Duplicate appointment"})
-	if result.State != desktop.PermissionDenied || result.Overview != nil {
+	result := saveCase(app, opened.Context, item, "register", desktop.CaseDraft{Name: "Duplicate appointment", Status: "open", InterfaceRevision: "siu-2.5.1-v1"})
+	if result.State != desktop.PermissionDenied || result.Saved != nil {
 		t.Fatalf("an unwritable project was not reported as permission denied: %+v", result)
 	}
-	title := "Epic scheduling interface, 2026"
-	refused := app.UpdateProjectSettings(root, desktop.SettingsChange{Title: &title})
-	if refused.State != desktop.PermissionDenied {
-		t.Fatalf("a settings write into an unwritable project was not permission denied: %+v", refused)
+	settings := saveProject(app, opened.Context, "retitle", desktop.ProjectDraft{Name: "Epic scheduling interface, 2026",
+		Revisions: []desktop.RevisionDraft{{ID: "siu-2.5.1-v1", Name: "siu-2.5.1-v1", Default: true}, {ID: "siu-2.5.1-v2", Name: "siu-2.5.1-v2"}}})
+	if settings.State != desktop.PermissionDenied {
+		t.Fatalf("a settings write into an unwritable project was not permission denied: %+v", settings)
 	}
 }
 

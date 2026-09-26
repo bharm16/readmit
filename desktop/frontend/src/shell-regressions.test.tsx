@@ -12,7 +12,7 @@ import {
 test("Escape closes the topmost dialog through its owner, cancels no backend work and returns focus", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
-  const opener = screen.getByRole("button", { name: "New project" });
+  const opener = screen.getAllByRole("button", { name: "New project" })[0]!;
   await user.click(opener);
   expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
   await user.keyboard("{Escape}");

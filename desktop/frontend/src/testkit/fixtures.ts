@@ -26,9 +26,6 @@ import type {
   PracticeResult,
   ProjectOverview,
   ProjectOverviewResult,
-  RecentResult,
-  RecoveryResult,
-  RevisionsResult,
   RunComparisonResult,
   Sequence,
   SequenceResult,
@@ -300,10 +297,6 @@ export function disclosureStatusResult(
   return { state: "completed", states };
 }
 
-export function recentResult(roots: string[]): RecentResult {
-  return { state: roots.length === 0 ? "empty" : "completed", roots };
-}
-
 export function filtersResult(
   filters: FiltersResult["filters"] = [],
   selected = "",
@@ -522,30 +515,6 @@ export function practiceResult(trial: "baseline" | "post-fix", status: TestRunne
       assertions: [{ id: "ledger-has-booking", operator: "ledger_count", status }],
       changed_bindings: ["case", "observation", "reset"],
     },
-  };
-}
-
-/** The retained working session the window restores, with unstored drafts. */
-export function recoveryResult(
-  session?: RecoveryResult["session"],
-  run?: RecoveryResult["run"],
-  runReason?: string,
-): RecoveryResult {
-  return {
-    state: session || run ? "completed" : "empty",
-    ...(session ? { session } : {}),
-    ...(run ? { run } : {}),
-    ...(runReason ? { run_reason: runReason } : {}),
-  };
-}
-
-export function retainedDraft(
-  project = WORKSPACE_ROOT,
-  name = "triage",
-): NonNullable<RecoveryResult["session"]>["drafts"][number] {
-  return {
-    project,
-    note: { name, title: "First pass", body: "still writing this" },
   };
 }
 
@@ -970,9 +939,9 @@ export function runSpecChoice(entry: string): RunSpecChoiceResult {
 }
 
 /** The editable project document a stored note lands in. */
-export function revisionsResult(): RevisionsResult {
+export function revisionsResult() {
   return {
-    state: "completed",
+    state: "completed" as const,
     revisions: { schema: "readmit-revisions/v1", notes: [], revisions: [] },
   };
 }
@@ -2205,5 +2174,39 @@ export function protectionDiscardResult(overrides: Partial<ProtectionDiscardResu
     overridden: false,
     limitations: ["Discarding unlinks the files this package declares; it does not overwrite the bytes."],
     ...overrides,
+  };
+}
+
+/** The catalog page the facade answers for the folder the window last opened:
+ * each case entry of that listing as an unregistered case, named by its entry.
+ * Projects and every other kind list nothing unless a test arranges them. */
+export function catalogOfListing(
+  query: { context: { project: string; generation: number }; kind: string },
+  stub: { answered: Map<string, unknown> },
+): import("../bindings").CatalogResult {
+  const opened = ["OpenWorkspace", "SelectWorkspace", "CreateSampleWorkspace"]
+    .map((method) => stub.answered.get(method) as { workspace?: { root: string; artifacts: Artifact[] } } | undefined)
+    .filter((answer) => answer?.workspace && answer.workspace.root === query.context.project)
+    .map((answer) => answer!.workspace!)[0];
+  const items =
+    query.kind === "case" && opened
+      ? opened.artifacts
+          .filter((artifact) => artifact.kind === "case")
+          .map((artifact) => caseCatalogItem(artifact.name, artifact.provenance ?? ""))
+      : [];
+  return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+}
+
+/** One case as the catalog lists it. */
+export function caseCatalogItem(entry: string, provenance = "", status?: import("../bindings").CaseStatus): import("../bindings").CatalogItem {
+  return {
+    ref: { kind: "case", id: `case-${entry}` },
+    name: entry,
+    created_at: null,
+    updated_at: null,
+    last_opened_at: null,
+    availability: "available",
+    capabilities: [],
+    summary: { case: { registered: status !== undefined, entry, tags: [], incidents: [], ...(status ? { status } : {}), evidence: "verified", ...(provenance ? { provenance } : {}) } },
   };
 }

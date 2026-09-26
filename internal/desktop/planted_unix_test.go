@@ -76,7 +76,6 @@ func TestPlantedPatientValuesAndCredentialsStayOutOfResultsAndShellState(t *test
 	draft := editorDraft("note", desktop.NoteDraftSchema, unfinishedNote)
 	draft.Workspace = resolved(t, workspace)
 	keep(app.SaveEditorDraft(draft))
-	keep(app.RecoverSession())
 	keep(app.EditorDrafts())
 	keep(app.Guide(workspace))
 	keep(app.DisclosureStatus())

@@ -214,26 +214,6 @@ type ProjectResult struct {
 
 func (r *ProjectResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// RevisionsResult carries one state. Revisions is the editable document of a
-// project exactly as it was written: the notes and drafts a person maintains,
-// and the lineage of every revision derived from registered evidence. It holds
-// no evidence, and nothing the shell writes through this result can reach any.
-type RevisionsResult struct {
-	State     State              `json:"state"`
-	Reason    string             `json:"reason,omitzero"`
-	Root      string             `json:"root,omitzero"`
-	Revisions *project.Revisions `json:"revisions,omitzero"`
-}
-
-func (r *RevisionsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
-
-// RecentResult lists workspace folders in most-recently-opened order.
-type RecentResult struct {
-	State  State    `json:"state"`
-	Reason string   `json:"reason,omitzero"`
-	Roots  []string `json:"roots"`
-}
-
 // refusal is the state and fixed reason of an operation that did not run. It is
 // shared plumbing: each public result keeps its own flat shape for the shell.
 type refusal struct {
@@ -253,10 +233,6 @@ func (r refusal) workspace() WorkspaceResult {
 func (r refusal) evidence() CaseResult { return CaseResult{State: r.state, Reason: r.reason} }
 
 func (r refusal) project() ProjectResult { return ProjectResult{State: r.state, Reason: r.reason} }
-
-func (r refusal) revisions() RevisionsResult {
-	return RevisionsResult{State: r.state, Reason: r.reason}
-}
 
 // FolderChooser presents the host's native folder dialog. An empty path with a
 // nil error means the person dismissed it without choosing.
@@ -292,7 +268,7 @@ type App struct {
 	operationRestoreRefusal string
 	chooser                 FolderChooser
 
-	// documents is the shell document store: the folder the shell's eight
+	// documents is the shell document store: the folder the shell's seven
 	// local documents live in, the names they are kept under, and the one
 	// rule they are read and replaced by.
 	documents ShellDocuments
@@ -385,10 +361,16 @@ type App struct {
 	// saveFault, when set, is the fault a test injects at a named point of a
 	// publication, as a crash would stop it there.
 	saveFault func(point string) error
+	// intents are the clicks that saved a case's details, a project's
+	// settings or a note in this process, and what each submitted.
+	intents metadataIntents
+	// reveal, when set, is how an object's place is shown in place of the
+	// host's file manager; a test sets it.
+	reveal func(path string) error
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its eight local documents.
+// over the folder given, where the shell keeps its seven local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {
@@ -619,78 +601,6 @@ func (a *App) openProject(path string) ProjectResult {
 	return ProjectResult{State: Completed, Root: opened.Root, Project: &opened.Document}
 }
 
-// OpenRevisions reads the editable document of a project folder: the notes and
-// drafts beside the evidence, and the recorded lineage of every revision. It
-// verifies no evidence and rewrites nothing. A project that has recorded
-// nothing yet is Empty rather than missing. It runs to completion once it
-// starts, so it holds the operation slot but is not interruptible.
-func (a *App) OpenRevisions(path string) RevisionsResult {
-	return run(a, false, false, func(context.Context) RevisionsResult {
-		return a.openRevisions(path)
-	})
-}
-
-func (a *App) openRevisions(path string) RevisionsResult {
-	opened, declined := openProjectFolder(path)
-	if opened == nil {
-		return declined.revisions()
-	}
-	revisions, declined := readRevisions(opened.Root)
-	if revisions == nil {
-		return declined.revisions()
-	}
-	if len(revisions.Notes) == 0 && len(revisions.Revisions) == 0 {
-		return RevisionsResult{State: Empty, Root: opened.Root, Revisions: revisions}
-	}
-	return RevisionsResult{State: Completed, Root: opened.Root, Revisions: revisions}
-}
-
-// SaveNote creates or replaces one editable note of a project and returns the
-// document it stored. This is the only thing the shell writes into a project,
-// and a note is working text: it is held in the project's own editable
-// document, beside evidence, so no edit made here reaches an import, a
-// finalized run, or any other retained artifact. It takes the same typed note
-// the command line stores, so the shell states what it is writing rather than
-// passing interchangeable strings. It runs to completion once it starts, so it
-// holds the operation slot but is not interruptible.
-func (a *App) SaveNote(path string, note project.Note) RevisionsResult {
-	return run(a, false, true, func(context.Context) RevisionsResult {
-		return a.saveNote(path, note)
-	})
-}
-
-func (a *App) saveNote(path string, note project.Note) RevisionsResult {
-	root, declined := resolveFolder(path)
-	if root == "" {
-		return declined.revisions()
-	}
-	result, err := operation.SetProjectNote(root, note)
-	if err != nil {
-		if errors.Is(err, operation.ErrProjectOpen) {
-			if errors.Is(err, project.ErrUnsupportedVersion) {
-				return RevisionsResult{State: Failed, Root: result.Root, Reason: "the project document was written by a version this release cannot read"}
-			}
-			return probeReadFailure(result.Root).revisions()
-		}
-		if errors.Is(err, operation.ErrProjectRevisions) {
-			if errors.Is(err, project.ErrUnsupportedVersion) {
-				return RevisionsResult{State: Failed, Root: result.Root, Reason: "the editable project document was written by a version this release cannot read"}
-			}
-			return RevisionsResult{State: Failed, Root: result.Root, Reason: "the editable project document cannot be read"}
-		}
-		if errors.Is(err, operation.ErrProjectNoteInvalid) {
-			return RevisionsResult{State: Failed, Root: result.Root, Reason: "the note was not stored: it needs a name and a title, its text must be bounded and printable, any subject it names must be a case or revision this project registers, and a project holds a bounded number of notes"}
-		}
-		if errors.Is(err, operation.ErrProjectNoteWrite) {
-			return probeWriteFailure(result.Root,
-				"this account cannot write to the project folder",
-				"the note could not be stored; an interrupted write may be retained beside the project document").revisions()
-		}
-		return RevisionsResult{State: Failed, Root: result.Root, Reason: err.Error()}
-	}
-	return RevisionsResult{State: Completed, Root: result.Root, Revisions: &result.Revisions}
-}
-
 // openProjectFolder resolves a folder and reads the project document every
 // editable document belongs to. A nil project carries the refusal to report.
 func openProjectFolder(path string) (*project.Project, refusal) {
@@ -720,25 +630,6 @@ func readRevisions(root string) (*project.Revisions, refusal) {
 		return nil, refusal{Failed, "the editable project document cannot be read"}
 	}
 	return &revisions, refusal{}
-}
-
-// RecentWorkspaces lists previously opened workspace folders, most recent
-// first. It reads one small local file and deliberately does not claim the
-// operation slot, so the shell can still offer the list while an operation
-// runs. A list this release cannot read is reported, never replaced.
-func (a *App) RecentWorkspaces() RecentResult {
-	roots, err := a.readRecent()
-	switch {
-	case errors.Is(err, fs.ErrPermission):
-		return RecentResult{State: PermissionDenied, Reason: "this account cannot read the recent workspace list", Roots: []string{}}
-	case errors.Is(err, errNotADocument):
-		return RecentResult{State: Failed, Reason: "the recent workspace list cannot be read; it is left exactly as written", Roots: []string{}}
-	case err != nil:
-		return RecentResult{State: Failed, Reason: "the recent workspace list was written by a version this release cannot read", Roots: []string{}}
-	case len(roots) == 0:
-		return RecentResult{State: Empty, Roots: []string{}}
-	}
-	return RecentResult{State: Completed, Roots: roots}
 }
 
 func (a *App) chooseFolder(ctx context.Context, title string) (string, refusal) {
@@ -803,7 +694,7 @@ func (a *App) openWorkspace(ctx context.Context, path string) WorkspaceResult {
 	if declined.state != "" {
 		return declined.workspace()
 	}
-	a.recordRecent(root)
+	a.rememberProjectAt(root)
 	workspace := &Workspace{Root: root, Artifacts: artifacts}
 	if len(artifacts) == 0 {
 		return WorkspaceResult{State: Empty, Workspace: workspace}

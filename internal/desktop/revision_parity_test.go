@@ -34,9 +34,7 @@ func revisionProject(t *testing.T) (*desktop.App, string, string) {
 	app := newApp(t, &chooser{folder: parent})
 	root, _ := createdProject(t, app, parent)
 	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
-	if registered := app.RegisterCase(root, "incident", desktop.CaseRegistration{Title: "Original incident"}); registered.State != desktop.Completed {
-		t.Fatalf("register the incident: %+v", registered)
-	}
+	registerCase(t, root, "incident", "Original incident")
 	return app, root, incident.Identity
 }
 
@@ -200,9 +198,7 @@ func TestARefusedRegistrationIsRefusedInTheCommandLinesWordsAndLeavesNothingBehi
 
 	// Once the parent is registered, the name the refused attempt used is
 	// free, and the same registration succeeds.
-	if registered := app.RegisterCase(root, "loose", desktop.CaseRegistration{Title: "Loose export"}); registered.State != desktop.Completed {
-		t.Fatalf("register the loose case: %+v", registered)
-	}
+	registerCase(t, root, "loose", "Loose export")
 	retried := app.RegisterRevision(desktop.RevisionRegistration{Workspace: root, Source: fromLoose, Name: "loose-revision", Parent: "loose"})
 	if retried.State != desktop.Completed || len(retried.Overview.Revisions) != 2 {
 		t.Fatalf("a registration the refused attempt left room for was refused: %+v", retried)

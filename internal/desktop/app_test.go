@@ -247,208 +247,6 @@ func TestConcurrentCallersNeverShareAnOperation(t *testing.T) {
 	}
 }
 
-func TestRecentWorkspacesRecordOpensMostRecentFirstWithinItsBound(t *testing.T) {
-	store := filepath.Join(t.TempDir(), "recent.json")
-	app := activatedApp(t, &chooser{}, filepath.Dir(store))
-	if result := app.RecentWorkspaces(); result.State != desktop.Empty || len(result.Roots) != 0 {
-		t.Fatalf("a shell that has opened nothing reported recent workspaces: %+v", result)
-	}
-
-	var opened []string
-	for range desktop.MaxRecentWorkspaces + 3 {
-		root := t.TempDir()
-		if opening := app.OpenWorkspace(root); opening.State != desktop.Empty {
-			t.Fatalf("open %s: %+v", root, opening)
-		}
-		opened = append(opened, resolved(t, root))
-	}
-	recent := app.RecentWorkspaces()
-	if recent.State != desktop.Completed || len(recent.Roots) != desktop.MaxRecentWorkspaces {
-		t.Fatalf("recent workspaces are unbounded or missing: %+v", recent)
-	}
-	want := opened[len(opened)-desktop.MaxRecentWorkspaces:]
-	for i := range want {
-		if recent.Roots[i] != want[len(want)-1-i] {
-			t.Fatalf("recent workspaces are not most-recent-first: %v want reverse of %v", recent.Roots, want)
-		}
-	}
-
-	// Reopening an already-recorded workspace moves it to the front without
-	// duplicating it, and a fresh shell reads the same list back from disk.
-	if reopening := app.OpenWorkspace(want[0]); reopening.State != desktop.Empty {
-		t.Fatalf("reopen: %+v", reopening)
-	}
-	reopened := activatedApp(t, &chooser{}, filepath.Dir(store)).RecentWorkspaces()
-	if len(reopened.Roots) != desktop.MaxRecentWorkspaces || reopened.Roots[0] != recent.Roots[desktop.MaxRecentWorkspaces-1] {
-		t.Fatalf("reopening did not move the workspace to the front: %+v", reopened.Roots)
-	}
-	if duplicates := len(reopened.Roots) - len(unique(reopened.Roots)); duplicates != 0 {
-		t.Fatalf("recent workspaces contain %d duplicates: %v", duplicates, reopened.Roots)
-	}
-}
-
-func TestRecentStoreRefusesUnknownVersionsAndMembers(t *testing.T) {
-	for name, contents := range map[string]string{
-		"unknown version": `{"schema":"readmit-desktop-recent/v2","roots":["/tmp"]}`,
-		"unknown member":  `{"schema":"readmit-desktop-recent/v1","roots":["/tmp"],"last_opened":"2026-01-01"}`,
-		"relative root":   `{"schema":"readmit-desktop-recent/v1","roots":["relative"]}`,
-		"not JSON":        "{",
-	} {
-		store := filepath.Join(t.TempDir(), "recent.json")
-		if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
-			t.Fatal(err)
-		}
-		app := activatedApp(t, &chooser{}, filepath.Dir(store))
-		if result := app.RecentWorkspaces(); result.State != desktop.Failed || len(result.Roots) != 0 {
-			t.Fatalf("the recent store accepted an %s: %+v", name, result)
-		}
-		// An unreadable store is never silently replaced: opening a workspace
-		// still succeeds, and the stored bytes are left for the person to fix.
-		if opened := app.OpenWorkspace(t.TempDir()); opened.State != desktop.Empty {
-			t.Fatalf("an unreadable recent store blocked opening a workspace: %+v", opened)
-		}
-		data, err := os.ReadFile(store)
-		if err != nil || string(data) != contents {
-			t.Fatalf("the shell overwrote an unreadable recent store: %q", data)
-		}
-	}
-}
-
-func TestRecentStoreIsWrittenCompletelyAndPrivately(t *testing.T) {
-	store := filepath.Join(t.TempDir(), "state", "recent.json")
-	app := activatedApp(t, &chooser{}, filepath.Dir(store))
-	root := t.TempDir()
-	if result := app.OpenWorkspace(root); result.State != desktop.Empty {
-		t.Fatalf("open: %+v", result)
-	}
-	data, err := os.ReadFile(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var decoded struct {
-		Schema string   `json:"schema"`
-		Roots  []string `json:"roots"`
-	}
-	if err := json.Unmarshal(data, &decoded, json.RejectUnknownMembers(true)); err != nil {
-		t.Fatal(err)
-	}
-	if decoded.Schema != desktop.RecentSchema || !reflect.DeepEqual(decoded.Roots, []string{resolved(t, root)}) {
-		t.Fatalf("unexpected recent store contents: %s", data)
-	}
-	entries, err := os.ReadDir(filepath.Dir(store))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].Name() != "recent.json" {
-		t.Fatalf("the recent store left partial files behind: %v", entries)
-	}
-}
-
-// Forgetting a recent folder removes that one entry and nothing else: the
-// rest of the list keeps its order, the folder and everything in it stay where
-// they are, and opening it again records it again. A folder the list no longer
-// holds is refused and the list as it now stands is reported.
-func TestForgettingARecentFolderRemovesOnlyItsEntry(t *testing.T) {
-	store := filepath.Join(t.TempDir(), "recent.json")
-	app := activatedApp(t, &chooser{}, filepath.Dir(store))
-	var opened []string
-	for range 3 {
-		root := t.TempDir()
-		writeDocument(t, root, "kept.txt", "left exactly where it was")
-		if result := app.OpenWorkspace(root); result.State != desktop.Completed {
-			t.Fatalf("open: %+v", result)
-		}
-		opened = append([]string{resolved(t, root)}, opened...)
-	}
-	forgotten := app.ForgetWorkspace(opened[1])
-	if forgotten.State != desktop.Completed || !reflect.DeepEqual(forgotten.Roots, []string{opened[0], opened[2]}) {
-		t.Fatalf("forgetting the middle folder: %+v, want %v", forgotten, []string{opened[0], opened[2]})
-	}
-	if data, err := os.ReadFile(filepath.Join(opened[1], "kept.txt")); err != nil || string(data) != "left exactly where it was" {
-		t.Fatalf("forgetting a folder reached into it: %q %v", data, err)
-	}
-	if reread := app.RecentWorkspaces(); !reflect.DeepEqual(reread.Roots, forgotten.Roots) {
-		t.Fatalf("the list read back is not the one forgetting reported: %+v", reread)
-	}
-
-	// Asked again, the folder is no longer there to forget.
-	before, err := os.ReadFile(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	again := app.ForgetWorkspace(opened[1])
-	if again.State != desktop.Failed || again.Reason != "that folder is not in the recent workspace list any more" || !reflect.DeepEqual(again.Roots, forgotten.Roots) {
-		t.Fatalf("forgetting a folder the list no longer holds: %+v", again)
-	}
-	if after, err := os.ReadFile(store); err != nil || string(after) != string(before) {
-		t.Fatalf("a refused forget rewrote the list: %q", after)
-	}
-
-	// Opening it again records it again, at the front.
-	if result := app.OpenWorkspace(opened[1]); result.State != desktop.Completed {
-		t.Fatalf("reopen: %+v", result)
-	}
-	if reread := app.RecentWorkspaces(); !reflect.DeepEqual(reread.Roots, []string{opened[1], opened[0], opened[2]}) {
-		t.Fatalf("a reopened folder was not recorded again: %+v", reread)
-	}
-
-	// Forgetting the last folder leaves an empty list, not a missing one.
-	for _, root := range []string{opened[1], opened[0], opened[2]} {
-		app.ForgetWorkspace(root)
-	}
-	if empty := app.RecentWorkspaces(); empty.State != desktop.Empty || len(empty.Roots) != 0 {
-		t.Fatalf("a list with every folder forgotten: %+v", empty)
-	}
-}
-
-// A list this release cannot read is reported by forgetting as it is by
-// listing, and is never replaced: the bytes someone else wrote stay.
-func TestForgettingRefusesAListThisReleaseCannotRead(t *testing.T) {
-	for name, contents := range map[string]string{
-		"unknown version": `{"schema":"readmit-desktop-recent/v2","roots":["/tmp"]}`,
-		"not JSON":        "{",
-	} {
-		store := filepath.Join(t.TempDir(), "recent.json")
-		if err := os.WriteFile(store, []byte(contents), 0600); err != nil {
-			t.Fatal(err)
-		}
-		app := activatedApp(t, &chooser{}, filepath.Dir(store))
-		if result := app.ForgetWorkspace("/tmp"); result.State != desktop.Failed || len(result.Roots) != 0 {
-			t.Fatalf("forgetting from an %s list: %+v", name, result)
-		}
-		if data, err := os.ReadFile(store); err != nil || string(data) != contents {
-			t.Fatalf("forgetting replaced an %s list: %q", name, data)
-		}
-	}
-}
-
-// Forgetting writes the list, so it takes the operation slot, as opening a
-// folder that records itself in the list does. A forget that meets a running
-// operation forgets nothing and still reports the list.
-func TestForgettingTakesTheOperationSlot(t *testing.T) {
-	store := filepath.Join(t.TempDir(), "recent.json")
-	root := t.TempDir()
-	dialog, held := make(chan struct{}), make(chan struct{})
-	host := &chooser{folder: root}
-	app := activatedApp(t, host, filepath.Dir(store))
-	if result := app.OpenWorkspace(root); result.State != desktop.Empty {
-		t.Fatalf("open: %+v", result)
-	}
-	host.before = func() { close(held); <-dialog }
-	answered := make(chan desktop.WorkspaceResult, 1)
-	go func() { answered <- app.SelectWorkspace() }()
-	<-held
-	busy := app.ForgetWorkspace(resolved(t, root))
-	close(dialog)
-	<-answered
-	if busy.State != desktop.Busy || busy.Reason != "another operation is already running" || !reflect.DeepEqual(busy.Roots, []string{resolved(t, root)}) {
-		t.Fatalf("a forget that met a running operation: %+v", busy)
-	}
-	if listed := app.RecentWorkspaces(); !reflect.DeepEqual(listed.Roots, []string{resolved(t, root)}) {
-		t.Fatalf("a busy forget forgot the folder anyway: %+v", listed)
-	}
-}
-
 func TestDefaultShellDocumentsStayInsideTheUserConfigurationDirectory(t *testing.T) {
 	documents, err := desktop.DefaultShellDocuments()
 	if err != nil {
@@ -647,14 +445,11 @@ func sampleProject(t *testing.T, app *desktop.App) string {
 	return root
 }
 
-func TestOpenRevisionsSeparatesAnEmptyDocumentFromAFailure(t *testing.T) {
+func TestListNotesSeparatesAnEmptyDocumentFromAFailure(t *testing.T) {
 	root := writeProject(t, t.TempDir(), registeredRegression)
-	empty := newApp(t, &chooser{}).OpenRevisions(root)
-	if empty.State != desktop.Empty || empty.Revisions == nil {
+	empty := newApp(t, &chooser{}).ListNotes(desktop.NotesRequest{Context: desktop.RequestContext{Project: root}})
+	if empty.State != desktop.Empty || empty.Notes == nil || len(empty.Notes) != 0 {
 		t.Fatalf("a project that has recorded nothing was not reported as empty: %+v", empty)
-	}
-	if empty.Revisions.Schema != project.RevisionsSchema || len(empty.Revisions.Notes) != 0 || len(empty.Revisions.Revisions) != 0 {
-		t.Fatalf("the empty editable document is not the contract this release reads: %+v", empty.Revisions)
 	}
 	if _, err := os.Lstat(filepath.Join(root, project.RevisionsDocumentName)); err == nil {
 		t.Fatal("reading a project wrote an editable document into it")
@@ -675,8 +470,8 @@ func TestOpenRevisionsSeparatesAnEmptyDocumentFromAFailure(t *testing.T) {
 		"damaged document": damaged,
 		"no project":       t.TempDir(),
 	} {
-		result := newApp(t, &chooser{}).OpenRevisions(folder)
-		if result.State != desktop.Failed || result.Revisions != nil {
+		result := newApp(t, &chooser{}).ListNotes(desktop.NotesRequest{Context: desktop.RequestContext{Project: folder}})
+		if result.State != desktop.Failed || len(result.Notes) != 0 {
 			t.Fatalf("%s was not reported as a failure: %+v", name, result)
 		}
 		if result.Reason == "" {
@@ -694,8 +489,9 @@ func TestOpenRevisionsSeparatesAnEmptyDocumentFromAFailure(t *testing.T) {
 	}
 }
 
-// The one thing the shell writes into a project is a note. It reaches the
-// project's own editable document and no byte of any retained artifact.
+// A note is working text stored in the project's own editable document,
+// through the operation `readmit project note` stores it with. No byte of any
+// retained artifact is touched, and nothing the project recorded is rewritten.
 func TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence(t *testing.T) {
 	parent := t.TempDir()
 	app := newApp(t, &chooser{folder: parent})
@@ -705,35 +501,36 @@ func TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	context := desktop.RequestContext{Project: root}
+	regression := caseAt(t, app, context, "regression")
 
-	saved := app.SaveNote(root, project.Note{Name: "triage", Subject: "regression", Title: "Working theory", Body: "The second S13 keeps the original filler identifier."})
-	if saved.State != desktop.Completed || saved.Revisions == nil || len(saved.Revisions.Notes) != 1 {
+	saved := app.SaveNoteItem(desktop.NoteSaveRequest{Context: context, IntentID: "note-1",
+		Note: desktop.NoteInput{Name: "Working theory", Content: "The second S13 keeps the original filler identifier.", Case: &regression.Ref}})
+	if saved.State != desktop.Completed || saved.Saved == nil || len(saved.Notes) != 1 {
 		t.Fatalf("a note was not stored: %+v", saved)
 	}
-	if note := saved.Revisions.Notes[0]; note.Name != "triage" || note.Subject != "regression" || note.Title != "Working theory" {
-		t.Fatalf("the stored note is not the one that was written: %+v", note)
+	stored, err := project.ReadRevisions(root)
+	if err != nil || len(stored.Notes) != 1 || stored.Notes[0].Name != saved.Saved.ID || stored.Notes[0].Subject != "regression" ||
+		stored.Notes[0].Title != "Working theory" {
+		t.Fatalf("the stored note is not the one that was written: %+v %v", stored, err)
 	}
-	replaced := app.SaveNote(root, project.Note{Name: "triage", Subject: "regression", Title: "Confirmed", Body: "Reproduced against the fixed receiver."})
-	if replaced.State != desktop.Completed || len(replaced.Revisions.Notes) != 1 || replaced.Revisions.Notes[0].Title != "Confirmed" {
+	replaced := app.SaveNoteItem(desktop.NoteSaveRequest{Context: context, IntentID: "note-2",
+		Note: desktop.NoteInput{ID: saved.Saved.ID, Name: "Confirmed", Content: "Reproduced against the fixed receiver.", Case: &regression.Ref}})
+	if replaced.State != desktop.Completed || len(replaced.Notes) != 1 || replaced.Notes[0].Name != "Confirmed" {
 		t.Fatalf("replacing a note did not replace exactly that note: %+v", replaced)
 	}
-	if reopened := app.OpenRevisions(root); reopened.State != desktop.Completed || len(reopened.Revisions.Notes) != 1 {
+	if reopened, err := project.ReadRevisions(root); err != nil || len(reopened.Notes) != 1 {
 		t.Fatalf("the stored note did not read back: %+v", reopened)
 	}
 
-	for name, note := range map[string]project.Note{
-		"a subject the project does not register": {Name: "stray", Subject: "not-registered", Title: "Stray"},
-		"a subject outside the project":           {Name: "stray", Subject: "../elsewhere", Title: "Stray"},
-		"no title":                                {Name: "untitled", Body: "text"},
-		"a name that is not an identifier":        {Name: "../escape", Title: "Escape"},
-		"a body carrying a control character":     {Name: "escaped", Title: "Escaped", Body: "one\ttwo"},
+	for name, note := range map[string]desktop.NoteInput{
+		"no name":                             {Content: "text"},
+		"a body carrying a control character": {Name: "Escaped", Content: "one\ttwo"},
+		"a note that is no longer held":       {ID: "gone", Name: "Gone"},
 	} {
-		result := app.SaveNote(root, note)
-		if result.State != desktop.Failed || result.Revisions != nil {
+		result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: context, IntentID: "refused-" + strings.ReplaceAll(name, " ", "-"), Note: note})
+		if result.State != desktop.Failed || result.Saved != nil || result.Reason == "" {
 			t.Fatalf("%s was stored: %+v", name, result)
-		}
-		if result.Reason == "" {
-			t.Fatalf("%s gave the shell nothing to show", name)
 		}
 	}
 
@@ -746,9 +543,9 @@ func TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(after, document) {
 		t.Fatal("editing a note rewrote the project document")
 	}
-	stored := app.OpenRevisions(root)
-	if len(stored.Revisions.Notes) != 1 || stored.Revisions.Notes[0].Title != "Confirmed" {
-		t.Fatalf("a refused edit changed the stored document: %+v", stored.Revisions)
+	final, err := project.ReadRevisions(root)
+	if err != nil || len(final.Notes) != 1 || final.Notes[0].Title != "Confirmed" {
+		t.Fatalf("a refused edit changed the stored document: %+v %v", final, err)
 	}
 }
 
@@ -756,8 +553,8 @@ func TestSaveNoteEditsWorkingTextAndNeverTouchesEvidence(t *testing.T) {
 // project document beside it is.
 func TestWorkspaceListsTheEditableProjectDocumentByItsDeclaredContract(t *testing.T) {
 	root := writeProject(t, t.TempDir(), registeredRegression)
-	if newApp(t, &chooser{}).SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}).State != desktop.Completed {
-		t.Fatal("a draft was not stored")
+	if err := project.WriteRevisions(root, project.Revisions{Schema: project.RevisionsSchema, Notes: []project.Note{{Name: "triage", Title: "Working theory"}}}); err != nil {
+		t.Fatal(err)
 	}
 	listed := newApp(t, &chooser{}).OpenWorkspace(root)
 	if listed.State != desktop.Completed || listed.Workspace == nil || len(listed.Workspace.Artifacts) != 2 {
@@ -803,7 +600,8 @@ func TestSaveNoteRefusesMoreNotesThanThisReleaseStores(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := newApp(t, &chooser{})
-	if result := app.SaveNote(root, project.Note{Name: "one-too-many", Title: "Draft"}); result.State != desktop.Failed || result.Reason == "" {
+	context := desktop.RequestContext{Project: root}
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: context, IntentID: "one-too-many", Note: desktop.NoteInput{Name: "Draft"}}); result.State != desktop.Failed || result.Reason == "" {
 		t.Fatalf("a note past the bound was stored: %+v", result)
 	}
 	after, err := os.ReadFile(filepath.Join(root, project.RevisionsDocumentName))
@@ -811,7 +609,7 @@ func TestSaveNoteRefusesMoreNotesThanThisReleaseStores(t *testing.T) {
 		t.Fatal("a refused note rewrote the document that was already there")
 	}
 	// Replacing a note that is already held stays within the bound.
-	if result := app.SaveNote(root, project.Note{Name: "note-000", Title: "Confirmed"}); result.State != desktop.Completed {
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: context, IntentID: "replace", Note: desktop.NoteInput{ID: "note-000", Name: "Confirmed"}}); result.State != desktop.Completed {
 		t.Fatalf("replacing a note was refused at the bound: %+v", result)
 	}
 }
@@ -820,18 +618,19 @@ func TestSaveNoteHoldsTheSameOperationSlot(t *testing.T) {
 	root := writeProject(t, t.TempDir(), registeredRegression)
 	reentrant := &chooser{folder: root}
 	app := activatedApp(t, reentrant, t.TempDir())
-	var concurrent desktop.RevisionsResult
-	reentrant.before = func() { concurrent = app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}) }
+	var concurrent desktop.NotesResult
+	note := desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: root}, IntentID: "triage", Note: desktop.NoteInput{Name: "Working theory"}}
+	reentrant.before = func() { concurrent = app.SaveNoteItem(note) }
 	if result := app.SelectWorkspace(); result.State != desktop.Completed {
 		t.Fatalf("the first operation did not complete: %+v", result)
 	}
-	if concurrent.State != desktop.Busy || concurrent.Revisions != nil {
+	if concurrent.State != desktop.Busy || concurrent.Saved != nil {
 		t.Fatalf("a note was written while another operation held the facade: %+v", concurrent)
 	}
 	if _, err := os.Lstat(filepath.Join(root, project.RevisionsDocumentName)); err == nil {
 		t.Fatal("a refused operation wrote an editable document anyway")
 	}
-	if saved := app.SaveNote(root, project.Note{Name: "triage", Title: "Working theory"}); saved.State != desktop.Completed {
+	if saved := app.SaveNoteItem(note); saved.State != desktop.Completed {
 		t.Fatalf("the facade stayed busy after its operation finished: %+v", saved)
 	}
 }

@@ -69,9 +69,9 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   // note is refused, and stays retained.
   await press(user, access().getByRole("button", { name: "Release activation" }));
   expect(await access().findByText(/This activation is released\./)).toBeTruthy();
-  const refusedBefore = journey.callsTo("SaveNote").length;
+  const refusedBefore = journey.callsTo("SaveNoteItem").length;
   await press(user, screen.getByRole("button", { name: "Save note" }));
-  const refused = journey.callsTo("SaveNote");
+  const refused = journey.callsTo("SaveNoteItem");
   expect(refused).toHaveLength(refusedBefore + 1);
   const answer = () => refused.at(-1)?.result as { state: string; reason?: string } | undefined;
   await screen.findByText((_, element) => element?.tagName === "P" && (element.textContent ?? "") === (answer()?.reason ?? "\u0000"));
@@ -84,13 +84,13 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await journey.launch();
   await press(user, await screen.findByRole("button", { name: "Reopen session" }));
   await waitFor(() => expect((screen.getByLabelText("Note name") as HTMLInputElement).value).toBe("handover-note"));
-  expect(journey.callsTo("SaveNote")).toHaveLength(refusedBefore + 1);
+  expect(journey.callsTo("SaveNoteItem")).toHaveLength(refusedBefore + 1);
   await press(user, access().getByRole("button", { name: "Refresh activation" }));
   expect(await access().findByText(/This activation is released\./)).toBeTruthy();
   await press(user, screen.getByRole("button", { name: "Save note" }));
   // The press returns before the facade answers; the answer is what is read.
   await waitFor(() =>
-    expect((journey.callsTo("SaveNote").at(-1)?.result as { state: string } | undefined)?.state).toBe(
+    expect((journey.callsTo("SaveNoteItem").at(-1)?.result as { state: string } | undefined)?.state).toBe(
       "permission_denied",
     ),
   );

@@ -424,8 +424,9 @@ func TestARestoredNoteDraftIsStoredThroughTheProjectDocument(t *testing.T) {
 	if note.Body != body {
 		t.Fatalf("the restored draft is not what was typed: %+v", note)
 	}
-	stored := app.SaveNote(root, note)
-	if stored.State != desktop.Completed || stored.Revisions == nil || len(stored.Revisions.Notes) != 1 {
+	stored := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: root}, IntentID: "restored",
+		Note: desktop.NoteInput{Name: note.Title, Content: note.Body}})
+	if stored.State != desktop.Completed || stored.Saved == nil || len(stored.Notes) != 1 {
 		t.Fatalf("the restored draft was not storable as a note: %+v", stored)
 	}
 	if result := app.DiscardEditorDraft(restored.Drafts[0].ID); result.State != desktop.Completed {

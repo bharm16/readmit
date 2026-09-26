@@ -372,7 +372,7 @@ let appGeneration = 0;
 async function project() {
   root.render(<App key={++appGeneration} />);
   await settled();
-  await clickText("Open…");
+  await clickText("Open");
 }
 async function openCase() {
   await clickText("Open case sample-case");
@@ -399,7 +399,7 @@ async function run() {
       clickText("Search commands"),
     );
     await clickText("Close command palette");
-    await clickText("Open…");
+    await clickText("Open");
     for (const name of [
       "Cases",
       "Tests",

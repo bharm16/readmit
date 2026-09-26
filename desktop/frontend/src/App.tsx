@@ -5,8 +5,6 @@ import { HubPanel } from "./HubPanel";
 import { RunnerPanel } from "./RunnerPanel";
 import { RunComparison } from "./RunComparison";
 import { Baseline } from "./Baseline";
-import { NoteDraft } from "./NoteDraft";
-import { Recovery, RetainedDrafts } from "./Recovery";
 import { RunPanel } from "./RunPanel";
 import { RunExplanation } from "./RunExplanation";
 import { ReplayPanel } from "./ReplayPanel";
@@ -29,6 +27,29 @@ import {
   compare,
   type CompareResult,
   createSampleWorkspace,
+  createNamedProject,
+  RequestScope,
+  openNamedProject,
+  listCatalog,
+  locateItem,
+  projectLocation,
+  chooseProjectLocation,
+  forgetProject,
+  revealItem,
+  saveItem,
+  newIntentId,
+  removeCaseFromProject,
+  listNotes,
+  saveNoteItem,
+  listAttachments,
+  addAttachments,
+  removeAttachment,
+  projectFiles,
+  type SaveItemResult,
+  type NoteItem,
+  type Attachment,
+  type ProjectFile,
+  type CatalogItem,
   discardEditorDraft,
   editReproducer,
   saveTest,
@@ -88,24 +109,15 @@ import {
   inspectOccurrence,
   type InspectionResult,
   openProjectOverview,
-  createProject,
-  updateProjectSettings,
-  registerCase,
   registerRevision,
-  updateRegisteredCase,
   openWorkspace,
   buildIndex,
   describeIndex,
   type BuildIndexRequest,
   type IndexResult,
-  recentWorkspaces,
-  forgetWorkspace,
-  openRevisions,
   captureSample,
   recordView,
-  recoverSession,
   type EditorDraft,
-  type RecoveryResult,
   saveFilter,
   search,
   selectFilter,
@@ -116,13 +128,8 @@ import {
   type FiltersResult,
   type GridResult,
   type Indicator,
-  type CaseChange,
-  type CaseRegistration,
   type Match,
   type ProjectOverviewResult,
-  type SettingsChange,
-  type RecentResult,
-  type RevisionsResult,
   type RegionId,
   type SearchResult,
   type Shell,
@@ -143,8 +150,9 @@ import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAuthoring";
 import { Diagnosis } from "./Diagnosis";
-import { Badge, MessageGrid, Report, Separator, Status } from "./shell";
+import { MessageGrid, Report, Separator, Status } from "./shell";
 import { CommandPalette, shortcut, type PaletteEntry } from "./CommandPalette";
+import type { SortState } from "./DataTable";
 import { sidebarOf, useRoutes, viewOf, type ReturnContext, type Route } from "./routes";
 import { rootFontSize, useMeasured } from "./measure";
 import {
@@ -157,18 +165,19 @@ import {
   SIDEBAR_REM,
 } from "./geometry";
 import { VocabularyContext } from "./vocabulary";
-import { ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
 import { MaintenancePanel } from "./MaintenancePanel";
 import { RawInspection } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
-import { RecentWorkspaces } from "./RecentWorkspaces";
 import type { CaptureObservationBinding } from "./bindings";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { IconButton } from "./IconButton";
-import { DemoCallout, NewProjectForm } from "./Home";
+import { DraftsToRestore, NewProjectSheet, ProjectList } from "./Projects";
+import { CaseDetailsSheet, NoteSheet, ProjectSettingsSheet, RemoveCaseSheet, type ProjectSaveFailure } from "./CaseSheets";
+import { AttachmentsList, FilesList, NotesList } from "./CaseContext";
+import { CaseFilterSheet, CaseList, CaseSearchSheet, caseChoices, NO_VIEW, type CaseAction, type CaseView as CaseListView } from "./Cases";
 import {
   BackLink,
   Categories,
@@ -323,8 +332,6 @@ export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceResult | null>(null);
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
-  const [editable, setEditable] = useState<RevisionsResult | null>(null);
-  const [recent, setRecent] = useState<RecentResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
   const [savedFilters, setSavedFilters] = useState<FiltersResult | null>(null);
   const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
@@ -359,12 +366,7 @@ export default function App() {
   const [promotionProvenance, setPromotionProvenance] = useState<PromotionProvenance | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
-  const [environmentArtifact, setEnvironmentArtifact] = useState<{
-    name: string;
-    kind: "target" | "secrets" | "policy" | "reset";
-  } | null>(null);
 
-  const [restored, setRestored] = useState<RecoveryResult | null>(null);
   const [watchedRun, setWatchedRun] = useState("");
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
   const [capturing, setCapturing] = useState(false);
@@ -416,13 +418,37 @@ export default function App() {
   useLayoutEffect(() => {
     const returned = route.returnContext;
     if (!returned) return;
-    if (returned.selection !== undefined) setSelected(returned.selection);
+    if (returned.selection !== undefined) setSelectedCase(returned.selection);
     const body = document.querySelector<HTMLElement>(`.page[data-page="${route.destination}"] .page-body`);
     if (body && returned.scrollTop !== undefined) body.scrollTop = returned.scrollTop;
   }, [route]);
   const [caseFlow, setCaseFlow] = useState<CaseFlow | null>(null);
   const [fileDetails, setFileDetails] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
+  // The projects this viewer has opened, as the catalog lists them, and the
+  // folder new projects go into.
+  const [projects, setProjects] = useState<CatalogItem[]>([]);
+  const [newProjectParent, setNewProjectParent] = useState<string | null>(null);
+  const [createRefusedByLicense, setCreateRefusedByLicense] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
+  // The open project's cases, as the catalog lists them, and the search and
+  // filters applied to them now; none of it is saved.
+  const [cases, setCases] = useState<CatalogItem[]>([]);
+  const [caseListView, setCaseListView] = useState<CaseListView>(NO_VIEW);
+  const [caseListSort, setCaseListSort] = useState<SortState | null>(null);
+  // The case selected in the list, by its catalog identity.
+  const [selectedCase, setSelectedCase] = useState<string | null>(null);
+  const listedCases = useRef<CatalogItem[]>([]);
+  const [searchingCases, setSearchingCases] = useState(false);
+  const [filteringCases, setFilteringCases] = useState(false);
+  // The case task a row's menu started, with the case it is about.
+  const [caseTask, setCaseTask] = useState<{ item: CatalogItem; action: CaseAction } | null>(null);
+  // What the notes, attachments and files pages show, and the note being
+  // written.
+  const [notes, setNotes] = useState<NoteItem[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
+  const [noteEditing, setNoteEditing] = useState<{ note: NoteItem | null } | null>(null);
   const [searching, setSearching] = useState(false);
   // Counts requests to open storage on a named section, so the section asked
   // for is the one shown even when storage is already open.
@@ -449,7 +475,8 @@ export default function App() {
   }, []);
 
   const refreshRecent = useCallback(async () => {
-    setRecent(await recentWorkspaces());
+    const listed = await listCatalog({ context: { project: "", generation: 0 }, kind: "project", filter: {} });
+    if (listed.page) setProjects(listed.page.items);
   }, []);
 
   // The guided sample is read back out of the open folder rather than
@@ -473,17 +500,6 @@ export default function App() {
   useEffect(() => {
     void refreshFilters();
   }, [refreshFilters]);
-
-  // What the window restores after an interruption. It is read once, here, so
-  // the panels that show it and continue from it share one answer and only one
-  // of them claims the operation slot.
-  const restore = useCallback(async () => {
-    setRestored(await recoverSession());
-  }, []);
-
-  useEffect(() => {
-    void restore();
-  }, [restore]);
 
   // The editor drafts this viewer has retained: the work every panel of this
   // window had not stored yet. Retention does not claim the operation slot, so
@@ -661,7 +677,6 @@ export default function App() {
   const clearWorkspace = useCallback(() => {
     clearCase();
     setInvestigation(null);
-    setEditable(null);
     setFound(null);
   }, [clearCase]);
 
@@ -696,6 +711,8 @@ export default function App() {
           // settings are read now rather than behind another button.
           if (result.workspace.artifacts.some((artifact) => artifact.kind === "project")) {
             setInvestigation(await openProjectOverview(result.workspace.root));
+            // Opening records it among this viewer's projects, newest first.
+            await openNamedProject(result.workspace.root);
           }
         } else {
           setOpenNotice(result);
@@ -713,15 +730,6 @@ export default function App() {
   // Forgetting a recent folder writes the list, so it takes its turn like
   // every other write; what the list then holds is what the facade answers,
   // including when it refused.
-  const forget = useCallback(
-    async (folder: string) => {
-      await run("recent", async () => {
-        setRecent(await forgetWorkspace(folder));
-      });
-    },
-    [run],
-  );
-
   // One window of the grid at a time. Asking for the next one re-reads the case
   // and its index, so a window is never served from an index the evidence no
   // longer supports. What the grid says about its index comes from that same
@@ -790,7 +798,9 @@ export default function App() {
             // place, and Back still leads to the list.
             routeTo({ type: "replace", to: { destination: "cases", objectId: name, view: "messages" } });
           } else {
-            routeTo({ type: "go", to: { destination: "cases", objectId: name, view: "messages" }, leaving: leaving(name) });
+            // Back returns to the list with this case selected.
+            const listed = listedCases.current.find((item) => item.summary.case?.entry === name);
+            routeTo({ type: "go", to: { destination: "cases", objectId: name, view: "messages" }, leaving: leaving(listed?.ref.id ?? name) });
           }
           setCaseFlow(null);
           outcome = result;
@@ -903,36 +913,58 @@ export default function App() {
     [focusRegion, leaving, routeTo, run],
   );
 
-  // A new project is a new folder inside the one chosen for it. The window
-  // moves into that folder, as opening it would, so every later project
-  // action — registering a case, importing evidence, opening what was
-  // imported — reads and writes the project just created rather than the
-  // folder around it; what was open in the folder it leaves is closed. If the
-  // new folder cannot be opened, its refusal is shown and no project stays
-  // open over the wrong folder.
-  const startProject = useCallback(
-    async (name: string, title: string, owner: string, versions: string[]) => {
-      let created = "";
-      let answer: ProjectOverviewResult = { state: "failed", reason: "The project was not created." };
-      await run("project", async () => {
-        const result = await createProject(name, title, owner, versions);
-        answer = result;
-        setInvestigation(result);
-        if (result.overview) created = result.overview.root;
-      });
-      if (created === "") return answer;
-      if (created === root) {
-        routeTo({ type: "destination", destination: "cases" });
-        return answer;
+  // A new project is a named folder the application creates inside the
+  // remembered parent. Once created, the window opens it on its empty Cases
+  // view; a refusal keeps the sheet and what was typed.
+  const createProjectNamed = useCallback(
+    async (name: string) => {
+      const answer = await createNamedProject({ name });
+      const folder = answer.project?.summary.project?.folder;
+      if (!folder) {
+        // A refusal the license decides offers the way to activate one.
+        setCreateRefusedByLicense(answer.state === "permission_denied");
+        return { reason: answer.reason ?? "The project was not created." };
       }
-      if (await openFolder(() => openWorkspace(created))) {
-        await readProject(created);
-      } else {
-        setInvestigation(null);
-      }
-      return answer;
+      setCreatingProject(false);
+      await openFolder(() => openWorkspace(folder));
+      return undefined;
     },
-    [openFolder, readProject, root, run],
+    [openFolder],
+  );
+
+  // Continuing a retained draft opens its project and then the editor it
+  // belongs to, where the draft comes back with its unsaved marker. Nothing
+  // it describes is sent or applied.
+  const resumeDraft = useCallback(
+    async (draft: EditorDraft) => {
+      if (draft.workspace !== root && !(await openFolder(() => openWorkspace(draft.workspace)))) return;
+      const place = DRAFT_PLACES[draft.kind];
+      if (!place) return;
+      if (place.case && draft.case) {
+        await verifyCase(draft.workspace, draft.case);
+        setCaseFlow(place.case);
+        return;
+      }
+      if (place.import) {
+        setImporting(true);
+        return;
+      }
+      if (place.observe) {
+        setObserving(true);
+        routeTo({ type: "go", to: { destination: "environments" } });
+        return;
+      }
+      if (place.route) routeTo({ type: "go", to: place.route });
+    },
+    [openFolder, root, routeTo, verifyCase],
+  );
+
+  const openListedProject = useCallback(
+    async (item: CatalogItem) => {
+      const folder = item.summary.project?.folder;
+      if (folder) await openFolder(() => openWorkspace(folder));
+    },
+    [openFolder],
   );
 
   // A refused project write — a license that no longer admits it, a change
@@ -942,60 +974,6 @@ export default function App() {
   const settleProject = useCallback((answer: ProjectOverviewResult) => {
     setInvestigation((held) => (answer.overview || !held?.overview ? answer : { ...answer, overview: held.overview }));
   }, []);
-
-  // Whether the change was stored, so the form keeps what was typed beside a
-  // refusal and clears only what the project took.
-  const editSettings = useCallback(
-    async (change: SettingsChange) => {
-      if (!root) return false;
-      let stored = false;
-      await run("project", async () => {
-        const answer = await updateProjectSettings(root, change);
-        settleProject(answer);
-        stored = answer.state === "completed";
-      });
-      return stored;
-    },
-    [root, run, settleProject],
-  );
-
-  // The editable document is read from disk each time the overview is asked
-  // to show it, never kept from an earlier read.
-  const readEditable = useCallback(async () => {
-    if (!root) return;
-    await run("project", async () => {
-      setEditable(null);
-      setEditable(await openRevisions(root));
-    });
-  }, [root, run]);
-
-  const register = useCallback(
-    async (name: string, registration: CaseRegistration) => {
-      if (!root) return false;
-      let stored = false;
-      await run("project", async () => {
-        const answer = await registerCase(root, name, registration);
-        settleProject(answer);
-        stored = answer.state === "completed";
-      });
-      return stored;
-    },
-    [root, run, settleProject],
-  );
-
-  const updateCase = useCallback(
-    async (name: string, change: CaseChange) => {
-      if (!root) return false;
-      let stored = false;
-      await run("project", async () => {
-        const answer = await updateRegisteredCase(root, name, change);
-        settleProject(answer);
-        stored = answer.state === "completed";
-      });
-      return stored;
-    },
-    [root, run, settleProject],
-  );
 
   // A search result opens the thing it found, the way the window already
   // opens it: a registered case or a case entry is verified and opened, the
@@ -1097,13 +1075,98 @@ export default function App() {
   // A save that wrote a new workspace entry changes what the folder lists, so
   // the listing is read again and the pickers offer the new revision. The open
   // case and everything derived from it stay exactly as they are.
+  // Every read of the open project carries its request context, so an answer
+  // that arrives after the person moved to another project is dropped.
+  const projectScope = useRef(new RequestScope());
+  const projectContext = useCallback(() => projectScope.current.enter(root ?? ""), [root]);
+
+  const refreshCases = useCallback(async () => {
+    if (!root) {
+      setCases([]);
+      return;
+    }
+    const context = projectContext();
+    const listed = await listCatalog({ context, kind: "case", filter: {} });
+    if (!projectScope.current.current(listed)) return;
+    setCases(listed.page?.items ?? []);
+    listedCases.current = listed.page?.items ?? [];
+  }, [projectContext, root]);
+
+  // A case task from a row's menu. Those that belong to the open case's own
+  // pages open it there; the rest open their sheet.
+  const caseAction = useCallback(
+    (item: CatalogItem, action: CaseAction) => {
+      const entry = caseEntry(item);
+      if ((action === "variant" || action === "compare") && root && entry) {
+        void verifyCase(root, entry).then(() => setCaseFlow(action === "variant" ? "reproduce" : "compare"));
+        return;
+      }
+      if (action === "details" && root && entry) {
+        void verifyCase(root, entry).then(() => setFileDetails(true));
+        return;
+      }
+      if (action === "notes" || action === "attachments") {
+        routeTo({ type: "go", to: { destination: action === "notes" ? "case-notes" : "case-attachments", objectId: item.ref.id }, leaving: leaving(item.ref.id) });
+        return;
+      }
+      setCaseTask({ item, action });
+    },
+    [leaving, root, routeTo, verifyCase],
+  );
+
+  // The open project as the catalog lists it: its name, settings and the
+  // revision a save is based on.
+  const currentProject = projects.find((item) => item.summary.project?.folder === root) ?? null;
+  const contextCase = cases.find((item) => item.ref.id === route.objectId) ?? null;
+
+  // What a refused save says, at the field it names.
+  const saveFailure = (answer: SaveItemResult, fields: Record<string, string>) => {
+    const problem = answer.problems[0];
+    if (answer.outcome === "conflict") return { reason: answer.reason ?? "This was changed elsewhere since you opened it. Close and open it again." };
+    return {
+      reason: answer.problems.map((entry) => entry.problem).join(" ") || answer.reason || "Not saved.",
+      ...(problem && fields[problem.field] ? { field: fields[problem.field] } : {}),
+    };
+  };
+
+  const refreshNotes = useCallback(async () => {
+    const context = projectContext();
+    const caseRef = place === "case-notes" ? contextCase?.ref : undefined;
+    const answer = await listNotes({ context, ...(caseRef ? { case: caseRef } : {}) });
+    if (projectScope.current.current(answer)) setNotes(answer.notes);
+  }, [contextCase, place, projectContext]);
+
+  const refreshAttachments = useCallback(async () => {
+    if (!contextCase) return;
+    const answer = await listAttachments({ context: projectContext(), ref: contextCase.ref });
+    if (projectScope.current.current(answer)) setAttachments(answer.attachments);
+  }, [contextCase, projectContext]);
+
+  useEffect(() => {
+    if (place === "notes" || place === "case-notes") void refreshNotes();
+    if (place === "case-attachments") void refreshAttachments();
+    if (place === "project-files" && root) {
+      void projectFiles({ context: projectContext(), ref: currentProject?.ref ?? { kind: "project", id: "" } }).then((answer) => {
+        if (projectScope.current.current(answer)) setFiles(answer.files);
+      });
+    }
+  }, [currentProject, place, projectContext, refreshAttachments, refreshNotes, root]);
+
+  useEffect(() => {
+    setCaseListView(NO_VIEW);
+    setCaseListSort(null);
+    setCaseTask(null);
+    void refreshCases();
+  }, [refreshCases]);
+
   const refreshListing = useCallback(async () => {
     if (!root) return;
     const result = await openWorkspace(root);
     if (result.workspace) {
       setWorkspace(result);
     }
-  }, [root]);
+    await refreshCases();
+  }, [refreshCases, root]);
 
   // The guided sample's import of the frozen receiver fixtures writes one new
   // entry of the open folder, so the listing is read again once it has.
@@ -1795,20 +1858,6 @@ export default function App() {
   // artifacts have moved or changed, the ordinary refusals are shown and the
   // listing is there to reopen from, so a draft is never bound to different
   // evidence silently.
-  const reopen = useCallback(async () => {
-    const where = restored?.session?.view;
-    if (!where?.workspace) {
-      return;
-    }
-    await openFolder(() => openWorkspace(where.workspace));
-    if (where.case) {
-      await verifyCase(where.workspace, where.case);
-    }
-    if (where.region) {
-      focusRegion(where.region as RegionId);
-    }
-  }, [focusRegion, openFolder, restored, verifyCase]);
-
   // Closing the window is safe while every edit is durably acknowledged. After
   // a retention the facade refused, there is text that was typed and never
   // acknowledged, so closing asks first instead of losing it quietly.
@@ -1892,12 +1941,13 @@ export default function App() {
   const actions: Record<CommandId, () => void> = {
     "command-palette": () => setPaletteOpen(true),
     "search-workspace": () => setSearching(true),
-    "new-project": () => setCreatingProject(true),
+    "new-project": () => {
+      setCreatingProject(true);
+      void projectLocation().then((answer) => setNewProjectParent(answer.location ?? null));
+    },
     "open-workspace": () => void openFolder(selectWorkspace),
     "create-sample-workspace": () => void openFolder(createSampleWorkspace),
-    "open-project": () => {
-      if (root) void readProject(root);
-    },
+    "open-project": () => setEditingProject(true),
     "create-test": () => {
       go("cases");
       setCaseFlow("test");
@@ -1987,11 +2037,9 @@ export default function App() {
 
   const artifacts = opened?.artifacts ?? [];
   const named = (kind: string) => artifacts.filter((artifact) => artifact.kind === kind).map((artifact) => artifact.name);
-  const caseBundles = artifacts.filter((artifact) => artifact.kind === "case");
-  const otherEntries = artifacts.filter((artifact) => artifact.kind !== "case");
   const projectName = overview?.title || (root ? folderName(root) : "");
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
-  const subpage = importing && root ? "import" : capturing && root ? "capture" : observing && root ? "observe" : null;
+  const subpage = importing && root ? "import" : capturing && root ? "capture" : null;
   const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
   const detailsShown = place === "cases" && verified !== null && subpage === null && inspecting;
   const inspected =
@@ -2035,12 +2083,13 @@ export default function App() {
   const switcher = root ? (
     <ProjectSwitcher
       name={projectName}
-      recent={recentProjects(recent?.roots ?? [], root)}
+      recent={recentProjects(projects, root)}
       disabled={busy}
       onOpenRecent={(folder) => void openFolder(() => openWorkspace(folder))}
       onOpen={() => perform("open-workspace")}
       onNew={() => perform("new-project")}
       onSettings={() => perform("open-project")}
+      onFiles={() => open({ destination: "project-files" })}
     />
   ) : null;
 
@@ -2090,32 +2139,43 @@ export default function App() {
           actions={
             <>
               <button type="button" disabled={busy} onClick={() => perform("open-workspace")}>
-                Open…
+                Open
               </button>
-              <button type="button" className="primary" disabled={busy} onClick={() => setCreatingProject(true)}>
+              <button type="button" className="primary" disabled={busy} onClick={() => perform("new-project")}>
                 New project
               </button>
             </>
           }
         >
-          <Recovery restored={restored} onChanged={() => void restore()} onReopen={() => void reopen()} />
-          <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
+          <DraftsToRestore
+            drafts={drafts ?? []}
+            projectName={(draft) => projects.find((item) => item.summary.project?.folder === draft.workspace)?.name ?? folderName(draft.workspace)}
+            onResume={(draft) => void resumeDraft(draft)}
+            onDiscard={(draft) => dropDraft(draft.id)}
+          />
           {openNotice ? (
             <div className="notice danger">
               <Report indicators={indicators} progress={null} result={openNotice} />
-              <button type="button" className="action-retry-folder" disabled={busy} onClick={() => perform("open-workspace")}>
+              <button type="button" disabled={busy} onClick={() => perform("open-workspace")}>
                 Choose another folder…
               </button>
             </div>
           ) : null}
-          <RecentWorkspaces
-            recent={recent}
+          <ProjectList
+            projects={projects}
             busy={busy}
-            indicators={indicators}
-            onReopen={(folder) => void openFolder(() => openWorkspace(folder))}
-            onForget={forget}
+            onOpen={(item) => void openListedProject(item)}
+            onLocate={(item) => void locateItem({ context: { project: "", generation: 0 }, ref: item.ref }).then(refreshRecent)}
+            onSettings={(item) => void openListedProject(item).then(() => setEditingProject(true))}
+            onReveal={(item) => void revealItem({ context: { project: "", generation: 0 }, ref: item.ref })}
+            onForget={(item) => void forgetProject(item.ref.id).then(refreshRecent)}
+            onNew={() => setCreatingProject(true)}
           />
-          <DemoCallout busy={busy} onTryDemo={() => perform("create-sample-workspace")} />
+          <div className="quiet-action">
+            <button type="button" className="quiet" disabled={busy} onClick={() => perform("create-sample-workspace")}>
+              Try demo
+            </button>
+          </div>
         </Page>
 
         <Page
@@ -2135,9 +2195,7 @@ export default function App() {
               ? "Import evidence"
               : subpage === "capture"
                 ? "Capture"
-                : subpage === "observe"
-                  ? "Observations"
-                  : verified
+                : verified
                     ? caseFlow !== null
                       ? CASE_FLOW_TITLES[caseFlow]
                       : caseTitle
@@ -2146,9 +2204,6 @@ export default function App() {
           actions={
             root && subpage === null && !verified ? (
               <>
-                <button type="button" disabled={busy} onClick={() => setObserving(true)}>
-                  Observations
-                </button>
                 <button type="button" disabled={busy} onClick={() => setCapturing(true)}>
                   Capture
                 </button>
@@ -2179,32 +2234,7 @@ export default function App() {
           }
         >
           {!root ? noProject("cases") : null}
-          {observing && root ? (
-            <ObservationPanel
-              workspace={root}
-              busy={busy}
-              indicators={indicators}
-              drafts={drafts ?? []}
-              captureBinding={captureBinding}
-              onBindToTest={(observationFile) => {
-                setObserving(false);
-                setCaptureBinding(null);
-                void author((draft, open) =>
-                  authorTest({
-                    workspace: root ?? "",
-                    case: open.case,
-                    identity: open.identity,
-                    draft,
-                    answer: { stage: "observation", observation: observationFile },
-                  }),
-                );
-              }}
-              onClose={() => {
-                setObserving(false);
-                setCaptureBinding(null);
-              }}
-            />
-          ) : capturing && root ? (
+          {capturing && root ? (
             <CapturePanel
               workspace={root}
               project={investigation?.overview?.root ?? null}
@@ -2222,6 +2252,7 @@ export default function App() {
                 setCapturing(false);
                 setCaptureBinding(binding);
                 setObserving(true);
+                go("environments");
               }}
               onClose={() => setCapturing(false)}
             />
@@ -2247,149 +2278,36 @@ export default function App() {
             />
           ) : null}
 
-          {root ? (
-            <div className="cases-list" hidden={subpage !== null || verified !== null}>
-              {guideResult?.guide ? (
-                <GuidedSample
-                  result={guideResult}
-                  practice={practiceResult}
-                  capture={sampleCapture}
-                  busy={busy}
-                  progress={
-                    running === "practice"
-                      ? "Running the saved test against the practice receiver."
-                      : running === "sample"
-                        ? "Importing the frozen receiver fixtures."
-                        : null
-                  }
-                  indicators={indicators}
-                  onCreateSample={() => perform("create-sample-workspace")}
-                  onOpenCase={(name: string) => {
-                    if (root) void verifyCase(root, name);
-                  }}
-                  onRun={(trial, output) => void practise(trial, output)}
-                  onCancel={cancelRunning}
-                  onCapture={(output) => void importSample(output)}
-                />
-              ) : null}
-              {workspace && workspace.state !== "completed" ? (
-                <Report indicators={indicators} progress={null} result={workspace} />
-              ) : null}
-              {openNotice ? (
-                <div className="notice danger">
-                  <Report indicators={indicators} progress={null} result={openNotice} />
-                  <button type="button" className="action-retry-folder" disabled={busy} onClick={() => perform("open-workspace")}>
-                    Choose another folder…
-                  </button>
-                </div>
-              ) : null}
+          {root && subpage === null && verified === null ? (
+            <>
               {caseNotice ? (
                 <div className="notice danger">
                   <Report indicators={indicators} progress={null} result={caseNotice} />
                 </div>
               ) : null}
-              {/* A folder holding a project lists its cases in the project's own
-                  table below, registered or not, so the page has one list. */}
-              {overview ? null : (
-              <>
-              <div className="section-title">
-                <h2>Cases</h2>
-                <span className="count">{caseBundles.length}</span>
+              <div className="toolbar page-toolbar">
+                <IconButton icon="search" label="Search cases" onClick={() => setSearchingCases(true)} />
+                <IconButton icon="filter" label="Filter cases" onClick={() => setFilteringCases(true)} />
               </div>
-              {caseBundles.length === 0 ? (
-                <EmptyState
-                  title="No cases yet"
-                  action={
-                    <button type="button" className="primary" disabled={busy} onClick={() => setImporting(true)}>
-                      Import evidence
-                    </button>
-                  }
-                />
-              ) : (
-                <ul className="item-list artifacts" aria-label="Cases in this folder">
-                  {caseBundles.map((artifact) => (
-                    <li key={artifact.name} aria-current={selected === artifact.name ? "true" : undefined}>
-                      <span className="item-main">
-                        <span className="item-title">{artifact.name}</span>
-                        <span className="item-sub">{humanize(artifact.provenance ?? "")}</span>
-                      </span>
-                      <span className="item-actions">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          aria-label={`Open case ${artifact.name}`}
-                          onClick={() => void verifyCase(opened?.root ?? root, artifact.name)}
-                        >
-                          Open
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              </>
-              )}
-              <ProjectPanel
-                root={root}
-                result={investigation}
-                entries={artifacts}
-                busy={busy}
-                progress={running === "project" ? "Reading the project." : null}
-                indicators={indicators}
-                selectedCase={verified?.name ?? null}
-                editable={editable}
-                onUpdateSettings={editSettings}
-                onReadEditable={() => void readEditable()}
-                onRegister={register}
-                onUpdateCase={updateCase}
-                onOpenCase={(name: string) => {
-                  if (root) void verifyCase(root, name);
+              <CaseList
+                cases={cases}
+                view={caseListView}
+                onView={setCaseListView}
+                selected={selectedCase}
+                onSelect={setSelectedCase}
+                onOpen={(item) => {
+                  const entry = caseEntry(item);
+                  if (entry) void verifyCase(root, entry);
                 }}
+                onAction={caseAction}
+                onRetry={() => void refreshCases()}
+                onLocate={(item) => void locateItem({ context: projectContext(), ref: item.ref }).then(refreshCases)}
+                onImport={() => setImporting(true)}
+                sort={caseListSort}
+                onSort={setCaseListSort}
+                busy={busy}
               />
-              {otherEntries.length > 0 ? (
-                <details className="other-entries">
-                  <summary>Other files in this folder ({otherEntries.length})</summary>
-                  <ul className="artifacts">
-                    {otherEntries.map((artifact) => (
-                      <li key={artifact.name} aria-current={selected === artifact.name ? "true" : undefined}>
-                        <span className="name">{artifact.name}</span>
-                        <Badge indicator={indicators.get(artifact.kind)} fallback={artifact.kind} />
-                        {artifact.kind === "project" ? (
-                          <button type="button" disabled={busy} onClick={() => void readProject(root)}>
-                            Open project
-                          </button>
-                        ) : null}
-                        {artifact.kind === "target" || artifact.kind === "secret" || artifact.kind === "policy" || artifact.kind === "reset" ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => {
-                              setSelected(artifact.name);
-                              setEnvironmentArtifact({
-                                name: artifact.name,
-                                kind: artifact.kind === "secret" ? "secrets" : artifact.kind as "target" | "policy" | "reset",
-                              });
-                              go("environments");
-                            }}
-                          >
-                            {artifact.kind === "target"
-                              ? "Configure target"
-                              : artifact.kind === "secret"
-                                ? "Manage secrets"
-                                : artifact.kind === "policy"
-                                  ? "Review policy"
-                                  : "View reset plan"}
-                          </button>
-                        ) : null}
-                        {artifact.reason ? (
-                          <span className={artifact.kind === "unsupported" ? "unsupported" : "reason"}>{artifact.reason}</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-            </div>
+            </>
           ) : null}
 
           {verified && root ? (
@@ -2831,15 +2749,62 @@ export default function App() {
           {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={artifacts} /> : noProject("runs")}
         </Page>
 
-        <Page id="environments" shown={place === "environments"} title="Environments">
-          {opened ? (
+        <Page
+          id="environments"
+          shown={place === "environments"}
+          title={observing && root ? "Observations" : "Environments"}
+          back={
+            observing && root ? (
+              <BackLink
+                label="Environments"
+                onBack={() => {
+                  setObserving(false);
+                  setCaptureBinding(null);
+                }}
+              />
+            ) : null
+          }
+          actions={
+            root && !observing ? (
+              <button type="button" disabled={busy} onClick={() => setObserving(true)}>
+                Observations
+              </button>
+            ) : null
+          }
+        >
+          {observing && root ? (
+            <ObservationPanel
+              workspace={root}
+              busy={busy}
+              indicators={indicators}
+              drafts={drafts ?? []}
+              captureBinding={captureBinding}
+              onBindToTest={(observationFile) => {
+                setObserving(false);
+                setCaptureBinding(null);
+                void author((draft, open) =>
+                  authorTest({
+                    workspace: root ?? "",
+                    case: open.case,
+                    identity: open.identity,
+                    draft,
+                    answer: { stage: "observation", observation: observationFile },
+                  }),
+                );
+              }}
+              onClose={() => {
+                setObserving(false);
+                setCaptureBinding(null);
+              }}
+            />
+          ) : opened ? (
             <EnvironmentPanel
               workspace={root ?? ""}
-              targetFile={environmentArtifact?.kind === "target" ? environmentArtifact.name : "targets/default.json"}
-              secretsFile={environmentArtifact?.kind === "secrets" ? environmentArtifact.name : "secrets.json"}
-              policyFile={environmentArtifact?.kind === "policy" ? environmentArtifact.name : "send-policy.json"}
-              planFile={environmentArtifact?.kind === "reset" ? environmentArtifact.name : "reset-plan.json"}
-              initialTab={environmentArtifact?.kind ?? "target"}
+              targetFile="targets/default.json"
+              secretsFile="secrets.json"
+              policyFile="send-policy.json"
+              planFile="reset-plan.json"
+              initialTab="target"
               drafts={drafts}
               onPlanSaved={() => void refreshListing()}
             />
@@ -2862,7 +2827,6 @@ export default function App() {
                   label="More report actions"
                   items={[
                     { label: "Transform and export", onSelect: () => open({ destination: "export-report" }) },
-                    { label: "Notes", onSelect: () => open({ destination: "notes" }) },
                   ]}
                 />
               </>
@@ -2909,8 +2873,80 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="notes" shown={place === "notes"} title="Notes" back={<BackLink label="Reports" onBack={back} />}>
-          {root ? <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} /> : noProject("reports")}
+        <Page
+          id="notes"
+          shown={place === "notes"}
+          title="Notes"
+          back={<BackLink label="Cases" onBack={back} />}
+          actions={
+            root ? (
+              <button type="button" className="primary" onClick={() => setNoteEditing({ note: null })}>
+                New note
+              </button>
+            ) : null
+          }
+        >
+          {root ? <NotesList notes={notes} onEdit={(note) => setNoteEditing({ note })} onNew={() => setNoteEditing({ note: null })} /> : noProject("notes")}
+        </Page>
+
+        <Page
+          id="case-notes"
+          shown={place === "case-notes"}
+          title="Notes"
+          back={<BackLink label={contextCase?.name ?? "Cases"} name={contextCase?.name ?? "cases"} onBack={back} />}
+          actions={
+            contextCase ? (
+              <button type="button" className="primary" onClick={() => setNoteEditing({ note: null })}>
+                New note
+              </button>
+            ) : null
+          }
+        >
+          {root ? <NotesList notes={notes} onEdit={(note) => setNoteEditing({ note })} onNew={() => setNoteEditing({ note: null })} /> : noProject("notes")}
+        </Page>
+
+        <Page
+          id="case-attachments"
+          shown={place === "case-attachments"}
+          title="Attachments"
+          back={<BackLink label={contextCase?.name ?? "Cases"} name={contextCase?.name ?? "cases"} onBack={back} />}
+          actions={
+            contextCase && attachments.length > 0 ? (
+              <button
+                type="button"
+                className="primary"
+                disabled={busy}
+                onClick={() => void addAttachments({ context: projectContext(), ref: contextCase.ref }).then((answer) => answer.state !== "cancelled" && setAttachments(answer.attachments))}
+              >
+                Add attachment
+              </button>
+            ) : null
+          }
+        >
+          {root && contextCase ? (
+            <AttachmentsList
+              attachments={attachments}
+              busy={busy}
+              onAdd={() => void addAttachments({ context: projectContext(), ref: contextCase.ref }).then((answer) => answer.state !== "cancelled" && setAttachments(answer.attachments))}
+              onRemove={(file) => void removeAttachment({ context: projectContext(), case: contextCase.ref, id: file.id }).then((answer) => setAttachments(answer.attachments))}
+            />
+          ) : (
+            noProject("attachments")
+          )}
+        </Page>
+
+        <Page id="project-files" shown={place === "project-files"} title="Files" back={<BackLink label="Cases" onBack={back} />}>
+          {root ? (
+            <FilesList
+              files={files}
+              onOpen={() => {
+                open({ destination: "inspect-file" });
+                setRawRequest((count) => count + 1);
+              }}
+            />
+          ) : (
+            noProject("files")
+          )}
         </Page>
 
         <Page id="tools" shown={place === "tools"} title="Tools">
@@ -2941,6 +2977,29 @@ export default function App() {
         </Page>
 
         <Page id="sample-data" shown={place === "sample-data"} title="Sample data" back={<BackLink label="Tools" onBack={back} />}>
+          {guideResult?.guide ? (
+            <GuidedSample
+              result={guideResult}
+              practice={practiceResult}
+              capture={sampleCapture}
+              busy={busy}
+              progress={
+                running === "practice"
+                  ? "Running the saved test against the practice receiver."
+                  : running === "sample"
+                    ? "Importing the frozen receiver fixtures."
+                    : null
+              }
+              indicators={indicators}
+              onCreateSample={() => perform("create-sample-workspace")}
+              onOpenCase={(name: string) => {
+                if (root) void verifyCase(root, name);
+              }}
+              onRun={(trial, output) => void practise(trial, output)}
+              onCancel={cancelRunning}
+              onCapture={(output) => void importSample(output)}
+            />
+          ) : null}
           <EmptyState
             title="Synthetic demo project"
             action={
@@ -3007,7 +3066,7 @@ export default function App() {
                   onStartObservation={() => {
                     setCaptureBinding(null);
                     setObserving(true);
-                    open({ destination: "cases" });
+                    open({ destination: "environments" });
                   }}
                 />
               ) : null}
@@ -3296,22 +3355,162 @@ export default function App() {
           ) : null}
         </Modal>
 
-        <Modal open={creatingProject} title="New project" onClose={() => setCreatingProject(false)}>
-          <NewProjectForm
-            busy={busy}
-            onCancel={() => setCreatingProject(false)}
-            onCreate={async (name, title, owner, versions) => {
-              const answer = await startProject(name, title, owner, versions);
-              // A new project answers with its overview, whose state is empty
-              // until it registers a case: the overview is what says it exists.
-              if (answer.overview) {
-                setCreatingProject(false);
-                return { state: "completed" as const };
-              }
-              return { state: answer.state, reason: answer.reason };
+        <CaseSearchSheet
+          open={searchingCases}
+          query={caseListView.query}
+          onApply={(query) => setCaseListView({ ...caseListView, query })}
+          onClose={() => setSearchingCases(false)}
+        />
+        <CaseFilterSheet
+          open={filteringCases}
+          view={caseListView}
+          {...caseChoices(cases)}
+          onApply={setCaseListView}
+          onClose={() => setFilteringCases(false)}
+        />
+
+        {currentProject ? (
+          <ProjectSettingsSheet
+            open={editingProject}
+            details={{
+              name: currentProject.name,
+              owner: currentProject.summary.project?.owner ?? "",
+              tags: currentProject.summary.project?.tags ?? [],
+              revisions: currentProject.summary.project?.revisions ?? [],
             }}
+            folder={currentProject.summary.project?.folder ?? ""}
+            onReveal={() => void revealItem({ context: projectContext(), ref: currentProject.ref })}
+            onNotes={() => {
+              setEditingProject(false);
+              open({ destination: "notes" });
+            }}
+            onSave={async (details, reassign): Promise<ProjectSaveFailure | void> => {
+              const answer = await saveItem({
+                context: projectContext(),
+                kind: "project",
+                item: currentProject.ref.id,
+                ...(currentProject.ref.revision ? { base_revision: currentProject.ref.revision } : {}),
+                intent_id: newIntentId(),
+                draft: {
+                  project: {
+                    name: details.name,
+                    ...(details.owner ? { owner: details.owner } : {}),
+                    tags: details.tags,
+                    revisions: details.revisions,
+                    reassign: Object.entries(reassign).map(([from, to]) => ({ from, ...(to ? { to } : {}) })),
+                  },
+                },
+              });
+              if (answer.outcome === "saved") {
+                setEditingProject(false);
+                await refreshRecent();
+                return;
+              }
+              const referring = answer.problems
+                .filter((problem) => problem.referring && problem.referring.length > 0)
+                .map((problem) => ({ revision: problem.field.replace(/^revisions\./, ""), cases: problem.referring!.map((entry) => entry.name) }));
+              return { ...saveFailure(answer, { name: "project-name", owner: "project-owner" }), ...(referring.length > 0 ? { referring } : {}) };
+            }}
+            onClose={() => setEditingProject(false)}
           />
-        </Modal>
+        ) : null}
+
+        {caseTask?.action === "edit" ? (
+          <CaseDetailsSheet
+            open
+            details={{
+              name: caseTask.item.name,
+              status: caseTask.item.summary.case?.status ?? "open",
+              owner: caseTask.item.summary.case?.owner ?? "",
+              tags: caseTask.item.summary.case?.tags ?? [],
+              revision: caseTask.item.summary.case?.interface_revision ?? "",
+              incidents: caseTask.item.summary.case?.incidents ?? [],
+            }}
+            revisions={currentProject?.summary.project?.revisions ?? []}
+            onSave={async (details) => {
+              const answer = await saveItem({
+                context: projectContext(),
+                kind: "case",
+                item: caseTask.item.ref.id,
+                ...(caseTask.item.ref.revision ? { base_revision: caseTask.item.ref.revision } : {}),
+                intent_id: newIntentId(),
+                draft: {
+                  case: {
+                    name: details.name,
+                    status: details.status,
+                    ...(details.owner ? { owner: details.owner } : {}),
+                    tags: details.tags,
+                    ...(details.revision ? { interface_revision: details.revision } : {}),
+                    incidents: details.incidents,
+                  },
+                },
+              });
+              if (answer.outcome === "saved") {
+                setCaseTask(null);
+                await refreshCases();
+                return;
+              }
+              return saveFailure(answer, { name: "case-name", owner: "case-owner", status: "case-status" });
+            }}
+            onClose={() => setCaseTask(null)}
+          />
+        ) : null}
+
+        {caseTask?.action === "remove" ? (
+          <RemoveCaseSheet
+            open
+            name={caseTask.item.name}
+            onRemove={async () => {
+              const answer = await removeCaseFromProject({ context: projectContext(), ref: caseTask.item.ref });
+              if (answer.state !== "completed") return { reason: answer.reason ?? "The case was not removed." };
+              setCaseTask(null);
+              await refreshCases();
+            }}
+            onClose={() => setCaseTask(null)}
+          />
+        ) : null}
+
+        {noteEditing ? (
+          <NoteSheet
+            open
+            note={noteEditing.note ? { id: noteEditing.note.id, name: noteEditing.note.name, content: noteEditing.note.content } : { name: "", content: "" }}
+            related={place === "case-notes" && contextCase ? contextCase.name : currentProject?.name ?? "This project"}
+            onSave={async (note) => {
+              const caseRef = place === "case-notes" ? contextCase?.ref : noteEditing.note?.case;
+              const answer = await saveNoteItem({
+                context: projectContext(),
+                intent_id: newIntentId(),
+                note: { ...(note.id ? { id: note.id } : {}), name: note.name, content: note.content, ...(caseRef ? { case: caseRef } : {}) },
+              });
+              if (answer.state !== "completed") return { reason: answer.reason ?? "The note was not saved.", field: "note-name" };
+              setNoteEditing(null);
+              await refreshNotes();
+            }}
+            onClose={() => setNoteEditing(null)}
+          />
+        ) : null}
+
+        <NewProjectSheet
+          open={creatingProject}
+          location={newProjectParent}
+          onChangeLocation={async () => {
+            const chosen = await chooseProjectLocation();
+            if (chosen.location) setNewProjectParent(chosen.location);
+          }}
+          onCreate={createProjectNamed}
+          onActivate={
+            createRefusedByLicense
+              ? () => {
+                  setCreatingProject(false);
+                  openSettings("license");
+                }
+              : undefined
+          }
+          onClose={() => {
+            setCreatingProject(false);
+            setCreateRefusedByLicense(false);
+          }}
+        />
 
         <CommandPalette open={paletteOpen} entries={paletteEntries} onClose={() => setPaletteOpen(false)} />
       </VocabularyContext.Provider>
@@ -3400,14 +3599,33 @@ function GeneralEditor({
 }
 
 /** The recent projects the switcher offers besides the open one, at most
- * five. Two folders with the same name are told apart by the folder that
- * holds each. */
-function recentProjects(roots: string[], open: string): { key: string; name: string }[] {
-  const others = roots.filter((folder) => folder !== open).slice(0, 5);
-  return others.map((folder) => {
-    const name = folderName(folder);
-    const shared = others.some((other) => other !== folder && folderName(other) === name);
-    const parent = folder.replace(/[\\/]+$/, "").slice(0, -name.length);
-    return { key: folder, name: shared ? `${name} — ${folderName(parent)}` : name };
-  });
+ * five, by the names their projects record. */
+function recentProjects(projects: CatalogItem[], open: string): { key: string; name: string }[] {
+  return projects
+    .filter((item) => item.availability === "available" && item.summary.project?.folder !== open)
+    .slice(0, 5)
+    .map((item) => ({ key: item.summary.project?.folder ?? "", name: item.name }));
 }
+
+/** The entry a listed case's bundle is at inside its project, which the
+ * message reader opens it by. */
+function caseEntry(item: CatalogItem): string | undefined {
+  return item.summary.case?.entry;
+}
+
+/** Where each kind of retained draft is continued. */
+const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: true; observe?: true }> = {
+  "canonical-test": { route: { destination: "tests", view: "tests" } },
+  suite: { route: { destination: "tests", view: "suites" } },
+  "assertion-set-draft": { route: { destination: "library", view: "checks" } },
+  "local-profile": { route: { destination: "library", view: "profiles" } },
+  note: { route: { destination: "notes" } },
+  "redact-policy": { route: { destination: "share-report" } },
+  "redact-inventory": { route: { destination: "share-report" } },
+  target: { route: { destination: "environments" } },
+  "test-draft": { case: "test" },
+  "reproducer-plan": { case: "reproduce" },
+  import: { import: true },
+  "observation-source": { observe: true },
+  "observation-window": { observe: true },
+};

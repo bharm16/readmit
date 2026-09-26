@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -59,10 +60,14 @@ const (
 	MaxTags              = 32
 	MaxIncidents         = 32
 
-	maxTitleBytes    = 200
-	maxNameBytes     = 64
-	maxDocumentBytes = 1 << 20
-	identityLength   = 64
+	maxTitleBytes     = 200
+	maxTitleRunes     = 200
+	maxTitleRuneBytes = 800
+	maxOwnerRunes     = 100
+	maxLabelRunes     = 64
+	maxNameBytes      = 64
+	maxDocumentBytes  = 1 << 20
+	identityLength    = 64
 )
 
 // ErrUnsupportedVersion reports a document written under a contract version
@@ -94,6 +99,18 @@ type Settings struct {
 	Title                   string `json:"title"`
 	DefaultOwner            string `json:"default_owner,omitzero"`
 	DefaultInterfaceVersion string `json:"default_interface_version,omitzero"`
+	// Tags are the project's own tags. Only a readmit-project/v2 document
+	// holds them.
+	Tags []string `json:"tags,omitzero"`
+}
+
+// VersionName is the name a person gave one declared interface version. The
+// version itself stays the identifier every case records; renaming it changes
+// only this name. Only a readmit-project/v2 document holds names, and a
+// version without one is named by its identifier.
+type VersionName struct {
+	Version string `json:"version"`
+	Name    string `json:"name"`
 }
 
 // Case registers one case bundle in the project.
@@ -125,7 +142,10 @@ type Document struct {
 	// investigation. Every case names exactly one of them, so evidence gathered
 	// against different versions of the same interface stays separable.
 	InterfaceVersions []string `json:"interface_versions"`
-	Cases             []Case   `json:"cases"`
+	// InterfaceVersionNames name declared versions, sorted by version. v2
+	// only.
+	InterfaceVersionNames []VersionName `json:"interface_version_names,omitzero"`
+	Cases                 []Case        `json:"cases"`
 }
 
 // Project is an opened project directory and the document it holds.
@@ -202,11 +222,11 @@ func Validate(document Document) error {
 		return ErrUnsupportedVersion
 	}
 	named := document.Schema == SchemaV2
-	if err := title(document.Settings.Title); err != nil {
+	if err := titleOf(document.Settings.Title, named); err != nil {
 		return errors.New("project title: " + err.Error())
 	}
 	if document.Settings.DefaultOwner != "" {
-		if err := name(document.Settings.DefaultOwner); err != nil {
+		if err := owner(document.Settings.DefaultOwner, named); err != nil {
 			return errors.New("project default owner: " + err.Error())
 		}
 	}
@@ -228,6 +248,23 @@ func Validate(document Document) error {
 	}
 	if version := document.Settings.DefaultInterfaceVersion; version != "" && !declared[version] {
 		return errors.New("the default interface version is not declared by this project")
+	}
+	if !named && (len(document.Settings.Tags) > 0 || len(document.InterfaceVersionNames) > 0) {
+		return errors.New("project tags and interface version names are members of readmit-project/v2")
+	}
+	if err := set(document.Settings.Tags, MaxTags, named); err != nil {
+		return errors.New("project tags: " + err.Error())
+	}
+	for i, version := range document.InterfaceVersionNames {
+		if !declared[version.Version] {
+			return errors.New("interface version name: names a version this project does not declare")
+		}
+		if i > 0 && document.InterfaceVersionNames[i-1].Version >= version.Version {
+			return errors.New("interface version names must name each version once, sorted by version")
+		}
+		if err := titleOf(version.Name, true); err != nil {
+			return errors.New("interface version name: " + err.Error())
+		}
 	}
 	if len(document.Cases) > MaxCases {
 		return errors.New("a project registers at most " + strconv.Itoa(MaxCases) + " cases")
@@ -263,7 +300,7 @@ func validateCase(entry Case, declared map[string]bool, unassignable bool) error
 	if err := name(entry.Provenance); err != nil {
 		return errors.New("case provenance mode: " + err.Error())
 	}
-	if err := title(entry.Title); err != nil {
+	if err := titleOf(entry.Title, unassignable); err != nil {
 		return errors.New("case title: " + err.Error())
 	}
 	if !slices.Contains(statuses, entry.Status) {
@@ -273,31 +310,69 @@ func validateCase(entry Case, declared map[string]bool, unassignable bool) error
 		return errors.New("case interface version: not declared by this project")
 	}
 	if entry.Owner != "" {
-		if err := name(entry.Owner); err != nil {
+		if err := owner(entry.Owner, unassignable); err != nil {
 			return errors.New("case owner: " + err.Error())
 		}
 	}
-	if err := set(entry.Tags, MaxTags); err != nil {
+	if err := set(entry.Tags, MaxTags, unassignable); err != nil {
 		return errors.New("case tags: " + err.Error())
 	}
-	if err := set(entry.Incidents, MaxIncidents); err != nil {
+	if err := set(entry.Incidents, MaxIncidents, unassignable); err != nil {
 		return errors.New("linked incidents: " + err.Error())
 	}
 	return nil
 }
 
-// set checks a bounded collection of identifiers held in sorted order with no
-// duplicates, so two projects that record the same tags record the same bytes.
-func set(values []string, limit int) error {
+// set checks a bounded collection held in sorted order with no duplicates,
+// so two projects that record the same tags record the same bytes. A v1
+// project's entries are identifiers; a v2 project's are labels.
+func set(values []string, limit int, v2 bool) error {
 	if len(values) > limit {
 		return errors.New("more entries than this release stores")
 	}
 	for i, value := range values {
-		if err := name(value); err != nil {
+		check := name
+		if v2 {
+			check = func(value string) error { return label(value, maxLabelRunes) }
+		}
+		if err := check(value); err != nil {
 			return err
 		}
 		if i > 0 && values[i-1] >= value {
 			return errors.New("entries must be unique and sorted")
+		}
+	}
+	return nil
+}
+
+// owner is a v1 owner's identifier, or a v2 owner's label.
+func owner(value string, v2 bool) error {
+	if v2 {
+		return label(value, maxOwnerRunes)
+	}
+	return name(value)
+}
+
+// label is a readmit-project/v2 owner, tag or incident reference: printable
+// Unicode text a person typed, such as "Integration team", stored exactly as
+// entered. It is bounded in characters, carries no control character, and has
+// no leading or trailing space, so it cannot break a rendered line.
+func label(value string, limit int) error {
+	if value == "" {
+		return errors.New("must not be empty")
+	}
+	if !utf8.ValidString(value) {
+		return errors.New("must be valid UTF-8")
+	}
+	if strings.TrimSpace(value) != value {
+		return errors.New("must not begin or end with a space")
+	}
+	if utf8.RuneCountInString(value) > limit {
+		return errors.New("must be at most " + strconv.Itoa(limit) + " characters")
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return errors.New("must not contain control characters")
 		}
 	}
 	return nil
@@ -352,6 +427,38 @@ func entryName(value string) error {
 	}
 	if err := artifactpath.EntryName(value); err != nil {
 		return errors.New("must be one directory entry of the project")
+	}
+	return nil
+}
+
+// titleOf is the title rule of a document: v1's bytes, or v2's characters.
+func titleOf(value string, v2 bool) error {
+	if v2 {
+		return titleRunes(value)
+	}
+	return title(value)
+}
+
+// titleRunes is a readmit-project/v2 title or name: 1 to 200 characters of
+// printable text, and at most 800 bytes, so a name in any script has the same
+// room a Latin one has.
+func titleRunes(value string) error {
+	if value == "" {
+		return errors.New("must not be empty")
+	}
+	if len(value) > maxTitleRuneBytes || !utf8.ValidString(value) {
+		return errors.New("must be at most " + strconv.Itoa(maxTitleRunes) + " characters of valid UTF-8")
+	}
+	if utf8.RuneCountInString(value) > maxTitleRunes {
+		return errors.New("must be at most " + strconv.Itoa(maxTitleRunes) + " characters")
+	}
+	if strings.TrimSpace(value) == "" {
+		return errors.New("must not be only whitespace")
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return errors.New("must not contain control characters")
+		}
 	}
 	return nil
 }
@@ -605,6 +712,66 @@ func Migrate(document Document) (Document, error) {
 	migrated := document
 	migrated.Schema = SchemaV2
 	return migrated, nil
+}
+
+// VersionNamed is the name of one declared interface version: the name a
+// person gave it, or its identifier when it has none.
+func (d Document) VersionNamed(version string) string {
+	for _, named := range d.InterfaceVersionNames {
+		if named.Version == version {
+			return named.Name
+		}
+	}
+	return version
+}
+
+// RemoveCase unregisters one case and returns the document without it. The
+// evidence is not touched. A case that a note or a registered revision of
+// the project names is refused, because unregistering it would leave that
+// note or that lineage naming evidence the project no longer registers.
+func RemoveCase(document Document, revisions Revisions, entry string) (Document, error) {
+	index := slices.IndexFunc(document.Cases, func(c Case) bool { return c.Name == entry })
+	if index < 0 {
+		return Document{}, errors.New("no case is registered under that name")
+	}
+	if slices.ContainsFunc(revisions.Notes, func(note Note) bool { return note.Subject == entry }) {
+		return Document{}, ErrCaseNamed
+	}
+	if slices.ContainsFunc(revisions.Revisions, func(revision Revision) bool { return revision.Operation.Parent == entry }) {
+		return Document{}, ErrCaseNamed
+	}
+	updated := document
+	updated.Cases = slices.Delete(slices.Clone(document.Cases), index, index+1)
+	if err := Validate(updated); err != nil {
+		return Document{}, err
+	}
+	return updated, nil
+}
+
+// ErrCaseNamed reports a case a note or a registered revision names.
+var ErrCaseNamed = errors.New("a note or a registered revision of this project names that case")
+
+// CheckIdentifier is the identifier rule interface versions, and a v1
+// project's owners, tags and incident references, are held to, exported for
+// an editor that reports each member's problem at that member.
+func CheckIdentifier(value string) error { return name(value) }
+
+// CheckOwner is the owner rule of a document of schema: an identifier in v1,
+// a label of at most 100 characters in v2.
+func CheckOwner(schema, value string) error { return owner(value, schema == SchemaV2) }
+
+// CheckTitle is the title rule of a project, a case and a version name in a
+// document of schema: 200 bytes in v1, 200 characters in v2.
+func CheckTitle(schema, value string) error { return titleOf(value, schema == SchemaV2) }
+
+// CheckTags is the rule a case's or a project's tags are held to in a
+// document of schema, once sorted.
+func CheckTags(schema string, values []string) error { return set(values, MaxTags, schema == SchemaV2) }
+
+// CheckIncidents is the rule a case's linked incidents are held to in a
+// document of schema, once sorted.
+func CheckIncidents(schema string, values []string) error {
+	return set(values, MaxIncidents, schema == SchemaV2)
 }
 
 // Declares reports whether one interface version is declared. Every case names

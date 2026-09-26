@@ -56,11 +56,13 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps eight bounded, versioned local documents: recent folder paths
-  (`readmit-desktop-recent/v1`), saved filters with the active selection
+- The shell keeps seven bounded, versioned local documents (the recent folder
+  paths of `readmit-desktop-recent/v1` were retired by #548 and are no longer
+  read or written): saved filters with the active selection
   (`readmit-filters/v1`), the working session a viewer has not stored
   (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
-  open, and the note drafts they had typed — the editor draft store
+  open (a session written before #548 may also carry note drafts, which are
+  read past and not kept) — the editor draft store
   (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
   edits) holding every editor's unstored work under internal identities, the
   remembered projects (`readmit-desktop-projects/v1`, amended 2026-09-26),
@@ -69,7 +71,7 @@ static build stand unchanged. Nothing here is added to the release archives.
   (`readmit-desktop-operation-selection/v1`), the commercial destinations
   (`readmit-desktop-commercial-selection/v1`) and the customer hub
   configuration (`readmit-desktop-hub-selection/v1`). Saved field terms and a
-  retained draft can contain patient data typed by the operator. All eight files
+  retained draft can contain patient data typed by the operator. All seven files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is
@@ -170,4 +172,14 @@ nothing is parsed, evaluated or permitted in TypeScript.
   dies with the process, and it is consumed once with the click that executes
   it. Restoring a window therefore never restores an approval or resends
   anything, which is the rule this decision already stated for sessions.
+
+Before any release carried these documents, #548 extended them rather than
+versioning them again: a catalog item records `removed_at` when a person
+removes the object from the project, so it is not discovered again; a v2
+editor draft records `saved_at`, when the application last retained it; and
+a fourth project-side document, `readmit-attachments/v1` in the same
+`.readmit` folder, records a case's attachments, whose copies the
+application stores under `.readmit/attachments` with names it generates. The
+attachments are metadata and files a person added, beside evidence and never
+inside it; nothing opens or runs them.
 

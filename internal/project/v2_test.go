@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/project"
@@ -80,5 +81,84 @@ func TestAVersionOneProjectIsReadUnchangedAndMigratedOnlyOnPurpose(t *testing.T)
 	}
 	if _, _, err := project.UpdateCase(migrated, "regression", project.Change{InterfaceVersion: &unassigned}); err != nil {
 		t.Fatalf("a migrated project refused an unassigned interface revision: %v", err)
+	}
+}
+
+// A v2 project also holds its own tags and the names people gave its
+// interface versions; the identifiers cases record never change with a name.
+// A v1 document holds neither.
+func TestAVersionTwoProjectNamesItsVersionsAndHoldsTags(t *testing.T) {
+	named := project.Document{Schema: project.SchemaV2, Settings: project.Settings{Title: "Scheduling QA", Tags: []string{"epic", "siu"}},
+		InterfaceVersions:     []string{"rev-a", "rev-b"},
+		InterfaceVersionNames: []project.VersionName{{Version: "rev-a", Name: "Upgrade 2026"}}}
+	data, err := project.Encode(named)
+	if err != nil {
+		t.Fatalf("a named v2 project was refused: %v", err)
+	}
+	decoded, err := project.Decode(data)
+	if err != nil || decoded.VersionNamed("rev-a") != "Upgrade 2026" || decoded.VersionNamed("rev-b") != "rev-b" {
+		t.Fatalf("decoded: %+v %v", decoded, err)
+	}
+	for _, refused := range []project.Document{
+		{Schema: project.Schema, Settings: project.Settings{Title: "x", Tags: []string{"epic"}}, InterfaceVersions: []string{"v"}},
+		{Schema: project.Schema, Settings: project.Settings{Title: "x"}, InterfaceVersions: []string{"v"}, InterfaceVersionNames: []project.VersionName{{Version: "v", Name: "V"}}},
+		{Schema: project.SchemaV2, Settings: project.Settings{Title: "x"}, InterfaceVersionNames: []project.VersionName{{Version: "v", Name: "V"}}},
+		{Schema: project.SchemaV2, Settings: project.Settings{Title: "x", Tags: []string{"b", "a"}}},
+	} {
+		if _, err := project.Encode(refused); err == nil {
+			t.Fatalf("accepted %+v", refused)
+		}
+	}
+}
+
+// Unregistering a case removes its registration only, and is refused while a
+// note or a registered revision names it.
+func TestRemovingACaseUnregistersItUnlessSomethingNamesIt(t *testing.T) {
+	registered := document()
+	removed, err := project.RemoveCase(registered, project.Revisions{Schema: project.RevisionsSchema}, "regression")
+	if err != nil || len(removed.Cases) != len(registered.Cases)-1 {
+		t.Fatalf("remove: %+v %v", removed, err)
+	}
+	noted := project.Revisions{Schema: project.RevisionsSchema, Notes: []project.Note{{Name: "n", Subject: "regression", Title: "Why"}}}
+	if _, err := project.RemoveCase(registered, noted, "regression"); !errors.Is(err, project.ErrCaseNamed) {
+		t.Fatalf("a noted case was removed: %v", err)
+	}
+	if _, err := project.RemoveCase(registered, project.Revisions{Schema: project.RevisionsSchema}, "absent"); err == nil {
+		t.Fatal("an unregistered case was removed")
+	}
+}
+
+// A v2 project's owners, tags and incident references are text a person
+// typed, stored exactly as entered; a v1 project keeps its identifiers.
+func TestAVersionTwoProjectTakesOwnersAndTagsAsText(t *testing.T) {
+	entry := project.Case{Name: "incident", Identity: "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df",
+		Schema: "readmit-case/v1", Provenance: "imported", Title: "Duplicate appointment", Status: project.StatusOpen,
+		Owner: "Integration team", Tags: []string{"front desk", "Épic"}, Incidents: []string{"INC 42"}}
+	v2 := project.Document{Schema: project.SchemaV2, Settings: project.Settings{Title: "Scheduling QA", DefaultOwner: "Integration team",
+		Tags: []string{"front desk"}}, Cases: []project.Case{entry}}
+	data, err := project.Encode(v2)
+	if err != nil {
+		t.Fatalf("a v2 project refused text: %v", err)
+	}
+	decoded, err := project.Decode(data)
+	if err != nil || decoded.Cases[0].Owner != "Integration team" || decoded.Cases[0].Tags[0] != "front desk" {
+		t.Fatalf("decoded: %+v %v", decoded, err)
+	}
+	for _, refused := range []project.Case{
+		func() project.Case { c := entry; c.Owner = " padded"; return c }(),
+		func() project.Case { c := entry; c.Tags = []string{"line\nbreak"}; return c }(),
+		func() project.Case { c := entry; c.Tags = []string{"same", "same"}; return c }(),
+		func() project.Case { c := entry; c.Owner = strings.Repeat("ó", 101); return c }(),
+	} {
+		document := v2
+		document.Cases = []project.Case{refused}
+		if _, err := project.Encode(document); err == nil {
+			t.Fatalf("accepted %+v", refused)
+		}
+	}
+	v1 := document()
+	v1.Cases[0].Owner = "Integration team"
+	if _, err := project.Encode(v1); err == nil {
+		t.Fatal("a v1 project took an owner that is not an identifier")
 	}
 }

@@ -79,10 +79,10 @@ func TestPastedContentIsStagedOnlyInARealStagingFolderOfTheWorkspace(t *testing.
 	}
 }
 
-// A new project is one new folder of the folder the host's dialog chose. A
-// name that is not one entry would have created it somewhere else — beside
-// the chosen folder, inside one of its folders, or through a linked folder out
-// of it — so it is refused before the dialog is even offered.
+// A new project is created from a name alone, and whatever that name says it
+// is one new folder the application names inside the projects folder: a name
+// that reads as a path, a parent, a folder inside it or a link out of it is a
+// display name, never a place.
 func TestANewProjectIsOneNewFolderOfTheChosenFolder(t *testing.T) {
 	root, outside := besideWorkspace(t)
 	if err := os.Mkdir(filepath.Join(root, "folder"), 0o700); err != nil {
@@ -93,7 +93,10 @@ func TestANewProjectIsOneNewFolderOfTheChosenFolder(t *testing.T) {
 	}
 	dialog := &chooser{folder: root}
 	app := newApp(t, dialog)
-	listed, before := entriesOf(t, root), bytesUnder(t, outside)
+	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed {
+		t.Fatalf("choose: %+v", chosen)
+	}
+	before := bytesUnder(t, outside)
 	for how, name := range map[string]string{
 		"`..`":          "..",
 		"`.`":           ".",
@@ -104,25 +107,24 @@ func TestANewProjectIsOneNewFolderOfTheChosenFolder(t *testing.T) {
 		"a name through a symbolic link out of it":           filepath.Join("link-folder", "fresh"),
 		"a name through a symbolic link, back to the folder": filepath.Join("link-folder", "..", "workspace", "fresh"),
 	} {
-		result := app.CreateProject(name, "Epic scheduling interface", "integration-team", []string{"siu-2.5.1-v1"})
-		if result.State != desktop.Failed || result.Reason != "the new project needs one folder name, never a path" || result.Overview != nil {
-			t.Errorf("CreateProject with %s: %+v", how, result)
+		result := app.CreateNamedProject(desktop.NewProjectRequest{Name: name})
+		if result.State != desktop.Completed || result.Project == nil || result.Project.Name != name {
+			t.Errorf("CreateNamedProject with %s: %+v", how, result)
+			continue
+		}
+		if folder := result.Project.Summary.Project.Folder; filepath.Dir(folder) != resolved(t, root) {
+			t.Errorf("CreateNamedProject with %s created %s, not one new folder of the chosen folder", how, folder)
 		}
 	}
-	if len(dialog.titles) != 0 {
-		t.Fatalf("a refused name still offered the folder dialog: %v", dialog.titles)
-	}
-	if after := entriesOf(t, root); !reflect.DeepEqual(listed, after) {
-		t.Fatalf("a refused project changed the chosen folder's entries: %v, was %v", after, listed)
+	if len(dialog.titles) != 1 {
+		t.Fatalf("the projects folder was asked for more than once: %v", dialog.titles)
 	}
 	if inside := entriesOf(t, filepath.Join(root, "folder")); len(inside) != 0 {
-		t.Fatalf("a refused project was created inside a folder of the chosen folder: %v", inside)
+		t.Fatalf("a project was created inside a folder of the chosen folder: %v", inside)
 	}
 	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
-		t.Fatal("a refused project was created outside the chosen folder")
+		t.Fatal("a project was created outside the chosen folder")
 	}
-	// The same flow with one name creates the project in the chosen folder.
-	createdProject(t, app, root)
 }
 
 // Collecting, capturing, finalizing a staged collection, importing and

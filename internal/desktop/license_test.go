@@ -21,7 +21,6 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/entitlement"
 	"github.com/bharm16/readmit/internal/operationguard"
-	"github.com/bharm16/readmit/internal/project"
 )
 
 // signing stands in for the vendor's issuer: a test-only key pair and the
@@ -415,7 +414,7 @@ func TestCreateLicenseActivationConfiguresWithoutHandAuthoredJSON(t *testing.T) 
 		t.Fatalf("activation through the created configuration: %+v", status)
 	}
 	// Permitted work is admitted; reads never needed it.
-	if denied := next.SaveNote("absent", project.Note{}); denied.State == desktop.PermissionDenied {
+	if denied := next.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: "absent"}, IntentID: "absent"}); denied.State == desktop.PermissionDenied {
 		t.Fatal("created activation did not admit authoring", denied)
 	}
 	// The runner authority record exists once activated.
@@ -739,7 +738,7 @@ func TestLicenseManagementNeverGatesEvidenceOrRequiresActivation(t *testing.T) {
 	if result := app.OpenWorkspace(t.TempDir()); result.State == desktop.PermissionDenied {
 		t.Fatal("reading evidence was gated by license management", result)
 	}
-	if result := app.SaveNote("absent", project.Note{}); result.State != desktop.PermissionDenied {
+	if result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: "absent"}, IntentID: "absent"}); result.State != desktop.PermissionDenied {
 		t.Fatal("authoring was admitted without an activation", result)
 	}
 }

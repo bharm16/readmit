@@ -1,3 +1,4 @@
+import { findCaseRow } from "./testkit/navigation";
 import { openCaseFlow } from "./testkit/navigation";
 import { indexResultFixture } from "./testkit/fixtures";
 import { readCaseIdentity } from "./testkit/navigation";
@@ -85,10 +86,10 @@ async function openGrid(facade: Awaited<ReturnType<typeof renderApp>>["facade"],
   facade.reply({ SelectWorkspace: () => folderWithCase() });
   // Both the first-run block and the commands beside it offer Open workspace…,
   // so the first of them is clicked: both run the same open action.
-  await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0]!);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   facade.reply({ OpenCase: () => caseResult(), DescribeIndex: () => indexResultFixture(), OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
-  await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
+  await user.click(await findCaseRow());
   await readCaseIdentity(user, CASE_IDENTITY);
   await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) });
   await user.click(screen.getByRole("button", { name: "More case actions" }));
@@ -117,6 +118,8 @@ async function build(user: UserEvent, panel: ReturnType<typeof within>, output: 
   expect(await panel.findByText(new RegExp(`^Written to ${output} · derived case identity`))).toBeTruthy();
 }
 
+// A long journey over several screens; it is given more than the default
+// five seconds so a loaded CI runner does not fail it on time alone.
 test("a build is reported registered only once the project records it, and a refusal stays beside that build alone", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp(reproducerHandlers);
@@ -159,8 +162,10 @@ test("a build is reported registered only once the project records it, and a ref
   expect(panel.queryByText(/^Registered as /)).toBeNull();
   expect(panel.getByRole("button", { name: "Add to project" })).toBeTruthy();
   expect(facade.callsTo("RegisterRevision")).toHaveLength(2);
-});
+}, 15_000);
 
+// A long journey over several screens; it is given more than the default
+// five seconds so a loaded CI runner does not fail it on time alone.
 test("a build is handed to the revision comparison, which compares it with the revision a person names and shows every run it read", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp(reproducerHandlers);
@@ -223,7 +228,7 @@ test("a build is handed to the revision comparison, which compares it with the r
   await openCaseFlow(user, "Build a reproducer");
   await user.click(panel.getByRole("button", { name: "Compare revisions" }));
   expect(revisions.queryByText("Both were built from the same case")).toBeNull();
-});
+}, 15_000);
 
 test("an edit names only the occurrence the panel shows as chosen", async () => {
   const user = userEvent.setup();

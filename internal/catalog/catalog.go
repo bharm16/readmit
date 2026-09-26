@@ -71,7 +71,8 @@ const (
 	// MaxMemberBytes bounds one staged file.
 	MaxMemberBytes = 4 << 20
 	idLength       = 24
-	maxNameBytes   = 200
+	maxNameRunes   = 200
+	maxNameBytes   = 800
 	maxTokenBytes  = 128
 )
 
@@ -112,6 +113,10 @@ type Item struct {
 	CreatedAt    string     `json:"created_at,omitzero"`
 	UpdatedAt    string     `json:"updated_at,omitzero"`
 	LastOpenedAt string     `json:"last_opened_at,omitzero"`
+	// RemovedAt is when a person removed the object from the project. The
+	// item keeps its identity and its entry, so the object is not
+	// discovered again as a new one, and nothing behind it was touched.
+	RemovedAt string `json:"removed_at,omitzero"`
 }
 
 // Current is the item's current published revision, or nil when it has none.
@@ -257,7 +262,7 @@ func validateItem(item Item) error {
 	if item.Entry == "" && len(item.Revisions) == 0 {
 		return errors.New("a catalog item is backed by a project entry or a published revision")
 	}
-	for _, when := range []string{item.CreatedAt, item.UpdatedAt, item.LastOpenedAt} {
+	for _, when := range []string{item.CreatedAt, item.UpdatedAt, item.LastOpenedAt, item.RemovedAt} {
 		if when != "" && !stamp(when) {
 			return errors.New("catalog item times are RFC 3339 times")
 		}
@@ -304,10 +309,10 @@ func MemberPrefix(kind, id string) string { return kind + "-" + id[:8] + "-" }
 // ValidID reports an application identity: 24 lowercase hexadecimal digits.
 func ValidID(value string) bool { return lowerHex(value, idLength) }
 
-// ValidName reports a display name: bounded, valid UTF-8, not only
-// whitespace, and free of control characters.
+// ValidName reports a display name: 1 to 200 characters of valid UTF-8 and
+// at most 800 bytes, not only whitespace, and free of control characters.
 func ValidName(value string) bool {
-	if value == "" || len(value) > maxNameBytes || !utf8.ValidString(value) {
+	if value == "" || len(value) > maxNameBytes || !utf8.ValidString(value) || utf8.RuneCountInString(value) > maxNameRunes {
 		return false
 	}
 	blank := true

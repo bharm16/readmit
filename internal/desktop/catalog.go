@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
@@ -47,6 +49,9 @@ const (
 	BackupItem      ItemKind = "backup"
 	RunnerItem      ItemKind = "runner"
 	ScheduleItem    ItemKind = "schedule"
+	// AttachmentItem is a file attached to a case. It is named by a
+	// reference like any object, and listed only as its case's attachments.
+	AttachmentItem ItemKind = "attachment"
 )
 
 var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, EnvironmentItem, ObservationItem,
@@ -149,18 +154,53 @@ type ProjectSummary struct {
 	Schema            string   `json:"schema"`
 	Cases             int      `json:"cases"`
 	InterfaceVersions []string `json:"interface_versions"`
+	// Owner is the project's default owner and Tags its own tags.
+	Owner string   `json:"owner,omitzero"`
+	Tags  []string `json:"tags"`
+	// Revisions are the declared interface revisions with the names people
+	// gave them, in declared order.
+	Revisions []InterfaceRevision `json:"revisions"`
+}
+
+// InterfaceRevision is one declared interface revision: its identity, which
+// every case assigned to it records and which never changes, the name a
+// person gave it, and whether new cases are assigned to it by default.
+type InterfaceRevision struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Default bool   `json:"default"`
 }
 
 // CaseSummary is a case's investigation state as the project records it,
 // beside what verifying its evidence found. A case the project has not
-// registered has no status or owner.
+// registered has no status or owner. Entry is the project entry that holds
+// the case's evidence, the name the case readers take; it is never a path.
+// InterfaceRevision is the identity of the revision assigned, the same value
+// as InterfaceVersion. Provenance is a marker, present only for a case whose
+// evidence is not a person's own: synthetic (generated) or variant (derived).
 type CaseSummary struct {
-	Registered       bool           `json:"registered"`
-	Status           project.Status `json:"status,omitzero"`
-	Owner            string         `json:"owner,omitzero"`
-	InterfaceVersion string         `json:"interface_version,omitzero"`
-	Evidence         string         `json:"evidence"`
-	Provenance       string         `json:"provenance,omitzero"`
+	Registered        bool           `json:"registered"`
+	Entry             string         `json:"entry"`
+	Status            project.Status `json:"status,omitzero"`
+	Owner             string         `json:"owner,omitzero"`
+	Tags              []string       `json:"tags"`
+	Incidents         []string       `json:"incidents"`
+	InterfaceVersion  string         `json:"interface_version,omitzero"`
+	InterfaceRevision string         `json:"interface_revision,omitzero"`
+	Evidence          string         `json:"evidence"`
+	Provenance        string         `json:"provenance,omitzero"`
+}
+
+// provenanceMarker is the one provenance a case row shows: synthetic for
+// generated evidence, variant for derived, and nothing for a person's own.
+func provenanceMarker(mode string) string {
+	switch mode {
+	case string(bundle.Generated):
+		return "synthetic"
+	case project.DerivedProvenance:
+		return "variant"
+	}
+	return ""
 }
 
 // TestSummary is a test's source case, its current version and the latest
@@ -507,7 +547,7 @@ func (a *App) RenameItem(request RenameRequest) ItemResult {
 		result := ItemResult{Context: request.Context}
 		name := strings.TrimSpace(request.Name)
 		if !catalog.ValidName(name) {
-			result.refuse(Failed, "a name is 1 to 200 bytes of printable text")
+			result.refuse(Failed, nameRule)
 			return result
 		}
 		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Ref, true)
@@ -548,7 +588,7 @@ func (a *App) RenameItem(request RenameRequest) ItemResult {
 
 // LocateRequest names where an object whose recorded place is missing is
 // now: the project entry that holds it, or, for a project, the folder it was
-// moved to.
+// moved to. Left empty, the host's folder dialog asks for it.
 type LocateRequest struct {
 	Context RequestContext `json:"context"`
 	Ref     ItemRef        `json:"ref"`
@@ -562,10 +602,23 @@ type LocateRequest struct {
 // same kind of object and, for a case, as the very evidence the project
 // recorded. Nothing is moved, copied or rewritten; the catalog, or for a
 // project the viewer's remembered projects, records where it is.
+//
+// A request that names no place asks the host's folder dialog for it —
+// "Locate project" or "Locate case" — once the object is known to be
+// missing; a dismissed dialog changes nothing. A case's folder is one entry
+// of the project's folder.
 func (a *App) LocateItem(request LocateRequest) ItemResult {
 	return run(a, false, true, func(ctx context.Context) ItemResult {
 		result := ItemResult{Context: request.Context}
 		if request.Ref.Kind == ProjectItem {
+			if request.Folder == "" {
+				folder, declined := a.chooseFolder(ctx, "Locate project")
+				if folder == "" {
+					result.refuse(declined.state, declined.reason)
+					return result
+				}
+				request.Folder = folder
+			}
 			return a.locateProject(ctx, request)
 		}
 		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Ref, true)
@@ -575,6 +628,23 @@ func (a *App) LocateItem(request LocateRequest) ItemResult {
 		if item.Availability != ItemMissing {
 			result.refuse(Failed, "only an object that is missing is located")
 			return result
+		}
+		if request.Entry == "" {
+			title := "Locate " + strings.ReplaceAll(string(request.Ref.Kind), "-", " ")
+			if request.Ref.Kind == VariantItem {
+				title = "Locate case"
+			}
+			folder, declined := a.chooseFolder(ctx, title)
+			if folder == "" {
+				result.refuse(declined.state, declined.reason)
+				return result
+			}
+			parent, err := filepath.EvalSymlinks(filepath.Dir(filepath.Clean(folder)))
+			if err != nil || parent != loaded.root {
+				result.refuse(Failed, "the folder chosen is not an entry of this project's folder")
+				return result
+			}
+			request.Entry = filepath.Base(filepath.Clean(folder))
 		}
 		if artifactpath.EntryName(request.Entry) != nil {
 			result.refuse(Failed, "an object is located at one entry of the project")
@@ -665,7 +735,7 @@ func (a *App) catalogItem(ctx context.Context, request RequestContext, ref ItemR
 		return nil, nil, result
 	}
 	index := loaded.document.Find(ref.ID)
-	if index < 0 || loaded.document.Items[index].Kind != string(ref.Kind) {
+	if index < 0 || loaded.document.Items[index].Kind != string(ref.Kind) || loaded.removed(loaded.document.Items[index]) {
 		result.refuse(Failed, "the project holds no such object")
 		return nil, nil, result
 	}

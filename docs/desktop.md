@@ -240,11 +240,7 @@ activated license and a role that may write, through a damaged stored copy, an
 expired session, a stopped hub and a disconnection, an approved support summary
 is downloaded and the person's notifications and searches read what the hub
 recorded, and an enrolled runner executes the saved test and a recurring
-schedule for it is installed. A project's settings are stored from the
-keyboard, refused, cancelled and left alone when another release wrote the
-document, and its editable document is read as `project show` prints it;
-recent folders are reopened after a restart and forgotten only when confirmed;
-named filters are saved, listed and selected, each drawing what
+schedule for it is installed. Named filters are saved, listed and selected, each drawing what
 `readmit index search` finds; and the guided sample imports the frozen receiver
 fixtures as the case `readmit sample capture` writes. The capture screen's SIU
 fixture completes a listen at the port it chose that `readmit timeline` reads
@@ -370,7 +366,7 @@ msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
 ```
 
 Removing the application removes the application. It never removes evidence, a
-project, or the eight local shell-state documents described under Appearance;
+project, or the seven local shell-state documents described under Appearance;
 the uninstaller does not delete those owner-only files.
 
 Continuous integration downloads the built packages onto fresh native runners,
@@ -483,14 +479,8 @@ artifacts are never reported as completed.
 | `OpenCase` | Verifies one listed entry as case evidence. |
 | `OpenProject` | Reads the project document of a folder. |
 | `OpenProjectOverview` | Re-reads the project and re-verifies every registered case and revision, as `readmit project show` does: the settings, each registered entry with its evidence state, and every note. |
-| `CreateProject` | Asks the host for the parent folder, then writes a new project, named by one folder name, through the shared operation `readmit project init` runs. Returns the new project re-read from disk. |
-| `UpdateProjectSettings` | Changes the title, defaults and declared interface versions through the shared operation `readmit project settings` runs. Returns the project re-read from disk. |
-| `RegisterCase` | Verifies one case bundle of the project through the shared reader and registers it through the shared operation `readmit project add` runs, inheriting the project defaults the registration leaves unset. Returns the project re-read from disk. |
-| `UpdateRegisteredCase` | Changes the title, owner, status, interface version, tags or linked incidents of one registered case through the shared operation `readmit project update` runs; the recorded evidence facts are out of reach. Returns the project re-read from disk. |
-| `OpenRevisions` | Reads the editable project document: its notes, drafts and recorded revisions, each revision with the identity its parent was registered under. |
-| `SaveNote` | Creates or replaces one editable note of a project. |
-| `RecentWorkspaces` | Lists previously opened folders, most recent first. |
-| `ForgetWorkspace` | Removes one folder from the recent list and leaves the folder itself untouched. |
+| `ListNotes` / `SaveNoteItem` | Lists a case's notes or the project's own, and saves one whole note through the shared operation `readmit project note` runs. |
+| `ForgetProject` | Removes one project from the projects this viewer remembers and leaves the project itself untouched. |
 | `Search` | Finds what one open workspace declares and what its project registers. |
 | `InspectOccurrence` | Verifies the grid identity again and reveals one selected occurrence, its navigable tree, escaped raw/decoded values and bounded hex bytes. |
 | `OpenGrid` | Renders one bounded window of one case through one index of it, and describes that index as `DescribeIndex` does, from the same read. |
@@ -510,10 +500,7 @@ artifacts are never reported as completed.
 | `SaveFilter` | Stores one named filter and selects it. |
 | `SelectFilter` | Records which saved filter the grid applies. |
 | `Shell` | Describes the window: regions, statuses, commands, appearance, privacy. |
-| `RecoverSession` | Restores the retained working session and reopens the run it was watching, read-only. |
 | `RecordView` | Retains the workspace, case, region and run this viewer has open. |
-| `SaveDraft` | Retains one note that has been typed and not stored yet. |
-| `DiscardDraft` | Drops one retained draft, once the note it was an edit of has been stored. |
 | `SaveEditorDraft` | Retains one editor's unstored work under an internal identity, replacing the draft it continues. |
 | `DiscardEditorDraft` | Drops one retained editor draft, once its work is stored or the person asked. |
 | `EditorDrafts` | Lists every editor draft this viewer has retained. |
@@ -566,9 +553,8 @@ artifacts are never reported as completed.
 Exactly one operation runs at a time. A second request reports `busy` rather
 than racing the first, and a finished operation always releases the slot,
 including after a failure or a cancellation, so the next request proceeds.
-`RecentWorkspaces`, `Filters`, `Shell`, `RecordView`, `SaveDraft`,
-`DiscardDraft`, `SaveEditorDraft`, `DiscardEditorDraft` and `EditorDrafts` are
-the exceptions. The first three read one small local file each — `Shell` reads
+`Filters`, `Shell`, `RecordView`, `SaveEditorDraft`,
+`DiscardEditorDraft` and `EditorDrafts` are the exceptions. The first three read one small local file each — `Shell` reads
 nothing at all — so none of them claims the slot and all stay available while
 an operation runs: the recent list, the selected filter and the command
 palette work whenever the window is open. The rest write one
@@ -585,15 +571,15 @@ reports; Settings › Security describes it.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
-`OpenRevisions`, `SaveNote`, `Search`, `OpenGrid`, `SaveFilter`,
-`SelectFilter`, `ForgetWorkspace`, `InspectOccurrence`, `Compare`, `NormalizeCompare`,
+`SaveNoteItem`, `Search`, `OpenGrid`, `SaveFilter`,
+`SelectFilter`, `ForgetProject`, `InspectOccurrence`, `Compare`, `NormalizeCompare`,
 `OpenNormalizationPolicy`, `OpenSequence`, `OpenCorrelationRules`,
 `OpenSequenceAnalysis`, `OpenCorrelationReview`, `DecideCorrelation`,
 `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
-`SaveTransformPlan`, `OpenTransformPlan`, `PreviewReduction`, `OpenReview` and
-`RecoverSession` are not, because each runs to completion under
+`SaveTransformPlan`, `OpenTransformPlan`, `PreviewReduction` and `OpenReview`
+are not, because each runs to completion under
 its own size limits once it starts. While an operation runs, the sidebar shows
 it compactly, so it stays addressable from any page; **Stop** is offered there
 only for an interruptible one, and the palette then lists *Cancel* followed by
@@ -876,7 +862,7 @@ the read. Changing the case, grid page or filter clears the occurrence selection
 and inspector, so old values cannot remain beside a new grid. Failed reads clear
 the prior inspector result and retain the grid for recovery. This bounded read
 runs to completion and cannot be cancelled. No raw or decoded value is written
-to evidence, recent folders, saved filters, browser storage or logs.
+to evidence, remembered projects, saved filters, browser storage or logs.
 
 ## Projects
 
@@ -953,7 +939,7 @@ time never stands in for one, and an unknown date is null.
 
 | Kind | Summary |
 | --- | --- |
-| Case | registered or not, investigation status and owner, interface revision, evidence state |
+| Case | its entry, registered or not, investigation status, owner, tags, incidents, interface revision, evidence state, and a synthetic or variant marker |
 | Test | source case, current version, latest run whose retained test is exactly this one |
 | Suite | included tests, environments it binds |
 | Run | address actually reached, start and completion, outcome, uncertain deliveries |
@@ -993,8 +979,12 @@ missing project with the folder whose catalog records its identity.
 `CreateNamedProject` creates a project from a name alone: a
 `readmit-project/v2` document with no interface revision declared, in a new
 folder the application names inside the remembered projects folder
-(`ChooseProjectLocation`, `ProjectLocation`). That folder is asked for once,
-asked for again when it is gone, and never created. Two projects may share a
+(`ChooseProjectLocation`, `ProjectLocation`). Create opens no dialog: the
+folder is chosen beforehand, `ProjectLocation` offers it only while it is
+still there, a folder and writable (the remembered value is kept otherwise),
+and a create without such a folder is refused with its reason. The folder is
+never created. A name is 1 to 200 characters of printable text in any script
+(at most 800 bytes). Two projects may share a
 name; they never share a folder or an identity. `OpenNamedProject` opens a
 project in any folder under the identity its catalog recorded, so a moved
 project is the same project with the same cases, tests and history; its
@@ -1033,9 +1023,12 @@ with the previous revision still current, until the same click is retried or
 because its first file was written.
 
 An editor draft of a catalog object carries the object and the revision the
-edit began from in its `item` member, so recovery returns it to that object;
-the draft store is written as `readmit-desktop-drafts/v2` only while it
-holds such a draft. A draft never holds an action review.
+edit began from in its `item` member, and `saved_at`, when the application
+last retained it, so recovery returns it to that object and lists it by
+object, time and project; the draft store is written as
+`readmit-desktop-drafts/v2` only while it holds such a draft. A draft never
+holds an action review, and restoring one resumes an editor, never a send,
+a reset or an approval.
 
 ### Reviewed actions
 
@@ -1067,14 +1060,70 @@ that one — while the call has not returned.
 The command line keeps its exact-identity approvals unchanged; the window no
 longer asks anyone to transcribe one.
 
+### Projects and cases
+
+The Cases list is `ListCatalog` of the Case kind: every case of the open
+project, registered or not, with its entry (the name `OpenCase` takes, never
+a path), status, owner, tags, incidents and interface revision, and a
+`synthetic` or `variant` marker only on a case whose evidence was generated
+or derived. A case's date is one its evidence declares or the application
+recorded when it saved the case's details, never a file's time.
+
+`SaveItem` also saves a case's details (`case`: name, status, owner, tags,
+interface revision, incidents) and a project's settings (`project`: name,
+owner, tags, and the interface revisions as a list of identity, name and
+default), each whole into the project document, with the same base revision
+and click identity as every Save: a stale base is a conflict that keeps the
+draft, the same click again is answered with the saved revision, and a
+different submission under that click is refused. The revision of a case or
+a project is a digest of what the project document records about it. Saving
+an unregistered case registers it under the identity it already had; a
+rename changes the title alone, never the entry or the evidence identity. A
+project save gives a new revision an identity of its own and keeps every
+existing one; removing a revision a case is still assigned to is refused with
+a problem naming those cases (`referring`) unless the same save reassigns
+them. A readmit-project/v1 project keeps v1's rules. The folder never moves.
+
+`RemoveCaseFromProject` records in the catalog that the case was removed and
+then removes its registration, so it is no longer listed; its files stay where
+they are. A case the project still registers is listed whatever the catalog
+records, so a removal whose second write fails leaves the case listed,
+registered and removable again, and says so. It is refused, before anything
+is written, while a note or a registered variant names the case.
+`ListNotes` and `SaveNoteItem` read and save the project's notes — a name,
+content and the case a note is about, or none for a project note — in
+`revisions.json`, the notes the project has always kept; a new note's
+identity is drawn from its click. `ListAttachments`, `AddAttachments` and
+`RemoveAttachment` keep a case's attachments: Add attachment opens the host's
+file dialog and copies each chosen file into the project's storage, at most
+32 at once and 16 MiB each, never through a symbolic link, and only to a
+case. A project's quota is decided under the same lock the copies are stored
+under; removing an attachment removes its association and keeps its copy,
+which no longer counts against adding another. Nothing opens or runs an
+attachment.
+
+`ForgetProject` removes a project from the projects this viewer remembers
+and nothing else; opening it again remembers it again, and reading one that
+was forgotten does not. `RevealItem` shows a project's folder, a case's
+evidence or an attachment's stored copy in Finder (`open -R`), Explorer
+(`explorer /select,`) or, elsewhere, the folder that holds it — a host action
+the desktop shell performs beside its dialogs, so the facade itself starts no
+program — and never answers the path to the window; an object that is not where it was recorded
+is refused with that reason. `LocateItem` with no place named asks the
+host's folder dialog for it ("Locate project", "Locate case"), and records
+only a folder that is that object; a dismissed dialog changes nothing.
+`ProjectFiles` lists by name the entries of a project that are none of its
+objects — the loose files an older release or a person left there — for the
+project's Files list.
+
 ## Notes and the editable project document
 
 A folder holding a `revisions.json` lists that entry as a `revisions` artifact
 carrying the contract it declares, located and decoded the same way. It is the
 editable side of a project: the notes and drafts a person maintains, and the
 recorded lineage of every revision derived from registered evidence.
-`OpenRevisions` returns it exactly as written, and a project that has recorded
-neither reports `empty` rather than a failure.
+`ListNotes` reads its notes exactly as written, and a project that has recorded
+none reports `empty` rather than a failure.
 
 The project overview reads it on request: **Show the editable document as
 recorded…** reads it from disk each time it is opened and shows every note and
@@ -1086,7 +1135,7 @@ the overview above it carries, which names each revision's parent but not that
 identity. A document this release cannot read is refused with its reason and
 nothing from an earlier read stands in for it.
 
-`SaveNote` writes a note into a project, and a note is working text. It is
+`SaveNoteItem` writes a note into a project, and a note is working text. It is
 stored in that editable document, beside the evidence and
 never inside it, so a UI edit cannot overwrite an import, a finalized run, a
 result, a review or a report: the same output policy that refuses every other
@@ -1282,7 +1331,7 @@ saved filter outlives the case it was made for.
 
 Saved filters are one bounded, versioned `readmit-filters/v1` document
 ([ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md)) in
-`filters.json`, beside the recent workspace list in the user configuration
+`filters.json`, beside the other shell documents in the user configuration
 directory:
 
 ```json
@@ -2085,21 +2134,27 @@ process stopped is a defect; what a send did to a receiver is unknown, and
 deciding it because a window reopened would be a lie. The shell keeps those two
 apart.
 
-Where this viewer is, and every note they have typed and not stored, live in one
-bounded, versioned `readmit-desktop-session/v1` document
+Where this viewer is lives in one bounded, versioned
+`readmit-desktop-session/v1` document
 ([ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md)) in
-`session.json`, beside the recent workspace list and the saved filters in the
+`session.json`, beside the saved filters and the remembered projects in the
 user configuration directory:
 
 ```json
-{"schema":"readmit-desktop-session/v1","view":{"workspace":"/absolute/folder","region":"evidence","case":"regression","run":"/absolute/folder/job-001"},"drafts":[{"project":"/absolute/folder","note":{"name":"triage","subject":"regression","title":"First pass","body":"still writing this"}}]}
+{"schema":"readmit-desktop-session/v1","view":{"workspace":"/absolute/folder","region":"evidence","case":"regression","run":"/absolute/folder/job-001"}}
 ```
 
-Everything else a person had not stored — the notes they were writing before
-those notes had names or titles, the test draft they were answering, the
-canonical document they were editing, the reproducer plan they were still
-adding steps to — lives in the separate editor draft store, one bounded,
-versioned `readmit-desktop-drafts/v1` document in `drafts.json` beside it:
+A session an earlier release wrote may also carry a `drafts` member, the note
+edits that release kept there. It is read past, whatever it holds, and never
+written again.
+
+Everything a person had not stored — the note they were writing, the case
+details or settings they were editing, the test draft they were answering,
+the canonical document they were editing, the reproducer plan they were still
+adding steps to — lives in the editor draft store, one bounded, versioned
+`readmit-desktop-drafts/v1` document in `drafts.json` beside it (`/v2` while a
+draft names the catalog object it edits, with `saved_at`, when it was last
+retained):
 
 ```json
 {"schema":"readmit-desktop-drafts/v1","drafts":[{"id":"32-hex-identity","kind":"note","workspace":"/absolute/folder","case":"","identity":"","content_schema":"readmit-note-draft/v1","content":{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"","body":"still writing this"}}]}
@@ -2120,14 +2175,13 @@ approval: no editor draft can express either, credentials being references
 ([ADR-0006](adr/0006-credentials-are-referenced-never-stored.md)) and an
 approval being a typed decision about bytes just read, never a document.
 
-It is separate from finalized evidence in every sense. It is written outside any
-case, run, result, review or report — the same output policy that refuses every
-other write into retained evidence refuses this one — and it is a per-viewer
-file on this machine, never part of a bundle, never in browser storage, and
-never sent anywhere. A draft is the editable note type the project document
-already holds, so working text retained here is working text
-[`project note`](project.md) and `SaveNote` can store; retaining one writes
-nothing into the project, and storing it stays a separate deliberate step.
+Both are separate from finalized evidence in every sense. They are written
+outside any case, run, result, review or report — the same output policy that
+refuses every other write into retained evidence refuses these — and each is a
+per-viewer file on this machine, never part of a bundle, never in browser
+storage, and never sent anywhere. Retaining a draft writes nothing into the
+project; storing it stays a separate deliberate step, such as a note's Save
+through `SaveNoteItem`.
 
 `RecordView` retains the open workspace, the entry selected in it, the region
 holding focus, and the durable run being watched. Retaining an editor draft
@@ -2137,37 +2191,12 @@ has actually been stored, so recovery offers back only work that is still
 unstored. A viewer retains at most 16 editor drafts, and past that bound the
 new draft is refused rather than an existing one being dropped.
 
-`RecoverSession` is what the window calls when it opens. It returns the retained
-view and every retained note draft, and when the session names a durable run it
-reopens that run through the same read-only recovery `OpenDurableRun` uses. The
-window reads it once and hands the answer to the panels that show it, so only
-one of them claims the operation slot.
-
-In the window this is two panels. **Restored after an interruption** states what
-came back — where you were, the state of the run you were watching, and every
-unstored note, each of which can be discarded — and offers **Reopen where you
-were** as the one way to go back there. Reopening is a person's own decision,
-made by pressing that button: it opens the retained folder, verifies the
-retained case the ordinary way and moves focus to the retained region, and
-nothing restores itself. What has moved, changed or become unsupported meets
-the same refusal any read meets, shown beside the listing to reopen from, so a
-draft is never bound to different evidence silently. **Write a note** is the
-editor: every keystroke is retained — one retention at a time, always of the
-newest text, from the first letter, before the note has a name or a title —
-**Store this note in the project** writes it into `revisions.json` through
-`SaveNote` and then discards the draft, and a store the project refuses leaves
-the draft retained, because text the project did not take is still unstored
-work. The test authoring, canonical editor and reproducer panels retain through
-the same store the same way, each dropping its draft only once its spec,
-export or build has actually been written. A draft may name the case or
-revision it is about; whether that subject is one the project registers is
-checked when the note is stored, not while it is being typed, because a draft
-is written before the project is opened. Starting either action in
-**Durable test runs** records that folder as the run being watched and waits for
-that record before the action runs, so a crash during a send finds the session
-already naming the folder that holds its evidence. Renaming a note while it is
-being written moves the retained draft rather than leaving one behind under the
-previous name.
+`EditorDrafts` is what recovery reads: the window lists the drafts to restore
+by object, last retained time and project, and selecting one resumes its
+editor with the draft and an unsaved marker. Restoring a draft resumes an
+editor and nothing else. A run is reopened from Runs through `OpenDurableRun`,
+the same read-only recovery the command line uses, with its actual
+uncertainty.
 
 **Recovery reads. It never resumes, restarts or resends.** A run whose
 completion was never recorded stays `interrupted`, a delivery whose effect
@@ -2177,21 +2206,19 @@ those states mean and what to check before running anything again. Bytes already
 written to a receiver stay retained and stay sent: a crash cannot retract them
 any more than a cancellation can. Executing again is `StartDurableRun`, which is
 a deliberate action and requires a new output folder, so no recovery path can
-become a resend. A run the session names but cannot verify is reported as
-unverifiable, with its retained evidence untouched; the rest of the session is
-restored regardless.
+become a resend. A run that cannot be verified is reported as unverifiable,
+with its retained evidence untouched.
 
 | What is retained | What is not |
 | --- | --- |
 | The workspace, case, region and run that were open | Anything read out of a case: message bytes, field values, decoded text |
-| Notes typed and not stored yet — from the first letter, before a note has a name or a title | Notes already stored, which are in the project's own document |
-| The test draft, canonical edit and reproducer plan a person was still editing, each under its own internal identity | A credential value, an approval, or any grant a person did not explicitly record |
+| Notes, case details, settings, the test draft, canonical edit and reproducer plan a person was still editing, each under its own internal identity | Notes already stored, which are in the project's own document; a credential value, an approval, or any grant a person did not explicitly record |
 | Nothing else | A verdict, a resumed run, or a second send |
 
 Unknown members, unknown versions, a relative folder path, a case naming
 anything but one entry of the open workspace, a region the window does not
-declare, and drafts that are unsorted, duplicated or past their bounds are all
-errors. There is no migration and no repair. A document this release cannot read
+declare, and editor drafts that are unsorted, duplicated or past their bounds
+are all errors. There is no migration and no repair. A document this release cannot read
 is reported and left exactly as written: retaining into it is refused rather
 than replacing it, and the rest of the window keeps working. It is replaced
 atomically, so a reader never observes a partial session, and an interrupted
@@ -2272,8 +2299,8 @@ project…*, *New project…* and *Project settings*.
 
 | Destination | What it holds |
 | --- | --- |
-| Projects | The recent projects, New project, Open… and the demo. |
-| Cases | The open project's cases; an open case's Messages, Timeline and Findings, with Compare, Reproduce, Create test, Reduce and Replay as its actions; Import, Capture and Observations. |
+| Projects | The projects this viewer opened, New project, Open, the demo and drafts to restore. |
+| Cases | The open project's cases, with their notes and attachments; an open case's Messages, Timeline and Findings, with Compare, Reproduce, Create test, Reduce and Replay as its actions; Import and Capture. |
 | Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios; *Baselines* is in its More menu. |
 | Runs | Run details; **Run test** and **Compare** open those flows. |
 | Environments | Targets, credential references, send policies and reset plans. |
@@ -2415,14 +2442,35 @@ action with no project open, or Cancel while nothing cancellable runs, and it
 searches command names only, never message content. Nothing matching reads
 *No commands found* with *Clear search*.
 
-The window opens on Projects: the recent projects, *New project* — a name and
-the interface versions, then the folder that will hold it in the host's own
-dialog — *Open…* for a folder that already holds a project or evidence, and
-*Try demo*, whose deterministic evidence and genuinely failing and passing
-saved tests are practice for the workflow and never a substitute for importing
-your own evidence. Licensing and connections are Settings, never the first
-screen. A folder that holds a project document opens as that project, its
-overview read at once.
+The window opens on Projects: the projects this viewer opened, newest first,
+each named by the title its project records and opened by its row; a project
+that moved stays listed with its reason and *Locate*. A row's menu holds
+*Project settings*, *Show in Finder* (*Show in folder* elsewhere) and *Remove
+from recents*, which forgets the entry and touches no file. *New project* asks
+for a name only; it goes into the remembered parent folder, which *Change*
+chooses in the host's own dialog while the sheet stays open, and the new
+project opens on its empty Cases. *Open* opens a folder that already holds a
+project or evidence, and the quiet *Try demo* opens the synthetic demo, whose
+guided steps are in Tools › Sample data. Unsaved editor work is one compact
+*Drafts to restore* item: *Review* lists each draft's object, when it was last
+edited and its project, opens its project to continue it, or discards it;
+nothing is resent or reapplied by restoring. Licensing and connections are
+Settings, never the first screen.
+
+Cases is the open project's cases as one table: Case, Status, Owner and
+Updated, newest first, with *Synthetic* or *Variant* marked only on the cases
+they describe. Status is the investigation's — Open, Investigating, Resolved
+or Closed — never a test result. *Search cases* and *Filter cases* (status,
+owner, tags) narrow the list without saving anything, and each applied term
+is a chip that removes it. A row opens its case on Messages, and Back returns
+to the list with that case selected. A row's menu holds *Edit details*,
+*Notes*, *Attachments*, *Create variant*, *Compare*, *Details* and *Remove
+from project*, whose one consequence line says the files stay on this
+computer. The project switcher's *Project settings* edits the name, owner,
+tags and named interface revisions in one sheet and opens the project's
+notes; removing a revision cases still use names those cases and asks where
+they move. The switcher's *Files* lists the project's other files, read-only.
+Observations are in Environments.
 
 `Search` navigates one open workspace. It is not the grid: it finds the things a
 workspace and its project declare, and the grid finds the occurrences inside one
@@ -2430,7 +2478,7 @@ case. It reads exactly what the listing reads —
 the contract each immediate entry declares — and, when the folder holds a project
 document, the cases that document registers: their name, title, owner, tags,
 linked incidents, status, interface version, contract, provenance and recorded
-identity. It verifies no evidence, opens nothing, records no recent folder and
+identity. It verifies no evidence, opens nothing, remembers no project and
 builds no index; it lists the folder again each time under the same bound.
 
 A result names the thing it found the way the window already names it — the
@@ -2454,8 +2502,8 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
-nowhere. The shell keeps eight separate owner-only local documents: recent
-folder paths (`readmit-desktop-recent/v1`), saved filters (`readmit-filters/v1`),
+nowhere. The shell keeps seven separate owner-only local documents: saved
+filters (`readmit-filters/v1`),
 the working session (`readmit-desktop-session/v1`), editor drafts
 (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
 edits), the projects folder and the projects opened
@@ -2538,32 +2586,17 @@ because it accepts the pinned fixture bytes and nothing else. What it answers
 is the case it wrote, verified through the reader every case is opened with.
 The guided panel offers it once the open folder is a sample workspace.
 
-## Recent workspaces
+## Opened projects
 
-A workspace that opens is recorded so it can be reopened. The list lives in one
-owner-readable file, `recent.json`, in the user configuration directory, under
-the versioned contract `readmit-desktop-recent/v1`:
-
-```json
-{"schema":"readmit-desktop-recent/v1","roots":["/absolute/folder"]}
-```
-
-It holds at most ten absolute folder paths, most recent first, with no
-duplicates. It holds nothing read out of a case: no message content, field
-values, identifiers, bundle identities, or file names inside a workspace. It is
-replaced atomically, so a reader never observes a partial list. Unknown members,
-unknown versions and relative paths are rejected; there is no migration and no
-repair. A list this release cannot read is reported and left exactly as written,
-and opening workspaces still works while it stays unreadable.
-
-Each listed folder reopens with one action. **Forget** asks first: **Forget
-it** removes that one entry through `ForgetWorkspace`, and **Keep it** or
-Escape leaves the list as it is. Forgetting touches only the list — the folder
-and everything in it stay where they are, and opening it again records it again.
-A folder the list no longer holds, because another window of the application
-forgot it, is refused and the list as it now stands is shown; a list this
-account cannot replace reports `permission_denied`, and a list this release
-cannot read is refused rather than replaced.
+The projects list is `ListCatalog` of the Project kind: every project this
+viewer opened, from `readmit-desktop-projects/v1`, by identity, folder, name
+and when it was last opened. Opening a project by name records it there, and
+so does opening a folder that holds a project whose catalog has recorded its
+identity; a folder that holds no project is remembered nowhere. **Remove from
+recents** is `ForgetProject`: it forgets that one entry, and the project, its
+folder and everything in it stay where they are. An earlier release's
+recent-folder list, `recent.json` (`readmit-desktop-recent/v1`), may still be
+in the configuration directory; this release neither reads nor writes it.
 
 ## Privacy
 
@@ -2573,13 +2606,13 @@ rendering service. Everything the window renders is bundled into the executable;
 nothing is fetched at run time. Browser storage holds nothing at all. Diagnostics
 are fixed sentences that never repeat a path, a file name, an argument, or a
 value. A note is text a person typed on this machine: it is stored in the
-project's own document, retained in the working session while it is unstored, is
+project's own document, retained in the editor draft store while it is unstored, is
 never sent anywhere, and is never kept in browser storage.
 
 The window states this rather than leaving it to be assumed. Settings › Security
 names what this product does not do and everything the shell writes outside
-evidence, which is the recent folder list, the filters a person saved, the
-working session and editor drafts they have not stored, and the commercial
+evidence, which is the projects a person opened, the filters they saved, the
+working session (where they were) and the editor drafts they have not stored, and the commercial
 destinations file they selected. A saved filter and a retained draft are
 named there rather than left to be discovered, because one holds whatever was
 typed to filter by and the other a note whose subject is the evidence beside it.

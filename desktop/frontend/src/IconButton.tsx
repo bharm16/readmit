@@ -17,7 +17,7 @@ import { useId, type ReactElement } from "react";
 /** The glyphs an icon button can carry. Each is decorative: its meaning is the
  * button's accessible name, so the shape is a second channel, never the only
  * one. */
-export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "refresh" | "more";
+export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "refresh" | "more" | "search" | "filter";
 
 const glyphs: Record<IconGlyph, ReactElement> = {
   // Circle with a question mark.
@@ -59,6 +59,19 @@ const glyphs: Record<IconGlyph, ReactElement> = {
       <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
       <circle cx="8" cy="8" r="1.3" fill="currentColor" />
       <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+    </svg>
+  ),
+  // Magnifying glass.
+  search: (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M10.5 10.5 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  ),
+  // Funnel.
+  filter: (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M2.5 3.5h11L9.5 8.5v4l-3 1.5v-5.5z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
   ),
   // Clockwise circular arrow.

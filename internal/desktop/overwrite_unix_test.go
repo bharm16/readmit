@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"syscall"
 	"testing"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
@@ -360,7 +362,8 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 		return saved{desktop.Completed, "", nil}
 	}
 	saveNote := func(app *desktop.App, folder, title string) saved {
-		result := app.SaveNote(folder, project.Note{Name: "triage", Subject: "regression", Title: title, Body: "Synthetic working theory."})
+		result := app.SaveNoteItem(desktop.NoteSaveRequest{Context: desktop.RequestContext{Project: folder}, IntentID: "note-" + strconv.Itoa(len(title)) + "-" + filepath.Base(folder),
+			Note: desktop.NoteInput{Name: title, Content: "Synthetic working theory."}})
 		return saved{result.State, result.Reason, nil}
 	}
 	createNote := func(app *desktop.App, folder, _ string) saved {
@@ -385,8 +388,8 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 		writeProject(t, root, "")
 		app := workspaceApp(t)
 		incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
-		if registered := app.RegisterCase(root, "incident", desktop.CaseRegistration{Title: "Original incident"}); registered.State != desktop.Completed {
-			t.Fatalf("register the incident: %+v", registered)
+		if _, err := operation.RegisterCase(root, "incident", operation.CaseRegistration{Title: "Original incident"}); err != nil {
+			t.Fatalf("register the incident: %v", err)
 		}
 		selected := app.EditReproducer(desktop.ReproducerRequest{Workspace: root, Case: "incident", Identity: incident.Identity,
 			Step: reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID}})
@@ -465,21 +468,15 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 				return saveResponder(app, folder, file, "outside-sink")
 			},
 			replace: func(app *desktop.App, folder, file string) saved { return saveResponder(app, folder, file, "sink") }},
-		{name: "UpdateProjectSettings", file: project.DocumentName, linkRefusal: projectUnread, create: createProject,
+		{name: "SaveItem(project)", file: project.DocumentName, linkRefusal: projectUnread, create: createProject,
 			replace: func(app *desktop.App, folder, _ string) saved {
-				title := "Retitled in the workspace"
-				result := app.UpdateProjectSettings(folder, desktop.SettingsChange{Title: &title})
-				return saved{result.State, result.Reason, nil}
-			}},
-		{name: "UpdateRegisteredCase", file: project.DocumentName, linkRefusal: projectUnread, create: createProject,
-			replace: func(app *desktop.App, folder, _ string) saved {
-				status := project.StatusResolved
-				result := app.UpdateRegisteredCase(folder, "regression", desktop.CaseChange{Status: &status})
-				return saved{result.State, result.Reason, nil}
-			}},
-		{name: "RegisterCase", file: project.DocumentName, linkRefusal: projectUnread, prepare: aCase, create: createProject,
-			replace: func(app *desktop.App, folder, _ string) saved {
-				result := app.RegisterCase(folder, "case", desktop.CaseRegistration{Title: "Registered in the workspace"})
+				opened := app.OpenNamedProject(folder)
+				if opened.Project == nil || opened.Context.ProjectID == "" {
+					return saved{opened.State, opened.Reason, nil}
+				}
+				result := app.SaveItem(desktop.SaveItemRequest{Context: opened.Context, Kind: desktop.ProjectItem, Item: opened.Project.Ref.ID,
+					BaseRevision: opened.Project.Ref.Revision, IntentID: "retitle-" + filepath.Base(folder), Draft: desktop.ItemDraft{Project: &desktop.ProjectDraft{
+						Name: "Retitled in the workspace", Owner: "integration-team", Revisions: []desktop.RevisionDraft{{ID: "siu-2.5.1-v1", Name: "siu-2.5.1-v1", Default: true}}}}})
 				return saved{result.State, result.Reason, nil}
 			}},
 		{name: "RecoverProjectDocument", file: project.DocumentName, linkRefusal: projectUnread, prepare: aRecoveryCopy, create: createProject,
@@ -487,7 +484,7 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 				result := app.RecoverProjectDocument(desktop.ProjectRecoverRequest{Project: folder, Document: project.DocumentName, Digest: earlierDigest})
 				return saved{result.State, result.Reason, nil}
 			}},
-		{name: "SaveNote", file: project.RevisionsDocumentName, linkRefusal: revisionsUnread, prepare: aProject, create: createNote,
+		{name: "SaveNoteItem", file: project.RevisionsDocumentName, linkRefusal: revisionsUnread, prepare: aProject, create: createNote,
 			replace: func(app *desktop.App, folder, _ string) saved { return saveNote(app, folder, "Workspace theory") }},
 		{name: "RegisterRevision", file: project.RevisionsDocumentName, linkRefusal: revisionsUnread, prepare: aBuiltReproducer, create: createNote,
 			replace: func(app *desktop.App, folder, _ string) saved {
@@ -562,14 +559,14 @@ func replacesALinkedDocument(t *testing.T, saves []replacingSave) {
 // The shell's own documents are written through the one replacement the shell
 // document store uses — the same one a workspace save uses — and they are read
 // by one rule: a link at a document's name is never read. So a document the
-// shell reads before it writes — the saved filters, the working session, the
-// editor drafts and the recent workspaces — reports the link and is left as it
+// shell reads before it writes — the saved filters, the working session and the
+// editor drafts — reports the link and is left as it
 // is, while a selection the person explicitly chooses is written whole,
 // replacing the link at its name. Either way the document a link led to keeps
 // its bytes.
 func TestTheShellsOwnDocumentsNeverFollowALinkAtTheirFile(t *testing.T) {
 	workspace, outside, ownState := t.TempDir(), t.TempDir(), t.TempDir()
-	readFirst := []string{"recent.json", "filters.json", "session.json", "drafts.json"}
+	readFirst := []string{"filters.json", "session.json", "drafts.json"}
 	selections := []string{"operations.json", "commercial.json", "hub.json"}
 	configuration := t.TempDir()
 	writeDocument(t, configuration, "destinations.json",
@@ -599,8 +596,6 @@ func TestTheShellsOwnDocumentsNeverFollowALinkAtTheirFile(t *testing.T) {
 		completes("RecordView", recorded.State, recorded.Reason)
 		drafted := app.SaveEditorDraft(editorDraft("note", desktop.NoteDraftSchema, unfinishedNote))
 		completes("SaveEditorDraft", drafted.State, drafted.Reason)
-		opened := app.OpenWorkspace(t.TempDir())
-		completes("OpenWorkspace", opened.State, opened.Reason)
 		chosen := app.ChooseCommercialDestinations()
 		completes("ChooseCommercialDestinations", chosen.State, chosen.Reason)
 		hub := app.SelectHubConfig(hubConfig)
@@ -618,7 +613,7 @@ func TestTheShellsOwnDocumentsNeverFollowALinkAtTheirFile(t *testing.T) {
 	before := bytesUnder(t, outside)
 
 	// The second shell refuses to read a document through the link at its
-	// name, so nothing replaces the four documents it reads before it writes,
+	// name, so nothing replaces the three documents it reads before it writes,
 	// and each is reported rather than followed. The three selections are
 	// written whole on the person's explicit choice, replacing their links.
 	app := shell(ownState)
@@ -630,9 +625,6 @@ func TestTheShellsOwnDocumentsNeverFollowALinkAtTheirFile(t *testing.T) {
 	}
 	if drafted := app.SaveEditorDraft(editorDraft("note", desktop.NoteDraftSchema, unfinishedNote)); drafted.State != desktop.Failed || drafted.Reason == "" {
 		t.Errorf("a linked editor draft store was read or replaced: %+v", drafted)
-	}
-	if listed := app.RecentWorkspaces(); listed.State != desktop.Failed || listed.Reason == "" {
-		t.Errorf("a linked recent workspace list was read: %+v", listed)
 	}
 	chosen := app.ChooseCommercialDestinations()
 	completes("ChooseCommercialDestinations", chosen.State, chosen.Reason)

@@ -258,8 +258,8 @@ var (
 // person configured and started. The operations are disclosed per activity —
 // destination, data, authorization — because a blanket claim would hide the
 // durable execution this build genuinely performs. The things the shell writes
-// outside evidence are the recent folder list, the filters a person saved and
-// the working session they have not stored. A saved filter holds what they
+// outside evidence are the projects a person opened, the filters they saved,
+// where they were and the editor work they have not stored. A saved filter holds what they
 // typed to filter by, and a retained draft holds a note they were writing;
 // both are the same patient data the evidence beside them holds, so the
 // window names them here rather than leaving them to be discovered.
@@ -275,12 +275,11 @@ var privacyStatus = Privacy{
 	Kept: []string{
 		"explicit correlation decisions, including analyst and reason text you enter, in separate owner-readable readmit-correlation-review/v1 directories",
 		"the explicitly selected operation policy path, signed entitlement, local UTC high-water and runner admission records; no evidence is stored in them",
-		"the folders you have opened, as paths only, in readmit-desktop-recent/v1",
 		"the filters you have saved, including any value you typed to filter by, in readmit-filters/v1",
-		"the notes you had not stored yet and where you were, in readmit-desktop-session/v1",
+		"where you were — the folder, case, region and run you had open — in readmit-desktop-session/v1",
 		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1, or readmit-desktop-drafts/v2 once a draft names the object it edits",
 		"the folder new projects are created in and each project you have opened, as its identity, folder and name, in readmit-desktop-projects/v1",
-		"inside each project, beside its evidence, the names, identities and dates of its objects and the files the application saved for them, in its own readmit-catalog/v1 catalog",
+		"inside each project, beside its evidence, the names, identities and dates of its objects and the files the application saved for them, in its own readmit-catalog/v1 catalog, and copies of the files you attached to its cases with their names, in readmit-attachments/v1",
 		"the commercial destinations file you selected, as a path only, in readmit-desktop-commercial-selection/v1",
 		"the customer hub configuration file you selected, as a path only, in readmit-desktop-hub-selection/v1",
 	},

@@ -2,7 +2,7 @@
 // and the views inside a page. Every page stays mounted while another is
 // shown, but only the shown one is in the accessibility tree, so a test goes
 // to the page that holds a control before asking for it by role.
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 
 /** The sidebar's destinations, as the window labels them. */
@@ -94,14 +94,12 @@ export async function openListedCase(
 ): Promise<void> {
   await goTo(user, "Cases");
   // Out of a case flow and the case, back to the list.
-  for (let step = 0; step < 3 && !screen.queryByRole("button", { name: `Open case ${name}` }); step++) {
+  for (let step = 0; step < 3 && !screen.queryByRole("table", { name: "Cases" }); step++) {
     const back = page().queryAllByRole("button", { name: /^Back to / })[0];
     if (!back) break;
     await user.click(back);
   }
-  await user.click(
-    await screen.findByRole("button", { name: `Open case ${name}` }),
-  );
+  await user.click(await findCaseRow(name));
 }
 
 export async function openCaseFlow(
@@ -116,4 +114,24 @@ export async function openCaseFlow(
   }
   await user.click(screen.getByRole("button", { name: "More case actions" }));
   await user.click(screen.getByRole("menuitem", { name: action }));
+}
+
+/** One row of the open project's Cases table: the case named, or the first. */
+export function caseRow(name?: string): HTMLElement {
+  const rows = within(screen.getByRole("table", { name: "Cases" }))
+    .getAllByRole("row")
+    .filter((row) => row.hasAttribute("data-row-id"));
+  const row = name === undefined ? rows[0] : rows.find((candidate) => candidate.getAttribute("aria-label") === name);
+  if (!row) throw new Error(`the Cases table lists no ${name ?? "case"}`);
+  return row;
+}
+
+/** A row of the Cases table once the list has been read. */
+export async function findCaseRow(name?: string): Promise<HTMLElement> {
+  await screen.findByRole("table", { name: "Cases" });
+  let row: HTMLElement | undefined;
+  await waitFor(() => {
+    row = caseRow(name);
+  });
+  return row!;
 }

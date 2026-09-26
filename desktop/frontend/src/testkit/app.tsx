@@ -11,10 +11,10 @@ import type { FacadeHandlers } from "./wails";
 import type { Vocabulary } from "../bindings";
 import { VocabularyContext } from "../vocabulary";
 import {
+  catalogOfListing,
   disclosureStatusResult,
   filtersResult,
   guideResult,
-  recentResult,
   sessionStored,
   shellResult,
   vocabularyFixture,
@@ -33,9 +33,7 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     // The window reads these on start; the journeys below replace the ones
     // they are about.
     Shell: () => shellResult(),
-    RecentWorkspaces: () => recentResult([]),
     Filters: () => filtersResult(),
-    RecoverSession: () => ({ state: "empty" }),
     EditorDrafts: () => ({ state: "empty" }),
     OperationStatus: () => ({ state: "empty", selected: false, author_seats: 0, runner_instances: 0 }),
     CommercialStatus: () => ({ state: "empty" }),
@@ -45,8 +43,6 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     // Retaining where the viewer is and dropping a stored draft answer
     // quietly unless a test is about them.
     RecordView: () => sessionStored,
-    SaveDraft: () => sessionStored,
-    DiscardDraft: () => sessionStored,
     SaveEditorDraft: () => ({ state: "completed" }),
     DiscardEditorDraft: () => ({ state: "completed" }),
     Cancel: async () => {},
@@ -56,6 +52,12 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     Guide: () => guideResult("sample", 0),
     ...handlers,
   });
+  // The catalog lists the cases of the folder the window last opened, the way
+  // the facade reads them from the same listing, unless a test arranges its
+  // own answer.
+  if (!handlers.ListCatalog) {
+    facade.reply({ ListCatalog: (query) => catalogOfListing(query, facade) });
+  }
   render(
     <StrictMode>
       <App />

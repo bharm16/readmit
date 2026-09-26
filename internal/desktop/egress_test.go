@@ -165,17 +165,15 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 		t.Fatalf("shell: %+v", shell)
 	}
 	for name, state := range map[string]desktop.State{
-		"recent workspaces": second.RecentWorkspaces().State,
-		"filters":           second.Filters().State,
-		"operation status":  second.OperationStatus().State,
+		"filters":          second.Filters().State,
+		"operation status": second.OperationStatus().State,
 	} {
 		if state != desktop.Completed && state != desktop.Empty {
 			t.Errorf("%s at startup: %s", name, state)
 		}
 	}
-	recovery := second.RecoverSession()
-	if recovery.State != desktop.Completed || recovery.Session == nil || recovery.Run == nil {
-		t.Fatalf("recovery: %+v", recovery)
+	if reopened := second.OpenDurableRun(filepath.Join(resolved(t, workspace), "run")); reopened.State != desktop.Completed || reopened.Run == nil {
+		t.Fatalf("reopening the run: %+v", reopened)
 	}
 	if drafts := second.EditorDrafts(); drafts.State != desktop.Completed || len(drafts.Drafts) != 1 {
 		t.Fatalf("drafts: %+v", drafts)
@@ -254,7 +252,7 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 }
 
 // ownerOnly requires the shell's state folder and every document in it to be
-// private to the account that runs the window, and all six documents it
+// private to the account that runs the window, and all five documents it
 // writes on the way here to exist.
 func ownerOnly(t *testing.T, state string) {
 	t.Helper()
@@ -262,7 +260,7 @@ func ownerOnly(t *testing.T, state string) {
 	if err != nil || info.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("the shell state folder is not private: %v %v", info.Mode(), err)
 	}
-	for _, name := range []string{"recent.json", "session.json", "drafts.json", "operations.json", "commercial.json", "hub.json"} {
+	for _, name := range []string{"session.json", "drafts.json", "operations.json", "commercial.json", "hub.json"} {
 		info, err := os.Lstat(filepath.Join(state, name))
 		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
 			t.Errorf("%s is not a private regular file: %v %v", name, info, err)

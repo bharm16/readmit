@@ -55,7 +55,7 @@ process, and its evidence is the file that establishes it.
 | The desktop shell is a separate module, in no CLI archive | [docs/desktop.md](../docs/desktop.md), [docs/adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md](../docs/adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md) | `TestCommandLineReleaseNeverReachesTheDesktopShell`, `TestDesktopDependenciesStayOutOfTheReleasedModule` |
 | No installer, service, update check, account or entitlement is required | [README.md](../README.md), [docs/license.md](../docs/license.md) | `TestExpiredEntitlementKeepsEvidenceReadableAndExportable` |
 | Contract versions a newer executable does not read are refused, never migrated | [docs/adr/0003-specs-are-strict-json-with-typed-operators.md](../docs/adr/0003-specs-are-strict-json-with-typed-operators.md), [docs/index.md](../docs/index.md) | `TestAnIndexOfOtherEvidenceAndAnExpiredOneAreBothRefused`, `TestProjectRevisionsRecoveryAndUnsupportedVersion` |
-| The desktop shell keeps three named local documents | [docs/desktop.md](../docs/desktop.md), [docs/stack.md](../docs/stack.md) | `TestRecentWorkspacesRecordFoldersAndNoEvidence` |
+| The desktop shell keeps its named local documents in the user configuration folder, with no evidence | [docs/desktop.md](../docs/desktop.md), [docs/stack.md](../docs/stack.md) | `TestDefaultShellDocumentsStayInsideTheUserConfigurationDirectory`, `TestOpeningAFolderRemembersTheProjectItHolds` |
 
 ## workflows.html
 
@@ -125,7 +125,7 @@ process, and its evidence is the file that establishes it.
 | An offline entitlement cannot see a later revocation | [docs/license.md](../docs/license.md) | `TestLicenseRefusalsAreNamedAndPrivate` |
 | Discarding a package is unlinking | [docs/protect.md](../docs/protect.md) | `TestProtectDiscardStatesWhatRemovingAPackageDoesNotEstablish` |
 | Bounds table | [README.md](../README.md), [docs/index.md](../docs/index.md), [docs/backup.md](../docs/backup.md), [docs/corpus.md](../docs/corpus.md), [docs/source.md](../docs/source.md), [docs/collect.md](../docs/collect.md) | `TestIndexRetainsNothingNobodyDeclared`, `TestCorpusScanRendersOneWindowAndNamesTheCaseBoundsItIsPast`, `TestCollectExecutableBoundsFrameSizeWithoutDiscardingEvidence` |
-| Privacy posture | [README.md](../README.md), [docs/stack.md](../docs/stack.md), [docs/secret.md](../docs/secret.md), [docs/desktop.md](../docs/desktop.md) | `TestErrorsAreBoundedAndNeverEchoPayloadOrPaths`, `TestSecretReferencesAreEditedWithoutEverRenderingACredential`, `TestRecentWorkspacesRecordFoldersAndNoEvidence` |
+| Privacy posture | [README.md](../README.md), [docs/stack.md](../docs/stack.md), [docs/secret.md](../docs/secret.md), [docs/desktop.md](../docs/desktop.md) | `TestErrorsAreBoundedAndNeverEchoPayloadOrPaths`, `TestSecretReferencesAreEditedWithoutEverRenderingACredential`, `TestOpenedProjectCarriesNoMessageContent` |
 | Owner gates | [docs/release-acceptance.md](../docs/release-acceptance.md), [docs/product-decisions.md](../docs/product-decisions.md) | status |
 
 ## samples.html

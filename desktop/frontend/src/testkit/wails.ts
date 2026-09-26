@@ -88,6 +88,9 @@ export class Parked {
 export class FacadeStub {
   readonly calls: StubCall[] = [];
   private handlers: FacadeHandlers = {};
+  /** The newest answer each method gave, for defaults that follow what the
+   * window was last told. */
+  readonly answered = new Map<string, unknown>();
 
   /** Replaces or adds answers between phases of one test. */
   reply(handlers: FacadeHandlers): void {
@@ -100,6 +103,11 @@ export class FacadeStub {
     const parked = new Parked();
     this.reply({ [method]: () => parked.arrive() } as FacadeHandlers);
     return parked;
+  }
+
+  /** Whether the test installed an answer for a method. */
+  answers<M extends keyof Facade>(method: M): boolean {
+    return this.handlers[method] !== undefined;
   }
 
   /** Every recorded call of one method, oldest first. */
@@ -137,7 +145,10 @@ export class FacadeStub {
               return Promise.reject(new UnhandledMethod(method));
             }
             try {
-              return Promise.resolve(handler(...args));
+              return Promise.resolve(handler(...args)).then((answer) => {
+                stub.answered.set(method, answer);
+                return answer;
+              });
             } catch (failure) {
               return Promise.reject(failure);
             }

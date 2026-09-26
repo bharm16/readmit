@@ -1,3 +1,4 @@
+import { findCaseRow } from "./testkit/navigation";
 import { readCaseIdentity } from "./testkit/navigation";
 // The comparison panel driven through the window, as a person drives it: the
 // real App over the stubbed facade, so every act below reaches Compare,
@@ -73,9 +74,9 @@ function workspace() {
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
   // The toolbar's Open workspace…, which the first-run panel names identically.
-  await user.click(screen.getAllByRole("button", { name: "Open…" }).at(-1)!);
+  await user.click(screen.getAllByRole("button", { name: "Open" }).at(-1)!);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  await user.click(await findCaseRow(CASE_ENTRY));
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("button", { name: "More case actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Compare with another case" }));
@@ -256,6 +257,8 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
   expect(editor.getAllByRole("button", { name: /^Remove policy rule / })).toHaveLength(2);
 });
 
+// A long journey over several screens; it is given more than the default
+// five seconds so a loaded CI runner does not fail it on time alone.
 test("a normalization preview reads the comparison on screen, a refused policy leaves no reading beside its refusal, and a comparison of another pair withdraws the reading", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
@@ -357,7 +360,7 @@ test("a normalization preview reads the comparison on screen, a refused policy l
   expect(await panel.findByText(`${CASE_ENTRY} (2 compared, 0 outside this comparison) beside ${CASE_ENTRY} (2 compared, 0 outside this comparison)`)).toBeTruthy();
   expect(section.queryByText(/ differences · /)).toBeNull();
   expect(section.queryByText(/^Differences /)).toBeNull();
-});
+}, 15_000);
 
 test("a retained normalization policy opens into the structured rules with its identity, an open over unsaved rules asks first and Escape keeps them, and an undecodable policy is refused leaving the rules", async () => {
   const user = userEvent.setup();

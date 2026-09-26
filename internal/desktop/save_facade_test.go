@@ -52,6 +52,7 @@ func observationDraft(t *testing.T, scope string) *desktop.ObservationDraft {
 func namedProject(t *testing.T) (*desktop.App, desktop.RequestContext) {
 	t.Helper()
 	app := newApp(t, &chooser{folder: t.TempDir()})
+	app.ChooseProjectLocation()
 	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
 	if created.State != desktop.Completed {
 		t.Fatalf("create: %+v", created)

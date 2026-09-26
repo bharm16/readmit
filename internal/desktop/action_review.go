@@ -640,7 +640,7 @@ func (a *App) scoped(ctx context.Context, request RequestContext, refs []ItemRef
 	var records []catalog.Item
 	for _, ref := range refs {
 		index := loaded.document.Find(ref.ID)
-		if index < 0 || loaded.document.Items[index].Kind != string(ref.Kind) {
+		if index < 0 || loaded.document.Items[index].Kind != string(ref.Kind) || loaded.removed(loaded.document.Items[index]) {
 			return nil, nil, nil, refusal{Failed, "the project holds no such object"}
 		}
 		item := loaded.read(loaded.document.Items[index])

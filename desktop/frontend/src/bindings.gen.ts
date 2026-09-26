@@ -246,6 +246,29 @@ export interface AssessedTest {
   impact: ProfileVersionImpact;
 }
 
+/** internal/desktop.Attachment */
+export interface Attachment {
+  id: string;
+  name: string;
+  type: string;
+  added_at: string | null;
+}
+
+/** internal/desktop.AttachmentRemoveRequest */
+export interface AttachmentRemoveRequest {
+  context: RequestContext;
+  case: ItemRef;
+  id: string;
+}
+
+/** internal/desktop.AttachmentsResult */
+export interface AttachmentsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  attachments: Attachment[];
+}
+
 /** internal/desktop.AuthoredTransformPlan */
 export interface AuthoredTransformPlan {
   output: string;
@@ -588,14 +611,14 @@ export interface CaptureSessionResult {
   ledger?: FixtureLedger;
 }
 
-/** internal/desktop.CaseChange */
-export interface CaseChange {
-  title?: string;
+/** internal/desktop.CaseDraft */
+export interface CaseDraft {
+  name: string;
+  status: CaseStatus;
   owner?: string;
-  status?: CaseStatus;
-  interface_version?: string;
-  tags?: string[];
-  incidents?: string[];
+  tags: string[];
+  interface_revision?: string;
+  incidents: string[];
 }
 
 /** internal/desktop.Case */
@@ -611,16 +634,6 @@ export interface CaseEvidence {
   unparsed: number;
 }
 
-/** internal/desktop.CaseRegistration */
-export interface CaseRegistration {
-  title?: string;
-  owner?: string;
-  status?: CaseStatus;
-  interface_version?: string;
-  tags?: string[];
-  incidents?: string[];
-}
-
 /** internal/desktop.CaseResult */
 export interface CaseResult {
   state: State;
@@ -634,9 +647,13 @@ export type CaseStatus = "open" | "investigating" | "resolved" | "closed";
 /** internal/desktop.CaseSummary */
 export interface CaseSummary {
   registered: boolean;
+  entry: string;
   status?: CaseStatus;
   owner?: string;
+  tags: string[];
+  incidents: string[];
   interface_version?: string;
+  interface_revision?: string;
   evidence: string;
   provenance?: string;
 }
@@ -1319,12 +1336,6 @@ export interface DisclosureStatusResult {
   states?: DisclosureState[];
 }
 
-/** internal/desktop.Draft */
-export interface Draft {
-  project: string;
-  note: ProjectNote;
-}
-
 /** internal/desktop.DraftItem */
 export interface DraftItem {
   project_id: string;
@@ -1468,6 +1479,7 @@ export interface EditorDraft {
   content_schema: string;
   content: unknown;
   item?: DraftItem;
+  saved_at?: string;
 }
 
 /** internal/desktop.EditorDraftsResult */
@@ -1740,6 +1752,7 @@ export interface FieldMetadata {
 export interface FieldProblem {
   field: string;
   problem: string;
+  referring?: Referrer[];
 }
 
 /** internal/hl7.State */
@@ -2704,6 +2717,13 @@ export interface InstalledLicenseView {
   current_format: boolean;
 }
 
+/** internal/desktop.InterfaceRevision */
+export interface InterfaceRevision {
+  id: string;
+  name: string;
+  default: boolean;
+}
+
 /** internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.profileImportOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
 export type InterruptibleOperation =
   | "capture"
@@ -2734,6 +2754,8 @@ export interface ItemDraft {
   environment?: Target;
   test?: TestDraftDocument;
   observation?: ObservationDraft;
+  case?: CaseDraft;
+  project?: ProjectDraft;
 }
 
 /** internal/desktop.ItemKind */
@@ -2753,7 +2775,8 @@ export type ItemKind =
   | "variant"
   | "backup"
   | "runner"
-  | "schedule";
+  | "schedule"
+  | "attachment";
 
 /** internal/desktop.ItemRef */
 export interface ItemRef {
@@ -3184,7 +3207,6 @@ export interface MigrationPreviewResult {
 /** internal/desktop.NewProjectRequest */
 export interface NewProjectRequest {
   name: string;
-  choose_location?: boolean;
 }
 
 /** internal/desktop.Normalization */
@@ -3337,6 +3359,45 @@ export interface NormalizeResult {
   state: State;
   reason?: string;
   normalization?: Normalization;
+}
+
+/** internal/desktop.NoteInput */
+export interface NoteInput {
+  id?: string;
+  name: string;
+  content: string;
+  case?: ItemRef;
+}
+
+/** internal/desktop.NoteItem */
+export interface NoteItem {
+  id: string;
+  name: string;
+  content: string;
+  case?: ItemRef;
+  updated_at: string | null;
+}
+
+/** internal/desktop.NoteSaveRequest */
+export interface NoteSaveRequest {
+  context: RequestContext;
+  intent_id: string;
+  note: NoteInput;
+}
+
+/** internal/desktop.NotesRequest */
+export interface NotesRequest {
+  context: RequestContext;
+  case?: ItemRef;
+}
+
+/** internal/desktop.NotesResult */
+export interface NotesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  notes: NoteItem[];
+  saved?: NoteItem;
 }
 
 /** internal/operation.ObservationAbsenceSummary */
@@ -4384,7 +4445,37 @@ export interface ProjectDocument {
   schema: string;
   settings: ProjectSettings;
   interface_versions: string[];
+  interface_version_names?: ProjectVersionName[];
   cases: ProjectCase[];
+}
+
+/** internal/desktop.ProjectDraft */
+export interface ProjectDraft {
+  name: string;
+  owner?: string;
+  tags: string[];
+  revisions: RevisionDraft[];
+  reassign?: Reassignment[];
+}
+
+/** internal/desktop.ProjectFile */
+export interface ProjectFile {
+  name: string;
+  kind: Kind;
+}
+
+/** internal/desktop.ProjectFilesResult */
+export interface ProjectFilesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  files: ProjectFile[];
+}
+
+/** internal/desktop.ProjectForgetResult */
+export interface ProjectForgetResult {
+  state: State;
+  reason?: string;
 }
 
 /** internal/desktop.ProjectLocationResult */
@@ -4409,13 +4500,6 @@ export interface ProjectOpenResult {
   context: RequestContext;
   recorded: boolean;
   project?: CatalogItem;
-}
-
-/** internal/project.Operation */
-export interface ProjectOperation {
-  name: string;
-  parent: string;
-  parent_identity: string;
 }
 
 /** internal/desktop.ProjectOverview */
@@ -4500,27 +4584,12 @@ export interface ProjectResult {
   project?: ProjectDocument;
 }
 
-/** internal/project.Revision */
-export interface ProjectRevision {
-  name: string;
-  identity: string;
-  schema: string;
-  provenance: string;
-  operation: ProjectOperation;
-}
-
-/** internal/project.Revisions */
-export interface ProjectRevisions {
-  schema: string;
-  notes: ProjectNote[];
-  revisions: ProjectRevision[];
-}
-
 /** internal/project.Settings */
 export interface ProjectSettings {
   title: string;
   default_owner?: string;
   default_interface_version?: string;
+  tags?: string[];
 }
 
 /** internal/desktop.ProjectSummary */
@@ -4529,6 +4598,15 @@ export interface ProjectSummary {
   schema: string;
   cases: number;
   interface_versions: string[];
+  owner?: string;
+  tags: string[];
+  revisions: InterfaceRevision[];
+}
+
+/** internal/project.VersionName */
+export interface ProjectVersionName {
+  version: string;
+  name: string;
 }
 
 /** internal/desktop.PromotionActionOptions */
@@ -4681,6 +4759,12 @@ export interface RawInspectionResult {
   inspection?: RawInspection;
 }
 
+/** internal/desktop.Reassignment */
+export interface Reassignment {
+  from: string;
+  to?: string;
+}
+
 /** internal/desktop.ReceiverFaultVocabulary */
 export interface ReceiverFaultVocabulary {
   actions: CollectionFaultAction[];
@@ -4726,22 +4810,6 @@ export interface ReceiverPolicyResult {
   policy?: ReceiverPolicy;
   policy_file?: string;
   choices?: ReceiverPolicyChoices;
-}
-
-/** internal/desktop.RecentResult */
-export interface RecentResult {
-  state: State;
-  reason?: string;
-  roots: string[];
-}
-
-/** internal/desktop.RecoveryResult */
-export interface RecoveryResult {
-  state: State;
-  reason?: string;
-  session?: Session;
-  run?: DurableRunSummary;
-  run_reason?: string;
 }
 
 /** internal/redact.FieldRule */
@@ -5060,6 +5128,12 @@ export interface ReexecutionSendRequest {
 
 /** internal/desktop.ReferenceKind */
 export type ReferenceKind = "acknowledgement" | "link" | "collision" | "unsupported";
+
+/** internal/desktop.Referrer */
+export interface Referrer {
+  ref: ItemRef;
+  name: string;
+}
 
 /** internal/desktop.Region */
 export interface Region {
@@ -5556,6 +5630,13 @@ export interface RetirementPreviewResult {
   preview?: RetirementPreview;
 }
 
+/** internal/desktop.RevealResult */
+export interface RevealResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+}
+
 /** internal/desktop.Review */
 export interface Review {
   name: string;
@@ -5662,20 +5743,19 @@ export type ReviewedOutcome =
   | "refused"
   | "cancelled";
 
+/** internal/desktop.RevisionDraft */
+export interface RevisionDraft {
+  id?: string;
+  name: string;
+  default: boolean;
+}
+
 /** internal/desktop.RevisionRegistration */
 export interface RevisionRegistration {
   workspace: string;
   name: string;
   parent: string;
   source?: string;
-}
-
-/** internal/desktop.RevisionsResult */
-export interface RevisionsResult {
-  state: State;
-  reason?: string;
-  root?: string;
-  revisions?: ProjectRevisions;
 }
 
 /** internal/desktop.RoundTripRequest */
@@ -6841,7 +6921,6 @@ export interface SequenceSummary {
 export interface Session {
   schema: string;
   view: View;
-  drafts: Draft[];
 }
 
 /** internal/desktop.SessionResult */
@@ -6849,14 +6928,6 @@ export interface SessionResult {
   state: State;
   reason?: string;
   session?: Session;
-}
-
-/** internal/desktop.SettingsChange */
-export interface SettingsChange {
-  title?: string;
-  default_owner?: string;
-  default_interface_version?: string;
-  declare_versions?: string[];
 }
 
 /** internal/desktop.Shell */
@@ -8123,6 +8194,7 @@ export interface WorkspaceResult {
 export interface Facade {
   ActivateLicense(request: LicenseActivateRequest): Promise<InstalledLicenseResult>;
   ActivateOperations(): Promise<OperationResult>;
+  AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
   ApproveSuitePromotion(request: SuitePromotionApproveRequest): Promise<SuitePromotionResult>;
@@ -8175,7 +8247,6 @@ export interface Facade {
   CorpusProgress(): Promise<CorpusProgressResult>;
   CreateLicenseActivation(request: LicenseActivationRequest): Promise<OperationResult>;
   CreateNamedProject(request: NewProjectRequest): Promise<ProjectOpenResult>;
-  CreateProject(name: string, title: string, owner: string, versions: string[]): Promise<ProjectOverviewResult>;
   CreateProjectBackup(request: BackupCreateRequest): Promise<BackupResult>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
   DeactivateLicense(): Promise<InstalledLicenseResult>;
@@ -8185,7 +8256,6 @@ export interface Facade {
   DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
   DiagnoseHub(): Promise<HubDiagnosisResult>;
   DiagnoseSource(request: SourceWorkRequest): Promise<SourceAccessResult>;
-  DiscardDraft(projectRoot: string, name: string): Promise<SessionResult>;
   DiscardEditorDraft(id: string): Promise<EditorDraftsResult>;
   DiscardIncompleteSave(request: IncompleteSaveRequest): Promise<CatalogResult>;
   DiscardProtectedPackage(request: ProtectionDiscardRequest): Promise<ProtectionDiscardResult>;
@@ -8215,7 +8285,7 @@ export interface Facade {
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   Filters(): Promise<FiltersResult>;
   FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
-  ForgetWorkspace(root: string): Promise<RecentResult>;
+  ForgetProject(id: string): Promise<ProjectForgetResult>;
   GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
   GenerateScenario(request: ScenarioGenerateRequest): Promise<ScenarioGenerateResult>;
   GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
@@ -8237,11 +8307,13 @@ export interface Facade {
   InspectRawFile(request: RawInspectionRequest): Promise<RawInspectionResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
+  ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
   ListHubNotifications(project: string): Promise<HubReviewsResult>;
   ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
   ListHubReviews(project: string): Promise<HubReviewsResult>;
+  ListNotes(request: NotesRequest): Promise<NotesResult>;
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
@@ -8271,7 +8343,6 @@ export interface Facade {
   OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
   OpenProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
-  OpenRevisions(path: string): Promise<RevisionsResult>;
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   OpenScenario(workspace: string, entry: string): Promise<ScenarioDocumentResult>;
   OpenScenarioLibrary(workspace: string, entry: string): Promise<ScenarioLibraryResult>;
@@ -8307,6 +8378,7 @@ export interface Facade {
   PreviewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult>;
   PreviewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
+  ProjectFiles(request: ItemRequest): Promise<ProjectFilesResult>;
   ProjectLocation(): Promise<ProjectLocationResult>;
   PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
   ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
@@ -8322,15 +8394,14 @@ export interface Facade {
   ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
   ReadSourceRegistration(workspace: string, sourceFile: string): Promise<SourceRegistrationResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
-  RecentWorkspaces(): Promise<RecentResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
   RecordView(view: View): Promise<SessionResult>;
   RecoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult>;
-  RecoverSession(): Promise<RecoveryResult>;
   ReexecuteReviewedEvidence(request: ReexecutionSendRequest): Promise<ReexecutionResult>;
-  RegisterCase(path: string, name: string, registration: CaseRegistration): Promise<ProjectOverviewResult>;
   RegisterRevision(request: RevisionRegistration): Promise<ProjectOverviewResult>;
   ReleaseOperations(): Promise<OperationResult>;
+  RemoveAttachment(request: AttachmentRemoveRequest): Promise<AttachmentsResult>;
+  RemoveCaseFromProject(request: ItemRequest): Promise<ItemResult>;
   RemoveSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
   RenameItem(request: RenameRequest): Promise<ItemResult>;
   RenewLicenseDocument(): Promise<OperationResult>;
@@ -8339,6 +8410,7 @@ export interface Facade {
   RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
   ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
   RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
+  RevealItem(request: ItemRequest): Promise<RevealResult>;
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
   ReviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult>;
@@ -8352,7 +8424,6 @@ export interface Facade {
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
   SaveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult>;
   SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
-  SaveDraft(draft: Draft): Promise<SessionResult>;
   SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;
   SaveFilter(filter: Filter): Promise<FiltersResult>;
   SaveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult>;
@@ -8360,7 +8431,7 @@ export interface Facade {
   SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
   SaveItem(request: SaveItemRequest): Promise<SaveItemResult>;
   SaveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult>;
-  SaveNote(path: string, note: ProjectNote): Promise<RevisionsResult>;
+  SaveNoteItem(request: NoteSaveRequest): Promise<NotesResult>;
   SaveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult>;
   SaveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult>;
   SaveProfile(request: ProfileSaveRequest): Promise<LocalProfileResult>;
@@ -8411,8 +8482,6 @@ export interface Facade {
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
   TestSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretTestResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
-  UpdateProjectSettings(path: string, change: SettingsChange): Promise<ProjectOverviewResult>;
-  UpdateRegisteredCase(path: string, name: string, change: CaseChange): Promise<ProjectOverviewResult>;
   UpgradeProfilePin(request: ProfileUpgradePinRequest): Promise<ProfileUpgradePinResult>;
   UploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult>;
   ValidateAssertionSet(document: string): Promise<CanonicalAssertionResult>;
