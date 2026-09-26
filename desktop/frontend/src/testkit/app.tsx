@@ -3,11 +3,13 @@
 // on start answered by default. A test replaces any of them by naming the
 // handler; anything it neither names nor drives stays unanswered and rejects,
 // so a journey cannot pass on a call the test never arranged.
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import App from "../App";
 import { installFacade } from "./wails";
 import type { FacadeHandlers } from "./wails";
+import type { Vocabulary } from "../bindings";
+import { VocabularyContext } from "../vocabulary";
 import {
   disclosureStatusResult,
   filtersResult,
@@ -15,7 +17,16 @@ import {
   recentResult,
   sessionStored,
   shellResult,
+  vocabularyFixture,
 } from "./fixtures";
+
+/** A wrapper for a panel rendered on its own: the vocabulary the facade
+ * publishes in the window's description, provided as the window provides it. */
+export function vocabularyWrapper(vocabulary: Vocabulary = vocabularyFixture()) {
+  return function WithVocabulary({ children }: { children: ReactNode }) {
+    return <VocabularyContext.Provider value={vocabulary}>{children}</VocabularyContext.Provider>;
+  };
+}
 
 export async function renderApp(handlers: FacadeHandlers = {}) {
   const facade = installFacade({

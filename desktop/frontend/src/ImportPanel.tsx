@@ -5,10 +5,15 @@ import {
   commitImport,
   previewImport,
   stagePastedContent,
+  type BundleDirection,
   type EditorDraft,
   type EnginePlan,
   type ImportCommitRequest,
   type ImportCommitResult,
+  type HL7Terminator,
+  type ImportBoundary,
+  type ImportEncoding,
+  type ImportFraming,
   type ImportPlan,
   type ImportPreviewResult,
   type ImportRequest,
@@ -20,6 +25,20 @@ import type { Indicators } from "./shell";
 import { Status } from "./shell";
 import "./import.css";
 import { useLifecycle } from "./lifecycle";
+import { useVocabulary } from "./vocabulary";
+
+/** How each import-plan value reads. Which values a plan may declare is the
+ * facade's vocabulary; these only name them. */
+const FRAMING_WORDS: Record<ImportFraming, string> = { raw: "Raw", mllp: "MLLP", batch: "Batch" };
+const BOUNDARY_WORDS: Record<ImportBoundary, string> = { "segment-start": "Segment Start", "hl7-batch": "HL7 Batch Header" };
+const TERMINATOR_WORDS: Record<HL7Terminator, string> = { cr: "CR (\\r)", lf: "LF (\\n)", crlf: "CRLF (\\r\\n)" };
+const ENCODING_WORDS: Record<ImportEncoding, string> = {
+  "utf-8": "UTF-8",
+  "us-ascii": "US-ASCII",
+  "iso-8859-1": "ISO-8859-1",
+  unknown: "Unknown",
+};
+const DIRECTION_WORDS: Record<BundleDirection, string> = { inbound: "Inbound", outbound: "Outbound", unknown: "Unknown" };
 
 export type ImportMode = "plan" | "recipe" | "engine";
 
@@ -129,6 +148,8 @@ export function ImportPanel({
   const [pasteNotice, setPasteNotice] = useState<string | null>(null);
 
   // Plan authoring
+  // Every value an import plan may declare, as the facade publishes it.
+  const planVocabulary = useVocabulary()?.import_plan;
   const [framing, setFraming] = useState<"raw" | "mllp" | "batch">("raw");
   const [batchBoundary, setBatchBoundary] = useState<"segment-start" | "hl7-batch">("segment-start");
   const [terminator, setTerminator] = useState<"cr" | "lf" | "crlf">("cr");
@@ -811,10 +832,11 @@ export function ImportPanel({
                 value={pasteEncoding}
                 onChange={(e) => setPasteEncoding(e.target.value)}
               >
-                <option value="utf-8">utf-8</option>
-                <option value="us-ascii">us-ascii</option>
-                <option value="iso-8859-1">iso-8859-1</option>
-                <option value="unknown">unknown</option>
+                {planVocabulary?.encodings.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -914,13 +936,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={framing}
                   onChange={(e) => {
-                    setFraming(e.target.value as "raw" | "mllp" | "batch");
+                    setFraming(e.target.value as ImportFraming);
                     invalidatePreview();
                   }}
                 >
-                  <option value="raw">Raw</option>
-                  <option value="mllp">MLLP</option>
-                  <option value="batch">Batch</option>
+                  {planVocabulary?.framings.map((value) => (
+                    <option key={value} value={value}>
+                      {FRAMING_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -932,12 +956,15 @@ export function ImportPanel({
                     disabled={isBusy}
                     value={batchBoundary}
                     onChange={(e) => {
-                      setBatchBoundary(e.target.value as "segment-start" | "hl7-batch");
+                      setBatchBoundary(e.target.value as ImportBoundary);
                       invalidatePreview();
                     }}
                   >
-                    <option value="segment-start">Segment Start</option>
-                    <option value="hl7-batch">HL7 Batch Header</option>
+                    {planVocabulary?.boundaries.map((value) => (
+                      <option key={value} value={value}>
+                        {BOUNDARY_WORDS[value]}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}
@@ -949,13 +976,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={terminator}
                   onChange={(e) => {
-                    setTerminator(e.target.value as "cr" | "lf" | "crlf");
+                    setTerminator(e.target.value as HL7Terminator);
                     invalidatePreview();
                   }}
                 >
-                  <option value="cr">CR (\r)</option>
-                  <option value="lf">LF (\n)</option>
-                  <option value="crlf">CRLF (\r\n)</option>
+                  {planVocabulary?.terminators.map((value) => (
+                    <option key={value} value={value}>
+                      {TERMINATOR_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -966,14 +995,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={encoding}
                   onChange={(e) => {
-                    setEncoding(e.target.value as "utf-8" | "us-ascii" | "iso-8859-1" | "unknown");
+                    setEncoding(e.target.value as ImportEncoding);
                     invalidatePreview();
                   }}
                 >
-                  <option value="utf-8">UTF-8</option>
-                  <option value="us-ascii">US-ASCII</option>
-                  <option value="iso-8859-1">ISO-8859-1</option>
-                  <option value="unknown">Unknown</option>
+                  {planVocabulary?.encodings.map((value) => (
+                    <option key={value} value={value}>
+                      {ENCODING_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -984,13 +1014,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={direction}
                   onChange={(e) => {
-                    setDirection(e.target.value as "unknown" | "inbound" | "outbound");
+                    setDirection(e.target.value as BundleDirection);
                     invalidatePreview();
                   }}
                 >
-                  <option value="inbound">Inbound</option>
-                  <option value="outbound">Outbound</option>
-                  <option value="unknown">Unknown</option>
+                  {planVocabulary?.directions.map((value) => (
+                    <option key={value} value={value}>
+                      {DIRECTION_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1069,14 +1101,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={recipeEncoding}
                   onChange={(e) => {
-                    setRecipeEncoding(e.target.value as "utf-8" | "us-ascii" | "iso-8859-1" | "unknown");
+                    setRecipeEncoding(e.target.value as ImportEncoding);
                     invalidatePreview();
                   }}
                 >
-                  <option value="utf-8">UTF-8</option>
-                  <option value="us-ascii">US-ASCII</option>
-                  <option value="iso-8859-1">ISO-8859-1</option>
-                  <option value="unknown">Unknown</option>
+                  {planVocabulary?.encodings.map((value) => (
+                    <option key={value} value={value}>
+                      {ENCODING_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1272,8 +1305,11 @@ export function ImportPanel({
                     invalidatePreview();
                   }}
                 >
-                  <option value="raw">Raw</option>
-                  <option value="mllp">MLLP</option>
+                  {planVocabulary?.payload_framings.map((value) => (
+                    <option key={value} value={value}>
+                      {FRAMING_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="import-field">
@@ -1283,13 +1319,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={payloadTerminator}
                   onChange={(e) => {
-                    setPayloadTerminator(e.target.value as "cr" | "lf" | "crlf");
+                    setPayloadTerminator(e.target.value as HL7Terminator);
                     invalidatePreview();
                   }}
                 >
-                  <option value="cr">CR (\r)</option>
-                  <option value="lf">LF (\n)</option>
-                  <option value="crlf">CRLF (\r\n)</option>
+                  {planVocabulary?.terminators.map((value) => (
+                    <option key={value} value={value}>
+                      {TERMINATOR_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1400,13 +1438,15 @@ export function ImportPanel({
                     disabled={isBusy}
                     value={directionDeclared}
                     onChange={(e) => {
-                      setDirectionDeclared(e.target.value as "unknown" | "inbound" | "outbound");
+                      setDirectionDeclared(e.target.value as BundleDirection);
                       invalidatePreview();
                     }}
                   >
-                    <option value="inbound">Inbound</option>
-                    <option value="outbound">Outbound</option>
-                    <option value="unknown">Unknown</option>
+                    {planVocabulary?.directions.map((value) => (
+                      <option key={value} value={value}>
+                        {DIRECTION_WORDS[value]}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}
@@ -1451,15 +1491,17 @@ export function ImportPanel({
                             const updated = [...directionValues];
                             const curr = updated[i];
                             if (curr) {
-                              updated[i] = { envelope: curr.envelope, mapped: e.target.value as "unknown" | "inbound" | "outbound" };
+                              updated[i] = { envelope: curr.envelope, mapped: e.target.value as BundleDirection };
                               setDirectionValues(updated);
                               invalidatePreview();
                             }
                           }}
                         >
-                          <option value="inbound">inbound</option>
-                          <option value="outbound">outbound</option>
-                          <option value="unknown">unknown</option>
+                          {planVocabulary?.directions.map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
                         </select>
                         <button
                           type="button"
@@ -1595,13 +1637,15 @@ export function ImportPanel({
                   disabled={isBusy}
                   value={engineTerminator}
                   onChange={(e) => {
-                    setEngineTerminator(e.target.value as "cr" | "lf" | "crlf");
+                    setEngineTerminator(e.target.value as HL7Terminator);
                     invalidatePreview();
                   }}
                 >
-                  <option value="cr">CR (\r)</option>
-                  <option value="lf">LF (\n)</option>
-                  <option value="crlf">CRLF (\r\n)</option>
+                  {planVocabulary?.terminators.map((value) => (
+                    <option key={value} value={value}>
+                      {TERMINATOR_WORDS[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

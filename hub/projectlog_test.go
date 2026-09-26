@@ -75,7 +75,19 @@ func recordReview(t *testing.T, l projectLog, actor string, c ReviewCommand, pol
 
 func recordLifecycle(t *testing.T, l projectLog, actor string, c LifecycleCommand, policy accessPolicy) (LifecycleEvent, []LifecycleEvent, bool, error) {
 	t.Helper()
-	return l.recordLifecycle(context.Background(), opened(t, l), person(actor), c, policy)
+	record, e := l.recordLifecycle(context.Background(), opened(t, l), person(actor), c, policy)
+	return record.event, record.events, record.replayed, e
+}
+
+// countingStorage counts the review-log reads made through it.
+type countingStorage struct {
+	*memoryStorage
+	reviewReads int
+}
+
+func (c *countingStorage) reviews(ctx context.Context, project string) ([]ReviewEvent, error) {
+	c.reviewReads++
+	return c.memoryStorage.reviews(ctx, project)
 }
 
 func comment(id string, expected int) ReviewCommand {
@@ -220,9 +232,29 @@ func TestAuditExportStampsAndReproducesTheReviewHead(t *testing.T) {
 	if _, _, e = recordReview(t, l, "bob", comment("c2", 1), team); e != nil {
 		t.Fatal(e)
 	}
-	export, e := l.auditExport(context.Background(), event, events)
+	export, e := l.auditExport(context.Background(), lifecycleRecord{event: event, events: events, replayed: true})
 	if e != nil || export.ReviewHead != 1 || len(export.Reviews) != 1 || len(export.Lifecycle) != 1 {
 		t.Fatal("a retried export does not reproduce the recorded prefixes:", export, e)
+	}
+}
+
+func TestAFreshAuditExportReadsTheReviewLogOnce(t *testing.T) {
+	l, storage, _ := memoryLog(t)
+	if _, _, e := recordReview(t, l, "bob", comment("c1", 0), team); e != nil {
+		t.Fatal(e)
+	}
+	counted := &countingStorage{memoryStorage: storage}
+	l.storage = counted
+	record, e := l.recordLifecycle(context.Background(), opened(t, l), person("alice"), lifecycleCommand("audit", 0, "audit-export"), team)
+	if e != nil {
+		t.Fatal(e)
+	}
+	export, e := l.auditExport(context.Background(), record)
+	if e != nil || export.ReviewHead != 1 || len(export.Reviews) != 1 || len(export.Lifecycle) != 1 {
+		t.Fatal("the fresh export is not the stamped prefixes:", export, e)
+	}
+	if counted.reviewReads != 1 {
+		t.Fatalf("a fresh audit export read the review log %d times", counted.reviewReads)
 	}
 }
 

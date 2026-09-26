@@ -3,6 +3,7 @@ package lifecycle_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -330,5 +331,95 @@ func TestMalformedDeclaredIndexNeverBecomesRetainedEvidence(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A retirement preview measures the source through the backup's own scan, so
+// it refuses every source the backup it precedes refuses: indexes a backup
+// records instead of copying count toward the index bound and never toward
+// the stored-byte bound. Each refusal keeps the sentence the archive and
+// delete commands printed for that source before the preview shared the
+// backup's scan: retirement's own sentence where its earlier measure refused
+// the source, incompatibility where Archive checked that first, and otherwise
+// the backup's own sentence, which Archive reached. Preview and Archive give
+// the same one.
+func TestRetirementPreviewMeasuresTheSourceAsBackupDoes(t *testing.T) {
+	sparse := func(t *testing.T, name string, size int64) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = f.Truncate(size)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, test := range []struct {
+		what, says string
+		prepare    func(t *testing.T, root string)
+	}{
+		{"an entry that is not a regular file", "retirement refuses nonregular entries", func(t *testing.T, root string) {
+			if err := os.Mkdir(filepath.Join(root, "data"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(root, project.DocumentName), filepath.Join(root, "data", "link")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a file past the backup's file bound", "retirement source exceeds backup limits", func(t *testing.T, root string) {
+			// Below the root, where only the retirement measure sees it.
+			sparse(t, filepath.Join(root, "data", "large"), backup.MaxFileBytes+1)
+		}},
+		{"more stored bytes than one backup stores", "the project holds more evidence than one backup stores", func(t *testing.T, root string) {
+			// Sparse files below the root reach the real byte bound without
+			// allocating it; only top-level files are probed as indexes.
+			for n := range backup.MaxBytes / backup.MaxFileBytes {
+				sparse(t, filepath.Join(root, "data", fmt.Sprintf("data-%02d", n)), backup.MaxFileBytes)
+			}
+		}},
+		{"more indexes than one backup records", "project migration preview is incompatible; no migration is supported", func(t *testing.T, root string) {
+			for n := range backup.MaxIndexes + 1 {
+				name := filepath.Join(root, fmt.Sprintf("derived-%03d.json", n))
+				if err := os.WriteFile(name, []byte(`{"schema":"readmit-index/v1"}`), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}},
+		{"a name one backup cannot record", "the project holds an entry a backup cannot name: must be at most 512 bytes", func(t *testing.T, root string) {
+			long := strings.Repeat("n", 200)
+			name := filepath.Join(root, "data", long, long, long)
+			if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(name, []byte("evidence"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.what, func(t *testing.T) {
+			root := workspace(t)
+			test.prepare(t, root)
+			if _, err := backup.Create(context.Background(), root, filepath.Join(t.TempDir(), "backup")); err == nil {
+				t.Fatal("the backup stored a source past its limits")
+			}
+			if _, err := lifecycle.PreviewRetirement(context.Background(), root); err == nil || err.Error() != test.says {
+				t.Fatalf("the retirement preview refused with %v, want %q", err, test.says)
+			}
+			archive := filepath.Join(t.TempDir(), "archive")
+			if _, err := lifecycle.Archive(context.Background(), root, archive, "any-selection", true); err == nil || err.Error() != test.says {
+				t.Fatalf("the delete refused with %v, want %q", err, test.says)
+			}
+			if _, err := os.Lstat(archive); !os.IsNotExist(err) {
+				t.Fatal("a refused delete wrote its recovery archive")
+			}
+			if _, err := project.Open(root); err != nil {
+				t.Fatal("a refused delete removed the project")
+			}
+		})
 	}
 }

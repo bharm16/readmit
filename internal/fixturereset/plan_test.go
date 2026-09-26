@@ -136,3 +136,32 @@ func TestReviewedTableIsTheClosedSet(t *testing.T) {
 		}
 	}
 }
+
+// The table an author is offered is the review the reader applies: every
+// reviewed operator once, with the one authority the reader requires of it.
+func TestReviewedIsTheTableTheReaderApplies(t *testing.T) {
+	offered := Reviewed()
+	if len(offered) != len(reviewed) {
+		t.Fatalf("an author is offered %d operators and the reader reviews %d", len(offered), len(reviewed))
+	}
+	for _, review := range offered {
+		if required, ok := RequiredAuthority(review.Operator); !ok || required != review.Authority || reviewed[review.Operator] != required {
+			t.Errorf("%s is offered with %q, the reader requires %q", review.Operator, review.Authority, required)
+		}
+	}
+}
+
+// An action an author adds records the authority the review requires of its
+// operator, keeps an observation file only for the operator that reads one,
+// and names no operator the review does not.
+func TestReviewedActionRecordsTheAuthorityTheReviewRequires(t *testing.T) {
+	for _, review := range Reviewed() {
+		action, err := ReviewedAction("step-1", review.Operator, "Confirm it.", "ledger.json")
+		if err != nil || action.Authority != review.Authority || (action.Observation != "") != (review.Operator == ObservationEmpty) {
+			t.Errorf("%s: %+v %v", review.Operator, action, err)
+		}
+	}
+	if _, err := ReviewedAction("step-1", "drop_database", "Wipe it.", ""); err == nil {
+		t.Error("an unreviewed operator was given an authority")
+	}
+}

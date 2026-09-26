@@ -343,18 +343,131 @@ func (a *App) sourceWork(_ context.Context, request SourceWorkRequest) (evidence
 }
 
 // ReceiverPolicyRequest saves a declarative responder policy.
+// A request carries either a whole declared document, written as it
+// declares itself, or the choices a person made in the window, from which the
+// facade composes the document and picks its contract version.
 type ReceiverPolicyRequest struct {
-	Workspace  string            `json:"workspace"`
-	PolicyFile string            `json:"policy_file"`
-	Policy     collection.Policy `json:"policy"`
+	Workspace  string                 `json:"workspace"`
+	PolicyFile string                 `json:"policy_file"`
+	Policy     collection.Policy      `json:"policy,omitzero"`
+	Choices    *ReceiverPolicyChoices `json:"choices,omitzero"`
+}
+
+// ReceiverPolicyChoices is what a person chose in the window for one
+// responder policy: its name, label and original-mode rules, whether it
+// answers enhanced mode with the fixed codes, and one fault step (Fault is
+// "none" or empty for none) held to the endpoint the capture listens on.
+// Opened is the document the window opened, if any: while the enhanced and
+// fault choices still say what it declares, its version, enhanced rule and
+// faults are kept exactly as declared, so what the controls cannot express
+// is never lost.
+type ReceiverPolicyChoices struct {
+	Name                 string                     `json:"name"`
+	SourceLabel          string                     `json:"source_label"`
+	Acknowledgement      collection.AckRule         `json:"acknowledgement"`
+	AcceptedMessageTypes collection.MessageTypeRule `json:"accepted_message_types"`
+	Enhanced             bool                       `json:"enhanced"`
+	Fault                string                     `json:"fault,omitzero"`
+	FaultDelayMS         int                        `json:"fault_delay_ms,omitzero"`
+	Endpoint             string                     `json:"endpoint,omitzero"`
+	Opened               *collection.Policy         `json:"opened,omitzero"`
+}
+
+// noFault is the fault choice that declares none.
+const noFault = "none"
+
+// defaultFaultDelayMS is the delay the window starts a waiting fault with.
+const defaultFaultDelayMS = 50
+
+// declaredFault is the one fault step a policy's controls show, and the delay
+// they show beside it: the first step's, or none with the window's starting
+// delay.
+func declaredFault(policy collection.Policy) (string, int) {
+	if policy.Faults == nil || len(policy.Faults.Steps) == 0 {
+		return noFault, defaultFaultDelayMS
+	}
+	return policy.Faults.Steps[0].Action, policy.Faults.Steps[0].DelayMS
+}
+
+// declaresEnhanced reports whether a policy's enhanced rule is the one the
+// window's enhanced control expresses.
+func declaresEnhanced(policy collection.Policy) bool {
+	return policy.Enhanced != nil && policy.Enhanced.Operator == collection.EnhancedFixedCodes
+}
+
+// policyChoices is what the window's controls show for a declared policy:
+// its own members, whether it declares the fixed-code enhanced rule, its
+// first fault step and the first test endpoint it approves.
+func policyChoices(policy collection.Policy) *ReceiverPolicyChoices {
+	fault, delay := declaredFault(policy)
+	choices := &ReceiverPolicyChoices{
+		Name: policy.Name, SourceLabel: policy.SourceLabel,
+		Acknowledgement: policy.Acknowledgement, AcceptedMessageTypes: policy.AcceptedMessageTypes,
+		Enhanced: declaresEnhanced(policy), Fault: fault, FaultDelayMS: delay,
+	}
+	if policy.Faults != nil && len(policy.Faults.ApprovedTestEndpoints) > 0 {
+		choices.Endpoint = policy.Faults.ApprovedTestEndpoints[0]
+	}
+	return choices
+}
+
+// policy composes the document the choices describe. The version is the
+// first that declares what was chosen: the original-mode rule alone is v1, an
+// enhanced rule v2, and a fault step v3, which declares the enhanced rule as
+// unsupported when none was chosen.
+func (c ReceiverPolicyChoices) policy() collection.Policy {
+	composed := collection.Policy{
+		Name: c.Name, SourceLabel: c.SourceLabel,
+		Acknowledgement: c.Acknowledgement, AcceptedMessageTypes: c.AcceptedMessageTypes,
+	}
+	fault := c.Fault
+	if fault == "" {
+		fault = noFault
+	}
+	if opened := c.Opened; opened != nil {
+		openedFault, openedDelay := declaredFault(*opened)
+		if c.Enhanced == declaresEnhanced(*opened) && fault == openedFault && (fault == noFault || c.FaultDelayMS == openedDelay) {
+			composed.Schema, composed.Enhanced, composed.Faults = opened.Schema, opened.Enhanced, opened.Faults
+			return composed
+		}
+	}
+	composed.Schema = collection.PolicySchemaV1
+	if c.Enhanced {
+		composed.Schema = collection.PolicySchema
+		composed.Enhanced = &collection.EnhancedRule{
+			Operator: collection.EnhancedFixedCodes, AcceptCode: collection.CommitAcceptCode,
+			ApplicationCode: collection.AcceptCode, ApplicationDelivery: collection.SameConnection,
+		}
+	}
+	if fault != noFault {
+		composed.Schema = collection.FaultPolicySchema
+		if composed.Enhanced == nil {
+			composed.Enhanced = &collection.EnhancedRule{Operator: collection.EnhancedUnsupported}
+		}
+		delay := 0
+		if collection.FaultWaits(fault) {
+			delay = c.FaultDelayMS
+		}
+		composed.Faults = &collection.FaultPolicy{
+			EnvironmentClass:      "nonproduction",
+			ApprovedTestEndpoints: []string{c.Endpoint},
+			Steps:                 []collection.FaultStep{{Message: 1, Stage: collection.ApplicationStage, Action: fault, DelayMS: delay}},
+		}
+	}
+	return composed
 }
 
 // ReceiverPolicyResult carries a validated receiver policy.
+// Choices is what the window's controls show for the policy, decided here:
+// whether it declares the enhanced rule the controls express, its first fault
+// step and delay (none with the starting delay when it declares none), and
+// the first test endpoint it approves.
 type ReceiverPolicyResult struct {
-	State      State              `json:"state"`
-	Reason     string             `json:"reason,omitzero"`
-	Policy     *collection.Policy `json:"policy,omitzero"`
-	PolicyFile string             `json:"policy_file,omitzero"`
+	State      State                  `json:"state"`
+	Reason     string                 `json:"reason,omitzero"`
+	Policy     *collection.Policy     `json:"policy,omitzero"`
+	PolicyFile string                 `json:"policy_file,omitzero"`
+	Choices    *ReceiverPolicyChoices `json:"choices,omitzero"`
 }
 
 func (r *ReceiverPolicyResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -366,11 +479,15 @@ func (a *App) SaveReceiverPolicy(request ReceiverPolicyRequest) ReceiverPolicyRe
 		if path == "" {
 			return ReceiverPolicyResult{State: ref.state, Reason: ref.reason}
 		}
-		saved, err := operation.ReceiverPolicySave(path, request.Policy)
+		policy := request.Policy
+		if request.Choices != nil {
+			policy = request.Choices.policy()
+		}
+		saved, err := operation.ReceiverPolicySave(path, policy)
 		if err != nil {
 			return ReceiverPolicyResult{State: Failed, Reason: err.Error()}
 		}
-		return ReceiverPolicyResult{State: Completed, Policy: &saved, PolicyFile: request.PolicyFile}
+		return ReceiverPolicyResult{State: Completed, Policy: &saved, PolicyFile: request.PolicyFile, Choices: policyChoices(saved)}
 	})
 }
 
@@ -385,7 +502,7 @@ func (a *App) ReadReceiverPolicy(workspace, policyFile string) ReceiverPolicyRes
 		if err != nil {
 			return ReceiverPolicyResult{State: refusalState(err), Reason: err.Error()}
 		}
-		return ReceiverPolicyResult{State: Completed, Policy: &policy, PolicyFile: policyFile}
+		return ReceiverPolicyResult{State: Completed, Policy: &policy, PolicyFile: policyFile, Choices: policyChoices(policy)}
 	})
 }
 

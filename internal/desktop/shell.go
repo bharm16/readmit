@@ -80,8 +80,9 @@ type Support struct {
 
 // Shell is the window's description of itself: the regions focus moves through,
 // how every status reads without colour, the commands the palette lists, the
-// appearance choices offered, and the privacy status. It is fixed data, so the
-// interface renders it instead of keeping a second copy that can drift.
+// appearance choices offered, the privacy status, and the vocabulary its
+// panels offer and page by. It is fixed data, so the interface renders it
+// instead of keeping a second copy that can drift.
 type Shell struct {
 	Regions    []Region    `json:"regions"`
 	Indicators []Indicator `json:"indicators"`
@@ -90,6 +91,7 @@ type Shell struct {
 	TextScales []int       `json:"text_scales"`
 	Privacy    Privacy     `json:"privacy"`
 	Support    Support     `json:"support"`
+	Vocabulary Vocabulary  `json:"vocabulary"`
 }
 
 // ShellResult carries one state, like every other result the interface reads.
@@ -399,6 +401,7 @@ func (a *App) Shell() ShellResult {
 		TextScales: textScales,
 		Privacy:    privacyStatus,
 		Support:    supportStatus,
+		Vocabulary: vocabulary(),
 	}
 	return ShellResult{State: Completed, Shell: &described}
 }

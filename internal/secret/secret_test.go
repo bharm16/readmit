@@ -417,6 +417,24 @@ func TestRotationStateReportsAnOverdueCredentialExplicitly(t *testing.T) {
 	}
 }
 
+// A declared interval is read as a Go duration, compound ones included, and a
+// zero interval declares no rotation at all rather than one that is always
+// overdue. The window shows this state; it never reads the interval itself.
+func TestRotationReadsACompoundIntervalAndAZeroIntervalDeclaresNone(t *testing.T) {
+	entry := reference(t, "lab-mllp", testOnlyValue)
+	entry.MaxAge = "1h30m"
+	if state := entry.Rotation(entry.RotatedAt.Add(80 * time.Minute)); state != RotationCurrent {
+		t.Errorf("a rotation within 1h30m reported %s", state)
+	}
+	if state := entry.Rotation(entry.RotatedAt.Add(100 * time.Minute)); state != RotationOverdue {
+		t.Errorf("a rotation older than 1h30m reported %s", state)
+	}
+	entry.MaxAge = "0s"
+	if state := entry.Rotation(entry.RotatedAt.Add(time.Hour)); state != RotationNotDeclared {
+		t.Errorf("a zero interval reported %s", state)
+	}
+}
+
 func TestWriteStoreRetainsAnInterruptedWriteAndKeepsItOwnerOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
 	document := Document{Schema: Schema, References: []Reference{reference(t, "lab-mllp", testOnlyValue)}}

@@ -167,6 +167,31 @@ func DecodePlan(data []byte) (Plan, error) {
 	return plan, nil
 }
 
+// PlanVocabulary is every value a plan member can declare, in the order a
+// person is offered them, so a window composing a plan offers exactly what
+// Validate accepts. PayloadFramings are the framings that divide a member
+// without a batch boundary, the ones a mapping recipe's payload declares.
+type PlanVocabulary struct {
+	Framings        []Framing          `json:"framings"`
+	PayloadFramings []Framing          `json:"payload_framings"`
+	Boundaries      []Boundary         `json:"boundaries"`
+	Terminators     []hl7.Terminator   `json:"terminators"`
+	Encodings       []Encoding         `json:"encodings"`
+	Directions      []bundle.Direction `json:"directions"`
+}
+
+// Vocabulary is the plan vocabulary this release reads.
+func Vocabulary() PlanVocabulary {
+	return PlanVocabulary{
+		Framings:        []Framing{RawFraming, MLLPFraming, BatchFraming},
+		PayloadFramings: []Framing{RawFraming, MLLPFraming},
+		Boundaries:      []Boundary{SegmentStart, HL7Batch},
+		Terminators:     []hl7.Terminator{hl7.CR, hl7.LF, hl7.CRLF},
+		Encodings:       []Encoding{UTF8, USASCII, Latin1, UnknownEncoding},
+		Directions:      []bundle.Direction{bundle.Inbound, bundle.Outbound, bundle.Unknown},
+	}
+}
+
 // Validate reports the first reason a plan cannot be used.
 func (p Plan) Validate() error {
 	if p.Schema != PlanSchema {

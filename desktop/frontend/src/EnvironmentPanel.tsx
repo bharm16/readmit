@@ -15,6 +15,7 @@ import {
   saveSendPolicy,
   evaluateSendPolicy,
   readResetPlan,
+  reviewResetAction,
   saveResetPlan,
   type Target,
   type TargetClassification,
@@ -29,15 +30,16 @@ import {
   type SecretScanResult,
   type SendPolicy,
   type ResetPlan,
-  type ResetAction,
   type ResetOperator,
-  type ResetAuthority,
+  type SecretRotationState,
+  type SecretsResult,
   type ResetResult,
   type EditorDraft,
   type State,
 } from "./bindings";
 import { draftFor, useRetainer, RetentionStatus } from "./drafting";
 import { Outcome, useLifecycle, type Answer } from "./lifecycle";
+import { useVocabulary } from "./vocabulary";
 
 
 function draftRecord(content: unknown): Record<string, unknown> | null {
@@ -52,25 +54,6 @@ function draftRecord(content: unknown): Record<string, unknown> | null {
     return content as Record<string, unknown>;
   }
   return null;
-}
-
-function goDurationMs(value: string): number | null {
-  const match = /^(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)$/.exec(value.trim());
-  if (!match) return null;
-  const amount = Number(match[1]);
-  const unit = match[2];
-  const scale: Record<string, number> = {
-    ns: 1e-6,
-    us: 0.001,
-    "µs": 0.001,
-    ms: 1,
-    s: 1000,
-    m: 60_000,
-    h: 3_600_000,
-  };
-  const factor = unit ? scale[unit] : undefined;
-  if (factor == null || Number.isNaN(amount)) return null;
-  return amount * factor;
 }
 
 /** Locator arguments typed one per line. An argument holds no control
@@ -122,25 +105,6 @@ const KEEP_BINDING = "(keep the recorded binding)";
 const newPolicy = (): SendPolicy => ({ schema: "readmit-send-policy/v1", approved_destinations: [] });
 const newPlan = (): ResetPlan => ({ schema: "readmit-reset-plan/v1", environment: "local-dev", actions: [] });
 
-/** A relative reference would be anchored to the target's physical directory,
- * which can differ from the path the window names through a folder symlink.
- * Use the exact workspace path ReadSecrets used, independent of that target. */
-function secretsReference(workspace: string, secretsFile: string): string {
-  const windowsPath = /^[A-Za-z]:[\\/]/.test(workspace) || workspace.startsWith("\\\\");
-  if (secretsFile.startsWith("/") || (windowsPath && (secretsFile.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(secretsFile)))) return secretsFile;
-  // resolveWorkspacePath cleans a relative name before ReadSecrets opens it.
-  // Clean it here too, before a symlink/.. sequence can change which file the
-  // absolute target credential reference reaches.
-  const parts = (windowsPath ? secretsFile.replaceAll("\\", "/") : secretsFile).split("/");
-  const clean: string[] = [];
-  for (const part of parts) {
-    if (part === "" || part === ".") continue;
-    if (part === "..") clean.pop();
-    else clean.push(part);
-  }
-  return workspace.replace(/[\\/]$/, "") + "/" + clean.join("/");
-}
-
 /** A document whose reference declares no locator arguments may carry none. */
 function argumentCount(ref: SecretReference): number {
   return (ref.arguments ?? []).length;
@@ -159,15 +123,21 @@ function secretChange(edit: SecretEdit): SecretChange {
   return change;
 }
 
-function rotationStatus(ref: SecretReference, now = Date.now()): { label: string; tone: "current" | "overdue" | "not-declared" } {
-  if (!ref.max_age) return { label: "Rotation age not declared", tone: "not-declared" };
-  const windowMs = goDurationMs(ref.max_age);
-  const rotated = Date.parse(ref.rotated_at);
-  if (windowMs == null || Number.isNaN(rotated)) {
-    return { label: "Rotation unreadable — declare a duration such as 720h", tone: "not-declared" };
-  }
-  if (now > rotated + windowMs) return { label: "Overdue — rotate before use", tone: "overdue" };
-  return { label: `Current (generation ${ref.generation})`, tone: "current" };
+/** What each reviewed reset operator does, in words. Which operators exist and
+ * the authority each runs under are the facade's. */
+const RESET_OPERATOR_WORDS: Record<ResetOperator, string> = {
+  operator_confirms: "Human confirmation required",
+  observation_empty: "Verifies receiver ledger is empty",
+  endpoint_quiet: "Verifies endpoint connectivity without sending HL7",
+};
+
+/** How the rotation state Go decides for a reference reads. The window
+ * decides none of them: a reference whose state was not answered reads as not
+ * declared, never as current. */
+function rotationLabel(state: SecretRotationState | undefined, ref: SecretReference): string {
+  if (state === "current") return `Current (generation ${ref.generation})`;
+  if (state === "overdue") return "Overdue — rotate before use";
+  return "Rotation age not declared";
 }
 
 export function EnvironmentBanner({
@@ -271,6 +241,11 @@ export function EnvironmentPanel({
   // Secrets State
   const [currentSecretsFile, setCurrentSecretsFile] = useState(secretsFile);
   const [secretsDoc, setSecretsDoc] = useState<SecretDocument | null>(null);
+  // What the facade decided about the document the window named: each
+  // reference's rotation state, and the secrets document a target's credential
+  // records for it.
+  const [rotations, setRotations] = useState<ReadonlyMap<string, SecretRotationState>>(new Map());
+  const [credentialFile, setCredentialFile] = useState<string | undefined>(undefined);
   const [secretsRefusal, setSecretsRefusal] = useState<string | null>(null);
   const [newSecretName, setNewSecretName] = useState("");
   const [newSecretStore, setNewSecretStore] = useState<SecretStore>("os-keychain");
@@ -309,6 +284,7 @@ export function EnvironmentPanel({
   const [planRefusal, setPlanRefusal] = useState<string | null>(null);
   const [newActionId, setNewActionId] = useState("");
   const [newActionOperator, setNewActionOperator] = useState<ResetOperator>("operator_confirms");
+  const resetOperators = useVocabulary()?.reset_operators ?? [];
   const [newActionInstructions, setNewActionInstructions] = useState("");
   const [newActionObservation, setNewActionObservation] = useState("");
   const [confirmedActions, setConfirmedActions] = useState<string[]>([]);
@@ -375,8 +351,10 @@ export function EnvironmentPanel({
     });
   }, [workspace, onTargetChange, readDocument]);
 
-  const showSecrets = useCallback((document: SecretDocument) => {
-    setSecretsDoc(document);
+  const showSecrets = useCallback((result: SecretsResult & { document: SecretDocument }) => {
+    setSecretsDoc(result.document);
+    setRotations(new Map((result.rotations ?? []).map((r) => [r.name, r.rotation])));
+    setCredentialFile(result.credential_file);
     setSecretsRefusal(null);
   }, []);
 
@@ -387,9 +365,11 @@ export function EnvironmentPanel({
       const res = await readSecrets(workspace, file);
       if (!current()) return;
       if (res.state === "completed" && res.document) {
-        showSecrets(res.document);
+        showSecrets({ ...res, document: res.document });
       } else {
         setSecretsDoc(null);
+        setRotations(new Map());
+        setCredentialFile(res.credential_file);
         setSecretsRefusal(res.reason || "This secret reference document cannot be read.");
       }
     });
@@ -575,7 +555,7 @@ export function EnvironmentPanel({
         is_update: false,
       });
       if (res.state === "completed" && res.document) {
-        showSecrets(res.document);
+        showSecrets({ ...res, document: res.document });
         if (res.identity) setSecretsWritten({ file, identity: res.identity });
         setNewSecretName("");
         setNewSecretCommand("");
@@ -639,7 +619,7 @@ export function EnvironmentPanel({
         change: secretChange(secretEdit),
       });
       if (res.state === "completed" && res.document) {
-        showSecrets(res.document);
+        showSecrets({ ...res, document: res.document });
         if (res.identity) setSecretsWritten({ file, identity: res.identity });
         closeSecretEdit(true);
         // A test of the locator the edit replaced says nothing about this one.
@@ -668,7 +648,7 @@ export function EnvironmentPanel({
     await actions.run("working", async () => {
       const res = await rotateSecretReference(workspace, currentSecretsFile, name);
       if (res.state === "completed" && res.document) {
-        showSecrets(res.document);
+        showSecrets({ ...res, document: res.document });
         // The document changed after the save the identity line named.
         setSecretsWritten(null);
         setFeedback(`Secret ${name} rotated successfully.`);
@@ -683,7 +663,7 @@ export function EnvironmentPanel({
     await actions.run("working", async () => {
       const res = await removeSecretReference(workspace, currentSecretsFile, name);
       if (res.state === "completed" && res.document) {
-        showSecrets(res.document);
+        showSecrets({ ...res, document: res.document });
         setSecretsWritten(null);
         if (secretEdit?.opened.name === name) closeSecretEdit(true);
         setFeedback(`Secret ${name} removed.`);
@@ -778,36 +758,35 @@ export function EnvironmentPanel({
     });
   }
 
-  // Handle Add Reset Action
-  function handleAddResetAction() {
+  // Handle Add Reset Action. The person chooses the operator; the facade
+  // records the authority the review requires of it.
+  async function handleAddResetAction() {
     if (!planReady) return;
     if (!newActionId.trim() || !newActionInstructions.trim()) {
       setFeedback("Action ID and instructions are required.");
       return;
     }
-    let authority: ResetAuthority = "none";
-    if (newActionOperator === "observation_empty") authority = "read_declared_file";
-    if (newActionOperator === "endpoint_quiet") authority = "connect_approved_target";
-
-    const action: ResetAction = {
-      id: newActionId.trim(),
-      operator: newActionOperator,
-      authority,
-      instructions: newActionInstructions.trim(),
-    };
-    if (newActionOperator === "observation_empty" && newActionObservation.trim()) {
-      action.observation = newActionObservation.trim();
-    }
-
-    const updated = {
-      ...resetPlan,
-      actions: [...resetPlan.actions, action],
-    };
-    setResetPlan(updated);
-    setNewActionId("");
-    setNewActionInstructions("");
-    setNewActionObservation("");
-    retainDraft("environment/reset", "readmit-reset-plan-draft/v1", updated);
+    await actions.run("working", async () => {
+      const reviewed = await reviewResetAction({
+        id: newActionId.trim(),
+        operator: newActionOperator,
+        instructions: newActionInstructions.trim(),
+        observation: newActionObservation.trim(),
+      });
+      if (reviewed.state !== "completed" || !reviewed.action) {
+        setFeedback(refused(reviewed, "The reset action was refused."));
+        return;
+      }
+      const updated = {
+        ...resetPlan,
+        actions: [...resetPlan.actions, reviewed.action],
+      };
+      setResetPlan(updated);
+      setNewActionId("");
+      setNewActionInstructions("");
+      setNewActionObservation("");
+      retainDraft("environment/reset", "readmit-reset-plan-draft/v1", updated);
+    });
   }
 
   // Handle Remove Reset Action
@@ -871,7 +850,7 @@ export function EnvironmentPanel({
   // A credential the target binds in a document other than the one loaded here,
   // or under a name that document does not list, is kept as its own choice.
   const bound = target.credential;
-  const boundInOther = bound !== undefined && bound.secrets_file !== secretsReference(workspace, currentSecretsFile);
+  const boundInOther = bound !== undefined && bound.secrets_file !== credentialFile;
   const boundUnlisted =
     bound !== undefined && !boundInOther && !(secretsDoc?.references ?? []).some((r) => r.name === bound.reference);
 
@@ -1099,7 +1078,10 @@ export function EnvironmentPanel({
                   if (refName === KEEP_BINDING) return;
                   const updated: Target = { ...target };
                   if (refName) {
-                    updated.credential = { secrets_file: secretsReference(workspace, currentSecretsFile), reference: refName };
+                    // A reference is listed only from a document the facade read,
+                    // which names the credential file a target records for it.
+                    if (!credentialFile) return;
+                    updated.credential = { secrets_file: credentialFile, reference: refName };
                   } else {
                     delete updated.credential;
                   }
@@ -1233,11 +1215,11 @@ export function EnvironmentPanel({
                     <td><span className="report-value">••••••••</span></td>
                     <td>
                       {(() => {
-                        const rotation = rotationStatus(r);
+                        const rotation = rotations.get(r.name) ?? "not-declared";
                         const inaccessible = testResult?.name === r.name && testResult.success === false;
                         return (
                           <>
-                            <span className={`rotation-badge ${rotation.tone}`}>{rotation.label}</span>
+                            <span className={`rotation-badge ${rotation}`}>{rotationLabel(rotation, r)}</span>
                             {inaccessible ? <p className="hint">Inaccessible — the locator did not resolve. Provision the reference in its store, then test again.</p> : null}
                           </>
                         );
@@ -1771,9 +1753,11 @@ export function EnvironmentPanel({
                 disabled={blocked || !planReady}
                 onChange={(e) => setNewActionOperator(e.target.value as ResetOperator)}
               >
-                <option value="operator_confirms">operator_confirms (Human confirmation required; authority: none)</option>
-                <option value="observation_empty">observation_empty (Verifies receiver ledger is empty; authority: read_declared_file)</option>
-                <option value="endpoint_quiet">endpoint_quiet (Verifies endpoint connectivity without sending HL7; authority: connect_approved_target)</option>
+                {resetOperators.map((reviewed) => (
+                  <option key={reviewed.operator} value={reviewed.operator}>
+                    {reviewed.operator} ({RESET_OPERATOR_WORDS[reviewed.operator]}; authority: {reviewed.authority})
+                  </option>
+                ))}
               </select>
             </div>
             <div className="environment-field full-width">
@@ -1802,7 +1786,7 @@ export function EnvironmentPanel({
           </div>
 
           <div className="environment-actions">
-            <button type="button" disabled={blocked || !planReady} onClick={handleAddResetAction}>
+            <button type="button" disabled={blocked || !planReady} onClick={() => void handleAddResetAction()}>
               Add action
             </button>
             <button type="button" disabled={blocked || !planReady} onClick={() => void handleSavePlan()}>

@@ -5,7 +5,9 @@ import (
 	"maps"
 	"time"
 
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/operationguard"
+	"github.com/bharm16/readmit/internal/secret"
 )
 
 // DeclaredProfilesForTest is the profile every named operation of the facade
@@ -106,4 +108,24 @@ func GroupDiagnosesWithinForTest(ctx context.Context, request GroupDiagnosesRequ
 // only the operation slot is not taken.
 func VerifyCIGateWithinForTest(ctx context.Context, directory, identity string, now time.Time) CIGateVerifyResult {
 	return verifyCIGate(ctx, directory, identity, now)
+}
+
+// SecretsResultForTest is the completed view of one secret reference document
+// as the facade answers it at a given time: the rotation state it decides for
+// every reference and the credential file a target records for the document.
+func SecretsResultForTest(workspace, secretsFile string, document secret.Document, now time.Time) SecretsResult {
+	return secretsView(workspace, secretsFile, document, now)
+}
+
+// DiagnosisBuiltinForTest is the configuration a built-in diagnosis selection
+// runs under, and whether the selection names one.
+func DiagnosisBuiltinForTest(id string) (diagnose.Config, bool) {
+	config, declined := diagnosisConfig("", "", id)
+	return config, declined.state == ""
+}
+
+// CredentialFileForTest is the secrets document a target's credential
+// records for a document the window names in a workspace.
+func CredentialFileForTest(workspace, secretsFile string) string {
+	return credentialFile(workspace, secretsFile)
 }

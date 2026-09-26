@@ -9,7 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/fixturereset"
+	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -405,6 +408,137 @@ func TestFrontendBindingsDeclareTheWindowsVocabulary(t *testing.T) {
 	for _, kind := range []desktop.MatchKind{desktop.ArtifactMatch, desktop.RegisteredMatch} {
 		if !slices.Contains(union("MatchKind"), string(kind)) {
 			t.Errorf("match kind %q has no declaration in %s", kind, generatedBindings)
+		}
+	}
+}
+
+// interfaceSources is every hand-written interface source: the components and
+// their helpers, without the generated bindings and without the tests, whose
+// fixtures state what the facade answers.
+func interfaceSources(t *testing.T) string {
+	t.Helper()
+	entries, err := os.ReadDir(frontendDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sources strings.Builder
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.Type().IsRegular() && filepath.Join(frontendDirectory, name) != generatedBindings && !strings.Contains(name, ".test.") {
+			sources.WriteString(read(t, filepath.Join(frontendDirectory, name)))
+		}
+	}
+	return sources.String()
+}
+
+// What a person chooses among and the bounds the window pages by are published
+// by the facade in the window's description, and they are exactly what the Go
+// side accepts: every import-plan value is a constant the generated bindings
+// declare for its union, every reset operator is published with the authority
+// the reviewed table requires, every fault action is one a step declares and
+// waits exactly when a step must declare a delay for it, every built-in
+// diagnosis resolves to the configuration it names, and every window bound is
+// the facade's own. The
+// interface keeps no copy of any of them.
+func TestTheFacadePublishesTheWindowsChoicesAndBounds(t *testing.T) {
+	vocabulary := shell(t).Vocabulary
+	bindings := read(t, generatedBindings)
+	exactly := func(name string, published []string) {
+		t.Helper()
+		declared := declaredUnion(t, bindings, name)
+		slices.Sort(declared)
+		sorted := slices.Sorted(slices.Values(published))
+		if !slices.Equal(declared, sorted) {
+			t.Errorf("the facade publishes %v for %s, which declares %v", published, name, declared)
+		}
+	}
+	plan := vocabulary.ImportPlan
+	strs := func(values ...string) []string { return values }
+	var framings, payload, boundaries, terminators, encodings, directions []string
+	for _, v := range plan.Framings {
+		framings = append(framings, string(v))
+	}
+	for _, v := range plan.PayloadFramings {
+		payload = append(payload, string(v))
+	}
+	for _, v := range plan.Boundaries {
+		boundaries = append(boundaries, string(v))
+	}
+	for _, v := range plan.Terminators {
+		terminators = append(terminators, string(v))
+	}
+	for _, v := range plan.Encodings {
+		encodings = append(encodings, string(v))
+	}
+	for _, v := range plan.Directions {
+		directions = append(directions, string(v))
+	}
+	exactly("ImportFraming", framings)
+	exactly("ImportBoundary", boundaries)
+	exactly("HL7Terminator", terminators)
+	exactly("ImportEncoding", encodings)
+	exactly("BundleDirection", directions)
+	if !slices.Equal(payload, strs("raw", "mllp")) {
+		t.Errorf("the framings that need no batch boundary are published as %v", payload)
+	}
+
+	var operators []string
+	for _, reviewed := range vocabulary.ResetOperators {
+		operators = append(operators, string(reviewed.Operator))
+		if required, ok := fixturereset.RequiredAuthority(reviewed.Operator); !ok || required != reviewed.Authority {
+			t.Errorf("reset operator %s is published with authority %s, the review requires %s", reviewed.Operator, reviewed.Authority, required)
+		}
+	}
+	exactly("ResetOperator", operators)
+
+	faults := vocabulary.ReceiverFaults
+	if !slices.Equal(faults.Actions, collection.FaultActions()) {
+		t.Errorf("the facade publishes fault actions %v, a step declares %v", faults.Actions, collection.FaultActions())
+	}
+	if faults.DefaultDelayMS < 1 || faults.DefaultDelayMS > collection.MaxFaultDelayMS {
+		t.Errorf("a waiting fault starts with a delay of %d ms, which no step may declare", faults.DefaultDelayMS)
+	}
+
+	if len(vocabulary.DiagnosisBuiltins) != 3 {
+		t.Errorf("the facade publishes %d built-in diagnoses", len(vocabulary.DiagnosisBuiltins))
+	}
+	for _, builtin := range vocabulary.DiagnosisBuiltins {
+		config, ok := desktop.DiagnosisBuiltinForTest(builtin.ID)
+		if !ok || config.Profile != builtin.Profile || config.Ruleset != builtin.Ruleset {
+			t.Errorf("built-in diagnosis %q is published as %s · %s but runs %+v", builtin.ID, builtin.Profile, builtin.Ruleset, config)
+		}
+	}
+
+	bounds := vocabulary.Bounds
+	for name, pair := range map[string][2]int{
+		"grid":       {bounds.Grid, grid.MaxRows},
+		"comparison": {bounds.Comparison, desktop.MaxComparisonRows},
+		"review":     {bounds.Review, desktop.MaxReviewFindings},
+		"sequence":   {bounds.Sequence, desktop.MaxSequenceEvents},
+		"diagnosis":  {bounds.Diagnosis, desktop.MaxDiagnosisFindings},
+	} {
+		if pair[0] != pair[1] || pair[0] < 1 {
+			t.Errorf("the %s window is published as %d, the facade bounds it at %d", name, pair[0], pair[1])
+		}
+	}
+
+	// The interface reads these rather than a copy: no built-in ruleset, no
+	// reset authority and no contract version of the documents the window
+	// composes is written into it.
+	sources := interfaceSources(t)
+	retired := []string{"readmit-receiver-policy/v", "readmit-observation-source/v"}
+	for _, builtin := range vocabulary.DiagnosisBuiltins {
+		retired = append(retired, `"`+builtin.Ruleset+`"`)
+	}
+	for _, reviewed := range vocabulary.ResetOperators {
+		// "none" is also an ordinary choice of many controls.
+		if reviewed.Authority != fixturereset.NoAuthority {
+			retired = append(retired, `"`+string(reviewed.Authority)+`"`)
+		}
+	}
+	for _, copy := range retired {
+		if strings.Contains(sources, copy) {
+			t.Errorf("the interface keeps its own copy of %s", copy)
 		}
 	}
 }

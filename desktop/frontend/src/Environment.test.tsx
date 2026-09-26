@@ -1,10 +1,12 @@
 import { expect, test } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render as renderAlone, screen, waitFor, within } from "@testing-library/react";
+import { vocabularyWrapper } from "./testkit/app";
 import userEvent from "@testing-library/user-event";
 import { EnvironmentPanel, EnvironmentBanner } from "./EnvironmentPanel";
 import { IndicatorsContext } from "./lifecycle";
 import { installFacade, uninstallFacade } from "./testkit/wails";
-import type { SecretChange, SecretSaveRequest, SendPolicySaveRequest, State } from "./bindings";
+import type { ResetActionRequest, ResetActionResult, SecretChange, SecretSaveRequest, SendPolicySaveRequest, State } from "./bindings";
 import {
   WORKSPACE_ROOT,
   indicatorTable,
@@ -17,7 +19,11 @@ import {
   defaultSendPolicyEvalResult,
   defaultResetPlanResult,
   defaultTargetResetResult,
+  vocabularyFixture,
 } from "./testkit/fixtures";
+
+/** A panel on its own, inside the vocabulary the window provides it. */
+const render = (ui: ReactElement) => renderAlone(ui, { wrapper: vocabularyWrapper() });
 
 test("EnvironmentPanel displays target configuration and runs deliberate diagnostics", async () => {
   const user = userEvent.setup();
@@ -286,16 +292,19 @@ test("an unfinished target draft is kept and transport approval stays off until 
   uninstallFacade();
 });
 
-test("an overdue credential reference says so instead of claiming it is current", async () => {
-  const secrets = defaultSecretsResult();
+// The rotation state is Go's: the window shows what the facade decided for
+// each reference and never reads an interval itself. A compound interval such
+// as 1h30m is one Go reads, and a zero interval declares no rotation at all.
+test.each([
+  { max_age: "1s", rotated_at: "2020-01-01T00:00:00Z", rotation: "overdue", shown: "Overdue — rotate before use" },
+  { max_age: "1h30m", rotated_at: "2026-09-21T12:00:00Z", rotation: "current", shown: "Current (generation 1)" },
+  { max_age: "0s", rotated_at: "2020-01-01T00:00:00Z", rotation: "not-declared", shown: "Rotation age not declared" },
+] as const)("a reference declaring $max_age shows the $rotation state the facade decided", async ({ max_age, rotated_at, rotation, shown }) => {
+  const secrets = defaultSecretsResult({ rotations: [{ name: "mllp-basic-auth", rotation }] });
   const document = secrets.document;
   const reference = document?.references[0];
   if (!document || !reference) throw new Error("fixture secret missing");
-  document.references[0] = {
-    ...reference,
-    max_age: "1s",
-    rotated_at: "2020-01-01T00:00:00Z",
-  };
+  document.references[0] = { ...reference, max_age, rotated_at };
   installFacade({
     ReadTarget: async () => defaultTargetResult(),
     ReadSendPolicy: async () => defaultSendPolicyResult(),
@@ -312,7 +321,9 @@ test("an overdue credential reference says so instead of claiming it is current"
       initialTab="secrets"
     />,
   );
-  expect(await screen.findByText("Overdue — rotate before use")).toBeTruthy();
+  const badge = await screen.findByText(shown);
+  expect(badge.className).toBe(`rotation-badge ${rotation}`);
+  expect(screen.queryByText(/unreadable/)).toBeNull();
   uninstallFacade();
 });
 
@@ -587,10 +598,76 @@ test("a destination prefix is added with Enter, a refused policy claims no ident
   uninstallFacade();
 });
 
+/** The action the facade records for one a person chose: the authority the
+ * review requires of its operator, which the test states from the reviewed
+ * table the facade publishes. */
+function reviewedAction(request: ResetActionRequest): ResetActionResult {
+  const authority = vocabularyFixture().reset_operators.find((reviewed) => reviewed.operator === request.operator)?.authority;
+  if (!authority) return { state: "failed", reason: "a reset action names an operator this release did not review" };
+  return {
+    state: "completed",
+    action: {
+      id: request.id,
+      operator: request.operator,
+      authority,
+      instructions: request.instructions,
+      ...(request.operator === "observation_empty" && request.observation ? { observation: request.observation } : {}),
+    },
+  };
+}
+
+// The window offers the reviewed operators the facade publishes and sends the
+// one chosen; the authority recorded beside it is the one the facade decides,
+// never one the window picks.
+test("a reset action records the authority the facade decides for its operator", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ...readsAnswered,
+    ReviewResetAction: async () => ({
+      state: "completed",
+      action: { id: "step-3", operator: "endpoint_quiet", authority: "connect_approved_target", instructions: "Confirm the receiver is quiet." },
+    }),
+    SaveResetPlan: async (request) => ({ state: "completed", plan: request.plan, plan_file: request.plan_file, identity: WRITTEN }),
+  });
+  renderPanel("reset");
+  await screen.findByText("Confirm patient database is wiped.");
+  const operator = screen.getByLabelText("Reviewed Operator") as HTMLSelectElement;
+  expect(Array.from(operator.options).map((option) => option.value)).toEqual(
+    vocabularyFixture().reset_operators.map((reviewed) => reviewed.operator),
+  );
+  await user.selectOptions(operator, "endpoint_quiet");
+  await user.type(screen.getByLabelText("Action ID"), "step-3");
+  await user.type(screen.getByLabelText("Reset instructions"), "Confirm the receiver is quiet.");
+  await user.click(screen.getByRole("button", { name: "Add action" }));
+  const [chosen] = facade.oneCall("ReviewResetAction");
+  expect(chosen).toEqual({ id: "step-3", operator: "endpoint_quiet", instructions: "Confirm the receiver is quiet.", observation: "" });
+  expect(await screen.findByText("Authority: connect_approved_target")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Save plan" }));
+  await waitFor(() => expect(facade.callsTo("SaveResetPlan")).toHaveLength(1));
+  const [request] = facade.oneCall("SaveResetPlan");
+  expect(request.plan.actions.at(-1)).toEqual({
+    id: "step-3",
+    operator: "endpoint_quiet",
+    authority: "connect_approved_target",
+    instructions: "Confirm the receiver is quiet.",
+  });
+
+  // An operator the facade refuses adds nothing and says why.
+  const listed = screen.getAllByText(/^Authority: /).length;
+  facade.reply({ ReviewResetAction: async () => ({ state: "failed", reason: "a reset action names an operator this release did not review" }) });
+  await user.type(screen.getByLabelText("Action ID"), "step-4");
+  await user.type(screen.getByLabelText("Reset instructions"), "Wipe it.");
+  await user.click(screen.getByRole("button", { name: "Add action" }));
+  expect(await screen.findByText("a reset action names an operator this release did not review")).toBeTruthy();
+  expect(screen.getAllByText(/^Authority: /)).toHaveLength(listed);
+  uninstallFacade();
+});
+
 test("a saved reset plan shows the identity it was written under", async () => {
   const user = userEvent.setup();
   const facade = installFacade({
     ...readsAnswered,
+    ReviewResetAction: async (request) => reviewedAction(request),
     SaveResetPlan: async (request) => ({ state: "completed", plan: request.plan, plan_file: request.plan_file, identity: WRITTEN }),
   });
   renderPanel("reset");

@@ -227,12 +227,6 @@ export function Palette({
   );
 }
 
-/** How many occurrences one window of the grid asks the facade for. The grid
- * asks for the next window rather than drawing a large case at once, and it is
- * the facade's own bound, because what this window costs to draw is decided by
- * the viewport below rather than by how many rows the window holds. */
-export const GRID_WINDOW = 200;
-
 /** The virtualized row geometry. GRID_ROW_HEIGHT is the height one row is
  * given, and it must stay equal to --grid-row-height in styles.css: how far the
  * rows have been scrolled is turned into a row number by dividing by it, so a

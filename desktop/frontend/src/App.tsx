@@ -130,10 +130,10 @@ import {
   type Theme,
   type WorkspaceResult,
 } from "./bindings";
-import { Comparison, COMPARISON_WINDOW, readsComparison } from "./Comparison";
-import { Review, REVIEW_WINDOW } from "./Review";
+import { Comparison, readsComparison } from "./Comparison";
+import { Review } from "./Review";
 import { GuidedSample } from "./GuidedSample";
-import { Sequence, SEQUENCE_WINDOW } from "./Sequence";
+import { Sequence } from "./Sequence";
 import { Inspector } from "./Inspector";
 import { Reproducer, type ReproducerView } from "./Reproducer";
 import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
@@ -143,7 +143,8 @@ import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAuthoring";
 import { Diagnosis } from "./Diagnosis";
-import { Badge, GRID_WINDOW, MessageGrid, Palette, Report, Separator, Status } from "./shell";
+import { Badge, MessageGrid, Palette, Report, Separator, Status } from "./shell";
+import { VocabularyContext } from "./vocabulary";
 import { Breadcrumbs, ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
@@ -195,6 +196,9 @@ type Running =
 
 export default function App() {
   const [described, setDescribed] = useState<Shell | null>(null);
+  // How many rows one window of each paged view asks for: the facade's own
+  // bounds, as its description publishes them.
+  const bounds = described?.vocabulary.bounds;
   const [windowState, setWindowState] = useState<State>("busy");
   const [windowReason, setWindowReason] = useState<string | undefined>(undefined);
 
@@ -551,6 +555,7 @@ export default function App() {
   // never describe another reading of the case.
   const showGrid = useCallback(
     async (folder: string, name: string, indexName: string, offset: number) => {
+      if (!bounds) return;
       // A read whose answer can be older than the question: only the answer
       // to the latest request commits, so a late answer to an earlier one is
       // dropped instead of overwriting what the viewer asked for last.
@@ -558,14 +563,14 @@ export default function App() {
         setGridResult(null);
         setInspectionResult(null);
         setSelectedOccurrence(null);
-        const result = await openGrid(folder, name, indexName, offset, GRID_WINDOW);
+        const result = await openGrid(folder, name, indexName, offset, bounds.grid);
         if (current()) {
           setGridResult(result);
           setIndexResult(result.index ? { state: result.state, index: result.index } : null);
         }
       });
     },
-    [run],
+    [bounds, run],
   );
 
   const handleBuildIndex = useCallback(
@@ -870,7 +875,7 @@ export default function App() {
   const compareCollections = useCallback(
     async (right: string, keys: string[], fields: string[], offset: number) => {
       const open = evidence?.case;
-      if (!root || !open) return;
+      if (!root || !open || !bounds) return;
       await run("comparison", async () => {
         setComparisonResult(null);
         const compared = await compare({
@@ -881,7 +886,7 @@ export default function App() {
           keys,
           fields,
           offset,
-          limit: COMPARISON_WINDOW,
+          limit: bounds.comparison,
         });
         setComparisonResult(compared);
         setNormalizeResult((reading) =>
@@ -889,7 +894,7 @@ export default function App() {
         );
       });
     },
-    [evidence, root, run],
+    [bounds, evidence, root, run],
   );
 
   // A save that wrote a new workspace entry changes what the folder lists, so
@@ -1016,7 +1021,7 @@ export default function App() {
   const normalizeCollections = useCallback(
     async (right: string, policy: string, keys: string[], fields: string[], offset: number) => {
       const open = evidence?.case;
-      if (!root || !open) return;
+      if (!root || !open || !bounds) return;
       await run("normalize", async () => {
         setNormalizeResult(null);
         setNormalizeResult(
@@ -1029,12 +1034,12 @@ export default function App() {
             keys,
             fields,
             offset,
-            limit: COMPARISON_WINDOW,
+            limit: bounds.comparison,
           }),
         );
       });
     },
-    [evidence, root, run],
+    [bounds, evidence, root, run],
   );
 
   // A sequence is bound to the identity the window verified for the open case,
@@ -1044,7 +1049,7 @@ export default function App() {
   const layOutSequence = useCallback(
     async (rules: string, offset: number, analysis = "") => {
       const open = evidence?.case;
-      if (!root || !open) return;
+      if (!root || !open || !bounds) return;
       await run("sequence", async () => {
         setSequenceResult(null);
         setSequenceResult(
@@ -1055,12 +1060,12 @@ export default function App() {
             rules,
             analysis,
             offset,
-            limit: SEQUENCE_WINDOW,
+            limit: bounds.sequence,
           }),
         );
       });
     },
-    [evidence, root, run],
+    [bounds, evidence, root, run],
   );
 
   // Comparing two built revisions reads two finished reproducers and the runs
@@ -1252,7 +1257,7 @@ export default function App() {
   // is never retained here or anywhere else.
   const readReview = useCallback(
     async (review: string, approve: string, offset: number) => {
-      if (!root) return;
+      if (!root || !bounds) return;
       await run("review", async () => {
         setReviewResult(null);
         setReviewResult(
@@ -1261,12 +1266,12 @@ export default function App() {
             review,
             approve,
             offset,
-            limit: REVIEW_WINDOW,
+            limit: bounds.review,
           }),
         );
       });
     },
-    [root, run],
+    [bounds, root, run],
   );
 
   // A reproducer plan is bound to the case the grid verified, so every step
@@ -2714,54 +2719,56 @@ export default function App() {
 
   return (
     <IndicatorsContext.Provider value={indicators}>
-      <main className="shell" style={panes}>
-        {described.regions.map((region) => (
-          <Fragment key={region.id}>
-            <section
-              className={`region region-${region.id}`}
-              style={{ gridArea: region.id }}
-              aria-labelledby={`${region.id}-heading`}
-              tabIndex={-1}
-              ref={(element) => {
-                regionElements.current[region.id] = element;
-              }}
-              onFocus={() => setFocused(region.id)}
-            >
-              {/* The commands region's caption is visual chrome: the palette,
-               * search and action controls already name it, so the heading is
-               * kept only to name the landmark. */}
-              <h2 id={`${region.id}-heading`} className={region.id === "commands" ? "visually-hidden" : undefined}>
-                {region.label}
-              </h2>
-              <ContextHelp region={region.id} />
-              {content[region.id]}
-            </section>
-            {region.id === "evidence" ? (
-              <Separator
-                split={split}
-                min={MIN_SPLIT}
-                max={MAX_SPLIT}
-                step={SPLIT_STEP}
-                onSplit={setSplit}
-                bounds={() => {
-                  const left = regionElements.current.evidence?.getBoundingClientRect().left;
-                  const right = regionElements.current.inspector?.getBoundingClientRect().right;
-                  return left === undefined || right === undefined ? null : { left, right };
+      <VocabularyContext.Provider value={described.vocabulary}>
+        <main className="shell" style={panes}>
+          {described.regions.map((region) => (
+            <Fragment key={region.id}>
+              <section
+                className={`region region-${region.id}`}
+                style={{ gridArea: region.id }}
+                aria-labelledby={`${region.id}-heading`}
+                tabIndex={-1}
+                ref={(element) => {
+                  regionElements.current[region.id] = element;
                 }}
-              />
-            ) : null}
-          </Fragment>
-        ))}
-      </main>
+                onFocus={() => setFocused(region.id)}
+              >
+                {/* The commands region's caption is visual chrome: the palette,
+                 * search and action controls already name it, so the heading is
+                 * kept only to name the landmark. */}
+                <h2 id={`${region.id}-heading`} className={region.id === "commands" ? "visually-hidden" : undefined}>
+                  {region.label}
+                </h2>
+                <ContextHelp region={region.id} />
+                {content[region.id]}
+              </section>
+              {region.id === "evidence" ? (
+                <Separator
+                  split={split}
+                  min={MIN_SPLIT}
+                  max={MAX_SPLIT}
+                  step={SPLIT_STEP}
+                  onSplit={setSplit}
+                  bounds={() => {
+                    const left = regionElements.current.evidence?.getBoundingClientRect().left;
+                    const right = regionElements.current.inspector?.getBoundingClientRect().right;
+                    return left === undefined || right === undefined ? null : { left, right };
+                  }}
+                />
+              ) : null}
+            </Fragment>
+          ))}
+        </main>
 
-      <Palette
-        open={paletteOpen}
-        commands={listed}
-        query={paletteQuery}
-        onQuery={setPaletteQuery}
-        onClose={() => setPaletteOpen(false)}
-        onRun={(command) => latest.current[command]()}
-      />
+        <Palette
+          open={paletteOpen}
+          commands={listed}
+          query={paletteQuery}
+          onQuery={setPaletteQuery}
+          onClose={() => setPaletteOpen(false)}
+          onRun={(command) => latest.current[command]()}
+        />
+      </VocabularyContext.Provider>
     </IndicatorsContext.Provider>
   );
 }

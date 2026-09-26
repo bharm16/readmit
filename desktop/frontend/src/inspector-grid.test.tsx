@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Inspector } from "./Inspector";
-import { GRID_WINDOW, MessageGrid } from "./shell";
+import { MessageGrid } from "./shell";
 import {
   CASE_IDENTITY,
   GRID_OCCURRENCE,
@@ -19,7 +19,11 @@ import {
   gridResult,
   gridRow,
   refused,
+  vocabularyFixture,
 } from "./testkit/fixtures";
+
+/** How many occurrences one window of the grid shows, as the facade publishes it. */
+const GRID_WINDOW = vocabularyFixture().bounds.grid;
 
 test("the grid states how many records the view is not showing, always", () => {
   render(

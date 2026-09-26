@@ -16,6 +16,7 @@ import {
   type ObservationAdapterSupport,
   type ObservationAbsenceSummary,
   type ObservationSource,
+  type ObservationSourceChoices,
   type ObservationWindow,
 } from "./bindings";
 import { draftFor, useRetainer, RetentionStatus } from "./drafting";
@@ -35,9 +36,11 @@ function emptyWindow(): ObservationWindow {
   };
 }
 
+/** The source the editor holds until the read of the named document answers,
+ * which replaces it. Its contract version is the facade's to declare. */
 function emptyFileSource(): ObservationSource {
   return {
-    schema: "readmit-observation-source/v1",
+    schema: "",
     source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
     enabled: true,
     freshness: { max_age: "1h" },
@@ -53,14 +56,11 @@ function emptyFileSource(): ObservationSource {
   };
 }
 
-/** The source as its own contract declares it. The facade answers with every
- * transport member, and readmit-observation-source/v1 never had the capture
- * transport: sending that member back would be refused as a v1 document with
- * a member v1 never had, so a v1 source is saved without it. */
-function declared(source: ObservationSource): ObservationSource {
-  if (source.schema !== "readmit-observation-source/v1") return source;
-  const { capture: _, ...v1 } = source;
-  return v1 as ObservationSource;
+/** What the person declared for a source: every member but its contract
+ * version, which the facade picks when it saves the document. */
+function choicesOf(source: ObservationSource): ObservationSourceChoices {
+  const { schema: _, ...choices } = source;
+  return choices;
 }
 
 /** What the panel says about one named document it read or wrote: the
@@ -73,7 +73,10 @@ function documentRefused(kind: "Source" | "Window", file: string, outcome: strin
   return `${kind} document ${file} ${outcome}: ${reason ?? "no reason was given"}`;
 }
 
-function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): ObservationSource {
+/** A source of another kind, starting from that kind's example transport.
+ * `schema` is the contract version the facade publishes for the kind, so a
+ * retained draft names the contract its content is read under. */
+function applyKind(source: ObservationSource, kind: (typeof KINDS)[number], schema: string): ObservationSource {
   const shared = {
     source: { ...source.source, kind },
     enabled: source.enabled,
@@ -82,7 +85,7 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
   if (kind === "file-export") {
     return {
       ...shared,
-      schema: "readmit-observation-source/v1",
+      schema,
       extraction: {
         envelope: "csv",
         encoding: "utf-8",
@@ -97,7 +100,7 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
   if (kind === "http-api") {
     return {
       ...shared,
-      schema: "readmit-observation-source/v1",
+      schema,
       extraction: {
         envelope: "json",
         encoding: "utf-8",
@@ -121,7 +124,7 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
   if (kind === "downstream-capture") {
     return {
       ...shared,
-      schema: "readmit-observation-source/v2",
+      schema,
       extraction: null,
       file: null,
       http: null,
@@ -130,7 +133,7 @@ function applyKind(source: ObservationSource, kind: (typeof KINDS)[number]): Obs
   }
   return {
     ...shared,
-    schema: "readmit-observation-source/v3",
+    schema,
     extraction: null,
     file: null,
     http: null,
@@ -449,7 +452,7 @@ export function ObservationPanel({
             type="button"
             disabled={blocked}
             aria-pressed={source.source.kind === kind}
-            onClick={() => updateSource(applyKind(source, kind))}
+            onClick={() => updateSource(applyKind(source, kind, support.find((row) => row.kind === kind)?.schema ?? ""))}
           >
             {kind}
           </button>
@@ -762,7 +765,7 @@ export function ObservationPanel({
               // land is said plainly: collecting now would read what was
               // saved before, not what the editor shows. The pair is saved
               // source first, and a refused source leaves the window as saved.
-              const savedSource = await saveObservationSource({ workspace, source_file: sourceFile, source: declared(source) });
+              const savedSource = await saveObservationSource({ workspace, source_file: sourceFile, choices: choicesOf(source) });
               if (savedSource.state !== "completed") {
                 report(savedSource.state, savedSource.reason);
                 setSourceCheck(documentRefused("Source", sourceFile, "not saved", savedSource.reason));

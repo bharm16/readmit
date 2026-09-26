@@ -199,6 +199,8 @@ import type {
   ReproducerComparisonResult,
   ReproducerRequest,
   ReproducerResult,
+  ResetActionRequest,
+  ResetActionResult,
   ResetPlanResult,
   ResetPlanSaveRequest,
   ResumeRunRequest,
@@ -1487,6 +1489,10 @@ export function readResetPlan(workspace: string, planFile: string): Promise<Rese
 
 export function saveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult> {
   return guard(() => facade().SaveResetPlan(request), { state: "failed" });
+}
+
+export function reviewResetAction(request: ResetActionRequest): Promise<ResetActionResult> {
+  return guard(() => facade().ReviewResetAction(request), { state: "failed" });
 }
 
 export function observationSupport(): Promise<ObservationSupportResult> {

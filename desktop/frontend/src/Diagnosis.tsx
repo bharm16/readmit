@@ -18,19 +18,7 @@ import { DiagnoseConfigEditor } from "./RulesEditor";
 import { Report, type Indicators } from "./shell";
 import "./diagnosis.css";
 import { useLifecycle } from "./lifecycle";
-
-/** How many findings of a diagnosis one window asks the facade for. It is the
- * facade's own bound. */
-export const DIAGNOSIS_WINDOW = 200;
-
-/** The three built-in configurations a diagnosis can run under, named by their
- * own profile and ruleset tokens. The vocabulary is the engine's; choosing one
- * is explicit and nothing is chosen implicitly. */
-const BUILTINS: { id: string; profile: string; ruleset: string }[] = [
-  { id: "siu", profile: "readmit-siu-v1", ruleset: "readmit-siu-diagnosis/v1" },
-  { id: "lifecycle", profile: "readmit-lifecycle-v1", ruleset: "readmit-lifecycle-diagnosis/v1" },
-  { id: "order", profile: "readmit-order-v1", ruleset: "readmit-order-diagnosis/v1" },
-];
+import { useVocabulary } from "./vocabulary";
 
 /** The verdicts a person can record about one finding, in the review engine's
  * own vocabulary. A finding nobody decided stays not reviewed, which is not a
@@ -180,6 +168,12 @@ export function Diagnosis({
    * the pickers offer it. */
   onSaved?: () => void;
 }) {
+  // The built-in configurations a diagnosis can run under and how many
+  // findings one window asks for, as the facade publishes them. Choosing a
+  // configuration is explicit and nothing is chosen implicitly.
+  const vocabulary = useVocabulary();
+  const builtins = vocabulary?.diagnosis_builtins ?? [];
+  const page = vocabulary?.bounds.diagnosis ?? 0;
   const [chosen, setChosen] = useState("");
   const [output, setOutput] = useState("");
   const [report, setReport] = useState("");
@@ -390,7 +384,7 @@ export function Diagnosis({
         >
           <option value="">Choose a configuration…</option>
           <optgroup label="Built-in configurations">
-            {BUILTINS.map((builtin) => (
+            {builtins.map((builtin) => (
               <option key={builtin.id} value={`builtin:${builtin.id}`}>
                 {builtin.id} — {builtin.profile} · {builtin.ruleset}
               </option>
@@ -497,10 +491,10 @@ export function Diagnosis({
           <div className="diagnosis-window">
             <button
               type="button"
-              disabled={busy || report === "" || diagnosis.offset === 0}
-              onClick={() => onOpen(report, Math.max(0, diagnosis.offset - DIAGNOSIS_WINDOW))}
+              disabled={busy || report === "" || diagnosis.offset === 0 || page === 0}
+              onClick={() => onOpen(report, Math.max(0, diagnosis.offset - page))}
             >
-              Previous {DIAGNOSIS_WINDOW}
+              Previous {page}
             </button>
             <span>
               Findings {diagnosis.findings.length === 0 ? diagnosis.offset : diagnosis.offset + 1}–
@@ -511,11 +505,12 @@ export function Diagnosis({
               disabled={
                 busy ||
                 report === "" ||
+                page === 0 ||
                 diagnosis.offset + diagnosis.findings.length >= diagnosis.total
               }
-              onClick={() => onOpen(report, diagnosis.offset + DIAGNOSIS_WINDOW)}
+              onClick={() => onOpen(report, diagnosis.offset + page)}
             >
-              Next {DIAGNOSIS_WINDOW}
+              Next {page}
             </button>
           </div>
 
@@ -974,14 +969,14 @@ export function Diagnosis({
           <div className="diagnosis-window">
             <button
               type="button"
-              disabled={busy || (groupedRequest === null && openedGroupsEntry === "") || groupsResult.offset === 0}
+              disabled={busy || (groupedRequest === null && openedGroupsEntry === "") || groupsResult.offset === 0 || page === 0}
               onClick={() => {
-                const offset = Math.max(0, groupsResult.offset - DIAGNOSIS_WINDOW);
+                const offset = Math.max(0, groupsResult.offset - page);
                 if (groupedRequest) onGroup({ ...groupedRequest, offset });
                 else if (openedGroupsEntry) onOpenGroups(openedGroupsEntry, offset);
               }}
             >
-              Previous {DIAGNOSIS_WINDOW} groups
+              Previous {page} groups
             </button>
             <span>
               Groups{" "}
@@ -994,15 +989,16 @@ export function Diagnosis({
               disabled={
                 busy ||
                 (groupedRequest === null && openedGroupsEntry === "") ||
+                page === 0 ||
                 groupsResult.offset + groupsResult.groups.groups.length >= groupsResult.total
               }
               onClick={() => {
-                const offset = groupsResult.offset + DIAGNOSIS_WINDOW;
+                const offset = groupsResult.offset + page;
                 if (groupedRequest) onGroup({ ...groupedRequest, offset });
                 else if (openedGroupsEntry) onOpenGroups(openedGroupsEntry, offset);
               }}
             >
-              Next {DIAGNOSIS_WINDOW} groups
+              Next {page} groups
             </button>
           </div>
           <ul className="findings">

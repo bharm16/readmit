@@ -11,11 +11,6 @@ import { CorrelationReview } from "./CorrelationReview";
 import { CorrelationRulesEditor, SequenceAnalysisEditor } from "./RulesEditor";
 import type { CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
 
-/** How many events of a sequence one window asks the facade for. It is the
- * facade's own bound: a large case is laid out one window at a time and the
- * next one is another call that verifies the case again. */
-export const SEQUENCE_WINDOW = 200;
-
 /** How every gap the facade reports reads in the window. The facade names them
  * and this maps each to a sentence; none of them is decided here, and none of
  * them is an explanation of why the evidence stops. */

@@ -3,7 +3,9 @@
 // that exact text, and that a refusal is shown verbatim and leaves the work in
 // the window. What a document means is the Go readers' subject, not this one.
 import { expect, test } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render as renderAlone, screen, waitFor, within } from "@testing-library/react";
+import { vocabularyWrapper } from "./testkit/app";
 import userEvent from "@testing-library/user-event";
 import {
   CorrelationRulesEditor,
@@ -14,6 +16,9 @@ import {
 import { installFacade } from "./testkit/wails";
 import type { DiagnoseConfig, DiagnoseConfigResult } from "./bindings";
 import { CASE_IDENTITY, WORKSPACE_ROOT, refused } from "./testkit/fixtures";
+
+/** A panel on its own, inside the vocabulary the window provides it. */
+const render = (ui: ReactElement) => renderAlone(ui, { wrapper: vocabularyWrapper() });
 
 function expectEditorHeld(editor: HTMLElement) {
   const controls = editor.querySelectorAll("button, input, select, textarea");

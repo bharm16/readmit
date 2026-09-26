@@ -5,6 +5,8 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/environment"
@@ -125,13 +127,83 @@ func (r *TargetResetResult) refuse(state State, reason string) { r.State, r.Reas
 
 // SecretsResult carries one secret reference document. Identity is present
 // only after a registration or an edit: the SHA-256 of the exact bytes the
-// save wrote.
+// save wrote. Rotations is the rotation state Go decides for each reference,
+// in the document's order, so the window shows it rather than reading an
+// interval itself. CredentialFile is the secrets document a target's
+// credential records for the document the window named; a read answers it
+// whether or not the document could be read.
 type SecretsResult struct {
-	State       State            `json:"state"`
-	Reason      string           `json:"reason,omitzero"`
-	Document    *secret.Document `json:"document,omitzero"`
-	SecretsFile string           `json:"secrets_file,omitzero"`
-	Identity    string           `json:"identity,omitzero"`
+	State          State            `json:"state"`
+	Reason         string           `json:"reason,omitzero"`
+	Document       *secret.Document `json:"document,omitzero"`
+	SecretsFile    string           `json:"secrets_file,omitzero"`
+	Identity       string           `json:"identity,omitzero"`
+	Rotations      []SecretRotation `json:"rotations,omitzero"`
+	CredentialFile string           `json:"credential_file,omitzero"`
+}
+
+// SecretRotation is what one reference's recorded rotation says now, as
+// secret.Reference.Rotation decides it: a reference that declares no interval,
+// or a zero one, is not declared, never current.
+type SecretRotation struct {
+	Name     string               `json:"name"`
+	Rotation secret.RotationState `json:"rotation"`
+}
+
+// secretsView is the completed answer for one document the window named.
+func secretsView(workspace, secretsFile string, document secret.Document, now time.Time) SecretsResult {
+	rotations := make([]SecretRotation, 0, len(document.References))
+	for _, reference := range document.References {
+		rotations = append(rotations, SecretRotation{Name: reference.Name, Rotation: reference.Rotation(now)})
+	}
+	return SecretsResult{
+		State: Completed, Document: &document, SecretsFile: secretsFile,
+		Rotations: rotations, CredentialFile: credentialFile(workspace, secretsFile),
+	}
+}
+
+// credentialFile is the secrets document a target's credential records for a
+// document the window names, exactly as the window has always recorded it. An
+// absolute name is recorded as named. A relative one is cleaned — empty and
+// "." elements dropped, and ".." dropping the element before it, or nothing
+// at the start — and anchored at the workspace path the window named, with
+// one trailing separator removed and "/" before the name: never at a folder
+// link's destination and never left relative, because a relative reference
+// is anchored at the target's own folder, which can be another one. A
+// workspace named as a Windows path also accepts Windows absolute names and
+// "\" separators.
+func credentialFile(workspace, secretsFile string) string {
+	windowsPath := windowsAbsolute(workspace) || strings.HasPrefix(workspace, `\\`)
+	if strings.HasPrefix(secretsFile, "/") || (windowsPath && (strings.HasPrefix(secretsFile, `\\`) || windowsAbsolute(secretsFile))) {
+		return secretsFile
+	}
+	name := secretsFile
+	if windowsPath {
+		name = strings.ReplaceAll(name, `\`, "/")
+	}
+	var clean []string
+	for _, part := range strings.Split(name, "/") {
+		switch part {
+		case "", ".":
+		case "..":
+			if len(clean) > 0 {
+				clean = clean[:len(clean)-1]
+			}
+		default:
+			clean = append(clean, part)
+		}
+	}
+	root := workspace
+	if strings.HasSuffix(root, "/") || strings.HasSuffix(root, `\`) {
+		root = root[:len(root)-1]
+	}
+	return root + "/" + strings.Join(clean, "/")
+}
+
+// windowsAbsolute reports whether a path begins with a drive letter and a
+// separator.
+func windowsAbsolute(path string) bool {
+	return len(path) >= 3 && (path[0]|0x20 >= 'a' && path[0]|0x20 <= 'z') && path[1] == ':' && (path[2] == '/' || path[2] == '\\')
 }
 
 func (r *SecretsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -239,6 +311,35 @@ type ResetPlanResult struct {
 }
 
 func (r *ResetPlanResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// ResetActionRequest is one reset action as a person chose it: its
+// identifier, the reviewed operator, the instructions for whoever performs it
+// and, for an operator that reads one, the observation file. The authority is
+// not here: the facade records the one the review requires.
+type ResetActionRequest struct {
+	ID           string                `json:"id"`
+	Operator     fixturereset.Operator `json:"operator"`
+	Instructions string                `json:"instructions"`
+	Observation  string                `json:"observation,omitzero"`
+}
+
+// ResetActionResult carries the action as a plan records it, with the
+// authority the review decided for its operator.
+type ResetActionResult struct {
+	State  State                `json:"state"`
+	Reason string               `json:"reason,omitzero"`
+	Action *fixturereset.Action `json:"action,omitzero"`
+}
+
+// ReviewResetAction decides the action a plan records for one a person
+// chose, through fixturereset.ReviewedAction. It reads and writes nothing.
+func (a *App) ReviewResetAction(request ResetActionRequest) ResetActionResult {
+	action, err := fixturereset.ReviewedAction(request.ID, request.Operator, request.Instructions, request.Observation)
+	if err != nil {
+		return ResetActionResult{State: Failed, Reason: err.Error()}
+	}
+	return ResetActionResult{State: Completed, Action: &action}
+}
 
 // ResetPlanSaveRequest saves one fixture reset plan.
 type ResetPlanSaveRequest struct {
@@ -385,13 +486,13 @@ func (a *App) ReadSecrets(workspace, secretsFile string) SecretsResult {
 	return run(a, false, false, func(context.Context) SecretsResult {
 		path, ref := resolveWorkspacePath(workspace, secretsFile)
 		if path == "" {
-			return SecretsResult{State: ref.state, Reason: ref.reason}
+			return SecretsResult{State: ref.state, Reason: ref.reason, CredentialFile: credentialFile(workspace, secretsFile)}
 		}
 		doc, err := operation.OpenOrEmptySecrets(path)
 		if err != nil {
-			return SecretsResult{State: Failed, Reason: err.Error()}
+			return SecretsResult{State: Failed, Reason: err.Error(), CredentialFile: credentialFile(workspace, secretsFile)}
 		}
-		return SecretsResult{State: Completed, Document: &doc, SecretsFile: secretsFile}
+		return secretsView(workspace, secretsFile, doc, time.Now())
 	})
 }
 
@@ -426,7 +527,9 @@ func (a *App) SaveSecretReference(request SecretSaveRequest) SecretsResult {
 		if err != nil {
 			return SecretsResult{State: Failed, Reason: err.Error()}
 		}
-		return SecretsResult{State: Completed, Document: &doc, SecretsFile: request.SecretsFile, Identity: identity}
+		saved := secretsView(request.Workspace, request.SecretsFile, doc, time.Now())
+		saved.Identity = identity
+		return saved
 	})
 }
 
@@ -459,7 +562,7 @@ func (a *App) RemoveSecretReference(workspace, secretsFile, name string) Secrets
 		if err != nil {
 			return SecretsResult{State: Failed, Reason: err.Error()}
 		}
-		return SecretsResult{State: Completed, Document: &doc, SecretsFile: secretsFile}
+		return secretsView(workspace, secretsFile, doc, time.Now())
 	})
 }
 
@@ -496,7 +599,7 @@ func (a *App) RotateSecretReference(workspace, secretsFile, name string) Secrets
 		if err != nil {
 			return SecretsResult{State: Failed, Reason: err.Error()}
 		}
-		return SecretsResult{State: Completed, Document: &doc, SecretsFile: secretsFile}
+		return secretsView(workspace, secretsFile, doc, time.Now())
 	})
 }
 

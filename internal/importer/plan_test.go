@@ -144,3 +144,43 @@ func FuzzImportPlan(f *testing.F) {
 		}
 	})
 }
+
+// Every value the vocabulary offers is one a plan may declare, and a payload
+// framing is one a plan declares without a batch boundary.
+func TestPlanVocabularyOffersWhatAPlanDeclares(t *testing.T) {
+	vocabulary := importer.Vocabulary()
+	valid := func(change func(*importer.Plan)) error {
+		plan := importer.Plan{Schema: importer.PlanSchema, Framing: importer.RawFraming, Terminator: hl7.CR,
+			Encoding: importer.UTF8, Direction: bundle.Inbound, Members: []string{}}
+		change(&plan)
+		return plan.Validate()
+	}
+	for _, framing := range vocabulary.Framings {
+		for _, boundary := range append([]importer.Boundary{""}, vocabulary.Boundaries...) {
+			err := valid(func(p *importer.Plan) { p.Framing, p.BatchBoundary = framing, boundary })
+			if (framing == importer.BatchFraming) == (boundary == "") != (err != nil) {
+				t.Errorf("framing %s with boundary %q: %v", framing, boundary, err)
+			}
+		}
+	}
+	for _, framing := range vocabulary.PayloadFramings {
+		if err := valid(func(p *importer.Plan) { p.Framing = framing }); err != nil || !slices.Contains(vocabulary.Framings, framing) {
+			t.Errorf("payload framing %s: %v", framing, err)
+		}
+	}
+	for _, terminator := range vocabulary.Terminators {
+		if err := valid(func(p *importer.Plan) { p.Terminator = terminator }); err != nil {
+			t.Errorf("terminator %s: %v", terminator, err)
+		}
+	}
+	for _, encoding := range vocabulary.Encodings {
+		if err := valid(func(p *importer.Plan) { p.Encoding = encoding }); err != nil {
+			t.Errorf("encoding %s: %v", encoding, err)
+		}
+	}
+	for _, direction := range vocabulary.Directions {
+		if err := valid(func(p *importer.Plan) { p.Direction = direction }); err != nil {
+			t.Errorf("direction %s: %v", direction, err)
+		}
+	}
+}

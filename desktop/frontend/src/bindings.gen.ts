@@ -603,6 +603,12 @@ export interface CollectionEnhancedRule {
   approved_transport: boolean;
 }
 
+/** internal/collection.FaultAction */
+export interface CollectionFaultAction {
+  action: string;
+  waits: boolean;
+}
+
 /** internal/collection.FaultPolicy */
 export interface CollectionFaultPolicy {
   environment_class: string;
@@ -1048,6 +1054,13 @@ export interface Diagnosis {
   total: number;
   findings: DiagnosisFinding[];
   unsupported: DiagnosisUnsupported[];
+}
+
+/** internal/desktop.DiagnosisBuiltin */
+export interface DiagnosisBuiltin {
+  id: string;
+  profile: string;
+  ruleset: string;
 }
 
 /** internal/diagnose.Evidence */
@@ -2239,6 +2252,16 @@ export interface ImportPlan {
   members: string[];
 }
 
+/** internal/importer.PlanVocabulary */
+export interface ImportPlanVocabulary {
+  framings: ImportFraming[];
+  payload_framings: ImportFraming[];
+  boundaries: ImportBoundary[];
+  terminators: HL7Terminator[];
+  encodings: ImportEncoding[];
+  directions: BundleDirection[];
+}
+
 /** internal/importer.Preview */
 export interface ImportPreview {
   schema: string;
@@ -3129,6 +3152,18 @@ export interface ObservationSourceCapture {
   max_occurrences: number;
 }
 
+/** internal/desktop.ObservationSourceChoices */
+export interface ObservationSourceChoices {
+  source: ObservationWindowSource;
+  enabled: boolean;
+  freshness: ObservationSourceFreshness;
+  extraction: ObservationSourceExtraction | null;
+  file: ObservationSourceFile | null;
+  http: ObservationSourceHTTP | null;
+  capture: ObservationSourceCapture | null;
+  database?: ObservationSourceDatabase;
+}
+
 /** internal/observesource.Credential */
 export interface ObservationSourceCredential {
   store: SecretStore;
@@ -3216,6 +3251,7 @@ export interface ObservationSourceRequest {
   workspace: string;
   source_file: string;
   source?: ObservationSource;
+  choices?: ObservationSourceChoices;
 }
 
 /** internal/desktop.ObservationSourceResult */
@@ -4287,6 +4323,12 @@ export interface RawInspectionResult {
   inspection?: RawInspection;
 }
 
+/** internal/desktop.ReceiverFaultVocabulary */
+export interface ReceiverFaultVocabulary {
+  actions: CollectionFaultAction[];
+  default_delay_ms: number;
+}
+
 /** internal/collection.Policy */
 export interface ReceiverPolicy {
   schema: string;
@@ -4298,11 +4340,25 @@ export interface ReceiverPolicy {
   faults?: CollectionFaultPolicy;
 }
 
+/** internal/desktop.ReceiverPolicyChoices */
+export interface ReceiverPolicyChoices {
+  name: string;
+  source_label: string;
+  acknowledgement: CollectionAckRule;
+  accepted_message_types: CollectionMessageTypeRule;
+  enhanced: boolean;
+  fault?: string;
+  fault_delay_ms?: number;
+  endpoint?: string;
+  opened?: ReceiverPolicy;
+}
+
 /** internal/desktop.ReceiverPolicyRequest */
 export interface ReceiverPolicyRequest {
   workspace: string;
   policy_file: string;
-  policy: ReceiverPolicy;
+  policy?: ReceiverPolicy;
+  choices?: ReceiverPolicyChoices;
 }
 
 /** internal/desktop.ReceiverPolicyResult */
@@ -4311,6 +4367,7 @@ export interface ReceiverPolicyResult {
   reason?: string;
   policy?: ReceiverPolicy;
   policy_file?: string;
+  choices?: ReceiverPolicyChoices;
 }
 
 /** internal/desktop.RecentResult */
@@ -4984,6 +5041,21 @@ export interface ResetActionOutcome {
   diagnosis?: EnvironmentOutcome;
 }
 
+/** internal/desktop.ResetActionRequest */
+export interface ResetActionRequest {
+  id: string;
+  operator: ResetOperator;
+  instructions: string;
+  observation?: string;
+}
+
+/** internal/desktop.ResetActionResult */
+export interface ResetActionResult {
+  state: State;
+  reason?: string;
+  action?: ResetAction;
+}
+
 /** internal/fixturereset.Authority */
 export type ResetAuthority = "none" | "read_declared_file" | "connect_approved_target";
 
@@ -5056,6 +5128,12 @@ export interface ResetResult {
   decision?: SendPolicyReason;
   actions: ResetActionOutcome[];
   attempted_at: string;
+}
+
+/** internal/fixturereset.Review */
+export interface ResetReview {
+  operator: ResetOperator;
+  authority: ResetAuthority;
 }
 
 /** internal/desktop.ResumeRunRequest */
@@ -5997,6 +6075,15 @@ export interface SecretReference {
   max_age?: string;
 }
 
+/** internal/desktop.SecretRotation */
+export interface SecretRotation {
+  name: string;
+  rotation: SecretRotationState;
+}
+
+/** internal/secret.RotationState */
+export type SecretRotationState = "current" | "overdue" | "not-declared";
+
 /** internal/desktop.SecretSaveRequest */
 export interface SecretSaveRequest {
   workspace: string;
@@ -6040,6 +6127,8 @@ export interface SecretsResult {
   document?: SecretDocument;
   secrets_file?: string;
   identity?: string;
+  rotations?: SecretRotation[];
+  credential_file?: string;
 }
 
 /** internal/localprofile.Segment */
@@ -6294,6 +6383,7 @@ export interface Shell {
   text_scales: number[];
   privacy: Privacy;
   support: Support;
+  vocabulary: Vocabulary;
 }
 
 /** internal/desktop.ShellResult */
@@ -7482,6 +7572,24 @@ export interface View {
   run: string;
 }
 
+/** internal/desktop.Vocabulary */
+export interface Vocabulary {
+  diagnosis_builtins: DiagnosisBuiltin[];
+  import_plan: ImportPlanVocabulary;
+  reset_operators: ResetReview[];
+  receiver_faults: ReceiverFaultVocabulary;
+  bounds: WindowBounds;
+}
+
+/** internal/desktop.WindowBounds */
+export interface WindowBounds {
+  grid: number;
+  comparison: number;
+  review: number;
+  sequence: number;
+  diagnosis: number;
+}
+
 /** internal/desktop.Workspace */
 export interface Workspace {
   root: string;
@@ -7704,6 +7812,7 @@ export interface Facade {
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
   ReviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult>;
+  ReviewResetAction(request: ResetActionRequest): Promise<ResetActionResult>;
   ReviewSuitePromotion(request: SuitePromotionRequest): Promise<SuitePromotionResult>;
   RotateProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
   RotateSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;

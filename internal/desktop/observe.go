@@ -42,10 +42,43 @@ func (r *ObservationWindowResult) refuse(state State, reason string) {
 }
 
 // ObservationSourceRequest names a workspace-relative or absolute source file.
+// A save carries either a whole declared document, written as it declares
+// itself, or the choices a person made in the window, which the facade writes
+// under the contract version it picks for them.
 type ObservationSourceRequest struct {
-	Workspace  string                `json:"workspace"`
-	SourceFile string                `json:"source_file"`
-	Source     *observesource.Source `json:"source,omitzero"`
+	Workspace  string                    `json:"workspace"`
+	SourceFile string                    `json:"source_file"`
+	Source     *observesource.Source     `json:"source,omitzero"`
+	Choices    *ObservationSourceChoices `json:"choices,omitzero"`
+}
+
+// ObservationSourceChoices is a source as a person declared it in the window:
+// every member of the document but its contract version. The facade picks
+// that with observesource.VersionFor, keeping the version of the document
+// already at the named file while it observes the same kind.
+type ObservationSourceChoices struct {
+	Observes   observewindow.Source      `json:"source"`
+	Enabled    bool                      `json:"enabled"`
+	Freshness  observesource.Freshness   `json:"freshness"`
+	Extraction *observesource.Extraction `json:"extraction"`
+	File       *observesource.File       `json:"file"`
+	HTTP       *observesource.HTTP       `json:"http"`
+	Capture    *observesource.Capture    `json:"capture"`
+	Database   *observesource.Database   `json:"database,omitzero"`
+}
+
+// source is the document the choices describe, under the version picked for
+// the document already at path, if one reads there.
+func (c ObservationSourceChoices) source(path string) observesource.Source {
+	var declared *observesource.Source
+	if existing, _, err := operation.ValidateObservationSource(path); err == nil {
+		declared = &existing
+	}
+	return observesource.Source{
+		Schema: observesource.VersionFor(c.Observes.Kind, declared), Observes: c.Observes,
+		Enabled: c.Enabled, Freshness: c.Freshness, Extraction: c.Extraction,
+		File: c.File, HTTP: c.HTTP, Capture: c.Capture, Database: c.Database,
+	}
 }
 
 // ObservationSourceResult carries one declared source and its identity.
@@ -193,14 +226,20 @@ func (a *App) OpenObservationSource(workspace, sourceFile string) ObservationSou
 // SaveObservationSource writes a source through the shared writer and re-reads it.
 func (a *App) SaveObservationSource(request ObservationSourceRequest) ObservationSourceResult {
 	return run(a, true, true, func(ctx context.Context) ObservationSourceResult {
-		if request.Source == nil {
+		if request.Source == nil && request.Choices == nil {
 			return ObservationSourceResult{State: Failed, Reason: "an observation source is required"}
 		}
 		path, ref := resolveWorkspacePath(request.Workspace, request.SourceFile)
 		if path == "" {
 			return ObservationSourceResult{State: ref.state, Reason: ref.reason}
 		}
-		source, identity, err := operation.SaveObservationSource(path, *request.Source)
+		var declared observesource.Source
+		if request.Choices != nil {
+			declared = request.Choices.source(path)
+		} else {
+			declared = *request.Source
+		}
+		source, identity, err := operation.SaveObservationSource(path, declared)
 		if err != nil {
 			return ObservationSourceResult{State: Failed, Reason: err.Error()}
 		}

@@ -9,9 +9,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GRID_WINDOW } from "../shell";
 import { enter, Journey, press, region } from "../testkit/journey";
-import { BOOKING, buildIndex, declareMllpImport, framed, licensedProject } from "./steps";
+import { BOOKING, buildIndex, declareMllpImport, framed, GRID_WINDOW, licensedProject } from "./steps";
 
 let journey: Journey;
 

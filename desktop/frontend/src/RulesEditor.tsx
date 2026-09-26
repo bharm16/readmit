@@ -18,6 +18,7 @@ import {
   type SequenceAnalysisResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useVocabulary } from "./vocabulary";
 
 /** Structured editors for the authored rule and policy documents.
  *
@@ -1288,15 +1289,6 @@ export function NormalizationPolicyEditor({
   );
 }
 
-/** The three bundled configurations a diagnosis can run under, by their own
- * profile and ruleset tokens. The vocabulary is the engine's, never invented
- * here. */
-const BUILTIN_CONFIGS: { profile: string; ruleset: string }[] = [
-  { profile: "readmit-siu-v1", ruleset: "readmit-siu-diagnosis/v1" },
-  { profile: "readmit-lifecycle-v1", ruleset: "readmit-lifecycle-diagnosis/v1" },
-  { profile: "readmit-order-v1", ruleset: "readmit-order-diagnosis/v1" },
-];
-
 const EMPTY_NAMESPACE: DiagnoseConfigNamespace = {
   key: "",
   namespace: "",
@@ -1340,8 +1332,11 @@ export function DiagnoseConfigEditor({
   busy: boolean;
   onSaved?: () => void;
 }) {
-  const [profile, setProfile] = useState(BUILTIN_CONFIGS[0]?.profile ?? "");
-  const [ruleset, setRuleset] = useState(BUILTIN_CONFIGS[0]?.ruleset ?? "");
+  // The bundled configurations a diagnosis can run under, by their own profile
+  // and ruleset tokens, as the facade publishes them.
+  const builtins: { profile: string; ruleset: string }[] = useVocabulary()?.diagnosis_builtins ?? [];
+  const [profile, setProfile] = useState(builtins[0]?.profile ?? "");
+  const [ruleset, setRuleset] = useState(builtins[0]?.ruleset ?? "");
   const [rules, setRules] = useState("");
   const [namespaces, setNamespaces] = useState<DiagnoseConfigNamespace[]>([]);
   const [namespaceDraft, setNamespaceDraft] = useState<DiagnoseConfigNamespace>(EMPTY_NAMESPACE);
@@ -1401,7 +1396,7 @@ export function DiagnoseConfigEditor({
     setResult(opened);
     if (opened.state !== "completed" || !opened.config) return;
     const config = opened.config;
-    const bundled = BUILTIN_CONFIGS.some(
+    const bundled = builtins.some(
       (pair) => pair.profile === config.profile && pair.ruleset === config.ruleset,
     );
     setOpenedPair(bundled ? null : { profile: config.profile, ruleset: config.ruleset });
@@ -1419,8 +1414,8 @@ export function DiagnoseConfigEditor({
     openButton.current?.focus();
   };
 
-  const pairs = openedPair ? [...BUILTIN_CONFIGS, openedPair] : BUILTIN_CONFIGS;
-  const selected = BUILTIN_CONFIGS.some((pair) => pair.profile === profile && pair.ruleset === ruleset)
+  const pairs = openedPair ? [...builtins, openedPair] : builtins;
+  const selected = builtins.some((pair) => pair.profile === profile && pair.ruleset === ruleset)
     ? profile
     : "opened";
 
@@ -1486,8 +1481,8 @@ export function DiagnoseConfigEditor({
           const chosen =
             event.target.value === "opened"
               ? openedPair
-              : (BUILTIN_CONFIGS.find((config) => config.profile === event.target.value) ??
-                BUILTIN_CONFIGS[0]);
+              : (builtins.find((config) => config.profile === event.target.value) ??
+                builtins[0]);
           if (chosen) recompose(chosen.profile, chosen.ruleset, rules, namespaces);
         }}
       >

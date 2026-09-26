@@ -67,6 +67,58 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	files, err := admitRetained(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	packet, err := artifactdir.Create(output, retainedFamily, artifactdir.Durable)
+	if err != nil {
+		return nil, err
+	}
+	defer packet.Close()
+	dir := packet.Path()
+	if err := copyFiles(packet, files, "", ""); err != nil {
+		return nil, err
+	}
+	manifest, summary, err := inspectRetained(ctx, dir, files)
+	if err != nil {
+		return nil, err
+	}
+	files["SUMMARY.md"] = summary
+	files["RERUN.md"] = retainedInstructions()
+	for _, name := range []string{"SUMMARY.md", "RERUN.md"} {
+		if err := packet.WriteFile(name, files[name]); err != nil {
+			return nil, err
+		}
+	}
+	manifest.Files = index(files)
+	raw, err := encode(manifest)
+	if err != nil {
+		return nil, err
+	}
+	if err := packet.WriteFile("manifest.json", raw); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := packet.Seal(nil); err != nil {
+		return nil, err
+	}
+	return OpenRetained(ctx, dir)
+}
+
+// admitRetained is the one admission check a retained-packet request passes,
+// made alike by the preview and the assembly: the files of every section read
+// under the packet's aggregate path, file and byte bounds, the exact retained
+// specification, and each selected execution bound to the original payloads of
+// its own case. It returns the files assembly copies and writes nothing, so a
+// preview that admits a request describes a packet assembly will copy, and
+// one it refuses names the sentence assembly refuses with.
+func admitRetained(ctx context.Context, in RetainedInput) (map[string][]byte, error) {
 	sections, err := retainedSections(in)
 	if err != nil {
 		return nil, err
@@ -99,44 +151,18 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 	if len(files) > maxFiles-4 || total > maxPacketBytes-(1<<20) {
 		return nil, errors.New("retained packet exceeds file or byte limits")
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	packet, err := artifactdir.Create(output, retainedFamily, artifactdir.Durable)
-	if err != nil {
-		return nil, err
-	}
-	defer packet.Close()
-	dir := packet.Path()
-	if err := copyFiles(packet, files, "", ""); err != nil {
-		return nil, err
-	}
-	manifest, summary, err := inspectRetained(ctx, dir, files)
-	if err != nil {
-		return nil, err
-	}
-	files["SUMMARY.md"] = summary
-	files["RERUN.md"] = retainedInstructions()
-	for _, name := range []string{"SUMMARY.md", "RERUN.md"} {
-		if err := packet.WriteFile(name, files[name]); err != nil {
+	for _, run := range [][2]string{{"case", "current"}, {"baseline-case", "baseline"}} {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, selected := sections[run[1]]; !selected {
+			continue
+		}
+		if _, err := inspectRetainedRun(sections[run[0]], sections[run[1]]); err != nil {
 			return nil, err
 		}
 	}
-	manifest.Files = index(files)
-	raw, err = encode(manifest)
-	if err != nil {
-		return nil, err
-	}
-	if err := packet.WriteFile("manifest.json", raw); err != nil {
-		return nil, err
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if _, err := packet.Seal(nil); err != nil {
-		return nil, err
-	}
-	return OpenRetained(ctx, dir)
+	return files, nil
 }
 
 // retainedSections is the one packet layout the preview and the assembly
@@ -209,7 +235,10 @@ type RetainedPreview struct {
 // bundle, the bounded specification and its decoder, the retained execution —
 // and reports what it found without writing anything. The sections it names
 // are the ones Assemble copies and the checks it reports are the ones
-// Assemble's sealed manifest must satisfy.
+// Assemble's sealed manifest must satisfy; inputs that verify one by one are
+// then admitted through Assemble's own admission check, so the packet's
+// aggregate bounds and the original-payload binding refuse here exactly what
+// they refuse there.
 func PreviewRetained(ctx context.Context, in RetainedInput) (*RetainedPreview, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -264,6 +293,17 @@ func PreviewRetained(ctx context.Context, in RetainedInput) (*RetainedPreview, e
 	}
 	if p.BaselineCase != nil {
 		p.Problems = append(p.Problems, inputProblems(p.BaselineCase)...)
+	}
+	// Inputs that verify one by one still pass assembly's own admission — the
+	// packet's aggregate bounds and the original payloads — before the
+	// preview reports none, in the sentence assembly would refuse with.
+	if len(p.Problems) == 0 {
+		if _, err := admitRetained(ctx, in); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			p.Problems = append(p.Problems, err.Error())
+		}
 	}
 	return p, nil
 }
@@ -478,7 +518,7 @@ func OpenRetained(ctx context.Context, dir string) (*RetainedPacket, error) {
 func inspectRetained(ctx context.Context, dir string, files map[string][]byte) (RetainedManifest, []byte, error) {
 	m := RetainedManifest{Schema: RetainedSchema, State: "complete", ExportPolicy: retainedExportPolicy, ContainsSourceValues: retainedContainsSourceValues}
 	invalid := errors.New("retained case, specification and execution identity or provenance mismatch")
-	current, err := inspectRetainedRun(dir, "case", "current")
+	current, err := inspectRetainedRun(filepath.Join(dir, "case"), filepath.Join(dir, "current"))
 	if err != nil {
 		return m, nil, err
 	}
@@ -489,7 +529,7 @@ func inspectRetained(ctx context.Context, dir string, files map[string][]byte) (
 	hasBaseline := files["baseline/identity.sha256"] != nil || runresult.ExecutionFamilyIn(files, "baseline") == runresult.JobFamily
 	allowed := []string{"case/", "current/"}
 	if hasBaseline {
-		baseline, err := inspectRetainedRun(dir, "baseline-case", "baseline")
+		baseline, err := inspectRetainedRun(filepath.Join(dir, "baseline-case"), filepath.Join(dir, "baseline"))
 		if err != nil {
 			return m, nil, err
 		}
@@ -533,13 +573,16 @@ func inspectRetained(ctx context.Context, dir string, files map[string][]byte) (
 	return m, []byte(summary.String()), nil
 }
 
-func inspectRetainedRun(dir, caseName, runName string) (RetainedRun, error) {
+// inspectRetainedRun opens one retained execution and the case it must bind,
+// and checks every original payload the execution retained against that
+// case's bytes. Admission makes it of the selected inputs and the sealing
+// inspection of the packet's own copies.
+func inspectRetainedRun(casePath, resultPath string) (RetainedRun, error) {
 	invalid := errors.New("retained execution does not bind the supplied case and selected original bytes")
-	c, err := bundle.Open(filepath.Join(dir, caseName))
+	c, err := bundle.Open(casePath)
 	if err != nil {
 		return RetainedRun{}, invalid
 	}
-	resultPath := filepath.Join(dir, runName)
 	runState := runresult.NoRunState
 	retained, err := runresult.Open(resultPath)
 	if err != nil {

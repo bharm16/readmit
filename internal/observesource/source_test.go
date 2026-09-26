@@ -204,3 +204,27 @@ func TestTheExtractionContractIsPinnedToTheMembersItReuses(t *testing.T) {
 		})
 	}
 }
+
+// A new source is written under the first version that declares its kind's
+// transport, and a declared one keeps its version while it observes the same
+// kind, so writing it again never moves it to another contract.
+func TestVersionForIsTheFirstVersionDeclaringTheTransport(t *testing.T) {
+	for kind, want := range map[string]string{
+		observesource.FileExport:        observesource.SchemaV1,
+		observesource.HTTPAPI:           observesource.SchemaV1,
+		observesource.DownstreamCapture: observesource.Schema,
+		observesource.DatabaseQuery:     observesource.SchemaDatabase,
+	} {
+		if got := observesource.VersionFor(kind, nil); got != want {
+			t.Errorf("a new %s source is written under %s, not %s", kind, got, want)
+		}
+	}
+	declared := observesource.Source{Schema: observesource.Schema}
+	declared.Observes.Kind = observesource.FileExport
+	if got := observesource.VersionFor(observesource.FileExport, &declared); got != observesource.Schema {
+		t.Errorf("a declared v2 file export is written under %s", got)
+	}
+	if got := observesource.VersionFor(observesource.HTTPAPI, &declared); got != observesource.SchemaV1 {
+		t.Errorf("a v2 file export changed to an http api is written under %s", got)
+	}
+}

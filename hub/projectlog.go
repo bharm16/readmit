@@ -185,59 +185,76 @@ func (l projectLog) approvedSupport(ctx context.Context, p projectView, digest s
 	return r.state.Approved(digest, l.supportArtifact(ctx, p))
 }
 
+// lifecycleRecord is what recording a lifecycle command established: the
+// event, the log with it, whether the event was already recorded, and, for an
+// audit-export recorded now, the review log it stamped the head of, so its
+// export needs no second read.
+type lifecycleRecord struct {
+	event       LifecycleEvent
+	events      []LifecycleEvent
+	replayed    bool
+	reviews     []ReviewEvent
+	reviewsRead bool
+}
+
 // recordLifecycle records a lifecycle command for a principal, or replays the
-// event its id already recorded (true). It returns the log with the event.
-func (l projectLog) recordLifecycle(ctx context.Context, p projectView, principal Principal, c LifecycleCommand, policy accessPolicy) (LifecycleEvent, []LifecycleEvent, bool, error) {
+// event its id already recorded.
+func (l projectLog) recordLifecycle(ctx context.Context, p projectView, principal Principal, c LifecycleCommand, policy accessPolicy) (lifecycleRecord, error) {
 	total, e := l.storage.lifecycleTotal(ctx)
 	if e != nil {
-		return LifecycleEvent{}, nil, false, errLogUnavailable
+		return lifecycleRecord{}, errLogUnavailable
 	}
 	existing, replay, e := lifecycleLog.admit(p.events, total, c, principal.Subject, principal.Issuer)
 	if e != nil || replay {
-		return existing, p.events, replay, e
+		return lifecycleRecord{event: existing, events: p.events, replayed: replay}, e
 	}
 	if c.Kind == "remove-user" {
 		if removesActor(c, principal.Subject) {
-			return LifecycleEvent{}, nil, false, errRemoval
+			return lifecycleRecord{}, errRemoval
 		}
 		role, e := policy()
 		if e != nil {
-			return LifecycleEvent{}, nil, false, errRemoval
+			return lifecycleRecord{}, errRemoval
 		}
 		if granted := role(c.Subject); granted == "" || granted == "owner" {
-			return LifecycleEvent{}, nil, false, errRemoval
+			return lifecycleRecord{}, errRemoval
 		}
 	}
 	now := l.now().UTC()
 	if e = p.lifecycle.Validate(c, l.linkedArtifact(ctx, p.name), now); e != nil {
-		return LifecycleEvent{}, nil, false, errLifecycleConflict
+		return lifecycleRecord{}, errLifecycleConflict
 	}
-	event := LifecycleEvent{Schema: hubprotocol.LifecycleEventSchema, Project: p.name, Sequence: len(p.events) + 1, Issuer: principal.Issuer, Actor: principal.Subject, At: now.Format(time.RFC3339Nano), Command: c}
+	record := lifecycleRecord{event: LifecycleEvent{Schema: hubprotocol.LifecycleEventSchema, Project: p.name, Sequence: len(p.events) + 1, Issuer: principal.Issuer, Actor: principal.Subject, At: now.Format(time.RFC3339Nano), Command: c}}
 	if c.Kind == "audit-export" {
-		recorded, e := l.storage.reviews(ctx, p.name)
-		if e != nil {
-			return LifecycleEvent{}, nil, false, errAuditUnavailable
+		if record.reviews, e = l.storage.reviews(ctx, p.name); e != nil {
+			return lifecycleRecord{}, errAuditUnavailable
 		}
-		event.ReviewHead = len(recorded)
+		record.reviewsRead = true
+		record.event.ReviewHead = len(record.reviews)
 	}
-	if e = l.storage.appendLifecycle(ctx, event); e != nil {
-		return LifecycleEvent{}, nil, false, errCommitUnavailable
+	if e = l.storage.appendLifecycle(ctx, record.event); e != nil {
+		return lifecycleRecord{}, errCommitUnavailable
 	}
-	return event, append(p.events, event), false, nil
+	record.events = append(p.events, record.event)
+	return record, nil
 }
 
-// auditExport reproduces an audit-export event's export from both committed
-// history prefixes, so a retry answers the same export.
-func (l projectLog) auditExport(ctx context.Context, event LifecycleEvent, events []LifecycleEvent) (hubprotocol.AuditExport, error) {
-	recorded, e := l.storage.reviews(ctx, event.Project)
-	if e != nil {
-		return hubprotocol.AuditExport{}, errAuditRetry
+// auditExport is an audit-export event's export: both history prefixes the
+// event recorded. A replayed event reads the review log again, so a retry
+// answers the same export.
+func (l projectLog) auditExport(ctx context.Context, record lifecycleRecord) (hubprotocol.AuditExport, error) {
+	event, recorded := record.event, record.reviews
+	if !record.reviewsRead {
+		var e error
+		if recorded, e = l.storage.reviews(ctx, event.Project); e != nil {
+			return hubprotocol.AuditExport{}, errAuditRetry
+		}
 	}
 	if event.ReviewHead > len(recorded) {
 		return hubprotocol.AuditExport{}, errAuditUnavailable
 	}
 	recorded = recorded[:event.ReviewHead]
-	return hubprotocol.AuditExport{Schema: hubprotocol.DeriveReviews(recorded).AuditSchema(), Project: event.Project, Lifecycle: events[:event.Sequence], ReviewHead: len(recorded), Reviews: recorded, Warning: hubprotocol.CustodyWarning}, nil
+	return hubprotocol.AuditExport{Schema: hubprotocol.DeriveReviews(recorded).AuditSchema(), Project: event.Project, Lifecycle: record.events[:event.Sequence], ReviewHead: len(recorded), Reviews: recorded, Warning: hubprotocol.CustodyWarning}, nil
 }
 
 // removesActor is the rule that no principal removes themself.

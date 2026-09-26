@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/fixturereset"
@@ -414,4 +415,118 @@ func TestSavedEnvironmentDocumentsReportTheirIdentity(t *testing.T) {
 func fileDigest(t *testing.T, path string) string {
 	t.Helper()
 	return sha256Of(mustRead(t, path))
+}
+
+// The window shows the rotation state Go decides for every registered
+// reference: a compound interval such as 1h30m is read, and a zero interval
+// declares no rotation rather than one that is always overdue.
+func TestSecretsResultCarriesTheRotationGoDecides(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	saved := app.SaveSecretReference(desktop.SecretSaveRequest{
+		Workspace: dir, SecretsFile: "secrets.json",
+		Reference: secret.Reference{
+			Name: "lab-mllp", Store: secret.OSKeychain, Purpose: secret.MLLPEndpoint,
+			Address: "127.0.0.1:2575", Command: "/bin/echo", MaxAge: "1h30m",
+		},
+	})
+	if saved.State != desktop.Completed || len(saved.Rotations) != 1 {
+		t.Fatalf("SaveSecretReference answered %+v", saved)
+	}
+	if got := saved.Rotations[0]; got.Name != "lab-mllp" || got.Rotation != secret.RotationCurrent ||
+		got.Rotation != saved.Document.References[0].Rotation(time.Now()) {
+		t.Fatalf("a reference rotated now within 1h30m is shown as %+v", got)
+	}
+
+	stale := *saved.Document
+	stale.References[0].RotatedAt = time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Second)
+	if err := secret.WriteStore(filepath.Join(dir, "secrets.json"), stale); err != nil {
+		t.Fatal(err)
+	}
+	read := app.ReadSecrets(dir, "secrets.json")
+	if read.State != desktop.Completed || len(read.Rotations) != 1 || read.Rotations[0].Rotation != secret.RotationOverdue ||
+		read.Rotations[0].Rotation != read.Document.References[0].Rotation(time.Now()) {
+		t.Fatalf("a reference rotated two hours ago under 1h30m is shown as %+v", read.Rotations)
+	}
+
+	// The shared reader refuses a stored zero interval, so no document read
+	// from disk carries one; the view of one is still what Go decides.
+	zero := stale
+	zero.References = []secret.Reference{stale.References[0]}
+	zero.References[0].MaxAge = "0s"
+	now := time.Now()
+	view := desktop.SecretsResultForTest(dir, "secrets.json", zero, now)
+	if len(view.Rotations) != 1 || view.Rotations[0].Rotation != secret.RotationNotDeclared ||
+		view.Rotations[0].Rotation != zero.References[0].Rotation(now) {
+		t.Fatalf("a zero interval is shown as %+v", view.Rotations)
+	}
+}
+
+// A target's credential names the secrets document the window read, by the
+// reference the facade records: a workspace-relative name is cleaned and
+// anchored at the workspace path the window named, never at the target's
+// folder, and an absolute name stays as it was named.
+func TestSecretsResultNamesTheCredentialFileATargetRecords(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "store"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	read := app.ReadSecrets(dir, "./store/../store/secrets.json")
+	if read.State != desktop.Completed || read.CredentialFile != dir+"/store/secrets.json" {
+		t.Fatalf("a relative secrets document is recorded as %q (%+v)", read.CredentialFile, read)
+	}
+	absolute := filepath.Join(dir, "store", "secrets.json")
+	if read := app.ReadSecrets(dir, absolute); read.CredentialFile != absolute {
+		t.Fatalf("an absolute secrets document is recorded as %q", read.CredentialFile)
+	}
+	// A name the read refuses still answers the file a binding would record.
+	if read := app.ReadSecrets(dir, "../secrets.json"); read.State != desktop.Failed || read.CredentialFile != dir+"/secrets.json" {
+		t.Fatalf("a refused read answered %+v", read)
+	}
+}
+
+// The credential file is the one the window has always recorded, including
+// where cleaning a path would say otherwise: with no workspace a relative
+// name is anchored at "/", and a leading ".." has nothing to leave and is
+// dropped.
+func TestCredentialFileIsTheOneTheWindowAlwaysRecorded(t *testing.T) {
+	for _, c := range []struct{ workspace, file, want string }{
+		{"", "secrets.json", "/secrets.json"},
+		{"", "store/../secrets.json", "/secrets.json"},
+		{"/work", "../secrets.json", "/work/secrets.json"},
+		{"/work", "../../store/secrets.json", "/work/store/secrets.json"},
+		{"/work/", "./store//secrets.json", "/work/store/secrets.json"},
+		{"/work", "/elsewhere/secrets.json", "/elsewhere/secrets.json"},
+		{`C:\work\`, `store\secrets.json`, `C:\work/store/secrets.json`},
+		{`C:\work`, `D:\secrets.json`, `D:\secrets.json`},
+		{"/work", `store\secrets.json`, `/work/store\secrets.json`},
+	} {
+		if got := desktop.CredentialFileForTest(c.workspace, c.file); got != c.want {
+			t.Errorf("%q in %q is recorded as %q, not %q", c.file, c.workspace, got, c.want)
+		}
+	}
+}
+
+// An action added to a reset plan records the authority the review requires
+// of its operator; the window chooses the operator, never the authority.
+func TestReviewResetActionRecordsTheAuthorityTheReviewRequires(t *testing.T) {
+	app := workspaceApp(t)
+	for _, review := range fixturereset.Reviewed() {
+		result := app.ReviewResetAction(desktop.ResetActionRequest{ID: "step-1", Operator: review.Operator, Instructions: "Confirm it.", Observation: "ledger.json"})
+		if result.State != desktop.Completed || result.Action == nil || result.Action.Authority != review.Authority {
+			t.Fatalf("%s: %+v", review.Operator, result)
+		}
+	}
+	// The recorded action is one the plan reader accepts when saved.
+	quiet := app.ReviewResetAction(desktop.ResetActionRequest{ID: "check-quiet", Operator: fixturereset.EndpointQuiet, Instructions: "Check it is quiet."})
+	saved := app.SaveResetPlan(desktop.ResetPlanSaveRequest{Workspace: t.TempDir(), PlanFile: "plan.json", Plan: fixturereset.Plan{
+		Schema: fixturereset.PlanSchema, Environment: "staging-mllp", Actions: []fixturereset.Action{*quiet.Action},
+	}})
+	if saved.State != desktop.Completed {
+		t.Fatalf("the reviewed action was refused on save: %+v", saved)
+	}
+	if refused := app.ReviewResetAction(desktop.ResetActionRequest{ID: "step-1", Operator: "drop_database", Instructions: "Wipe it."}); refused.State != desktop.Failed || refused.Action != nil {
+		t.Fatalf("an unreviewed operator was given an authority: %+v", refused)
+	}
 }

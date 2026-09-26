@@ -90,10 +90,53 @@ const (
 // them requires. It is the review: an operator absent from this table cannot be
 // named by any document, and an operator present in it can never be run under
 // an authority other than the one recorded beside it here.
-var reviewed = map[Operator]Authority{
-	OperatorConfirms: NoAuthority,
-	ObservationEmpty: ReadDeclaredFile,
-	EndpointQuiet:    ConnectApprovedTarget,
+var reviewed = func() map[Operator]Authority {
+	table := make(map[Operator]Authority, len(reviewedTable))
+	for _, review := range reviewedTable {
+		table[review.Operator] = review.Authority
+	}
+	return table
+}()
+
+// reviewedTable is the same review in the order a person is offered it.
+var reviewedTable = []Review{
+	{OperatorConfirms, NoAuthority},
+	{ObservationEmpty, ReadDeclaredFile},
+	{EndpointQuiet, ConnectApprovedTarget},
+}
+
+// Review is one row of the reviewed table: an operator a document may name
+// and the one authority it runs under.
+type Review struct {
+	Operator  Operator  `json:"operator"`
+	Authority Authority `json:"authority"`
+}
+
+// Reviewed is the reviewed table, so an author records beside each operator
+// exactly the authority this package's reader requires of it.
+func Reviewed() []Review { return slices.Clone(reviewedTable) }
+
+// ReviewedAction is one action as an author adds it to a plan: the authority
+// recorded beside its operator is the one the review requires, never one the
+// author chose, and an observation file is kept only for the operator that
+// reads one. An operator the review does not name is refused.
+func ReviewedAction(id string, operator Operator, instructions, observation string) (Action, error) {
+	authority, ok := reviewed[operator]
+	if !ok {
+		return Action{}, errors.New("a reset action names an operator this release did not review; the reviewed operators are " + strings.Join(reviewedOperators(), ", "))
+	}
+	action := Action{ID: id, Operator: operator, Authority: authority, Instructions: instructions}
+	if operator == ObservationEmpty {
+		action.Observation = observation
+	}
+	return action, nil
+}
+
+// RequiredAuthority is the authority a reviewed operator runs under, and
+// whether the operator was reviewed at all.
+func RequiredAuthority(operator Operator) (Authority, bool) {
+	authority, ok := reviewed[operator]
+	return authority, ok
 }
 
 // Plan is the reset an operator selected explicitly. readmit has no default

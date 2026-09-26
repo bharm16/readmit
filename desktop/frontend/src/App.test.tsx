@@ -56,10 +56,13 @@ import {
   runPreflightResult,
   runProgressResult,
   scenarioCatalogFixture,
+  vocabularyFixture,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
-import { GRID_WINDOW } from "./shell";
 import type { CommercialStatusResult, HubResult, ScenarioCatalogResult } from "./bindings";
+
+/** How many occurrences one window of the grid shows, as the facade publishes it. */
+const GRID_WINDOW = vocabularyFixture().bounds.grid;
 
 test("the window draws every region the facade declares and its privacy disclosure as given", async () => {
   await renderApp();

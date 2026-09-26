@@ -78,7 +78,7 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		return
 	}
 	projects := s.projects()
-	event, events, replayed, e := projects.recordLifecycle(r.Context(), proj, p, c, a.roles(project))
+	record, e := projects.recordLifecycle(r.Context(), proj, p, c, a.roles(project))
 	switch {
 	case errors.Is(e, errLogIDConflict):
 		http.Error(w, "command id conflict", 409)
@@ -103,14 +103,14 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 		return
 	}
 	status := 201
-	if replayed {
+	if record.replayed {
 		status = 200
 	}
-	if event.Command.Kind != "audit-export" {
-		sendReview(w, status, event)
+	if record.event.Command.Kind != "audit-export" {
+		sendReview(w, status, record.event)
 		return
 	}
-	export, e := projects.auditExport(r.Context(), event, events)
+	export, e := projects.auditExport(r.Context(), record)
 	if errors.Is(e, errAuditRetry) {
 		http.Error(w, "audit unavailable; retry same id", 503)
 		return
