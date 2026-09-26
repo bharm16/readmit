@@ -1,0 +1,1 @@
+- Added local connected-test plan preparation, explicit legacy-test conversion, and an exact-input ACK fixture adapter. Retained results reopen offline with independent checks and separate incomplete/uncertain execution states; external connected orchestration remains under development.

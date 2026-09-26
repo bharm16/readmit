@@ -84,6 +84,7 @@ authoritative.
 | `expectation` | Review and release immutable test versions with profile pins | [expectations](docs/expectations.md) |
 | `normalize` | Scoped tolerance and volatile-field policies over the comparison engine | [normalize](docs/normalize.md) |
 | `test` | Declarative regression test against an explicit test target | [test runner](docs/test-runner.md), [assertions](docs/assertions.md) |
+| `connected` | Compile connected plans and execute the exact legacy ACK fixture adapter | [connected execution](docs/connected-tests.md) |
 | `run` | Durable runs with recoverable evidence; `run queue` schedules several | [durable runs](docs/durable-runs.md) |
 | `suite` | Reusable regression suites bound to data rows and one environment; `suite ci` executes them in customer CI | [suites](docs/suites.md), [customer CI](docs/customer-ci.md) |
 | `observe` | Observation window contracts and their collectors | [observe](docs/observe.md) |
