@@ -53,6 +53,13 @@ const (
 	// not answered by then is unavailable; it is never reported as empty.
 	ResolveTimeout = 5 * time.Second
 
+	// resolveWaitDelay is how long a stopped program is given to exit and
+	// release its output before readmit closes it. A program that starts a
+	// child leaves that child holding the output readmit is reading, so
+	// killing the program alone would hold a cancelled or timed-out read until
+	// the child happened to finish.
+	resolveWaitDelay = time.Second
+
 	// MaxReferences bounds one document. A store past the bound is refused
 	// rather than truncated.
 	MaxReferences = 256
@@ -565,6 +572,7 @@ func (l Locator) Read(ctx context.Context) (Value, error) {
 	declared := exec.CommandContext(ctx, path, l.Arguments...)
 	declared.Stdout = &bounded{to: &out, remaining: maxValueBytes}
 	declared.Stderr = io.Discard
+	declared.WaitDelay = resolveWaitDelay
 	ended := DeclaredProgramStarting(ctx)
 	err = declared.Run()
 	ended()

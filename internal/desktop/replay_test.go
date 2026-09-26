@@ -504,15 +504,15 @@ func TestDisclosureStatusReportsAReplayActiveWhileItSendsOrResolves(t *testing.T
 // once until block is set, and then holds each lookup until the operation that
 // asked it is cancelled, signalling on started as each one begins. Nothing
 // leaves this machine either way.
-func blockingLookups(t *testing.T) (*atomic.Bool, chan struct{}) {
+func blockingLookups(t *testing.T) (*atomic.Bool, chan context.Context) {
 	t.Helper()
-	block, started := &atomic.Bool{}, make(chan struct{}, 8)
+	block, started := &atomic.Bool{}, make(chan context.Context, 8)
 	previous := net.DefaultResolver
 	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		if !block.Load() {
 			return nil, errors.New("lookup refused")
 		}
-		started <- struct{}{}
+		started <- ctx
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}}
@@ -540,17 +540,22 @@ func TestAReplayCancelledWhileItsPolicyWaitsOnALookupIsCancelledNotRefused(t *te
 	block.Store(true)
 	cancelled := func(operation string, call func() desktop.ReplayResult) desktop.ReplayResult {
 		t.Helper()
-		// A lookup asks for each address family, so a signal left over from
-		// the last operation is not this one's.
-		for len(started) > 0 {
-			<-started
-		}
+		// A lookup asks for each address family, so a signal can arrive from
+		// the last operation's lookup after that operation was cancelled.
+		// Only a lookup that is still waiting is this one's.
 		answered := make(chan desktop.ReplayResult, 1)
 		go func() { answered <- call() }()
-		select {
-		case <-started:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("%s never asked for the name", operation)
+		deadline := time.After(10 * time.Second)
+	waiting:
+		for {
+			select {
+			case lookup := <-started:
+				if lookup.Err() == nil {
+					break waiting
+				}
+			case <-deadline:
+				t.Fatalf("%s never asked for the name", operation)
+			}
 		}
 		app.Cancel("durable-run")
 		app.Cancel(operation)

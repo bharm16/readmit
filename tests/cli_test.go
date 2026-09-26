@@ -14,6 +14,9 @@ import (
 
 var binary string
 
+// cliBuildTags are the build tags the command line under test is built with.
+var cliBuildTags []string
+
 func TestMain(m *testing.M) {
 	// Re-executed as the stand-in secret store of the credential tests. It must
 	// answer before any test binary work happens, so no readmit build is run
@@ -43,7 +46,7 @@ func TestMain(m *testing.M) {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	build := exec.Command("go", "build", "-o", binary, "../cmd/readmit")
+	build := exec.Command("go", append([]string{"build", "-o", binary}, append(cliBuildTags, "../cmd/readmit")...)...)
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
 		os.RemoveAll(dir)

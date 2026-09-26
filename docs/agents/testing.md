@@ -11,6 +11,9 @@ Run `make test-focused PKGS='./internal/example ./internal/caller' ARGS='-run Te
 at the affected behavior and its callers. Widen the selection when a shared
 contract changes. Go test compilation checks types; `make check` verifies the
 compiler, formatting and vet. Keep successful local test caches available.
+`make test` and `make test-focused` build with the `readmit_nosync` tag, which
+skips `internal/artifactdir`'s device flush of real files; a hand-run
+`go test` without it is correct but much slower. A release never carries it.
 
 For Python tooling, use `python3 -m unittest discover -s tools -p 'test_NAME.py' -v`.
 For frontend edits, run `npm ci && npm run build` in `desktop/frontend`; this

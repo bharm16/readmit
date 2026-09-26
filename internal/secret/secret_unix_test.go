@@ -3,9 +3,11 @@
 package secret
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // A named path is resolved, so naming a symbolic link checks what it points at:
@@ -47,5 +49,36 @@ func TestCollectResolvesNamedPathsAndNeverFollowsEntriesBeneathThem(t *testing.T
 	}
 	if string(files[named]) != "outside the tree" {
 		t.Fatalf("a named link was not resolved: %v", files)
+	}
+}
+
+// A cancelled read returns promptly even when the declared program started a
+// child of its own that still holds the program's output open, as a shell
+// script running a slow command does. Killing the program alone leaves that
+// child writing to the output, and waiting for it would hold the caller for as
+// long as the child runs.
+func TestLocatorReadEndsWhenCancelledWhileTheProgramsChildHoldsItsOutput(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "readmit-test-slow-store.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 30\nprintf 'test-only'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	ctx = ObserveDeclaredPrograms(ctx, func() func() { close(started); return func() {} })
+	answered := make(chan error, 1)
+	go func() {
+		_, err := Locator{Command: script}.Read(ctx)
+		answered <- err
+	}()
+	<-started
+	time.Sleep(200 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-answered:
+		if err == nil {
+			t.Fatal("a cancelled read returned a value")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a cancelled read waited for the program's child to end")
 	}
 }

@@ -10,15 +10,18 @@ check:
 	go vet ./...
 	$(MAKE) check-labels
 
+# Race tests skip the device flush of real files (internal/artifactdir's
+# readmit_nosync tag): it was about two thirds of the slowest packages' time,
+# and a test cannot lose power. Writes, creates and renames are unchanged.
 test-focused:
 	@test -n "$(PKGS)" || { echo 'Set PKGS to the affected Go packages.' >&2; exit 2; }
-	CGO_ENABLED=1 go test -race -short $(PKGS) $(ARGS)
+	CGO_ENABLED=1 go test -race -short -tags readmit_nosync $(PKGS) $(ARGS)
 
 # The small resource boundary and the small stream keep race coverage; their
 # production-sized variants run once without instrumentation. No behavior is
 # omitted from the full gate, and each variant asserts the same contract.
 test:
-	CGO_ENABLED=1 go test -race -short ./...
+	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./...
 	$(MAKE) test-boundary
 	$(MAKE) test-corpus
 
