@@ -11,12 +11,27 @@ import { renderApp } from "./testkit/app";
 import type {
   ObservationCollectFacadeRequest,
   ObservationCompletionResult,
+  ObservationSource,
   ObservationSourceRequest,
   ObservationSourceResult,
   ObservationSupportResult,
   ObservationValidateResult,
   ObservationWindowResult,
 } from "./bindings";
+
+/** The source the facade answers for a save of these choices: the document
+ * it wrote, under the contract version it picked for the chosen kind, which
+ * the test states as the facade's reader declares it. */
+function savedSource(request: ObservationSourceRequest): ObservationSource {
+  const choices = request.choices!;
+  const versions: Record<string, string> = {
+    "file-export": "readmit-observation-source/v1",
+    "http-api": "readmit-observation-source/v1",
+    "downstream-capture": "readmit-observation-source/v2",
+    "database-query": "readmit-observation-source/v3",
+  };
+  return { schema: versions[choices.source.kind] ?? "", ...choices };
+}
 
 async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = false) {
   const { facade } = await renderApp({
@@ -212,7 +227,7 @@ test("denied and stale completion summaries stay distinct from absence", async (
   expect(screen.getByText(/never evidence of no output/)).toBeTruthy();
 });
 
-test("a v1 source the facade answered with every transport member is saved again as v1 declares it, and a refused save says so", async () => {
+test("a source the facade answered is saved again as the person's choices, never under a version the window picked, and a refused save says so", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
   const saved: ObservationSourceRequest[] = [];
@@ -221,7 +236,7 @@ test("a v1 source the facade answered with every transport member is saved again
       saved.push(request);
       // The facade answers with the source struct, whose capture transport
       // is an explicit null even for a v1 document.
-      return Promise.resolve({ state: "completed", source: { ...request.source!, capture: null }, identity: "source-identity" });
+      return Promise.resolve({ state: "completed", source: { ...savedSource(request), capture: null }, identity: "source-identity" });
     },
     SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
@@ -235,9 +250,12 @@ test("a v1 source the facade answered with every transport member is saved again
   await user.type(screen.getByLabelText("Export path"), "never-exported.csv");
   await user.click(screen.getByRole("button", { name: "Save observation" }));
   await waitFor(() => expect(saved).toHaveLength(2));
-  // Sent back with capture, a v1 source is a document v1 never allowed.
-  expect(saved[1]?.source?.file?.path).toBe("never-exported.csv");
-  expect(saved[1]?.source && "capture" in saved[1].source).toBe(false);
+  // What the person declared goes back, and the contract version is the
+  // facade's to pick: no document and no version is sent.
+  expect(saved[1]?.choices?.file?.path).toBe("never-exported.csv");
+  expect(saved[1]?.source).toBeUndefined();
+  expect(saved[1]?.choices && "schema" in saved[1].choices).toBe(false);
+  expect(JSON.stringify(saved[1])).not.toContain("readmit-observation-source/");
 
   facade.reply({
     SaveObservationSource: (): Promise<ObservationSourceResult> =>
@@ -250,17 +268,17 @@ test("a v1 source the facade answered with every transport member is saved again
   expect(screen.queryByText(/^Saved through shared Go writers/)).toBeNull();
 });
 
-// The facade's reader refuses a transport member a source's contract does not
-// declare: a database member outside v3, and a capture member in v1. A source
-// switched to another kind and back is sent with only its own contract's.
-test("a source switched between kinds is saved with only the transports its contract declares", async () => {
+// A source switched to another kind and back is sent with only the transport
+// its kind declares, and never with a contract version: the facade picks the
+// version the chosen kind needs.
+test("a source switched between kinds is saved as the choices of its own kind, and the facade picks the version", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
   const saved: ObservationSourceRequest[] = [];
   facade.reply({
     SaveObservationSource: (request): Promise<ObservationSourceResult> => {
       saved.push(request);
-      return Promise.resolve({ state: "completed", source: request.source!, identity: "source-identity" });
+      return Promise.resolve({ state: "completed", source: savedSource(request), identity: "source-identity" });
     },
     SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
@@ -270,16 +288,22 @@ test("a source switched between kinds is saved with only the transports its cont
   await user.click(panel.getByRole("button", { name: "file-export" }));
   await user.click(panel.getByRole("button", { name: "Save observation" }));
   await waitFor(() => expect(saved).toHaveLength(1));
-  expect(saved[0]?.source?.schema).toBe("readmit-observation-source/v1");
-  expect(saved[0]?.source && "database" in saved[0].source).toBe(false);
-  expect(saved[0]?.source && "capture" in saved[0].source).toBe(false);
+  expect(saved[0]?.choices?.source.kind).toBe("file-export");
+  expect(saved[0]?.choices?.file).not.toBeNull();
+  expect(saved[0]?.choices?.http).toBeNull();
+  expect(saved[0]?.choices?.capture).toBeNull();
+  expect(saved[0]?.choices && "database" in saved[0].choices).toBe(false);
+  expect(saved[0]?.choices && "schema" in saved[0].choices).toBe(false);
+  expect(await panel.findByText("Source document observation-source.json: saved readmit-observation-source/v1, identity source-identity.")).toBeTruthy();
 
   await user.click(panel.getByRole("button", { name: "downstream-capture" }));
   await user.click(panel.getByRole("button", { name: "Save observation" }));
   await waitFor(() => expect(saved).toHaveLength(2));
-  expect(saved[1]?.source?.schema).toBe("readmit-observation-source/v2");
-  expect(saved[1]?.source?.capture).not.toBeNull();
-  expect(saved[1]?.source && "database" in saved[1].source).toBe(false);
+  expect(saved[1]?.choices?.source.kind).toBe("downstream-capture");
+  expect(saved[1]?.choices?.capture).not.toBeNull();
+  expect(saved[1]?.choices && "database" in saved[1].choices).toBe(false);
+  expect(saved[1]?.choices && "schema" in saved[1].choices).toBe(false);
+  expect(await panel.findByText("Source document observation-source.json: saved readmit-observation-source/v2, identity source-identity.")).toBeTruthy();
 });
 
 /** The innermost element whose whole text matches: a line the panel composes
@@ -307,7 +331,7 @@ test("new observation defaults have no pinned identity until each document is sa
   const { facade } = await openProject(user, true);
   facade.reply({
     SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: request.source!, identity: "saved-source-identity" }),
+      Promise.resolve({ state: "completed", source: savedSource(request), identity: "saved-source-identity" }),
     SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "completed", window: request.window!, identity: "saved-window-identity" }),
   });
@@ -494,7 +518,7 @@ test("a refused source save leaves the window as it was saved, and a refused win
 
   facade.reply({
     SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: request.source!, identity: "source-identity-2" }),
+      Promise.resolve({ state: "completed", source: savedSource(request), identity: "source-identity-2" }),
     SaveObservationWindow: (): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "permission_denied", reason: "authoring requires an active license" }),
   });

@@ -2051,7 +2051,18 @@ earlier request after a newer one was asked is dropped rather than shown.
 `Shell` is the window's description of itself, and the interface renders it
 rather than keeping a second copy that can drift from the facade. It carries the
 regions, how every status reads, the commands, the appearance choices and the
-privacy status. The generated bindings declare that vocabulary as closed
+privacy status. It also carries what the panels offer a person to choose among
+and the bounds they page by, as the Go side that accepts them declares them:
+the built-in diagnosis configurations, every value a `readmit-import-plan/v1`
+member can declare, the reviewed reset operators with the one authority a plan
+records beside each, the controlled faults a responder policy can declare with
+whether each waits and the delay a waiting one starts with, and how many rows
+one window of the grid, a comparison, a review, a sequence and a diagnosis asks
+for. No panel keeps a copy of any of them: a reset action a person adds is
+recorded by the facade with the authority its operator requires, and a
+reopened responder policy's controls show what the facade decides it declares,
+so the window picks neither, and a facade test holds each to what Go accepts and fails if the
+interface writes one of them into itself. The generated bindings declare that vocabulary as closed
 TypeScript types, each the union of the constants Go declares of it, and a
 facade test holds the description to the same constants in both directions, so
 a region, command or theme described with a value that is not a declared
@@ -4049,8 +4060,12 @@ Readmit does not store credentials in application state, configuration files, lo
   one of its text fields saves it.
 - A document the panel cannot read shows the reason in place of the references, never the
   references of a document read before it.
+- Each reference shows the rotation state `readmit secret show` reports, decided in Go
+  from the recorded rotation time and maximum age: current, overdue, or not declared when
+  no interval (or a zero one) is recorded. The window never reads an interval itself.
 - A reference chosen from the panel records the absolute path of the secrets document
-  the panel read, and the target form shows that exact path before save. This binding is
+  the panel read, as the facade names it for that document, and the target form shows
+  that exact path before save. This binding is
   local to this machine; rebind it after moving the target to another machine. An absolute
   path keeps `targets/default.json` pointed at the displayed `secrets.json` even when the
   `targets` directory is a shortcut to another physical directory.

@@ -274,6 +274,23 @@ type HTTP struct {
 	Credential *Credential `json:"credential"`
 }
 
+// VersionFor is the contract version a source observing kind is written
+// under. A document already declared keeps its version while it observes the
+// same kind, so writing it again never moves it to another contract;
+// otherwise it is the first version that declares the transport kind names.
+func VersionFor(kind string, declared *Source) string {
+	if declared != nil && declared.Observes.Kind == kind {
+		return declared.Schema
+	}
+	switch kind {
+	case DownstreamCapture:
+		return Schema
+	case DatabaseQuery:
+		return SchemaDatabase
+	}
+	return SchemaV1
+}
+
 // Source is one declared observation source: which system and scope it names,
 // whether its collector is enabled, how old its state may be, how its output is
 // read, and exactly one of the declared ways it is reached.

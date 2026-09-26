@@ -7,7 +7,8 @@
 // promotion may express, which document a reader accepts — stays with the Go
 // engine and its own tests; nothing here re-decides any of it.
 import { expect, test } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { render as renderAlone, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Diagnosis } from "./Diagnosis";
 import type {
@@ -22,7 +23,7 @@ import type {
   FindingStatus,
   GroupDiagnosesRequest,
 } from "./bindings";
-import { renderApp } from "./testkit/app";
+import { renderApp, vocabularyWrapper } from "./testkit/app";
 import {
   CASE_ENTRY,
   CASE_IDENTITY,
@@ -41,7 +42,11 @@ import {
   folderChosen,
   indicatorTable,
   refused,
+  vocabularyFixture,
 } from "./testkit/fixtures";
+
+/** A panel on its own, inside the vocabulary the window provides it. */
+const render = (ui: ReactElement) => renderAlone(ui, { wrapper: vocabularyWrapper() });
 
 type Callbacks = {
   onRun?: (request: DiagnosisRequest) => void;
@@ -851,4 +856,51 @@ test("a standalone decisions document is opened into the findings and saved thro
   expect(panel.queryByRole("region", { name: "Unlisted decisions" })).toBeNull();
   expect(section.getByText(/"finding": "f000002"/)).toBeTruthy();
   expect(section.queryByText(/"finding": "f000009"/)).toBeNull();
+});
+
+// The built-in configurations offered and the size of one window of findings
+// are what the facade publishes, not a copy the panel keeps: a vocabulary with
+// one built-in and a window of 50 findings is exactly what the panel offers.
+test("the built-in configurations and the findings window are the ones the facade publishes", async () => {
+  const user = userEvent.setup();
+  const opened: [string, number][] = [];
+  const vocabulary = {
+    ...vocabularyFixture({ diagnosis: 50 }),
+    diagnosis_builtins: [{ id: "order", profile: "readmit-order-v1", ruleset: "readmit-order-diagnosis/v1" }],
+  };
+  const findings = Array.from({ length: 50 }, (_, index) => diagnosisFinding(`f${String(index + 51).padStart(6, "0")}`));
+  renderAlone(
+    <Diagnosis
+      workspace={WORKSPACE_ROOT}
+      caseName={CASE_ENTRY}
+      identity={CASE_IDENTITY}
+      configEntries={[]}
+      reportEntries={[REPORT_ENTRY]}
+      groupsReportEntries={[]}
+      caseEntries={[CASE_ENTRY]}
+      result={diagnosisResult(findings, { offset: 50, total: 150 })}
+      groupsResult={null}
+      reviewResult={null}
+      busy={false}
+      progress={null}
+      indicators={indicatorTable()}
+      onRun={() => undefined}
+      onOpen={(entry, offset) => opened.push([entry, offset])}
+      onGroup={() => undefined}
+      onOpenGroups={() => undefined}
+      onReview={() => undefined}
+      onSelect={() => undefined}
+      onPromote={() => undefined}
+    />,
+    { wrapper: vocabularyWrapper(vocabulary) },
+  );
+  const configuration = screen.getByLabelText("Configuration") as HTMLSelectElement;
+  expect(Array.from(configuration.options).map((option) => option.value).filter((value) => value.startsWith("builtin:"))).toEqual([
+    "builtin:order",
+  ]);
+  await user.selectOptions(screen.getByLabelText("Retained diagnosis report"), REPORT_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open report" }));
+  await user.click(screen.getByRole("button", { name: "Next 50" }));
+  await user.click(screen.getByRole("button", { name: "Previous 50" }));
+  expect(opened.map(([, offset]) => offset)).toEqual([0, 100, 0]);
 });

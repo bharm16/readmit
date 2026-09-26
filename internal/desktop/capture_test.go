@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -415,5 +416,101 @@ func TestPreviewCaptureTLSMembersMustBeTogether(t *testing.T) {
 	})
 	if preview.State != desktop.Failed {
 		t.Fatalf("expected TLS refusal: %+v", preview)
+	}
+}
+
+// Saving a responder policy from the window takes the person's choices, and
+// the facade picks the contract version they need: the original-mode rule
+// alone is v1, an enhanced rule is v2, and a fault step is v3. A document the
+// window opened keeps the version, enhanced rule and faults it declares while
+// the enhanced and fault choices still say what it declares.
+func TestReceiverPolicyVersionIsChosenByTheFacade(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	choices := func() desktop.ReceiverPolicyChoices {
+		return desktop.ReceiverPolicyChoices{
+			Name: "downstream-sink", SourceLabel: "downstream-test-endpoint",
+			Acknowledgement:      collection.AckRule{Operator: collection.FixedCodeOperator, Code: collection.AcceptCode},
+			AcceptedMessageTypes: collection.MessageTypeRule{Operator: collection.AnyMessageTypeRule, Values: []string{}},
+			Fault:                "none",
+			Endpoint:             "127.0.0.1:2575",
+		}
+	}
+	save := func(file string, chosen desktop.ReceiverPolicyChoices) collection.Policy {
+		t.Helper()
+		saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: file, Choices: &chosen})
+		if saved.State != desktop.Completed || saved.Policy == nil {
+			t.Fatalf("saving %s: %+v", file, saved)
+		}
+		read := app.ReadReceiverPolicy(root, file)
+		if read.State != desktop.Completed || read.Policy.Schema != saved.Policy.Schema {
+			t.Fatalf("%s does not read back as it was saved: %+v", file, read)
+		}
+		return *saved.Policy
+	}
+
+	if plain := save("plain.json", choices()); plain.Schema != collection.PolicySchemaV1 || plain.Enhanced != nil || plain.Faults != nil {
+		t.Fatalf("the original-mode rule alone was saved as %+v", plain)
+	}
+	enhancedChoice := choices()
+	enhancedChoice.Enhanced = true
+	enhanced := save("enhanced.json", enhancedChoice)
+	if enhanced.Schema != collection.PolicySchema || enhanced.Enhanced == nil || enhanced.Enhanced.Operator != collection.EnhancedFixedCodes ||
+		enhanced.Enhanced.AcceptCode != collection.CommitAcceptCode || enhanced.Enhanced.ApplicationDelivery != collection.SameConnection {
+		t.Fatalf("an enhanced rule was saved as %+v", enhanced)
+	}
+	faultChoice := choices()
+	faultChoice.Fault, faultChoice.FaultDelayMS = "delay", 75
+	faulting := save("fault.json", faultChoice)
+	if faulting.Schema != collection.FaultPolicySchema || faulting.Enhanced == nil || faulting.Enhanced.Operator != collection.EnhancedUnsupported ||
+		faulting.Faults == nil || len(faulting.Faults.Steps) != 1 || faulting.Faults.Steps[0].DelayMS != 75 ||
+		faulting.Faults.ApprovedTestEndpoints[0] != "127.0.0.1:2575" {
+		t.Fatalf("a delay fault was saved as %+v", faulting)
+	}
+	rejectChoice := choices()
+	rejectChoice.Fault, rejectChoice.FaultDelayMS = "reject", 75
+	if rejecting := save("reject.json", rejectChoice); rejecting.Faults.Steps[0].DelayMS != 0 {
+		t.Fatalf("a fault that does not wait was saved with a delay: %+v", rejecting.Faults)
+	}
+
+	// The opened v3 document, renamed, keeps its declaration while the
+	// controls still say what it declares; a changed control replaces it.
+	kept := choices()
+	kept.Name, kept.Fault, kept.FaultDelayMS, kept.Endpoint, kept.Opened = "renamed", "delay", 75, "127.0.0.1:9", &faulting
+	if again := save("kept.json", kept); again.Schema != collection.FaultPolicySchema || again.Name != "renamed" ||
+		again.Faults.ApprovedTestEndpoints[0] != "127.0.0.1:2575" {
+		t.Fatalf("an unchanged opened policy was not kept as declared: %+v", again)
+	}
+	kept.Fault = "none"
+	if replaced := save("replaced.json", kept); replaced.Schema != collection.PolicySchemaV1 || replaced.Faults != nil {
+		t.Fatalf("a changed fault control did not replace the declared faults: %+v", replaced)
+	}
+}
+
+// Reading or saving a responder policy answers what the window's controls
+// show for it, decided here rather than by the window: whether it declares the
+// enhanced rule the controls express, its first fault step and delay, and the
+// test endpoint it approves; a policy with no fault shows none with the
+// starting delay.
+func TestReceiverPolicyResultCarriesTheControlsGoDecides(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	faulting := desktop.ReceiverPolicyChoices{
+		Name: "faulting-sink", SourceLabel: "downstream-test-endpoint",
+		Acknowledgement:      collection.AckRule{Operator: collection.FixedCodeOperator, Code: collection.AcceptCode},
+		AcceptedMessageTypes: collection.MessageTypeRule{Operator: collection.AnyMessageTypeRule, Values: []string{}},
+		Enhanced:             true, Fault: "missing-response", FaultDelayMS: 25, Endpoint: "127.0.0.1:2575",
+	}
+	saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: "fault.json", Choices: &faulting})
+	read := app.ReadReceiverPolicy(root, "fault.json")
+	for _, result := range []desktop.ReceiverPolicyResult{saved, read} {
+		if result.State != desktop.Completed || result.Choices == nil || !reflect.DeepEqual(*result.Choices, faulting) {
+			t.Fatalf("the controls of a saved fault policy are shown as %+v", result.Choices)
+		}
+	}
+	writeDocument(t, root, "plain.json", facadeAnyPolicy)
+	plain := app.ReadReceiverPolicy(root, "plain.json")
+	if plain.Choices == nil || plain.Choices.Enhanced || plain.Choices.Fault != "none" || plain.Choices.FaultDelayMS != 50 || plain.Choices.Endpoint != "" {
+		t.Fatalf("the controls of a plain policy are shown as %+v", plain.Choices)
 	}
 }

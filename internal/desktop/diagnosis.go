@@ -15,7 +15,8 @@ const MaxDiagnosisFindings = 200
 // runs under, and the new directory entry the report is written into.
 // Config names a workspace entry declaring readmit-diagnose-config/v1;
 // Builtin selects one of the three built-in configurations when Config is
-// empty ("siu", "lifecycle", "order"). Nothing is chosen implicitly.
+// empty, by the id the window's vocabulary publishes for it. Nothing is
+// chosen implicitly.
 type DiagnosisRequest struct {
 	Workspace string `json:"workspace"`
 	Case      string `json:"case"`
@@ -76,15 +77,10 @@ func diagnosisConfig(root, entry, builtin string) (diagnose.Config, refusal) {
 		}
 		return config, refusal{}
 	}
-	switch builtin {
-	case "siu":
-		return diagnose.DefaultConfig(), refusal{}
-	case "lifecycle":
-		return diagnose.LifecycleConfig(), refusal{}
-	case "order":
-		return diagnose.OrderConfig(), refusal{}
+	if config, ok := builtinConfig(builtin); ok {
+		return config, refusal{}
 	}
-	return diagnose.Config{}, refusal{Failed, "a diagnosis runs under one named configuration entry or one built-in selection: siu, lifecycle or order"}
+	return diagnose.Config{}, refusal{Failed, "a diagnosis runs under one named configuration entry or one built-in selection: " + builtinNames()}
 }
 
 // RunDiagnosis runs one supported diagnosis over the verified case and writes

@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net/netip"
+	"slices"
 )
 
 const FaultSchema = "readmit-collection/v3"
@@ -74,6 +75,32 @@ func (f *FaultEvent) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// FaultAction is one controlled fault a step can declare, and whether it
+// waits before it acts: one that waits declares a delay of one to thirty
+// thousand milliseconds, and every other declares zero.
+type FaultAction struct {
+	Action string `json:"action"`
+	Waits  bool   `json:"waits"`
+}
+
+// faultActions is every fault action a step can declare, in the order a
+// person is offered them.
+var faultActions = []FaultAction{
+	{"delay", true},
+	{"reject", false},
+	{"malformed-ack", false},
+	{"missing-response", true},
+	{"disconnect", false},
+}
+
+// FaultActions is every fault action a step can declare.
+func FaultActions() []FaultAction { return slices.Clone(faultActions) }
+
+// FaultWaits reports whether a fault action waits before it acts.
+func FaultWaits(action string) bool {
+	return slices.Contains(faultActions, FaultAction{action, true})
+}
+
 func literalEndpoint(address string) (netip.AddrPort, error) {
 	endpoint, err := netip.ParseAddrPort(address)
 	if err != nil {
@@ -116,17 +143,16 @@ func (f FaultPolicy) Validate() error {
 		if step.Stage != AcceptStage && step.Stage != ApplicationStage {
 			return errors.New("fault stage must be accept or application")
 		}
-		switch step.Action {
-		case "delay", "missing-response":
+		i := slices.IndexFunc(faultActions, func(known FaultAction) bool { return known.Action == step.Action })
+		switch {
+		case i < 0:
+			return errors.New("unsupported fault action")
+		case faultActions[i].Waits:
 			if step.DelayMS < 1 || step.DelayMS > MaxFaultDelayMS {
 				return errors.New("fault wait must be between one and thirty thousand milliseconds")
 			}
-		case "reject", "disconnect", "malformed-ack":
-			if step.DelayMS != 0 {
-				return errors.New("this fault action declares zero delay")
-			}
-		default:
-			return errors.New("unsupported fault action")
+		case step.DelayMS != 0:
+			return errors.New("this fault action declares zero delay")
 		}
 	}
 	return nil

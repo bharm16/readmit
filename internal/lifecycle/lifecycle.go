@@ -103,15 +103,74 @@ type fingerprint struct {
 	Digest string
 }
 
+// errIncompatible is Archive's refusal of a project whose migration preview is
+// incompatible.
+var errIncompatible = errors.New("project migration preview is incompatible; no migration is supported")
+
+// backupRefusal is a source the backup's own scan refuses that retirement's
+// earlier sentences do not name. Before the retirement preview measured a
+// source through that scan, such a source was refused only once Archive
+// reached the backup, so it is refused in the backup's own sentence, and an
+// incompatible project is still refused as incompatible first, as Archive
+// checked compatibility before it ran the backup.
+type backupRefusal struct{ err error }
+
+func (r *backupRefusal) Error() string { return r.err.Error() }
+
+// incompatibleFirst returns the refusal Archive reaches first for a source the
+// inventory refused: incompatibility before a backup's own refusal.
+func incompatibleFirst(err error, plan Plan) error {
+	var refused *backupRefusal
+	if errors.As(err, &refused) && !plan.Compatible {
+		return errIncompatible
+	}
+	return err
+}
+
+// inventory fingerprints every file of the source a backup of it would take —
+// the files it stores and the indexes it records — measured through the
+// backup's own scan, so the limit verdict a retirement preview gives is the
+// one the backup gives, excluded indexes included. A refusal keeps the
+// sentence retirement has always used for it (see retirementRefusal).
 func inventory(ctx context.Context, path string) (map[string]fingerprint, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, errors.New("cannot inspect retirement source")
 	}
 	defer root.Close()
+	stored, indexes, err := backup.Scan(root)
+	if err != nil {
+		if refusal := retirementRefusal(ctx, root); refusal != nil {
+			return nil, refusal
+		}
+		return nil, &backupRefusal{err}
+	}
 	files := map[string]fingerprint{}
+	for _, name := range append(stored, indexes...) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		held, err := fingerprintOf(root, name)
+		if err != nil {
+			return nil, err
+		}
+		files[name] = held
+	}
+	return files, nil
+}
+
+// retirementRefusal words a source the backup's scan refused. It decides no
+// verdict — the backup's scan has already refused — and only chooses the
+// sentence: the one retirement's own measure of the source gave for it, in
+// the order that measure walked the source, or nil where that measure admitted
+// the source and the backup's own refusal is the sentence.
+func retirementRefusal(ctx context.Context, root *os.Root) error {
+	count := 0
 	var total int64
-	err = fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, err error) error {
+	return fs.WalkDir(root.FS(), ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return errors.New("cannot enumerate retirement source")
 		}
@@ -125,7 +184,7 @@ func inventory(ctx context.Context, path string) (map[string]fingerprint, error)
 		if err != nil || !info.Mode().IsRegular() {
 			return errors.New("retirement refuses nonregular entries")
 		}
-		if len(files) >= backup.MaxFiles || info.Size() > backup.MaxFileBytes || total > (backup.MaxBytes+int64(backup.MaxIndexes)*index.MaxIndexBytes)-info.Size() {
+		if count >= backup.MaxFiles || info.Size() > backup.MaxFileBytes || total > (backup.MaxBytes+int64(backup.MaxIndexes)*index.MaxIndexBytes)-info.Size() {
 			return errors.New("retirement source exceeds backup limits")
 		}
 		total += info.Size()
@@ -133,16 +192,31 @@ func inventory(ctx context.Context, path string) (map[string]fingerprint, error)
 		if err != nil {
 			return errors.New("cannot read retirement source")
 		}
-		h := sha256.New()
-		n, err := io.Copy(h, io.LimitReader(f, backup.MaxFileBytes+1))
-		closeErr := f.Close()
-		if err != nil || closeErr != nil || n != info.Size() {
-			return errors.New("retirement source changed or could not be read")
-		}
-		files[name] = fingerprint{n, hex.EncodeToString(h.Sum(nil))}
+		f.Close()
+		count++
 		return nil
 	})
-	return files, err
+}
+
+// fingerprintOf reads one file the backup scan listed, refusing one that is no
+// longer the regular file of the size the scan measured.
+func fingerprintOf(root *os.Root, name string) (fingerprint, error) {
+	f, err := root.Open(name)
+	if err != nil {
+		return fingerprint{}, errors.New("cannot read retirement source")
+	}
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return fingerprint{}, errors.New("retirement refuses nonregular entries")
+	}
+	h := sha256.New()
+	n, err := io.Copy(h, io.LimitReader(f, backup.MaxFileBytes+1))
+	closeErr := f.Close()
+	if err != nil || closeErr != nil || n != info.Size() {
+		return fingerprint{}, errors.New("retirement source changed or could not be read")
+	}
+	return fingerprint{n, hex.EncodeToString(h.Sum(nil))}, nil
 }
 
 // selectionOf is the token that binds an archive or a delete to exactly the
@@ -187,7 +261,7 @@ func PreviewRetirement(ctx context.Context, path string) (Retirement, error) {
 	}
 	files, err := inventory(ctx, root)
 	if err != nil {
-		return Retirement{}, err
+		return Retirement{}, incompatibleFirst(err, plan)
 	}
 	var total int64
 	for _, held := range files {
@@ -223,6 +297,14 @@ func Archive(ctx context.Context, path, destination, selection string, deleteSou
 	}
 	before, err := inventory(ctx, root)
 	if err != nil {
+		var refused *backupRefusal
+		if errors.As(err, &refused) {
+			plan, planErr := Preview(ctx, root)
+			if planErr != nil {
+				return report, planErr
+			}
+			return report, incompatibleFirst(err, plan)
+		}
 		return report, err
 	}
 	if selectionOf(before) != selection {
@@ -233,7 +315,7 @@ func Archive(ctx context.Context, path, destination, selection string, deleteSou
 		return report, err
 	}
 	if !plan.Compatible {
-		return report, errors.New("project migration preview is incompatible; no migration is supported")
+		return report, errIncompatible
 	}
 	report, err = backup.Create(ctx, root, destination)
 	if err != nil {

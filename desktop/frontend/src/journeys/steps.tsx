@@ -7,11 +7,14 @@
 import { expect } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
-import { GRID_WINDOW } from "../shell";
 import { byContent, enter, press, region, whenEnabled } from "../testkit/journey";
 import type { Journey } from "../testkit/journey";
 import type { Downstream, DownstreamMode } from "../testkit/downstream.js";
 import { hostLoad } from "./probes.js";
+
+/** How many occurrences one window of the grid shows: the facade's own bound
+ * on one grid window, a fact of the product the window publishes. */
+export const GRID_WINDOW = 200;
 
 /** Synthetic MLLP-framed booking; every value is synthetic. */
 export const BOOKING =

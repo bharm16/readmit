@@ -3,6 +3,8 @@ package report_test
 import (
 	"context"
 	"encoding/json/v2"
+	"fmt"
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -397,6 +400,157 @@ func TestPreviewRetainedAgreesWithAssemble(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Preview and assembly admit a request through one check, so the packet's
+// aggregate bounds refuse at preview what they refuse at assembly. Every input
+// here verifies on its own — a case, the exact specification and a finalized
+// execution of that case — but together they hold more files than one packet
+// does, which only the aggregate bound sees.
+func TestPreviewRetainedAppliesAssemblysAggregateBounds(t *testing.T) {
+	t.Parallel()
+	input := refusedConnectionRun(t, 250, 1)
+
+	preview, err := report.PreviewRetained(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, view := range map[string]*report.RetainedInputView{"case": preview.Case, "spec": preview.Spec, "current": preview.Current} {
+		if view == nil || !view.Found || len(view.Problems) != 0 {
+			t.Fatalf("the %s did not verify on its own: %+v", what, view)
+		}
+	}
+	_, assembleErr := report.Assemble(context.Background(), input, filepath.Join(t.TempDir(), "refused"))
+	if assembleErr == nil {
+		t.Fatal("assembly sealed a packet past its file bound")
+	}
+	if !slices.Contains(preview.Problems, assembleErr.Error()) {
+		t.Fatalf("the preview did not report the refusal assembly makes (%q): %q", assembleErr, preview.Problems)
+	}
+}
+
+// A retained execution that does not bind its case's original bytes is refused
+// by the preview in the sentence assembly refuses it with. The execution here
+// is a resealed copy of a real one whose two messages' retained bytes trade
+// places: every file, digest and identity of it verifies on its own, and it
+// names the case and specification it was run from, but the bytes it retained
+// for each case occurrence are the other occurrence's.
+func TestPreviewRetainedAppliesAssemblysOriginalPayloadCheck(t *testing.T) {
+	t.Parallel()
+	input := refusedConnectionRun(t, 2, 2)
+	input.Current = swappedSourcesCopy(t, input.Current)
+
+	preview, err := report.PreviewRetained(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, view := range map[string]*report.RetainedInputView{"case": preview.Case, "spec": preview.Spec, "current": preview.Current} {
+		if view == nil || !view.Found || len(view.Problems) != 0 {
+			t.Fatalf("the %s did not verify on its own: %+v", what, view)
+		}
+	}
+	if !preview.Case.CaseMatch || !preview.Spec.SpecMatch {
+		t.Fatalf("the execution does not name the selected case and specification: %+v", preview)
+	}
+	_, assembleErr := report.Assemble(context.Background(), input, filepath.Join(t.TempDir(), "refused"))
+	if assembleErr == nil {
+		t.Fatal("assembly sealed an execution that does not bind its case's original bytes")
+	}
+	if !slices.Contains(preview.Problems, assembleErr.Error()) {
+		t.Fatalf("the preview did not report the refusal assembly makes (%q): %q", assembleErr, preview.Problems)
+	}
+}
+
+// refusedConnectionRun retains a real execution of a case of the given number
+// of messages, the first selected of them sent to a closed loopback port: a
+// finalized execution error that verifies, with its case and its exact
+// specification.
+func refusedConnectionRun(t *testing.T, messages, selected int) report.RetainedInput {
+	t.Helper()
+	dir := t.TempDir()
+	now := time.Now().UTC()
+	var raw []byte
+	for n := range messages {
+		raw = fmt.Appendf(raw, "\x0bMSH|^~\\&|TEST|LOCAL|||20260101000000||ADT^A01|C%03d|P|2.5.1\rPID|1||ID%03d\r\x1c\r", n, n)
+	}
+	c, err := bundle.Write(filepath.Join(dir, "case"), []bundle.Input{{Path: "messages.hl7", Data: raw, Options: hl7.Options{Format: hl7.MLLP}}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Events) != messages {
+		t.Fatalf("the case holds %d events, want %d", len(c.Events), messages)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	target := replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: address, Transport: "plain", ConnectTimeout: "1s", MessageTimeout: "1s", MaxACKBytes: 4096}
+	write(t, filepath.Join(dir, "target.json"), marshal(t, target))
+	ids := []string{}
+	for _, event := range c.Events[:selected] {
+		ids = append(ids, event.ID)
+	}
+	aa := "AA"
+	spec := testrunner.Spec{Schema: testrunner.SpecSchema, Name: "Refused connection", Input: testrunner.Input{Case: "case", Messages: ids}, Target: "target.json", Setup: testrunner.Setup{InitialState: testrunner.OperatorDeclared, ResetInstructions: "Operator authorized test endpoint and reset"}, Observation: testrunner.Observation{Boundary: testrunner.ACKBoundary}, Assertions: []testrunner.Assertion{{ID: "ack", Operator: "ack_field_equals", Message: ids[0], Selector: "MSA-1", Expected: testrunner.Value{Field: &testrunner.FieldValue{State: hl7.Present, Text: &aa}}}}}
+	specPath := filepath.Join(dir, "spec.json")
+	write(t, specPath, marshal(t, spec))
+	result, err := testrunner.Run(context.Background(), specPath, filepath.Join(dir, "result"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Result.Status != testrunner.ExecutionError {
+		t.Fatalf("expected a finalized connection failure: %+v", result.Result)
+	}
+	return report.RetainedInput{Case: filepath.Join(dir, "case"), Spec: specPath, Current: filepath.Join(dir, "result")}
+}
+
+// swappedSourcesCopy copies a retained two-message execution with the source
+// and intended bytes of its two messages exchanged — each event keeps its case
+// occurrence, its outbound occurrence and its outcome — and reseals the run and
+// the result, so only the comparison with the case's original bytes can tell.
+func swappedSourcesCopy(t *testing.T, result string) string {
+	t.Helper()
+	dir := clone(t, result)
+	run := filepath.Join(dir, "run")
+	var manifest map[string]any
+	decode(t, read(t, filepath.Join(run, "manifest.json")), &manifest)
+	mappings := manifest["mappings"].([]any)
+	if len(mappings) != 2 {
+		t.Fatalf("the fixture execution retained %d messages, want 2", len(mappings))
+	}
+	first, second := mappings[0].(map[string]any), mappings[1].(map[string]any)
+	first["source_sha256"], second["source_sha256"] = second["source_sha256"], first["source_sha256"]
+	raw := marshal(t, manifest)
+	write(t, filepath.Join(run, "manifest.json"), raw[:len(raw)-1])
+	lines := strings.Split(strings.TrimSuffix(string(read(t, filepath.Join(run, "events.jsonl"))), "\n"), "\n")
+	events := make([]map[string]any, len(lines))
+	for i, line := range lines {
+		decode(t, []byte(line), &events[i])
+	}
+	for _, member := range []string{"source", "intended"} {
+		one, two := events[0][member].(map[string]any), events[1][member].(map[string]any)
+		for _, field := range []string{"size", "sha256"} {
+			one[field], two[field] = two[field], one[field]
+		}
+		first, second := filepath.Join(run, one["path"].(string)), filepath.Join(run, two["path"].(string))
+		a, b := read(t, first), read(t, second)
+		write(t, first, b)
+		write(t, second, a)
+	}
+	events[0]["control_id_base64"], events[1]["control_id_base64"] = events[1]["control_id_base64"], events[0]["control_id_base64"]
+	var rewritten []byte
+	for _, event := range events {
+		rewritten = append(rewritten, marshal(t, event)...)
+	}
+	write(t, filepath.Join(run, "events.jsonl"), rewritten)
+	oldRun := strings.TrimSpace(string(read(t, filepath.Join(run, "identity.sha256"))))
+	newRun := artifactdir.Identity(replay.Schema, snapshot(t, run))
+	write(t, filepath.Join(run, "identity.sha256"), []byte(newRun+"\n"))
+	write(t, filepath.Join(dir, "result.json"), []byte(strings.Replace(string(read(t, filepath.Join(dir, "result.json"))), oldRun, newRun, 1)))
+	write(t, filepath.Join(dir, "identity.sha256"), []byte(artifactdir.Identity(testrunner.Schema, snapshot(t, dir))+"\n"))
+	return dir
 }
 
 // writeSpecCopy copies the source specification with its bytes changed but

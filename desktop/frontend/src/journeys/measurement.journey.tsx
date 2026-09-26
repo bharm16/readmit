@@ -13,10 +13,10 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GRID_OVERSCAN, GRID_VIEWPORT_ROWS, GRID_WINDOW } from "../shell";
+import { GRID_OVERSCAN, GRID_VIEWPORT_ROWS } from "../shell";
 import { Journey, press, region } from "../testkit/journey";
 import { measuring } from "./probes.js";
-import { BOOKING, declareMllpImport, framed, licensedProject, logTiming } from "./steps";
+import { BOOKING, declareMllpImport, framed, GRID_WINDOW, licensedProject, logTiming } from "./steps";
 
 let journey: Journey;
 

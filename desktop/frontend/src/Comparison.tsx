@@ -10,11 +10,6 @@ import { NormalizationPolicyEditor } from "./RulesEditor";
 import { Report, type Indicators } from "./shell";
 import "./comparison.css";
 
-/** How many rows of a comparison one window asks the facade for. It is the
- * facade's own bound: a comparison of two large collections is rendered one
- * window at a time and the next one is another call. */
-export const COMPARISON_WINDOW = 200;
-
 /** How every row kind and every reason the engine reports reads in the window.
  * The engine names them; this maps each to a sentence and decides none. */
 const KINDS: Record<string, string> = {

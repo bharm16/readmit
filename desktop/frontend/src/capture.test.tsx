@@ -6,8 +6,10 @@ import {
   WORKSPACE_ROOT,
   folderChosen,
   projectOverviewResult,
+  shellResult,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
+import type { FacadeHandlers } from "./testkit/wails";
 import type {
   CaptureJournalResult,
   CapturePreviewResult,
@@ -20,13 +22,14 @@ import type {
   ObservationWindowResult,
   PathChoiceResult,
   ReceiverPolicy,
+  ReceiverPolicyChoices,
   ReceiverPolicyResult,
   SourceAccessResult,
   SourceCollectionResult,
   SourceRegistrationResult,
 } from "./bindings";
 
-async function openProject(user: ReturnType<typeof userEvent.setup>) {
+async function openProject(user: ReturnType<typeof userEvent.setup>, handlers: FacadeHandlers = {}) {
   const { facade } = await renderApp({
     SelectWorkspace: () =>
       folderChosen(WORKSPACE_ROOT, [
@@ -49,6 +52,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>) {
           evidence: "verified",
         },
       ]),
+    ...handlers,
   });
   // The first-run card and the command region's action bar both offer the same
   // open-workspace action, so either button starts the same chooser.
@@ -582,20 +586,16 @@ test("the fixture tab listens on loopback only and never carries the collector t
   expect(facade.callsTo("StartCapture")).toHaveLength(0);
 });
 
-test.each([
-  ["delay", 50],
-  ["missing-response", 50],
-  ["reject", 0],
-  ["disconnect", 0],
-  ["malformed-ack", 0],
-] as const)("the collector builds the required %s fault fields from its controls", async (action, delay) => {
+test.each(["delay", "missing-response", "reject", "disconnect", "malformed-ack"] as const)(
+  "the collector sends the %s fault its controls chose and leaves the contract version to the facade",
+  async (action) => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
   await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
   await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
   const panel = within(capturePanel());
   facade.reply({
-    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy: request.policy, policy_file: request.policy_file }),
+    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy_file: request.policy_file }),
     PreviewCapture: (): CapturePreviewResult => ({ state: "completed", phase: "previewing" }),
   });
 
@@ -603,17 +603,40 @@ test.each([
   expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
   await user.click(panel.getByRole("button", { name: "Preview collector" }));
   await waitFor(() => expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(1));
-  expect(facade.oneCall("SaveReceiverPolicy")[0]).toMatchObject({
-    policy: {
-      schema: "readmit-receiver-policy/v3",
-      faults: {
-        environment_class: "nonproduction",
-        approved_test_endpoints: ["127.0.0.1:2575"],
-        steps: [{ message: 1, stage: "application", action, delay_ms: delay }],
-      },
-    },
-  });
+  const [request] = facade.oneCall("SaveReceiverPolicy");
+  // The person's choices, and no document: which version holds them, and the
+  // fault step they compose, are the facade's to decide.
+  expect(request.policy).toBeUndefined();
+  expect(request.choices).toMatchObject({ enhanced: false, fault: action, fault_delay_ms: 50, endpoint: "127.0.0.1:2575" });
+  expect(JSON.stringify(request)).not.toContain("readmit-receiver-policy/");
   expect(facade.callsTo("PreviewCapture")).toHaveLength(1);
+  },
+);
+
+// The fault actions offered, whether each waits for a delay, and the delay a
+// waiting one starts with are the ones the facade publishes.
+test("the fault controls offer the actions, waits and starting delay the facade publishes", async () => {
+  const user = userEvent.setup();
+  const described = shellResult();
+  const shell = described.shell;
+  if (!shell) throw new Error("fixture shell missing");
+  shell.vocabulary.receiver_faults = {
+    actions: [
+      { action: "reject", waits: false },
+      { action: "delay", waits: true },
+    ],
+    default_delay_ms: 70,
+  };
+  await openProject(user, { Shell: () => described });
+  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Capture" }));
+  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
+  const panel = within(capturePanel());
+  const fault = panel.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement;
+  expect(Array.from(fault.options).map((option) => option.value)).toEqual(["none", "reject", "delay"]);
+  await user.selectOptions(fault, "reject");
+  expect(panel.queryByLabelText("Fault delay (ms)")).toBeNull();
+  await user.selectOptions(fault, "delay");
+  expect((panel.getByLabelText("Fault delay (ms)") as HTMLInputElement).value).toBe("70");
 });
 
 test("a reader refusal at port zero stops preview, and a collector bind refusal names its checkbox", async () => {
@@ -636,7 +659,7 @@ test("a reader refusal at port zero stops preview, and a collector bind refusal 
   await user.clear(panel.getByLabelText("Listen address"));
   await user.type(panel.getByLabelText("Listen address"), "192.0.2.1:2575");
   facade.reply({
-    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy: request.policy, policy_file: request.policy_file }),
+    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy_file: request.policy_file }),
     PreviewCapture: (): CapturePreviewResult => ({
       state: "failed",
       reason: "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address",
@@ -671,6 +694,19 @@ const declaredPolicy: ReceiverPolicy = {
   },
 };
 
+/** What the facade decides the controls show for declaredPolicy: no enhanced
+ * rule they express, its first fault step and delay, and its test endpoint. */
+const declaredControls: ReceiverPolicyChoices = {
+  name: declaredPolicy.name,
+  source_label: declaredPolicy.source_label,
+  acknowledgement: declaredPolicy.acknowledgement,
+  accepted_message_types: declaredPolicy.accepted_message_types,
+  enhanced: false,
+  fault: "delay",
+  fault_delay_ms: 25,
+  endpoint: "127.0.0.1:2575",
+};
+
 test("fault selection and opening a policy preserve an address the operator entered", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
@@ -686,7 +722,12 @@ test("fault selection and opening a policy preserve an address the operator ente
   await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:0");
   facade.reply({
     ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "policy", paths: ["policies/faulting.json"] }),
-    ReadReceiverPolicy: (): ReceiverPolicyResult => ({ state: "completed", policy: declaredPolicy, policy_file: "policies/faulting.json" }),
+    ReadReceiverPolicy: (): ReceiverPolicyResult => ({
+      state: "completed",
+      policy: declaredPolicy,
+      policy_file: "policies/faulting.json",
+      choices: declaredControls,
+    }),
   });
   await user.click(panel.getByRole("button", { name: "Open policy…" }));
   await panel.findByLabelText("Opened responder policy");
@@ -713,7 +754,12 @@ test("a declared responder policy reopens for review, is previewed as it is and 
   // From the keyboard, the chosen document opens for review and fills the form.
   facade.reply({
     ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "policy", paths: ["policies/faulting.json"] }),
-    ReadReceiverPolicy: (): ReceiverPolicyResult => ({ state: "completed", policy: declaredPolicy, policy_file: "policies/faulting.json" }),
+    ReadReceiverPolicy: (): ReceiverPolicyResult => ({
+      state: "completed",
+      policy: declaredPolicy,
+      policy_file: "policies/faulting.json",
+      choices: declaredControls,
+    }),
   });
   await tabTo(user, open);
   await user.keyboard("{Enter}");
@@ -741,20 +787,36 @@ test("a declared responder policy reopens for review, is previewed as it is and 
   expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(0);
   expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "collect", address: "127.0.0.1:2575", policy_file: "policies/faulting.json" });
 
-  // An edit is saved over the same document, keeping both fault steps and
-  // the approved endpoint the form never showed.
-  const saves: ReceiverPolicy[] = [];
+  // An edit is saved over the same document as the person's choices beside
+  // the document they opened, so the facade keeps both fault steps and the
+  // approved endpoint the form never showed; the review shows what it saved.
+  const saves: ReceiverPolicyChoices[] = [];
   facade.reply({
     SaveReceiverPolicy: (request): ReceiverPolicyResult => {
-      saves.push(request.policy);
-      return { state: "completed", policy: request.policy, policy_file: request.policy_file };
+      if (request.choices) saves.push(request.choices);
+      return {
+        state: "completed",
+        policy: { ...declaredPolicy, source_label: "scheduling-archive" },
+        policy_file: request.policy_file,
+        choices: { ...declaredControls, source_label: "scheduling-archive" },
+      };
     },
   });
   await user.clear(panel.getByLabelText("Source label"));
   await user.type(panel.getByLabelText("Source label"), "scheduling-archive");
   await user.click(panel.getByRole("button", { name: "Preview collector" }));
   await waitFor(() => expect(saves).toHaveLength(1));
-  expect(saves[0]).toEqual({ ...declaredPolicy, source_label: "scheduling-archive" });
+  expect(saves[0]).toEqual({
+    name: "faulting-sink",
+    source_label: "scheduling-archive",
+    acknowledgement: declaredPolicy.acknowledgement,
+    accepted_message_types: declaredPolicy.accepted_message_types,
+    enhanced: false,
+    fault: "delay",
+    fault_delay_ms: 25,
+    endpoint: "127.0.0.1:2575",
+    opened: declaredPolicy,
+  });
   expect(facade.callsTo("SaveReceiverPolicy")[0]?.args[0]).toMatchObject({ policy_file: "policies/faulting.json" });
   expect(await review.findByText("scheduling-archive")).toBeTruthy();
 

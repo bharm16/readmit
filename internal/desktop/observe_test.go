@@ -259,3 +259,70 @@ func TestObservationFacadeRefusesASaveInsideACaseAndLeavesItVerifiable(t *testin
 		t.Fatalf("the case no longer verifies after a refused save: %+v", opened)
 	}
 }
+
+// choicesOf is a source as the window sends it back to be saved: every member
+// the person declared, and no contract version.
+func choicesOf(source observesource.Source) desktop.ObservationSourceChoices {
+	return desktop.ObservationSourceChoices{
+		Observes: source.Observes, Enabled: source.Enabled, Freshness: source.Freshness,
+		Extraction: source.Extraction, File: source.File, HTTP: source.HTTP,
+		Capture: source.Capture, Database: source.Database,
+	}
+}
+
+// Saving an observation source from the window takes the person's choices,
+// and the facade picks the contract version: the first version that declares
+// the transport the kind names, or, for a document already on disk that
+// observes the same kind, the version it declares, so saving it again never
+// rewrites it into another contract.
+func TestObservationSourceVersionIsChosenByTheFacade(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	save := func(file string, choices desktop.ObservationSourceChoices) observesource.Source {
+		t.Helper()
+		saved := app.SaveObservationSource(desktop.ObservationSourceRequest{Workspace: dir, SourceFile: file, Choices: &choices})
+		if saved.State != desktop.Completed || saved.Source == nil {
+			t.Fatalf("saving %s: %+v", file, saved)
+		}
+		return *saved.Source
+	}
+	opened := app.OpenObservationSource(dir, "file.json")
+	if opened.State != desktop.Completed || opened.Source == nil {
+		t.Fatalf("a new source did not open: %+v", opened)
+	}
+	if file := save("file.json", choicesOf(*opened.Source)); file.Schema != observesource.SchemaV1 {
+		t.Fatalf("a file export was saved under %s", file.Schema)
+	}
+	bound := app.BindCaptureObservation(desktop.ObservationCaptureBindRequest{
+		Workspace: dir,
+		Binding: operation.CaptureObservationBinding{
+			CasePath: "downstream.case", Identity: "scheduling-downstream", Scope: "appointments",
+			Kinds: []string{"message"}, RecordKey: "SCH-1.1", MaxOccurrences: 25, Freshness: "1h",
+		},
+	})
+	if bound.State != desktop.Completed || bound.Source == nil {
+		t.Fatalf("bind: %+v", bound)
+	}
+	if capture := save("capture.json", choicesOf(*bound.Source)); capture.Schema != observesource.Schema {
+		t.Fatalf("a downstream capture was saved under %s", capture.Schema)
+	}
+	// A v2 document observing a file export stays v2; one observing another kind now is written under that kind's first version.
+	writeDocument(t, dir, "declared.json", strings.Replace(strings.Replace(facadeSourceDocument,
+		observesource.SchemaV1, observesource.Schema, 1), `"http": null`, `"http": null, "capture": null`, 1))
+	declared := app.OpenObservationSource(dir, "declared.json")
+	if declared.State != desktop.Completed || declared.Source.Schema != observesource.Schema {
+		t.Fatalf("the declared v2 source did not open: %+v", declared)
+	}
+	if kept := save("declared.json", choicesOf(*declared.Source)); kept.Schema != observesource.Schema {
+		t.Fatalf("resaving a v2 file export wrote %s", kept.Schema)
+	}
+	writeDocument(t, dir, "switched.json", strings.Replace(strings.Replace(facadeSourceDocument,
+		observesource.SchemaV1, observesource.Schema, 1), `"http": null`, `"http": null, "capture": null`, 1))
+	if switched := save("switched.json", choicesOf(*bound.Source)); switched.Schema != observesource.Schema {
+		t.Fatalf("a capture over a v2 file export was saved under %s", switched.Schema)
+	}
+	capture := app.OpenObservationSource(dir, "capture.json")
+	if switched := save("capture.json", choicesOf(*opened.Source)); switched.Schema != observesource.SchemaV1 || capture.Source.Schema != observesource.Schema {
+		t.Fatalf("a file export saved over a capture source was written under %s", switched.Schema)
+	}
+}

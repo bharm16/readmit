@@ -13,11 +13,6 @@ import type {
 import { Report, type Indicators } from "./shell";
 import "./review.css";
 
-/** How many findings of a review one window asks the facade for. It is the
- * facade's own bound: a large inventory is rendered one window at a time and
- * the next one is another call. */
-export const REVIEW_WINDOW = 200;
-
 /** How each decision reads. The facade names them and decides all of them; this
  * maps each to a sentence and none of them to a colour alone. */
 const DECISIONS: Record<ReviewDecision, string> = {

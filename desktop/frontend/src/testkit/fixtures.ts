@@ -35,6 +35,7 @@ import type {
   SessionResult,
   Shell,
   ShellResult,
+  Vocabulary,
   DisclosureStatusResult,
   StatusValue,
   PacketPreviewResult,
@@ -241,8 +242,45 @@ export function shellResult(): ShellResult {
       ],
       unavailable: ["generate reproducible SIU synthetic case bundles from declared inputs"],
     },
+    vocabulary: vocabularyFixture(),
   };
   return { state: "completed", shell };
+}
+
+/** What the window offers and pages by, as the facade publishes it in the
+ * window's description. A test that is about one of these passes its own. */
+export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): Vocabulary {
+  return {
+    diagnosis_builtins: [
+      { id: "siu", profile: "readmit-siu-v1", ruleset: "readmit-siu-diagnosis/v1" },
+      { id: "lifecycle", profile: "readmit-lifecycle-v1", ruleset: "readmit-lifecycle-diagnosis/v1" },
+      { id: "order", profile: "readmit-order-v1", ruleset: "readmit-order-diagnosis/v1" },
+    ],
+    import_plan: {
+      framings: ["raw", "mllp", "batch"],
+      payload_framings: ["raw", "mllp"],
+      boundaries: ["segment-start", "hl7-batch"],
+      terminators: ["cr", "lf", "crlf"],
+      encodings: ["utf-8", "us-ascii", "iso-8859-1", "unknown"],
+      directions: ["inbound", "outbound", "unknown"],
+    },
+    reset_operators: [
+      { operator: "operator_confirms", authority: "none" },
+      { operator: "observation_empty", authority: "read_declared_file" },
+      { operator: "endpoint_quiet", authority: "connect_approved_target" },
+    ],
+    receiver_faults: {
+      actions: [
+        { action: "delay", waits: true },
+        { action: "reject", waits: false },
+        { action: "malformed-ack", waits: false },
+        { action: "missing-response", waits: true },
+        { action: "disconnect", waits: false },
+      ],
+      default_delay_ms: 50,
+    },
+    bounds: { grid: 200, comparison: 200, review: 200, sequence: 200, diagnosis: 200, ...bounds },
+  };
 }
 
 /** The live half of the privacy disclosure: how each disclosed activity
@@ -1229,6 +1267,10 @@ export function defaultSecretsResult(overrides: Partial<SecretsResult> = {}): Se
         },
       ],
     },
+    // What the facade decides about the document: each reference's rotation
+    // state and the secrets document a target's credential records for it.
+    rotations: [{ name: "mllp-basic-auth", rotation: "current" }],
+    credential_file: `${WORKSPACE_ROOT}/secrets.json`,
     ...overrides,
   };
 }

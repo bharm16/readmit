@@ -209,6 +209,25 @@ type candidate struct {
 	readable bool
 }
 
+// Scan lists what one backup of the project opened at source would take, under
+// the backup's own limits: the files it stores and the top-level indexes it
+// records instead of copying, each sorted. It is the scan Create makes and
+// refuses exactly what Create's scan refuses, in the same sentence, so a caller
+// measuring a project against the backup limits — a retirement preview —
+// cannot reach a verdict the backup it precedes would not.
+func Scan(source *os.Root) (stored, indexes []string, err error) {
+	stored, candidates, err := scan(source)
+	if err != nil {
+		return nil, nil, err
+	}
+	indexes = make([]string, 0, len(candidates))
+	for _, found := range candidates {
+		indexes = append(indexes, found.name)
+	}
+	slices.Sort(indexes)
+	return stored, indexes, nil
+}
+
 // scan lists the regular files a backup stores and the indexes it records
 // instead. An entry that is not a regular file — a symbolic link, a device, a
 // socket — is refused rather than followed or silently skipped: following one

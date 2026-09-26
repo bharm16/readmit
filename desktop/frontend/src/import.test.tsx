@@ -8,8 +8,10 @@ import {
   projectOverviewResult,
   caseResult,
   registeredCase,
+  shellResult,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
+import type { FacadeHandlers } from "./testkit/wails";
 import type {
   ImportCommitResult,
   ImportContainer,
@@ -18,7 +20,7 @@ import type {
   PastedSourceResult,
 } from "./bindings";
 
-async function openWorkspaceWithProject(user: ReturnType<typeof userEvent.setup>) {
+async function openWorkspaceWithProject(user: ReturnType<typeof userEvent.setup>, handlers: FacadeHandlers = {}) {
   const { facade } = await renderApp({
     SelectWorkspace: () =>
       folderChosen(WORKSPACE_ROOT, [
@@ -41,6 +43,7 @@ async function openWorkspaceWithProject(user: ReturnType<typeof userEvent.setup>
           evidence: "verified",
         },
       ]),
+    ...handlers,
   });
   await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   await screen.findByText(WORKSPACE_ROOT);
@@ -664,4 +667,28 @@ test("a committed import whose retention was refused leaves no retention reporte
   expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
   expect(screen.queryByText("Retaining this draft…")).toBeNull();
+});
+
+// Every value an import plan may declare is offered as the facade publishes it
+// in the window's description, so the panel offers exactly what a plan reader
+// accepts and nothing it keeps a copy of.
+test("the plan controls offer the import-plan vocabulary the facade publishes", async () => {
+  const user = userEvent.setup();
+  const described = shellResult();
+  const shell = described.shell;
+  if (!shell) throw new Error("fixture shell missing");
+  shell.vocabulary.import_plan = {
+    ...shell.vocabulary.import_plan,
+    framings: ["mllp", "raw"],
+    encodings: ["utf-8"],
+    directions: ["outbound", "inbound"],
+  };
+  await openWorkspaceWithProject(user, { Shell: () => described });
+  await user.click(within(screen.getByRole("region", { name: "Evidence" })).getByRole("button", { name: "Import" }));
+  await screen.findByRole("heading", { name: "Import evidence" });
+  const values = (label: string) =>
+    Array.from((screen.getByLabelText(label, { selector: "select" }) as HTMLSelectElement).options).map((option) => option.value);
+  expect(values("Framing")).toEqual(["mllp", "raw"]);
+  expect(values("Terminator")).toEqual(["cr", "lf", "crlf"]);
+  expect(values("Direction")).toEqual(["outbound", "inbound"]);
 });

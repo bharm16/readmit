@@ -121,3 +121,22 @@ func TestFaultRecordVersionAndExecutionEventsRoundTrip(t *testing.T) {
 		t.Fatal("v2 member set accepted fault null")
 	}
 }
+
+// Every fault action offered is one a step can declare, with a delay exactly
+// when it waits.
+func TestFaultActionsAreTheActionsAStepDeclares(t *testing.T) {
+	for _, offered := range collection.FaultActions() {
+		for _, delay := range []int{0, 50} {
+			policy := collection.FaultPolicy{
+				EnvironmentClass: "nonproduction", ApprovedTestEndpoints: []string{"127.0.0.1:2575"},
+				Steps: []collection.FaultStep{{Message: 1, Stage: collection.ApplicationStage, Action: offered.Action, DelayMS: delay}},
+			}
+			if err := policy.Validate(); (err == nil) != (offered.Waits == (delay > 0)) {
+				t.Errorf("%s (waits %t) with delay %d: %v", offered.Action, offered.Waits, delay, err)
+			}
+		}
+		if collection.FaultWaits(offered.Action) != offered.Waits {
+			t.Errorf("%s is offered as waiting %t", offered.Action, offered.Waits)
+		}
+	}
+}

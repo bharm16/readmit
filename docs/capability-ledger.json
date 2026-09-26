@@ -4952,6 +4952,22 @@
       "implemented": true
     },
     {
+      "id": "desktop.ReviewResetAction",
+      "source": "desktop.App.ReviewResetAction",
+      "kind": "desktop",
+      "capability": "record the authority the review requires beside a chosen reset operator",
+      "owner": "bharm16/readmit#490",
+      "screen": "the fixture reset authoring panel",
+      "action": "add a reviewed reset action whose authority the facade decides",
+      "backend": {"package": "internal/fixturereset", "name": "ReviewedAction"},
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "a reset action records the authority the facade decides for its operator"},
+      "parity_test": {"package": "internal/desktop", "name": "TestReviewResetActionRecordsTheAuthorityTheReviewRequires"},
+      "implemented": true
+    },
+    {
       "id": "desktop.SaveResetPlan",
       "source": "desktop.App.SaveResetPlan",
       "kind": "desktop",

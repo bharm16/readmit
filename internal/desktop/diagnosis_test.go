@@ -110,7 +110,7 @@ func TestRunDiagnosisRefusesStaleIdentityImplicitConfigurationAndOverwrite(t *te
 	implicit := request
 	implicit.Builtin = ""
 	if got := app.RunDiagnosis(implicit); got.State != desktop.Failed ||
-		!strings.Contains(got.Reason, "one named configuration entry or one built-in selection") {
+		got.Reason != "a diagnosis runs under one named configuration entry or one built-in selection: siu, lifecycle or order" {
 		t.Fatalf("a diagnosis ran under a configuration nobody selected: %+v", got)
 	}
 	unknown := request

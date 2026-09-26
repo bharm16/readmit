@@ -18,9 +18,12 @@ import {
   type CaptureSessionResult,
   type EvidenceSource,
   type EvidenceSourceKind,
+  type HL7Terminator,
   type ImportCommitResult,
+  type ImportFraming,
   type ImportPlan,
   type ReceiverPolicy,
+  type ReceiverPolicyChoices,
   type SourceAccessResult,
   type SourceCollectionResult,
 } from "./bindings";
@@ -28,6 +31,7 @@ import type { Indicators } from "./shell";
 import { Status } from "./shell";
 import "./capture.css";
 import { useLifecycle } from "./lifecycle";
+import { useVocabulary } from "./vocabulary";
 
 type Mode = "source" | "collect" | "listen";
 
@@ -43,9 +47,11 @@ function defaultSource(): EvidenceSource {
   };
 }
 
-function defaultPolicy(): ReceiverPolicy {
+/** The members of a responder policy the form edits directly. */
+type PolicyBase = Pick<ReceiverPolicyChoices, "name" | "source_label" | "acknowledgement" | "accepted_message_types">;
+
+function defaultPolicy(): PolicyBase {
   return {
-    schema: "readmit-receiver-policy/v1",
     name: "downstream-sink",
     source_label: "downstream-test-endpoint",
     acknowledgement: { operator: "original-mode-fixed-code", code: "AA" },
@@ -56,15 +62,23 @@ function defaultPolicy(): ReceiverPolicy {
 /** How often a running capture's bound address is read until it is known. */
 const PROGRESS_MS = 200;
 
-type FaultAction = "none" | "delay" | "reject" | "missing-response" | "disconnect" | "malformed-ack";
+/** The fault choice that declares no fault step. */
+const NO_FAULT = "none";
 
-// What the enhanced and fault controls show for a declared policy. The
-// controls express one enhanced rule and one fault step; a reopened document
-// keeps whatever else it declares until one of them is changed.
-const declaresEnhanced = (p: ReceiverPolicy) => p.enhanced_acknowledgement?.operator === "enhanced-mode-fixed-codes";
-const declaredFault = (p: ReceiverPolicy): FaultAction => (p.faults?.steps[0]?.action as FaultAction | undefined) ?? "none";
-const declaredDelay = (p: ReceiverPolicy) => p.faults?.steps[0]?.delay_ms ?? 50;
-const waitsForFault = (action: FaultAction) => action === "delay" || action === "missing-response";
+/** How a fault action reads where its own name would not. Which actions exist
+ * and whether each waits are the facade's. */
+const FAULT_WORDS: Record<string, string> = {
+  "malformed-ack": "malformed response",
+  "missing-response": "missing response",
+};
+
+/** A reopened responder policy: the document as it was read or last saved,
+ * and what the facade decided its controls show. */
+interface OpenedPolicy {
+  file: string;
+  policy: ReceiverPolicy;
+  controls: ReceiverPolicyChoices;
+}
 const nonloopbackRefusal = "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address";
 
 function captureReason(reason: string, mode: Mode): string {
@@ -74,15 +88,16 @@ function captureReason(reason: string, mode: Mode): string {
     : "Choose a loopback listen address for the SIU fixture.";
 }
 
-/** The enhanced acknowledgement as `readmit collect` names it on start. */
-function enhancedSummary(p: ReceiverPolicy): string {
+/** The enhanced acknowledgement as `readmit collect` names it on start;
+ * `enhanced` is whether the facade decided it declares the enhanced rule. */
+function enhancedSummary(p: ReceiverPolicy, enhanced: boolean): string {
   const rule = p.enhanced_acknowledgement;
-  if (!rule || !declaresEnhanced(p)) return "unsupported";
+  if (!rule || !enhanced) return "unsupported";
   return `${rule.operator} ${rule.accept_code} ${rule.application_code} ${rule.application_delivery}`;
 }
 
 /** A reopened responder policy, every member as the saved document declares it. */
-function PolicyReview({ file, policy }: { file: string; policy: ReceiverPolicy }) {
+function PolicyReview({ file, policy, enhanced }: { file: string; policy: ReceiverPolicy; enhanced: boolean }) {
   const types = policy.accepted_message_types;
   return (
     <dl className="capture-preview" aria-label="Opened responder policy">
@@ -101,7 +116,7 @@ function PolicyReview({ file, policy }: { file: string; policy: ReceiverPolicy }
       <dt>Accepted message types</dt>
       <dd>{types.values.length ? `${types.operator}: ${types.values.join(", ")}` : types.operator}</dd>
       <dt>Enhanced acknowledgement</dt>
-      <dd>{enhancedSummary(policy)}</dd>
+      <dd>{enhancedSummary(policy, enhanced)}</dd>
       {policy.faults ? (
         <>
           <dt>Faults</dt>
@@ -208,18 +223,25 @@ export function CapturePanel({
   const [mode, setMode] = useState<Mode>("source");
   const [source, setSource] = useState<EvidenceSource>(defaultSource);
   const [sourceFile, setSourceFile] = useState("source.json");
-  const [planFraming, setPlanFraming] = useState<"raw" | "mllp">("raw");
-  const [planTerminator, setPlanTerminator] = useState<"cr" | "lf" | "crlf">("cr");
+  // A collection plan declares no batch boundary, so it offers the framings
+  // that need none; both lists are the facade's.
+  const planVocabulary = useVocabulary()?.import_plan;
+  const [planFraming, setPlanFraming] = useState<ImportFraming>("raw");
+  const [planTerminator, setPlanTerminator] = useState<HL7Terminator>("cr");
   const [planMembers, setPlanMembers] = useState(".hl7");
   const [policyFile, setPolicyFile] = useState("receiver-policy.json");
-  const [policy, setPolicy] = useState<ReceiverPolicy>(defaultPolicy);
+  const [policy, setPolicy] = useState<PolicyBase>(defaultPolicy);
   const [enhanced, setEnhanced] = useState(false);
-  const [faultAction, setFaultAction] = useState<FaultAction>("none");
-  const [faultDelayMs, setFaultDelayMs] = useState(50);
+  // The controlled faults a step can declare, whether each waits, and the
+  // delay a waiting one starts with, as the facade publishes them.
+  const faults = useVocabulary()?.receiver_faults;
+  const waits = (action: string) => faults?.actions.some((fault) => fault.action === action && fault.waits) ?? false;
+  const [faultAction, setFaultAction] = useState(NO_FAULT);
+  const [faultDelayMs, setFaultDelayMs] = useState(faults?.default_delay_ms ?? 0);
   // The documents reopened from disk, as they were read or last saved, and
   // whether a policy control changed since.
   const [openedSource, setOpenedSource] = useState<{ file: string; source: EvidenceSource } | null>(null);
-  const [openedPolicy, setOpenedPolicy] = useState<{ file: string; policy: ReceiverPolicy } | null>(null);
+  const [openedPolicy, setOpenedPolicy] = useState<OpenedPolicy | null>(null);
   const [policyEdited, setPolicyEdited] = useState(false);
   const [listeningOn, setListeningOn] = useState<string | null>(null);
   const [address, setAddress] = useState("127.0.0.1:0");
@@ -357,23 +379,25 @@ export function CapturePanel({
       const file = await chosenFile("policy");
       if (!file) return;
       const opened = await readReceiverPolicy(workspace, file);
-      if (opened.state !== "completed" || !opened.policy) {
+      if (opened.state !== "completed" || !opened.policy || !opened.choices) {
         setError(opened.reason ?? opened.state);
         return;
       }
+      // The controls show what the facade decided the document declares.
       const declared = opened.policy;
+      const controls = opened.choices;
       setPolicy(declared);
-      setEnhanced(declaresEnhanced(declared));
-      setFaultAction(declaredFault(declared));
-      setFaultDelayMs(declaredDelay(declared));
+      setEnhanced(controls.enhanced);
+      setFaultAction(controls.fault ?? NO_FAULT);
+      setFaultDelayMs(controls.fault_delay_ms ?? 0);
       // A saved fault policy names its exact test endpoints. Fill an untouched
       // ephemeral-port default from that declaration so its first preview can
       // use the policy the person just chose; preserve any address they set.
-      if (!addressEdited && address === "127.0.0.1:0" && declared.faults?.approved_test_endpoints[0]) {
-        setAddress(declared.faults.approved_test_endpoints[0]);
+      if (!addressEdited && address === "127.0.0.1:0" && controls.endpoint) {
+        setAddress(controls.endpoint);
       }
       setPolicyFile(file);
-      setOpenedPolicy({ file, policy: declared });
+      setOpenedPolicy({ file, policy: declared, controls });
       setPolicyEdited(false);
       setPreview(null);
     });
@@ -391,61 +415,23 @@ export function CapturePanel({
     setAddressEdited(true);
   }
 
-  function keepsDeclaredPolicyControls(): boolean {
-    const declared = openedPolicy?.policy;
-    return !!declared && enhanced === declaresEnhanced(declared) && faultAction === declaredFault(declared) &&
-      (faultAction === "none" || faultDelayMs === declaredDelay(declared));
-  }
-
-  /** The policy the form describes. A reopened document keeps the enhanced
-   * rule and faults it declares while those controls still show what it
-   * declared, including its approved test endpoints; changing one of them
-   * replaces them with what the controls express. */
-  function policyToSave(): ReceiverPolicy {
-    const base = {
+  /** What the person chose for the responder policy. The facade composes the
+   * document from it and picks its contract version; a reopened document
+   * keeps the enhanced rule and faults it declares, including its approved
+   * test endpoints, while those controls still show what it declared. */
+  function policyChoices(): ReceiverPolicyChoices {
+    const choices: ReceiverPolicyChoices = {
       name: policy.name,
       source_label: policy.source_label,
       acknowledgement: policy.acknowledgement,
       accepted_message_types: policy.accepted_message_types,
+      enhanced,
+      fault: faultAction,
+      fault_delay_ms: faultDelayMs,
+      endpoint: address,
     };
-    const declared = openedPolicy?.policy;
-    if (declared && keepsDeclaredPolicyControls()) {
-      const kept: ReceiverPolicy = { schema: declared.schema, ...base };
-      if (declared.enhanced_acknowledgement) kept.enhanced_acknowledgement = declared.enhanced_acknowledgement;
-      if (declared.faults) kept.faults = declared.faults;
-      return kept;
-    }
-    const schema = enhanced ? "readmit-receiver-policy/v2" : "readmit-receiver-policy/v1";
-    const toSave: ReceiverPolicy = { schema, ...base };
-    if (enhanced) {
-      toSave.enhanced_acknowledgement = {
-        operator: "enhanced-mode-fixed-codes",
-        accept_code: "CA",
-        application_code: "AA",
-        application_delivery: "same-connection",
-        application_endpoint: "",
-        approved_transport: false,
-      };
-    }
-    if (faultAction !== "none") {
-      toSave.schema = "readmit-receiver-policy/v3";
-      if (!toSave.enhanced_acknowledgement) {
-        toSave.enhanced_acknowledgement = {
-          operator: "unsupported",
-          accept_code: "",
-          application_code: "",
-          application_delivery: "",
-          application_endpoint: "",
-          approved_transport: false,
-        };
-      }
-      toSave.faults = {
-        environment_class: "nonproduction",
-        approved_test_endpoints: [address],
-        steps: [{ message: 1, stage: "application", action: faultAction, delay_ms: waitsForFault(faultAction) ? faultDelayMs : 0 }],
-      };
-    }
-    return toSave;
+    if (openedPolicy) choices.opened = openedPolicy.policy;
+    return choices;
   }
 
   async function runDiagnose() {
@@ -514,14 +500,13 @@ export function CapturePanel({
       // nothing has changed since: that stays the document on disk, byte for
       // byte, and is previewed as it is.
       if (mode === "collect" && !(openedPolicy && openedPolicy.file === policyFile && !policyEdited)) {
-        const toSave = policyToSave();
-        const saved = await saveReceiverPolicy({ workspace, policy_file: policyFile, policy: toSave });
+        const saved = await saveReceiverPolicy({ workspace, policy_file: policyFile, choices: policyChoices() });
         if (saved.state !== "completed") {
           setError(saved.reason ?? saved.state);
           return;
         }
-        if (openedPolicy) {
-          setOpenedPolicy({ file: policyFile, policy: saved.policy ?? toSave });
+        if (openedPolicy && saved.policy && saved.choices) {
+          setOpenedPolicy({ file: policyFile, policy: saved.policy, controls: saved.choices });
           setPolicyEdited(false);
         }
       }
@@ -666,17 +651,22 @@ export function CapturePanel({
           </label>
           <label>
             Collection plan framing
-            <select value={planFraming} disabled={locked} onChange={(e) => setPlanFraming(e.target.value as "raw" | "mllp")}>
-              <option value="raw">raw</option>
-              <option value="mllp">mllp</option>
+            <select value={planFraming} disabled={locked} onChange={(e) => setPlanFraming(e.target.value as ImportFraming)}>
+              {planVocabulary?.payload_framings.map((framing) => (
+                <option key={framing} value={framing}>
+                  {framing}
+                </option>
+              ))}
             </select>
           </label>
           <label>
             Terminator
-            <select value={planTerminator} disabled={locked} onChange={(e) => setPlanTerminator(e.target.value as "cr" | "lf" | "crlf")}>
-              <option value="cr">cr</option>
-              <option value="lf">lf</option>
-              <option value="crlf">crlf</option>
+            <select value={planTerminator} disabled={locked} onChange={(e) => setPlanTerminator(e.target.value as HL7Terminator)}>
+              {planVocabulary?.terminators.map((terminator) => (
+                <option key={terminator} value={terminator}>
+                  {terminator}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -779,7 +769,7 @@ export function CapturePanel({
               Open policy…
             </button>
           </div>
-          {openedPolicy ? <PolicyReview file={openedPolicy.file} policy={openedPolicy.policy} /> : null}
+          {openedPolicy ? <PolicyReview file={openedPolicy.file} policy={openedPolicy.policy} enhanced={openedPolicy.controls.enhanced} /> : null}
           <label>
             Policy name
             <input
@@ -820,20 +810,20 @@ export function CapturePanel({
           <label>
             Controlled fault (v3 synthetic)
             <select value={faultAction} disabled={locked} onChange={(e) => {
-              const action = e.target.value as FaultAction;
+              const action = e.target.value;
               editPolicy(setFaultAction)(action);
-              if (action !== "none" && !addressEdited && address === "127.0.0.1:0") setAddress("127.0.0.1:2575");
-              if (waitsForFault(action) && faultDelayMs === 0) setFaultDelayMs(50);
+              if (action !== NO_FAULT && !addressEdited && address === "127.0.0.1:0") setAddress("127.0.0.1:2575");
+              if (waits(action) && faultDelayMs === 0 && faults) setFaultDelayMs(faults.default_delay_ms);
             }}>
-              <option value="none">none</option>
-              <option value="delay">delay</option>
-              <option value="reject">reject</option>
-              <option value="malformed-ack">malformed response</option>
-              <option value="missing-response">missing response</option>
-              <option value="disconnect">disconnect</option>
+              <option value={NO_FAULT}>none</option>
+              {faults?.actions.map((fault) => (
+                <option key={fault.action} value={fault.action}>
+                  {FAULT_WORDS[fault.action] ?? fault.action}
+                </option>
+              ))}
             </select>
           </label>
-          {waitsForFault(faultAction) ? (
+          {waits(faultAction) ? (
             <label>
               Fault delay (ms)
               <input type="number" min="1" max="30000" value={faultDelayMs} disabled={locked} onChange={(e) => editPolicy(setFaultDelayMs)(Number(e.target.value))} />
