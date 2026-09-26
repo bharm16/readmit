@@ -1,0 +1,141 @@
+name: Attach IG issue metadata
+on:
+  push:
+    branches: [maintenance/readmit-ig-metadata-20260926]
+    paths: [.github/workflows/readmit-ig-issue-metadata.yml]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: readmit-ig-issue-metadata
+  cancel-in-progress: false
+jobs:
+  metadata:
+    if: github.repository == 'bharm16/readmit'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Attach and verify only the requested issue relationships
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, time, urllib.request, urllib.error
+          REPO='bharm16/readmit'
+          PARENT=570
+          BRANCH='maintenance/readmit-ig-metadata-20260926'
+          GRAPH={571:[],572:[571],573:[571],574:[573],575:[571,572],576:[572,573,574,575],577:[],578:[577],579:[573],580:[572,579],581:[579,580],582:[579],583:[576,581,582],584:[583],585:[584,564],586:[583,547,556,561],587:[578,583,547,549,552,557,558],588:[586,587,553,554,557],589:[584,588,555,559,560],590:[],591:[582,585,586,590,566],593:[577,578,585,589,590,591,567]}
+          IDS={n:f'IG{i:02d}' for i,n in enumerate(GRAPH,1)}
+          MARK='<!-- readmit-integration-metadata:start -->'
+          END='<!-- readmit-integration-metadata:end -->'
+          PREFIX=f'/repos/{REPO}'
+          TOKEN=os.environ.get('GH_TOKEN','')
+          HEADERS={'Authorization':f'Bearer {TOKEN}','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2026-03-10','User-Agent':'readmit-issue-metadata'}
+          def api(method,path,data=None):
+              if not path.startswith(PREFIX+'/'):raise RuntimeError('repository scope')
+              if method not in ('GET','POST','PATCH'):raise RuntimeError('method scope')
+              if method!='GET':
+                  m=re.fullmatch(re.escape(PREFIX)+r'/issues/(\d+)(/dependencies/blocked_by|/sub_issues)?',path)
+                  if not m:raise RuntimeError('write endpoint scope')
+                  n=int(m.group(1));suffix=m.group(2)
+                  if n not in set(GRAPH)|{PARENT}:raise RuntimeError('write issue scope')
+                  if suffix=='/dependencies/blocked_by':
+                      if method!='POST' or n not in GRAPH or set(data)!={'issue_id'}:raise RuntimeError('dependency scope')
+                  elif suffix=='/sub_issues':
+                      if method!='POST' or n!=PARENT or set(data)!={'sub_issue_id'}:raise RuntimeError('parent scope')
+                  elif method!='PATCH' or not set(data).issubset({'body','labels'}):raise RuntimeError('patch scope')
+                  time.sleep(1.15)
+              req=urllib.request.Request('https://api.github.com'+path,data=None if data is None else json.dumps(data).encode(),headers=HEADERS,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=60) as r:
+                      raw=r.read();return json.loads(raw) if raw else None
+              except urllib.error.HTTPError as e:
+                  raise RuntimeError(f'{method} {path}: HTTP {e.code} {e.read(1500).decode(errors="replace")}') from None
+          def pages(path):
+              result=[]
+              for page in range(1,21):
+                  rows=api('GET',path+('&' if '?' in path else '?')+f'per_page=100&page={page}')
+                  if not isinstance(rows,list):raise RuntimeError('expected list')
+                  result+=rows
+                  if len(rows)<100:return result
+              raise RuntimeError('pagination bound')
+          def issue(n):return api('GET',PREFIX+f'/issues/{n}')
+          def deps(n):return pages(PREFIX+f'/issues/{n}/dependencies/blocked_by')
+          def check(i,n):
+              tag='IG00' if n==PARENT else IDS[n]
+              if 'pull_request' in i or f'<!-- readmit-integration:{tag} -->' not in (i.get('body') or '') or not i['title'].startswith('[Integration '+tag+']'):
+                  raise RuntimeError(f'wrong item #{n}')
+          def cycles(g):
+              active=set();done=set()
+              def visit(n):
+                  if n in active:raise RuntimeError(f'cycle #{n}')
+                  if n in done:return
+                  active.add(n)
+                  for b in g.get(n,[]):visit(b)
+                  active.remove(n);done.add(n)
+              for n in g:visit(n)
+          if os.environ.get('GITHUB_REPOSITORY')!=REPO or os.environ.get('GITHUB_REF')!='refs/heads/'+BRANCH or not TOKEN:raise RuntimeError('execution scope')
+          assert len(GRAPH)==22 and 592 not in GRAPH and IDS[593]=='IG22'
+          cycles(GRAPH)
+          originals={n:issue(n) for n in [PARENT]+list(GRAPH)}
+          for n,i in originals.items():check(i,n)
+          allissues=dict(originals);native={};union={};todo=list(GRAPH)
+          while todo:
+              n=todo.pop()
+              if n in native:continue
+              if n not in allissues:allissues[n]=issue(n)
+              d=deps(n)
+              if any(x['repository_url']!='https://api.github.com'+PREFIX for x in d):raise RuntimeError('cross-repo dependency requires review')
+              native[n]=[x['number'] for x in d]
+              allissues.update({x['number']:x for x in d})
+              union[n]=list(dict.fromkeys(native[n]+GRAPH.get(n,[])))
+              todo.extend(b for b in union[n] if b not in native)
+              if len(native)>500:raise RuntimeError('dependency traversal bound')
+          cycles(union)
+          print(f'Preflight: {len(GRAPH)} children; {sum(map(len,GRAPH.values()))} planned edges; acyclic.',flush=True)
+          added=0
+          for n,blockers in GRAPH.items():
+              for b in blockers:
+                  if b not in native[n]:
+                      api('POST',PREFIX+f'/issues/{n}/dependencies/blocked_by',{'issue_id':allissues[b]['id']});added+=1
+              print(f'Native blockers set #{n}: {blockers}',flush=True)
+          children=pages(PREFIX+f'/issues/{PARENT}/sub_issues')
+          childids={i['id'] for i in children}
+          for n in GRAPH:
+              if originals[n]['id'] not in childids:api('POST',PREFIX+f'/issues/{PARENT}/sub_issues',{'sub_issue_id':originals[n]['id']})
+          for n in GRAPH:
+              fresh=issue(n);check(fresh,n)
+              current={x['name'] for x in fresh['labels']}
+              if current&{'needs-info','ready-for-human','wontfix'}:raise RuntimeError(f'human triage changed #{n}')
+              actual=deps(n);wanted=set(current)|{'ready-for-agent'}
+              if any(x['state']=='open' for x in actual):wanted.add('blocked')
+              else:wanted.discard('blocked')
+              if current!=wanted:api('PATCH',PREFIX+f'/issues/{n}',{'labels':sorted(wanted)})
+          verified={};ready=[];new_native={}
+          for n in GRAPH:
+              i=issue(n);check(i,n)
+              if i['body']!=originals[n]['body']:raise RuntimeError(f'concurrent body change #{n}')
+              d=deps(n);new_native[n]=[x['number'] for x in d]
+              if not set(GRAPH[n]).issubset(new_native[n]):raise RuntimeError(f'missing edge #{n}')
+              if 'ready-for-agent' not in {x['name'] for x in i['labels']}:raise RuntimeError(f'missing ready label #{n}')
+              open_deps=[x['number'] for x in d if x['state']=='open']
+              if i['state']=='open' and not i.get('assignees') and not open_deps:ready.append(n)
+              verified[n]={'planning_id':IDS[n],'number':n,'url':i['html_url'],'title':i['title'],'state':i['state'],'native_blockers':new_native[n],'open_blockers':open_deps,'labels':[x['name'] for x in i['labels']]}
+          cycles({**union,**new_native})
+          finalchildren=pages(PREFIX+f'/issues/{PARENT}/sub_issues')
+          if not {originals[n]['id'] for n in GRAPH}.issubset({x['id'] for x in finalchildren}):raise RuntimeError('missing children')
+          counts={'created_delivery_issues':len(GRAPH),'native_edges':sum(len(v) for v in new_native.values()),'edges_added':added,'linked_delivery_children':sum(x['id'] in {originals[n]['id'] for n in GRAPH} for x in finalchildren),'ready_for_agent':len(verified),'claimable_now':ready,'cycles':0}
+          lines=[MARK,'## Implementation issue index and verified execution metadata','','Verified by the metadata-only workflow on 2026-09-26. This section records tracker setup, not implementation completion.','',f'**{len(GRAPH)} delivery issues; {counts["native_edges"]} native blocking relationships; {counts["linked_delivery_children"]} native sub-issues.**','','`ready-for-agent` means sufficiently specified. An agent must additionally check native open blockers, assignees and any later information gate. `blocked` marks unfinished prerequisites at this verification; live native state is authoritative.','','**Claimable at verification:** '+(', '.join(f'#{n}' for n in ready) or 'None')+'.','','All relationships point from this program to its prerequisites. No existing redesign issue was given a dependency on this program, and none of its body, status, labels or assignments was changed. No application source or main-branch file was edited.','','| Work | Issue | Native blockers |','|---|---|---|']
+          for n,v in verified.items():
+              title=v['title'].split('] ',1)[1]
+              lines.append(f'| {IDS[n]} — {title} | #{n} | '+(', '.join(f'#{b}' for b in v['native_blockers']) or 'None')+' |')
+          lines+=['','### Redesign ownership and merge rule','- Backend IG01–IG14 and IG20 leave the RD presentation owners in place. Read current main and relevant open PRs before modifying shared backend seams.','- IG15 waits for RD19 (#564). IG16–IG19 wait for the exact RD catalog/environment/library/test/run/report owners they extend; do not check out an old pre-redesign version and overwrite their work.','- IG21 extends RD21 (#566) Help/deployment content. IG22 waits for RD22 (#567) and reruns its acceptance with external-protocol states appended, never substituted.','- #571 defines only the connected execution contracts; #547 remains the owner of catalog, atomic save and review-token semantics. Use adapters, not competing framework implementations.',END]
+          parent=issue(PARENT);check(parent,PARENT)
+          body=re.sub(re.escape(MARK)+r'.*?'+re.escape(END)+r'\s*','',parent['body'],flags=re.S)
+          body=body.replace('## Child work packages (issue links and native edges added as each is published)','## Child work packages (linked native issue index above)')
+          api('PATCH',PREFIX+f'/issues/{PARENT}',{'body':'\n'.join(lines)+'\n\n'+body})
+          assert MARK in issue(PARENT)['body']
+          print('VERIFIED '+json.dumps(counts,sort_keys=True),flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:f.write('\n'.join(lines)+'\n')
+          PY
