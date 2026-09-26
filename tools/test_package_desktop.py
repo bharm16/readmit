@@ -375,6 +375,17 @@ class PackagingTests(unittest.TestCase):
             packaging.verify_bundle(self.declaration, "0.1.0-alpha.3", bundle)
         self.assertIn("ReadmitBuildIdentity", str(refused.exception))
 
+    def test_macos_icon_is_declared_and_verified_from_the_bundle(self):
+        bundle = packaging.application_bundle(self.declaration, self.binary, "1.2.3", self.work)
+        information = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
+        icon = bundle / "Contents/Resources" / information["CFBundleIconFile"]
+        self.assertEqual(icon.read_bytes()[:4], b"icns")
+        self.assertEqual(icon.read_bytes(), packaging.APP_ICON.read_bytes())
+        for change in (lambda: icon.write_bytes(b"wrong icon"), lambda: icon.unlink()):
+            change()
+            with self.assertRaisesRegex(packaging.Refused, "application icon"):
+                packaging.verify_bundle(self.declaration, "1.2.3", bundle)
+
     def test_something_that_is_not_an_installer_database_is_refused(self):
         database = self.work / "readmit-desktop_1.2.3_x64.msi"
         database.write_bytes(b"MZ this is an executable, not an installer database")

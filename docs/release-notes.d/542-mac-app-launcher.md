@@ -1,0 +1,1 @@
+- On macOS, `make install-desktop` builds and installs Readmit as a native app with an R icon and Desktop shortcut. Open the installed app without Terminal; quit and rerun the command when you want to refresh it. Saved application data is preserved. This local build is not notarized for distribution.
