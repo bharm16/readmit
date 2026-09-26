@@ -331,7 +331,7 @@ func localAdmissionsOf(t *testing.T, declared map[string]operationguard.Profile)
 			return found
 		}
 		found := map[string]bool{}
-		if _, named := declared[method]; seen[method] || named || method == "admissionPreview" {
+		if _, named := declared[method]; seen[method] || named || method == "admissionPreview" || method == "authorPreview" {
 			return found
 		}
 		seen[method] = true

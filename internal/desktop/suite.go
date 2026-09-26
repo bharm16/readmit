@@ -414,19 +414,25 @@ func (a *App) ReviewSuitePromotion(request SuitePromotionRequest) SuitePromotion
 // authority.
 func (a *App) ApproveSuitePromotion(request SuitePromotionApproveRequest) SuitePromotionResult {
 	return run(a, false, true, func(context.Context) SuitePromotionResult {
-		root, path, references, declined := promotionInputs(request.Workspace, request.Entry, request.Releases)
-		if path == "" {
-			return SuitePromotionResult{State: declined.state, Reason: declined.reason}
-		}
-		if err := artifactpath.EntryName(request.Output); err != nil {
-			return SuitePromotionResult{State: Failed, Reason: "a promotion approval is written to one new entry of the open workspace"}
-		}
-		approval, err := suite.ApprovePromotion(path, request.Environment, references, request.Revision, request.Reviewed, request.Approver, request.Rationale, filepath.Join(root, request.Output))
-		if err != nil {
-			return SuitePromotionResult{State: Failed, Reason: err.Error()}
-		}
-		return SuitePromotionResult{State: Completed, Review: &approval.Review, Identity: approval.Identity(), Output: request.Output}
+		return approveSuitePromotion(request)
 	})
+}
+
+// approveSuitePromotion is ApproveSuitePromotion's work, for a caller already
+// holding the slot under the author admission.
+func approveSuitePromotion(request SuitePromotionApproveRequest) SuitePromotionResult {
+	root, path, references, declined := promotionInputs(request.Workspace, request.Entry, request.Releases)
+	if path == "" {
+		return SuitePromotionResult{State: declined.state, Reason: declined.reason}
+	}
+	if err := artifactpath.EntryName(request.Output); err != nil {
+		return SuitePromotionResult{State: Failed, Reason: "a promotion approval is written to one new entry of the open workspace"}
+	}
+	approval, err := suite.ApprovePromotion(path, request.Environment, references, request.Revision, request.Reviewed, request.Approver, request.Rationale, filepath.Join(root, request.Output))
+	if err != nil {
+		return SuitePromotionResult{State: Failed, Reason: err.Error()}
+	}
+	return SuitePromotionResult{State: Completed, Review: &approval.Review, Identity: approval.Identity(), Output: request.Output}
 }
 
 // promotionInputs resolves the workspace root plus the suite entry and

@@ -163,71 +163,81 @@ type ReplayOutcome struct {
 // nothing — not even the decision, which a send retains beside its run.
 func (a *App) PreviewReplay(request ReplayRequest) ReplayResult {
 	return runNamed[ReplayResult, *ReplayResult](a, profiles["PreviewReplay"], func(ctx context.Context) ReplayResult {
-		inputs, declined := replayInputsOf(request)
-		if declined.state != "" {
-			return ReplayResult{State: declined.state, Reason: declined.reason}
-		}
-		destination, declined := replayOutput.destination(inputs.root, request.Output)
-		if declined.state != "" {
-			return ReplayResult{State: declined.state, Reason: declined.reason}
-		}
-		var decision sendpolicy.Decision
-		plan, err := replay.Preview(ctx, inputs.casePath, inputs.target, inputs.options, replay.SendOptions{
-			Policy: inputs.policy,
-			Record: func(value sendpolicy.Decision) error { decision = value; return nil },
-		})
-		if ctx.Err() != nil {
-			// A cancelled lookup reads as an unresolvable destination; it is
-			// the person's cancellation, and nothing was decided.
-			return ReplayResult{State: Cancelled, Reason: cancelledRefusal.reason}
-		}
-		if err != nil {
-			return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
-		}
-		if plan.SourceIdentity() != request.Identity {
-			return ReplayResult{State: Failed, Reason: operation.ErrCaseIdentityChanged.Error()}
-		}
-		identity, err := plan.Identity(inputs.policy)
-		if err != nil {
-			return ReplayResult{State: Failed, Reason: "the replay plan could not be identified"}
-		}
-		preview := ReplayPreview{
-			Case: request.Case, Identity: identity, SourceIdentity: plan.SourceIdentity(),
-			Target: targetView(plan.Configuration()), Messages: []ReplayMessage{},
-			Transformations: slices.Clone(inputs.options.Transformations), Changes: []ReplayChange{},
-			Destination: destination, DecisionFile: destination.Name + replay.DecisionSuffix, Revealed: request.Reveal,
-		}
-		if preview.Transformations == nil {
-			preview.Transformations = []replay.Transformation{}
-		}
-		for _, mapping := range plan.Mappings() {
-			wire, err := plan.Outbound(mapping.OutboundOccurrence)
-			if err != nil {
-				return ReplayResult{State: Failed, Reason: "the replay plan could not be read back"}
-			}
-			preview.Messages = append(preview.Messages, ReplayMessage{Source: mapping.SourceOccurrence, Outbound: mapping.OutboundOccurrence, WireBytes: len(wire)})
-		}
-		for _, change := range plan.Changes() {
-			row := ReplayChange{Transformation: change.Transformation, Source: change.SourceOccurrence, Outbound: change.OutboundOccurrence,
-				Selector: change.Selector, OldState: string(change.OldState), NewState: string(change.NewState)}
-			if request.Reveal {
-				row.Old, row.New = strings.ToValidUTF8(string(change.Old), "�"), strings.ToValidUTF8(string(change.New), "�")
-			}
-			preview.Changes = append(preview.Changes, row)
-		}
-		preview.Admission = a.admissionPreview(ctx)
-		switch {
-		case decision.Reason != sendpolicy.SendNotExplicit:
-			preview.Refusal = "the send policy refuses this destination (" + string(decision.Reason) + "); a send is refused before anything is sent"
-		case !preview.Admission.Admitted:
-			preview.Refusal = preview.Admission.Reason
-		case !destination.Fresh:
-			preview.Refusal = destination.Reason
-		default:
-			preview.Sendable = true
-		}
-		return ReplayResult{State: Completed, Decision: &decision, Preview: &preview}
+		return a.previewReplay(ctx, request, false)
 	})
+}
+
+// previewReplay is PreviewReplay's work, for a caller already holding a slot.
+// held says the caller holds the send's own execution admission, which is
+// then the admission the preview reports rather than one asked again.
+func (a *App) previewReplay(ctx context.Context, request ReplayRequest, held bool) ReplayResult {
+	inputs, declined := replayInputsOf(request)
+	if declined.state != "" {
+		return ReplayResult{State: declined.state, Reason: declined.reason}
+	}
+	destination, declined := replayOutput.destination(inputs.root, request.Output)
+	if declined.state != "" {
+		return ReplayResult{State: declined.state, Reason: declined.reason}
+	}
+	var decision sendpolicy.Decision
+	plan, err := replay.Preview(ctx, inputs.casePath, inputs.target, inputs.options, replay.SendOptions{
+		Policy: inputs.policy,
+		Record: func(value sendpolicy.Decision) error { decision = value; return nil },
+	})
+	if ctx.Err() != nil {
+		// A cancelled lookup reads as an unresolvable destination; it is
+		// the person's cancellation, and nothing was decided.
+		return ReplayResult{State: Cancelled, Reason: cancelledRefusal.reason}
+	}
+	if err != nil {
+		return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
+	}
+	if plan.SourceIdentity() != request.Identity {
+		return ReplayResult{State: Failed, Reason: operation.ErrCaseIdentityChanged.Error()}
+	}
+	identity, err := plan.Identity(inputs.policy)
+	if err != nil {
+		return ReplayResult{State: Failed, Reason: "the replay plan could not be identified"}
+	}
+	preview := ReplayPreview{
+		Case: request.Case, Identity: identity, SourceIdentity: plan.SourceIdentity(),
+		Target: targetView(plan.Configuration()), Messages: []ReplayMessage{},
+		Transformations: slices.Clone(inputs.options.Transformations), Changes: []ReplayChange{},
+		Destination: destination, DecisionFile: destination.Name + replay.DecisionSuffix, Revealed: request.Reveal,
+	}
+	if preview.Transformations == nil {
+		preview.Transformations = []replay.Transformation{}
+	}
+	for _, mapping := range plan.Mappings() {
+		wire, err := plan.Outbound(mapping.OutboundOccurrence)
+		if err != nil {
+			return ReplayResult{State: Failed, Reason: "the replay plan could not be read back"}
+		}
+		preview.Messages = append(preview.Messages, ReplayMessage{Source: mapping.SourceOccurrence, Outbound: mapping.OutboundOccurrence, WireBytes: len(wire)})
+	}
+	for _, change := range plan.Changes() {
+		row := ReplayChange{Transformation: change.Transformation, Source: change.SourceOccurrence, Outbound: change.OutboundOccurrence,
+			Selector: change.Selector, OldState: string(change.OldState), NewState: string(change.NewState)}
+		if request.Reveal {
+			row.Old, row.New = strings.ToValidUTF8(string(change.Old), "�"), strings.ToValidUTF8(string(change.New), "�")
+		}
+		preview.Changes = append(preview.Changes, row)
+	}
+	preview.Admission = RunAdmission{Admitted: true}
+	if !held {
+		preview.Admission = a.admissionPreview(ctx)
+	}
+	switch {
+	case decision.Reason != sendpolicy.SendNotExplicit:
+		preview.Refusal = "the send policy refuses this destination (" + string(decision.Reason) + "); a send is refused before anything is sent"
+	case !preview.Admission.Admitted:
+		preview.Refusal = preview.Admission.Reason
+	case !destination.Fresh:
+		preview.Refusal = destination.Reason
+	default:
+		preview.Sendable = true
+	}
+	return ReplayResult{State: Completed, Decision: &decision, Preview: &preview}
 }
 
 // SendReplay sends what one preview showed, once, after the person approved
@@ -249,52 +259,59 @@ func (a *App) SendReplay(request ReplaySendRequest) ReplayResult {
 		return ReplayResult{}, true
 	}
 	return runNamedChecked[ReplayResult, *ReplayResult](a, profiles["SendReplay"], approved, func(ctx context.Context) ReplayResult {
-		inputs, declined := replayInputsOf(request.Replay)
-		if declined.state != "" {
-			return ReplayResult{State: declined.state, Reason: declined.reason}
-		}
-		destination, declined := replayOutput.destination(inputs.root, request.Replay.Output)
-		if declined.state != "" {
-			return ReplayResult{State: declined.state, Reason: declined.reason}
-		}
-		if !destination.Fresh {
-			return ReplayResult{State: Failed, Reason: destination.Reason + ". Nothing was sent"}
-		}
-		output := filepath.Join(inputs.root, destination.Name)
-		decisionFile := destination.Name + replay.DecisionSuffix
-		decisionPath := filepath.Join(inputs.root, decisionFile)
-		var decision sendpolicy.Decision
-		execution := replay.SendOptions{
-			Policy: inputs.policy,
-			Record: func(value sendpolicy.Decision) error { decision = value; return nil },
-		}
-		if request.Replay.Output != "" {
-			// A send retains its decision beside the run folder before any
-			// connection is opened, including a denial; replay writes it.
-			execution.DecisionPath = decisionPath
-		}
-		plan, err := replay.PrepareSend(ctx, inputs.casePath, inputs.target, inputs.options, execution)
-		if err != nil {
-			return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
-		}
-		if identity, err := plan.Identity(inputs.policy); err != nil || identity != request.Expected || plan.SourceIdentity() != request.Replay.Identity {
-			return ReplayResult{State: Failed, Reason: "the replay changed after its preview; preview it again before sending. Nothing was sent"}
-		}
-		run, err := replay.Send(ctx, plan, output, execution)
-		if err != nil && errors.Is(ctx.Err(), context.Canceled) {
-			// A lookup the cancellation interrupted decides nothing about the
-			// destination; the person cancelled, and nothing was sent.
-			return ReplayResult{State: Cancelled, Reason: "the replay was cancelled before anything was sent; the decision it had reached is retained beside the run folder", Decision: decisionReached(decision)}
-		}
-		if err != nil {
-			return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
-		}
-		result := ReplayResult{State: Completed, Decision: decisionReached(decision), Run: replayRunView(run, destination.Name, decisionFile)}
-		if errors.Is(ctx.Err(), context.Canceled) {
-			result.State, result.Reason = Cancelled, "the replay was cancelled; messages after the one in flight were not attempted, and nothing is sent again"
-		}
-		return result
+		return a.sendReplay(ctx, request)
 	})
+}
+
+// sendReplay is SendReplay's work once the send was approved, for a caller
+// already holding the slot under the send's profile. It prepares the send
+// again and sends only the plan whose identity is request.Expected.
+func (a *App) sendReplay(ctx context.Context, request ReplaySendRequest) ReplayResult {
+	inputs, declined := replayInputsOf(request.Replay)
+	if declined.state != "" {
+		return ReplayResult{State: declined.state, Reason: declined.reason}
+	}
+	destination, declined := replayOutput.destination(inputs.root, request.Replay.Output)
+	if declined.state != "" {
+		return ReplayResult{State: declined.state, Reason: declined.reason}
+	}
+	if !destination.Fresh {
+		return ReplayResult{State: Failed, Reason: destination.Reason + ". Nothing was sent"}
+	}
+	output := filepath.Join(inputs.root, destination.Name)
+	decisionFile := destination.Name + replay.DecisionSuffix
+	decisionPath := filepath.Join(inputs.root, decisionFile)
+	var decision sendpolicy.Decision
+	execution := replay.SendOptions{
+		Policy: inputs.policy,
+		Record: func(value sendpolicy.Decision) error { decision = value; return nil },
+	}
+	if request.Replay.Output != "" {
+		// A send retains its decision beside the run folder before any
+		// connection is opened, including a denial; replay writes it.
+		execution.DecisionPath = decisionPath
+	}
+	plan, err := replay.PrepareSend(ctx, inputs.casePath, inputs.target, inputs.options, execution)
+	if err != nil {
+		return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
+	}
+	if identity, err := plan.Identity(inputs.policy); err != nil || identity != request.Expected || plan.SourceIdentity() != request.Replay.Identity {
+		return ReplayResult{State: Failed, Reason: "the replay changed after its preview; preview it again before sending. Nothing was sent"}
+	}
+	run, err := replay.Send(ctx, plan, output, execution)
+	if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+		// A lookup the cancellation interrupted decides nothing about the
+		// destination; the person cancelled, and nothing was sent.
+		return ReplayResult{State: Cancelled, Reason: "the replay was cancelled before anything was sent; the decision it had reached is retained beside the run folder", Decision: decisionReached(decision)}
+	}
+	if err != nil {
+		return ReplayResult{State: Failed, Reason: err.Error(), Decision: decisionReached(decision)}
+	}
+	result := ReplayResult{State: Completed, Decision: decisionReached(decision), Run: replayRunView(run, destination.Name, decisionFile)}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		result.State, result.Reason = Cancelled, "the replay was cancelled; messages after the one in flight were not attempted, and nothing is sent again"
+	}
+	return result
 }
 
 // replayInputs is one replay request resolved against the open workspace.

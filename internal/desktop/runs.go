@@ -574,6 +574,18 @@ func (a *App) admissionPreview(ctx context.Context) RunAdmission {
 	return RunAdmission{Admitted: true}
 }
 
+// authorPreview is the backend's own decision about new authoring, asked the
+// way a write asks it, for what a catalog offers a person: like
+// admissionPreview it only asks, and nothing is admitted by it.
+func (a *App) authorPreview(ctx context.Context) bool {
+	guard, _ := a.selectedOperation()
+	settle, err := guard.AdmitContext(ctx, "author")
+	if err != nil {
+		return false
+	}
+	return settle() == nil
+}
+
 // SuiteRunRequest is one deliberate suite execution: the suite entry, the
 // environment it is executed at, the optional released-expectation references
 // that make it an approved suite, the fresh output entry, and the suite

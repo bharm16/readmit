@@ -13,6 +13,7 @@
 // values to an analytics or rendering service: nothing leaves the machine.
 
 import type {
+  ActionReviewResult,
   AssertionSetRequest,
   AssertionSetResult,
   BackupCreateRequest,
@@ -39,6 +40,8 @@ import type {
   CaseRegistration,
   CaseResult,
   CaseStatus,
+  CatalogQuery,
+  CatalogResult,
   CleanRunResult,
   CommercialStatusResult,
   CompareRequest,
@@ -59,10 +62,13 @@ import type {
   DiagnosisResult,
   DisclosureStatusResult,
   Draft,
+  DraftRequest,
+  DraftValidation,
   DurableRunRequest,
   DurableRunResult,
   EditorDraft,
   EditorDraftsResult,
+  ExecuteActionRequest,
   ExplanationChoiceResult,
   ExplanationInputKind,
   Facade,
@@ -99,6 +105,7 @@ import type {
   ImportPreviewResult,
   ImportRequest,
   ImportSourcesResult,
+  IncompleteSaveRequest,
   IndexResult,
   InspectRequest,
   InspectionPathKind,
@@ -106,6 +113,8 @@ import type {
   InspectionResult,
   InstalledLicenseResult,
   InterruptibleOperation,
+  ItemRequest,
+  ItemResult,
   Kind,
   LicenseActivateRequest,
   LicenseActivationRequest,
@@ -115,8 +124,10 @@ import type {
   LicenseReviewResult,
   LicenseVerifyResult,
   LocalProfileResult,
+  LocateRequest,
   MaintenancePathResult,
   MigrationPreviewResult,
+  NewProjectRequest,
   NormalizationPolicyResult,
   NormalizeRequest,
   NormalizeResult,
@@ -145,6 +156,7 @@ import type {
   PathChoiceResult,
   PracticeRequest,
   PracticeResult,
+  PrepareActionRequest,
   PrivacyExportRequest,
   PrivacyExportResult,
   PrivacyReviewRequest,
@@ -161,7 +173,9 @@ import type {
   ProfileUpgradePinResult,
   ProfileValidateRequest,
   ProjectArchiveRequest,
+  ProjectLocationResult,
   ProjectNote,
+  ProjectOpenResult,
   ProjectOverviewResult,
   ProjectQuotaChange,
   ProjectQuotaResult,
@@ -192,6 +206,7 @@ import type {
   ReexecutionRequest,
   ReexecutionResult,
   ReexecutionSendRequest,
+  RenameRequest,
   ReplayRequest,
   ReplayResult,
   ReplaySendRequest,
@@ -199,6 +214,7 @@ import type {
   ReproducerComparisonResult,
   ReproducerRequest,
   ReproducerResult,
+  RequestContext,
   ResetActionRequest,
   ResetActionResult,
   ResetPlanResult,
@@ -208,6 +224,7 @@ import type {
   RetirementPreviewResult,
   ReviewRequest,
   ReviewResult,
+  ReviewedActionResult,
   RevisionRegistration,
   RevisionsResult,
   RoundTripRequest,
@@ -237,6 +254,8 @@ import type {
   RunnerStatusResult,
   RunnerUpdateResult,
   SampleCaptureRequest,
+  SaveItemRequest,
+  SaveItemResult,
   ScenarioCatalogResult,
   ScenarioDocumentResult,
   ScenarioGenerateRequest,
@@ -1780,4 +1799,148 @@ export function scanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult
  * for the operation slot, so the screen can read it while the operation runs. */
 export function corpusProgress(): Promise<CorpusProgressResult> {
   return guard(() => facade().CorpusProgress(), { state: "failed" });
+}
+
+// Named objects, whole saves and reviewed actions (#547). A screen asks for
+// named objects and receives their readable state; the facade resolves the
+// files behind them. Every result answers the RequestContext it was asked
+// under, and RequestScope is how a screen keeps an answer that arrives after
+// it moved on from populating another project or object.
+
+/** The window's request generation. enter starts a new context — another
+ * project, another object — and next a new request inside it; current says
+ * whether a result answers the request the window is on now, so a late answer
+ * is dropped instead of shown against something else. */
+export class RequestScope {
+  private project = "";
+  private projectId = "";
+  private generation = 0;
+
+  enter(project: string, projectId = ""): RequestContext {
+    this.project = project;
+    this.projectId = projectId;
+    return this.next();
+  }
+
+  next(): RequestContext {
+    this.generation += 1;
+    return { project: this.project, project_id: this.projectId, generation: this.generation };
+  }
+
+  current(result: { context: RequestContext }): boolean {
+    const context = result.context;
+    return context.generation === this.generation && context.project === this.project && (context.project_id ?? "") === this.projectId;
+  }
+}
+
+/** A new identity for one deliberate submit: a Save, a Send, an Export or an
+ * Approve. It is allocated once when the person clicks and reused for every
+ * retry of that click, so the facade publishes or sends it at most once. */
+export function newIntentId(): string {
+  return crypto.randomUUID();
+}
+
+/** A submit whose call did not reach the application is asked again with the
+ * same intent: the facade recognizes the repeat and answers the original
+ * result, so a retry never saves or sends twice. An answer — any answer,
+ * busy included — is never asked again. */
+async function submitted<T extends { state: State; reason?: string }>(call: () => Promise<T>, fallback: T): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (failure) {
+      if (failure instanceof NotBound || attempt >= SUBMIT_ATTEMPTS) {
+        return { ...fallback, state: "failed", reason: failure instanceof NotBound ? starting : unreachable };
+      }
+    }
+  }
+}
+
+const SUBMIT_ATTEMPTS = 3;
+
+export function listCatalog(query: CatalogQuery): Promise<CatalogResult> {
+  return retryingRead(() => facade().ListCatalog(query), { state: "failed", context: query.context });
+}
+
+export function openItem(request: ItemRequest): Promise<ItemResult> {
+  return retryingRead(() => facade().OpenItem(request), { state: "failed", context: request.context });
+}
+
+export function renameItem(request: RenameRequest): Promise<ItemResult> {
+  return guard(() => facade().RenameItem(request), { state: "failed", context: request.context });
+}
+
+export function locateItem(request: LocateRequest): Promise<ItemResult> {
+  return guard(() => facade().LocateItem(request), { state: "failed", context: request.context });
+}
+
+const noContext: RequestContext = { project: "", generation: 0 };
+
+export function createNamedProject(request: NewProjectRequest): Promise<ProjectOpenResult> {
+  return guard(() => facade().CreateNamedProject(request), { state: "failed", context: noContext, recorded: false });
+}
+
+export function openNamedProject(path: string): Promise<ProjectOpenResult> {
+  return guard(() => facade().OpenNamedProject(path), { state: "failed", context: noContext, recorded: false });
+}
+
+export function chooseProjectLocation(): Promise<ProjectLocationResult> {
+  return guard(() => facade().ChooseProjectLocation(), { state: "failed" });
+}
+
+export function projectLocation(): Promise<ProjectLocationResult> {
+  return retryingRead(() => facade().ProjectLocation(), { state: "failed" });
+}
+
+export function migrateProjectDocument(path: string): Promise<ProjectOverviewResult> {
+  return guard(() => facade().MigrateProjectDocument(path), { state: "failed" });
+}
+
+export function validateDraft(request: DraftRequest): Promise<DraftValidation> {
+  return retryingRead(() => facade().ValidateDraft(request), { state: "failed", context: request.context, problems: [] });
+}
+
+/** One Save of a whole draft, under the intent its click allocated. */
+export function saveItem(request: SaveItemRequest): Promise<SaveItemResult> {
+  return submitted(() => facade().SaveItem(request), {
+    state: "failed",
+    context: request.context,
+    outcome: "failed",
+    replayed: false,
+    problems: [],
+  });
+}
+
+export function discardIncompleteSave(request: IncompleteSaveRequest): Promise<CatalogResult> {
+  return guard(() => facade().DiscardIncompleteSave(request), { state: "failed", context: request.context });
+}
+
+export function prepareAction(request: PrepareActionRequest): Promise<ActionReviewResult> {
+  return guard(() => facade().PrepareAction(request), { state: "failed", context: request.context });
+}
+
+/** The final Send, Export or Approve of one review, under the intent its
+ * click allocated. */
+export function executeReviewedAction(request: ExecuteActionRequest): Promise<ReviewedActionResult> {
+  return submitted(() => facade().ExecuteReviewedAction(request), {
+    state: "failed",
+    context: request.context,
+    outcome: "refused",
+    replayed: false,
+  });
+}
+
+export function withdrawReview(token: string): Promise<ActionReviewResult> {
+  return guard(() => facade().WithdrawReview(token), { state: "failed", context: noContext });
+}
+
+/** Stops the reviewed action running as operation, and nothing else. */
+export function cancelOperation(operation: string): void {
+  try {
+    facade().CancelOperation(operation).catch(() => {
+      // A cancel that cannot reach the application has nothing to stop.
+    });
+  } catch {
+    // Nothing is running if the facade is not bound yet.
+  }
 }

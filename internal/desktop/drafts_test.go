@@ -190,7 +190,7 @@ func TestConcurrentEditorDraftWritesNeverProduceAPartialDocument(t *testing.T) {
 func TestEditorDraftStoreRefusesUnknownVersionsMembersAndCorruption(t *testing.T) {
 	held := `{"schema":"readmit-desktop-drafts/v1","drafts":[{"id":"a","kind":"note","workspace":"/w","case":"","identity":"","content_schema":"readmit-note-draft/v1","content":{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"","body":""}}]}`
 	for name, contents := range map[string]string{
-		"unknown version":   strings.Replace(held, "drafts/v1", "drafts/v2", 1),
+		"unknown version":   strings.Replace(held, "drafts/v1", "drafts/v3", 1),
 		"unknown member":    strings.Replace(held, `"drafts":[`, `"last_seen":"2026-01-01","drafts":[`, 1),
 		"unknown in draft":  strings.Replace(held, `"case":""`, `"scroll":3,"case":""`, 1),
 		"missing content":   strings.Replace(held, `,"content":{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"","body":""}`, ``, 1),

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -39,6 +40,14 @@ import (
 // [ADR-0003](../../docs/adr/0003-specs-are-strict-json-with-typed-operators.md)
 // and [ADR-0005](../../docs/adr/0005-desktop-shell-is-a-separate-module-over-a-typed-go-facade.md).
 const DraftsSchema = "readmit-desktop-drafts/v1"
+
+// DraftsSchemaV2 is the draft store once a draft names the object it is an
+// edit of: the same envelope with one more member, item, which names the
+// project, the object and the revision the edit began from, so a recovered
+// draft returns to that object and a save of it is checked against that
+// revision. The store is written as v2 only while it holds such a draft; a
+// store of v1 drafts is written as v1, exactly as before, and both are read.
+const DraftsSchemaV2 = "readmit-desktop-drafts/v2"
 
 // MaxEditorDrafts bounds the unstored editor drafts one viewer retains. Past
 // the bound the new draft is refused rather than an existing one being dropped,
@@ -83,6 +92,16 @@ type EditorDraft struct {
 	Identity      string         `json:"identity"`
 	ContentSchema string         `json:"content_schema"`
 	Content       jsontext.Value `json:"content"`
+	// Item names the object this draft edits and the revision the edit
+	// began from, when it edits a catalog object.
+	Item *DraftItem `json:"item,omitzero"`
+}
+
+// DraftItem is the object one draft edits: the project's identity, and the
+// object's reference with the revision the edit began from.
+type DraftItem struct {
+	ProjectID string  `json:"project_id"`
+	Ref       ItemRef `json:"ref"`
 }
 
 // EditorDraftsResult carries one state and the drafts the store retains as it
@@ -135,6 +154,9 @@ func (a *App) SaveEditorDraft(draft EditorDraft) EditorDraftsResult {
 	}
 	if err := validateEditorDraft(draft); err != nil {
 		return a.draftsFailure(refusal{Failed, "the draft was not retained: it needs a kind, the workspace folder it belongs to by absolute path, the contract its content declares, and bounded content"})
+	}
+	if a.reviews.mentions(draft.Content) {
+		return a.draftsFailure(refusal{Failed, "the draft was not retained: a draft never holds an action review"})
 	}
 	if draft.ID == "" {
 		if len(drafts) == MaxEditorDrafts {
@@ -284,7 +306,7 @@ func decodeEditorDrafts(data []byte) ([]EditorDraft, error) {
 	if err := json.Unmarshal(data, &declared); err != nil {
 		return nil, errors.New("invalid retained editor drafts")
 	}
-	if declared.Schema != DraftsSchema {
+	if declared.Schema != DraftsSchema && declared.Schema != DraftsSchemaV2 {
 		return nil, errUnsupportedDrafts
 	}
 	var store draftsDocument
@@ -294,6 +316,9 @@ func decodeEditorDrafts(data []byte) ([]EditorDraft, error) {
 	for i, draft := range store.Drafts {
 		if i > 0 && strings.Compare(store.Drafts[i-1].ID, draft.ID) >= 0 {
 			return nil, errors.New("drafts must carry distinct identities and be sorted by them")
+		}
+		if draft.Item != nil && declared.Schema == DraftsSchema {
+			return nil, errors.New("invalid retained editor drafts")
 		}
 	}
 	if err := validateEditorDrafts(store.Drafts); err != nil {
@@ -315,7 +340,11 @@ func encodeEditorDrafts(drafts []EditorDraft) ([]byte, error) {
 	}
 	sorted := slices.Clone(drafts)
 	slices.SortFunc(sorted, func(a, b EditorDraft) int { return strings.Compare(a.ID, b.ID) })
-	data, err := json.Marshal(draftsDocument{Schema: DraftsSchema, Drafts: sorted}, json.Deterministic(true))
+	schema := DraftsSchema
+	if slices.ContainsFunc(sorted, func(draft EditorDraft) bool { return draft.Item != nil }) {
+		schema = DraftsSchemaV2
+	}
+	data, err := json.Marshal(draftsDocument{Schema: schema, Drafts: sorted}, json.Deterministic(true))
 	if err != nil {
 		return nil, errors.New("cannot encode the retained editor drafts")
 	}
@@ -380,6 +409,10 @@ func validateEditorDraft(draft EditorDraft) error {
 	}
 	if !draft.Content.IsValid() {
 		return errors.New("a draft carries its content as a JSON value")
+	}
+	if item := draft.Item; item != nil && (!catalog.ValidID(item.ProjectID) || !slices.Contains(itemKinds, item.Ref.Kind) ||
+		item.Ref.Kind == ProjectItem || !catalog.ValidID(item.Ref.ID) || len(item.Ref.Revision) > 16) {
+		return errors.New("a draft names the object it edits by its project, kind, identity and revision")
 	}
 	if draft.ContentSchema == NoteDraftSchema {
 		return validateNoteDraft(draft.Content)

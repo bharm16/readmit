@@ -25,10 +25,20 @@ import (
 )
 
 const (
-	// Schema is the only project document contract this release reads. A new
-	// member means a new version string and a reader for both, never an added
-	// member here and never an in-place migration.
+	// Schema is the first project document contract. A v1 project declares
+	// at least one interface version and every case names one of them. It is
+	// read and written exactly as it always was; a new member means a new
+	// version string and a reader for both, never an added member here and
+	// never a conversion a reader makes. The one conversion is Migrate, which
+	// only a person's explicit request runs (ADR-0003, 2026-09-26).
 	Schema = "readmit-project/v1"
+
+	// SchemaV2 is the project a person creates by naming it: the same members
+	// as v1, except that it may declare no interface version yet and a case
+	// may leave its interface version unassigned. No version is invented for
+	// either. A v1 document becomes v2 only through Migrate, an explicit act;
+	// reading one never converts it.
+	SchemaV2 = "readmit-project/v2"
 
 	// DocumentName is the canonical file a project directory holds.
 	DocumentName = "project.json"
@@ -60,6 +70,10 @@ const (
 // at all, so a caller can say which one it found rather than conflating them.
 // A version this release does not read is reported, never migrated in place.
 var ErrUnsupportedVersion = errors.New("unsupported project document version")
+
+// ErrAlreadyCurrent reports a migration of a document that already declares
+// the current contract. Nothing is rewritten.
+var ErrAlreadyCurrent = errors.New("the project document already declares the current contract")
 
 // Status is the closed set of case statuses. An unknown status is refused: a
 // status this release cannot interpret is never treated as any other one.
@@ -120,23 +134,42 @@ type Project struct {
 	Document Document
 }
 
-// projectDocument is the one strict reading of a project document, through
-// strictdoc: the declared contract version is read before the strict decode,
-// so a later version reads as the version it declares, never as invalid.
-var projectDocument = strictdoc.Document{
-	MaxBytes:    maxDocumentBytes,
-	Schema:      Schema,
-	Invalid:     "invalid project document",
-	TooLarge:    "project document exceeds its size limit",
-	MustDeclare: "a project document declares its contract version",
-	Unsupported: ErrUnsupportedVersion,
+// projectDocuments are the strict readings of a project document, one per
+// contract this release reads, through strictdoc: the declared contract
+// version is read before the strict decode, so a later version reads as the
+// version it declares, never as invalid.
+var projectDocuments = []strictdoc.Document{
+	{
+		MaxBytes:    maxDocumentBytes,
+		Schema:      Schema,
+		Invalid:     "invalid project document",
+		TooLarge:    "project document exceeds its size limit",
+		MustDeclare: "a project document declares its contract version",
+		Unsupported: ErrUnsupportedVersion,
+	},
+	{
+		MaxBytes:    maxDocumentBytes,
+		Schema:      SchemaV2,
+		Invalid:     "invalid project document",
+		TooLarge:    "project document exceeds its size limit",
+		MustDeclare: "a project document declares its contract version",
+		Unsupported: ErrUnsupportedVersion,
+	},
 }
 
-// Decode reads a project document. Unknown members and unknown versions are
-// errors; there is no migration and no repair.
+// Decode reads a project document of either contract this release reads,
+// as the version it declares. Unknown members and unknown versions are
+// errors; nothing is migrated or repaired while reading.
 func Decode(data []byte) (Document, error) {
 	var decoded Document
-	if err := projectDocument.Decode(data, &decoded); err != nil {
+	var err error
+	for _, reading := range projectDocuments {
+		decoded = Document{}
+		if err = reading.Decode(data, &decoded); !errors.Is(err, ErrUnsupportedVersion) {
+			break
+		}
+	}
+	if err != nil {
 		return Document{}, err
 	}
 	if err := Validate(decoded); err != nil {
@@ -165,9 +198,10 @@ func Encode(document Document) ([]byte, error) {
 // Validate reports the first reason a document cannot be stored. Diagnostics
 // name the member at fault and never repeat the value that failed.
 func Validate(document Document) error {
-	if document.Schema != Schema {
+	if document.Schema != Schema && document.Schema != SchemaV2 {
 		return ErrUnsupportedVersion
 	}
+	named := document.Schema == SchemaV2
 	if err := title(document.Settings.Title); err != nil {
 		return errors.New("project title: " + err.Error())
 	}
@@ -176,7 +210,7 @@ func Validate(document Document) error {
 			return errors.New("project default owner: " + err.Error())
 		}
 	}
-	if len(document.InterfaceVersions) == 0 {
+	if len(document.InterfaceVersions) == 0 && !named {
 		return errors.New("a project declares at least one interface version")
 	}
 	if len(document.InterfaceVersions) > MaxInterfaceVersions {
@@ -201,7 +235,7 @@ func Validate(document Document) error {
 	names := make(map[string]bool, len(document.Cases))
 	identities := make(map[string]bool, len(document.Cases))
 	for _, entry := range document.Cases {
-		if err := validateCase(entry, declared); err != nil {
+		if err := validateCase(entry, declared, named); err != nil {
 			return err
 		}
 		if names[entry.Name] {
@@ -216,7 +250,7 @@ func Validate(document Document) error {
 	return nil
 }
 
-func validateCase(entry Case, declared map[string]bool) error {
+func validateCase(entry Case, declared map[string]bool, unassignable bool) error {
 	if err := entryName(entry.Name); err != nil {
 		return errors.New("case name: " + err.Error())
 	}
@@ -235,7 +269,7 @@ func validateCase(entry Case, declared map[string]bool) error {
 	if !slices.Contains(statuses, entry.Status) {
 		return errors.New("case status: not one of open, investigating, resolved, closed")
 	}
-	if !declared[entry.InterfaceVersion] {
+	if !declared[entry.InterfaceVersion] && (entry.InterfaceVersion != "" || !unassignable) {
 		return errors.New("case interface version: not declared by this project")
 	}
 	if entry.Owner != "" {
@@ -549,6 +583,28 @@ func WriteDocument(root string, document Document) error {
 		return err
 	}
 	return install(root, DocumentName, data)
+}
+
+// Migrate returns a v1 document as the v2 document it becomes when a person
+// explicitly converts the project: every member is kept exactly, and only
+// the declared contract changes. It writes nothing; the caller stores the
+// result through the usual atomic replacement, which retains the v1 bytes as
+// a recovery copy. A document that already declares v2 is refused rather
+// than rewritten.
+func Migrate(document Document) (Document, error) {
+	switch document.Schema {
+	case SchemaV2:
+		return Document{}, ErrAlreadyCurrent
+	case Schema:
+	default:
+		return Document{}, ErrUnsupportedVersion
+	}
+	if err := Validate(document); err != nil {
+		return Document{}, err
+	}
+	migrated := document
+	migrated.Schema = SchemaV2
+	return migrated, nil
 }
 
 // Declares reports whether one interface version is declared. Every case names

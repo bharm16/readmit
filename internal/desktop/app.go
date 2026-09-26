@@ -292,7 +292,7 @@ type App struct {
 	operationRestoreRefusal string
 	chooser                 FolderChooser
 
-	// documents is the shell document store: the folder the shell's seven
+	// documents is the shell document store: the folder the shell's eight
 	// local documents live in, the names they are kept under, and the one
 	// rule they are read and replaced by.
 	documents ShellDocuments
@@ -366,10 +366,29 @@ type App struct {
 	// holds. captureProgress is nil while nothing listens.
 	captureMu       sync.Mutex
 	captureProgress *CaptureProgress
+
+	// projectsMu serializes the remembered projects document alone.
+	projectsMu sync.Mutex
+
+	// clock is the facade's time, which a test fixes; nil is the system
+	// clock.
+	clock func() time.Time
+
+	// reviews are the action reviews this process prepared. They live here
+	// and nowhere else, so a restart ends every one of them.
+	reviews reviewStore
+	// snapshots are the catalog lists later pages continue.
+	snapshots snapshotStore
+	// actor, when set, is who the window's reviews are made by, in place of
+	// the local account and hub subject; a test sets it.
+	actor func() string
+	// saveFault, when set, is the fault a test injects at a named point of a
+	// publication, as a crash would stop it there.
+	saveFault func(point string) error
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its seven local documents.
+// over the folder given, where the shell keeps its eight local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {

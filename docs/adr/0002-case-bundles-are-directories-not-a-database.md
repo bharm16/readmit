@@ -26,6 +26,11 @@ Mutable project documents retain digest-addressed copies of their previous
 bytes before replacement. These are project metadata recovery artifacts, not
 rewrites of canonical evidence. A schema preview reports unsupported documents
 and refuses conversion; this release introduces no canonical migration framework.
+The one explicit conversion since, of the mutable project document from
+`readmit-project/v1` to `/v2` at a person's request, is recorded in
+[ADR-0003](0003-specs-are-strict-json-with-typed-operators.md#2026-09-26-amendment-one-explicit-conversion-of-the-project-document);
+it retains the v1 bytes as the recovery copy described here and touches no
+evidence.
 Whole-project retirement requires a complete verified recovery backup, preserves
 identities in that archive, and unlinks rather than claims secure erasure.
 See [project lifecycle](../project-lifecycle.md).

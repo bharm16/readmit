@@ -48,8 +48,12 @@ func Preview(ctx context.Context, path string) (Plan, error) {
 		}
 		p.Documents = append(p.Documents, Compatibility{name, schema, action})
 	}
-	_, err = project.Open(root)
-	add(project.DocumentName, project.Schema, "unchanged", err)
+	opened, err := project.Open(root)
+	declared := project.Schema
+	if err == nil {
+		declared = opened.Document.Schema
+	}
+	add(project.DocumentName, declared, "unchanged", err)
 	_, err = project.ReadRevisions(root)
 	add(project.RevisionsDocumentName, project.RevisionsSchema, "unchanged", err)
 	_, present, err := project.ReadQuota(root)

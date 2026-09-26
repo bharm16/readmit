@@ -262,48 +262,54 @@ func (r *PrivacyExportResult) refuse(state State, reason string) { r.State, r.Re
 // starts itself, and their configuration is inside the packet it writes.
 func (a *App) ExportDerivedPacket(request PrivacyExportRequest) PrivacyExportResult {
 	return runNamed[PrivacyExportResult, *PrivacyExportResult](a, profiles["ExportDerivedPacket"], func(ctx context.Context) PrivacyExportResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return PrivacyExportResult{State: declined.state, Reason: declined.reason}
-		}
-		reviewPath, err := runEntryPath(root, request.Review)
-		if err != nil {
-			return PrivacyExportResult{State: Failed, Reason: "the export review must be one entry of the open workspace"}
-		}
-		privatePath, err := artifactpath.Child(root, request.LocalState)
-		if err != nil {
-			return PrivacyExportResult{State: Failed, Reason: "the private local state must be one folder of the open workspace, never a symbolic link"}
-		}
-		if request.Approval == "" {
-			return PrivacyExportResult{State: Failed, Reason: "approve the exact review identity to export it; an unapproved review exports nothing"}
-		}
-		destination, refused := destinationFor(root, request.Output, "export")
-		if refused.state != "" {
-			return PrivacyExportResult{State: refused.state, Reason: refused.reason}
-		}
-		manifest, err := redact.Export(ctx, redact.ExportRequest{
-			ReviewPath: reviewPath,
-			LocalState: privatePath,
-			Approval:   request.Approval,
-			Output:     filepath.Join(root, destination.Name),
-		})
-		if err != nil {
-			state, reason := privacyRefusal(err)
-			return PrivacyExportResult{State: state, Reason: reason}
-		}
-		return PrivacyExportResult{State: Completed, Outcome: &PrivacyExportOutcome{
-			Packet:           destination.Name,
-			Identity:         sealedIdentity(filepath.Join(root, destination.Name)),
-			ApprovedReview:   manifest.ApprovedReview,
-			Files:            len(manifest.Files),
-			ProofBaseline:    string(manifest.Proof.BaselineStatus),
-			ProofPostfix:     string(manifest.Proof.PostfixStatus),
-			FailedAssertions: manifest.Proof.FailedAssertions,
-			Establishes:      DisclosureReviewed,
-			Equivalence:      DeclinedEquivalence,
-			Limitations:      privacyBoundaries,
-		}}
+		return exportDerivedPacket(ctx, request)
 	})
+}
+
+// exportDerivedPacket is ExportDerivedPacket's work, for a caller already
+// holding the slot under the export's profile.
+func exportDerivedPacket(ctx context.Context, request PrivacyExportRequest) PrivacyExportResult {
+	root, declined := resolveFolder(request.Workspace)
+	if root == "" {
+		return PrivacyExportResult{State: declined.state, Reason: declined.reason}
+	}
+	reviewPath, err := runEntryPath(root, request.Review)
+	if err != nil {
+		return PrivacyExportResult{State: Failed, Reason: "the export review must be one entry of the open workspace"}
+	}
+	privatePath, err := artifactpath.Child(root, request.LocalState)
+	if err != nil {
+		return PrivacyExportResult{State: Failed, Reason: "the private local state must be one folder of the open workspace, never a symbolic link"}
+	}
+	if request.Approval == "" {
+		return PrivacyExportResult{State: Failed, Reason: "approve the exact review identity to export it; an unapproved review exports nothing"}
+	}
+	destination, refused := destinationFor(root, request.Output, "export")
+	if refused.state != "" {
+		return PrivacyExportResult{State: refused.state, Reason: refused.reason}
+	}
+	manifest, err := redact.Export(ctx, redact.ExportRequest{
+		ReviewPath: reviewPath,
+		LocalState: privatePath,
+		Approval:   request.Approval,
+		Output:     filepath.Join(root, destination.Name),
+	})
+	if err != nil {
+		state, reason := privacyRefusal(err)
+		return PrivacyExportResult{State: state, Reason: reason}
+	}
+	return PrivacyExportResult{State: Completed, Outcome: &PrivacyExportOutcome{
+		Packet:           destination.Name,
+		Identity:         sealedIdentity(filepath.Join(root, destination.Name)),
+		ApprovedReview:   manifest.ApprovedReview,
+		Files:            len(manifest.Files),
+		ProofBaseline:    string(manifest.Proof.BaselineStatus),
+		ProofPostfix:     string(manifest.Proof.PostfixStatus),
+		FailedAssertions: manifest.Proof.FailedAssertions,
+		Establishes:      DisclosureReviewed,
+		Equivalence:      DeclinedEquivalence,
+		Limitations:      privacyBoundaries,
+	}}
 }
 
 // sealedIdentity reads a generated packet's root completion marker back from
