@@ -12,7 +12,7 @@
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color, #ccc);
+  border-bottom: 1px solid var(--border);
   padding-bottom: 0.5rem;
 }
 
@@ -27,7 +27,7 @@
 
 .tab-btn.active {
   border-color: currentColor;
-  background: var(--active-bg, rgba(0, 0, 0, 0.05));
+  background: var(--selected);
   text-decoration: underline;
 }
 
@@ -58,7 +58,7 @@
 }
 
 .segment-card {
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.8rem;
   margin-bottom: 1rem;
@@ -73,14 +73,14 @@
 }
 
 .segment-desc {
-  color: var(--muted-color, #666);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 .cardinality-badge {
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
-  background: var(--tag-bg, rgba(0, 0, 0, 0.05));
+  background: var(--hover);
   padding: 0.2rem 0.4rem;
   border-radius: 3px;
 }
@@ -107,7 +107,7 @@
 .matrix-table td,
 .impact-table th,
 .impact-table td {
-  border: 1px solid var(--border-color, #eee);
+  border: 1px solid var(--border);
   padding: 0.4rem 0.6rem;
   text-align: left;
 }
@@ -119,7 +119,7 @@
 
 .pack-name-note {
   font-size: 0.75rem;
-  color: var(--muted-color, #777);
+  color: var(--text-muted);
 }
 
 .condition-inputs {
@@ -152,42 +152,32 @@
 }
 
 .error-text {
-  color: #c00;
+  color: var(--danger);
   font-weight: bold;
 }
 
 .warning-text {
-  color: #b70;
+  color: var(--warning);
   font-weight: bold;
 }
 
-.badge {
-  display: inline-block;
-  padding: 0.15rem 0.4rem;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  font-weight: 600;
-  border: 1px solid currentColor;
-}
-
 .badge-site {
-  background: rgba(128, 0, 128, 0.1);
+  background: var(--selected);
 }
 
 .badge-impact-affected {
-  background: rgba(255, 0, 0, 0.1);
-  color: #c00;
+  border-color: currentColor;
+  color: var(--danger);
 }
 
 .badge-impact-unaffected {
-  background: rgba(0, 128, 0, 0.1);
-  color: #080;
+  border-color: currentColor;
+  color: var(--success);
 }
 
 .badge-impact-current {
-  background: rgba(0, 0, 255, 0.1);
-  color: #008;
+  border-color: currentColor;
+  color: var(--accent);
 }
 
 .compare-inputs-grid,
@@ -211,7 +201,7 @@
   align-items: center;
   gap: 0.6rem;
   padding: 0.3rem 0;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
 }
 
@@ -239,7 +229,7 @@
 .divider {
   margin: 1.5rem 0;
   border: 0;
-  border-top: 1px solid var(--border-color, #ddd);
+  border-top: 1px solid var(--border);
 }
 
 .primary-btn {
@@ -247,7 +237,7 @@
 }
 
 .danger-btn {
-  color: #c00;
+  color: var(--danger);
 }
 
 .open-profile {
@@ -290,7 +280,7 @@
 .pinned-pack,
 .condition-inputs,
 .allowed-values {
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.6rem 0.8rem;
   margin: 0 0 0.8rem;

@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { discardDraft, type EditorDraft, type RecoveryResult } from "./bindings";
+import { folderName } from "./layout";
 
 /** What the window restored after an interruption.
  *
@@ -22,7 +24,10 @@ export function Recovery({
   onChanged: () => void;
   onReopen: () => void;
 }) {
-  if (restored === null || restored.state === "empty") {
+  // Dismissing only takes the notice off this window; what was retained stays
+  // retained, and the next launch offers it again until something replaces it.
+  const [dismissed, setDismissed] = useState(false);
+  if (restored === null || restored.state === "empty" || dismissed) {
     return null;
   }
   const session = restored.session;
@@ -30,37 +35,45 @@ export function Recovery({
     await discardDraft(project, name);
     onChanged();
   }
-  return <section aria-labelledby="recovery-title">
-    <h3 id="recovery-title">Restored after an interruption</h3>
-    <div role="status" aria-live="polite">
-      {restored.reason ? <p>{restored.reason}</p> : null}
+  return <section className="notice recovery" aria-labelledby="recovery-title">
+    <div className="notice-text" role="status" aria-live="polite">
+      <h2 id="recovery-title">Pick up where you left off</h2>
+      {restored.reason ? <p className="hint">{restored.reason}</p> : null}
       {session ? <>
-        <p>
-          You had this open: {session.view.workspace || "no workspace"}
-          {session.view.case ? ` · case ${session.view.case}` : null}
-          {session.view.region ? ` · ${session.view.region}` : null}
-        </p>
-        {session.view.run ? <p>Run folder being watched: {session.view.run}</p> : null}
+        {session.view.workspace ? (
+          <p>
+            <span title={session.view.workspace}>{folderName(session.view.workspace)}</span>
+            {session.view.case ? ` · case ${session.view.case}` : null}
+          </p>
+        ) : null}
+        {session.view.run ? <p className="hint">Run folder being watched: {session.view.run}</p> : null}
         {restored.run_reason ? <p>{restored.run_reason}</p> : null}
         {restored.run ? <>
           <p>Run: <strong>{restored.run.state}</strong> · Stop reason: {restored.run.stop_reason}</p>
           <p>Delivery uncertain: {restored.run.delivery_uncertain ? "yes — inspect the receiver before any new execution" : "no"}</p>
-          <p>Nothing was resumed or resent. Recovery only read the retained evidence.</p>
+          <p className="hint">Nothing was resumed or resent. Recovery only read the retained evidence.</p>
         </> : null}
-        {session.view.workspace ? (
-          <p><button onClick={onReopen}>Reopen session</button></p>
-        ) : null}
-        {session.drafts.length === 0 ? null : <p>Notes another edit of this window still holds:</p>}
-        {session.drafts.map(draft => <div key={`${draft.project}|${draft.note.name}`}>
+      </> : <p>Operation: {restored.state}</p>}
+    </div>
+    <div className="notice-actions">
+      {session?.view.workspace ? (
+        <button type="button" className="primary" onClick={onReopen}>Reopen</button>
+      ) : null}
+      <button type="button" onClick={() => setDismissed(true)}>Dismiss</button>
+    </div>
+    {session && session.drafts.length > 0 ? (
+      <div className="notice-drafts">
+        <p>Notes you had not stored:</p>
+        {session.drafts.map(draft => <div key={`${draft.project}|${draft.note.name}`} className="recovered-note">
           <p><strong>{draft.note.title}</strong> · {draft.note.name} · {draft.project}</p>
           {draft.note.subject ? <p>About: {draft.note.subject}</p> : null}
           <p>{draft.note.body}</p>
-          <button onClick={() => void discard(draft.project, draft.note.name)}>
+          <button type="button" onClick={() => void discard(draft.project, draft.note.name)}>
             Discard draft
           </button>
         </div>)}
-      </> : <p>Operation: {restored.state}</p>}
-    </div>
+      </div>
+    ) : null}
   </section>;
 }
 
@@ -78,15 +91,18 @@ export function RetainedDrafts({
   if (drafts === null || drafts.length === 0) {
     return null;
   }
-  return <section aria-labelledby="retained-drafts-title">
-    <h3 id="retained-drafts-title">Unsaved drafts</h3>
-    <ul>
+  return <section className="retained-drafts" aria-labelledby="retained-drafts-title">
+    <h2 id="retained-drafts-title">Unsaved drafts</h2>
+    <ul className="item-list">
       {drafts.map(draft => <li key={draft.id}>
-        <p>
-          {draft.kind} · {draft.workspace}
-          {draft.case ? ` · case ${draft.case}` : ""}
-        </p>
-        <button onClick={() => onDiscardDraft(draft.id)}>Discard draft</button>
+        <span className="item-main">
+          <span className="item-title">{draft.kind}</span>
+          <span className="item-sub" title={draft.workspace}>
+            {folderName(draft.workspace)}
+            {draft.case ? ` · case ${draft.case}` : ""}
+          </span>
+        </span>
+        <button type="button" onClick={() => onDiscardDraft(draft.id)}>Discard draft</button>
       </li>)}
     </ul>
   </section>;

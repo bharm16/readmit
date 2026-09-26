@@ -158,7 +158,7 @@ func runShell(arguments []string) error {
 		close(started)
 	}
 	application := &options.App{
-		Title:       "readmit",
+		Title:       "Readmit",
 		Width:       1100,
 		Height:      760,
 		MinWidth:    640,

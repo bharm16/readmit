@@ -1,0 +1,878 @@
+[
+  {
+    "name": "App",
+    "source": "desktop/frontend/src/App.tsx",
+    "exported": true,
+    "line": 298
+  },
+  {
+    "name": "SuiteHandoffNotice",
+    "source": "desktop/frontend/src/App.tsx",
+    "exported": false,
+    "line": 3243
+  },
+  {
+    "name": "FieldInputs",
+    "source": "desktop/frontend/src/AssertionSetAuthoring.tsx",
+    "exported": false,
+    "line": 149
+  },
+  {
+    "name": "AssertionSetAuthoring",
+    "source": "desktop/frontend/src/AssertionSetAuthoring.tsx",
+    "exported": true,
+    "line": 212
+  },
+  {
+    "name": "Baseline",
+    "source": "desktop/frontend/src/Baseline.tsx",
+    "exported": true,
+    "line": 10
+  },
+  {
+    "name": "CanonicalTestEditor",
+    "source": "desktop/frontend/src/CanonicalTestEditor.tsx",
+    "exported": true,
+    "line": 18
+  },
+  {
+    "name": "PolicyReview",
+    "source": "desktop/frontend/src/CapturePanel.tsx",
+    "exported": false,
+    "line": 100
+  },
+  {
+    "name": "SourceReview",
+    "source": "desktop/frontend/src/CapturePanel.tsx",
+    "exported": false,
+    "line": 136
+  },
+  {
+    "name": "CapturePanel",
+    "source": "desktop/frontend/src/CapturePanel.tsx",
+    "exported": true,
+    "line": 204
+  },
+  {
+    "name": "Side",
+    "source": "desktop/frontend/src/Comparison.tsx",
+    "exported": false,
+    "line": 86
+  },
+  {
+    "name": "Comparison",
+    "source": "desktop/frontend/src/Comparison.tsx",
+    "exported": true,
+    "line": 109
+  },
+  {
+    "name": "NormalizationView",
+    "source": "desktop/frontend/src/Comparison.tsx",
+    "exported": false,
+    "line": 485
+  },
+  {
+    "name": "ComputerLicense",
+    "source": "desktop/frontend/src/ComputerLicense.tsx",
+    "exported": true,
+    "line": 63
+  },
+  {
+    "name": "StateHelp",
+    "source": "desktop/frontend/src/ContextHelp.tsx",
+    "exported": true,
+    "line": 22
+  },
+  {
+    "name": "HelpTopics",
+    "source": "desktop/frontend/src/ContextHelp.tsx",
+    "exported": true,
+    "line": 29
+  },
+  {
+    "name": "ControlledDetails",
+    "source": "desktop/frontend/src/ControlledDetails.tsx",
+    "exported": true,
+    "line": 8
+  },
+  {
+    "name": "Occurrence",
+    "source": "desktop/frontend/src/CorrelationReview.tsx",
+    "exported": false,
+    "line": 11
+  },
+  {
+    "name": "CorrelationReview",
+    "source": "desktop/frontend/src/CorrelationReview.tsx",
+    "exported": true,
+    "line": 20
+  },
+  {
+    "name": "Diagnosis",
+    "source": "desktop/frontend/src/Diagnosis.tsx",
+    "exported": true,
+    "line": 106
+  },
+  {
+    "name": "WrittenIdentity",
+    "source": "desktop/frontend/src/EnvironmentPanel.tsx",
+    "exported": false,
+    "line": 77
+  },
+  {
+    "name": "EnvironmentBanner",
+    "source": "desktop/frontend/src/EnvironmentPanel.tsx",
+    "exported": true,
+    "line": 143
+  },
+  {
+    "name": "EnvironmentPanel",
+    "source": "desktop/frontend/src/EnvironmentPanel.tsx",
+    "exported": true,
+    "line": 190
+  },
+  {
+    "name": "GuidedSample",
+    "source": "desktop/frontend/src/GuidedSample.tsx",
+    "exported": true,
+    "line": 25
+  },
+  {
+    "name": "NewProjectForm",
+    "source": "desktop/frontend/src/Home.tsx",
+    "exported": true,
+    "line": 11
+  },
+  {
+    "name": "DemoCallout",
+    "source": "desktop/frontend/src/Home.tsx",
+    "exported": true,
+    "line": 99
+  },
+  {
+    "name": "HubAdministration",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": true,
+    "line": 34
+  },
+  {
+    "name": "HubPanel",
+    "source": "desktop/frontend/src/HubPanel.tsx",
+    "exported": true,
+    "line": 29
+  },
+  {
+    "name": "IconButton",
+    "source": "desktop/frontend/src/IconButton.tsx",
+    "exported": true,
+    "line": 78
+  },
+  {
+    "name": "ImportPanel",
+    "source": "desktop/frontend/src/ImportPanel.tsx",
+    "exported": true,
+    "line": 109
+  },
+  {
+    "name": "Inspector",
+    "source": "desktop/frontend/src/Inspector.tsx",
+    "exported": true,
+    "line": 23
+  },
+  {
+    "name": "InventoryList",
+    "source": "desktop/frontend/src/MaintenancePanel.tsx",
+    "exported": false,
+    "line": 42
+  },
+  {
+    "name": "BackupReport",
+    "source": "desktop/frontend/src/MaintenancePanel.tsx",
+    "exported": false,
+    "line": 63
+  },
+  {
+    "name": "MaintenancePanel",
+    "source": "desktop/frontend/src/MaintenancePanel.tsx",
+    "exported": true,
+    "line": 92
+  },
+  {
+    "name": "NoteDraft",
+    "source": "desktop/frontend/src/NoteDraft.tsx",
+    "exported": true,
+    "line": 25
+  },
+  {
+    "name": "ObservationPanel",
+    "source": "desktop/frontend/src/ObservationPanel.tsx",
+    "exported": true,
+    "line": 218
+  },
+  {
+    "name": "OperationAccess",
+    "source": "desktop/frontend/src/OperationAccess.tsx",
+    "exported": true,
+    "line": 24
+  },
+  {
+    "name": "OperatorHub",
+    "source": "desktop/frontend/src/OperatorHub.tsx",
+    "exported": true,
+    "line": 22
+  },
+  {
+    "name": "PacketPanel",
+    "source": "desktop/frontend/src/PacketPanel.tsx",
+    "exported": true,
+    "line": 39
+  },
+  {
+    "name": "PacketInputRow",
+    "source": "desktop/frontend/src/PacketPanel.tsx",
+    "exported": false,
+    "line": 304
+  },
+  {
+    "name": "PacketViewDetails",
+    "source": "desktop/frontend/src/PacketPanel.tsx",
+    "exported": false,
+    "line": 323
+  },
+  {
+    "name": "PacketReviewDetails",
+    "source": "desktop/frontend/src/PacketPanel.tsx",
+    "exported": false,
+    "line": 333
+  },
+  {
+    "name": "Choice",
+    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
+    "exported": false,
+    "line": 117
+  },
+  {
+    "name": "PlanControls",
+    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
+    "exported": false,
+    "line": 143
+  },
+  {
+    "name": "ProgressLine",
+    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
+    "exported": false,
+    "line": 184
+  },
+  {
+    "name": "ScanReport",
+    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
+    "exported": false,
+    "line": 197
+  },
+  {
+    "name": "PerformanceCorpus",
+    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
+    "exported": true,
+    "line": 285
+  },
+  {
+    "name": "PrivacyDisclosure",
+    "source": "desktop/frontend/src/PrivacyDisclosure.tsx",
+    "exported": true,
+    "line": 29
+  },
+  {
+    "name": "SupportGuidance",
+    "source": "desktop/frontend/src/PrivacyDisclosure.tsx",
+    "exported": true,
+    "line": 177
+  },
+  {
+    "name": "PrivacyDocuments",
+    "source": "desktop/frontend/src/PrivacyDocuments.tsx",
+    "exported": true,
+    "line": 94
+  },
+  {
+    "name": "PrivacyPanel",
+    "source": "desktop/frontend/src/PrivacyPanel.tsx",
+    "exported": true,
+    "line": 65
+  },
+  {
+    "name": "PinStatus",
+    "source": "desktop/frontend/src/ProfileEditor.tsx",
+    "exported": false,
+    "line": 106
+  },
+  {
+    "name": "Fact",
+    "source": "desktop/frontend/src/ProfileEditor.tsx",
+    "exported": false,
+    "line": 119
+  },
+  {
+    "name": "WholeNumber",
+    "source": "desktop/frontend/src/ProfileEditor.tsx",
+    "exported": false,
+    "line": 245
+  },
+  {
+    "name": "Repetitions",
+    "source": "desktop/frontend/src/ProfileEditor.tsx",
+    "exported": false,
+    "line": 283
+  },
+  {
+    "name": "ProfileEditor",
+    "source": "desktop/frontend/src/ProfileEditor.tsx",
+    "exported": true,
+    "line": 385
+  },
+  {
+    "name": "EditableDocument",
+    "source": "desktop/frontend/src/ProjectPanel.tsx",
+    "exported": false,
+    "line": 44
+  },
+  {
+    "name": "CaseDetailFields",
+    "source": "desktop/frontend/src/ProjectPanel.tsx",
+    "exported": false,
+    "line": 100
+  },
+  {
+    "name": "ProjectPanel",
+    "source": "desktop/frontend/src/ProjectPanel.tsx",
+    "exported": true,
+    "line": 190
+  },
+  {
+    "name": "ProtectionPanel",
+    "source": "desktop/frontend/src/ProtectionPanel.tsx",
+    "exported": true,
+    "line": 36
+  },
+  {
+    "name": "ControlChange",
+    "source": "desktop/frontend/src/ProtectionPanel.tsx",
+    "exported": false,
+    "line": 545
+  },
+  {
+    "name": "PackageView",
+    "source": "desktop/frontend/src/ProtectionPanel.tsx",
+    "exported": false,
+    "line": 556
+  },
+  {
+    "name": "RowLine",
+    "source": "desktop/frontend/src/RawInspection.tsx",
+    "exported": false,
+    "line": 18
+  },
+  {
+    "name": "RawInspection",
+    "source": "desktop/frontend/src/RawInspection.tsx",
+    "exported": true,
+    "line": 63
+  },
+  {
+    "name": "RecentWorkspaces",
+    "source": "desktop/frontend/src/RecentWorkspaces.tsx",
+    "exported": true,
+    "line": 12
+  },
+  {
+    "name": "Recovery",
+    "source": "desktop/frontend/src/Recovery.tsx",
+    "exported": true,
+    "line": 18
+  },
+  {
+    "name": "RetainedDrafts",
+    "source": "desktop/frontend/src/Recovery.tsx",
+    "exported": true,
+    "line": 84
+  },
+  {
+    "name": "Reduction",
+    "source": "desktop/frontend/src/Reduction.tsx",
+    "exported": true,
+    "line": 45
+  },
+  {
+    "name": "Reexecution",
+    "source": "desktop/frontend/src/Reexecution.tsx",
+    "exported": true,
+    "line": 24
+  },
+  {
+    "name": "ReplayPanel",
+    "source": "desktop/frontend/src/ReplayPanel.tsx",
+    "exported": true,
+    "line": 25
+  },
+  {
+    "name": "Decision",
+    "source": "desktop/frontend/src/ReplayPanel.tsx",
+    "exported": false,
+    "line": 383
+  },
+  {
+    "name": "NotPreviewed",
+    "source": "desktop/frontend/src/ReplayPanel.tsx",
+    "exported": false,
+    "line": 409
+  },
+  {
+    "name": "Sent",
+    "source": "desktop/frontend/src/ReplayPanel.tsx",
+    "exported": false,
+    "line": 419
+  },
+  {
+    "name": "RunView",
+    "source": "desktop/frontend/src/ReplayPanel.tsx",
+    "exported": false,
+    "line": 436
+  },
+  {
+    "name": "Reproducer",
+    "source": "desktop/frontend/src/Reproducer.tsx",
+    "exported": true,
+    "line": 48
+  },
+  {
+    "name": "Review",
+    "source": "desktop/frontend/src/Review.tsx",
+    "exported": true,
+    "line": 38
+  },
+  {
+    "name": "Preview",
+    "source": "desktop/frontend/src/Review.tsx",
+    "exported": false,
+    "line": 484
+  },
+  {
+    "name": "Inventory",
+    "source": "desktop/frontend/src/Review.tsx",
+    "exported": false,
+    "line": 627
+  },
+  {
+    "name": "RevisionComparison",
+    "source": "desktop/frontend/src/RevisionComparison.tsx",
+    "exported": true,
+    "line": 62
+  },
+  {
+    "name": "SaveForm",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": false,
+    "line": 55
+  },
+  {
+    "name": "OpenForm",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": false,
+    "line": 93
+  },
+  {
+    "name": "RawDocument",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": false,
+    "line": 143
+  },
+  {
+    "name": "CorrelationRulesEditor",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": true,
+    "line": 223
+  },
+  {
+    "name": "SequenceAnalysisEditor",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": true,
+    "line": 591
+  },
+  {
+    "name": "NormalizationPolicyEditor",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": true,
+    "line": 1045
+  },
+  {
+    "name": "DiagnoseConfigEditor",
+    "source": "desktop/frontend/src/RulesEditor.tsx",
+    "exported": true,
+    "line": 1323
+  },
+  {
+    "name": "RunComparison",
+    "source": "desktop/frontend/src/RunComparison.tsx",
+    "exported": true,
+    "line": 8
+  },
+  {
+    "name": "Execution",
+    "source": "desktop/frontend/src/RunComparison.tsx",
+    "exported": false,
+    "line": 70
+  },
+  {
+    "name": "RunExplanation",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": true,
+    "line": 22
+  },
+  {
+    "name": "Refusal",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": false,
+    "line": 155
+  },
+  {
+    "name": "ExplanationView",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": false,
+    "line": 167
+  },
+  {
+    "name": "RunPanel",
+    "source": "desktop/frontend/src/RunPanel.tsx",
+    "exported": true,
+    "line": 43
+  },
+  {
+    "name": "RunEvidenceView",
+    "source": "desktop/frontend/src/RunPanel.tsx",
+    "exported": false,
+    "line": 382
+  },
+  {
+    "name": "Field",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 56
+  },
+  {
+    "name": "Refusal",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 96
+  },
+  {
+    "name": "ResultLine",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 115
+  },
+  {
+    "name": "RunnerSection",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 131
+  },
+  {
+    "name": "ScheduleRow",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 665
+  },
+  {
+    "name": "SchedulesSection",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 738
+  },
+  {
+    "name": "SchedulePreviewView",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 918
+  },
+  {
+    "name": "GateVerification",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 984
+  },
+  {
+    "name": "CISection",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 1022
+  },
+  {
+    "name": "RunnerCapacity",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": false,
+    "line": 1331
+  },
+  {
+    "name": "RunnerPanel",
+    "source": "desktop/frontend/src/RunnerPanel.tsx",
+    "exported": true,
+    "line": 1371
+  },
+  {
+    "name": "ScenarioPanel",
+    "source": "desktop/frontend/src/ScenarioPanel.tsx",
+    "exported": true,
+    "line": 142
+  },
+  {
+    "name": "Relations",
+    "source": "desktop/frontend/src/Sequence.tsx",
+    "exported": false,
+    "line": 75
+  },
+  {
+    "name": "Sequence",
+    "source": "desktop/frontend/src/Sequence.tsx",
+    "exported": true,
+    "line": 120
+  },
+  {
+    "name": "SuitePanel",
+    "source": "desktop/frontend/src/SuitePanel.tsx",
+    "exported": true,
+    "line": 163
+  },
+  {
+    "name": "ReleaseRead",
+    "source": "desktop/frontend/src/SuitePanel.tsx",
+    "exported": false,
+    "line": 1542
+  },
+  {
+    "name": "SuiteEditor",
+    "source": "desktop/frontend/src/SuitePanel.tsx",
+    "exported": false,
+    "line": 1575
+  },
+  {
+    "name": "ExpansionView",
+    "source": "desktop/frontend/src/SuitePanel.tsx",
+    "exported": false,
+    "line": 1957
+  },
+  {
+    "name": "CoverageView",
+    "source": "desktop/frontend/src/SuitePanel.tsx",
+    "exported": false,
+    "line": 2021
+  },
+  {
+    "name": "SyntheticPackets",
+    "source": "desktop/frontend/src/SyntheticPackets.tsx",
+    "exported": true,
+    "line": 35
+  },
+  {
+    "name": "SyntheticPacketDetails",
+    "source": "desktop/frontend/src/SyntheticPackets.tsx",
+    "exported": false,
+    "line": 155
+  },
+  {
+    "name": "SyntheticRerunDetails",
+    "source": "desktop/frontend/src/SyntheticPackets.tsx",
+    "exported": false,
+    "line": 166
+  },
+  {
+    "name": "TaskTabs",
+    "source": "desktop/frontend/src/TaskTabs.tsx",
+    "exported": true,
+    "line": 11
+  },
+  {
+    "name": "TaskPanel",
+    "source": "desktop/frontend/src/TaskTabs.tsx",
+    "exported": true,
+    "line": 67
+  },
+  {
+    "name": "CommandDetails",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 84
+  },
+  {
+    "name": "TeamCollaboration",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": true,
+    "line": 122
+  },
+  {
+    "name": "LifecycleWrite",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 955
+  },
+  {
+    "name": "OfflineRevisionDraft",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": true,
+    "line": 971
+  },
+  {
+    "name": "TestAuthoring",
+    "source": "desktop/frontend/src/TestAuthoring.tsx",
+    "exported": true,
+    "line": 114
+  },
+  {
+    "name": "RetentionStatus",
+    "source": "desktop/frontend/src/drafting.tsx",
+    "exported": true,
+    "line": 303
+  },
+  {
+    "name": "Page",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 38
+  },
+  {
+    "name": "EmptyState",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 74
+  },
+  {
+    "name": "NavItem",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 129
+  },
+  {
+    "name": "Modal",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 175
+  },
+  {
+    "name": "FormDialog",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 229
+  },
+  {
+    "name": "MoreMenu",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 281
+  },
+  {
+    "name": "Outcome",
+    "source": "desktop/frontend/src/lifecycle.tsx",
+    "exported": true,
+    "line": 230
+  },
+  {
+    "name": "Status",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 38
+  },
+  {
+    "name": "Badge",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 62
+  },
+  {
+    "name": "Report",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 81
+  },
+  {
+    "name": "Separator",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 104
+  },
+  {
+    "name": "Palette",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 163
+  },
+  {
+    "name": "IndexSetup",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 369
+  },
+  {
+    "name": "MessageGrid",
+    "source": "desktop/frontend/src/shell.tsx",
+    "exported": true,
+    "line": 650
+  },
+  {
+    "name": "Lead",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 9
+  },
+  {
+    "name": "Group",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 15
+  },
+  {
+    "name": "Fields",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 51
+  },
+  {
+    "name": "Field",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 57
+  },
+  {
+    "name": "Actions",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 82
+  },
+  {
+    "name": "Stats",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 88
+  },
+  {
+    "name": "Facts",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 108
+  },
+  {
+    "name": "Result",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 122
+  },
+  {
+    "name": "Note",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 133
+  },
+  {
+    "name": "More",
+    "source": "desktop/frontend/src/ui.tsx",
+    "exported": true,
+    "line": 139
+  }
+]

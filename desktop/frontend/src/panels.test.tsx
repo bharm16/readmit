@@ -50,7 +50,7 @@ test("the guided sample offers each step out of the folder and runs a new folder
   expect(screen.getByText("Create sample test").closest("li")?.getAttribute("aria-current")).toBe(
     "step",
   );
-  await user.click(screen.getByRole("button", { name: "Open case" }));
+  await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   expect(acts).toEqual([`open:${CASE_ENTRY}`]);
 });
 
@@ -70,14 +70,10 @@ test("the run steps offer a new folder and never an existing one by default", as
       onCancel={() => undefined}
     />,
   );
-  expect((screen.getByLabelText("Run folder") as HTMLInputElement).value).toBe(
-    "baseline-run",
-  );
-  await user.type(screen.getByLabelText("Run folder"), "-try-2");
-  await user.click(
-    screen.getByRole("button", { name: "Run failing example" }),
-  );
-  expect(runs).toEqual(["baseline:baseline-run-try-2"]);
+  expect(screen.queryByLabelText("Run folder")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Run failing example" }));
+  // The panel supplies its suggested name; the window delegates actual output naming to the facade.
+  expect(runs).toEqual(["baseline:baseline-run"]);
 });
 
 test("the canonical editor shows expected values on import and exports exact bytes", async () => {

@@ -388,7 +388,7 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   const { facade } = await renderApp(handlers());
   const parked = facade.park("ScanCorpus");
   await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Search commands"), "performance corpus{Enter}");
+  await user.type(screen.getByLabelText("Search commands"), "Benchmarks{Enter}");
   const toggle = screen.getByRole("button", { name: "Performance corpus" });
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(toggle);
@@ -423,7 +423,7 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   expect(await screen.findByText("Scanning the stream.")).toBeTruthy();
   // While the scan holds the facade, the rest of the window is unavailable
   // rather than answered busy.
-  expect((screen.getAllByRole("button", { name: "Open workspace…" })[0]! as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Open folder…" }) as HTMLButtonElement).disabled).toBe(true);
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").map((call) => call.args[0])).toEqual([""]);
   parked.resolve({
@@ -433,7 +433,7 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   });
   expect(await screen.findByText("not evaluated; the scan was cancelled")).toBeTruthy();
   await waitFor(() =>
-    expect((screen.getAllByRole("button", { name: "Open workspace…" })[0]! as HTMLButtonElement).disabled).toBe(false),
+    expect((screen.getByRole("button", { name: "Open folder…" }) as HTMLButtonElement).disabled).toBe(false),
   );
 });
 

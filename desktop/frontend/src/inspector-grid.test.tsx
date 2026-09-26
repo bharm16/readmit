@@ -31,6 +31,7 @@ test("the grid states how many records the view is not showing, always", () => {
       indicators={indicatorTable()}
       progress={null}
       result={gridResult([gridRow(GRID_OCCURRENCE)], {
+        filter: "active",
         total: 10000,
         matched: 3,
         excluded: 9997,
@@ -47,10 +48,9 @@ test("the grid states how many records the view is not showing, always", () => {
       onInspect={() => undefined}
     />,
   );
-  expect(screen.getByText("Showing 1 of 3 matching")).toBeTruthy();
-  expect(screen.getByText("9997 of 10000 excluded by no filter")).toBeTruthy();
-  expect(screen.getByText("2 values the index could not settle")).toBeTruthy();
-  expect(screen.getByText("1 the case could not decode")).toBeTruthy();
+  expect(screen.getByText("3 of 10000")).toBeTruthy();
+  expect(screen.getByText("2 could not be matched by this index")).toBeTruthy();
+  expect(screen.getByText("1 could not be decoded")).toBeTruthy();
 });
 
 test("opening a window is the facade's own bound, and paging is another call", async () => {
@@ -110,7 +110,7 @@ test("saving a filter composes the typed contract in one piece", async () => {
     <MessageGrid
       indicators={indicatorTable()}
       progress={null}
-      result={null}
+      result={gridResult([gridRow(GRID_OCCURRENCE)])}
       filters={filtersResult()}
       entries={[INDEX_ENTRY]}
       busy={false}
@@ -121,13 +121,13 @@ test("saving a filter composes the typed contract in one piece", async () => {
       onInspect={() => undefined}
     />,
   );
-  await user.click(screen.getByRole("button", { name: "New filter" }));
-  await user.type(screen.getByLabelText("Filter name"), "rejected acks");
+  await user.click(screen.getByRole("button", { name: "New filter…" }));
+  await user.type(screen.getByLabelText("Name"), "rejected acks");
   await user.click(screen.getByLabelText("ACK"));
   await user.type(screen.getByLabelText("ACK codes"), "AA, AE");
-  fireEvent.change(screen.getByLabelText("Field selector"), { target: { value: "MSA[1]-1[1]" } });
-  await user.type(screen.getByLabelText("Match value"), "AE");
-  await user.click(screen.getByRole("button", { name: "Save and apply filter" }));
+  fireEvent.change(screen.getByLabelText("Field"), { target: { value: "MSA[1]-1[1]" } });
+  await user.type(screen.getByLabelText("Value"), "AE");
+  await user.click(screen.getByRole("button", { name: "Save and apply" }));
   expect(saved).toEqual([
     {
       name: "rejected acks",
@@ -148,7 +148,7 @@ test("a time bound is sent as the UTC instant it names, or not at all", async ()
     <MessageGrid
       indicators={indicatorTable()}
       progress={null}
-      result={null}
+      result={gridResult([gridRow(GRID_OCCURRENCE)])}
       filters={filtersResult()}
       entries={[INDEX_ENTRY]}
       busy={false}
@@ -159,10 +159,10 @@ test("a time bound is sent as the UTC instant it names, or not at all", async ()
       onInspect={() => undefined}
     />,
   );
-  await user.click(screen.getByRole("button", { name: "New filter" }));
-  await user.type(screen.getByLabelText("Filter name"), "that afternoon");
-  fireEvent.change(screen.getByLabelText("Observed from (local time)"), { target: { value: "2026-01-01T12:00" } });
-  await user.click(screen.getByRole("button", { name: "Save and apply filter" }));
+  await user.click(screen.getByRole("button", { name: "New filter…" }));
+  await user.type(screen.getByLabelText("Name"), "that afternoon");
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-01-01T12:00" } });
+  await user.click(screen.getByRole("button", { name: "Save and apply" }));
   expect(saved).toEqual([
     {
       name: "that afternoon",
@@ -176,7 +176,8 @@ test("a time bound is sent as the UTC instant it names, or not at all", async ()
   ]);
 });
 
-test("the inspector reveals what the verified read returned, and no more", () => {
+test("the inspector reveals what the verified read returned, and no more", async () => {
+  const user = userEvent.setup();
   render(
     <Inspector
       result={inspectionResult(GRID_OCCURRENCE, {
@@ -193,14 +194,10 @@ test("the inspector reveals what the verified read returned, and no more", () =>
       onInspect={() => undefined}
     />,
   );
-  expect(
-    screen.getByText(
-      `Occurrence ${GRID_OCCURRENCE} · Source s0001 · Source offset 0 · 256 original bytes`,
-    ),
-  ).toBeTruthy();
-  // An empty value is an absence, never a fabricated text.
-  expect(screen.getByText("(no displayed bytes)")).toBeTruthy();
-  expect(screen.getByText("(no decoded text)")).toBeTruthy();
+  expect(screen.getByText("s0001 · 256 bytes")).toBeTruthy();
+  expect(document.querySelector(".selected-part .value")).toBeNull();
+  await user.click(screen.getByRole("tab", { name: "Raw" }));
+  expect(screen.getByText("Raw text unavailable; original bytes remain in Hex.")).toBeTruthy();
 });
 
 test("a child of the tree is selected by clicking it, as a path", async () => {
@@ -221,12 +218,13 @@ test("a child of the tree is selected by clicking it, as a path", async () => {
       onInspect={(path, nodeOffset, byteOffset) => selections.push([path, nodeOffset, byteOffset])}
     />,
   );
-  await user.click(screen.getByRole("button", { name: /MSH\[1\]-3\[1\] · field/ }));
-  await user.click(screen.getByRole("button", { name: "Message root" }));
+  await user.click(screen.getByRole("button", { name: "MSH[1]-3[1]" }));
+  await user.click(screen.getByRole("button", { name: "Message" }));
   expect(selections).toEqual([["MSH[1]-3[1]", 0, -1], ["", 0, -1]]);
 });
 
-test("an unparsed occurrence offers no field tree and no selector entry", () => {
+test("an unparsed occurrence offers no field tree and no selector entry", async () => {
+  const user = userEvent.setup();
   render(
     <Inspector
       result={inspectionResult(GRID_OCCURRENCE, { decode_state: "unparsed", children: [], child_count: 0 })}
@@ -236,13 +234,9 @@ test("an unparsed occurrence offers no field tree and no selector entry", () => 
       onInspect={() => undefined}
     />,
   );
-  expect(
-    (screen.getByLabelText("Field path") as HTMLInputElement)
-      .disabled,
-  ).toBe(true);
-  expect(
-    (screen.getByRole("button", { name: "Inspect selector" }) as HTMLButtonElement).disabled,
-  ).toBe(true);
+  expect(screen.queryByLabelText("Field path")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "More message actions" }));
+  expect((screen.getByRole("menuitem", { name: "Go to field…" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("a refused inspection is reported inside the inspector", () => {
@@ -281,11 +275,10 @@ test("an unindexed case reports case metadata and offers to build an index", asy
     />
   );
 
-  expect(screen.getByText("Case is unindexed")).toBeTruthy();
-  expect(screen.getByText(/The case is not empty/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Set up index" })).toBeTruthy();
+  expect(screen.getByText("Search is off for this case")).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "Enable search…" })[0]!).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
   expect(screen.getByRole("form", { name: "Build index form" })).toBeTruthy();
 });
 
@@ -311,10 +304,9 @@ test("a stale, expired, damaged, or unsupported index shows a rebuild banner", a
   );
 
   expect(screen.getByRole("alert", { name: "Index rebuild notice" })).toBeTruthy();
-  expect(screen.getByText("[Index rebuild required]")).toBeTruthy();
-  expect(screen.getByText(/The index was built from different evidence or is stale for this case/)).toBeTruthy();
+  expect(screen.getByText("This case's search index is out of date.")).toBeTruthy();
 
-  await user.click(screen.getByRole("button", { name: "Set up rebuild" }));
+  await user.click(screen.getByRole("button", { name: "Rebuild…" }));
   expect(screen.getByRole("form", { name: "Build index form" })).toBeTruthy();
 });
 
@@ -342,9 +334,8 @@ test("an explicitly selected index of another case is refused without offering r
 
   expect(screen.getByRole("alert", { name: "Index mismatch notice" })).toBeTruthy();
   expect(screen.queryByRole("alert", { name: "Index rebuild notice" })).toBeNull();
-  expect(screen.getByText("Case is unindexed")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  const output = screen.getByLabelText("Index file") as HTMLInputElement;
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
+  const output = screen.getByLabelText("File name") as HTMLInputElement;
   expect(output.value).toBe("followup.index.json");
   expect(screen.queryByLabelText("Replace selected index")).toBeNull();
   fireEvent.change(output, { target: { value: INDEX_ENTRY } });
@@ -374,12 +365,13 @@ test("an unreadable index with no known owner is not offered for replacement", a
   );
 
   expect(screen.getByRole("alert", { name: "Index ownership unknown notice" })).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  expect((screen.getByLabelText("Index file") as HTMLInputElement).value).toBe("followup.index.json");
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
+  expect((screen.getByLabelText("File name") as HTMLInputElement).value).toBe("followup.index.json");
   expect(screen.queryByLabelText("Replace selected index")).toBeNull();
 });
 
-test("an active index displays its retention form and permitted searches", () => {
+test("an active index displays its retention form and permitted searches", async () => {
+  const user = userEvent.setup();
   render(
     <MessageGrid
       indicators={indicatorTable()}
@@ -402,11 +394,11 @@ test("an active index displays its retention form and permitted searches", () =>
     />,
   );
 
-  expect(screen.getByText(`Index: ${INDEX_ENTRY}`)).toBeTruthy();
-  expect(screen.getByText("Retention: values (active)")).toBeTruthy();
-  expect(
-    screen.getByText("Permitted searches: full substring search, equality, presence, and absence"),
-  ).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "More list actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Search settings…" }));
+  expect(screen.getByText(INDEX_ENTRY)).toBeTruthy();
+  expect(screen.getByText("Full text")).toBeTruthy();
+  expect(screen.getByText("PID-3, PV1-19")).toBeTruthy();
 });
 
 test("building an index composes the typed request with retention and structured fields", async () => {
@@ -431,12 +423,12 @@ test("building an index composes the typed request with retention and structured
     />,
   );
 
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  const customInput = screen.getByLabelText("Field selector");
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
+  const customInput = screen.getByLabelText("Another field");
   fireEvent.change(customInput, { target: { value: "OBX[1]-3" } });
   await user.click(screen.getByRole("button", { name: "Add field" }));
 
-  await user.click(screen.getByLabelText(/Plaintext values/));
+  await user.click(screen.getByLabelText(/Full text/));
   await user.click(screen.getByRole("button", { name: "Build index" }));
 
   expect(built).toEqual([
@@ -467,17 +459,17 @@ test("switching to a second unindexed case offers a separate index without repla
     <MessageGrid {...props} caseEvidence={caseResult().case} indexDetails={indexDetailsFixture({ applicable: false, stale: true })} />,
   );
 
-  await user.click(screen.getByRole("button", { name: "Set up rebuild" }));
-  fireEvent.change(screen.getByLabelText("Index file"), { target: { value: INDEX_ENTRY } });
+  await user.click(screen.getByRole("button", { name: "Rebuild…" }));
+  fireEvent.change(screen.getByLabelText("File name"), { target: { value: INDEX_ENTRY } });
   expect((screen.getByLabelText("Replace selected index") as HTMLInputElement).checked).toBe(true);
 
   rerender(<MessageGrid {...props} caseEvidence={caseResult("followup", "followup-identity").case} indexDetails={null} />);
-  expect(screen.getByText("Case is unindexed")).toBeTruthy();
+  expect(screen.getByText("Search is off for this case")).toBeTruthy();
   expect(screen.queryByRole("alert", { name: "Index rebuild notice" })).toBeNull();
   expect(screen.queryByRole("form", { name: "Build index form" })).toBeNull();
 
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  const output = screen.getByLabelText("Index file") as HTMLInputElement;
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
+  const output = screen.getByLabelText("File name") as HTMLInputElement;
   expect(output.value).toBe("followup.index.json");
   expect(screen.queryByLabelText("Replace selected index")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Build index" }));
@@ -508,8 +500,8 @@ test("an occupied conventional index filename gets a fresh suggestion", async ()
     />,
   );
 
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  expect((screen.getByLabelText("Index file") as HTMLInputElement).value).toBe("followup.2.index.json");
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
+  expect((screen.getByLabelText("File name") as HTMLInputElement).value).toBe("followup.2.index.json");
   expect(screen.queryByLabelText("Replace selected index")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Build index" }));
   expect(built).toEqual([expect.objectContaining({ case: "followup", output: "followup.2.index.json", replace: false })]);
@@ -544,34 +536,21 @@ test("the explorer shows messages first; setting up an index or a filter reads a
   const { props, calls } = explorer({ result: gridResult([gridRow(GRID_OCCURRENCE)]), indexDetails: indexDetailsFixture() });
   render(<MessageGrid {...props} />);
   expect(screen.getByRole("region", { name: "Messages" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Messages" })).toBeTruthy();
-  // Neither configuration form competes with the evidence until asked for.
   expect(screen.queryByRole("form", { name: "Build index form" })).toBeNull();
   expect(screen.queryByRole("form", { name: "Filter editor" })).toBeNull();
-
-  const setup = screen.getByRole("button", { name: "Set up index" });
-  expect(setup.getAttribute("aria-expanded")).toBe("false");
-  await user.click(setup);
+  await user.click(screen.getByRole("button", { name: "More list actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Search settings…" }));
+  expect(screen.getByText(INDEX_ENTRY)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Rebuild index…" }));
   expect(screen.getByRole("form", { name: "Build index form" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Build index" })).toBeTruthy();
-  const newFilter = screen.getByRole("button", { name: "New filter" });
-  await user.click(newFilter);
-  expect(newFilter.getAttribute("aria-expanded")).toBe("true");
-  expect(screen.getByRole("heading", { name: "Filter editor" })).toBeTruthy();
-  expect(calls).toEqual({ opened: [], saved: [], built: [], selected: [] });
-
-  // Closing setup hides it without discarding what was typed.
-  const form = within(screen.getByRole("form", { name: "Build index form" }));
-  fireEvent.change(form.getByLabelText("Index file"), { target: { value: "kept.index.json" } });
-  await user.click(form.getByRole("button", { name: "Close setup" }));
+  fireEvent.change(screen.getByLabelText("File name"), { target: { value: "kept.index.json" } });
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("form", { name: "Build index form" })).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  expect((screen.getByLabelText("Index file") as HTMLInputElement).value).toBe("kept.index.json");
-  expect(calls.built).toEqual([]);
-  // The explorer context keeps the case, the open index and the filter in view.
-  expect(screen.getByText("Case:", { exact: false }).textContent).toBe("Case: sample-case");
-  expect(screen.getByText("Showing index:", { exact: false }).textContent).toBe(`Showing index: ${INDEX_ENTRY}`);
-  expect(screen.getByText("Active filter:", { exact: false }).textContent).toBe("Active filter: No filter");
+  await user.click(screen.getByRole("button", { name: "New filter…" }));
+  expect(screen.getByRole("dialog", { name: "New filter" })).toBeTruthy();
+  expect(calls).toEqual({ opened: [], saved: [], built: [], selected: [] });
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeTruthy();
 });
 
 test("setting up a rebuild prefills the selected index's policy, and only Rebuild index writes", async () => {
@@ -588,17 +567,17 @@ test("setting up a rebuild prefills the selected index's policy, and only Rebuil
     }),
   });
   render(<MessageGrid {...props} />);
-  await user.click(screen.getByRole("button", { name: "Set up rebuild" }));
+  await user.click(screen.getByRole("button", { name: "Rebuild…" }));
   expect(calls.built).toEqual([]);
   const form = within(screen.getByRole("form", { name: "Build index form" }));
-  expect(form.getByRole("heading", { name: "Rebuild index" })).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Rebuild search index" })).toBeTruthy();
   // The finite deadline stays finite, shown in local time beside the instant
   // it is stored as.
-  expect((form.getByLabelText("Retain indefinitely") as HTMLInputElement).checked).toBe(false);
-  const local = form.getByLabelText("Retain until (local time)") as HTMLInputElement;
+  expect((form.getByLabelText("No expiry") as HTMLInputElement).checked).toBe(false);
+  const local = form.getByLabelText("Keep until (local time)") as HTMLInputElement;
   expect(new Date(local.value).toISOString()).toBe(new Date(deadline).toISOString());
   expect(form.getByText(`Stored as ${new Date(deadline).toISOString()} (UTC)`)).toBeTruthy();
-  expect((form.getByLabelText(/SHA-256 digests/) as HTMLInputElement).checked).toBe(true);
+  expect((form.getByLabelText(/Exact match/) as HTMLInputElement).checked).toBe(true);
   expect((form.getByLabelText("Replace selected index") as HTMLInputElement).checked).toBe(true);
   expect(form.getByText(`Replaces ${INDEX_ENTRY} of case sample-case.`)).toBeTruthy();
 
@@ -621,15 +600,15 @@ test("replacement applies only to the selected index, never to another file name
   const user = userEvent.setup();
   const { props, calls } = explorer({ entries: [INDEX_ENTRY, "other.index.json"], indexDetails: indexDetailsFixture({ applicable: false, damaged: true }) });
   render(<MessageGrid {...props} />);
-  await user.click(screen.getByRole("button", { name: "Set up rebuild" }));
-  fireEvent.change(screen.getByLabelText("Index file"), { target: { value: "other.index.json" } });
+  await user.click(screen.getByRole("button", { name: "Rebuild…" }));
+  fireEvent.change(screen.getByLabelText("File name"), { target: { value: "other.index.json" } });
   expect(screen.getByText(`Only ${INDEX_ENTRY} of case sample-case can be replaced; another file name is written as a new index.`)).toBeTruthy();
   // Another file name is a new index, so the write says so; naming the
   // selected index again makes it the rebuild once more.
   expect(screen.queryByRole("button", { name: "Rebuild index" })).toBeNull();
-  fireEvent.change(screen.getByLabelText("Index file"), { target: { value: INDEX_ENTRY } });
+  fireEvent.change(screen.getByLabelText("File name"), { target: { value: INDEX_ENTRY } });
   expect(screen.queryByRole("button", { name: "Build index" })).toBeNull();
-  fireEvent.change(screen.getByLabelText("Index file"), { target: { value: "other.index.json" } });
+  fireEvent.change(screen.getByLabelText("File name"), { target: { value: "other.index.json" } });
   await user.click(screen.getByRole("button", { name: "Build index" }));
   expect(calls.built).toEqual([expect.objectContaining({ output: "other.index.json", replace: false })]);
 });
@@ -642,14 +621,14 @@ test("rebuilding an index whose retention has passed keeps its deadline finite a
     indexDetails: indexDetailsFixture({ applicable: false, expired: true, retention_state: "ended", retain_until: deadline }),
   });
   render(<MessageGrid {...props} />);
-  await user.click(screen.getByRole("button", { name: "Set up rebuild" }));
+  await user.click(screen.getByRole("button", { name: "Rebuild…" }));
   const form = within(screen.getByRole("form", { name: "Build index form" }));
   // The ended deadline is still the one offered, never turned indefinite...
-  expect((form.getByLabelText("Retain indefinitely") as HTMLInputElement).checked).toBe(false);
-  const local = form.getByLabelText("Retain until (local time)") as HTMLInputElement;
+  expect((form.getByLabelText("No expiry") as HTMLInputElement).checked).toBe(false);
+  const local = form.getByLabelText("Keep until (local time)") as HTMLInputElement;
   expect(new Date(local.value).toISOString()).toBe(new Date(deadline).toISOString());
   // ...but it is said to have passed, beside the field, and nothing is built.
-  const passed = "This date and time has passed; enter a later one or choose Retain indefinitely. Nothing is built until you do.";
+  const passed = "This date and time has passed. Enter a later one or choose No expiry.";
   expect(form.getByText(passed)).toBeTruthy();
   expect(local.getAttribute("aria-describedby")).toContain(form.getByText(passed).id);
   const rebuild = form.getByRole("button", { name: "Rebuild index" }) as HTMLButtonElement;
@@ -658,13 +637,13 @@ test("rebuilding an index whose retention has passed keeps its deadline finite a
   expect(calls.built).toEqual([]);
 
   // Choosing indefinite retention explicitly is one way on.
-  await user.click(form.getByLabelText("Retain indefinitely"));
+  await user.click(form.getByLabelText("No expiry"));
   expect(rebuild.disabled).toBe(false);
-  await user.click(form.getByLabelText("Retain indefinitely"));
+  await user.click(form.getByLabelText("No expiry"));
   expect(rebuild.disabled).toBe(true);
 
   // A later deadline is the other.
-  fireEvent.change(form.getByLabelText("Retain until (local time)"), { target: { value: "2027-06-30T12:00" } });
+  fireEvent.change(form.getByLabelText("Keep until (local time)"), { target: { value: "2027-06-30T12:00" } });
   expect(form.queryByText(passed)).toBeNull();
   await user.click(rebuild);
   expect(calls.built).toEqual([
@@ -676,14 +655,14 @@ test("an incomplete local deadline blocks the build and never becomes indefinite
   const user = userEvent.setup();
   const { props, calls } = explorer({ entries: [], now: () => Date.parse("2026-06-01T00:00:00Z") });
   render(<MessageGrid {...props} />);
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
-  await user.click(screen.getByLabelText("Retain indefinitely"));
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
+  await user.click(screen.getByLabelText("No expiry"));
   const build = screen.getByRole("button", { name: "Build index" }) as HTMLButtonElement;
   expect(build.disabled).toBe(true);
-  expect(screen.getByText("Enter a complete date and time; nothing is built until you do.")).toBeTruthy();
+  expect(screen.getByText("Enter a complete date and time.")).toBeTruthy();
   fireEvent.submit(screen.getByRole("form", { name: "Build index form" }));
   expect(calls.built).toEqual([]);
-  fireEvent.change(screen.getByLabelText("Retain until (local time)"), { target: { value: "2027-01-02T03:04" } });
+  fireEvent.change(screen.getByLabelText("Keep until (local time)"), { target: { value: "2027-01-02T03:04" } });
   const stored = new Date("2027-01-02T03:04").toISOString();
   expect(screen.getByText(`Stored as ${stored} (UTC)`)).toBeTruthy();
   await user.click(build);
@@ -694,11 +673,10 @@ test("removing an indexed field is a named icon that hands focus to the field le
   const user = userEvent.setup();
   const { props } = explorer({ entries: [] });
   render(<MessageGrid {...props} />);
-  await user.click(screen.getByRole("button", { name: "Set up index" }));
+  await user.click(screen.getAllByRole("button", { name: "Enable search…" })[0]!);
   // The field selector is labelled visibly, with its example beside it.
-  const selector = screen.getByLabelText("Field selector");
-  expect(selector.getAttribute("placeholder")).toBeNull();
-  expect(screen.getByText("Example: OBX[1]-3")).toBeTruthy();
+  const selector = screen.getByLabelText("Another field");
+  expect(selector.getAttribute("placeholder")).toBe("OBX[1]-3");
   const remove = screen.getByRole("button", { name: "Remove indexed field PID-3" });
   expect(remove.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   expect(screen.getAllByRole("tooltip").map((tip) => tip.textContent)).toContain("Remove indexed field PID-3");
@@ -707,32 +685,31 @@ test("removing an indexed field is a named icon that hands focus to the field le
   expect(screen.queryByRole("button", { name: "Remove indexed field PID-3" })).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Remove indexed field MSH-10" }));
   await user.keyboard("{Enter}");
-  expect(document.activeElement).toBe(screen.getByLabelText("Field selector"));
-  expect(screen.getByText("Indexed fields (0 of 16 selected)")).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByLabelText("Another field"));
+  expect(screen.getByText("Fields (0 of 16)")).toBeTruthy();
 });
 
 test("the filter editor saves and applies one filter, and discarding clears only its draft", async () => {
   const user = userEvent.setup();
-  const { props, calls } = explorer({ filters: filtersResult([{ name: "kept", kinds: [], sources: [], observed_from: null, observed_until: null, ack_codes: [], fields: [] }], "kept") });
+  const { props, calls } = explorer({ result: gridResult([gridRow(GRID_OCCURRENCE)]), filters: filtersResult([{ name: "kept", kinds: [], sources: [], observed_from: null, observed_until: null, ack_codes: [], fields: [] }], "kept") });
   render(<MessageGrid {...props} />);
-  await user.click(screen.getByRole("button", { name: "New filter" }));
+  await user.click(screen.getByRole("button", { name: "New filter…" }));
   const form = within(screen.getByRole("form", { name: "Filter editor" }));
-  await user.type(form.getByLabelText("Filter name"), "explicit nulls");
+  await user.type(form.getByLabelText("Name"), "explicit nulls");
   await user.click(form.getByLabelText("Unparsed"));
-  await user.type(form.getByLabelText("Source ID"), "s0002");
-  fireEvent.change(form.getByLabelText("Field selector"), { target: { value: "PID[1]-8[1]" } });
-  await user.selectOptions(form.getByLabelText("Match type"), "Field state");
+  await user.type(form.getByLabelText("Source"), "s0002");
+  fireEvent.change(form.getByLabelText("Field"), { target: { value: "PID[1]-8[1]" } });
+  await user.selectOptions(form.getByLabelText("Match"), "Field state");
   // Every field state is its own choice; none is merged into another.
-  expect(within(form.getByLabelText("Field state")).getAllByRole("option").map((o) => [o.textContent, (o as HTMLOptionElement).value])).toEqual([
+  expect(within(form.getByLabelText("State")).getAllByRole("option").map((o) => [o.textContent, (o as HTMLOptionElement).value])).toEqual([
     ["Present", "present"],
     ["Empty", "empty"],
     ["Explicit null", "null"],
     ["Omitted", "omitted"],
   ]);
-  await user.selectOptions(form.getByLabelText("Field state"), "Explicit null");
-  fireEvent.change(form.getByLabelText("Observed before (local time)"), { target: { value: "2026-03-01T00:00" } });
-  expect(form.getByText("The upper bound is exclusive. Both bounds are stored as UTC instants.")).toBeTruthy();
-  await user.click(form.getByRole("button", { name: "Save and apply filter" }));
+  await user.selectOptions(form.getByLabelText("State"), "Explicit null");
+  fireEvent.change(form.getByLabelText("Before"), { target: { value: "2026-03-01T00:00" } });
+  await user.click(form.getByRole("button", { name: "Save and apply" }));
   expect(calls.saved).toEqual([
     {
       name: "explicit nulls",
@@ -745,40 +722,38 @@ test("the filter editor saves and applies one filter, and discarding clears only
     },
   ]);
 
-  await user.click(form.getByRole("button", { name: "Discard filter draft" }));
-  expect((form.getByLabelText("Filter name") as HTMLInputElement).value).toBe("");
-  expect(document.activeElement).toBe(form.getByLabelText("Filter name"));
+  await user.click(screen.getByRole("button", { name: "New filter…" }));
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "New filter…" }));
+  expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+  expect(screen.getByRole("dialog", { name: "New filter" })).toBeTruthy();
   // The saved filter and its selection are untouched.
-  expect((screen.getByLabelText("Saved filter") as HTMLSelectElement).value).toBe("kept");
+  expect((screen.getByLabelText("Filter") as HTMLSelectElement).value).toBe("kept");
   expect(calls.selected).toEqual([]);
   expect(calls.saved).toHaveLength(1);
 });
 
 test("with no filter selected the picker says it shows every occurrence", () => {
-  const { props } = explorer();
+  const { props } = explorer({ result: gridResult([gridRow(GRID_OCCURRENCE)]) });
   render(<MessageGrid {...props} />);
-  const picker = screen.getByLabelText("Saved filter");
-  expect(within(picker).getAllByRole("option")[0]?.textContent).toBe("No filter");
-  expect(document.getElementById(picker.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Show every occurrence");
+  const picker = screen.getByLabelText("Filter");
+  expect(within(picker).getAllByRole("option")[0]?.textContent).toBe("All messages");
 });
 
 test("paging is a pair of named chevrons beside the range, disabled at each end", async () => {
   const user = userEvent.setup();
-  const { props, calls } = explorer({
-    result: gridResult([gridRow("occ-0")], { offset: 0, limit: GRID_WINDOW, matched: 1, total: 1, excluded: 0 }),
-  });
-  render(<MessageGrid {...props} />);
+  const { props, calls } = explorer({result: gridResult([gridRow("occ-0")], { offset: 0, limit: GRID_WINDOW, matched: GRID_WINDOW + 1, total: GRID_WINDOW + 1 })});
+  const { rerender } = render(<MessageGrid {...props} />);
   const previous = screen.getByRole("button", { name: `Previous ${GRID_WINDOW} occurrences` }) as HTMLButtonElement;
   const next = screen.getByRole("button", { name: `Next ${GRID_WINDOW} occurrences` }) as HTMLButtonElement;
   expect(previous.disabled).toBe(true);
-  expect(next.disabled).toBe(true);
-  expect(screen.getAllByRole("tooltip").map((tip) => tip.textContent)).toEqual(
-    expect.arrayContaining([`Previous ${GRID_WINDOW} occurrences`, `Next ${GRID_WINDOW} occurrences`]),
-  );
-  expect(screen.getByText("Occurrences 1–1")).toBeTruthy();
-  expect(screen.getByText(`${GRID_WINDOW} per page`)).toBeTruthy();
+  expect(next.disabled).toBe(false);
   await user.click(next);
-  expect(calls.opened).toEqual([]);
+  expect(calls.opened).toEqual([[INDEX_ENTRY, GRID_WINDOW]]);
+  rerender(<MessageGrid {...props} result={gridResult([gridRow("last")], { offset: GRID_WINDOW, limit: GRID_WINDOW, matched: GRID_WINDOW + 1, total: GRID_WINDOW + 1 })}/>);
+  expect(next.disabled).toBe(true);
+  expect(previous.disabled).toBe(false);
+  expect(screen.getByText(`${GRID_WINDOW + 1}–${GRID_WINDOW + 1}`)).toBeTruthy();
 });
 
 test("at a larger text scale the drawn rows and the scroll arithmetic stay on the same row", () => {
@@ -813,4 +788,16 @@ test("the command palette closes from a named icon that cancels nothing", async 
   close.focus();
   await user.keyboard("{Enter}");
   expect(closed).toBe(1);
+});
+
+test("a new index draft survives closing setup without writing", async () => {
+  const user = userEvent.setup();
+  const { props, calls } = explorer({ entries: [] });
+  render(<MessageGrid {...props} />);
+  await user.click(screen.getByRole("button", { name: "Enable search…" }));
+  fireEvent.change(screen.getByLabelText("File name"), { target: { value: "kept.index.json" } });
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Enable search…" }));
+  expect((screen.getByLabelText("File name") as HTMLInputElement).value).toBe("kept.index.json");
+  expect(calls.built).toEqual([]);
 });

@@ -836,8 +836,8 @@ test("rebuilding an index from maintenance uses the shared setup, prefilled with
   // Inspecting and setting up write nothing.
   expect(stub.callsTo("BuildIndex")).toHaveLength(0);
   const form = within(setup.getByRole("form", { name: "Build index form" }));
-  expect(form.getByRole("heading", { name: "Rebuild index" })).toBeTruthy();
-  expect((form.getByLabelText("Retain indefinitely") as HTMLInputElement).checked).toBe(false);
+  expect(form.getByRole("button", { name: "Rebuild index" })).toBeTruthy();
+  expect((form.getByLabelText("No expiry") as HTMLInputElement).checked).toBe(false);
   expect(form.getByText(`Stored as ${new Date(deadline).toISOString()} (UTC)`)).toBeTruthy();
   await user.click(form.getByRole("button", { name: "Rebuild index" }));
   await waitFor(() => expect(feedback()).toBe("Index rebuilt from canonical evidence."));
@@ -868,7 +868,7 @@ test("with no index to inspect, maintenance asks for a new declaration and repla
   await user.click(setup.getByRole("button", { name: "Inspect index" }));
   await user.click(await setup.findByRole("button", { name: "Set up index" }));
   const form = within(setup.getByRole("form", { name: "Build index form" }));
-  expect(form.getByRole("heading", { name: "Build index" })).toBeTruthy();
+  expect(form.getByRole("button", { name: "Build index" })).toBeTruthy();
   expect(form.queryByLabelText("Replace selected index")).toBeNull();
   // Naming another case withdraws the setup opened for this one.
   await user.type(setup.getByLabelText("Case"), "-other");

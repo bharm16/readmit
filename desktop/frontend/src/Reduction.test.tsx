@@ -1,3 +1,5 @@
+import { openListedCase } from "./testkit/navigation";
+import { readCaseIdentity } from "./testkit/navigation";
 // The controlled reduction panel, driven through the whole window as a person
 // drives it, over the stubbed facade. How a sequence is taken apart, what each
 // trial established and what a reduction claims are the engine's answers,
@@ -99,10 +101,12 @@ function reported(state: ReductionResult["state"], report: Partial<ReductionRepo
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
   // The toolbar's Open workspace…, which the first-run panel names identically.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" }).at(-1)!);
-  await screen.findByText(WORKSPACE_ROOT);
-  await user.click(screen.getAllByRole("button", { name: "Open case" })[0]!);
-  await screen.findByText(CASE_IDENTITY);
+  await user.click(screen.getAllByRole("button", { name: "Open…" }).at(-1)!);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await user.click(screen.getAllByRole("button", { name: /^Open case(?: |$)/ })[0]!);
+  await readCaseIdentity(user, CASE_IDENTITY);
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Reduce" }));
   return within(await screen.findByRole("region", { name: "Controlled reduction" }));
 }
 
@@ -290,8 +294,10 @@ test("rules hidden with their grouping are never sent, Stop is not offered for a
 
   // Another case is opened: the result was about the case before it.
   facade.reply({ OpenCase: () => caseResult(OTHER_CASE_ENTRY, "other-identity-fixed-for-tests") });
-  await user.click(screen.getAllByRole("button", { name: "Open case" })[1]!);
-  await screen.findByText("other-identity-fixed-for-tests");
+  await openListedCase(user, OTHER_CASE_ENTRY);
+  await readCaseIdentity(user, "other-identity-fixed-for-tests");
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Reduce" }));
   const reopened = within(await screen.findByRole("region", { name: "Controlled reduction" }));
   await waitFor(() => expect(reopened.queryByText(/^Not attempted:/)).toBeNull());
   expect(reopened.queryByText(/^Reduction of /)).toBeNull();

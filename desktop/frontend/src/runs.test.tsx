@@ -500,7 +500,7 @@ test("recovery after an interruption shows the run and never resumes it", async 
       onReopen={() => undefined}
     />,
   );
-  expect(screen.getByText("Restored after an interruption")).toBeTruthy();
+  expect(screen.getByText("Pick up where you left off")).toBeTruthy();
   expect(screen.getByText("delivery_uncertain")).toBeTruthy();
   expect(screen.getByText(/inspect the receiver before any new execution/)).toBeTruthy();
   expect(screen.getByText("Nothing was resumed or resent. Recovery only read the retained evidence.")).toBeTruthy();
@@ -515,7 +515,7 @@ test("recovery after an interruption shows the run and never resumes it", async 
 test("recovery of an empty session draws nothing", () => {
   installFacade({});
   render(<Recovery restored={null} onChanged={() => undefined} onReopen={() => undefined} />);
-  expect(screen.queryByText("Restored after an interruption")).toBeNull();
+  expect(screen.queryByText("Pick up where you left off")).toBeNull();
 });
 
 test("a comparison selects actual retained executions of the workspace", async () => {

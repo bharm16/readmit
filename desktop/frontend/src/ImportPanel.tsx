@@ -1807,7 +1807,7 @@ export function ImportPanel({
                         <td>{m.source} / {m.channel}</td>
                         <td>
                           {m.reason ? (
-                            <span style={{ color: "#d32f2f" }}>{m.reason}</span>
+                            <span style={{ color: "var(--danger)" }}>{m.reason}</span>
                           ) : revealSensitive ? (
                             <span>[Payload bytes confirmed valid]</span>
                           ) : (

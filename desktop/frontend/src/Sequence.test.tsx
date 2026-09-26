@@ -1,3 +1,4 @@
+import { readCaseIdentity } from "./testkit/navigation";
 // The sequence panel driven through the window, as a person drives it: the
 // real App over the stubbed facade, so choosing a rules document reaches
 // OpenSequence, the review panel reaches OpenCorrelationReview and
@@ -64,11 +65,11 @@ function workspace() {
  * sequence panel is offered at all. */
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  await screen.findByText(WORKSPACE_ROOT);
-  const listed = screen.getByText(CASE_ENTRY, { selector: ".name" }).closest("li")!;
-  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Open case" }));
-  await screen.findByText(CASE_IDENTITY);
+  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  await readCaseIdentity(user, CASE_IDENTITY);
+  await user.click(screen.getByRole("tab", { name: "Timeline" }));
   return within(await screen.findByRole("region", { name: "Sequence" }));
 }
 
@@ -89,7 +90,6 @@ function laidOut() {
 async function layOut(facade: Stub, user: User, panel: ReturnType<typeof within>) {
   facade.reply({ OpenSequence: () => laidOut() });
   await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
-  await user.click(panel.getByRole("button", { name: "View sequence" }));
   return within(await panel.findByRole("region", { name: "Correlation review" }));
 }
 
@@ -142,10 +142,9 @@ test("a case is laid out under the rules document chosen in the sequence panel, 
   // out from the keyboard, and no sequence and no review stand beside it.
   facade.reply({ OpenSequence: () => refused("invalid correlation rules JSON") });
   await user.selectOptions(picker, BROKEN_RULES);
-  await tabTo(user, panel.getByRole("button", { name: "View sequence" }));
-  await user.keyboard("{Enter}");
+
   expect(await panel.findByText("invalid correlation rules JSON")).toBeTruthy();
-  expect(facade.oneCall("OpenSequence")[0]).toEqual({
+  expect(facade.callsTo("OpenSequence").at(-1)?.args[0]).toEqual({
     workspace: WORKSPACE_ROOT,
     case: CASE_ENTRY,
     identity: CASE_IDENTITY,
@@ -162,19 +161,22 @@ test("a case is laid out under the rules document chosen in the sequence panel, 
   // completes is drawn as completed.
   const parked = facade.park("OpenSequence");
   await user.selectOptions(picker, RULES);
-  await user.click(panel.getByRole("button", { name: "View sequence" }));
-  expect(await panel.findByText("Laying this case out as a sequence.")).toBeTruthy();
+  expect(await panel.findByText("Loading the timeline.")).toBeTruthy();
   expect(picker.disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
   parked.resolve(laidOut());
-  expect(await panel.findByText("1 link · 1 collision · 0 not evaluated · readmit-correlation/v1")).toBeTruthy();
-  expect(facade.callsTo("OpenSequence")[1]?.args[0]).toMatchObject({ rules: RULES, analysis: "", offset: 0 });
+  expect(await panel.findByRole("button", { name: GRID_OCCURRENCE })).toBeTruthy();
+  const correlationCounts = within(panel.getByLabelText("Correlations", { selector: "dl" }));
+  expect(correlationCounts.getByText("Links").nextElementSibling?.textContent).toBe("1");
+  expect(correlationCounts.getByText("Collisions").nextElementSibling?.textContent).toBe("1");
+  expect(facade.callsTo("OpenSequence").at(-1)?.args[0]).toMatchObject({ rules: RULES, analysis: "", offset: 0 });
   expect(panel.queryByText("cancelled")).toBeNull();
   // The digest a sequence names is the canonical one the command line
   // reports, which is what a sequence analysis pins.
-  expect(panel.getByText(new RegExp(`whose canonical rules SHA-256 is ${RULES_SHA256}: the digest readmit correlate reports`))).toBeTruthy();
+  await user.click(panel.getByText("Rules document"));
+  expect(panel.getByText(RULES_SHA256)).toBeTruthy();
   expect(panel.getByRole("region", { name: "Correlation review" })).toBeTruthy();
 });
 
@@ -332,9 +334,9 @@ test("while a review opens or a decision is saved the panel says so and holds it
   await user.click(review.getByRole("button", { name: "Open mapping" }));
   expect(await review.findByText("Reading the selected mapping.")).toBeTruthy();
   // The sequence above does not claim to be laid out again.
-  expect(panel.queryByText("Laying this case out as a sequence.")).toBeNull();
+  expect(panel.queryByText("Loading the timeline.")).toBeNull();
   expect((review.getByRole("button", { name: "Open mapping" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "View sequence" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((panel.getByLabelText("Correlation rules") as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
@@ -396,7 +398,7 @@ const RETAINED_RULES: CorrelationRulesDocument = {
 };
 
 async function rulesEditor(user: User, panel: ReturnType<typeof within>) {
-  await user.click(panel.getByText("Rules and analysis"));
+  await user.click(panel.getByText("Rules and coverage documents"));
   return within(panel.getByRole("region", { name: "Correlation rules editor" }));
 }
 
@@ -494,7 +496,7 @@ test("a retained sequence-analysis declaration opens into the structured control
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
-  await user.click(panel.getByText("Rules and analysis"));
+  await user.click(panel.getByText("Rules and coverage documents"));
   const editor = within(panel.getByRole("region", { name: "Sequence analysis editor" }));
   const windows = () => editor.queryAllByRole("button", { name: /^Remove window / }).map((button) => button.textContent);
 

@@ -1,3 +1,4 @@
+import { readCaseIdentity } from "./testkit/navigation";
 // The diagnosis panel, pinned first over its typed callbacks — which request a
 // person's act produces and what the panel does with the engine's answer —
 // and then driven through the whole window over the stubbed facade, so every
@@ -408,11 +409,11 @@ function workspace() {
  * the diagnosis panel is offered at all. */
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  await screen.findByText(WORKSPACE_ROOT);
-  const listed = screen.getByText(CASE_ENTRY, { selector: ".name" }).closest("li")!;
-  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Open case" }));
-  await screen.findByText(CASE_IDENTITY);
+  await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  await readCaseIdentity(user, CASE_IDENTITY);
+  await user.click(screen.getByRole("tab", { name: "Findings" }));
   return within(await screen.findByRole("region", { name: "Diagnosis" }));
 }
 
@@ -554,7 +555,7 @@ test("recurring findings are grouped through the facade, paged over the grouping
   expect((panel.getByRole("button", { name: "Group findings" }) as HTMLButtonElement).disabled).toBe(true);
   expect((panel.getByRole("button", { name: "Open report" }) as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
-  const cancel = within(screen.getByRole("region", { name: "Commands" })).getByRole("button", { name: /^Cancel$/ }) as HTMLButtonElement;
+  const cancel = within(screen.getByRole("region", { name: "Status" })).getByRole("button", { name: /^Cancel$/ }) as HTMLButtonElement;
   expect(cancel.disabled).toBe(false);
   await user.click(cancel);
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
@@ -562,7 +563,7 @@ test("recurring findings are grouped through the facade, paged over the grouping
   expect(await panel.findByText(CANCELLED)).toBeTruthy();
   expect(panel.queryByText("Grouping findings across these cases.")).toBeNull();
   expect(groups()).toBeNull();
-  expect(cancel.disabled).toBe(true);
+  expect(within(screen.getByRole("region", { name: "Status" })).queryByRole("button", { name: /^Cancel$/ })).toBeNull();
 
   // Escape reaches the same Cancel while a grouping asked for from the
   // keyboard runs.

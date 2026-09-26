@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Badge, Report, Status } from "./shell";
+import { Report, Status } from "./shell";
 import type { Indicators } from "./shell";
 import type { CaseResult, GuideResult, GuideTrialId, PracticeResult } from "./bindings";
 import "./guided.css";
@@ -50,173 +49,112 @@ export function GuidedSample({
   onCancel: () => void;
   onCapture?: (output: string) => void;
 }) {
-  const [folder, setFolder] = useState("");
-  const [captureOutput, setCaptureOutput] = useState(CAPTURE_FOLDER);
   const guide = result?.guide ?? null;
   const next = guide?.next ?? null;
   const spec = guide?.spec ?? "";
   const sampleCase = guide?.case ?? "";
   const trial = next === "baseline" || next === "post-fix" ? next : null;
   const captured = capture?.case ?? null;
-  const output = folder || (trial ? RUN_FOLDER[trial] : "");
+  const running = progress !== null;
+
+  // The one thing to do next, as the walkthrough's only primary action.
+  const action =
+    guide === null || next === "sample" ? (
+      <button type="button" className="primary" disabled={busy} onClick={onCreateSample}>
+        Create demo…
+      </button>
+    ) : next === "test" && sampleCase ? (
+      <button type="button" className="primary" disabled={busy} onClick={() => onOpenCase(sampleCase)}>
+        Open case
+      </button>
+    ) : trial && spec ? (
+      running ? (
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      ) : (
+        <button type="button" className="primary" disabled={busy} onClick={() => onRun(trial, RUN_FOLDER[trial])}>
+          {trial === "baseline" ? "Run failing example" : "Run fixed example"}
+        </button>
+      )
+    ) : null;
 
   return (
     <section className="guided" aria-labelledby="guided-sample-title">
-      <h3 id="guided-sample-title">Guided sample</h3>
-      <p>
-        A complete investigation over synthetic evidence, without a terminal: create the sample,
-        author a regression test over it, watch it fail against the fixture&rsquo;s defect, then
-        watch the same test pass once that defect is corrected.
-      </p>
-      <Report indicators={indicators} progress={progress} result={result} />
+      <div className="group-header">
+        <div className="guided-title">
+          <h3 id="guided-sample-title">Demo walkthrough</h3>
+          <span className="badge">Synthetic data</span>
+        </div>
+        <div className="group-aside">{action}</div>
+      </div>
+      <ol className="checklist">
+        {(guide?.steps ?? []).map((step, index) => (
+          <li
+            key={step.id}
+            className={step.done ? "done" : step.id === next ? "current" : undefined}
+            aria-current={step.id === next ? "step" : undefined}
+          >
+            <span className="check-mark" aria-hidden="true">
+              {step.done ? "✓" : index + 1}
+            </span>
+            <span className="check-title">{step.title}</span>
+            <span className="visually-hidden">{step.done ? "Done" : step.id === next ? "Next" : "Not done yet"}</span>
+          </li>
+        ))}
+      </ol>
+      <Report indicators={indicators} progress={progress} result={result && result.state !== "completed" ? result : null} />
       {/* A run that did not complete — dismissed, denied, failed or stopped —
           is reported as the state it reached, never as a verdict and never as
           silence: the folder holds whatever the run wrote before it stopped. */}
       {practice && !practice.practice ? (
-        <Status
-          indicator={indicators.get(practice.state)}
-          state={practice.state}
-          reason={practice.reason}
-        />
+        <Status indicator={indicators.get(practice.state)} state={practice.state} reason={practice.reason} />
       ) : null}
-      {guide === null ? (
-        <p className="hint">
-          Open a workspace folder to see where you are in it, or create the sample workspace to
-          start a new one.
-        </p>
-      ) : null}
-      <ol className="steps">
-        {(guide?.steps ?? []).map((step) => (
-          <li key={step.id} aria-current={step.id === next ? "step" : undefined}>
-            <span className="name">{step.title}</span>
-            <Badge
-              indicator={indicators.get(step.done ? "completed" : "empty")}
-              fallback={step.done ? "done" : "not done yet"}
-            />
-            {step.entry ? <span className="badge">{step.entry}</span> : null}
-            {step.status ? <span className="badge">{step.status}</span> : null}
-            <p className="detail">{step.detail}</p>
-          </li>
-        ))}
-      </ol>
-      {guide === null || next === "sample" ? (
-        <div className="actions">
-          <button type="button" disabled={busy} onClick={onCreateSample}>
-            Create sample…
-          </button>
+      {practice?.practice ? (
+        <div className="result practice" role="status" aria-live="polite">
+          <h4 className="result-title">
+            {practice.practice.trial === "baseline" ? "Failing example" : "Fixed example"}:{" "}
+            <span className={`verdict verdict-${practice.practice.status}`}>{practice.practice.status}</span>
+          </h4>
+          <table className="data-table expectations">
+            <thead>
+              <tr>
+                <th scope="col">Expectation</th>
+                <th scope="col">Check</th>
+                <th scope="col">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {practice.practice.assertions.map((expectation) => (
+                <tr key={expectation.id}>
+                  <th scope="row">{expectation.id}</th>
+                  <td>{expectation.operator}</td>
+                  <td>{expectation.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ) : null}
-      {next === "test" && sampleCase ? (
-        <div className="actions">
-          <p className="hint">
-            Open the sample case, then answer the authoring stages beside it to save the test.
-          </p>
-          <button type="button" disabled={busy} onClick={() => onOpenCase(sampleCase)}>
-            Open case
-          </button>
-        </div>
-      ) : null}
-      {trial && spec ? (
-        <div className="actions">
-          <p className="hint">
-            Runs {spec} against a practice receiver this application binds on a loopback port of
-            this machine. No other host is contacted, and the saved test is not rewritten.
-          </p>
-          <label htmlFor="practice-output">Run folder</label>
-          <p className="hint">
-            A new folder for this run: one that does not already exist, so no earlier run is reused.
-          </p>
-          <input
-            id="practice-output"
-            value={output}
-            disabled={busy}
-            onChange={(event) => setFolder(event.target.value)}
-          />
-          <button
-            type="button"
-            disabled={busy || output === ""}
-            onClick={() => {
-              onRun(trial, output);
-              setFolder("");
-            }}
-          >
-            {trial === "baseline" ? "Run failing example" : "Run fixed example"}
-          </button>
-          <button type="button" disabled={!busy} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      ) : null}
-      {next === null && guide ? (
-        <p className="hint">
-          Every step is done. Both runs are ordinary result evidence in this folder, readable by
-          the command line and by this window after it is closed and reopened.
-        </p>
-      ) : null}
-      {/* Offered once the folder is a sample workspace, beside its steps: it
-          is part of the sample, and never a step of anyone's own project. */}
-      {guide !== null && next !== "sample" && onCapture ? (
-        <form
-          className="actions sample-capture"
-          aria-label="Import fixtures"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onCapture(captureOutput.trim());
-          }}
-        >
-          <h4>Import fixtures</h4>
-          <p className="hint">
-            Imports the two synthetic receiver fixtures readmit ships &mdash; a booking and its
-            reschedule &mdash; as one imported case in this folder, exactly as{" "}
-            <code>readmit sample capture</code> does. It needs no activation, and it accepts those
-            exact bytes and nothing else. You choose the folder holding them in your own folder
-            dialog.
-          </p>
-          <label htmlFor="sample-capture-output">New case folder in this workspace</label>
-          <input
-            id="sample-capture-output"
-            value={captureOutput}
-            disabled={busy}
-            onChange={(event) => setCaptureOutput(event.target.value)}
-          />
-          <button type="submit" disabled={busy || captureOutput.trim() === ""}>
-            Import fixtures…
-          </button>
-        </form>
       ) : null}
       {capture && !captured ? (
         <Status indicator={indicators.get(capture.state)} state={capture.state} reason={capture.reason} />
       ) : null}
       {captured ? (
-        <div className="sample-captured" role="status" aria-live="polite">
+        <div className="result sample-captured" role="status" aria-live="polite">
+          <h4 className="result-title">Imported {captured.name}</h4>
           <p>
-            {captured.name}: {captured.provenance} · {captured.schema} · {captured.sources} sources ·{" "}
-            {captured.occurrences} occurrences · {captured.messages} messages
+            {captured.messages} messages from {captured.sources} {captured.sources === 1 ? "source" : "sources"}
           </p>
-          <p className="identity">Verified identity {captured.identity}</p>
           <button type="button" disabled={busy} onClick={() => onOpenCase(captured.name)}>
-            Open case
+            Open {captured.name}
           </button>
         </div>
       ) : null}
-      {practice?.practice ? (
-        <div className="practice" role="status" aria-live="polite">
-          <p>
-            {practice.practice.output}: <strong>{practice.practice.status}</strong>
-          </p>
-          <ul className="expectations">
-            {practice.practice.assertions.map((expectation) => (
-              <li key={expectation.id}>
-                <span className="name">{expectation.id}</span>
-                <span className="badge">{expectation.operator}</span>
-                <span className="badge">{expectation.status}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="rebound">
-            Rebound onto this run&rsquo;s own folder: {practice.practice.changed_bindings.join(", ")}.
-            Everything the verdict depends on is the saved test&rsquo;s own.
-          </p>
+      {guide !== null && next !== "sample" && onCapture ? (
+        <div className="actions-bar">
+          <button type="button" className="link" disabled={busy} onClick={() => onCapture(CAPTURE_FOLDER)}>
+            Import the receiver fixtures…
+          </button>
         </div>
       ) : null}
     </section>

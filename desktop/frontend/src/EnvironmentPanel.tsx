@@ -1485,7 +1485,7 @@ export function EnvironmentPanel({
               <p>Files Checked: {scanResult.scan.files_checked} · Known Values Checked: {scanResult.scan.known_values_checked}</p>
               {scanResult.scan.unresolved_locations.length > 0 ? (
                 <div>
-                  <p style={{ color: "#c62828" }}>Residual leaks detected in files:</p>
+                  <p style={{ color: "var(--danger)" }}>Residual leaks detected in files:</p>
                   <ul>
                     {scanResult.scan.unresolved_locations.map((loc) => (
                       <li key={loc}>{loc}</li>
@@ -1493,7 +1493,7 @@ export function EnvironmentPanel({
                   </ul>
                 </div>
               ) : (
-                <p style={{ color: "#2e7d32" }}>No residual credential leaks detected in examined files.</p>
+                <p style={{ color: "var(--success)" }}>No residual credential leaks detected in examined files.</p>
               )}
               <p className="environment-disclaimer">{scanResult.scan.limitations}</p>
             </div>
@@ -1582,7 +1582,7 @@ export function EnvironmentPanel({
           </div>
           <WrittenIdentity written={policyWritten} />
 
-          <hr style={{ margin: "1.5rem 0", borderColor: "var(--line, #ccc)" }} />
+          <hr style={{ margin: "1.5rem 0", borderColor: "var(--line)" }} />
 
           <h5>Local Destination Evaluation (No Network Connection)</h5>
           <div className="environment-form-grid">

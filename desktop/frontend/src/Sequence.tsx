@@ -1,106 +1,122 @@
 import { useEffect, useState } from "react";
 import type {
+  BundleDirection,
+  CorrelationLinkage,
   EvidenceReference,
+  Gap,
+  ReferenceKind,
   Sequence as SequenceView,
   SequenceEvent,
   SequenceResult,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
+import { IconButton } from "./IconButton";
+import { Group, More, Stats } from "./ui";
 import "./sequence.css";
 import { CorrelationReview } from "./CorrelationReview";
 import { CorrelationRulesEditor, SequenceAnalysisEditor } from "./RulesEditor";
 import type { CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
 
-/** How every gap the facade reports reads in the window. The facade names them
- * and this maps each to a sentence; none of them is decided here, and none of
- * them is an explanation of why the evidence stops. */
-const GAPS: Record<string, string> = {
-  unknown_observed_time: "The case recorded no observed time, so nothing places this event",
-  unknown_declared_time: "Nothing decoded a time the message itself declares",
-  uninterpreted_declared_time:
-    "The declared time is not shaped like a timestamp; read it in the inspector",
-  unacknowledged_message: "This case holds no acknowledgement of this message",
-  unmatched_ack: "This acknowledgement names a control ID no occurrence of its source carries",
-  ambiguous_ack: "This acknowledgement names a control ID more than one occurrence carries",
+/** Each gap the facade names, as the status a row shows. */
+const GAPS: Record<Gap, string> = {
+  unknown_observed_time: "No time",
+  unknown_declared_time: "No declared time",
+  uninterpreted_declared_time: "Unreadable time",
+  unacknowledged_message: "No ACK",
+  unmatched_ack: "Unmatched ACK",
+  ambiguous_ack: "Ambiguous ACK",
 };
 
-/** How each kind of reference reads. An acknowledgement is what the evidence
- * itself declares; the other three exist only under declared rules. */
-const REFERENCES: Record<string, string> = {
-  acknowledgement: "Acknowledgement recorded by the evidence",
-  link: "Linked by a declared rule",
-  collision: "Equal keys that were never merged",
-  unsupported: "Not evaluated by this rule",
+/** What each gap means, for the badge's tooltip. */
+const GAP_DETAILS: Record<Gap, string> = {
+  unknown_observed_time: "The case recorded no observed time, so nothing places this event.",
+  unknown_declared_time: "Nothing decoded a time the message itself declares.",
+  uninterpreted_declared_time: "The declared time is not shaped like a timestamp.",
+  unacknowledged_message: "The case holds no acknowledgement of this message.",
+  unmatched_ack: "No message of this source carries the control ID this ACK names.",
+  ambiguous_ack: "More than one message carries the control ID this ACK names.",
 };
 
-/** How the two linkage claims read. They are different claims about the same
- * pair of occurrences, and the window never blurs them together. */
-const LINKAGE: Record<string, string> = {
-  observed: "observed — one occurrence names what the other declares",
-  inferred: "inferred — a declared rule found equal keys",
+/** Each kind of relation, as a short name. */
+const REFERENCES: Record<ReferenceKind, string> = {
+  acknowledgement: "ACK",
+  link: "Rule link",
+  collision: "Collision",
+  unsupported: "Not evaluated",
 };
 
-/** How the directions the evidence recorded read as events. */
-const FLOW: Record<string, string> = {
-  outbound: "sent",
-  inbound: "received",
-  unknown: "direction not recorded",
+const LINKAGE: Record<CorrelationLinkage, string> = {
+  observed: "Observed",
+  inferred: "Inferred",
 };
 
-function describe(table: Record<string, string>, code: string): string {
-  return table[code] ?? code;
+const DIRECTION: Record<BundleDirection, string> = {
+  outbound: "Sent",
+  inbound: "Received",
+  unknown: "—",
+};
+
+const KIND: Record<string, string> = {
+  message: "Message",
+  ack: "ACK",
+  unparsed: "Unparsed",
+};
+
+function label<K extends string>(table: Record<K, string>, code: K | string): string {
+  return (table as Record<string, string>)[code] ?? code;
 }
 
-/** A recorded time as it is drawn, and the word for the absence of one. A time
- * the case did not record is stated rather than left blank. */
-function recordedTime(value: string | null): string {
-  return value ?? "unknown";
+function sentence(code: string): string {
+  const words = code.replaceAll("_", " ").replaceAll("-", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** Everything recorded about one occurrence, as the references that name it. */
-function References({ event }: { event: SequenceEvent }) {
+/** The relations recorded about one event. */
+function Relations({ event }: { event: SequenceEvent }) {
   if (event.references.length === 0) {
-    return <p className="hint">Nothing in this case or these rules refers to this occurrence.</p>;
+    return <p className="hint">No links.</p>;
   }
   return (
-    <ul className="references">
-      {event.references.map((reference: EvidenceReference, index: number) => (
-        <li key={`${reference.kind}:${reference.rule ?? ""}:${index}`}>
-          <span className="reference-kind">{describe(REFERENCES, reference.kind)}</span>
-          {reference.rule ? <span className="rule">rule {reference.rule}</span> : null}
-          {reference.operator ? <span className="operator">{reference.operator}</span> : null}
-          {reference.linkage ? (
-            <span className="linkage">{describe(LINKAGE, reference.linkage)}</span>
-          ) : null}
-          {reference.authority ? (
-            <span className="authority">authority {reference.authority}</span>
-          ) : null}
-          {reference.reason ? <span className="reason">{reference.reason}</span> : null}
-          {reference.field ? <span className="selector">{reference.field}</span> : null}
-          {reference.related.length > 0 ? (
-            <span className="related">
-              with {reference.related.join(", ")}
-              {reference.occurrences > reference.related.length + 1
-                ? ` and ${reference.occurrences - reference.related.length - 1} more`
-                : ""}
-            </span>
-          ) : (
-            <span className="related absent">no other occurrence</span>
-          )}
-        </li>
-      ))}
-    </ul>
+    <table className="data-table references">
+      <thead>
+        <tr>
+          <th scope="col">Relation</th>
+          <th scope="col">With</th>
+          <th scope="col">Rule</th>
+          <th scope="col">Linkage</th>
+        </tr>
+      </thead>
+      <tbody>
+        {event.references.map((reference: EvidenceReference, index: number) => (
+          <tr key={`${reference.kind}:${reference.rule ?? ""}:${index}`}>
+            <td>{label(REFERENCES, reference.kind)}</td>
+            <td>
+              {reference.related.length > 0
+                ? reference.related.join(", ") +
+                  (reference.occurrences > reference.related.length + 1
+                    ? ` and ${reference.occurrences - reference.related.length - 1} more`
+                    : "")
+                : "—"}
+            </td>
+            <td>
+              {reference.rule ?? "—"}
+              {reference.field ? <span className="hint"> · {reference.field}</span> : null}
+              {reference.reason ? <span className="hint"> · {reference.reason}</span> : null}
+            </td>
+            <td>{reference.linkage ? label(LINKAGE, reference.linkage) : "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
-/** One verified case as a synchronized event sequence over the lanes of its
- * declared sources.
- *
- * Nothing is decided here. The facade verifies the case with the same reader
- * the command line uses and, where a rules document is named, runs the same
- * correlation engine; this view draws what those two already reported. Opening
- * an event selects that occurrence, so the inspector beside this panel reads
- * the original message, and shows every relation recorded about it. */
+/** One verified case as a timeline: every occurrence in the order its recorded
+ * times put it, with what the evidence shows about each. The facade verifies
+ * the case and, where a rules document is chosen, runs the correlation engine;
+ * this view draws what those reported. The timeline loads when it is shown and
+ * again whenever a setting changes. Selecting an event opens that message
+ * beside the page. */
 export function Sequence({
   rulesEntries,
   analyses,
@@ -115,6 +131,7 @@ export function Sequence({
   caseIdentity,
   onReview,
   onSaved,
+  active = false,
 }: {
   workspace: string;
   /** The identity of the verified case, which an authored sequence-analysis
@@ -122,14 +139,12 @@ export function Sequence({
   caseIdentity?: string;
   onReview: (request: CorrelationReviewRequest, write: boolean) => Promise<CorrelationReviewResult>;
   /** Called after an authored document landed, so the listing and the pickers
-   * above offer the new revision. */
+   * offer the new revision. */
   onSaved?: () => void;
   /** The entries of the open workspace that declare the correlation-rules
-   * contract. The listing classifies each entry by what it declares, so this
-   * picker offers the applicable documents instead of every entry. */
+   * contract. */
   rulesEntries: string[];
-  /** The entries declaring the sequence-analysis contract: the observation
-   * windows and explanations this panel can lay the case out under. */
+  /** The entries declaring the sequence-analysis contract. */
   analyses: string[];
   /** The retained correlation-review directories the review panel can reopen. */
   reviews: string[];
@@ -139,6 +154,8 @@ export function Sequence({
   indicators: Indicators;
   onOpen: (rules: string, offset: number, analysis: string) => void;
   onSelect: (occurrence: string) => void;
+  /** Whether the timeline is on screen: it loads itself the first time it is. */
+  active?: boolean;
 }) {
   const [rules, setRules] = useState("");
   const [analysis, setAnalysis] = useState("");
@@ -146,61 +163,324 @@ export function Sequence({
 
   const sequence: SequenceView | null = result?.sequence ?? null;
 
-  // A new sequence is a new event list, so the event whose references were open
+  // A new sequence is a new event list, so the event whose relations were open
   // is not left open over a window that does not hold it.
   const eventsAreNew = [sequence?.case, sequence?.rules, sequence?.offset].join("\u0000");
   useEffect(() => {
     setOpened(null);
   }, [eventsAreNew]);
 
+  // The timeline is what this view is for, so it loads as soon as it is shown
+  // and nothing else holds the window, rather than behind a button.
+  const unloaded = result === null && progress === null;
+  useEffect(() => {
+    if (active && !busy && unloaded) {
+      onOpen(rules, 0, analysis);
+    }
+    // Only showing the view, or the window coming free, loads it: a change of
+    // setting loads it from its own control.
+  }, [active, busy, unloaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const open = sequence?.events.find((event) => event.occurrence === opened) ?? null;
+  const issues = (sequence?.gaps ?? []).filter((gap) => gap.count > 0);
+  const summary = sequence?.summary ?? null;
+  const paged = sequence ? sequence.total > sequence.events.length || sequence.offset > 0 : false;
 
   return (
     <section className="sequence" aria-label="Sequence">
-      <h3>Sequence</h3>
-      <p className="hint">
-        Every occurrence of this case in the order its recorded times put them, in the lane of the
-        source that holds it. Opening an event selects the original message in the inspector and
-        lists everything recorded about it. Naming a rules document adds the correlations that
-        document declares; there is no default rule set.
-      </p>
+      <h3>Timeline</h3>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onOpen(rules, 0, analysis);
-        }}
-      >
-        <label htmlFor="sequence-rules">Correlation rules</label>
-        <select
-          id="sequence-rules"
-          value={rules}
-          disabled={busy}
-          onChange={(event) => setRules(event.target.value)}
-        >
-          <option value="">No rules — only what the evidence recorded</option>
-          {rulesEntries.map((entry) => (
-            <option key={entry} value={entry}>
-              {entry}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="sequence-analysis">Observations</label>
-        <select id="sequence-analysis" value={analysis} disabled={busy} onChange={(event) => setAnalysis(event.target.value)}>
-          <option value="">No analysis — coverage undeclared</option>
-          {analyses.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
-        </select>
-        <button type="submit" disabled={busy}>
-          View sequence
-        </button>
-      </form>
+      <div className="toolbar">
+        <div className="toolbar-group">
+          <label htmlFor="sequence-rules">Correlation rules</label>
+          <select
+            id="sequence-rules"
+            value={rules}
+            disabled={busy}
+            onChange={(event) => {
+              setRules(event.target.value);
+              onOpen(event.target.value, 0, analysis);
+            }}
+          >
+            <option value="">None</option>
+            {rulesEntries.map((entry) => (
+              <option key={entry} value={entry}>
+                {entry}
+              </option>
+            ))}
+          </select>
+          <label htmlFor="sequence-analysis">Coverage</label>
+          <select
+            id="sequence-analysis"
+            value={analysis}
+            disabled={busy}
+            onChange={(event) => {
+              setAnalysis(event.target.value);
+              onOpen(rules, 0, event.target.value);
+            }}
+          >
+            <option value="">None</option>
+            {analyses.map((entry) => (
+              <option key={entry} value={entry}>
+                {entry}
+              </option>
+            ))}
+          </select>
+        </div>
+        {sequence && summary ? (
+          <div className="toolbar-group">
+            <span className="count">
+              {summary.messages} {summary.messages === 1 ? "message" : "messages"} · {summary.acknowledgements}{" "}
+              {summary.acknowledgements === 1 ? "ACK" : "ACKs"}
+              {summary.unparsed > 0 ? ` · ${summary.unparsed} unparsed` : ""}
+            </span>
+            {paged ? (
+              <div className="pager">
+                <IconButton
+                  icon="previous"
+                  label="Previous events"
+                  disabled={busy || sequence.offset === 0}
+                  onClick={() => onOpen(sequence.rules, Math.max(0, sequence.offset - sequence.limit), sequence.analysis_entry)}
+                />
+                <span>
+                  {sequence.events.length === 0 ? sequence.offset : sequence.offset + 1}–
+                  {sequence.offset + sequence.events.length} of {sequence.total}
+                </span>
+                <IconButton
+                  icon="next"
+                  label="Next events"
+                  disabled={busy || sequence.offset + sequence.events.length >= sequence.total}
+                  onClick={() => onOpen(sequence.rules, sequence.offset + sequence.limit, sequence.analysis_entry)}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
-      <details className="rules-authoring">
-        <summary>Rules and analysis</summary>
-        <p className="hint">
-          Documents are composed with typed controls and validated by the same strict readers the
-          command line uses. Saving writes a new entry; the pickers above then offer it.
-        </p>
+      <Report indicators={indicators} progress={progress} result={result && result.state !== "completed" ? result : null} />
+      {result && result.state !== "completed" && !busy ? (
+        <div className="actions-bar">
+          <button type="button" onClick={() => onOpen(rules, 0, analysis)}>
+            Try again
+          </button>
+        </div>
+      ) : null}
+
+      {sequence && summary ? (
+        <>
+          {issues.length > 0 ? (
+            <ul className="issues" aria-label="Issues">
+              {issues.map((gap) => (
+                <li key={gap.gap} className="issue" title={GAP_DETAILS[gap.gap]}>
+                  <span className="issue-count">{gap.count}</span> {GAPS[gap.gap]}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          <div className="sequence-scroll">
+            <table className="data-table events" aria-rowcount={sequence.total + 1}>
+              <caption className="visually-hidden">
+                {sequence.case}: {summary.occurrences} {summary.occurrences === 1 ? "occurrence" : "occurrences"} over{" "}
+                {sequence.lanes.length} {sequence.lanes.length === 1 ? "source" : "sources"}
+              </caption>
+              <thead>
+                <tr aria-rowindex={1}>
+                  <th scope="col" title={sequence.clock}>
+                    Time
+                  </th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Occurrence</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Direction</th>
+                  <th scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sequence.events.map((event) => (
+                  <tr
+                    key={event.occurrence}
+                    aria-rowindex={event.position + 1}
+                    className={opened === event.occurrence ? "opened" : undefined}
+                  >
+                    <td className={event.observed_at ? "time" : "time unknown"}>{event.observed_at ?? "—"}</td>
+                    <td>{event.source_id}</td>
+                    <th scope="row">
+                      <button
+                        type="button"
+                        className="row-link"
+                        disabled={busy}
+                        aria-expanded={opened === event.occurrence}
+                        aria-controls="sequence-references"
+                        onClick={() => {
+                          setOpened(opened === event.occurrence ? null : event.occurrence);
+                          onSelect(event.occurrence);
+                        }}
+                      >
+                        {event.occurrence}
+                      </button>
+                    </th>
+                    <td>{label(KIND, event.kind)}</td>
+                    <td>{label(DIRECTION, event.direction)}</td>
+                    <td className="status-cell">
+                      {event.gaps.length === 0 ? (
+                        <span className="badge ok">OK</span>
+                      ) : (
+                        event.gaps.map((gap) => (
+                          <span key={gap} className="badge warn" title={GAP_DETAILS[gap]}>
+                            {GAPS[gap]}
+                          </span>
+                        ))
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {open ? (
+            <section
+              className="result event-references"
+              id="sequence-references"
+              aria-label="What is recorded about the selected event"
+            >
+              <h4 className="result-title">{open.occurrence}</h4>
+              <Relations event={open} />
+              {open.referenced > open.references.length ? (
+                <p className="hint">{open.referenced - open.references.length} more not shown.</p>
+              ) : null}
+            </section>
+          ) : null}
+
+          {sequence.report ? (
+            <Group title="Correlations">
+              <Stats
+                label="Correlations"
+                items={[
+                  { label: "Links", value: summary.links },
+                  { label: "Collisions", value: summary.collisions, ...(summary.collisions > 0 ? { tone: "warning" as const } : {}) },
+                  { label: "Not evaluated", value: summary.unsupported, ...(summary.unsupported > 0 ? { tone: "warning" as const } : {}) },
+                ]}
+              />
+              <CorrelationReview
+                key={[workspace, sequence.case, sequence.identity, sequence.rules, sequence.rules_sha256].join("\u0000")}
+                busy={busy}
+                reviews={reviews}
+                context={{ workspace, case: sequence.case, identity: sequence.identity, rules: sequence.rules, rules_sha256: sequence.rules_sha256 ?? "" }}
+                onReview={onReview}
+                onSelect={onSelect}
+              />
+              {sequence.declared.length > 0 ? (
+                <table className="data-table declared">
+                  <thead>
+                    <tr>
+                      <th scope="col">Rule</th>
+                      <th scope="col">Operator</th>
+                      <th scope="col">Scope</th>
+                      <th scope="col">Applied</th>
+                      <th scope="col" className="number">Considered</th>
+                      <th scope="col" className="number">Linked</th>
+                      <th scope="col" className="number">Unlinked</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sequence.declared.map((rule) => (
+                      <tr key={rule.id}>
+                        <th scope="row">{rule.id}</th>
+                        <td>{rule.operator}</td>
+                        <td>
+                          {rule.scope}
+                          {rule.sources?.length ? ` (${rule.sources.join(", ")})` : ""}
+                        </td>
+                        <td>{rule.applied ? "Yes" : "No"}</td>
+                        <td className="number">{rule.considered}</td>
+                        <td className="number">{rule.linked}</td>
+                        <td className="number">{rule.unlinked}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+              {sequence.unsupported.length > 0 ? (
+                <ul className="gaps" aria-label="Not evaluated">
+                  {sequence.unsupported.map((item, index) => (
+                    <li key={`${item.code}:${item.occurrence ?? ""}:${index}`}>
+                      {[item.occurrence, item.rule ? `rule ${item.rule}` : "", item.field, item.code].filter(Boolean).join(" · ")}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <More summary="Rules document">
+                <dl className="facts">
+                  <div className="fact">
+                    <dt>Document</dt>
+                    <dd>{sequence.rules}</dd>
+                  </div>
+                  <div className="fact">
+                    <dt>SHA-256</dt>
+                    <dd className="identity">{sequence.rules_sha256}</dd>
+                  </div>
+                </dl>
+              </More>
+            </Group>
+          ) : null}
+
+          {sequence.analysis ? (
+            <Group title="Coverage">
+              <section aria-label="Sequence explanations">
+                <table className="data-table coverage">
+                  <thead>
+                    <tr>
+                      <th scope="col">Source</th>
+                      <th scope="col">Coverage</th>
+                      <th scope="col">From</th>
+                      <th scope="col">To</th>
+                      <th scope="col" className="number">Untimed</th>
+                      <th scope="col" className="number">Outside</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sequence.analysis.coverage.map((window) => (
+                      <tr key={window.source}>
+                        <th scope="row">{window.source}</th>
+                        <td>{sentence(window.coverage)}</td>
+                        <td>{window.start ?? "—"}</td>
+                        <td>{window.end ?? "—"}</td>
+                        <td className="number">{window.untimed}</td>
+                        <td className="number">{window.outside}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {sequence.analysis.findings.length > 0 ? (
+                  <>
+                    <h5>
+                      Findings <span className="count">{sequence.analysis.total_findings} in this case</span>
+                    </h5>
+                    <ul className="findings-list">
+                      {sequence.analysis.findings.map((finding, index) => (
+                        <li key={index}>
+                          <button type="button" className="row-link" disabled={busy} onClick={() => onSelect(finding.occurrence)}>
+                            {finding.occurrence}
+                          </button>{" "}
+                          <strong>{sentence(finding.kind)}</strong> · {finding.source}
+                          {finding.related ? ` · with ${finding.related}` : ""} — {finding.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="hint">No findings.</p>
+                )}
+              </section>
+            </Group>
+          ) : null}
+        </>
+      ) : null}
+
+      <More summary="Rules and coverage documents" className="rules-authoring">
         <CorrelationRulesEditor
           workspace={workspace}
           entries={rulesEntries}
@@ -214,277 +494,7 @@ export function Sequence({
           busy={busy}
           {...(onSaved ? { onSaved } : {})}
         />
-      </details>
-
-      <Report indicators={indicators} progress={progress} result={result} />
-
-      {sequence ? (
-        <>
-          <p className="counts">
-            <span>
-              {sequence.summary.sent} sent · {sequence.summary.received} received ·{" "}
-              {sequence.summary.unknown_direction} with no recorded direction
-            </span>
-            <span>
-              {sequence.summary.messages} message
-              {sequence.summary.messages === 1 ? "" : "s"} ·{" "}
-              {sequence.summary.acknowledgements} acknowledgement
-              {sequence.summary.acknowledgements === 1 ? "" : "s"} · {sequence.summary.unparsed}{" "}
-              nothing decoded
-            </span>
-            <span className="unsettled">
-              {sequence.summary.ordered} placed by a recorded time · {sequence.summary.unordered}{" "}
-              with no time to place them
-            </span>
-            {sequence.report ? (
-              <span className="boundary">
-                {sequence.summary.links} link{sequence.summary.links === 1 ? "" : "s"} ·{" "}
-                {sequence.summary.collisions} collision
-                {sequence.summary.collisions === 1 ? "" : "s"} · {sequence.summary.unsupported} not
-                evaluated · {sequence.report}
-              </span>
-            ) : (
-              <span className="boundary">no correlation rules were applied</span>
-            )}
-          </p>
-          <p className="scope">{sequence.clock}</p>
-          <p className="scope">{sequence.scope}</p>
-          {sequence.boundary ? <p className="scope">{sequence.boundary}</p> : null}
-
-          {sequence.rules ? <CorrelationReview
-            key={[workspace, sequence.case, sequence.identity, sequence.rules, sequence.rules_sha256].join("\u0000")}
-            busy={busy} reviews={reviews}
-            context={{workspace, case: sequence.case, identity: sequence.identity, rules: sequence.rules, rules_sha256: sequence.rules_sha256 ?? ""}}
-            onReview={onReview}
-            onSelect={onSelect}
-          /> : null}
-
-          {sequence.analysis ? <section aria-label="Sequence explanations">
-            <h4>Observation windows and explanations</h4>
-            <p>Applied declaration: {sequence.analysis_entry}; clock comparison tolerance {sequence.analysis.clock_tolerance_seconds} seconds.</p>
-            <p>{sequence.analysis.boundary}</p>
-            <ul>{sequence.analysis.coverage.map((window) => <li key={window.source}>
-              {window.source}: operator-declared coverage {window.coverage}; {window.start ?? "unknown start"} to {window.end ?? "unknown end"}.
-              {" "}{window.untimed} untimed; {window.outside} outside the declared window.
-            </li>)}</ul>
-            <p>{sequence.analysis.total_findings} findings in the whole case; showing findings for this event page.</p>
-            <ul>{sequence.analysis.findings.map((finding, index) => <li key={index}>
-              <button type="button" disabled={busy} onClick={() => onSelect(finding.occurrence)}>{finding.occurrence}</button>
-              {" "}{finding.kind.replaceAll("_", " ")}; source {finding.source}{finding.related ? `; related ${finding.related}` : ""}: {finding.detail}
-            </li>)}</ul>
-          </section> : <p>Observation coverage is undeclared. Choose a sequence analysis document to assess windows, retry declarations and downstream expectations.</p>}
-          <h4>Lanes</h4>
-          <table className="lanes">
-            <thead>
-              <tr>
-                <th scope="col">Source</th>
-                <th scope="col">Occurrences</th>
-                <th scope="col">Placed</th>
-                <th scope="col">Unplaced</th>
-                <th scope="col">Earliest recorded</th>
-                <th scope="col">Latest recorded</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sequence.lanes.map((lane) => (
-                <tr key={lane.source_id}>
-                  <th scope="row">{lane.source_id}</th>
-                  <td>
-                    {lane.occurrences} ({lane.messages} message
-                    {lane.messages === 1 ? "" : "s"}, {lane.acknowledgements} ack
-                    {lane.acknowledgements === 1 ? "" : "s"}, {lane.unparsed} undecoded)
-                  </td>
-                  <td>{lane.ordered}</td>
-                  <td>{lane.unordered}</td>
-                  <td>{recordedTime(lane.earliest)}</td>
-                  <td>{recordedTime(lane.latest)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="hint">
-            Each lane spans its own source's clock. Two lanes are not a shared timeline, and the
-            distance between them is not a duration.
-          </p>
-
-          <h4>Evidence gaps</h4>
-          <ul className="gap-counts">
-            {sequence.gaps.map((gap) => (
-              <li key={gap.gap} className={gap.count === 0 ? "none" : undefined}>
-                {gap.count} · {describe(GAPS, gap.gap)}
-              </li>
-            ))}
-          </ul>
-
-          <div className="sequence-window">
-            <button
-              type="button"
-              disabled={busy || sequence.offset === 0}
-              onClick={() => onOpen(sequence.rules, Math.max(0, sequence.offset - sequence.limit), sequence.analysis_entry)}
-            >
-              Previous {sequence.limit}
-            </button>
-            <span>
-              Events {sequence.events.length === 0 ? sequence.offset : sequence.offset + 1}–
-              {sequence.offset + sequence.events.length} of {sequence.total}
-            </span>
-            <button
-              type="button"
-              disabled={busy || sequence.offset + sequence.events.length >= sequence.total}
-              onClick={() => onOpen(sequence.rules, sequence.offset + sequence.limit, sequence.analysis_entry)}
-            >
-              Next {sequence.limit}
-            </button>
-          </div>
-
-          <div className="sequence-scroll">
-            <table className="events" aria-rowcount={sequence.total + 1}>
-              <caption>
-                {sequence.case} · {sequence.summary.occurrences} occurrence
-                {sequence.summary.occurrences === 1 ? "" : "s"} over {sequence.lanes.length} source
-                {sequence.lanes.length === 1 ? "" : "s"}
-              </caption>
-              <thead>
-                <tr aria-rowindex={1}>
-                  <th scope="col">Position</th>
-                  <th scope="col">Lane</th>
-                  <th scope="col">Event</th>
-                  <th scope="col">Observed</th>
-                  <th scope="col">Declared</th>
-                  <th scope="col">Gaps</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sequence.events.map((event) => (
-                  <tr
-                    key={event.occurrence}
-                    aria-rowindex={event.position + 1}
-                    className={`event-${event.ordering}${
-                      opened === event.occurrence ? " opened" : ""
-                    }`}
-                  >
-                    <th scope="row">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        aria-expanded={opened === event.occurrence}
-                        aria-controls="sequence-references"
-                        onClick={() => {
-                          setOpened(opened === event.occurrence ? null : event.occurrence);
-                          onSelect(event.occurrence);
-                        }}
-                      >
-                        {event.position}
-                      </button>
-                    </th>
-                    <td className="lane">{event.source_id}</td>
-                    <td className="event">
-                      <span className="occurrence">{event.occurrence}</span>
-                      <span className="kind">{event.kind}</span>
-                      <span className="flow">{describe(FLOW, event.direction)}</span>
-                    </td>
-                    <td className="observed">
-                      {recordedTime(event.observed_at)}
-                      {event.ordering === "unknown" ? (
-                        <span className="unplaced">not placed</span>
-                      ) : null}
-                    </td>
-                    <td className="declared">
-                      {event.declared_time ? event.declared_time : event.declared_state}
-                    </td>
-                    <td className="gaps">
-                      {event.gaps.length === 0 ? (
-                        <span className="none">—</span>
-                      ) : (
-                        event.gaps.map((gap) => (
-                          <span key={gap} className="gap">
-                            {gap}
-                          </span>
-                        ))
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {open ? (
-            <section
-              className="event-references"
-              id="sequence-references"
-              aria-label="What is recorded about the selected event"
-            >
-              <h4>
-                {open.occurrence} · {open.referenced} reference
-                {open.referenced === 1 ? "" : "s"}
-              </h4>
-              {open.gaps.length > 0 ? (
-                <ul className="event-gaps">
-                  {open.gaps.map((gap) => (
-                    <li key={gap}>{describe(GAPS, gap)}</li>
-                  ))}
-                </ul>
-              ) : null}
-              <References event={open} />
-              {open.referenced > open.references.length ? (
-                <p className="hint">
-                  {open.referenced - open.references.length} further reference
-                  {open.referenced - open.references.length === 1 ? "" : "s"} name this occurrence
-                  and are not drawn here.
-                </p>
-              ) : null}
-              <p className="hint">
-                These are positions and relations, not values. The inspector beside this panel is
-                reading this occurrence; open a position there to read what is at it.
-              </p>
-            </section>
-          ) : null}
-
-          {sequence.declared.length > 0 ? (
-            <>
-              <h4>Rules applied</h4>
-              <ul className="declared">
-                {sequence.declared.map((rule) => (
-                  <li key={rule.id}>
-                    <span className="rule">{rule.id}</span>
-                    <span className="operator">{rule.operator}</span>
-                    <span className="scope-name">
-                      {rule.scope}
-                      {rule.sources?.length ? ` (${rule.sources.join(", ")})` : ""}
-                    </span>
-                    <span className="applied">{rule.applied ? "applied" : "not applied"}</span>
-                    <span className="counts">
-                      {rule.considered} considered · {rule.linked} linked · {rule.unlinked} unlinked
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="hint">
-                Read under the rules in {sequence.rules}, whose canonical rules SHA-256 is{" "}
-                {sequence.rules_sha256}: the digest readmit correlate reports for them and a
-                sequence analysis names.
-              </p>
-            </>
-          ) : null}
-
-          {sequence.unsupported.length > 0 ? (
-            <>
-              <h4>Unevaluated evidence</h4>
-              <ul className="gaps">
-                {sequence.unsupported.map((item, index) => (
-                  <li key={`${item.code}:${item.occurrence ?? ""}:${index}`}>
-                    {item.occurrence ? `${item.occurrence} · ` : ""}
-                    {item.rule ? `rule ${item.rule} · ` : ""}
-                    {item.field ? `${item.field} · ` : ""}
-                    {item.code}
-                  </li>
-                ))}
-              </ul>
-            </>
-          ) : null}
-        </>
-      ) : null}
+      </More>
     </section>
   );
 }

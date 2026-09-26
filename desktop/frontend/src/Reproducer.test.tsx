@@ -1,3 +1,6 @@
+import { openCaseFlow } from "./testkit/navigation";
+import { indexResultFixture } from "./testkit/fixtures";
+import { readCaseIdentity } from "./testkit/navigation";
 // The reproducer panel and the revision comparison beside it, driven through
 // the whole window as a person drives them, over the stubbed facade. What a
 // plan retains, what a build writes and what the project records are the
@@ -25,7 +28,6 @@ import {
   CASE_ENTRY,
   CASE_IDENTITY,
   GRID_OCCURRENCE,
-  INDEX_ENTRY,
   NEXT_OCCURRENCE,
   WORKSPACE_ROOT,
   caseResult,
@@ -83,14 +85,14 @@ async function openGrid(facade: Awaited<ReturnType<typeof renderApp>>["facade"],
   facade.reply({ SelectWorkspace: () => folderWithCase() });
   // Both the first-run block and the commands beside it offer Open workspace…,
   // so the first of them is clicked: both run the same open action.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  await screen.findByText(WORKSPACE_ROOT);
-  facade.reply({ OpenCase: () => caseResult() });
-  await user.click(screen.getByRole("button", { name: "Open case" }));
-  await screen.findByText(CASE_IDENTITY);
-  facade.reply({ OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
-  await user.selectOptions(screen.getByLabelText("Index"), INDEX_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open index" }));
+  await user.click(screen.getAllByRole("button", { name: "Open…" })[0]!);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  facade.reply({ OpenCase: () => caseResult(), DescribeIndex: () => indexResultFixture(), OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
+  await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
+  await readCaseIdentity(user, CASE_IDENTITY);
+  await screen.findByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` });
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Build a reproducer" }));
   return within(await screen.findByRole("region", { name: "Reproducer editor" }));
 }
 
@@ -164,11 +166,13 @@ test("a build is handed to the revision comparison, which compares it with the r
   const { facade } = await renderApp(reproducerHandlers);
   const panel = await openGrid(facade, user);
   await build(user, panel, "incident-reproducer");
+  await openCaseFlow(user, "Compare with another case");
   const revisions = within(screen.getByRole("region", { name: "Reproducer revisions" }));
   await user.type(revisions.getByLabelText("Later run"), "run-of-something-else");
 
   // The build becomes the later revision, the run named for whatever was there
   // before is cleared, and focus waits on the earlier revision.
+  await openCaseFlow(user, "Build a reproducer");
   await user.click(panel.getByLabelText("Revision folder"));
   await tabTo(user, panel.getByRole("button", { name: "Compare revisions" }));
   await user.keyboard("{Enter}");
@@ -216,6 +220,7 @@ test("a build is handed to the revision comparison, which compares it with the r
 
   // Handing the build over again withdraws the comparison on screen, which
   // belonged to the revisions named before.
+  await openCaseFlow(user, "Build a reproducer");
   await user.click(panel.getByRole("button", { name: "Compare revisions" }));
   expect(revisions.queryByText("Both were built from the same case")).toBeNull();
 });

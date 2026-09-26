@@ -1,3 +1,4 @@
+import { readCaseIdentity } from "./testkit/navigation";
 // The comparison panel driven through the window, as a person drives it: the
 // real App over the stubbed facade, so every act below reaches Compare,
 // NormalizeCompare, OpenNormalizationPolicy or SaveNormalizationPolicy the way
@@ -72,11 +73,12 @@ function workspace() {
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
   // The toolbar's Open workspace…, which the first-run panel names identically.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" }).at(-1)!);
-  await screen.findByText(WORKSPACE_ROOT);
-  const listed = screen.getByText(CASE_ENTRY, { selector: ".name" }).closest("li")!;
-  await user.click(within(listed as HTMLElement).getByRole("button", { name: "Open case" }));
-  await screen.findByText(CASE_IDENTITY);
+  await user.click(screen.getAllByRole("button", { name: "Open…" }).at(-1)!);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  await readCaseIdentity(user, CASE_IDENTITY);
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Compare with another case" }));
   return within(await screen.findByRole("region", { name: "Compare collections" }));
 }
 

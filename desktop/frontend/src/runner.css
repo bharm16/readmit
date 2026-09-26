@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  border-top: 1px solid var(--border, #ddd);
+  border-top: 1px solid var(--border);
   margin-top: 1rem;
   padding-top: 0.75rem;
 }
@@ -32,7 +32,7 @@
 }
 
 .runner-note {
-  color: var(--muted, #666);
+  color: var(--muted);
   font-size: 0.9rem;
   margin: 0;
 }
@@ -69,18 +69,18 @@
 }
 
 .runner-ok {
-  color: var(--ok, #1a7f37);
+  color: var(--success);
   margin: 0;
 }
 
 .runner-refused {
-  color: var(--refused, #b42318);
+  color: var(--danger);
   margin: 0;
 }
 
 .runner-document {
-  background: var(--surface, #f6f6f6);
-  border: 1px solid var(--border, #ddd);
+  background: var(--surface);
+  border: 1px solid var(--border);
   font-size: 0.78rem;
   overflow-x: auto;
   padding: 0.5rem;
@@ -88,12 +88,12 @@
 }
 
 .runner-inspect {
-  border-left: 3px solid var(--border, #ddd);
+  border-left: 3px solid var(--border);
   padding-left: 0.6rem;
 }
 
 .runner-gate-step {
-  border: 1px solid var(--border, #ddd);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -109,13 +109,13 @@
 
 .runner-table th,
 .runner-table td {
-  border-bottom: 1px solid var(--border, #ddd);
+  border-bottom: 1px solid var(--border);
   padding: 0.2rem 0.4rem;
   text-align: left;
 }
 
 .runner-schedule-row {
-  border: 1px solid var(--border, #ddd);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

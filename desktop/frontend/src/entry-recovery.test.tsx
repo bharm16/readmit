@@ -3,10 +3,10 @@
 // them, a preflight refusal on the run panel opens the configuration the
 // refusal is about, and no supported journey dead-ends in a CLI instruction.
 import { expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
-import { folderChosen, folderWithCase, refused, WORKSPACE_ROOT } from "./testkit/fixtures";
+import { goTo, page, sidebar } from "./testkit/navigation";
+import { CASE_ENTRY, folderChosen, folderWithCase, refused, WORKSPACE_ROOT } from "./testkit/fixtures";
 import type { Artifact } from "./bindings";
 
 const SAVED_SPEC = "saved-spec.json";
@@ -21,15 +21,13 @@ test("a refused workspace open offers choosing a different folder as its next ac
   const { facade } = await renderApp({
     SelectWorkspace: () => refused("this account cannot read that folder"),
   });
-  // The first-run card and the command region's action bar both offer the same
-  // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  expect(screen.getByText(/this account cannot read that folder/i)).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Open…" }));
+  expect(page().getByText(/this account cannot read that folder/i)).toBeTruthy();
   // The repair action is the real dialog again, not advice to read a manual.
   facade.reply({ SelectWorkspace: () => folderWithCase() });
-  await user.click(screen.getByRole("button", { name: "Change folder…" }));
+  await user.click(page().getByRole("button", { name: "Choose another folder…" }));
   expect(facade.callsTo("SelectWorkspace").length).toBe(2);
-  expect(screen.getByText(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
 });
 
 test("a refused case verification offers the way back to the folder listing", async () => {
@@ -38,14 +36,13 @@ test("a refused case verification offers the way back to the folder listing", as
     SelectWorkspace: () => folderWithCase(),
     OpenCase: () => refused("the case cannot be verified"),
   });
-  // The first-run card and the command region's action bar both offer the same
-  // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  await screen.findByText(WORKSPACE_ROOT);
-  await user.click(await screen.findByRole("button", { name: "Open case" }));
-  expect(screen.getByText(/the case cannot be verified/i)).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Back to files" }));
-  expect(document.activeElement?.classList.contains("region-navigation")).toBe(true);
+  await user.click(page().getByRole("button", { name: "Open…" }));
+  await user.click(await page().findByRole("button", { name: `Open case ${CASE_ENTRY}` }));
+  expect(await page().findByText(/the case cannot be verified/i)).toBeTruthy();
+  // The refusal is shown on the case list itself, which stays usable: the way
+  // back is already on screen.
+  expect(page().getByRole("button", { name: `Open case ${CASE_ENTRY}` })).toBeTruthy();
+  expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
   expect(facade.callsTo("OpenCase").length).toBe(1);
 });
 
@@ -55,23 +52,24 @@ test("a run preflight refusal opens the configuration the refusal is about", asy
     SelectWorkspace: () => folderWithSpec(),
     PreflightRun: () => refused("the send policy refuses this destination"),
   });
-  // The first-run card and the command region's action bar both offer the same
-  // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0]!);
-  await screen.findByText(WORKSPACE_ROOT);
-  const evidence = within(screen.getByRole("region", { name: "Evidence" }));
-  await user.selectOptions(evidence.getByLabelText("Saved test or suite"), SAVED_SPEC);
-  await user.click(evidence.getByRole("button", { name: "Preview run" }));
-  expect(await screen.findByText(/the send policy refuses this destination/i)).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Open…" }));
+  await sidebar().findByTitle(WORKSPACE_ROOT);
+  await goTo(user, "Runs");
+  await user.selectOptions(page().getByLabelText("Saved test or suite"), SAVED_SPEC);
+  await user.click(page().getByRole("button", { name: "Preview run" }));
+  expect(await page().findByText(/the send policy refuses this destination/i)).toBeTruthy();
   // Each refusal's next action is the real configuration screen.
-  await user.click(screen.getByRole("button", { name: "Environments" }));
-  expect(document.activeElement?.classList.contains("region-inspector")).toBe(true);
-  await user.click(screen.getByRole("button", { name: "License" }));
-  expect(document.activeElement?.classList.contains("region-privacy")).toBe(true);
+  await user.click(page().getByRole("button", { name: "Environments" }));
+  expect(page().getByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
+  await goTo(user, "Runs");
+  await user.click(page().getByRole("button", { name: "License" }));
+  expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+  expect(page().getByRole("tab", { name: "License" }).getAttribute("aria-selected")).toBe("true");
 });
 
 test("no supported journey ends in a CLI instruction", async () => {
   await renderApp();
-  const source = document.querySelector("main")?.textContent ?? "";
+  const source = document.body.textContent ?? "";
   expect(source).not.toMatch(/readmit (project revise|diagnose review|run|replay)\b/);
 });
