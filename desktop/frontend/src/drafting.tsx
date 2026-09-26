@@ -295,7 +295,11 @@ const WORDS: Record<Retention["state"], string> = {
 
 /** What happened to the last retention, and what a person can do about it. A
  * persistence failure is visible, with a retry or an explicit discard; a
- * conflict offers keeping the text as the new draft it now is. */
+ * conflict offers keeping the text as the new draft it now is. Each action is
+ * shown only when its owner passes the real operation: Retry draft save writes
+ * the draft again (never the send, run or export it belongs to), and Discard
+ * draft is for an editor whose callback really discards its retained draft,
+ * keeping the text on screen when that discard is refused. */
 export function RetentionStatus({
   retention,
   onRetry,
@@ -321,17 +325,17 @@ export function RetentionStatus({
         <p className="actions">
           {retention.state === "not-retained" && onRetry ? (
             <button type="button" onClick={onRetry}>
-              Retain it again
+              Retry draft save
             </button>
           ) : null}
           {retention.state === "conflict" && onKeepAsNew ? (
             <button type="button" onClick={onKeepAsNew}>
-              Keep it as a new draft
+              Keep as new draft
             </button>
           ) : null}
           {onDiscard ? (
             <button type="button" onClick={onDiscard}>
-              Discard this text
+              Discard draft
             </button>
           ) : null}
         </p>

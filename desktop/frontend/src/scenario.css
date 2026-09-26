@@ -91,3 +91,33 @@
   padding: 0.35rem 0.5rem;
   vertical-align: top;
 }
+
+.scenario-section fieldset {
+  display: grid;
+  gap: 0.6rem;
+  border: 1px solid var(--border, #c5ccd3);
+  padding: 0.6rem 0.8rem;
+  min-width: 0;
+}
+
+.scenario-section label.scenario-choice {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.scenario-guard {
+  border-left: 4px solid var(--danger, #8a2f2f);
+  padding: 0.5rem 0.75rem;
+}
+
+/* Long synthetic identifiers, paths and digests wrap instead of widening the
+   window. */
+.scenario-section td,
+.scenario-section li,
+.scenario-section dd,
+.scenario-section p,
+.scenario-section input {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

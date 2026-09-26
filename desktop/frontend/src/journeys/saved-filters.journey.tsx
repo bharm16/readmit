@@ -53,9 +53,9 @@ async function searched(journey: Journey, args: string[]): Promise<string[]> {
  * fields, so a filter can ask which message each occurrence is. */
 async function indexMessageTypes(user: UserEvent): Promise<void> {
   const inspector = within(region("Inspector"));
-  await press(user, await inspector.findByRole("button", { name: "Build case index" }));
+  await press(user, await inspector.findByRole("button", { name: "Set up index" }));
   const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-  await enter(user, form.getByLabelText("Custom field selector"), "MSH-9");
+  await enter(user, form.getByLabelText("Field selector"), "MSH-9");
   await press(user, form.getByRole("button", { name: "Add field" }));
   await user.click(form.getByRole("radio", { name: /^Plaintext values/ }));
   await press(user, form.getByRole("button", { name: "Build index" }));
@@ -69,7 +69,8 @@ test("named filters are saved from the keyboard, listed and selected, and each r
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
   await indexMessageTypes(user);
   const inspector = within(region("Inspector"));
-  const form = within(inspector.getByRole("form", { name: "Save a filter" }));
+  await press(user, inspector.getByRole("button", { name: "New filter" }));
+  const form = within(await inspector.findByRole("form", { name: "Filter editor" }));
   const picker = inspector.getByLabelText("Saved filter") as HTMLSelectElement;
   expect(rows()).toEqual(["s0001-e000001", "s0002-e000001"]);
   expect(inspector.getByText("0 of 2 excluded by no filter")).toBeTruthy();
@@ -77,12 +78,12 @@ test("named filters are saved from the keyboard, listed and selected, and each r
   // Saved from the keyboard: Tab to the name, type the question, and Enter
   // in the last field saves and selects it. The grid is drawn again with the
   // one reschedule, as index search finds it.
-  await tabTo(user, form.getByLabelText("Name"));
+  await tabTo(user, form.getByLabelText("Filter name"));
   await user.keyboard("reschedules");
-  await tabTo(user, form.getByLabelText("Field"));
+  await tabTo(user, form.getByLabelText("Field selector"));
   // A bracket starts a key name for user-event, so a literal one is doubled.
   await user.keyboard("MSH[[1]-9[[1]");
-  await tabTo(user, form.getByLabelText("Value"));
+  await tabTo(user, form.getByLabelText("Match value"));
   await user.keyboard("S13{Enter}");
   expect(await inspector.findByText("1 of 2 excluded by reschedules")).toBeTruthy();
   expect(picker.value).toBe("reschedules");
@@ -90,9 +91,9 @@ test("named filters are saved from the keyboard, listed and selected, and each r
   expect(rows()).toEqual(["s0002-e000001"]);
 
   // A second filter replaces the selection with itself.
-  await enter(user, form.getByLabelText("Name"), "bookings");
-  await enter(user, form.getByLabelText("Value"), "S12");
-  await press(user, form.getByRole("button", { name: "Save and select" }));
+  await enter(user, form.getByLabelText("Filter name"), "bookings");
+  await enter(user, form.getByLabelText("Match value"), "S12");
+  await press(user, form.getByRole("button", { name: "Save and apply filter" }));
   expect(await inspector.findByText("1 of 2 excluded by bookings")).toBeTruthy();
   expect(rows()).toEqual(await searched(journey, ["--field", "MSH-9", "--contains", "S12"]));
   expect(rows()).toEqual(["s0001-e000001"]);
@@ -100,7 +101,7 @@ test("named filters are saved from the keyboard, listed and selected, and each r
   // The picker lists every saved filter, and choosing one draws the grid
   // again through it; choosing none shows every occurrence and excludes none.
   expect(within(picker).getAllByRole("option").map((option) => option.textContent)).toEqual([
-    "No filter — show every occurrence",
+    "No filter",
     "reschedules",
     "bookings",
   ]);
@@ -135,22 +136,23 @@ test("a refused filter, a discarded one and an unreadable filter document change
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
   await indexMessageTypes(user);
   const inspector = within(region("Inspector"));
-  const form = within(inspector.getByRole("form", { name: "Save a filter" }));
+  await press(user, inspector.getByRole("button", { name: "New filter" }));
+  const form = within(await inspector.findByRole("form", { name: "Filter editor" }));
   const picker = inspector.getByLabelText("Saved filter") as HTMLSelectElement;
-  await enter(user, form.getByLabelText("Name"), "reschedules");
-  await enter(user, form.getByLabelText("Field"), "MSH[[1]-9[[1]");
-  await enter(user, form.getByLabelText("Value"), "S13");
-  await press(user, form.getByRole("button", { name: "Save and select" }));
+  await enter(user, form.getByLabelText("Filter name"), "reschedules");
+  await enter(user, form.getByLabelText("Field selector"), "MSH[[1]-9[[1]");
+  await enter(user, form.getByLabelText("Match value"), "S13");
+  await press(user, form.getByRole("button", { name: "Save and apply filter" }));
   expect(await inspector.findByText("1 of 2 excluded by reschedules")).toBeTruthy();
   const saved = journey.readFile("shell-state/filters.json");
   const saves = journey.callsTo("SaveFilter").length;
 
   // A field named other than canonically is refused: nothing is saved, the
   // selection stays, and the grid still draws what it drew.
-  await enter(user, form.getByLabelText("Name"), "patients");
-  await enter(user, form.getByLabelText("Field"), "PID-3");
-  await enter(user, form.getByLabelText("Value"), "SYNTH");
-  await press(user, form.getByRole("button", { name: "Save and select" }));
+  await enter(user, form.getByLabelText("Filter name"), "patients");
+  await enter(user, form.getByLabelText("Field selector"), "PID-3");
+  await enter(user, form.getByLabelText("Match value"), "SYNTH");
+  await press(user, form.getByRole("button", { name: "Save and apply filter" }));
   expect(await inspector.findByText(/^the filter was not saved: /)).toBeTruthy();
   expect(journey.readFile("shell-state/filters.json")).toBe(saved);
   expect(picker.value).toBe("reschedules");
@@ -159,14 +161,14 @@ test("a refused filter, a discarded one and an unreadable filter document change
 
   // Escape discards the unsaved filter and writes nothing; so does its own
   // control. Focus is back on the first field either way.
-  await enter(user, form.getByLabelText("Value"), "S12");
+  await enter(user, form.getByLabelText("Match value"), "S12");
   await user.keyboard("{Escape}");
-  expect((form.getByLabelText("Name") as HTMLInputElement).value).toBe("");
-  expect((form.getByLabelText("Field") as HTMLInputElement).value).toBe("");
-  expect(document.activeElement).toBe(form.getByLabelText("Name"));
-  await enter(user, form.getByLabelText("Name"), "never saved");
-  await press(user, form.getByRole("button", { name: "Discard the unsaved filter" }));
-  expect((form.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+  expect((form.getByLabelText("Filter name") as HTMLInputElement).value).toBe("");
+  expect((form.getByLabelText("Field selector") as HTMLInputElement).value).toBe("");
+  expect(document.activeElement).toBe(form.getByLabelText("Filter name"));
+  await enter(user, form.getByLabelText("Filter name"), "never saved");
+  await press(user, form.getByRole("button", { name: "Discard filter draft" }));
+  expect((form.getByLabelText("Filter name") as HTMLInputElement).value).toBe("");
   expect(journey.callsTo("SaveFilter")).toHaveLength(saves + 1);
   expect(journey.readFile("shell-state/filters.json")).toBe(saved);
   expect(picker.value).toBe("reschedules");
@@ -182,10 +184,10 @@ test("a refused filter, a discarded one and an unreadable filter document change
   expect(rows()).toEqual(["s0002-e000001"]);
   expect(journey.callsTo("OpenGrid").at(-1)?.args[1]).toBe("reschedule-feed");
   const drawn = journey.callsTo("OpenGrid").length;
-  await enter(user, form.getByLabelText("Name"), "bookings");
-  await enter(user, form.getByLabelText("Field"), "MSH[[1]-9[[1]");
-  await enter(user, form.getByLabelText("Value"), "S12");
-  await press(user, form.getByRole("button", { name: "Save and select" }));
+  await enter(user, form.getByLabelText("Filter name"), "bookings");
+  await enter(user, form.getByLabelText("Field selector"), "MSH[[1]-9[[1]");
+  await enter(user, form.getByLabelText("Match value"), "S12");
+  await press(user, form.getByRole("button", { name: "Save and apply filter" }));
   await waitFor(() => expect(journey.callsTo("SaveFilter").at(-1)?.settled).toBe(true));
   expect(await inspector.findByText(unreadable)).toBeTruthy();
   expect(journey.callsTo("OpenGrid")).toHaveLength(drawn);

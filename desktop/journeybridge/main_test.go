@@ -122,10 +122,10 @@ func TestCallsDecodeAndSettleAsWailsDispatchesThem(t *testing.T) {
 func TestDialogsAnswerOnlyWhatWasScripted(t *testing.T) {
 	d := &scriptedDialogs{}
 	chosen := t.TempDir()
-	d.script(answer{kind: "folder", title: "Open a readmit workspace folder", paths: []string{chosen}})
+	d.script(answer{kind: "folder", title: "Open workspace", paths: []string{chosen}})
 	d.script(answer{kind: "files"})
 	d.script(answer{kind: "folder", title: "Choose a folder for the new project", paths: []string{t.TempDir()}})
-	if folder, err := d.ChooseFolder("Open a readmit workspace folder"); folder != chosen || err != nil {
+	if folder, err := d.ChooseFolder("Open workspace"); folder != chosen || err != nil {
 		t.Fatalf("a scripted folder answered %q, %v", folder, err)
 	}
 	if files, err := d.ChooseFiles("Choose evidence files to import", "", ""); len(files) != 0 || err != nil {
@@ -151,7 +151,7 @@ func TestDialogsAnswerOnlyWhatWasScripted(t *testing.T) {
 		t.Fatalf("shown %d dialogs with problems %v", len(report.Shown), problems)
 	}
 	empty := &scriptedDialogs{}
-	if _, err := empty.ChooseFolder("Open a readmit workspace folder"); err == nil || empty.report().Shown[0].Problem != "no answer was scripted for this dialog" {
+	if _, err := empty.ChooseFolder("Open workspace"); err == nil || empty.report().Shown[0].Problem != "no answer was scripted for this dialog" {
 		t.Fatalf("an unscripted dialog was not refused and recorded: %v, %+v", err, empty.report())
 	}
 }
@@ -172,7 +172,7 @@ func TestDialogsGiveOnlyWhatTheHostDialogsGive(t *testing.T) {
 	d := &scriptedDialogs{}
 	for _, a := range []answer{
 		{kind: "folder", paths: []string{root}},
-		{kind: "save", title: "Choose a new folder for the backup", paths: []string{named}},
+		{kind: "save", title: "New backup folder", paths: []string{named}},
 		{kind: "save", paths: []string{file}},
 		{kind: "save"},
 		{kind: "folder", paths: []string{named}},
@@ -182,10 +182,10 @@ func TestDialogsGiveOnlyWhatTheHostDialogsGive(t *testing.T) {
 	} {
 		d.script(a)
 	}
-	if folder, err := d.ChooseFolder("Open a readmit workspace folder"); folder != root || err != nil {
+	if folder, err := d.ChooseFolder("Open workspace"); folder != root || err != nil {
 		t.Fatalf("an existing folder answered %q, %v", folder, err)
 	}
-	if path, err := d.ChooseDestination("Choose a new folder for the backup"); path != named || err != nil {
+	if path, err := d.ChooseDestination("New backup folder"); path != named || err != nil {
 		t.Fatalf("a new name in an existing folder answered %q, %v", path, err)
 	}
 	if _, err := os.Lstat(named); !errors.Is(err, os.ErrNotExist) {
@@ -199,9 +199,9 @@ func TestDialogsGiveOnlyWhatTheHostDialogsGive(t *testing.T) {
 	}
 	for _, impossible := range []func() (string, error){
 		func() (string, error) { return d.ChooseFolder("Choose a folder for the new project") },
-		func() (string, error) { return d.ChooseFolder("Open a readmit workspace folder") },
-		func() (string, error) { return d.ChooseDestination("Choose a new folder for the backup") },
-		func() (string, error) { return d.ChooseDestination("Choose a new folder for the backup") },
+		func() (string, error) { return d.ChooseFolder("Open workspace") },
+		func() (string, error) { return d.ChooseDestination("New backup folder") },
+		func() (string, error) { return d.ChooseDestination("New backup folder") },
 	} {
 		if path, err := impossible(); path != "" || err == nil {
 			t.Fatalf("an answer no host dialog gives was taken: %q, %v", path, err)
@@ -238,7 +238,7 @@ func TestControlRequestsRefuseMalformedAnswers(t *testing.T) {
 		`{"id":2,"op":"dialog","dialog":"folder","paths":["/a","/b"]}`,
 		`{"id":3,"op":"write"}`,
 		`{"id":4,"op":"dialogs"}`,
-		`{"id":5,"op":"dialog","dialog":"folder","titel":"Open a readmit workspace folder","paths":["/x"]}`,
+		`{"id":5,"op":"dialog","dialog":"folder","titel":"Open workspace","paths":["/x"]}`,
 		`not a request`,
 		`{"id":6,"op":"dialog","dialog":"save","paths":["/a/new","/b/new"]}`,
 	)

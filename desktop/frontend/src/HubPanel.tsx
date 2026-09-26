@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./hub.css";
 import {
   chooseHubConfig,
@@ -17,7 +17,7 @@ import {
   type HubTransferResult,
   type HubCheckItem,
 } from "./bindings";
-import { TeamCollaboration } from "./TeamCollaboration";
+import { OfflineRevisionDraft, TeamCollaboration, type RevisionContext } from "./TeamCollaboration";
 import { OperatorHub } from "./OperatorHub";
 import { HubAdministration } from "./HubAdministration";
 import type { Artifact } from "./bindings";
@@ -41,6 +41,21 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
   const busy = lifecycle.running !== null;
   const [message, setMessage] = useState<string | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  // The project whose results the panel shows now. An answer for another
+  // project — one asked for before the selection, configuration or session
+  // changed — is discarded rather than shown under this one.
+  const shown = useRef<string | null>(null);
+  // The last project and resource an offline draft was offered for, kept
+  // after sign-out for local retention only; another configuration drops it.
+  const [offline, setOffline] = useState<RevisionContext | null>(null);
+  const rememberRevision = useCallback((context: RevisionContext) => setOffline(context), []);
+
+  function clearProject() {
+    shown.current = null;
+    setSelectedProject(null);
+    setArtifacts(null);
+    setTransfer(null);
+  }
 
   useEffect(() => {
     let active = true;
@@ -63,7 +78,8 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       if (res.state === "completed") {
         setStatus(res);
         setDiagnosis(null);
-        setArtifacts(null);
+        clearProject();
+        setOffline(null);
       } else if (res.state !== "cancelled") {
         setMessage(res.reason ?? "The hub configuration was not selected.");
       }
@@ -92,8 +108,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       const res = await disconnectHub();
       setStatus(res);
       setDiagnosis(null);
-      setArtifacts(null);
-      setSelectedProject(null);
+      clearProject();
       setAuthUrl(null);
     });
   }
@@ -128,15 +143,25 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
     await lifecycle.run("working", async () => {
       const res = await hubStatus();
       setStatus(res);
+      // A session that ended, or a project no longer authorized, takes its
+      // results with it.
+      if (!res.authenticated || !res.projects?.some((p) => p.project === shown.current && p.authorized)) {
+        clearProject();
+      }
     });
   }
 
   async function handleViewArtifacts(project: string) {
+    if (shown.current !== project) {
+      setArtifacts(null);
+      setTransfer(null);
+    }
+    shown.current = project;
     setSelectedProject(project);
     await lifecycle.run("working", async () => {
       setMessage(null);
       const res = await listHubProjectArtifacts(project);
-      setArtifacts(res);
+      if (shown.current === project) setArtifacts(res);
     });
   }
 
@@ -147,12 +172,13 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
     }
     await lifecycle.run("working", async () => {
       setMessage(null);
+      const project = selectedProject;
       const res = await downloadHubArtifact({
-        project: selectedProject,
+        project,
         digest,
         destination_path: downloadDest,
       });
-      setTransfer(res);
+      if (shown.current === project) setTransfer(res);
     });
   }
 
@@ -163,10 +189,12 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
     }
     await lifecycle.run("working", async () => {
       setMessage(null);
+      const project = selectedProject;
       const res = await uploadHubArtifact({
-        project: selectedProject,
+        project,
         source_path: uploadSource,
       });
+      if (shown.current !== project) return;
       setTransfer(res);
       if (res.state === "completed") {
         // Refresh project artifacts
@@ -191,13 +219,13 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       <div className="hub-context-status" role="status" aria-live="polite">
         <p>
-          <strong>Context: </strong>
+          <strong>Connection </strong>
           <span className={`hub-mode-badge ${isConnected ? "connected" : "offline"}`}>
             {isConnected ? `Connected (${status?.hub_url ?? ""})` : "Offline / Local Mode"}
           </span>
         </p>
         {status?.config_path ? (
-          <p className="hub-config-path">Configuration: {status.config_path}</p>
+          <p className="hub-config-path">Configuration file: {status.config_path}</p>
         ) : (
           <p className="hub-hint">No configuration file selected. Working entirely offline.</p>
         )}
@@ -207,7 +235,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       {status?.custody_warning ? (
         <div className="hub-custody-warning" role="note">
-          <strong>Custody Notice: </strong>
+          <strong>Copy custody: </strong>
           {status.custody_warning}
         </div>
       ) : null}
@@ -221,7 +249,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
           disabled={busy || !isConfigured}
           onClick={() => void handleDiagnose()}
         >
-          Diagnose prerequisites
+          Check connection setup
         </button>
         {!isConnected ? (
           <button
@@ -237,7 +265,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
           </button>
         )}
         <button type="button" disabled={busy} onClick={() => void handleRefreshStatus()}>
-          Refresh status
+          Refresh connection status
         </button>
       </div>
 
@@ -259,8 +287,11 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       {isConnected && !isAuthenticated ? (
         <div className="hub-auth-section">
-          <h4>Identity Provider Authentication</h4>
-          <p>Sign in with your customer identity provider via PKCE loopback authentication.</p>
+          <h4>Sign in</h4>
+          <p>
+            Sign in with your customer identity provider via PKCE loopback authentication, over this hub&apos;s mutual-TLS
+            connection.
+          </p>
           <button type="button" disabled={busy} onClick={() => void handleStartAuth()}>
             Sign in
           </button>
@@ -268,7 +299,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
             <p className="hub-auth-url">
               Waiting for browser callback…{" "}
               <a href={authUrl} target="_blank" rel="noreferrer">
-                Open login window
+                Open sign-in page
               </a>{" "}
               <button type="button" onClick={lifecycle.cancel}>
                 Cancel sign-in
@@ -280,26 +311,28 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       {isAuthenticated ? (
         <div className="hub-identity-section">
-          <h4>Authenticated User</h4>
+          <h4>Signed-in identity</h4>
           <p>
-            <strong>Subject:</strong> {status?.subject}
+            <strong>Subject ID</strong> {status?.subject}
           </p>
           <p>
-            <strong>Issuer:</strong> {status?.issuer} | <strong>Audience:</strong>{" "}
-            {status?.audience}
+            <strong>Session expires</strong> {status?.expires_at}
           </p>
-          <p>
-            <strong>Session expires:</strong> {status?.expires_at}
-          </p>
+          <details>
+            <summary>Identity details</summary>
+            <p>
+              <strong>Issuer:</strong> {status?.issuer} | <strong>Audience:</strong> {status?.audience}
+            </p>
+          </details>
           <button type="button" disabled={busy} onClick={() => void handleDisconnect()}>
-            Log out
+            Sign out and disconnect
           </button>
         </div>
       ) : null}
 
       {isConnected && isAuthenticated && status?.projects ? (
         <div className="hub-projects-section">
-          <h4>Authorized Projects</h4>
+          <h4>Projects</h4>
           <ul className="hub-projects-list">
             {status.projects.map((proj) => (
               <li key={proj.project} className="hub-project-card">
@@ -313,14 +346,14 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
                   ) : null}
                 </div>
                 {proj.capabilities && proj.capabilities.length > 0 ? (
-                  <div className="hub-capabilities">
-                    <span>Effective capabilities: </span>
+                  <details className="hub-capabilities">
+                    <summary>Permissions</summary>
                     {proj.capabilities.map((cap) => (
                       <span key={cap} className="capability-badge">
                         [{cap}]
                       </span>
                     ))}
-                  </div>
+                  </details>
                 ) : null}
                 {proj.warning ? <p className="project-warning">{proj.warning}</p> : null}
                 {proj.authorized ? (
@@ -343,7 +376,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
           <h4>Artifacts: {selectedProject}</h4>
           {artifacts.warning ? <p className="warning">{artifacts.warning}</p> : null}
           <div className="hub-transfer-controls">
-            <label htmlFor="hub-dest-path">Download destination path:</label>
+            <label htmlFor="hub-dest-path">Download file</label>
             <input
               id="hub-dest-path"
               type="text"
@@ -354,7 +387,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
           </div>
 
           <div className="hub-upload-controls">
-            <label htmlFor="hub-src-path">Upload source path:</label>
+            <label htmlFor="hub-src-path">Artifact file</label>
             <input
               id="hub-src-path"
               type="text"
@@ -363,8 +396,11 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
               placeholder="/path/to/local-artifact"
             />
             <button type="button" disabled={busy || !uploadSource} onClick={() => void handleUpload()}>
-              Publish Artifact
+              Upload artifact
             </button>
+            <p className="hub-hint">
+              Uploads the file&apos;s bytes to project {selectedProject} on {status?.hub_url ?? "the connected hub"}.
+            </p>
           </div>
 
           {transfer ? (
@@ -387,10 +423,10 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
             <table className="hub-artifacts-table">
               <thead>
                 <tr>
-                  <th>Digest</th>
-                  <th>Kind</th>
-                  <th>Actor</th>
-                  <th>Date</th>
+                  <th>SHA-256</th>
+                  <th>Artifact type</th>
+                  <th>Uploaded by</th>
+                  <th>Uploaded at</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -430,12 +466,18 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
 
       {isAuthenticated && selectedProject ? (
         <TeamCollaboration
+          // A new configuration, session or project is a new context: the
+          // team panel starts over rather than keeping another one's heads,
+          // command IDs or results.
+          key={`${status?.config_path ?? ""}|${status?.issuer ?? ""}|${status?.subject ?? ""}|${selectedProject}`}
           project={selectedProject}
           workspace={workspace ?? ""}
           entries={entries}
           capabilities={status?.projects?.find((p) => p.project === selectedProject)?.capabilities ?? []}
+          onRevisionContext={rememberRevision}
         />
       ) : null}
+      {!isAuthenticated && offline && workspace ? <OfflineRevisionDraft workspace={workspace} context={offline} /> : null}
     </section>
   );
 }

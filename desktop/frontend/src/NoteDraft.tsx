@@ -179,12 +179,11 @@ export function NoteDraft({
       onRetry={retainer.retry}
       onKeepAsNew={retainer.keepAsNew}
       onDiscard={() => {
-        const id = retainer.currentId();
-        if (id !== "") {
-          retainer.drop(id);
-        }
-        retainer.clear();
-        setNote(empty);
+        // The text leaves the screen only once its retained draft is gone; a
+        // refused discard keeps it editable beside the reason.
+        void retainer.dropCurrent().then((discarded) => {
+          if (discarded) setNote(empty);
+        });
       }}
     />
     <div role="status" aria-live="polite">

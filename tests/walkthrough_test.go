@@ -62,7 +62,7 @@ func publishedTranscript(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, after, found := strings.Cut(string(page), "<pre><code>== 2. synth")
+	_, after, found := strings.Cut(string(page), "<code>== 2. synth")
 	block, _, _ := strings.Cut(after, "</code></pre>")
 	if !found || block == "" {
 		t.Fatal("samples.html no longer quotes the walkthrough transcript")

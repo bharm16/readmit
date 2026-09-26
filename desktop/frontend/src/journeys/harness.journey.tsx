@@ -30,18 +30,18 @@ test("a dialog the journey did not answer fails the journey instead of opening n
   // The facade reports the dialog it could not show as unavailable.
   expect(await navigation().findByText("the folder dialog is unavailable")).toBeTruthy();
   await expect(journey.close()).rejects.toThrow(
-    'folder dialog "Open a readmit workspace folder": no answer was scripted for this dialog',
+    'folder dialog "Open workspace": no answer was scripted for this dialog',
   );
 });
 
 test("an answer scripted for another dialog is refused and fails the journey", async () => {
   const user = userEvent.setup();
   await journey.launch();
-  await journey.chooseFolder(journey.path("somewhere"), "Choose a folder for the readmit sample workspace");
+  await journey.chooseFolder(journey.path("somewhere"), "Choose sample location");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await navigation().findByText("the folder dialog is unavailable")).toBeTruthy();
   await expect(journey.close()).rejects.toThrow(
-    /the next scripted answer is for the dialog titled Choose a folder for the readmit sample workspace[\s\S]*1 scripted dialog answer\(s\) were never used/,
+    /the next scripted answer is for the dialog titled Choose sample location[\s\S]*1 scripted dialog answer\(s\) were never used/,
   );
 });
 
@@ -99,7 +99,7 @@ test("a journey changes only a file that is already on the machine, in place", (
 test("a dismissed dialog is a cancellation that opens nothing", async () => {
   const user = userEvent.setup();
   await journey.launch();
-  await journey.dismissDialog("folder", "Open a readmit workspace folder");
+  await journey.dismissDialog("folder", "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const status = (await navigation().findByText("no folder was chosen")).closest("[role=status]");
   expect(status?.classList.contains("status-cancelled")).toBe(true);
@@ -112,7 +112,7 @@ test("a crash abandons the window at once, and the next launch starts from what 
   const user = userEvent.setup();
   const folder = journey.makeFolder("workspace");
   await journey.launch();
-  await journey.chooseFolder(folder, "Open a readmit workspace folder");
+  await journey.chooseFolder(folder, "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await navigation().findByText(folder, { selector: ".root" })).toBeTruthy();
   // The window has retained where the viewer is by the time it crashes.

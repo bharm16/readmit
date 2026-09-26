@@ -241,6 +241,7 @@ import type {
   ScenarioDocumentResult,
   ScenarioGenerateRequest,
   ScenarioGenerateResult,
+  ScenarioLibraryChoiceResult,
   ScenarioLibraryRequest,
   ScenarioLibraryResult,
   ScenarioPreviewRequest,
@@ -1287,6 +1288,10 @@ export function postHubLifecycle(request: HubLifecycleCommandRequest): Promise<H
   return guard(() => facade().PostHubLifecycle(request), { state: "failed" });
 }
 
+export function saveHubAudit(project: string): Promise<HubTransferResult> {
+  return guard(() => facade().SaveHubAudit(project), { state: "failed" });
+}
+
 export function downloadHubExport(request: HubDownloadRequest): Promise<HubTransferResult> {
   return guard(() => facade().DownloadHubExport(request), { state: "failed" });
 }
@@ -1640,6 +1645,9 @@ export function exportScenarioLibrary(request: ScenarioLibraryRequest): Promise<
 
 export function importScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
   return guard(() => facade().ImportScenarioLibrary(request), { state: "failed" });
+}
+export function chooseScenarioLibraryImport(): Promise<ScenarioLibraryChoiceResult> {
+  return guard(() => facade().ChooseScenarioLibraryImport(), { state: "failed" });
 }
 
 export function generateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult> {

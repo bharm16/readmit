@@ -30,6 +30,17 @@ const ENTRIES: Artifact[] = [
   { name: PACKAGE_ENTRY, kind: "transfer-package" },
 ];
 
+/** The protection-file task: the document read above, its controls and
+ * their registration. */
+function documentTask() {
+  return within(screen.getByRole("group", { name: "Protection document" }));
+}
+
+/** The packing task, with its own protection file and control. */
+function packTask() {
+  return within(screen.getByRole("group", { name: "Encrypted transfer packages" }));
+}
+
 function renderPanel(handlers: FacadeHandlers = {}, entries: Artifact[] = ENTRIES) {
   const events: string[] = [];
   installFacade({
@@ -66,17 +77,17 @@ test("a control registers as a structured reference, and the document shows the 
       return protectionResult();
     },
   });
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await waitFor(() => expect(screen.getAllByText(CONTROL_NAME).length).toBeGreaterThan(0));
   // The key is the mask, and the locator arguments are a count.
   expect(screen.getByText(/· 4 locator arguments/)).toBeTruthy();
   expect(screen.queryByText("readmit-lab-key")).toBeNull();
 
   await user.type(screen.getByLabelText("Control name"), CONTROL_NAME);
-  await user.type(screen.getByLabelText("Absolute path of the program that prints the key"), "/absolute/key-store-program");
-  await user.type(screen.getByLabelText("One locator argument (never key material)"), "find-generic-password");
+  await user.type(screen.getByLabelText("Key lookup program"), "/absolute/key-store-program");
+  await user.type(screen.getByLabelText("Lookup argument"), "find-generic-password");
   await user.click(screen.getByRole("button", { name: "Add argument" }));
-  await user.type(screen.getByLabelText("Packages declare retention of (Go duration, optional)"), "2160h");
+  await user.type(screen.getByLabelText("Package retention (optional)"), "2160h");
   await user.click(screen.getByRole("button", { name: "Register control" }));
   await waitFor(() =>
     expect(
@@ -99,7 +110,7 @@ test("a rotation the store does not answer for records nothing, and the sentence
       };
     },
   });
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await waitFor(() => expect((screen.getByRole("button", { name: "Record rotation" }) as HTMLButtonElement).disabled).toBe(false));
   await user.click(screen.getByRole("button", { name: "Record rotation" }));
   await waitFor(() => expect(screen.getByText(/the key did not resolve from its declared store/)).toBeTruthy());
@@ -121,11 +132,13 @@ test("a package packs under an active control, reads its descriptor without a ke
       return protectionPackageResult({ entry: PACKAGE_ENTRY });
     },
   });
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await waitFor(() => expect(screen.getAllByText(CONTROL_NAME).length).toBeGreaterThan(0));
-  await user.selectOptions(screen.getByLabelText("Control"), CONTROL_NAME);
-  await user.selectOptions(screen.getByLabelText("Entries to pack (copied, never moved)"), SOURCE_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Pack protected package" }));
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  await user.selectOptions(screen.getByLabelText("Package contents"), SOURCE_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Create encrypted package" }));
   await waitFor(() => expect(screen.getAllByText(/within-retention/).length).toBeGreaterThan(0));
   expect(screen.getAllByText(/aes-256-gcm with hkdf-sha256/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Retirement is not revocation and deletion is not erasure/).length).toBeGreaterThan(0);
@@ -158,17 +171,19 @@ test("opening and discarding carry the operation's own refusals, and the retenti
       return protectionDiscardResult({ overridden: true });
     },
   });
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
   await waitFor(() => expect((screen.getByRole("button", { name: "Open package" }) as HTMLButtonElement).disabled).toBe(false));
   await user.click(screen.getByRole("button", { name: "Open package" }));
   await waitFor(() => expect(screen.getByText(/earlier key generation/)).toBeTruthy());
 
   await user.click(screen.getByRole("button", { name: "Discard package" }));
+  await user.click(screen.getByRole("button", { name: "Discard it" }));
   await waitFor(() => expect(screen.getByText(/declared retained until 2026-12-17T12:00:00Z; nothing was removed/)).toBeTruthy());
 
-  await user.selectOptions(screen.getByLabelText("Declared retention override"), "override");
+  await user.selectOptions(screen.getByLabelText("Retention handling"), "override");
   await user.click(screen.getByRole("button", { name: "Discard package" }));
+  await user.click(screen.getByRole("button", { name: "Discard it" }));
   await waitFor(() => expect(screen.getByText(/Unlinked 3 declared files/)).toBeTruthy());
 });
 
@@ -207,14 +222,16 @@ test("retiring asks first: Escape and Keep it active retire nothing, and a confi
     },
   });
   try {
-    await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+    await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
     const retire = await screen.findByRole("button", { name: `Retire ${CONTROL_NAME}` });
     await waitFor(() => expect((retire as HTMLButtonElement).disabled).toBe(false));
-    expect(within(screen.getByLabelText("Control")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Select a control…", CONTROL_NAME]);
+    await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+    await packTask().findByRole("option", { name: CONTROL_NAME });
+    expect(within(packTask().getByLabelText("Protection control")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Select a control…", CONTROL_NAME]);
 
     // Reached from the keyboard, Retire asks; Escape answers the question and
     // goes no further than it, and focus returns to Retire.
-    await user.click(screen.getByLabelText("New protection document"));
+    await user.click(screen.getByLabelText("New protection file"));
     await tabTo(user, retire);
     await user.keyboard("{Enter}");
     const question = within(screen.getByRole("group", { name: `Retire ${CONTROL_NAME}?` }));
@@ -247,7 +264,7 @@ test("retiring asks first: Escape and Keep it active retire nothing, and a confi
     ).toBeTruthy();
     expect(row(CONTROL_NAME).getByRole("cell", { name: "retired" })).toBeTruthy();
     expect((screen.getByRole("button", { name: `Retire ${CONTROL_NAME}` }) as HTMLButtonElement).disabled).toBe(true);
-    expect(within(screen.getByLabelText("Control")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Select a control…"]);
+    expect(within(packTask().getByLabelText("Protection control")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Select a control…"]);
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Protection" })));
     expect(facadeStub().callsTo("RetireProtectionControl")).toHaveLength(1);
     expect(events).not.toContain("cancel");
@@ -262,16 +279,18 @@ test("a control chosen for packing and then retired is no longer the control a p
     ReadProtection: () => protectionResult(),
     RetireProtectionControl: () => withControl({ state: "retired" }),
   });
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await waitFor(() => expect(screen.getAllByText(CONTROL_NAME).length).toBeGreaterThan(0));
-  await user.selectOptions(screen.getByLabelText("Control"), CONTROL_NAME);
-  await user.selectOptions(screen.getByLabelText("Entries to pack (copied, never moved)"), SOURCE_ENTRY);
-  expect((screen.getByRole("button", { name: "Pack protected package" }) as HTMLButtonElement).disabled).toBe(false);
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  await user.selectOptions(screen.getByLabelText("Package contents"), SOURCE_ENTRY);
+  expect((screen.getByRole("button", { name: "Create encrypted package" }) as HTMLButtonElement).disabled).toBe(false);
   await user.click(screen.getByRole("button", { name: `Retire ${CONTROL_NAME}` }));
   await user.click(screen.getByRole("button", { name: "Retire it" }));
   await screen.findByText(/^Retired lab-evidence: /);
-  expect((screen.getByLabelText("Control") as HTMLSelectElement).value).toBe("");
-  expect((screen.getByRole("button", { name: "Pack protected package" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((packTask().getByLabelText("Protection control") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByRole("button", { name: "Create encrypted package" }) as HTMLButtonElement).disabled).toBe(true);
   expect(facadeStub().callsTo("PackProtectedPackage")).toHaveLength(0);
 });
 
@@ -282,7 +301,7 @@ test("a refused retirement keeps the control active and says why, and a recorded
     RetireProtectionControl: () => ({ state: "failed" as const, reason: "the protection control is already retired" }),
     RotateProtectionControl: () => withControl({ generation: 2 }),
   });
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await user.click(await screen.findByRole("button", { name: `Retire ${CONTROL_NAME}` }));
   await user.click(screen.getByRole("button", { name: "Retire it" }));
   expect(await screen.findByText("the protection control is already retired")).toBeTruthy();
@@ -301,18 +320,18 @@ test("a retirement in progress says so and holds the panel until the facade answ
   const user = userEvent.setup();
   renderPanel({ ReadProtection: () => protectionResult() });
   const parked = facadeStub().park("RetireProtectionControl");
-  await user.selectOptions(screen.getByLabelText("Document entry"), DOCUMENT_ENTRY);
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
   await user.click(await screen.findByRole("button", { name: `Retire ${CONTROL_NAME}` }));
   await user.click(screen.getByRole("button", { name: "Retire it" }));
   expect(await screen.findByText(`Retiring ${CONTROL_NAME}.`)).toBeTruthy();
-  for (const name of [`Retire ${CONTROL_NAME}`, "Record rotation", "Use this document"]) {
+  for (const name of [`Retire ${CONTROL_NAME}`, "Record rotation", "Select file"]) {
     expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
   }
-  expect((screen.getByLabelText("Document entry") as HTMLSelectElement).disabled).toBe(true);
+  expect((documentTask().getByLabelText("Protection file") as HTMLSelectElement).disabled).toBe(true);
   parked.resolve(withControl({ state: "retired" }));
   expect(await screen.findByText(/^Retired lab-evidence: /)).toBeTruthy();
   expect(screen.queryByText(`Retiring ${CONTROL_NAME}.`)).toBeNull();
-  expect((screen.getByLabelText("Document entry") as HTMLSelectElement).disabled).toBe(false);
+  expect((documentTask().getByLabelText("Protection file") as HTMLSelectElement).disabled).toBe(false);
 });
 
 test("a new protection document is named, shown empty, and written by its first registration", async () => {
@@ -334,15 +353,15 @@ test("a new protection document is named, shown empty, and written by its first 
     ENTRIES.filter((entry) => entry.kind !== "protection"),
   );
   // No protection document exists yet, so none is offered to select.
-  expect(within(screen.getByLabelText("Document entry")).getAllByRole("option")).toHaveLength(1);
-  await user.type(screen.getByLabelText("New protection document"), NEW_DOCUMENT);
-  await user.click(screen.getByRole("button", { name: "Use this document" }));
+  expect(within(documentTask().getByLabelText("Protection file")).getAllByRole("option")).toHaveLength(1);
+  await user.type(screen.getByLabelText("New protection file"), NEW_DOCUMENT);
+  await user.click(screen.getByRole("button", { name: "Select file" }));
   expect(await screen.findByText(`No control is registered in ${NEW_DOCUMENT} yet. Registering the first one writes it.`)).toBeTruthy();
-  expect((screen.getByLabelText("Document entry") as HTMLSelectElement).value).toBe(NEW_DOCUMENT);
-  expect((screen.getByLabelText("New protection document") as HTMLInputElement).value).toBe("");
+  expect((documentTask().getByLabelText("Protection file") as HTMLSelectElement).value).toBe(NEW_DOCUMENT);
+  expect((screen.getByLabelText("New protection file") as HTMLInputElement).value).toBe("");
 
   await user.type(screen.getByLabelText("Control name"), CONTROL_NAME);
-  await user.type(screen.getByLabelText("Absolute path of the program that prints the key"), "/absolute/key-store-program");
+  await user.type(screen.getByLabelText("Key lookup program"), "/absolute/key-store-program");
   await user.click(screen.getByRole("button", { name: "Register control" }));
   expect(await screen.findByText(/^Registered\. Registering a reference proves nothing/)).toBeTruthy();
   expect(row(CONTROL_NAME).getByRole("cell", { name: "active" })).toBeTruthy();
@@ -359,8 +378,8 @@ test("a document is named from the keyboard, and an entry that is not a protecti
       return { state: "failed" as const, reason: "unsupported protection document version" };
     },
   });
-  const field = screen.getByLabelText("New protection document");
-  const use = screen.getByRole("button", { name: "Use this document" }) as HTMLButtonElement;
+  const field = screen.getByLabelText("New protection file");
+  const use = screen.getByRole("button", { name: "Select file" }) as HTMLButtonElement;
   expect(use.disabled).toBe(true);
   await user.click(field);
   await user.keyboard(OTHER);
@@ -372,3 +391,245 @@ test("a document is named from the keyboard, and an entry that is not a protecti
   expect(facadeStub().callsTo("ReadProtection")).toHaveLength(1);
   expect((field as HTMLInputElement).value).toBe("");
 });
+
+const OTHER_DOCUMENT = "controls.json";
+const OTHER_CONTROL = "archive-evidence";
+const TWO_DOCUMENTS: Artifact[] = [...ENTRIES, { name: OTHER_DOCUMENT, kind: "protection" }];
+
+/** The fixture document under another name, holding one other control. */
+function otherDocument() {
+  const shown = protectionResult();
+  const control = shown.document!.controls[0]!;
+  return { ...protectionResult({ entry: OTHER_DOCUMENT, controls: [{ ...control, name: OTHER_CONTROL }] }), entry: OTHER_DOCUMENT };
+}
+
+/** The option texts of the packing task's control selector. */
+function packControls() {
+  return within(packTask().getByLabelText("Protection control")).getAllByRole("option").map((option) => option.textContent);
+}
+
+test("the packing control comes only from the packing task's own protection file, and changing that file withdraws the chosen control", async () => {
+  const user = userEvent.setup();
+  renderPanel(
+    {
+      ReadProtection: (_workspace, entry) => (entry === OTHER_DOCUMENT ? otherDocument() : protectionResult()),
+      PackProtectedPackage: (request) => {
+        expect([request.entry, request.control]).toEqual([OTHER_DOCUMENT, OTHER_CONTROL]);
+        return protectionPackageResult({ control: OTHER_CONTROL });
+      },
+    },
+    TWO_DOCUMENTS,
+  );
+  // The document above holds lab-evidence; nothing of it is offered for packing.
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await waitFor(() => expect(row(CONTROL_NAME).getByRole("cell", { name: "active" })).toBeTruthy());
+  expect(packControls()).toEqual(["Select a control…"]);
+
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  expect((packTask().getByLabelText("Protection control") as HTMLSelectElement).value).toBe(CONTROL_NAME);
+
+  // Another file: the control of the first is withdrawn and never offered.
+  await user.selectOptions(packTask().getByLabelText("Protection file"), OTHER_DOCUMENT);
+  expect((packTask().getByLabelText("Protection control") as HTMLSelectElement).value).toBe("");
+  await packTask().findByRole("option", { name: OTHER_CONTROL });
+  expect(packControls()).toEqual(["Select a control…", OTHER_CONTROL]);
+  // The document above is unchanged by the packing task's choice.
+  expect(row(CONTROL_NAME).getByRole("cell", { name: "active" })).toBeTruthy();
+
+  await user.selectOptions(packTask().getByLabelText("Protection control"), OTHER_CONTROL);
+  await user.selectOptions(screen.getByLabelText("Package contents"), SOURCE_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Create encrypted package" }));
+  await waitFor(() => expect(facadeStub().callsTo("PackProtectedPackage")).toHaveLength(1));
+
+  // Clearing the file offers no control and packs nothing.
+  await user.selectOptions(packTask().getByLabelText("Protection file"), "");
+  expect(packControls()).toEqual(["Select a control…"]);
+  expect((screen.getByRole("button", { name: "Create encrypted package" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("a late read of the previous packing file cannot populate the controls of the file chosen since", async () => {
+  const user = userEvent.setup();
+  renderPanel({}, TWO_DOCUMENTS);
+  const parked = facadeStub().park("ReadProtection");
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await user.selectOptions(packTask().getByLabelText("Protection file"), OTHER_DOCUMENT);
+  expect(parked.size).toBe(2);
+  // The read of the first file answers last-but-one, then the second's.
+  parked.resolve(protectionResult());
+  await waitFor(() => expect(parked.size).toBe(1));
+  expect(packControls()).toEqual(["Select a control…"]);
+  parked.resolve(otherDocument());
+  await packTask().findByRole("option", { name: OTHER_CONTROL });
+  expect(packControls()).toEqual(["Select a control…", OTHER_CONTROL]);
+});
+
+test("draft lookup arguments and package contents are removed from the draft before submission, and nothing is deleted", async () => {
+  const user = userEvent.setup();
+  const EXTRA = "export-002";
+  renderPanel(
+    {
+      ReadProtection: () => protectionResult(),
+      SaveProtectionControl: (request) => {
+        expect(request.arguments).toEqual(["second"]);
+        return protectionResult();
+      },
+      PackProtectedPackage: (request) => {
+        expect(request.sources).toEqual([EXTRA]);
+        return protectionPackageResult();
+      },
+    },
+    [...ENTRIES, { name: EXTRA, kind: "derived-export" }],
+  );
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await waitFor(() => expect(row(CONTROL_NAME).getByRole("cell", { name: "active" })).toBeTruthy());
+  await user.type(screen.getByLabelText("Control name"), "second-control");
+  await user.type(screen.getByLabelText("Key lookup program"), "/absolute/key-store-program");
+  for (const argument of ["first", "second"]) {
+    await user.type(screen.getByLabelText("Lookup argument"), argument);
+    await user.click(screen.getByRole("button", { name: "Add argument" }));
+  }
+  const removeFirst = screen.getByRole("button", { name: "Remove argument 1" });
+  expect(removeFirst.textContent).toBe("Remove argument");
+  await user.click(removeFirst);
+  expect(screen.queryByRole("button", { name: "Remove argument 2" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Register control" }));
+  await waitFor(() => expect(facadeStub().callsTo("SaveProtectionControl")).toHaveLength(1));
+
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  await user.selectOptions(screen.getByLabelText("Package contents"), SOURCE_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Package contents"), EXTRA);
+  const remove = screen.getByRole("button", { name: `Remove from package ${SOURCE_ENTRY}` });
+  expect(remove.textContent).toBe("Remove from package");
+  await user.click(remove);
+  expect(screen.queryByRole("button", { name: `Remove from package ${SOURCE_ENTRY}` })).toBeNull();
+  // The workspace entry is still offered: removal only edited the draft.
+  expect(within(screen.getByLabelText("Package contents")).getByRole("option", { name: SOURCE_ENTRY })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Create encrypted package" }));
+  await waitFor(() => expect(facadeStub().callsTo("PackProtectedPackage")).toHaveLength(1));
+  expect(facadeStub().callsTo("DiscardProtectedPackage")).toHaveLength(0);
+});
+
+test("opening says Cancel opening and packing says Cancel packing, each stopping only its own operation, and an opened package is listed as plaintext in local custody", async () => {
+  const user = userEvent.setup();
+  const { events } = renderPanel({
+    ReadProtection: () => protectionResult(),
+    InspectProtectedPackage: () => protectionPackageResult({ entry: PACKAGE_ENTRY }),
+  });
+  const opening = facadeStub().park("OpenProtectedPackage");
+  const packing = facadeStub().park("PackProtectedPackage");
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
+  const open = await screen.findByRole("button", { name: "Open package" });
+  await waitFor(() => expect((open as HTMLButtonElement).disabled).toBe(false));
+  await user.click(open);
+  const cancelOpening = await screen.findByRole("button", { name: "Cancel opening" });
+  await waitFor(() => expect((cancelOpening as HTMLButtonElement).disabled).toBe(false));
+  expect((screen.getByRole("button", { name: "Cancel packing" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(cancelOpening);
+  expect(facadeStub().oneCall("Cancel")).toEqual(["protect"]);
+  opening.resolve(protectionPackageResult({ entry: "opened-001" }));
+  expect(await screen.findByText(/^Opened into/)).toHaveProperty(
+    "textContent",
+    "Opened into opened-001. The output is plaintext in this workspace, in local custody. Opening ended the protection the package carried: the decrypted output is protected by this machine's own storage control and an owner-only mode, and by nothing else.",
+  );
+  // The plaintext output is listed with the workspace.
+  expect(events).toContain("refresh");
+
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  await user.selectOptions(screen.getByLabelText("Package contents"), SOURCE_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Create encrypted package" }));
+  await waitFor(() => expect((screen.getByRole("button", { name: "Cancel packing" }) as HTMLButtonElement).disabled).toBe(false));
+  expect((screen.getByRole("button", { name: "Cancel opening" }) as HTMLButtonElement).disabled).toBe(true);
+  packing.resolve(protectionPackageResult());
+  await waitFor(() => expect((screen.getByRole("button", { name: "Cancel packing" }) as HTMLButtonElement).disabled).toBe(true));
+});
+
+test("an open the package refuses lists nothing new", async () => {
+  const user = userEvent.setup();
+  const { events } = renderPanel({
+    ReadProtection: () => protectionResult(),
+    InspectProtectedPackage: () => protectionPackageResult({ entry: PACKAGE_ENTRY }),
+    OpenProtectedPackage: () => ({ state: "failed" as const, reason: "the key did not resolve from its declared store", limitations: [] }),
+  });
+  await user.selectOptions(documentTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
+  const open = await screen.findByRole("button", { name: "Open package" });
+  await waitFor(() => expect((open as HTMLButtonElement).disabled).toBe(false));
+  await user.click(open);
+  expect(await screen.findByText("the key did not resolve from its declared store")).toBeTruthy();
+  expect(events).not.toContain("refresh");
+  expect(screen.queryByText(/plaintext/)).toBeNull();
+});
+
+test("discarding asks first, naming the package, its declared retention and the retention handling, and Keep package discards nothing", async () => {
+  const user = userEvent.setup();
+  renderPanel({
+    InspectProtectedPackage: () => protectionPackageResult({ entry: PACKAGE_ENTRY }),
+    DiscardProtectedPackage: (request) => {
+      expect(request).toEqual({ workspace: WORKSPACE_ROOT, package: PACKAGE_ENTRY, override: true });
+      return protectionDiscardResult({ overridden: true });
+    },
+  });
+  await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
+  await screen.findByRole("button", { name: "Discard package" });
+  await user.selectOptions(screen.getByLabelText("Retention handling"), "override");
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
+  const question = within(screen.getByRole("group", { name: `Discard ${PACKAGE_ENTRY}?` }));
+  expect(question.getByText(/^Discard protected-001\?/).textContent?.replace(/\s+/g, " ").trim()).toBe(
+    "Discard protected-001? Declared retention: within-retention until 2026-12-17T12:00:00Z. Retention handling: Override retention. Discarding unlinks the files this package declares; unlinking is not erasure, and a copy already moved elsewhere is untouched.",
+  );
+  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep package" }));
+  await user.keyboard("{Enter}");
+  expect(screen.queryByRole("group", { name: `Discard ${PACKAGE_ENTRY}?` })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("group", { name: `Discard ${PACKAGE_ENTRY}?` })).toBeNull();
+  expect(facadeStub().callsTo("DiscardProtectedPackage")).toHaveLength(0);
+
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
+  await user.click(screen.getByRole("button", { name: "Discard it" }));
+  expect(await screen.findByText(/Unlinked 3 declared files/)).toBeTruthy();
+  expect(facadeStub().callsTo("DiscardProtectedPackage")).toHaveLength(1);
+});
+
+test("selecting another package or clearing the selection resets the retention handling and withdraws a pending discard question", async () => {
+  const user = userEvent.setup();
+  const SECOND = "protected-002";
+  renderPanel(
+    { InspectProtectedPackage: (_workspace, entry) => protectionPackageResult({ entry }) },
+    [...ENTRIES, { name: SECOND, kind: "transfer-package" }],
+  );
+  const handling = () => screen.getByLabelText("Retention handling") as HTMLSelectElement;
+  await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
+  await screen.findByRole("button", { name: "Discard package" });
+  await user.selectOptions(handling(), "override");
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
+  expect(screen.getByRole("group", { name: `Discard ${PACKAGE_ENTRY}?` })).toBeTruthy();
+
+  await user.selectOptions(screen.getByLabelText("Transfer package"), SECOND);
+  await screen.findByText(byText(`Package ${SECOND} · `));
+  expect(screen.queryByRole("group", { name: /^Discard / })).toBeNull();
+  expect(handling().value).toBe("declared");
+
+  await user.selectOptions(handling(), "override");
+  await user.click(screen.getByRole("button", { name: "Discard package" }));
+  await user.selectOptions(screen.getByLabelText("Transfer package"), "");
+  expect(screen.queryByRole("group", { name: /^Discard / })).toBeNull();
+  expect(screen.queryByLabelText("Retention handling")).toBeNull();
+  await user.selectOptions(screen.getByLabelText("Transfer package"), PACKAGE_ENTRY);
+  await screen.findByRole("button", { name: "Discard package" });
+  expect(handling().value).toBe("declared");
+  expect(facadeStub().callsTo("DiscardProtectedPackage")).toHaveLength(0);
+});
+
+/** Matches the paragraph whose whole text starts with the given words. */
+function byText(start: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === "P" && (element.textContent ?? "").startsWith(start);
+}

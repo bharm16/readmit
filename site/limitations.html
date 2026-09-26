@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>readmit limitations</title>
+<title>Limitations | readmit</title>
 <meta name="description" content="What the readmit preview does not do, what it does not prove, and what remains an owner gate before any finished-product claim.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 <header>
   <div class="brand">readmit <span>· unsigned development preview</span></div>
-  <nav aria-label="Site">
+  <nav aria-label="Main navigation">
     <ul>
       <li><a href="index.html">Overview</a></li>
       <li><a href="download.html">Download</a></li>
@@ -21,7 +22,7 @@
     </ul>
   </nav>
 </header>
-<main>
+<main id="content" tabindex="-1">
   <h1>Limitations and release status</h1>
   <p>This page is deliberately long. A preview that lists what it cannot do is more useful than one that lets you find out.</p>
 
@@ -70,22 +71,23 @@
     <li><strong>Discarding a package is unlinking.</strong> It is not erasure on a solid-state device, a copy-on-write filesystem, a snapshot, a backup, a replica or a recipient's machine.</li>
   </ul>
 
-  <h2>Limits</h2>
-  <div class="table-wrap">
+  <h2 id="limits">Limits</h2>
+  <div class="table-wrap" role="region" aria-labelledby="limits-table" tabindex="0">
   <table>
-    <thead><tr><th>Where</th><th>Bound</th><th>On reaching it</th></tr></thead>
+    <caption id="limits-table">Limits per operation and what happens when each is reached</caption>
+    <thead><tr><th scope="col">Operation</th><th scope="col">Limit</th><th scope="col">When reached</th></tr></thead>
     <tbody>
-      <tr><td><code>inspect</code> input</td><td>16 MiB and 200,000 syntax nodes across all frames</td><td>Fails before any output</td></tr>
-      <tr><td>Index</td><td>16 declared fields, 128 retained bytes per value, 16 MiB document</td><td>Refused, or the prefix kept and marked <code>truncated</code></td></tr>
-      <tr><td>Backup</td><td>65,536 files, 64 MiB per file, 1 GiB per backup, 512 recorded indexes</td><td>Refused, never truncated</td></tr>
-      <tr><td>Corpus scan</td><td>64 KiB window, 16 MiB record, 256 records or 8 MiB per batch, 8 GiB stream</td><td>Refused rather than buffered</td></tr>
-      <tr><td>Source collection</td><td>4,096 entries, 16 MiB per entry, 128 MiB total, all declared by you</td><td>Refused before anything is read</td></tr>
-      <tr><td><code>collect</code></td><td>64 concurrent peers; declared connection, message and byte budgets</td><td>Peers wait; budgets stop the capture in a controlled way</td></tr>
+      <tr><th scope="row"><code>inspect</code> input</th><td>16 MiB and 200,000 syntax nodes across all frames</td><td>Fails before any output</td></tr>
+      <tr><th scope="row">Index</th><td>16 declared fields, 128 retained bytes per value, 16 MiB document</td><td>Refused, or the prefix kept and marked <code>truncated</code></td></tr>
+      <tr><th scope="row">Backup</th><td>65,536 files, 64 MiB per file, 1 GiB per backup, 512 recorded indexes</td><td>Refused, never truncated</td></tr>
+      <tr><th scope="row">Corpus scan</th><td>64 KiB window, 16 MiB record, 256 records or 8 MiB per batch, 8 GiB stream</td><td>Refused rather than buffered</td></tr>
+      <tr><th scope="row">Source collection</th><td>4,096 entries, 16 MiB per entry, 128 MiB total, all declared by you</td><td>Refused before anything is read</td></tr>
+      <tr><th scope="row"><code>collect</code></th><td>64 concurrent peers; declared connection, message and byte budgets</td><td>Peers wait; budgets stop the capture in a controlled way</td></tr>
     </tbody>
   </table>
   </div>
 
-  <h2>Privacy posture, stated plainly</h2>
+  <h2>Privacy</h2>
   <ul>
     <li>No telemetry, crash reporting, update checks, analytics or automatic uploads exist anywhere in the engine, the desktop shell, or this site.</li>
     <li>Network access is limited to endpoints you explicitly configure. Inspection, capture, timeline and the desktop shell have no endpoint configuration at all.</li>

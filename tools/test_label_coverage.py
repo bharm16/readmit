@@ -91,6 +91,24 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual(len(coverage.regressions([app])), 1)
         app.unlink()
 
+    def test_superseded_decision_must_name_an_implemented_successor(self):
+        successor = {"id": "OB1", "path": "app.tsx", "current": "Check source",
+                     "decision": "rename", "final": "Validate saved source", "status": "implemented"}
+        superseded = {"id": "L1.3", "path": "app.tsx", "current": "Check source",
+                      "decision": "rename", "final": "Validate source", "status": "superseded"}
+        app = Path("app.tsx")
+        app.write_text("<button>Validate saved source</button>", encoding="utf-8")
+        for successor_id, decisions, expected in (
+                ("OB1", [successor], 0),
+                (None, [successor], 1),
+                ("OB9", [successor], 1),
+                ("OB1", [dict(successor, status="superseded", superseded_by="L1.3")], 2)):
+            with self.subTest(successor_id=successor_id, decisions=decisions):
+                entry = dict(superseded, **({"superseded_by": successor_id} if successor_id else {}))
+                problems = Coverage({"decisions": [entry, *decisions], "exclusions": []}).regressions([app])
+                self.assertEqual(len(problems), expected, problems)
+        app.unlink()
+
     def test_exclusion_covers_candidate(self):
         inventory = {
             "decisions": [],

@@ -14,7 +14,7 @@ import { ReplayPanel } from "./ReplayPanel";
 import { PacketPanel } from "./PacketPanel";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
-import { SuitePanel } from "./SuitePanel";
+import { SuitePanel, type SuiteRunHandoff } from "./SuitePanel";
 import { EnvironmentPanel } from "./EnvironmentPanel";
 import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
@@ -227,6 +227,12 @@ export default function App() {
   const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
   const [testResult, setTestResult] = useState<TestView | null>(null);
   const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
+  const [runEnvironment, setRunEnvironment] = useState<string | undefined>(undefined);
+  // The suite handoff the run view was last seeded from, with the folder it
+  // names: shown beside the run view so the person sees which prepared
+  // result and release pins they came from, and that the run view applies
+  // neither.
+  const [suiteHandoff, setSuiteHandoff] = useState<{ workspace: string; handoff: SuiteRunHandoff } | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
   // The build the reproducer panel last handed to the revision comparison.
@@ -686,15 +692,19 @@ export default function App() {
   );
 
   // A suite the suite panel prepared for execution is handed to the durable-run
-  // panel by seeding its selection with the suite entry, so the execution
-  // center's own preflight and explicit send decision take over without a
-  // path being copied by hand.
+  // panel by seeding its selection with the suite entry and the environment
+  // it was prepared against, so the execution center's own preflight and
+  // explicit send decision take over without a path being copied by hand. The
+  // prepared folder and release pins are only named beside it: the run
+  // preflight takes neither.
   const handoff = useCallback(
-    (entry: string) => {
-      setRunSpecPath(entry);
+    (selection: SuiteRunHandoff) => {
+      setRunSpecPath(selection.entry);
+      setRunEnvironment(selection.environment);
+      if (root) setSuiteHandoff({ workspace: root, handoff: selection });
       focusRegion("evidence");
     },
-    [focusRegion],
+    [focusRegion, root],
   );
 
   // The project overview re-reads the project from disk every time: what the
@@ -1397,6 +1407,8 @@ export default function App() {
         // inferred from this call succeeding.
         if (result.test?.output) {
           setRunSpecPath(result.test.output);
+          setRunEnvironment(undefined);
+          setSuiteHandoff(null);
           await refreshGuide(root);
           await refreshListing();
         }
@@ -2135,6 +2147,7 @@ export default function App() {
             />
             <RetainedDrafts drafts={drafts} onDiscardDraft={dropDraft} />
             <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
+            {suiteHandoff && suiteHandoff.workspace === root ? <SuiteHandoffNotice handoff={suiteHandoff.handoff} /> : null}
             <RunPanel
               workspace={root}
               entries={opened?.artifacts ?? []}
@@ -2146,6 +2159,7 @@ export default function App() {
               onConfigureEnvironment={() => focusRegion("inspector")}
               onOpenLicense={() => focusRegion("privacy")}
               {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
+              {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
             />
             {root ? <RunExplanation key={"explain-" + root} workspace={root} entries={opened?.artifacts ?? []} busy={busy} /> : null}
             <PacketPanel
@@ -2187,7 +2201,7 @@ export default function App() {
     ),
     inspector: (
       <>
-        {root ? <Baseline key={root} workspace={root} busy={busy} /> : null}
+        {root ? <Baseline key={root} workspace={root} busy={busy} onSaved={() => void refreshListing()} /> : null}
         {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={opened?.artifacts ?? []} /> : null}
         {root ? (
           <SuitePanel
@@ -2770,5 +2784,24 @@ export default function App() {
         />
       </VocabularyContext.Provider>
     </IndicatorsContext.Provider>
+  );
+}
+
+/** What Go to runs handed over from the suite panel, beside the run view it
+ * seeded. The run view selects the suite entry and environment and preflights
+ * them itself; its preflight takes no release pins and does not read the
+ * prepared folder, so the notice names them only as what the person saw and
+ * says so, rather than implying they apply to the run. */
+function SuiteHandoffNotice({ handoff }: { handoff: SuiteRunHandoff }) {
+  return (
+    <p className="hint" role="note" aria-label="Suite handoff">
+      Handed over from Suites: {handoff.entry} prepared against environment {handoff.environment} into prepared folder{" "}
+      {handoff.prepared}
+      {handoff.releases ? ` with release pins ${handoff.releases}` : " with no release pins"}. The run view selected{" "}
+      {handoff.entry} and environment {handoff.environment} and preflights them again.{" "}
+      {handoff.releases
+        ? "It does not apply these release pins or read the prepared folder."
+        : "It does not read the prepared folder."}
+    </p>
   );
 }

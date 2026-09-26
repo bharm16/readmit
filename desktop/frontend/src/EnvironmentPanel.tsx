@@ -880,7 +880,7 @@ export function EnvironmentPanel({
         retention={retainer.retention}
         onRetry={retainer.retry}
         onKeepAsNew={retainer.keepAsNew}
-        onDiscard={retainer.clear}
+        onDiscard={() => void retainer.dropCurrent()}
       />
 
       {/* Tab Navigation */}

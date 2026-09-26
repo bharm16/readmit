@@ -382,13 +382,20 @@ func TestCompareProfilesAndUpgradePin(t *testing.T) {
 		t.Fatalf("expected test-reschedule.json to be affected, got: %s", reschedule.Impact)
 	}
 
-	// Compute target seal for NowPin
+	// The comparison decides the exact pin an affected test may move to: the
+	// seal over the later profile it compared, as the profile reader seals it.
 	targetVal := app.ValidateProfile(desktop.ProfileValidateRequest{
 		Workspace: root,
 		Document:  modDoc,
 	})
 	if targetVal.Seal == nil {
 		t.Fatalf("expected target seal: %+v", targetVal)
+	}
+	if compareResult.LaterPin == nil || compareResult.LaterPin.Pin == nil || compareResult.LaterPin.Refusal != "" {
+		t.Fatalf("expected the later profile's pin: %+v", compareResult.LaterPin)
+	}
+	if *compareResult.LaterPin.Pin != targetVal.Seal.Pin() {
+		t.Fatalf("later pin = %+v, want the later profile's seal %+v", *compareResult.LaterPin.Pin, targetVal.Seal.Pin())
 	}
 
 	// Explicitly upgrade pin for test-reschedule.json
@@ -397,12 +404,8 @@ func TestCompareProfilesAndUpgradePin(t *testing.T) {
 		References: "references.json",
 		Test:       "test-reschedule.json",
 		WasPin:     reschedule.Pinned,
-		NowPin: profileversion.Pin{
-			ID:      targetVal.Seal.Profile.ID,
-			Version: targetVal.Seal.Profile.Version,
-			SHA256:  targetVal.Seal.Content.SHA256,
-		},
-		Output: "references.json",
+		NowPin:     *compareResult.LaterPin.Pin,
+		Output:     "references.json",
 	})
 	if upgradeResult.State != desktop.Completed || upgradeResult.References == nil {
 		t.Fatalf("expected UpgradeProfilePin to succeed: %+v", upgradeResult)
@@ -433,6 +436,77 @@ func TestCompareProfilesAndUpgradePin(t *testing.T) {
 	})
 	if badUpgrade.State != desktop.Failed {
 		t.Fatalf("expected stale pin upgrade to fail: %+v", badUpgrade)
+	}
+}
+
+// TestProfileConditionIsNeverAssumed holds validating and saving a conditional
+// field to the condition the person authored: with none, or with a member the
+// editor left blank, both are refused saying what is missing, and nothing is
+// written.
+func TestProfileConditionIsNeverAssumed(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	baseDoc, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "local-profile.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ usage, reason string }{
+		{`"usage": "C",`, "SCH-1 is conditional, so it declares the condition its presence depends on"},
+		{`"usage": "C", "condition": {"segment": "ZPD", "position": 0, "operator": ""},`, "a condition names a position between 1 and 999"},
+		{`"usage": "C", "condition": {"segment": "", "position": 7, "operator": "absent"},`, "a condition names a segment of three uppercase letters or digits"},
+		{`"usage": "C", "condition": {"segment": "ZPD", "position": 7, "operator": ""},`, "a condition operator is one of present, absent or value_in"},
+	} {
+		document := strings.Replace(string(baseDoc), `"usage": "R",`, tc.usage, 1)
+		validated := app.ValidateProfile(desktop.ProfileValidateRequest{Workspace: root, Document: document})
+		if validated.State != desktop.Failed || !strings.Contains(validated.Reason, tc.reason) {
+			t.Fatalf("validating %s: %+v, want refused with %q", tc.usage, validated, tc.reason)
+		}
+		saved := app.SaveProfile(desktop.ProfileSaveRequest{Workspace: root, Document: document, Output: "profile.json", SealOutput: "seal.json"})
+		if saved.State != desktop.Failed || !strings.Contains(saved.Reason, tc.reason) {
+			t.Fatalf("saving %s: %+v, want refused with %q", tc.usage, saved, tc.reason)
+		}
+		if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
+			t.Fatalf("a refused save wrote %v (%v)", entries, err)
+		}
+	}
+}
+
+// TestCompareProfilesDecidesTheLaterProfilePin covers when a comparison offers
+// the later profile's pin and when it refuses one: only an affected test needs
+// it, and only a later profile read from a file of the workspace can be pinned.
+func TestCompareProfilesDecidesTheLaterProfilePin(t *testing.T) {
+	app := workspaceApp(t)
+	root := t.TempDir()
+	baseDoc, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "local-profile.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refDoc, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", "profile-references.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modDoc := strings.Replace(string(baseDoc), `"version": "1"`, `"version": "2"`, 1)
+	modDoc = strings.Replace(modDoc, "The scheduling segment, constrained beyond what the pinned pack labels.", "The scheduling segment, revised.", 1)
+	for name, data := range map[string][]byte{"profile-v1.json": baseDoc, "profile-v2.json": []byte(modDoc), "references.json": refDoc} {
+		if err := os.WriteFile(filepath.Join(root, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Without a references file no test is affected, so no pin is decided.
+	unassessed := app.CompareProfiles(desktop.ProfileCompareRequest{Workspace: root, From: "profile-v1.json", To: "profile-v2.json"})
+	if unassessed.State != desktop.Completed || unassessed.LaterPin != nil {
+		t.Fatalf("a comparison with no affected test decides no pin: %+v", unassessed)
+	}
+
+	// A later profile given as a document rather than a workspace file is
+	// compared, but no saved test is pinned to it.
+	inline := app.CompareProfiles(desktop.ProfileCompareRequest{Workspace: root, From: "profile-v1.json", To: modDoc, References: "references.json"})
+	if inline.State != desktop.Completed || inline.LaterPin == nil {
+		t.Fatalf("expected a completed comparison deciding the pin: %+v", inline)
+	}
+	if inline.LaterPin.Pin != nil || inline.LaterPin.Refusal != "the later profile is not a file of the open workspace, so no saved test can be pinned to it" {
+		t.Fatalf("an inline later profile must be refused a pin: %+v", inline.LaterPin)
 	}
 }
 

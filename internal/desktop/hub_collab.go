@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/hubclient"
 	"github.com/bharm16/readmit/internal/hubprotocol"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/sharing"
 )
@@ -504,6 +505,7 @@ func (a *App) postHubLifecycle(profile operationguard.Profile, request HubLifecy
 			out.Head = result.Event.Sequence
 		}
 		if result.Audit != nil {
+			a.retainHubAudit(request.Project, *result.Audit)
 			out.Audit = &HubAuditExportView{
 				Schema: result.Audit.Schema, Project: result.Audit.Project,
 				ReviewHead: result.Audit.ReviewHead, Warning: result.Audit.Warning,
@@ -519,6 +521,73 @@ func (a *App) postHubLifecycle(profile operationguard.Profile, request HubLifecy
 			out.Warning = result.Audit.Warning
 		}
 		return out
+	})
+}
+
+// hubAuditSaveTitle is the save dialog SaveHubAudit opens.
+const hubAuditSaveTitle = "Name the file to save the audit export as"
+
+// retainedHubAudit is the audit export the hub last answered in this window:
+// the project it describes and the export as this window decoded it, encoded
+// again as JSON. It holds every member of the audit export contract the hub
+// answered, with the custody warning filled in when the hub left it empty, but
+// not the hub's exact bytes: member order and spacing are this encoder's, and
+// a member outside the contract is not kept. It is held only until the window
+// disconnects or another export replaces it, so a save writes what was shown
+// and never asks the hub again.
+type retainedHubAudit struct {
+	project string
+	body    []byte
+}
+
+func (a *App) retainHubAudit(project string, audit hubprotocol.AuditExport) {
+	body, err := json.Marshal(audit)
+	a.hubAuditMu.Lock()
+	defer a.hubAuditMu.Unlock()
+	if err != nil {
+		a.hubAudit = nil
+		return
+	}
+	a.hubAudit = &retainedHubAudit{project: project, body: body}
+}
+
+func (a *App) forgetHubAudit() {
+	a.hubAuditMu.Lock()
+	a.hubAudit = nil
+	a.hubAuditMu.Unlock()
+}
+
+// SaveHubAudit writes the audit export this window last received for project
+// into a new file the person names in the host's save dialog, owner-only and
+// exclusively. It sends nothing and records no command: the audit export was
+// the command. With no export of that project held — none was made, or the
+// window disconnected since — it refuses before any dialog opens.
+func (a *App) SaveHubAudit(project string) HubTransferResult {
+	return run(a, false, false, func(ctx context.Context) HubTransferResult {
+		a.hubAuditMu.Lock()
+		held := a.hubAudit
+		a.hubAuditMu.Unlock()
+		if held == nil || held.project != project {
+			return HubTransferResult{State: Failed, Reason: "no audit export of this project is held in this window; run the audit export again"}
+		}
+		named, declined := a.chooseDestination(ctx, hubAuditSaveTitle)
+		if named == "" {
+			if declined.state == Cancelled {
+				declined.reason = "no file was named"
+			}
+			return HubTransferResult{State: declined.state, Reason: declined.reason}
+		}
+		destination, err := artifactpath.Destination(named)
+		if err != nil {
+			return HubTransferResult{State: Failed, Reason: err.Error()}
+		}
+		if _, err := os.Lstat(destination); !errors.Is(err, fs.ErrNotExist) {
+			return HubTransferResult{State: Failed, Reason: "a file is already there; name a new file for the audit export"}
+		}
+		if err := operation.WriteNewFile(destination, held.body, "cannot create the audit file; nothing was written", "cannot write the audit file; nothing was kept"); err != nil {
+			return HubTransferResult{State: Failed, Reason: err.Error(), TransferState: "failed"}
+		}
+		return HubTransferResult{State: Completed, TransferState: "completed", Size: int64(len(held.body)), Path: destination, Warning: custodyNotice}
 	})
 }
 

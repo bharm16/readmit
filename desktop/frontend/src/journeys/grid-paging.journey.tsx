@@ -45,7 +45,7 @@ test("each page of the grid is one read of the case, and a case changed between 
 
   // The next page: one read, drawn with the index it was checked against.
   let before = journey.calls.length;
-  await press(user, inspector.getByRole("button", { name: `Next ${GRID_WINDOW}` }));
+  await press(user, inspector.getByRole("button", { name: `Next ${GRID_WINDOW} occurrences` }));
   expect(await inspector.findByText(`Occurrences ${GRID_WINDOW + 1}–${OCCURRENCES}`)).toBeTruthy();
   expect(inspector.getByLabelText("Active index details")).toBeTruthy();
   expect(journey.calls.slice(before).map((call) => call.method)).toEqual(["OpenGrid"]);
@@ -57,7 +57,7 @@ test("each page of the grid is one read of the case, and a case changed between 
   // Paging back is refused by that one read, and nothing from the previous
   // page stands in for it.
   before = journey.calls.length;
-  await press(user, inspector.getByRole("button", { name: `Previous ${GRID_WINDOW}` }));
+  await press(user, inspector.getByRole("button", { name: `Previous ${GRID_WINDOW} occurrences` }));
   expect(await inspector.findByText(/could not be verified as complete, unmodified evidence/)).toBeTruthy();
   expect(inspector.queryAllByRole("button", { name: /^Inspect s\d+-e\d+$/ })).toHaveLength(0);
   expect(inspector.queryByLabelText("Active index details")).toBeNull();

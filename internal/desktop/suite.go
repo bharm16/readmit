@@ -547,6 +547,10 @@ type suiteDraft struct {
 	Schema   string `json:"schema"`
 	Entry    string `json:"entry,omitzero"`
 	Document string `json:"document,omitzero"`
+	// Expected is the expected-override text a person edited, by
+	// "table/row", kept exactly as typed — invalid JSON included — so an
+	// interruption returns the edit rather than the override it replaced.
+	Expected map[string]string `json:"expected,omitzero"`
 }
 
 // validateSuiteDraft holds retained suite-editor work to its own contract:
@@ -563,7 +567,11 @@ func validateSuiteDraft(content []byte) error {
 	if err := json.Unmarshal(content, &draft, json.RejectUnknownMembers(true)); err != nil {
 		return errors.New("invalid suite draft content")
 	}
-	if len(draft.Document) > suite.MaxBytes {
+	size := len(draft.Document)
+	for key, text := range draft.Expected {
+		size += len(key) + len(text)
+	}
+	if size > suite.MaxBytes {
 		return fmt.Errorf("suite draft content exceeds %d bytes", suite.MaxBytes)
 	}
 	return nil

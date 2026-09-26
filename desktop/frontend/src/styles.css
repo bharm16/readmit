@@ -354,6 +354,16 @@ dd {
   min-width: 0;
 }
 
+/* What the explorer is showing: the case, the open index and the active
+   filter, kept in view while setup or the filter editor is open. */
+.explorer-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
 .grid-open,
 .grid-filter,
 .grid-window,
@@ -387,8 +397,8 @@ dd {
 
 /* The grid draws one viewport of rows and leaves the rest of the window as
    measured space, so a large window costs what the viewport costs. The row
-   height is the number GRID_ROW_HEIGHT in shell.tsx divides a scroll position
-   by; the two must stay equal. */
+   height is 2rem, the length gridRowHeight in shell.tsx divides a scroll
+   position by at every text scale; the two must stay equal. */
 .grid-scroll {
   margin-top: 0.5rem;
   max-width: 100%;
@@ -399,7 +409,7 @@ dd {
 }
 
 .rows {
-  --grid-row-height: 32px;
+  --grid-row-height: 2rem;
   border-collapse: collapse;
   font-size: 0.9rem;
   white-space: nowrap;
@@ -571,6 +581,7 @@ dd {
 
 .custom-field {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }

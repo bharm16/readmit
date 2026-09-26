@@ -68,7 +68,7 @@ test("a delivered license is verified, installed and activated without hand-writ
   // Installed for the author and device it names, into a new private folder,
   // and activated explicitly.
   await user.selectOptions(received.getByLabelText("Author"), "test-author");
-  await user.selectOptions(received.getByLabelText("Device to activate"), "test-device");
+  await user.selectOptions(received.getByLabelText("Device"), "test-device");
   await journey.chooseFolder(journey.path("license-activation"), "Choose the private folder for the local license activation");
   await press(user, received.getByRole("button", { name: "Choose activation folder…" }));
   expect(await received.findByText(byContent(/^Activation folder: /))).toBeTruthy();
@@ -133,7 +133,7 @@ test("a delivered license is verified, installed and activated without hand-writ
   journey.makeFolder("backups");
   await press(user, evidence.getByRole("button", { name: "Maintenance" }));
   const maintenance = within(screen.getByLabelText("Project maintenance"));
-  await journey.nameNewFolder(journey.path("backups/after-release"), "Choose a new folder for the backup");
+  await journey.nameNewFolder(journey.path("backups/after-release"), "New backup folder");
   await press(user, maintenance.getByRole("button", { name: "Choose destination…" }));
   await press(user, maintenance.getByRole("button", { name: "Create backup" }));
   expect(await maintenance.findByText("Backup created.", { selector: "p[role=status]" })).toBeTruthy();
@@ -217,7 +217,7 @@ async function selectActivation(user: UserEvent, folder: string): Promise<string
  * attempt, so it is opened only when the scenario left it closed. */
 async function tryProject(user: UserEvent, parent: string, name: string, title: string, admitted: boolean, formOpen: boolean) {
   journey.makeFolder(parent);
-  await journey.chooseFolder(journey.path(parent), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path(parent), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await within(region("Workspace")).findByText(journey.path(parent), { selector: ".root" })).toBeTruthy();
   if (!formOpen) {

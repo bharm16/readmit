@@ -3,8 +3,11 @@ import { useState } from "react";
 import { approveBaseline, openBaseline, reviewBaseline, type BaselineResult } from "./bindings";
 import { useLifecycle } from "./lifecycle";
 
-/** Local approval is deliberately independent of run completion and session restoration. */
-export function Baseline({ workspace, busy }: { workspace: string; busy: boolean }) {
+/** Local approval is deliberately independent of run completion and session restoration.
+ * onSaved is called once an approval wrote a new file, so the panels whose
+ * pickers list the workspace's entries (a released test version among them)
+ * offer it. */
+export function Baseline({ workspace, busy, onSaved }: { workspace: string; busy: boolean; onSaved?: () => void }) {
   const [released, setReleased] = useState(false);
   const [releaseID, setReleaseID] = useState("");
   const [profiles, setProfiles] = useState("");
@@ -26,7 +29,9 @@ export function Baseline({ workspace, busy }: { workspace: string; busy: boolean
       release: released, release_id: releaseID, profiles: profiles.split("\n").map(p => p.trim()).filter(Boolean),
       review: review?.identity ?? "", approver, rationale, output };
     await run("working", async () => {
-      setResult(await (inspect ? openBaseline(request) : approve ? approveBaseline(request) : reviewBaseline(request)));
+      const answer = await (inspect ? openBaseline(request) : approve ? approveBaseline(request) : reviewBaseline(request));
+      setResult(answer);
+      if (approve && !inspect && answer.state === "completed") onSaved?.();
     });
   }
   function invalidate() { setResult(null); }

@@ -77,17 +77,17 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
   // Ctrl+O opens the host's folder dialog. Dismissing it is a cancellation the
   // window says in words, and the window stays usable.
   const navigation = within(region("Workspace"));
-  await journey.dismissDialog("folder", "Open a readmit workspace folder");
+  await journey.dismissDialog("folder", "Open workspace");
   await user.keyboard("{Control>}o{/Control}");
   expect(await navigation.findByText("no folder was chosen")).toBeTruthy();
   // Choosing a folder through a symbolic link is refused with its reason.
-  await journey.chooseFolder(linked, "Open a readmit workspace folder");
+  await journey.chooseFolder(linked, "Open workspace");
   await user.keyboard("{Control>}o{/Control}");
   expect(await navigation.findByText("a workspace must be an existing folder that is not a symbolic link")).toBeTruthy();
   everyStatusReadsAsWords();
 
   // The first-run choice is reached and pressed with the keyboard alone.
-  await journey.chooseFolder(journey.path("work"), "Choose a folder for the readmit sample workspace");
+  await journey.chooseFolder(journey.path("work"), "Choose sample location");
   await activate(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
   await activate(user, await guided.findByRole("button", { name: "Open case" }));

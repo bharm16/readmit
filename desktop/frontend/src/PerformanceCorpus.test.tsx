@@ -6,6 +6,7 @@ import type { CorpusScanView, CorpusGenerateRequest, ImportPlan } from "./bindin
 import { PerformanceCorpus } from "./PerformanceCorpus";
 import { renderApp } from "./testkit/app";
 import { WORKSPACE_ROOT } from "./testkit/fixtures";
+import { expectTabPattern } from "./testkit/tabs";
 import { installFacade, type FacadeHandlers } from "./testkit/wails";
 
 const FOLDER = `${WORKSPACE_ROOT}/corpora`;
@@ -89,16 +90,31 @@ async function openScreen(user: UserEvent) {
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
 }
 
-const generation = () => within(screen.getByRole("region", { name: "Generate a corpus" }));
-const scanning = () => within(screen.getByRole("region", { name: "Scan a stream" }));
+const generation = () => within(screen.getByRole("tabpanel", { name: "Generate" }));
+const scanning = () => within(screen.getByRole("tabpanel", { name: "Scan" }));
+
+/** Shows one corpus task; the other keeps what was typed into it. */
+async function show(user: UserEvent, task: "Generate" | "Scan") {
+  await user.click(screen.getByRole("tab", { name: task }));
+  expect(screen.getByRole("tab", { name: task }).getAttribute("aria-selected")).toBe("true");
+}
+
+/** Reveals the batch-bound overrides of a scan. */
+async function advanced(user: UserEvent) {
+  const summary = scanning().getByText("Advanced scan limits");
+  if (!summary.closest("details")?.open) {
+    await user.click(summary);
+  }
+}
 
 async function declareGeneration(user: UserEvent, seed = "18446744073709551615") {
+  await show(user, "Generate");
   const part = generation();
   await user.type(part.getByLabelText("Seed"), seed);
   await user.type(part.getByLabelText(/Base time/), "2026-01-02T03:04:05Z");
   await user.selectOptions(part.getByLabelText("Generator version"), "readmit-corpus-v1");
   await user.selectOptions(part.getByLabelText("Profile version"), "readmit-siu-v1");
-  await user.type(part.getByLabelText("Messages"), "5000");
+  await user.type(part.getByLabelText("Message count"), "5000");
   await user.selectOptions(part.getByLabelText("Framing"), "batch");
   await user.selectOptions(part.getByLabelText("Batch boundary"), "segment-start");
   await user.selectOptions(part.getByLabelText("Segment terminator"), "cr");
@@ -109,6 +125,7 @@ async function declareGeneration(user: UserEvent, seed = "18446744073709551615")
 }
 
 async function declareScan(user: UserEvent) {
+  await show(user, "Scan");
   const part = scanning();
   await user.click(part.getByRole("button", { name: "Browse…" }));
   expect(await part.findByText(STREAM)).toBeTruthy();
@@ -131,11 +148,11 @@ test("generating a corpus takes every declaration from structured controls and r
   expect(facade.oneCall("ChooseCorpusPath")).toEqual(["corpus-folder"]);
   expect((generate as HTMLButtonElement).disabled).toBe(false);
   // The two new files are named in the chosen folder; neither may be empty.
-  await user.clear(generation().getByLabelText("Corpus file name"));
+  await user.clear(generation().getByLabelText("Corpus filename"));
   expect((generate as HTMLButtonElement).disabled).toBe(true);
-  await user.type(generation().getByLabelText("Corpus file name"), "siu.mllp");
-  await user.clear(generation().getByLabelText("Manifest file name"));
-  await user.type(generation().getByLabelText("Manifest file name"), "siu.json");
+  await user.type(generation().getByLabelText("Corpus filename"), "siu.mllp");
+  await user.clear(generation().getByLabelText("Manifest filename"));
+  await user.type(generation().getByLabelText("Manifest filename"), "siu.json");
   await user.click(generate);
 
   const facts = within(await screen.findByLabelText("Written corpus"));
@@ -186,20 +203,30 @@ test("a running generation shows progress and a cancelled one says no corpus or 
   expect(await screen.findByText("Generated so far: 4096 messages, 1245184 bytes")).toBeTruthy();
   expect(screen.getByText("Generating the corpus.")).toBeTruthy();
   expect((generation().getByRole("button", { name: "Generate corpus" }) as HTMLButtonElement).disabled).toBe(true);
+  // Changing to the other task neither cancels the generation nor hides it:
+  // its named status and cancellation stay in view, and the scan cannot start.
+  await show(user, "Scan");
   expect((scanning().getByRole("button", { name: "Scan stream" }) as HTMLButtonElement).disabled).toBe(true);
-  await user.click(generation().getByRole("button", { name: "Cancel generation" }));
+  const status = within(screen.getByRole("group", { name: "Generation running" }));
+  expect(status.getByText("Generating the corpus.")).toBeTruthy();
+  expect(status.getByText("Generated so far: 4096 messages, 1245184 bytes")).toBeTruthy();
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  await user.click(status.getByRole("button", { name: "Cancel generation" }));
   expect(facade.oneCall("Cancel")).toEqual(["corpus"]);
   parked.resolve({
     state: "cancelled",
     reason: "the generation was cancelled; the partial corpus was removed and no manifest was written",
   });
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Generation running" })).toBeNull());
+  // The outcome stays with its task.
+  await show(user, "Generate");
   expect(
-    await screen.findByText("the generation was cancelled; the partial corpus was removed and no manifest was written"),
+    await generation().findByText("the generation was cancelled; the partial corpus was removed and no manifest was written"),
   ).toBeTruthy();
   expect(screen.getByText("cancelled")).toBeTruthy();
   expect(screen.queryByLabelText("Written corpus")).toBeNull();
   expect(screen.queryByText(/Generated so far/)).toBeNull();
-  expect(generation().queryByRole("button", { name: "Cancel generation" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Cancel generation" })).toBeNull();
   expect((generation().getByRole("button", { name: "Generate corpus" }) as HTMLButtonElement).disabled).toBe(false);
 });
 
@@ -208,24 +235,26 @@ test("scanning a stream reports the command's counts, case bounds, window and be
   const user = userEvent.setup();
   render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
   await openScreen(user);
+  await show(user, "Scan");
   const scan = scanning().getByRole("button", { name: "Scan stream" });
   expect((scan as HTMLButtonElement).disabled).toBe(true);
   await declareScan(user);
   const part = scanning();
+  await advanced(user);
   await user.type(part.getByLabelText(/Records per batch/), "7");
   await user.type(part.getByLabelText(/Bytes per batch/), "4194304");
-  await user.clear(part.getByLabelText("Window offset"));
-  await user.type(part.getByLabelText("Window offset"), "150");
-  await user.clear(part.getByLabelText(/Window records/));
-  await user.type(part.getByLabelText(/Window records/), "4");
+  await user.clear(part.getByLabelText("Preview record offset"));
+  await user.type(part.getByLabelText("Preview record offset"), "150");
+  await user.clear(part.getByLabelText("Preview records"));
+  await user.type(part.getByLabelText("Preview records"), "4");
   await user.click(part.getByLabelText(/Save benchmark/));
   // A benchmark needs its own new destination before a scan may start.
   expect((scan as HTMLButtonElement).disabled).toBe(true);
   await user.click(part.getByRole("button", { name: "Choose a folder for the benchmark…" }));
   expect(await part.findByText(FOLDER)).toBeTruthy();
-  await user.clear(part.getByLabelText("Benchmark file name"));
+  await user.clear(part.getByLabelText("Benchmark filename"));
   expect((scan as HTMLButtonElement).disabled).toBe(true);
-  await user.type(part.getByLabelText("Benchmark file name"), "benchmark.json");
+  await user.type(part.getByLabelText("Benchmark filename"), "benchmark.json");
   await user.click(scan);
 
   const report = within(await screen.findByLabelText("Scan report"));
@@ -254,8 +283,8 @@ test("scanning a stream reports the command's counts, case bounds, window and be
   // The report belongs to the stream and declarations it was scanned under:
   // changing one clears it rather than leaving it beside choices it does not
   // describe.
-  await user.clear(part.getByLabelText(/Window records/));
-  await user.type(part.getByLabelText(/Window records/), "5");
+  await user.clear(part.getByLabelText("Preview records"));
+  await user.type(part.getByLabelText("Preview records"), "5");
   expect(screen.queryByLabelText("Scan report")).toBeNull();
   expect(screen.queryByText(/Benchmark written to/)).toBeNull();
   await user.click(scan);
@@ -286,7 +315,7 @@ test("a running scan shows progress, cancels on request and reports the counts i
     await screen.findByText("Scanned so far: 155648 bytes, 512 records, 512 occurrences, 2 parsing batches"),
   ).toBeTruthy();
   expect(facade.callsTo("CorpusProgress").length).toBeGreaterThan(0);
-  await user.click(scanning().getByRole("button", { name: "Cancel scan" }));
+  await user.click(screen.getByRole("button", { name: "Cancel scan" }));
   expect(facade.oneCall("Cancel")).toEqual(["corpus"]);
   parked.resolve({
     state: "cancelled",
@@ -300,7 +329,7 @@ test("a running scan shows progress, cancels on request and reports the counts i
   expect(screen.getByText(/the case bounds were not evaluated and no benchmark was written/)).toBeTruthy();
   expect(screen.queryByText(/Benchmark written to/)).toBeNull();
   expect(screen.queryByText(/Scanned so far/)).toBeNull();
-  expect(scanning().queryByRole("button", { name: "Cancel scan" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Cancel scan" })).toBeNull();
   // Polling stops with the scan.
   const polls = facade.callsTo("CorpusProgress").length;
   await new Promise((resolve) => setTimeout(resolve, 400));
@@ -327,12 +356,12 @@ test("corpus refusals, a denied stream and a dismissed dialog leave the screen u
   // unit, not a leading zero the command would read as octal, and not a
   // number a JavaScript number cannot hold exactly.
   for (const typed of ["5k", "010", "9007199254740993"]) {
-    await user.clear(generation().getByLabelText("Messages"));
-    await user.type(generation().getByLabelText("Messages"), typed);
+    await user.clear(generation().getByLabelText("Message count"));
+    await user.type(generation().getByLabelText("Message count"), typed);
     expect((generation().getByRole("button", { name: "Generate corpus" }) as HTMLButtonElement).disabled).toBe(true);
   }
-  await user.clear(generation().getByLabelText("Messages"));
-  await user.type(generation().getByLabelText("Messages"), "0");
+  await user.clear(generation().getByLabelText("Message count"));
+  await user.type(generation().getByLabelText("Message count"), "0");
   await user.click(generation().getByRole("button", { name: "Generate corpus" }));
   expect(await screen.findByText("a corpus holds between 1 and 1048576 messages")).toBeTruthy();
   expect(screen.queryByLabelText("Written corpus")).toBeNull();
@@ -364,6 +393,15 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
   expect(document.activeElement).toBe(toggle);
 
+  // The corpus tasks are one tab stop: the selected task's tab, whose arrow
+  // keys move to the other.
+  const tab = screen.getByRole("tab", { name: "Generate" });
+  for (let step = 0; step < 40 && document.activeElement !== tab; step++) {
+    await user.tab();
+  }
+  expect(document.activeElement).toBe(tab);
+  await user.keyboard("{ArrowRight}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Scan", selected: true }));
   const choose = scanning().getByRole("button", { name: "Browse…" });
   for (let step = 0; step < 40 && document.activeElement !== choose; step++) {
     await user.tab();
@@ -397,4 +435,204 @@ test("the palette opens the performance corpus screen and Escape cancels a runni
   await waitFor(() =>
     expect((screen.getAllByRole("button", { name: "Open workspace…" })[0]! as HTMLButtonElement).disabled).toBe(false),
   );
+});
+
+const offered = (select: HTMLElement) =>
+  [...(select as HTMLSelectElement).options].map((option) => [option.value, option.text]);
+
+test("the corpus tasks follow the tabs pattern: one tab stop, arrow keys, Home and End, and each tab controls its rendered panel", async () => {
+  installFacade(handlers());
+  const user = userEvent.setup();
+  render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
+  await openScreen(user);
+  const list = screen.getByRole("tablist", { name: "Corpus tasks" });
+  expectTabPattern(list);
+  screen.getByRole("tab", { name: "Generate" }).focus();
+  await user.keyboard("{ArrowRight}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Scan", selected: true }));
+  expect(scanning().getByRole("heading", { name: "Scan stream" })).toBeTruthy();
+  expectTabPattern(list);
+  await user.keyboard("{ArrowRight}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Generate", selected: true }));
+  await user.keyboard("{End}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Scan", selected: true }));
+  await user.keyboard("{Home}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Generate", selected: true }));
+  await user.keyboard("{ArrowLeft}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Scan", selected: true }));
+  expectTabPattern(list);
+});
+
+test("generate and scan are separate tasks shown one at a time, each keeping its unsaved inputs", async () => {
+  const facade = installFacade(handlers());
+  const user = userEvent.setup();
+  render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
+  await openScreen(user);
+  expect(screen.getByRole("tab", { name: "Generate" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("heading", { name: "Generate corpus" })).toBeTruthy();
+  expect(screen.queryByRole("tabpanel", { name: "Scan" })).toBeNull();
+  await user.type(generation().getByLabelText("Seed"), "42");
+  await user.type(generation().getByLabelText("Message count"), "12");
+
+  await show(user, "Scan");
+  expect(screen.queryByRole("tabpanel", { name: "Generate" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Scan stream" })).toBeTruthy();
+  await user.clear(scanning().getByLabelText("Preview records"));
+  await user.type(scanning().getByLabelText("Preview records"), "0");
+
+  await show(user, "Generate");
+  expect((generation().getByLabelText("Seed") as HTMLInputElement).value).toBe("42");
+  expect((generation().getByLabelText("Message count") as HTMLInputElement).value).toBe("12");
+  await show(user, "Scan");
+  expect((scanning().getByLabelText("Preview records") as HTMLInputElement).value).toBe("0");
+  // Moving between tasks starts nothing.
+  expect(facade.callsTo("GenerateCorpus")).toHaveLength(0);
+  expect(facade.callsTo("ScanCorpus")).toHaveLength(0);
+  expect(facade.callsTo("ChooseCorpusPath")).toHaveLength(0);
+});
+
+test("each task offers only its own format vocabulary, captioned in words over the unchanged plan values", async () => {
+  const facade = installFacade(handlers());
+  const user = userEvent.setup();
+  render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
+  await openScreen(user);
+  const output = within(generation().getByRole("group", { name: "Output format" }));
+  // Generation never offers raw framing, a second terminator or an unknown
+  // encoding: it writes only what a corpus can be written with.
+  expect(offered(output.getByLabelText("Framing"))).toEqual([["", "Choose…"], ["mllp", "MLLP frames"], ["batch", "Batch"]]);
+  expect(offered(output.getByLabelText("Segment terminator"))).toEqual([["", "Choose…"], ["cr", "CR"]]);
+  expect(offered(output.getByLabelText("Encoding"))).toEqual([["", "Choose…"], ["us-ascii", "US-ASCII"], ["utf-8", "UTF-8"]]);
+  expect(offered(output.getByLabelText("Direction"))).toEqual([
+    ["", "Choose…"], ["inbound", "Inbound"], ["outbound", "Outbound"], ["unknown", "Unknown"],
+  ]);
+  await user.selectOptions(output.getByLabelText("Framing"), "Batch");
+  expect(offered(output.getByLabelText("Batch boundary"))).toEqual([["", "Choose…"], ["segment-start", "Segment start"]]);
+  // The reproducibility pins are chosen, never preselected.
+  expect((generation().getByLabelText("Generator version") as HTMLSelectElement).value).toBe("");
+  expect((generation().getByLabelText("Profile version") as HTMLSelectElement).value).toBe("");
+  // The base time's format requirements stay beside it, with no default.
+  const base = generation().getByLabelText("Base time") as HTMLInputElement;
+  expect(base.value).toBe("");
+  expect(document.getElementById(base.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(
+    /Whole-second RFC 3339 with a time zone/,
+  );
+
+  await show(user, "Scan");
+  const input = within(scanning().getByRole("group", { name: "Input format" }));
+  expect(offered(input.getByLabelText("Framing"))).toEqual([
+    ["", "Choose…"], ["raw", "Raw HL7"], ["mllp", "MLLP frames"], ["batch", "Batch"],
+  ]);
+  expect(offered(input.getByLabelText("Segment terminator"))).toEqual([["", "Choose…"], ["cr", "CR"], ["lf", "LF"], ["crlf", "CRLF"]]);
+  expect(offered(input.getByLabelText("Encoding"))).toEqual([
+    ["", "Choose…"], ["utf-8", "UTF-8"], ["us-ascii", "US-ASCII"], ["iso-8859-1", "ISO-8859-1"], ["unknown", "Unknown"],
+  ]);
+  await user.selectOptions(input.getByLabelText("Framing"), "Batch");
+  expect(offered(input.getByLabelText("Batch boundary"))).toEqual([
+    ["", "Choose…"], ["segment-start", "Segment start"], ["hl7-batch", "HL7 batch"],
+  ]);
+  await user.click(scanning().getByRole("button", { name: "Browse…" }));
+  await scanning().findByText(STREAM);
+  await user.selectOptions(input.getByLabelText("Batch boundary"), "HL7 batch");
+  await user.selectOptions(input.getByLabelText("Segment terminator"), "CRLF");
+  await user.selectOptions(input.getByLabelText("Encoding"), "ISO-8859-1");
+  await user.selectOptions(input.getByLabelText("Direction"), "Unknown");
+  await user.click(scanning().getByRole("button", { name: "Scan stream" }));
+  await screen.findByLabelText("Scan report");
+  expect(facade.oneCall("ScanCorpus")[0]).toMatchObject({
+    plan: {
+      schema: "readmit-import-plan/v1",
+      framing: "batch",
+      batch_boundary: "hl7-batch",
+      terminator: "crlf",
+      encoding: "iso-8859-1",
+      direction: "unknown",
+      members: [],
+    },
+  });
+});
+
+test("a scan keeps its preview in the normal flow, batch bounds under advanced limits and benchmark fields until asked for", async () => {
+  const facade = installFacade(handlers());
+  const user = userEvent.setup();
+  render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
+  await openScreen(user);
+  await declareScan(user);
+  const limits = within(scanning().getByRole("group", { name: "Scan limits and preview" }));
+  const preview = limits.getByLabelText("Preview records") as HTMLInputElement;
+  expect(preview.value).toBe("20");
+  expect(document.getElementById(preview.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+    "0 shows counts only; maximum 200.",
+  );
+  expect((limits.getByLabelText("Preview record offset") as HTMLInputElement).value).toBe("0");
+  // The batch bounds are behind their own disclosure, and their defaults are
+  // stated where the fields are.
+  const details = limits.getByText("Advanced scan limits").closest("details")!;
+  expect(details.open).toBe(false);
+  await advanced(user);
+  expect(details.open).toBe(true);
+  for (const [label, hint] of [
+    ["Records per batch", "Empty uses 256 records."],
+    ["Bytes per batch", "Empty uses 8,388,608 bytes."],
+  ] as const) {
+    const field = limits.getByLabelText(label) as HTMLInputElement;
+    expect(field.value).toBe("");
+    expect(document.getElementById(field.getAttribute("aria-describedby") ?? "")?.textContent).toBe(hint);
+  }
+  // A malformed bound is refused, not replaced with a guess.
+  await user.type(limits.getByLabelText("Bytes per batch"), "8MB");
+  expect((scanning().getByRole("button", { name: "Scan stream" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.clear(limits.getByLabelText("Bytes per batch"));
+
+  const benchmark = within(scanning().getByRole("group", { name: "Benchmark output" }));
+  expect(benchmark.queryByLabelText("Benchmark filename")).toBeNull();
+  expect(benchmark.queryByRole("button", { name: "Choose a folder for the benchmark…" })).toBeNull();
+  await user.click(benchmark.getByLabelText("Save benchmark"));
+  expect(benchmark.getByLabelText("Benchmark filename")).toBeTruthy();
+  await user.click(benchmark.getByLabelText("Save benchmark"));
+  expect(benchmark.queryByLabelText("Benchmark filename")).toBeNull();
+
+  // Zero preview records is counts only; empty bounds are sent as the
+  // backend's own defaults.
+  await user.clear(preview);
+  await user.type(preview, "0");
+  await user.click(scanning().getByRole("button", { name: "Scan stream" }));
+  await screen.findByLabelText("Scan report");
+  expect(facade.oneCall("ScanCorpus")[0]).toMatchObject({ batch_records: 0, batch_bytes: 0, window_offset: 0, window_limit: 0 });
+  expect(facade.oneCall("ScanCorpus")[0]).not.toHaveProperty("report_folder");
+});
+
+test("closing the screen while a scan runs keeps its named status and cancellation in view", async () => {
+  const facade = installFacade(
+    handlers({
+      CorpusProgress: () => ({
+        state: "completed",
+        progress: { operation: "scan", messages: 0, bytes: 1024, records: 3, occurrences: 3, batches: 1 },
+      }),
+    }),
+  );
+  const parked = facade.park("ScanCorpus");
+  const user = userEvent.setup();
+  render(<PerformanceCorpus busy={false} indicators={new Map()} request={0} />);
+  await openScreen(user);
+  await declareScan(user);
+  await user.click(scanning().getByRole("button", { name: "Scan stream" }));
+  await screen.findByText("Scanned so far: 1024 bytes, 3 records, 3 occurrences, 1 parsing batches");
+  await user.click(screen.getByRole("button", { name: "Performance corpus" }));
+  expect(screen.queryByRole("tabpanel")).toBeNull();
+  const status = within(screen.getByRole("group", { name: "Scan running" }));
+  expect(status.getByText("Scanning the stream.")).toBeTruthy();
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  await user.click(status.getByRole("button", { name: "Cancel scan" }));
+  expect(facade.oneCall("Cancel")).toEqual(["corpus"]);
+  parked.resolve({
+    state: "cancelled",
+    reason: "the scan was cancelled; these are the counts it reached, the case bounds were not evaluated and no benchmark was written",
+    scan: scanView({ case_bounds: "not-evaluated", exceeded: [], window_limit: 0, rows: [] }),
+  });
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Scan running" })).toBeNull());
+  // Reopening shows the cancelled scan as cancelled, never as a completed benchmark.
+  await user.click(screen.getByRole("button", { name: "Performance corpus" }));
+  const report = within(await scanning().findByLabelText("Scan report"));
+  expect(report.getByText("cancelled")).toBeTruthy();
+  expect(screen.queryByText(/Benchmark written to/)).toBeNull();
 });

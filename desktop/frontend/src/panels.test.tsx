@@ -47,7 +47,7 @@ test("the guided sample offers each step out of the folder and runs a new folder
     />,
   );
   // The step being performed now is the one marked current.
-  expect(screen.getByText("Author a regression test").closest("li")?.getAttribute("aria-current")).toBe(
+  expect(screen.getByText("Create sample test").closest("li")?.getAttribute("aria-current")).toBe(
     "step",
   );
   await user.click(screen.getByRole("button", { name: "Open case" }));
@@ -170,10 +170,14 @@ test("approving a baseline needs a person, a reason and a new file, explicitly",
     }),
     ApproveBaseline: () => ({ state: "completed" as const, output: "baseline-2" }),
   });
-  render(<Baseline workspace={WORKSPACE_ROOT} busy={false} />);
+  // The window reads the folder again once an approval wrote a file, so the
+  // pickers that list its entries offer it; a review writes nothing.
+  let saved = 0;
+  render(<Baseline workspace={WORKSPACE_ROOT} busy={false} onSaved={() => (saved += 1)} />);
   await user.type(screen.getByLabelText("Candidate test"), "saved-test.json");
   await user.click(screen.getByRole("button", { name: "Review changes" }));
   await screen.findByText("No specification changes; an approval still requires a deliberate local decision.");
+  expect(saved).toBe(0);
   const approve = () => screen.getByRole("button", { name: "Approve baseline" }) as HTMLButtonElement;
   expect(approve().disabled).toBe(true);
   await user.type(screen.getByLabelText("Local approver"), "sam");
@@ -191,6 +195,7 @@ test("approving a baseline needs a person, a reason and a new file, explicitly",
     output: "baseline-2",
   });
   expect(await screen.findByText("Approved and saved baseline-2.")).toBeTruthy();
+  expect(saved).toBe(1);
 });
 
 test("reproducer steps are composed and resolved by the engine", async () => {

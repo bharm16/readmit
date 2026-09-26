@@ -34,7 +34,7 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await press(user, access().getByRole("button", { name: "Choose activation folder…" }));
   await press(user, access().getByRole("button", { name: "Refresh activation" }));
   expect(await access().findByText(/^License: active\./)).toBeTruthy();
-  await journey.chooseFolder(journey.path("investigations"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("investigations"), "Open workspace");
   await press(user, screen.getByRole("button", { name: "Create project…" }));
   const evidence = within(region("Evidence"));
   await press(user, await evidence.findByRole("button", { name: "Create a project…" }));

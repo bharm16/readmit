@@ -51,3 +51,27 @@
 .privacy-documents button {
   justify-self: start;
 }
+
+.privacy-documents[hidden] {
+  display: none !important;
+}
+
+.privacy-documents .privacy-task {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.privacy-documents details.preflight > summary {
+  cursor: pointer;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.privacy-documents details.preflight[open] {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.privacy-documents code {
+  overflow-wrap: anywhere;
+}

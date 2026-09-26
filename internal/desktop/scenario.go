@@ -625,6 +625,36 @@ func (a *App) ExportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibr
 	})
 }
 
+// ScenarioLibraryChoiceResult reports the library file a person chose to
+// import, by its full path.
+type ScenarioLibraryChoiceResult struct {
+	State  State  `json:"state"`
+	Reason string `json:"reason,omitzero"`
+	Path   string `json:"path,omitzero"`
+}
+
+func (r *ScenarioLibraryChoiceResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
+// ChooseScenarioLibraryImport presents the host's native file dialog for the
+// scenario library to import. The library comes from elsewhere on the
+// machine, so the choice is answered as the full path ImportScenarioLibrary
+// reads; choosing reads and writes nothing, and a dismissed dialog is a
+// cancellation.
+func (a *App) ChooseScenarioLibraryImport() ScenarioLibraryChoiceResult {
+	return run(a, true, false, func(ctx context.Context) ScenarioLibraryChoiceResult {
+		files, declined := a.chooseFiles(ctx, "Choose the scenario library to import", "readmit documents", "*.json")
+		if len(files) == 0 {
+			return ScenarioLibraryChoiceResult{State: declined.state, Reason: declined.reason}
+		}
+		if len(files) != 1 {
+			return ScenarioLibraryChoiceResult{State: Failed, Reason: "choose exactly one file"}
+		}
+		return ScenarioLibraryChoiceResult{State: Completed, Path: files[0]}
+	})
+}
+
 // ImportScenarioLibrary copies an external library document into the workspace
 // as a new entry; existing revisions are never overwritten.
 func (a *App) ImportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibraryResult {

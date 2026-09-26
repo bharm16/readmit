@@ -74,12 +74,20 @@ async function observe(user: UserEvent, journey: Journey, path: string, completi
     await press(user, within(region("Evidence")).getByRole("button", { name: "Observations" }));
   }
   const panel = within(await screen.findByRole("region", { name: "Observation setup" }));
-  await enter(user, panel.getByLabelText("Export path"), path);
-  await enter(user, panel.getByLabelText("Max bytes"), String(maxBytes));
+  // A new window's pre-existing state is the person's choice: this downstream
+  // held nothing in scope before collection.
+  await press(user, panel.getByRole("tab", { name: "Completion rules" }));
+  const state = panel.getByLabelText("Pre-existing state") as HTMLSelectElement;
+  await waitFor(() => expect(state.disabled).toBe(false));
+  if (state.value === "") await user.selectOptions(state, "Declared empty");
+  await press(user, panel.getByRole("tab", { name: "Source" }));
+  await enter(user, panel.getByLabelText("Export file"), path);
+  await enter(user, panel.getByLabelText("Maximum input bytes"), String(maxBytes));
   await press(user, panel.getByRole("button", { name: "Save observation" }));
   expect(await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.")).toBeTruthy();
-  await enter(user, panel.getByLabelText("Completion output"), `${completion}.json`);
-  await enter(user, panel.getByLabelText("Snapshot directory"), `${completion}-snapshot`);
+  await press(user, panel.getByRole("tab", { name: "Collect and results" }));
+  await enter(user, panel.getByLabelText("Completion file"), `${completion}.json`);
+  await enter(user, panel.getByLabelText("Snapshot folder"), `${completion}-snapshot`);
   const authorize = panel.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement;
   if (!authorize.checked) await user.click(authorize);
   const asked = journey.callsTo("CollectObservation").length;

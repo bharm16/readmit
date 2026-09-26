@@ -244,6 +244,50 @@ func TestCoverageAuthoringPinsRetainedBytesAndAssessmentMatchesTheEngine(t *test
 	}
 }
 
+// The listing tells the suite pickers which suite artifact each entry
+// declares, from its declared contract or its directory marker and never from
+// its name, so a prepared suite is never offered as a suite definition or a
+// coverage document. The discriminator admits nothing: the coverage reader
+// still refuses a suite definition named as a coverage document.
+func TestListingNamesEachSuiteArtifactByItsDeclaredContract(t *testing.T) {
+	app, root := suiteApp(t)
+	if prepared := app.PrepareSuite(desktop.SuitePrepareRequest{Workspace: root, Entry: "suite.json", Environment: "east", Output: "prepared"}); prepared.State != desktop.Completed {
+		t.Fatalf("%+v", prepared)
+	}
+	if authored := app.SaveSuiteCoverage(desktop.SuiteCoverageSaveRequest{Workspace: root, Prepared: "prepared",
+		Requirements: []suite.Requirement{{ID: "accept-booking", Jobs: []string{"booking-one"}}}, Output: "declared.json"}); authored.State != desktop.Completed {
+		t.Fatalf("%+v", authored)
+	}
+	writeDocument(t, root, "pins.json", `{"schema":"readmit-suite-releases/v1","tests":[]}`)
+	// A file whose name says coverage but whose contract is a suite is a suite.
+	writeDocument(t, root, "coverage-looking.json", suiteFixture)
+	listing := app.OpenWorkspace(root)
+	if listing.State != desktop.Completed || listing.Workspace == nil {
+		t.Fatalf("%+v", listing)
+	}
+	roles := map[string]desktop.SuiteRole{}
+	for _, artifact := range listing.Workspace.Artifacts {
+		roles[artifact.Name] = artifact.Role
+	}
+	want := map[string]desktop.SuiteRole{
+		"suite.json":            desktop.SuiteDefinitionRole,
+		"coverage-looking.json": desktop.SuiteDefinitionRole,
+		"prepared":              desktop.PreparedSuiteRole,
+		"declared.json":         desktop.SuiteCoverageRole,
+		"pins.json":             desktop.SuiteReleasesRole,
+		"booking.json":          "",
+		"case-one":              "",
+	}
+	for name, role := range want {
+		if roles[name] != role {
+			t.Fatalf("%s: role %q, want %q (listing %+v)", name, roles[name], role, listing.Workspace.Artifacts)
+		}
+	}
+	if refused := app.AssessSuiteCoverage(desktop.SuiteCoverageAssessRequest{Workspace: root, Prepared: "prepared", Requirements: "coverage-looking.json"}); refused.State != desktop.Failed {
+		t.Fatalf("a suite definition must not assess as a coverage document: %+v", refused)
+	}
+}
+
 func TestPromotionReviewAndApprovalInvalidateOnChangedConfiguration(t *testing.T) {
 	app, root := releaseWorkspace(t)
 	review := app.ReviewSuitePromotion(desktop.SuitePromotionRequest{Workspace: root, Entry: "suite.json", Environment: "east", Releases: "releases.json", Revision: "fixture-build-7"})

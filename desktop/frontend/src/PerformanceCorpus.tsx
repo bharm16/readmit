@@ -18,8 +18,10 @@ import {
   type ImportPlan,
   type State,
 } from "./bindings";
+import { ControlledDetails } from "./ControlledDetails";
 import { Report, type Indicators } from "./shell";
 import { useLifecycle } from "./lifecycle";
+import { TaskTabs } from "./TaskTabs";
 
 /** How often a running generation or scan is asked what it has reached. */
 const PROGRESS_MS = 250;
@@ -93,6 +95,25 @@ const scanChoices: Choices = {
   direction: ["inbound", "outbound", "unknown"],
 };
 
+/** What each import-plan value is called on screen. The caption is only
+ * presentation: the value sent is always the plan's own. */
+const captions: Record<string, string> = {
+  raw: "Raw HL7",
+  mllp: "MLLP frames",
+  batch: "Batch",
+  "segment-start": "Segment start",
+  "hl7-batch": "HL7 batch",
+  cr: "CR",
+  lf: "LF",
+  crlf: "CRLF",
+  "utf-8": "UTF-8",
+  "us-ascii": "US-ASCII",
+  "iso-8859-1": "ISO-8859-1",
+  unknown: "Unknown",
+  inbound: "Inbound",
+  outbound: "Outbound",
+};
+
 function Choice({
   label,
   value,
@@ -111,7 +132,7 @@ function Choice({
         <option value="">Choose…</option>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {captions[option] ?? option}
           </option>
         ))}
       </select>
@@ -273,6 +294,9 @@ export function PerformanceCorpus({
 }) {
   const [open, setOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
+  // One task is shown at a time; the other keeps its unsaved inputs, and a
+  // task still running keeps its status and cancellation in view.
+  const [task, setTask] = useState<"generate" | "scan">("generate");
   // This screen's calls hold the window's one slot, so the rest of the window
   // is unavailable meanwhile rather than answered busy; generation and a scan
   // both run under the facade's corpus operation, which its cancel stops.
@@ -433,6 +457,11 @@ export function PerformanceCorpus({
     stream !== "" && complete(scanning) && numbersValid && (!benchmark || (reportFolder !== "" && reportName.trim() !== ""));
   const manifest = generated?.manifest;
 
+  // A generation or scan keeps its named status and its cancellation wherever
+  // the person is: switching tasks or closing the screen neither cancels it
+  // nor hides that it runs.
+  const working = running === "generate" || running === "scan" ? running : null;
+
   return (
     <section className="raw-panel" aria-labelledby="performance-corpus-title">
       <h3 id="performance-corpus-title">
@@ -446,6 +475,19 @@ export function PerformanceCorpus({
           Performance corpus
         </button>
       </h3>
+      {working ? (
+        <div className="raw-running" role="group" aria-label={working === "generate" ? "Generation running" : "Scan running"}>
+          <Report
+            indicators={indicators}
+            progress={working === "generate" ? "Generating the corpus." : "Scanning the stream."}
+            result={null}
+          />
+          <ProgressLine progress={progress} />
+          <button type="button" onClick={stop}>
+            {working === "generate" ? "Cancel generation" : "Cancel scan"}
+          </button>
+        </div>
+      ) : null}
       {open ? (
         <div id="performance-corpus-body">
           <p className="hint">
@@ -454,182 +496,212 @@ export function PerformanceCorpus({
             is written.
           </p>
           <Report indicators={indicators} progress={running === "choosing" ? "Waiting for the dialog." : null} result={feedback} />
-
-          <section aria-labelledby="corpus-generate-title" className="raw-part">
-            <h4 id="corpus-generate-title">Generate a corpus</h4>
-            <fieldset disabled={disabled}>
-              <legend>Generator inputs</legend>
-              <label>
-                Seed
-                <input inputMode="numeric" value={seed} onChange={(event) => forGeneration(setSeed)(event.target.value)} />
-              </label>
-              <label>
-                Base time (whole-second RFC 3339 with a time zone)
-                <input
-                  value={baseTime}
-                  placeholder="2026-01-02T03:04:05Z"
-                  onChange={(event) => forGeneration(setBaseTime)(event.target.value)}
+          <TaskTabs
+            label="Corpus tasks"
+            id="corpus"
+            tabs={[
+              { key: "generate", label: "Generate" },
+              { key: "scan", label: "Scan" },
+            ]}
+            selected={task}
+            onSelect={setTask}
+            panelClass="raw-part"
+          >
+            {task === "generate" ? (
+              <>
+                <h4>Generate corpus</h4>
+                <fieldset disabled={disabled}>
+                  <legend>Generation settings</legend>
+                  <label>
+                    Seed
+                    <input inputMode="numeric" value={seed} onChange={(event) => forGeneration(setSeed)(event.target.value)} />
+                  </label>
+                  <label>
+                    Base time
+                    <input
+                      value={baseTime}
+                      placeholder="2026-01-02T03:04:05Z"
+                      aria-describedby="corpus-base-time-hint"
+                      onChange={(event) => forGeneration(setBaseTime)(event.target.value)}
+                    />
+                  </label>
+                  <p className="hint" id="corpus-base-time-hint">
+                    Whole-second RFC 3339 with a time zone. There is no default time.
+                  </p>
+                  <Choice label="Generator version" value={generator} options={[GENERATOR_VERSION]} onChange={forGeneration(setGenerator)} />
+                  <Choice label="Profile version" value={profile} options={[PROFILE_VERSION]} onChange={forGeneration(setProfile)} />
+                  <label>
+                    Message count
+                    <input inputMode="numeric" value={messages} onChange={(event) => forGeneration(setMessages)(event.target.value)} />
+                  </label>
+                </fieldset>
+                <PlanControls
+                  legend="Output format"
+                  declared={generation}
+                  choices={generationChoices}
+                  disabled={disabled}
+                  onChange={forGeneration(setGeneration)}
                 />
-              </label>
-              <Choice label="Generator version" value={generator} options={[GENERATOR_VERSION]} onChange={forGeneration(setGenerator)} />
-              <Choice label="Profile version" value={profile} options={[PROFILE_VERSION]} onChange={forGeneration(setProfile)} />
-              <label>
-                Messages
-                <input inputMode="numeric" value={messages} onChange={(event) => forGeneration(setMessages)(event.target.value)} />
-              </label>
-            </fieldset>
-            <PlanControls
-              legend="How the corpus is framed"
-              declared={generation}
-              choices={generationChoices}
-              disabled={disabled}
-              onChange={forGeneration(setGeneration)}
-            />
-            <fieldset disabled={disabled}>
-              <legend>New files</legend>
-              <div className="raw-choice">
-                <button type="button" onClick={() => void choose("corpus-folder", forGeneration(setFolder))}>
-                  Choose destination…
-                </button>
-                <span className="raw-path">{folder || "No folder chosen."}</span>
-              </div>
-              <label>
-                Corpus file name
-                <input value={corpusName} onChange={(event) => forGeneration(setCorpusName)(event.target.value)} />
-              </label>
-              <label>
-                Manifest file name
-                <input value={manifestName} onChange={(event) => forGeneration(setManifestName)(event.target.value)} />
-              </label>
-            </fieldset>
-            <div className="raw-actions">
-              <button type="button" disabled={disabled || !canGenerate} onClick={() => void generate()}>
-                Generate corpus
-              </button>
-              {running === "generate" ? (
-                <button type="button" onClick={stop}>
-                  Cancel generation
-                </button>
-              ) : null}
-            </div>
-            {running === "generate" ? <ProgressLine progress={progress} /> : null}
-            <Report
-              indicators={indicators}
-              progress={running === "generate" ? "Generating the corpus." : null}
-              result={generated && generated.state !== "completed" ? generated : null}
-            />
-            {generated?.state === "completed" && manifest ? (
-              <dl className="raw-facts" aria-label="Written corpus">
-                <dt>Corpus</dt>
-                <dd>{generated.corpus}</dd>
-                <dt>Manifest</dt>
-                <dd>
-                  {generated.manifest_path} ({manifest.schema})
-                </dd>
-                <dt>Generator</dt>
-                <dd>{manifest.generator_version}</dd>
-                <dt>Profile</dt>
-                <dd>{manifest.profile_version}</dd>
-                <dt>Seed</dt>
-                <dd>{manifest.seed}</dd>
-                <dt>Base time</dt>
-                <dd>{manifest.base_time}</dd>
-                <dt>Plan</dt>
-                <dd>
-                  framing {manifest.plan.framing} · terminator {manifest.plan.terminator} · encoding{" "}
-                  {manifest.plan.encoding} · direction {manifest.plan.direction}
-                </dd>
-                <dt>Messages</dt>
-                <dd>{manifest.messages}</dd>
-                <dt>Bytes</dt>
-                <dd>{manifest.bytes}</dd>
-                <dt>Digest</dt>
-                <dd>{manifest.sha256}</dd>
-              </dl>
-            ) : null}
-          </section>
-
-          <section aria-labelledby="corpus-scan-title" className="raw-part">
-            <h4 id="corpus-scan-title">Scan a stream</h4>
-            <div className="raw-choice">
-              <button type="button" disabled={disabled} onClick={() => void choose("scan-file", forScan(setStream))}>
-                Browse…
-              </button>
-              <span className="raw-path">{stream || "No stream chosen."}</span>
-            </div>
-            <PlanControls
-              legend="How the stream divides"
-              declared={scanning}
-              choices={scanChoices}
-              disabled={disabled}
-              onChange={forScan(setScanning)}
-            />
-            <fieldset disabled={disabled}>
-              <legend>Bounds and window</legend>
-              <label>
-                Records per batch
-                <input inputMode="numeric" value={batchRecords} onChange={(event) => forScan(setBatchRecords)(event.target.value)} />
-              </label>
-              <p className="hint">Empty for 256 records.</p>
-              <label>
-                Bytes per batch
-                <input inputMode="numeric" value={batchBytes} onChange={(event) => forScan(setBatchBytes)(event.target.value)} />
-              </label>
-              <p className="hint">Empty for 8,388,608 bytes.</p>
-              <label>
-                Window offset
-                <input inputMode="numeric" value={windowOffset} onChange={(event) => forScan(setWindowOffset)(event.target.value)} />
-              </label>
-              <label>
-                Window records (0 for counts only, at most 200)
-                <input inputMode="numeric" value={windowLimit} onChange={(event) => forScan(setWindowLimit)(event.target.value)} />
-              </label>
-            </fieldset>
-            <fieldset disabled={disabled}>
-              <legend>Benchmark</legend>
-              <label className="raw-check">
-                <input type="checkbox" checked={benchmark} onChange={(event) => forScan(setBenchmark)(event.target.checked)} />
-                Save benchmark
-              </label>
-              <p className="hint">Writes a readmit-benchmark/v1 document when the scan completes.</p>
-              {benchmark ? (
-                <>
+                <fieldset disabled={disabled}>
+                  <legend>Output files</legend>
+                  <p className="hint">Two new files in the chosen folder. An existing file is never overwritten.</p>
                   <div className="raw-choice">
-                    <button type="button" onClick={() => void choose("benchmark-folder", forScan(setReportFolder))}>
-                      Choose a folder for the benchmark…
+                    <button type="button" onClick={() => void choose("corpus-folder", forGeneration(setFolder))}>
+                      Choose destination…
                     </button>
-                    <span className="raw-path">{reportFolder || "No folder chosen."}</span>
+                    <span className="raw-path">{folder || "No folder chosen."}</span>
                   </div>
                   <label>
-                    Benchmark file name
-                    <input value={reportName} onChange={(event) => forScan(setReportName)(event.target.value)} />
+                    Corpus filename
+                    <input value={corpusName} onChange={(event) => forGeneration(setCorpusName)(event.target.value)} />
                   </label>
-                </>
-              ) : null}
-            </fieldset>
-            <div className="raw-actions">
-              <button type="button" disabled={disabled || !canScan} onClick={() => void scan()}>
-                Scan stream
-              </button>
-              {running === "scan" ? (
-                <button type="button" onClick={stop}>
-                  Cancel scan
-                </button>
-              ) : null}
-            </div>
-            {running === "scan" ? <ProgressLine progress={progress} /> : null}
-            <Report
-              indicators={indicators}
-              progress={running === "scan" ? "Scanning the stream." : null}
-              result={scanned && scanned.state !== "completed" ? scanned : null}
-            />
-            {scanned?.scan ? <ScanReport scan={scanned.scan} state={scanned.state} /> : null}
-            {scanned?.benchmark ? (
-              <p className="raw-summary" role="status">
-                Benchmark written to {scanned.benchmark}
-              </p>
-            ) : null}
-          </section>
+                  <label>
+                    Manifest filename
+                    <input value={manifestName} onChange={(event) => forGeneration(setManifestName)(event.target.value)} />
+                  </label>
+                </fieldset>
+                <div className="raw-actions">
+                  <button type="button" disabled={disabled || !canGenerate} onClick={() => void generate()}>
+                    Generate corpus
+                  </button>
+                </div>
+                <Report
+                  indicators={indicators}
+                  progress={null}
+                  result={generated && generated.state !== "completed" ? generated : null}
+                />
+                {generated?.state === "completed" && manifest ? (
+                  <dl className="raw-facts" aria-label="Written corpus">
+                    <dt>Corpus</dt>
+                    <dd>{generated.corpus}</dd>
+                    <dt>Manifest</dt>
+                    <dd>
+                      {generated.manifest_path} ({manifest.schema})
+                    </dd>
+                    <dt>Generator</dt>
+                    <dd>{manifest.generator_version}</dd>
+                    <dt>Profile</dt>
+                    <dd>{manifest.profile_version}</dd>
+                    <dt>Seed</dt>
+                    <dd>{manifest.seed}</dd>
+                    <dt>Base time</dt>
+                    <dd>{manifest.base_time}</dd>
+                    <dt>Plan</dt>
+                    <dd>
+                      framing {manifest.plan.framing} · terminator {manifest.plan.terminator} · encoding{" "}
+                      {manifest.plan.encoding} · direction {manifest.plan.direction}
+                    </dd>
+                    <dt>Messages</dt>
+                    <dd>{manifest.messages}</dd>
+                    <dt>Bytes</dt>
+                    <dd>{manifest.bytes}</dd>
+                    <dt>Digest</dt>
+                    <dd>{manifest.sha256}</dd>
+                  </dl>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <h4>Scan stream</h4>
+                <div className="raw-choice">
+                  <button type="button" disabled={disabled} onClick={() => void choose("scan-file", forScan(setStream))}>
+                    Browse…
+                  </button>
+                  <span className="raw-path">{stream || "No stream chosen."}</span>
+                </div>
+                <PlanControls
+                  legend="Input format"
+                  declared={scanning}
+                  choices={scanChoices}
+                  disabled={disabled}
+                  onChange={forScan(setScanning)}
+                />
+                <fieldset disabled={disabled}>
+                  <legend>Scan limits and preview</legend>
+                  <label>
+                    Preview record offset
+                    <input inputMode="numeric" value={windowOffset} onChange={(event) => forScan(setWindowOffset)(event.target.value)} />
+                  </label>
+                  <label>
+                    Preview records
+                    <input
+                      inputMode="numeric"
+                      value={windowLimit}
+                      aria-describedby="corpus-preview-records-hint"
+                      onChange={(event) => forScan(setWindowLimit)(event.target.value)}
+                    />
+                  </label>
+                  <p className="hint" id="corpus-preview-records-hint">
+                    0 shows counts only; maximum 200.
+                  </p>
+                  <ControlledDetails summary="Advanced scan limits">
+                    <label>
+                      Records per batch
+                      <input
+                        inputMode="numeric"
+                        value={batchRecords}
+                        aria-describedby="corpus-batch-records-hint"
+                        onChange={(event) => forScan(setBatchRecords)(event.target.value)}
+                      />
+                    </label>
+                    <p className="hint" id="corpus-batch-records-hint">
+                      Empty uses 256 records.
+                    </p>
+                    <label>
+                      Bytes per batch
+                      <input
+                        inputMode="numeric"
+                        value={batchBytes}
+                        aria-describedby="corpus-batch-bytes-hint"
+                        onChange={(event) => forScan(setBatchBytes)(event.target.value)}
+                      />
+                    </label>
+                    <p className="hint" id="corpus-batch-bytes-hint">
+                      Empty uses 8,388,608 bytes.
+                    </p>
+                  </ControlledDetails>
+                </fieldset>
+                <fieldset disabled={disabled}>
+                  <legend>Benchmark output</legend>
+                  <label className="raw-check">
+                    <input type="checkbox" checked={benchmark} onChange={(event) => forScan(setBenchmark)(event.target.checked)} />
+                    Save benchmark
+                  </label>
+                  <p className="hint">Writes a readmit-benchmark/v1 document when the scan completes.</p>
+                  {benchmark ? (
+                    <>
+                      <div className="raw-choice">
+                        <button type="button" onClick={() => void choose("benchmark-folder", forScan(setReportFolder))}>
+                          Choose a folder for the benchmark…
+                        </button>
+                        <span className="raw-path">{reportFolder || "No folder chosen."}</span>
+                      </div>
+                      <label>
+                        Benchmark filename
+                        <input value={reportName} onChange={(event) => forScan(setReportName)(event.target.value)} />
+                      </label>
+                    </>
+                  ) : null}
+                </fieldset>
+                <div className="raw-actions">
+                  <button type="button" disabled={disabled || !canScan} onClick={() => void scan()}>
+                    Scan stream
+                  </button>
+                </div>
+                <Report
+                  indicators={indicators}
+                  progress={null}
+                  result={scanned && scanned.state !== "completed" ? scanned : null}
+                />
+                {scanned?.scan ? <ScanReport scan={scanned.scan} state={scanned.state} /> : null}
+                {scanned?.benchmark ? (
+                  <p className="raw-summary" role="status">
+                    Benchmark written to {scanned.benchmark}
+                  </p>
+                ) : null}
+              </>
+            )}
+          </TaskTabs>
         </div>
       ) : null}
     </section>

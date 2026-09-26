@@ -67,7 +67,7 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   expect(await access.findByText(/^License: active\./)).toBeTruthy();
 
   // The folder lists the hostile file name as the text it is.
-  await journey.chooseFolder(journey.path("work"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("work"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(region("Workspace"));
   expect(await navigation.findByText(HOSTILE_NAME)).toBeTruthy();
@@ -76,9 +76,9 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   const listed = (await navigation.findByText("hostile-case")).closest("li")!;
   await press(user, within(listed).getByRole("button", { name: "Open case" }));
   const inspector = within(region("Inspector"));
-  await press(user, await inspector.findByRole("button", { name: "Build case index" }));
+  await press(user, await inspector.findByRole("button", { name: "Set up index" }));
   const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-  await user.click(form.getByRole("radio", { name: /Cryptographic digests/ }));
+  await user.click(form.getByRole("radio", { name: /SHA-256 digests/ }));
   await press(user, form.getByRole("button", { name: "Build index" }));
   expect(await inspector.findByText(/Showing 1 of 1 matching/)).toBeTruthy();
 

@@ -58,3 +58,60 @@
   border-top: 1px solid currentColor;
   padding-top: 0.75rem;
 }
+
+/* The selected files, their saved state and the saved configuration stay
+ * above the views; everything wraps rather than overflowing a small window
+ * or a larger text size. */
+.observation-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.observation-file {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.observation-file-row,
+.observation-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.observation-file-row input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.observation-saved p {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.observation-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.observation-transport,
+.observation-limits,
+.observation-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.observation-filters ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.observation-summary p,
+.observation .hint code {
+  overflow-wrap: anywhere;
+}

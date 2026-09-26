@@ -87,11 +87,14 @@ test("a license file is activated for the person and computer it names and repor
   // from what the license itself assigns.
   const activate = region().getByRole("button", { name: "Activate" });
   expect((activate as HTMLButtonElement).disabled).toBe(true);
-  expect(within(region().getByLabelText("This computer")).queryAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a computer"]);
-  await user.selectOptions(region().getByLabelText("Who uses this computer"), "alice");
-  expect(within(region().getByLabelText("This computer")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a computer", "desk", "laptop"]);
-  await user.selectOptions(region().getByLabelText("This computer"), "laptop");
-  await user.selectOptions(region().getByLabelText("Tests run from this computer count against"), "ci-pool");
+  expect(within(region().getByLabelText("Licensed device")).queryAllByRole("option").map((o) => o.textContent)).toEqual(["Select a licensed device…"]);
+  await user.selectOptions(region().getByLabelText("Licensed person"), "alice");
+  expect(within(region().getByLabelText("Licensed device")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Select a licensed device…", "desk", "laptop"]);
+  await user.selectOptions(region().getByLabelText("Licensed device"), "laptop");
+  // What the choice allocates is said directly below it.
+  expect(region().getByText("No runner pool: this computer runs no tests, and uses no runner slot.")).toBeTruthy();
+  await user.selectOptions(region().getByLabelText("Runner pool"), "ci-pool");
+  expect(region().getByText("Tests run from this computer count against the ci-pool runner pool's slots.")).toBeTruthy();
   await user.click(activate);
   expect(facade.oneCall("ActivateLicense")).toEqual([{ entitlement: RECEIVED, contents: "", trust: KEYS, author: "alice", device: "laptop", authority: "ci-pool" }]);
 
@@ -99,7 +102,7 @@ test("a license file is activated for the person and computer it names and repor
   expect(region().getByText("Licensed to example-hospital on the annual plan: 2 author seats and 3 runner slots.")).toBeTruthy();
   expect(region().getByText("Activated on 2026-09-23 for alice on the computer laptop; tests run from here count against the ci-pool runner pool.")).toBeTruthy();
   expect(region().getByText("Valid until 2027-09-18.")).toBeTruthy();
-  expect(region().queryByRole("group", { name: "License to activate" })).toBeNull();
+  expect(region().queryByRole("group", { name: "Activation review" })).toBeNull();
   expect(changed).toHaveBeenCalledTimes(1);
   // An active license that is not expiring offers no primary task beside its
   // status; renewal, the exact-byte copy and deactivation wait in More
@@ -138,7 +141,7 @@ test("pasted contents are checked and activated, and cancelling the paste or the
   };
   await openPaste();
   await user.type(region().getByLabelText("License file contents"), "partial");
-  await user.click(region().getByRole("button", { name: "Cancel pasting" }));
+  await user.click(region().getByRole("button", { name: "Cancel paste" }));
   expect(region().queryByLabelText("License file contents")).toBeNull();
   expect(facade.callsTo("ReviewLicense")).toHaveLength(0);
 
@@ -149,18 +152,18 @@ test("pasted contents are checked and activated, and cancelling the paste or the
   await user.click(contents);
   await user.paste(pasted);
   await user.click(region().getByRole("button", { name: "Verify license" }));
-  const review = await region().findByRole("group", { name: "License to activate" });
-  expect((within(review).getByLabelText("Who uses this computer") as HTMLSelectElement).value).toBe("bob");
-  expect((within(review).getByLabelText("This computer") as HTMLSelectElement).value).toBe("laptop");
-  expect((within(review).getByLabelText("Tests run from this computer count against") as HTMLSelectElement).value).toBe("local-runner");
-  within(review).getByLabelText("Who uses this computer").focus();
+  const review = await region().findByRole("group", { name: "Activation review" });
+  expect((within(review).getByLabelText("Licensed person") as HTMLSelectElement).value).toBe("bob");
+  expect((within(review).getByLabelText("Licensed device") as HTMLSelectElement).value).toBe("laptop");
+  expect((within(review).getByLabelText("Runner pool") as HTMLSelectElement).value).toBe("local-runner");
+  within(review).getByLabelText("Licensed person").focus();
   await user.keyboard("{Escape}");
-  expect(region().queryByRole("group", { name: "License to activate" })).toBeNull();
+  expect(region().queryByRole("group", { name: "Activation review" })).toBeNull();
   expect(facade.callsTo("ActivateLicense")).toHaveLength(0);
 
   // Verified again from the still-open paste, and activated from the keyboard.
   await user.click(region().getByRole("button", { name: "Verify license" }));
-  const again = await region().findByRole("group", { name: "License to activate" });
+  const again = await region().findByRole("group", { name: "Activation review" });
   within(again).getByRole("button", { name: "Activate" }).focus();
   await user.keyboard("{Enter}");
   expect(await region().findByText("This computer's license is activated.")).toBeTruthy();
@@ -189,9 +192,9 @@ test("a license near its end asks for renewal, opens the account only on a click
   // sits inside the flow.
   await user.click(region().getByRole("button", { name: "Renew license…" }));
   await user.click(within(region().getByRole("group", { name: "Renewal method" })).getByRole("button", { name: "Choose file…" }));
-  const review = await region().findByRole("group", { name: "Renewed license" });
+  const review = await region().findByRole("group", { name: "Renewal review" });
   expect(within(review).getByText("Activating it replaces this computer's license in place, for the same person and computer.")).toBeTruthy();
-  expect(within(review).queryByLabelText("Who uses this computer")).toBeNull();
+  expect(within(review).queryByLabelText("Licensed person")).toBeNull();
   await user.click(within(review).getByRole("button", { name: "Install renewal" }));
   expect(await region().findByText("The renewed license replaced the previous one.")).toBeTruthy();
   expect(facade.oneCall("ActivateLicense")).toEqual([{ entitlement: RECEIVED, contents: "", trust: "", author: "", device: "", authority: "" }]);
@@ -216,7 +219,7 @@ test("a renewed license pasted from the keyboard replaces this one in place", as
   await user.paste(renewal);
   region().getByRole("button", { name: "Verify license" }).focus();
   await user.keyboard("{Enter}");
-  const review = await region().findByRole("group", { name: "Renewed license" });
+  const review = await region().findByRole("group", { name: "Renewal review" });
   within(review).getByRole("button", { name: "Install renewal" }).focus();
   await user.keyboard("{Enter}");
   expect(await region().findByText("The renewed license replaced the previous one.")).toBeTruthy();
@@ -239,14 +242,14 @@ test("refusals are said plainly and change nothing: a dismissed dialog, a change
   await user.click(within(region().getByRole("group", { name: "Renewal method" })).getByRole("button", { name: "Choose file…" }));
   expect(await region().findByText("no file was chosen")).toBeTruthy();
   expect(region().queryByRole("group", { name: "Renewal method" })).toBeNull();
-  expect(region().queryByRole("group", { name: "License to activate" })).toBeNull();
+  expect(region().queryByRole("group", { name: "Activation review" })).toBeNull();
 
   // A license that does not verify is shown refused, with a way to verify it
   // again against the vendor's updated keys.
   facade.reply({ ReviewLicense: () => ({ state: "failed", reason: "this license was not signed with your vendor's verification keys; if your vendor changed keys, choose their updated keys file", renewal: false }) });
   await user.click(more.getByRole("button", { name: "Renew license…" }));
   await user.click(within(region().getByRole("group", { name: "Renewal method" })).getByRole("button", { name: "Choose file…" }));
-  const refused = await region().findByRole("group", { name: "License to activate" });
+  const refused = await region().findByRole("group", { name: "Activation review" });
   expect(within(refused).getByText(/was not signed with your vendor's verification keys/)).toBeTruthy();
   expect(within(refused).queryByRole("button", { name: /Activate|Install/ })).toBeNull();
   facade.reply({ ReviewLicense: () => ({ state: "completed", entitlement: RECEIVED, trust: KEYS, document: received({ sequence: 1 }), renewal: true }) });
@@ -258,7 +261,7 @@ test("refusals are said plainly and change nothing: a dismissed dialog, a change
   await user.click(await region().findByRole("button", { name: "Install renewal" }));
   expect(await region().findByText("this license is already activated here, or is older than the one activated on this computer")).toBeTruthy();
   expect(region().getByText("Valid until 2027-09-18.")).toBeTruthy();
-  expect(region().getByRole("group", { name: "Renewed license" })).toBeTruthy();
+  expect(region().getByRole("group", { name: "Renewal review" })).toBeTruthy();
 });
 
 test("deactivating asks first, Escape keeps the license, and a deactivated computer still saves a copy", async () => {

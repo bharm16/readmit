@@ -1,0 +1,26 @@
+/* The shared task tabs (TaskTabs.tsx): one tab strip and the panel it controls. */
+
+.task-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block: 0.6rem;
+}
+
+.task-tabs [role="tab"][aria-selected="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.task-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/* A task kept mounted but not shown stays hidden whatever layout its class
+ * gives it. */
+[role="tabpanel"][hidden] {
+  display: none !important;
+}

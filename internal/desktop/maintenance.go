@@ -244,15 +244,15 @@ func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
 		var title string
 		switch kind {
 		case "backup-destination":
-			choose, title = a.chooseDestination, "Choose a new folder for the backup"
+			choose, title = a.chooseDestination, "New backup folder"
 		case "restore-destination":
-			choose, title = a.chooseDestination, "Choose a new folder for the restored project"
+			choose, title = a.chooseDestination, "New restore folder"
 		case "backup-source":
-			choose, title = a.chooseFolder, "Choose the backup folder to verify or restore"
+			choose, title = a.chooseFolder, "Open backup folder"
 		case "upgrade-candidate":
-			choose, title = a.chooseFolder, "Choose the staged upgrade package folder"
+			choose, title = a.chooseFolder, "Open staged upgrade folder"
 		case "archive-destination":
-			choose, title = a.chooseDestination, "Choose a new folder for the recovery archive"
+			choose, title = a.chooseDestination, "New archive folder"
 		default:
 			return MaintenancePathResult{State: Failed, Reason: "unknown maintenance path kind"}
 		}

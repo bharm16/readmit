@@ -54,6 +54,10 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		folder      string
 		files       []string
 		destination string
+		// title is the native dialog's reviewed title (#525 ND01-ND10), where
+		// one is recorded: it names the object and direction the caller's
+		// visible label names.
+		title string
 	}
 	fresh := func() string { return t.TempDir() }
 	// A new folder is named in a folder that exists, and is not there yet.
@@ -65,8 +69,8 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		return func(a *desktop.App) any { return a.ChooseSyntheticPacketPath(kind) }
 	}
 	dialogs := []dialog{
-		{name: "SelectWorkspace", call: func(a *desktop.App) any { return a.SelectWorkspace() }, opens: "folder", folder: workspace},
-		{name: "CreateSampleWorkspace", call: func(a *desktop.App) any { return a.CreateSampleWorkspace() }, opens: "folder", folder: fresh()},
+		{name: "SelectWorkspace", call: func(a *desktop.App) any { return a.SelectWorkspace() }, opens: "folder", folder: workspace, title: "Open workspace"},
+		{name: "CreateSampleWorkspace", call: func(a *desktop.App) any { return a.CreateSampleWorkspace() }, opens: "folder", folder: fresh(), title: "Choose sample location"},
 		{name: "CreateProject", call: func(a *desktop.App) any {
 			return a.CreateProject("investigation", "Scheduling interface", "integration-team", []string{"siu-2.5.1-v1"})
 		}, opens: "folder", folder: fresh()},
@@ -78,11 +82,11 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "VerifyLicenseDocument", call: func(a *desktop.App) any { return a.VerifyLicenseDocument() }, opens: "files"},
 		{name: "RenewLicenseDocument", call: func(a *desktop.App) any { return a.RenewLicenseDocument() }, opens: "files"},
 		{name: "ExportLicenseDocument", call: func(a *desktop.App) any { return a.ExportLicenseDocument() }, opens: "folder", folder: fresh()},
-		{name: "ChooseMaintenancePath(backup-destination)", call: maintenance("backup-destination"), opens: "save", destination: unnamed()},
-		{name: "ChooseMaintenancePath(restore-destination)", call: maintenance("restore-destination"), opens: "save", destination: unnamed()},
-		{name: "ChooseMaintenancePath(archive-destination)", call: maintenance("archive-destination"), opens: "save", destination: unnamed()},
-		{name: "ChooseMaintenancePath(backup-source)", call: maintenance("backup-source"), opens: "folder", folder: fresh()},
-		{name: "ChooseMaintenancePath(upgrade-candidate)", call: maintenance("upgrade-candidate"), opens: "folder", folder: fresh()},
+		{name: "ChooseMaintenancePath(backup-destination)", call: maintenance("backup-destination"), opens: "save", destination: unnamed(), title: "New backup folder"},
+		{name: "ChooseMaintenancePath(restore-destination)", call: maintenance("restore-destination"), opens: "save", destination: unnamed(), title: "New restore folder"},
+		{name: "ChooseMaintenancePath(archive-destination)", call: maintenance("archive-destination"), opens: "save", destination: unnamed(), title: "New archive folder"},
+		{name: "ChooseMaintenancePath(backup-source)", call: maintenance("backup-source"), opens: "folder", folder: fresh(), title: "Open backup folder"},
+		{name: "ChooseMaintenancePath(upgrade-candidate)", call: maintenance("upgrade-candidate"), opens: "folder", folder: fresh(), title: "Open staged upgrade folder"},
 		{name: "ChooseOperationPolicy", call: func(a *desktop.App) any { return a.ChooseOperationPolicy() }, opens: "folder", folder: filepath.Dir(policy)},
 		{name: "ChooseSupportExportPath", call: func(a *desktop.App) any { return a.ChooseSupportExportPath() }, opens: "save", destination: unnamed()},
 		{name: "ChoosePacketExportPath", call: func(a *desktop.App) any { return a.ChoosePacketExportPath() }, opens: "save", destination: unnamed()},
@@ -92,8 +96,10 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseRunSpec", call: func(a *desktop.App) any { return a.ChooseRunSpec(workspace) }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 		{name: "ChooseExplanationInput(run)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "run") }, opens: "folder", folder: filepath.Join(resolved(t, workspace), "case")},
 		{name: "ChooseExplanationInput(assertions)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "assertions") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
-		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
+		{name: "ChooseInspectionPath(round-trip-folder)", call: func(a *desktop.App) any { return a.ChooseInspectionPath("round-trip-folder") }, opens: "folder", folder: fresh(), title: "Choose copy destination"},
+		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Open HL7 file"},
 		{name: "ChooseCorpusPath", call: func(a *desktop.App) any { return a.ChooseCorpusPath("corpus-folder") }, opens: "folder", folder: fresh()},
+		{name: "ChooseScenarioLibraryImport", call: func(a *desktop.App) any { return a.ChooseScenarioLibraryImport() }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 	}
 	window := func(c *chooser) *desktop.App {
 		state := t.TempDir()
@@ -113,6 +119,9 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		}
 		if len(dismissed.opened) == 0 || dismissed.opened[0] != d.opens {
 			t.Errorf("%s presented the %v dialogs, want the %s dialog first", d.name, dismissed.opened, d.opens)
+		}
+		if d.title != "" && (len(dismissed.titles) == 0 || dismissed.titles[0] != d.title) {
+			t.Errorf("%s titled its dialogs %q, want %q first", d.name, dismissed.titles, d.title)
 		}
 		if state, reason := stateOf(d.call(window(&chooser{err: errors.New("the dialog host went away")}))); state != desktop.Failed || reason == "" {
 			t.Errorf("%s: an unavailable dialog is %s %q, want a recoverable failure with its reason", d.name, state, reason)

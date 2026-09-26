@@ -9,8 +9,12 @@ repeatable coverage check that keeps it and the presentation sources honest.
 `inventory.json` is the machine-readable inventory. Its provenance is the four
 reviewed specification comments of issue #512: the 503 mapped primary entries
 (`L…` ids; 480 Rename, 9 Icon, 7 Remove, 7 Keep), the 28 supplementary entries
-(`SUP-…`), and the 11 safety cases recorded with the entries they govern. Each
-decision records:
+(`SUP-…`), and the 11 safety cases recorded with the entries they govern. The
+follow-up implementation tickets #517–#525 add their own reviewed decisions under
+their ticket prefixes: `EX` (#517); `PR`, `SC` (#518); `OB` (#519); `SU`, `RN`, `CI`
+(#520); `HT`, `HA`, `LI` (#521); `PV`, `PT`, `PK`, `MT` (#522); `RI`, `PC` (#523);
+`WB`, `WF` (#524); `ND`, `GS`, `RP`, `IP` (#525). An id that recurs on several
+paths records one decision applied on each page or file. Each decision records:
 
 - `id` — stable review id,
 - `path` — the owning first-party source file,
@@ -20,13 +24,20 @@ decision records:
 - `final` — the exact final label (for icons, the accessible name),
 - `reason` — the review's reason and every condition that must survive the
   change (helper text, warnings, optionality, defaults, input syntax),
-- `status` — `implemented` once the final state is verified in the source.
+- `status` — `implemented` once the final state is verified in the source, or
+  `superseded` when a later reviewed decision replaced its final text for the
+  same occurrence; a superseded entry names that decision in `superseded_by`,
+  which must itself be `implemented`, and is kept for traceability only,
+- `survives` (optional) — why the reviewed current string may legitimately
+  remain in the source after a rename, such as an unchanged protocol value or
+  a hint the entry's condition keeps beside the new label.
 
 `exclusions` records candidates that are not product labels (dynamic
 data-driven templates with their bindings, protocol values, machine strings),
 each with its reason; `pending` lists presentation sources whose full
 per-occurrence review is still open. The issue's closure gate is zero pending
-files, zero uncovered candidates and every decision `implemented`.
+files, zero uncovered candidates and every decision `implemented` or
+`superseded` by an implemented one.
 
 ## Coverage check
 

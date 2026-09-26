@@ -44,14 +44,14 @@ test("recent folders are listed, reopened after a restart with the keyboard, and
 
   // Two folders opened are listed, the latest first.
   for (const folder of [alpha, beta]) {
-    await journey.chooseFolder(folder, "Open a readmit workspace folder");
+    await journey.chooseFolder(folder, "Open workspace");
     await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
     expect(await navigation.findByText(folder, { selector: ".root" })).toBeTruthy();
   }
   await waitFor(() => expect(listed()).toEqual([beta, alpha]));
 
   // A dismissed folder dialog opens nothing and records nothing.
-  await journey.dismissDialog("folder", "Open a readmit workspace folder");
+  await journey.dismissDialog("folder", "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await navigation.findByText("no folder was chosen")).toBeTruthy();
   expect(listed()).toEqual([beta, alpha]);
@@ -102,7 +102,7 @@ test("a folder another window already forgot is refused, and a list a later rele
   await journey.launch();
   const navigation = within(region("Workspace"));
   for (const folder of [alpha, beta]) {
-    await journey.chooseFolder(folder, "Open a readmit workspace folder");
+    await journey.chooseFolder(folder, "Open workspace");
     await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
     expect(await navigation.findByText(folder, { selector: ".root" })).toBeTruthy();
   }
@@ -129,7 +129,7 @@ test("a folder another window already forgot is refused, and a list a later rele
   expect(await reported.findByText("the recent workspace list was written by a version this release cannot read")).toBeTruthy();
   expect(listed()).toEqual([]);
   expect(reported.queryAllByRole("button", { name: /^Forget / })).toHaveLength(0);
-  await journey.chooseFolder(alpha, "Open a readmit workspace folder");
+  await journey.chooseFolder(alpha, "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await reported.findByText(alpha, { selector: ".root" })).toBeTruthy();
   expect(await reported.findByText("the recent workspace list was written by a version this release cannot read")).toBeTruthy();

@@ -491,10 +491,10 @@ export function inspectionResult(
  * absent means every step is done. */
 export function guideResult(next: GuideStepId | undefined, done: number): GuideResult {
   const steps: NonNullable<GuideResult["guide"]>["steps"] = [
-    { id: "sample", title: "Create sample", detail: "Writes synthetic evidence.", done: false },
-    { id: "test", title: "Author a regression test", detail: "Answers the authoring stages.", done: false },
-    { id: "baseline", title: "Run against the fixture as it misbehaves", detail: "The defect makes it fail.", done: false },
-    { id: "post-fix", title: "Run against the corrected fixture", detail: "The same test passes.", done: false },
+    { id: "sample", title: "Create sample workspace", detail: "Writes synthetic evidence.", done: false },
+    { id: "test", title: "Create sample test", detail: "Answers the authoring stages.", done: false },
+    { id: "baseline", title: "Run failing example", detail: "The defect makes it fail.", done: false },
+    { id: "post-fix", title: "Run fixed example", detail: "The same test passes.", done: false },
   ];
   return {
     state: "completed",
@@ -1723,6 +1723,11 @@ export const SUITE_ENTRY = "nightly-suite.json";
 export const SUITE_TEMPLATE = "booking-template.json";
 export const SUITE_TARGET = "east-target.json";
 export const SUITE_PREPARED = "east-prepared";
+export const SUITE_RELEASES = "nightly-releases.json";
+export const SUITE_COVERAGE = "nightly-coverage.json";
+export const SUITE_RELEASE_FILE = "booking-1.json";
+export const SUITE_SUCCESSOR_RELEASE = "booking-2.json";
+export const SUITE_APPROVAL = "east-approval.json";
 export const SUITE_IDENTITY = "suite-identity-fixed-for-tests";
 export const SUITE_RELEASE_IDENTITY = "release-identity-fixed-for-tests";
 export const SUITE_REVIEW_IDENTITY = "promotion-review-identity-fixed-for-tests";
@@ -1730,14 +1735,20 @@ export const SUITE_APPROVAL_IDENTITY = "promotion-approval-identity-fixed-for-te
 export const SUITE_OCCURRENCE = "s0001-e000001";
 
 /** The workspace listing a suite workflow reads: one suite entry, one
- * template, one case, one target and one prepared directory. */
+ * template, one case, one target, one prepared directory, two successive test
+ * releases and one promotion approval. */
 export function suiteArtifacts(): Artifact[] {
   return [
-    { name: SUITE_ENTRY, kind: "suite", schema: "readmit-suite/v1" },
+    { name: SUITE_ENTRY, kind: "suite", schema: "readmit-suite/v1", role: "suite-definition" },
     { name: SUITE_TEMPLATE, kind: "spec", schema: "readmit-test/v1" },
     { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v1", provenance: "generated" },
     { name: SUITE_TARGET, kind: "target", schema: "readmit-target/v3" },
-    { name: SUITE_PREPARED, kind: "suite", schema: "readmit-suite/v1" },
+    { name: SUITE_PREPARED, kind: "suite", role: "prepared-suite" },
+    { name: SUITE_RELEASES, kind: "suite-releases", role: "suite-releases" },
+    { name: SUITE_COVERAGE, kind: "suite", role: "suite-coverage" },
+    { name: SUITE_RELEASE_FILE, kind: "suite", schema: "readmit-test-release/v1", role: "test-release" },
+    { name: SUITE_SUCCESSOR_RELEASE, kind: "suite", schema: "readmit-test-release/v1", role: "test-release" },
+    { name: SUITE_APPROVAL, kind: "suite", schema: "readmit-suite-promotion/v1", role: "suite-promotion" },
   ];
 }
 

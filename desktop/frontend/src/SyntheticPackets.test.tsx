@@ -76,14 +76,14 @@ function renderSection(handlers: FacadeHandlers = {}) {
     ...handlers,
   });
   render(<PacketPanel workspace={WORKSPACE_ROOT} entries={[]} onRefresh={() => events.push("refresh")} />);
-  const section = within(screen.getByRole("region", { name: "Synthetic sample packets" }));
+  const section = within(screen.getByRole("region", { name: "Samples" }));
   return { facade, events, section };
 }
 
 /** The runnable-copies block a verified packet shows; its destination chooser
  * carries the same label as the packet folder's own. */
 function rerunCopies(section: ReturnType<typeof renderSection>["section"]) {
-  return within(section.getByRole("heading", { name: "Runnable copies" }).closest("div")!);
+  return within(section.getByRole("heading", { name: "Rerun copies" }).closest("div")!);
 }
 
 function named(path: string) {
@@ -119,7 +119,7 @@ test("a synthetic packet is generated into a newly named folder, read back as ve
   // from, and the folder it named is used up.
   expect(section.getByText(PACKET_FOLDER)).toBeTruthy();
   expect(section.getByText("No new packet folder named.")).toBeTruthy();
-  expect(section.getByRole("heading", { name: "Runnable copies" })).toBeTruthy();
+  expect(section.getByRole("heading", { name: "Rerun copies" })).toBeTruthy();
   expect(events).toContain("refresh");
   // Nothing about a synthetic packet reaches the person's own evidence.
   expect(facade.callsTo("AssemblePacket")).toHaveLength(0);
@@ -159,7 +159,7 @@ test("generation is cancelled from the keyboard: Cancel holds the focus, names o
   });
   expect(await section.findByText(/the partial folder remains incomplete and cannot be verified as complete/)).toBeTruthy();
   expect(section.queryByText(/^Verified:/)).toBeNull();
-  expect(section.queryByRole("heading", { name: "Runnable copies" })).toBeNull();
+  expect(section.queryByRole("heading", { name: "Rerun copies" })).toBeNull();
   expect(section.getByText("No synthetic packet chosen.")).toBeTruthy();
   // The folder the cancelled generation reached is used: recovery is a new
   // folder, so focus goes to the chooser that names one, and Generate waits.
@@ -191,7 +191,7 @@ test("a refused or busy generation is shown as itself and never as a packet", as
   await user.click(section.getByRole("button", { name: "Generate sample packet" }));
   expect(await section.findByText(/destination must be new and parent readable and writable/)).toBeTruthy();
   expect(section.queryByText(/^Verified:/)).toBeNull();
-  expect(section.queryByRole("heading", { name: "Runnable copies" })).toBeNull();
+  expect(section.queryByRole("heading", { name: "Rerun copies" })).toBeNull();
   expect(section.getByText("No new packet folder named.")).toBeTruthy();
   // A busy window reached nothing, so the folder stays named for a retry.
   facade.reply({ GenerateSyntheticPacket: () => ({ state: "busy", reason: "another operation is already running" }) });
@@ -220,7 +220,7 @@ test("a chosen packet is verified read-only, and a changed or unsupported one is
   await user.click(verify);
   expect(await section.findByText("invalid, incomplete, changed, or unsupported report packet")).toBeTruthy();
   expect(section.queryByText(/^Verified:/)).toBeNull();
-  expect(section.queryByRole("heading", { name: "Runnable copies" })).toBeNull();
+  expect(section.queryByRole("heading", { name: "Rerun copies" })).toBeNull();
   // The same packet verifies once it is intact again, from the keyboard.
   facade.reply({ OpenSyntheticPacket: () => syntheticPacket(CHOSEN_PACKET) });
   await tabTo(user, verify);
@@ -242,9 +242,9 @@ test("runnable copies are prepared into a newly named folder on the chosen loopb
   await user.click(section.getByRole("button", { name: "Choose destination…" }));
   await section.findByText(PACKET_FOLDER);
   await user.click(section.getByRole("button", { name: "Generate sample packet" }));
-  await section.findByRole("heading", { name: "Runnable copies" });
+  await section.findByRole("heading", { name: "Rerun copies" });
 
-  const address = section.getByLabelText("Loopback address for manual reruns") as HTMLInputElement;
+  const address = section.getByLabelText("Loopback address") as HTMLInputElement;
   expect(address.value).toBe("127.0.0.1:2575");
   const prepare = section.getByRole("button", { name: "Prepare copies" }) as HTMLButtonElement;
   expect(prepare.disabled).toBe(true);
@@ -262,7 +262,7 @@ test("runnable copies are prepared into a newly named folder on the chosen loopb
   await user.type(address, "chosen-loopback-address");
   await tabTo(user, prepare);
   await user.keyboard("{Enter}");
-  expect(await section.findByText(/^Runnable copies prepared in rerun: packet 5566778899aa… · no connection opened\.$/)).toBeTruthy();
+  expect(await section.findByText(/^Rerun copies prepared in rerun: packet 5566778899aa… · no connection opened\.$/)).toBeTruthy();
   expect(facade.oneCall("PrepareSyntheticRerun")).toEqual([{ packet: PACKET_FOLDER, destination: RERUN_FOLDER, address: "chosen-loopback-address" }]);
   expect(
     section.getByText(
@@ -283,9 +283,38 @@ test("runnable copies are prepared into a newly named folder on the chosen loopb
   await section.findByText(RERUN_FOLDER);
   await user.clear(address);
   await user.type(address, "wide-address");
-  expect(section.queryByText(/^Runnable copies prepared in/)).toBeNull();
+  expect(section.queryByText(/^Rerun copies prepared in/)).toBeNull();
   await user.click(prepare);
   expect(await section.findByText("report preparation requires a numeric loopback address and port")).toBeTruthy();
-  expect(section.queryByText(/^Runnable copies prepared in/)).toBeNull();
+  expect(section.queryByText(/^Rerun copies prepared in/)).toBeNull();
   expect(facade.callsTo("PrepareSyntheticRerun")).toHaveLength(2);
+});
+
+test("preparing rerun copies runs nothing, and the loopback address keeps its manual-rerun scope beside it", async () => {
+  const user = userEvent.setup();
+  const { facade, section } = renderSection({
+    ChooseSyntheticPacketPath: (kind) => ({ state: "completed", path: kind === "rerun-destination" ? RERUN_FOLDER : PACKET_FOLDER }),
+    GenerateSyntheticPacket: () => syntheticPacket(),
+    PrepareSyntheticRerun: (request) => prepared(request.address),
+  });
+  // Rerun copies are offered only for a verified synthetic packet.
+  expect(section.queryByRole("heading", { name: "Rerun copies" })).toBeNull();
+  await user.click(section.getByRole("button", { name: "Choose destination…" }));
+  await section.findByText(PACKET_FOLDER);
+  await user.click(section.getByRole("button", { name: "Generate sample packet" }));
+  await section.findByRole("heading", { name: "Rerun copies" });
+  const described = (element: HTMLElement) => document.getElementById(element.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+  const address = section.getByLabelText("Loopback address");
+  expect(described(address)).toMatch(/^Used only when you rerun the copies manually: a numeric loopback address and port on this machine/);
+  expect(described(address)).toMatch(/RERUN\.md/);
+  const prepare = section.getByRole("button", { name: "Prepare copies" });
+  expect(described(prepare)).toBe("Preparing runnable copies does not run or send anything.");
+  await user.click(rerunCopies(section).getByRole("button", { name: "Choose destination…" }));
+  await section.findByText(RERUN_FOLDER);
+  const before = facade.calls.length;
+  await user.click(prepare);
+  expect(await section.findByText(/^Rerun copies prepared in rerun: .* no connection opened\.$/)).toBeTruthy();
+  // Preparation is the one call it made: nothing was run, sent or generated.
+  expect(facade.calls.slice(before).map((call) => call.method)).toEqual(["PrepareSyntheticRerun"]);
+  expect(facade.callsTo("GenerateSyntheticPacket")).toHaveLength(1);
 });

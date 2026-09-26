@@ -96,12 +96,12 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
 
   // Build an index under a declared retention: digests, so a value can be
   // found exactly without being stored in plain text.
-  await press(user, inspector.getByRole("button", { name: "Build case index" }));
+  await press(user, inspector.getByRole("button", { name: "Set up index" }));
   const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-  const trigger = form.getByLabelText("Trigger Event (MSH-9.2)") as HTMLInputElement;
+  const trigger = form.getByLabelText("Trigger event (MSH-9.2)") as HTMLInputElement;
   expect(trigger.checked).toBe(false);
   await user.click(trigger);
-  await user.click(form.getByRole("radio", { name: /Cryptographic digests/ }));
+  await user.click(form.getByRole("radio", { name: /SHA-256 digests/ }));
   expect(form.getByText("Indexed fields (3 of 16 selected)")).toBeTruthy();
   await press(user, form.getByRole("button", { name: "Build index" }));
   expect(await inspector.findByText(/Showing 2 of 2 matching/)).toBeTruthy();

@@ -54,9 +54,13 @@ export function ProtectionPanel({
   const [documentEntry, setDocumentEntry] = useState("");
   const [documentView, setDocumentView] = useState<ProtectionResult | null>(null);
   const [newDocument, setNewDocument] = useState("");
-  const lifecycle = useLifecycle<"reading" | "registering" | "rotating" | "retiring" | "packing" | "discarding">({
-    names: { packing: "protect" },
+  const lifecycle = useLifecycle<"reading" | "registering" | "rotating" | "retiring" | "packing" | "opening" | "discarding">({
+    names: { packing: "protect", opening: "protect" },
   });
+  // The pack task reads its own protection file, apart from the one above, so
+  // a control is offered only from the document the pack request names. The
+  // read does not hold the panel: choosing another file meanwhile withdraws it.
+  const packReads = useLifecycle<"reading">({ background: true });
   const operation = lifecycle.running;
   const busy = operation !== null;
 
@@ -81,6 +85,9 @@ export function ProtectionPanel({
 
   // Package work.
   const [packDocument, setPackDocument] = useState("");
+  // What the facade last answered for the pack task's file, with the file it
+  // answered for: a view of another file offers none of its controls.
+  const [packView, setPackView] = useState<{ entry: string; result: ProtectionResult } | null>(null);
   const [packControl, setPackControl] = useState("");
   const [packSources, setPackSources] = useState<string[]>([]);
   const [packOutput, setPackOutput] = useState("");
@@ -89,17 +96,23 @@ export function ProtectionPanel({
   const [packageView, setPackageView] = useState<ProtectionPackageResult | null>(null);
   const [openResult, setOpenResult] = useState<ProtectionPackageResult | null>(null);
   const [discardOverride, setDiscardOverride] = useState(false);
+  // Discarding unlinks files, so it asks first, naming the package, its
+  // declared retention and the retention handling chosen for it.
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const keepPackage = useRef<HTMLButtonElement | null>(null);
   const [discarded, setDiscarded] = useState<ProtectionDiscardResult | null>(null);
 
   const controls: ProtectionControl[] = documentView?.document?.controls ?? [];
-  // Only an active control writes a package, so a control retired since it was
-  // chosen is no longer the one a pack would name.
-  const writable = controls.filter((control) => control.state === "active");
+  const packShown = packView !== null && packView.entry === packDocument ? packView.result : null;
+  // Only an active control of the pack task's own file writes a package, so a
+  // control retired since it was chosen, or one of another file, is not the
+  // one a pack would name.
+  const writable = (packShown?.document?.controls ?? []).filter((control) => control.state === "active");
   const chosenControl = writable.some((control) => control.name === packControl) ? packControl : "";
 
   // A question about a control the document no longer holds active has
   // nothing left to ask.
-  const confirmable = confirming !== null && writable.some((control) => control.name === confirming);
+  const confirmable = confirming !== null && controls.some((control) => control.name === confirming && control.state === "active");
   useEffect(() => {
     if (confirming !== null && !confirmable) setConfirming(null);
   }, [confirming, confirmable]);
@@ -107,6 +120,10 @@ export function ProtectionPanel({
   useEffect(() => {
     if (confirming !== null) keep.current?.focus();
   }, [confirming]);
+
+  useEffect(() => {
+    if (confirmingDiscard) keepPackage.current?.focus();
+  }, [confirmingDiscard]);
 
   useEffect(() => {
     if (returning === null || busy) return;
@@ -119,7 +136,13 @@ export function ProtectionPanel({
    * it wrote in place of the one it replaced. */
   function showChange(action: ControlAction, name: string, result: ProtectionResult) {
     setLastChange({ action, name, result });
-    if (result.document) setDocumentView(result);
+    if (!result.document) return;
+    setDocumentView(result);
+    // The pack task's view of the same file is what was just written there.
+    if (documentEntry !== "" && documentEntry === packDocument) {
+      packReads.withdraw();
+      setPackView({ entry: packDocument, result });
+    }
   }
 
   async function show(entry: string) {
@@ -130,6 +153,20 @@ export function ProtectionPanel({
     if (!workspace || !entry) return;
     await lifecycle.run("reading", async () => {
       setDocumentView(await readProtection(workspace, entry));
+    });
+  }
+
+  /** Chooses the file the pack task writes under and reads it for its own
+   * controls. The control chosen for another file is withdrawn with it. */
+  async function choosePackDocument(entry: string) {
+    setPackDocument(entry);
+    setPackControl("");
+    setPackView(null);
+    packReads.withdraw();
+    if (!workspace || !entry) return;
+    await packReads.run("reading", async (current) => {
+      const result = await readProtection(workspace, entry);
+      if (current()) setPackView({ entry, result });
     });
   }
 
@@ -177,11 +214,11 @@ export function ProtectionPanel({
   }
 
   async function pack() {
-    if (busy || !workspace) return;
+    if (busy || !workspace || !packDocument || !chosenControl) return;
     await lifecycle.run("packing", async () => {
       setPacked(await packProtectedPackage({
         workspace,
-        entry: packDocument || documentEntry,
+        entry: packDocument,
         control: chosenControl,
         sources: packSources,
         ...(packOutput ? { output: packOutput } : {}),
@@ -190,29 +227,39 @@ export function ProtectionPanel({
     });
   }
 
+  /** Selects a package, or clears the selection. Whatever was decided about
+   * the previous one — its retention handling, a pending discard question —
+   * does not carry over. */
   async function inspect(entry: string) {
+    setSelectedPackage(entry);
+    setPackageView(null);
+    setOpenResult(null);
+    setDiscarded(null);
+    setDiscardOverride(false);
+    setConfirmingDiscard(false);
     if (!workspace || !entry) return;
     await lifecycle.run("reading", async () => {
-      setSelectedPackage(entry);
-      setOpenResult(null);
-      setDiscarded(null);
       setPackageView(await inspectProtectedPackage(workspace, entry));
     });
   }
 
   async function openPackage() {
     if (busy || !workspace || !documentEntry || !selectedPackage) return;
-    await lifecycle.run("packing", async () => {
-      setOpenResult(await openProtectedPackage({
+    await lifecycle.run("opening", async () => {
+      const result = await openProtectedPackage({
         workspace,
         entry: documentEntry,
         package: selectedPackage,
-      }));
+      });
+      setOpenResult(result);
+      // The plaintext output is a new workspace entry: list it.
+      if (result.package) onRefresh();
     });
   }
 
   async function discard() {
     if (busy || !workspace || !selectedPackage) return;
+    setConfirmingDiscard(false);
     await lifecycle.run("discarding", async () => {
       setDiscarded(await discardProtectedPackage({
         workspace,
@@ -233,20 +280,24 @@ export function ProtectionPanel({
       authentication, revocation or erasure.
     </p>
 
-    <div className="actions">
-      <h4>Protection document</h4>
-      <label htmlFor="protection-document">Document entry</label>
+    <div className="actions" role="group" aria-labelledby="protection-document-title">
+      <h4 id="protection-document-title">Protection document</h4>
+      <label htmlFor="protection-document">Protection file</label>
       <select id="protection-document" value={documentEntry} disabled={busy}
         onChange={(e) => void show(e.target.value)}>
         <option value="">Select a protection document…</option>
         {documents.map((name) => <option key={name} value={name}>{name}</option>)}
         {documentEntry && !documents.includes(documentEntry) ? <option value={documentEntry}>{documentEntry}</option> : null}
       </select>
-      <label htmlFor="protection-new-document">New protection document</label>
+      <label htmlFor="protection-new-document">New protection file</label>
       <input id="protection-new-document" value={newDocument} disabled={busy} placeholder="protection.json"
+        aria-describedby="protection-new-document-hint"
         onChange={(e) => setNewDocument(e.target.value)} />
+      <p id="protection-new-document-hint" className="hint">
+        Selecting a file that does not exist yet writes nothing and registers no control: registering its first control creates it.
+      </p>
       <button type="button" disabled={busy || newDocument === ""} onClick={() => { void show(newDocument); setNewDocument(""); }}>
-        Use this document
+        Select file
       </button>
       {documentView?.reason ? <p>{documentView.reason}</p> : null}
       {documentView?.document && controls.length === 0 ? <p>No control is registered in {documentView.document.entry} yet. Registering the first one writes it.</p> : null}
@@ -256,13 +307,13 @@ export function ProtectionPanel({
             locator arguments are counted rather than echoed.</caption>
           <thead>
             <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Storage (declared, never verified)</th>
+              <th scope="col">Control name</th>
+              <th scope="col">Declared storage <span className="hint">(never verified)</span></th>
               <th scope="col">State</th>
-              <th scope="col">Generation</th>
-              <th scope="col">Rotation</th>
-              <th scope="col">Retain</th>
-              <th scope="col">Key</th>
+              <th scope="col">Key generation</th>
+              <th scope="col">Rotation status</th>
+              <th scope="col">Retention period</th>
+              <th scope="col">Key reference</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
@@ -324,26 +375,48 @@ export function ProtectionPanel({
       <h4>Add control</h4>
       <label htmlFor="protection-name">Control name</label>
       <input id="protection-name" value={newName} disabled={busy} onChange={(e) => setNewName(e.target.value)} />
-      <label htmlFor="protection-storage">Declared at-rest storage</label>
-      <select id="protection-storage" value={newStorage} disabled={busy}
+      <label htmlFor="protection-storage">Declared storage protection</label>
+      <select id="protection-storage" value={newStorage} disabled={busy} aria-describedby="protection-storage-hint"
         onChange={(e) => setNewStorage(e.target.value)}>
-        <option value="os-volume-encryption">os-volume-encryption</option>
-        <option value="customer-key">customer-key</option>
-        <option value="none-declared">none-declared</option>
+        <option value="os-volume-encryption">OS volume encryption</option>
+        <option value="customer-key">Customer-managed key</option>
+        <option value="none-declared">None declared</option>
       </select>
-      <label htmlFor="protection-command">Absolute path of the program that prints the key</label>
-      <input id="protection-command" value={newCommand} disabled={busy} onChange={(e) => setNewCommand(e.target.value)} />
-      <label htmlFor="protection-argument">One locator argument (never key material)</label>
-      <input id="protection-argument" value={newArgument} disabled={busy}
+      <p id="protection-storage-hint" className="hint">A declaration about where the key is stored at rest; readmit never verifies it.</p>
+      <label htmlFor="protection-command">Key lookup program</label>
+      <input id="protection-command" value={newCommand} disabled={busy} aria-describedby="protection-command-hint"
+        onChange={(e) => setNewCommand(e.target.value)} />
+      <p id="protection-command-hint" className="hint">
+        The absolute path of a program that prints the key when it runs with the lookup arguments. readmit records this
+        reference only; never enter key material here.
+      </p>
+      <label htmlFor="protection-argument">Lookup argument</label>
+      <input id="protection-argument" value={newArgument} disabled={busy} aria-describedby="protection-argument-hint"
         onChange={(e) => setNewArgument(e.target.value)} />
+      <p id="protection-argument-hint" className="hint">One argument that selects the key in its store, never key material itself.</p>
       <button type="button" disabled={busy || newArgument === ""} onClick={() => { setNewArguments((current) => [...current, newArgument]); setNewArgument(""); }}>
         Add argument
       </button>
-      {newArguments.length > 0 ? <ol>{newArguments.map((argument, at) => <li key={String(at)}>{argument}</li>)}</ol> : null}
-      <label htmlFor="protection-max-age">Rotation stays current for (Go duration, optional)</label>
-      <input id="protection-max-age" value={newMaxAge} disabled={busy} placeholder="720h" onChange={(e) => setNewMaxAge(e.target.value)} />
-      <label htmlFor="protection-retain">Packages declare retention of (Go duration, optional)</label>
-      <input id="protection-retain" value={newRetain} disabled={busy} placeholder="2160h" onChange={(e) => setNewRetain(e.target.value)} />
+      {newArguments.length > 0 ? <ol>{newArguments.map((argument, at) => <li key={String(at)}>
+        {argument}{" "}
+        <button type="button" aria-label={`Remove argument ${at + 1}`} disabled={busy}
+          onClick={() => setNewArguments((current) => current.filter((_, index) => index !== at))}>
+          Remove argument
+        </button>
+      </li>)}</ol> : null}
+      <label htmlFor="protection-max-age">Rotation interval (optional)</label>
+      <input id="protection-max-age" value={newMaxAge} disabled={busy} placeholder="720h" aria-describedby="protection-max-age-hint"
+        onChange={(e) => setNewMaxAge(e.target.value)} />
+      <p id="protection-max-age-hint" className="hint">
+        A Go duration, such as 720h, for which a recorded rotation stays current. readmit never rotates the external key itself.
+      </p>
+      <label htmlFor="protection-retain">Package retention (optional)</label>
+      <input id="protection-retain" value={newRetain} disabled={busy} placeholder="2160h" aria-describedby="protection-retain-hint"
+        onChange={(e) => setNewRetain(e.target.value)} />
+      <p id="protection-retain-hint" className="hint">
+        A Go duration, such as 2160h, that every package written under this control declares. It is a declaration: nothing is
+        deleted or revoked automatically when it ends.
+      </p>
       <button disabled={busy || !documentEntry || !newName || !newCommand} onClick={() => void register()}>
         {operation === "registering" ? "Registering…" : "Register control"}
       </button>
@@ -351,38 +424,54 @@ export function ProtectionPanel({
       {lastChange?.action === "register" && lastChange.result?.document ? <p>Registered. Registering a reference proves nothing about the store behind it: a rotation the store answers for is what records a generation.</p> : null}
     </div>
 
-    <div className="actions">
-      <h4>Encrypted transfer packages</h4>
-      <label htmlFor="protection-pack-document">Control document to write under</label>
-      <select id="protection-pack-document" value={packDocument || documentEntry} disabled={busy}
-        onChange={(e) => setPackDocument(e.target.value)}>
-        <option value="">Same as the document above</option>
+    <div className="actions" role="group" aria-labelledby="protection-packing-title">
+      <h4 id="protection-packing-title">Encrypted transfer packages</h4>
+      <label htmlFor="protection-pack-document">Protection file</label>
+      <select id="protection-pack-document" value={packDocument} disabled={busy}
+        onChange={(e) => void choosePackDocument(e.target.value)}>
+        <option value="">Select a protection file…</option>
         {documents.map((name) => <option key={name} value={name}>{name}</option>)}
+        {packDocument && !documents.includes(packDocument) ? <option value={packDocument}>{packDocument}</option> : null}
       </select>
-      <label htmlFor="protection-pack-control">Control</label>
-      <select id="protection-pack-control" value={chosenControl} disabled={busy}
+      {packShown?.reason ? <p>{packShown.reason}</p> : null}
+      <label htmlFor="protection-pack-control">Protection control</label>
+      <select id="protection-pack-control" value={chosenControl} disabled={busy} aria-describedby="protection-pack-control-hint"
         onChange={(e) => setPackControl(e.target.value)}>
         <option value="">Select a control…</option>
         {writable.map((control) => (
           <option key={control.name} value={control.name}>{control.name}</option>
         ))}
       </select>
-      <label htmlFor="protection-pack-sources">Entries to pack (copied, never moved)</label>
-      <select id="protection-pack-sources" value="" disabled={busy}
+      <p id="protection-pack-control-hint" className="hint">The active controls of the protection file chosen for this package.</p>
+      <label htmlFor="protection-pack-sources">Package contents</label>
+      <select id="protection-pack-sources" value="" disabled={busy} aria-describedby="protection-pack-sources-hint"
         onChange={(e) => {
           if (e.target.value) setPackSources((current) => current.includes(e.target.value) ? current : [...current, e.target.value]);
         }}>
         <option value="">Add a workspace entry…</option>
         {packables.map((name) => <option key={name} value={name}>{name}</option>)}
       </select>
-      {packSources.length > 0 ? <ul>{packSources.map((name) => <li key={name}>{name}</li>)}</ul> : null}
-      <label htmlFor="protection-pack-output">New package folder</label>
+      <p id="protection-pack-sources-hint" className="hint">
+        Each entry is copied into the package, never moved. Removing one from the package only changes this list; the workspace
+        entry stays where it is.
+      </p>
+      {packSources.length > 0 ? <ul>{packSources.map((name) => <li key={name}>
+        {name}{" "}
+        <button type="button" aria-label={`Remove from package ${name}`} disabled={busy}
+          onClick={() => setPackSources((current) => current.filter((source) => source !== name))}>
+          Remove from package
+        </button>
+      </li>)}</ul> : null}
+      <label htmlFor="protection-pack-output">Package folder</label>
       <input id="protection-pack-output" value={packOutput} disabled={busy} placeholder="generated at pack"
+        aria-describedby="protection-pack-output-hint"
         onChange={(e) => setPackOutput(e.target.value)} />
-      <button disabled={busy || (!packDocument && !documentEntry) || !chosenControl || packSources.length === 0} onClick={() => void pack()}>
-        {operation === "packing" ? "Packing…" : "Pack protected package"}
+      <p id="protection-pack-output-hint" className="hint">A new folder the encrypted package is written to.</p>
+      <button disabled={busy || !packDocument || !chosenControl || packSources.length === 0} onClick={() => void pack()}>
+        {operation === "packing" ? "Packing…" : "Create encrypted package"}
       </button>
       <button disabled={operation !== "packing"} onClick={lifecycle.cancel}>Cancel packing</button>
+      <p className="hint">Encrypting a package is not approval to disclose it; moving it anywhere is a separate deliberate act.</p>
       {packed?.reason ? <p>{packed.reason}</p> : null}
       {packed?.package ? <PackageView view={packed.package} limitations={packed.limitations} /> : null}
     </div>
@@ -399,19 +488,48 @@ export function ProtectionPanel({
       {packageView?.package ? <PackageView view={packageView.package} limitations={packageView.limitations} /> : null}
       {packageView?.package ? <>
         <button disabled={busy || !documentEntry} onClick={() => void openPackage()}>
-          {operation === "packing" ? "Opening…" : "Open package"}
+          {operation === "opening" ? "Opening…" : "Open package"}
         </button>
+        <button disabled={operation !== "opening"} onClick={lifecycle.cancel}>Cancel opening</button>
         {openResult?.reason ? <p>{openResult.reason}</p> : null}
-        {openResult?.package ? <p>Opened into <strong>{openResult.package.entry}</strong>. Opening ended the protection the package carried: the decrypted output is protected by this machine's own storage control and an owner-only mode, and by nothing else.</p> : null}
-        <label htmlFor="protection-discard-override">Declared retention override</label>
+        {openResult?.package ? <p>Opened into <strong>{openResult.package.entry}</strong>. The output is plaintext in this workspace, in local custody. Opening ended the protection the package carried: the decrypted output is protected by this machine's own storage control and an owner-only mode, and by nothing else.</p> : null}
+        <label htmlFor="protection-discard-override">Retention handling</label>
         <select id="protection-discard-override" value={discardOverride ? "override" : "declared"} disabled={busy}
-          onChange={(e) => setDiscardOverride(e.target.value === "override")}>
+          aria-describedby="protection-discard-override-hint"
+          onChange={(e) => { setDiscardOverride(e.target.value === "override"); setConfirmingDiscard(false); }}>
           <option value="declared">Use declared retention</option>
           <option value="override">Override retention</option>
         </select>
-        <button disabled={busy || !selectedPackage} onClick={() => void discard()}>
-          {operation === "discarding" ? "Discarding…" : "Discard package"}
-        </button>
+        <p id="protection-discard-override-hint" className="hint">
+          Override retention discards the package even before its declared retention ends. It is a deliberate choice for this
+          package only, never the ordinary one.
+        </p>
+        {confirmingDiscard && packageView.package.entry === selectedPackage ? (
+          <span
+            role="group"
+            aria-label={`Discard ${selectedPackage}?`}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) {
+                event.preventDefault();
+                event.stopPropagation();
+                setConfirmingDiscard(false);
+              }
+            }}
+          >
+            <span className="hint">
+              {" "}Discard {selectedPackage}? Declared retention: {packageView.package.retention}
+              {packageView.package.retain_until ? ` until ${packageView.package.retain_until}` : ""}. Retention handling:{" "}
+              {discardOverride ? "Override retention" : "Use declared retention"}. Discarding unlinks the files this package
+              declares; unlinking is not erasure, and a copy already moved elsewhere is untouched.
+            </span>
+            <button type="button" disabled={busy} onClick={() => void discard()}>Discard it</button>
+            <button type="button" ref={keepPackage} disabled={busy} onClick={() => setConfirmingDiscard(false)}>Keep package</button>
+          </span>
+        ) : (
+          <button disabled={busy || !selectedPackage} onClick={() => setConfirmingDiscard(true)}>
+            {operation === "discarding" ? "Discarding…" : "Discard package"}
+          </button>
+        )}
         {discarded?.reason ? <p>{discarded.reason}</p> : null}
         {discarded?.removed !== undefined && discarded.removed !== null && discarded.removed > 0 ? <p>Unlinked {discarded.removed} declared files. Removal is not erasure; the result says exactly what it does not establish.</p> : null}
       </> : null}

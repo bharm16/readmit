@@ -32,7 +32,7 @@ const RERUN_DIALOG = "Choose a new folder for the runnable copies";
 /** The synthetic demonstration section of the packet panels. */
 function synthetic() {
   const packets = within(screen.getByRole("region", { name: "Investigation packets" }));
-  return within(packets.getByRole("region", { name: "Synthetic sample packets" }));
+  return within(packets.getByRole("region", { name: "Samples" }));
 }
 
 /** The text of the one line a pattern matches, once the window shows it. */
@@ -44,14 +44,14 @@ async function line(scope: ReturnType<typeof within>, pattern: RegExp): Promise<
  * choice beside the packet's own. */
 function rerunCopies() {
   const panel = synthetic();
-  return within(panel.getByRole("heading", { name: "Runnable copies" }).closest("div") as HTMLElement);
+  return within(panel.getByRole("heading", { name: "Rerun copies" }).closest("div") as HTMLElement);
 }
 
 test("a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout", async () => {
   const user = userEvent.setup();
   journey.makeFolder("demo");
   await journey.launch();
-  await journey.chooseFolder(journey.path("demo"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("demo"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const panel = synthetic();
 
@@ -101,7 +101,7 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   // Runnable copies are never prepared inside the sealed packet, nor for an
   // address that is not numeric loopback; the window refuses both in the
   // command line's words and writes nothing.
-  const address = panel.getByLabelText("Loopback address for manual reruns") as HTMLInputElement;
+  const address = panel.getByLabelText("Loopback address") as HTMLInputElement;
   expect(address.value).toBe("127.0.0.1:2575");
   await journey.nameNewFolder(journey.path("demo", "synthetic-demo", "rerun"), RERUN_DIALOG);
   await press(user, rerunCopies().getByRole("button", { name: "Choose destination…" }));
@@ -117,7 +117,7 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   expect(await panel.findByText(wide)).toBeTruthy();
   const commandWide = await journey.commandLine(["report", "prepare", "demo/synthetic-demo", "--output", "demo/wide-rerun", "--address", "192.0.2.10:2575"]);
   expect([commandWide.code, commandWide.stderr]).toEqual([1, `readmit: ${wide}\n`]);
-  expect(panel.queryByText(/^Runnable copies prepared in/)).toBeNull();
+  expect(panel.queryByText(/^Rerun copies prepared in/)).toBeNull();
 
   // Prepared into a new folder beside the packet: the command line prepares
   // the same workspace, byte for byte, from the same packet and address.
@@ -126,7 +126,7 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   await press(user, rerunCopies().getByRole("button", { name: "Choose destination…" }));
   await panel.findByText(journey.path("demo", "rerun"));
   await press(user, panel.getByRole("button", { name: "Prepare copies" }));
-  expect(await line(panel, /^Runnable copies prepared in /)).toBe(`Runnable copies prepared in rerun: packet ${identity}… · no connection opened.`);
+  expect(await line(panel, /^Rerun copies prepared in /)).toBe(`Rerun copies prepared in rerun: packet ${identity}… · no connection opened.`);
   expect(await line(panel, /^Trials: /)).toBe(
     "Trials: baseline (defective), post-fix (fixed), reintroduced (defective) on 127.0.0.1:2575 · bindings changed: input.case, target, observation.path; input identity and assertion semantics preserved.",
   );
@@ -161,7 +161,7 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   await press(user, panel.getByRole("button", { name: "Verify packet" }));
   expect(await panel.findByText(invalid)).toBeTruthy();
   expect(panel.queryByText(byContent(/^Verified: /))).toBeNull();
-  expect(panel.queryByRole("heading", { name: "Runnable copies" })).toBeNull();
+  expect(panel.queryByRole("heading", { name: "Rerun copies" })).toBeNull();
   const changed = await journey.commandLine(["report", "verify", "demo/synthetic-demo"]);
   expect([changed.code, changed.stderr]).toEqual([1, `readmit: ${invalid}\n`]);
 });

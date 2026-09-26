@@ -171,7 +171,7 @@ async function correlated(rules: string): Promise<{ report: CorrelationReport; p
 /** Opens the scheduling folder and verifies the incident, and returns the
  * sequence panel. */
 async function openIncident(user: UserEvent) {
-  await journey.chooseFolder(journey.path("scheduling"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("scheduling"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("incident", { selector: ".name" })).closest("li") as HTMLElement;

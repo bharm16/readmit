@@ -130,12 +130,14 @@ test("a runner configuration is refused while the runner would refuse it, previe
   const status = await journey.commandLine(["runner", "status", "--config", destination]);
   expect(status).toMatchObject({ code: 0, stderr: "" });
   expect(JSON.parse(status.stdout)).toEqual({ schema: "readmit-runner-status/v1", state: "idle", jobs: 0 });
-  await enter(user, view.getByLabelText("Configuration path"), destination);
+  await enter(user, view.getByLabelText("Runner configuration file"), destination);
+  await press(user, view.getByRole("tab", { name: "Status and jobs" }));
   await press(user, view.getByRole("button", { name: "Inspect runner" }));
   expect(await view.findByText(byContent(/^Health: /))).toBeTruthy();
   expect(view.getByText(byContent(/^Health: /)).textContent).toBe("Health: idle, 0 retained job(s).");
 
   // A second save never replaces the configuration the first one wrote.
+  await press(user, view.getByRole("tab", { name: "Configuration" }));
   await press(user, view.getByRole("button", { name: "Save configuration" }));
   expect(await view.findByText("Refused: an existing document is never replaced; choose a new destination")).toBeTruthy();
   expect(journey.readFile("runner/documents/runner.json")).toBe(previewed);
@@ -166,11 +168,12 @@ test("a staged runner update is verified against the pinned deployment key witho
 
   // Nothing is checked until the configuration, the manifest and the
   // candidate are all named.
-  const verify = view.getByRole("button", { name: "Verify staged update" }) as HTMLButtonElement;
-  await enter(user, view.getByLabelText("Configuration path"), destination);
+  await press(user, view.getByRole("tab", { name: "Update verification" }));
+  const verify = view.getByRole("button", { name: "Verify update" }) as HTMLButtonElement;
+  await enter(user, view.getByLabelText("Runner configuration file"), destination);
   expect(verify.disabled).toBe(true);
   await enter(user, view.getByLabelText("Update manifest"), approved);
-  await enter(user, view.getByLabelText("Staged candidate"), candidate);
+  await enter(user, view.getByLabelText("Candidate file"), candidate);
 
   // Verified from the keyboard, as the command line verifies it.
   await tabTo(user, verify);
@@ -219,15 +222,18 @@ test("a job document is saved once, preflighted to the prepared inputs and envir
   // another environment.
   await fillRunnerForm(user, view, runnerForm(ENVIRONMENT, journey.path("runner/documents/runner.json")));
   await saveConfiguration(user, view, journey.path("runner/documents/runner.json"));
-  await enter(user, view.getAllByLabelText("Environment")[0]!, "scheduling-training");
-  await enter(user, view.getAllByLabelText("Destination")[0]!, journey.path("runner/documents/training.json"));
+  await enter(user, view.getByLabelText("Environment ID"), "scheduling-training");
+  await enter(user, view.getByLabelText("Configuration file"), journey.path("runner/documents/training.json"));
   await saveConfiguration(user, view, journey.path("runner/documents/training.json"));
 
   // A job id the runner would not accept is refused, and nothing is written.
-  await enter(user, view.getByLabelText("Job id"), "Nightly 1");
-  await enter(user, view.getByLabelText("Spec path"), spec);
-  await enter(user, view.getByLabelText("Job document destination"), job);
-  await press(user, view.getByRole("button", { name: "Save job document" }));
+  await press(user, view.getByRole("tab", { name: "Status and jobs" }));
+  const create = within(view.getByRole("group", { name: "Create job" }));
+  const send = within(view.getByRole("group", { name: "Send job" }));
+  await enter(user, create.getByLabelText("Job ID"), "Nightly 1");
+  await enter(user, create.getByLabelText("Test file"), spec);
+  await enter(user, create.getByLabelText("Job file"), job);
+  await press(user, create.getByRole("button", { name: "Save job" }));
   expect(
     await view.findByText(
       "Refused: a job id is 1-64 lowercase letters, digits or hyphens starting with a letter or digit, and the spec is one absolute path",
@@ -236,30 +242,35 @@ test("a job document is saved once, preflighted to the prepared inputs and envir
   expect(() => journey.readFile("runner/documents/nightly-001.json")).toThrow();
 
   // Corrected, it is saved from the keyboard, once.
-  await enter(user, view.getByLabelText("Job id"), "nightly-001");
-  await tabTo(user, view.getByRole("button", { name: "Save job document" }));
+  await enter(user, create.getByLabelText("Job ID"), "nightly-001");
+  await tabTo(user, create.getByRole("button", { name: "Save job" }));
   await user.keyboard("{Enter}");
   expect(await view.findByText(`Saved to ${job}.`)).toBeTruthy();
   const saved = journey.readFile("runner/documents/nightly-001.json");
   expect(JSON.parse(saved)).toEqual({ schema: "readmit-runner-job/v1", id: "nightly-001", spec });
-  await press(user, view.getByRole("button", { name: "Save job document" }));
+  await press(user, create.getByRole("button", { name: "Save job" }));
   expect(await view.findByText("Refused: an existing document is never replaced; choose a new destination")).toBeTruthy();
   expect(journey.readFile("runner/documents/nightly-001.json")).toBe(saved);
 
   // The preflight, from the keyboard, prepares the spec as execution would,
   // offline: the prepared inputs' identity and the environment they bind.
-  await enter(user, view.getByLabelText("Configuration path"), journey.path("runner/documents/runner.json"));
-  await enter(user, view.getByLabelText("Job document"), job);
-  await tabTo(user, view.getByRole("button", { name: "Preflight job" }));
+  await enter(user, view.getByLabelText("Runner configuration file"), journey.path("runner/documents/runner.json"));
+  await enter(user, send.getByLabelText("Job file"), job);
+  await tabTo(user, send.getByRole("button", { name: "Preview job" }));
   await user.keyboard("{Enter}");
-  const prepared = (await view.findByText(byContent(/^Prepared inputs /))).textContent ?? "";
-  expect(prepared).toMatch(new RegExp(`^Prepared inputs [0-9a-f]{64} bind environment ${ENVIRONMENT}\\.$`));
-  const pin = prepared.replace(/^Prepared inputs ([0-9a-f]{64}) .*$/, "$1");
+  const prepared = (await view.findByText(byContent(/^Send job sends /))).textContent ?? "";
+  expect(prepared).toMatch(
+    new RegExp(`^Send job sends ${job} \\(job nightly-001\\) to environment ${ENVIRONMENT} under prepared inputs [0-9a-f]{64}, `),
+  );
+  const pin = prepared.replace(/^.* under prepared inputs ([0-9a-f]{64}),.*$/, "$1");
+  // The prepared input ID is the preview's own, shown read-only.
+  expect((send.getByLabelText("Prepared input ID") as HTMLInputElement).value).toBe(pin);
 
   // Under the other runner the same job is refused, naming both
   // environments, before anything is asked of a hub or sent.
-  await enter(user, view.getByLabelText("Configuration path"), journey.path("runner/documents/training.json"));
-  await press(user, view.getByRole("button", { name: "Preflight job" }));
+  await enter(user, view.getByLabelText("Runner configuration file"), journey.path("runner/documents/training.json"));
+  expect((send.getByRole("button", { name: "Send job" }) as HTMLButtonElement).disabled).toBe(true);
+  await press(user, send.getByRole("button", { name: "Preview job" }));
   expect(
     await view.findByText(
       `Preflight refused: the prepared inputs bind environment ${ENVIRONMENT}; this runner is configured for scheduling-training`,
@@ -270,18 +281,18 @@ test("a job document is saved once, preflighted to the prepared inputs and envir
   // A schedule revision for the job, pinned to the prepared identity.
   const schedules = await runnerView(user, "Schedules", "Recurring schedules");
   await press(user, schedules.getByRole("button", { name: "Add schedule" }));
-  await enter(user, schedules.getByLabelText("Id"), "nightly-reschedule");
-  await enter(user, schedules.getByLabelText("Zone"), "UTC");
-  await enter(user, schedules.getByLabelText("At (HH:MM)"), "02:30");
-  await enter(user, schedules.getByLabelText("Window seconds"), "600");
-  await enter(user, schedules.getByLabelText("Runner configuration"), journey.path("runner/documents/runner.json"));
-  await enter(user, schedules.getByLabelText("Spec path"), spec);
-  await enter(user, schedules.getByLabelText("Input pin (SHA-256)"), pin);
-  await enter(user, schedules.getByLabelText("Notification route (HTTPS origin)"), "https://alerts.journey.test/");
-  await user.click(schedules.getByLabelText("Approved for notifications"));
-  await enter(user, schedules.getByLabelText("Revision destination"), journey.path("runner/documents/schedules.json"));
+  await enter(user, schedules.getByLabelText("Schedule ID"), "nightly-reschedule");
+  await enter(user, schedules.getByLabelText("Time zone"), "UTC");
+  await enter(user, schedules.getByLabelText("Daily time"), "02:30");
+  await enter(user, schedules.getByLabelText("Start window (seconds)"), "600");
+  await enter(user, schedules.getByLabelText("Runner configuration file"), journey.path("runner/documents/runner.json"));
+  await enter(user, schedules.getByLabelText("Test file"), spec);
+  await enter(user, schedules.getByLabelText("Input SHA-256"), pin);
+  await enter(user, schedules.getByLabelText("Notification URL"), "https://alerts.journey.test/");
+  await user.click(schedules.getByLabelText("Approve notifications"));
+  await enter(user, schedules.getByLabelText("Policy revision file"), journey.path("runner/documents/schedules.json"));
   const savedAt = journey.callsTo("SaveSchedulePolicy").length;
-  await press(user, schedules.getByRole("button", { name: "Save revision" }));
+  await press(user, schedules.getByRole("button", { name: "Save schedule policy" }));
   await schedules.findByText(byContent(/^Policy identity [0-9a-f]{64} — /));
   expect(journey.callsTo("SaveSchedulePolicy")[savedAt]?.result).toMatchObject({ state: "completed" });
   const identity = (schedules.getByText(byContent(/^Policy identity [0-9a-f]{64} — /)).textContent ?? "").replace(
@@ -292,17 +303,23 @@ test("a job document is saved once, preflighted to the prepared inputs and envir
   // Reopened from the keyboard as the installed policy, it shows the entry
   // it holds, its pin recomputed from the spec, and the identity the hub
   // binds its journal to.
-  await enter(user, schedules.getByLabelText("Installed policy (to read)"), journey.path("runner/documents/schedules.json"));
+  await enter(user, schedules.getByLabelText("Schedule policy file"), journey.path("runner/documents/schedules.json"));
   const opened = journey.callsTo("OpenSchedulePolicy").length;
-  await tabTo(user, schedules.getByRole("button", { name: "Open installed policy" }));
+  await tabTo(user, schedules.getByRole("button", { name: "Open schedule policy" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(journey.callsTo("OpenSchedulePolicy")[opened]?.settled).toBe(true));
   expect(journey.callsTo("OpenSchedulePolicy")[opened]?.result).toMatchObject({ state: "completed", identity });
-  expect(schedules.getByText(byContent(/^nightly-reschedule at /)).textContent).toBe(
+  const read = within(schedules.getByRole("group", { name: "Opened policy" }));
+  expect(read.getByText(byContent(/^nightly-reschedule at /)).textContent).toBe(
     `nightly-reschedule at 02:30 in UTC, window 600s — pin computed (${pin}).`,
   );
-  expect(schedules.getByText(identity)).toBeTruthy();
-  expect(schedules.getByText("approved: the hub emits only the fixed alert body shown below")).toBeTruthy();
+  expect(read.getByText(identity)).toBeTruthy();
+  expect(read.getByText("approved: the hub emits only the fixed alert body shown below")).toBeTruthy();
+  // The opened policy is the draft now: its one schedule, editable.
+  const row = within(schedules.getByRole("group", { name: "Schedule 1" }));
+  expect((row.getByLabelText("Schedule ID") as HTMLInputElement).value).toBe("nightly-reschedule");
+  expect((row.getByLabelText("Input SHA-256") as HTMLInputElement).value).toBe(pin);
+  expect(schedules.queryByRole("group", { name: "Schedule 2" })).toBeNull();
 
   // A policy a later release wrote is refused by the reader the hub runs,
   // and nothing of the policy shown before stays in its place.
@@ -310,9 +327,10 @@ test("a job document is saved once, preflighted to the prepared inputs and envir
     "runner/documents/schedules-v2.json",
     journey.readFile("runner/documents/schedules.json").replace("readmit-hub-schedules/v1", "readmit-hub-schedules/v2"),
   );
-  await enter(user, schedules.getByLabelText("Installed policy (to read)"), journey.path("runner/documents/schedules-v2.json"));
-  await press(user, schedules.getByRole("button", { name: "Open installed policy" }));
+  await enter(user, schedules.getByLabelText("Schedule policy file"), journey.path("runner/documents/schedules-v2.json"));
+  await press(user, schedules.getByRole("button", { name: "Open schedule policy" }));
   expect(await schedules.findByText("Refused: the schedule policy could not be read through its own strict reader")).toBeTruthy();
+  expect(schedules.queryByRole("group", { name: "Opened policy" })).toBeNull();
   expect(schedules.queryByText(identity)).toBeNull();
   expect(downstream.received()).toHaveLength(0);
 });

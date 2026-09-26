@@ -247,7 +247,7 @@ func TestTheGuidedSampleImportsTheFrozenReceiverFixtures(t *testing.T) {
 	if opened := unlicensed.OpenCase(root, "receiver-sample"); opened.State != desktop.Completed || opened.Case.Identity != result.Case.Identity {
 		t.Fatalf("the reported case is not the one the reader verifies: %+v", opened)
 	}
-	if !reflect.DeepEqual(host.titles, []string{"Choose the folder holding the frozen receiver fixtures"}) {
+	if !reflect.DeepEqual(host.titles, []string{"Choose fixture folder"}) {
 		t.Fatalf("the fixtures folder was chosen through %v", host.titles)
 	}
 	if after := bytesUnder(t, fixtures); !reflect.DeepEqual(before, after) {

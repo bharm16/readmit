@@ -2378,6 +2378,22 @@
       "implemented": true
     },
     {
+      "id": "desktop.ChooseScenarioLibraryImport",
+      "source": "desktop.App.ChooseScenarioLibraryImport",
+      "kind": "desktop",
+      "capability": "choose the scenario library to import through the host's native file dialog",
+      "owner": "bharm16/readmit#518",
+      "screen": "the synthetic scenario panel of the inspector region",
+      "action": "browse for a scenario library file to import",
+      "backend": {"package": "internal/desktop", "name": "App.ChooseScenarioLibraryImport"},
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/ScenarioPanel.test.tsx", "name": "ScenarioPanel opens a library, saves a revision into it, refuses an overwritten revision, compares revisions and exports and imports libraries"},
+      "parity_test": {"package": "internal/desktop", "name": "TestChooseScenarioLibraryImportAnswersThePathTheImportReads"},
+      "implemented": true
+    },
+    {
       "id": "desktop.ImportScenarioLibrary",
       "source": "desktop.App.ImportScenarioLibrary",
       "kind": "desktop",
@@ -4507,6 +4523,22 @@
       "implemented": true
     },
     {
+      "id": "desktop.SaveHubAudit",
+      "source": "desktop.App.SaveHubAudit",
+      "kind": "desktop",
+      "capability": "save the audit export the hub last answered into a new local file",
+      "owner": "bharm16/readmit#521",
+      "screen": "the customer-hub team collaboration panel of the application, its Administration task",
+      "action": "save the shown audit export to a new file named in the save dialog",
+      "backend": {"package": "internal/operation", "name": "WriteNewFile"},
+      "inputs": [],
+      "outputs": ["readmit-hub-audit/v1", "readmit-hub-audit/v2"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/TeamCollaboration.test.tsx", "name": "an audit export shows its review and lifecycle events and is saved only on an explicit choice"},
+      "parity_test": {"package": "internal/desktop", "name": "TestDesktopHubCollaborationConflictAndAdmin"},
+      "implemented": true
+    },
+    {
       "id": "desktop.DownloadHubExport",
       "source": "desktop.App.DownloadHubExport",
       "kind": "desktop",
@@ -4734,7 +4766,7 @@
       "capability": "compareProfiles application operation",
       "owner": "bharm16/readmit#252",
       "screen": "the profile management panel of the inspector region",
-      "action": "compare two profile versions and assess impacted saved tests",
+      "action": "compare two profile versions, assess impacted saved tests and decide the exact pin an affected test may be updated to",
       "backend": {"package": "internal/profileversion", "name": "Compare"},
       "inputs": ["readmit-local-profile/v1", "readmit-profile-references/v1"],
       "outputs": [],

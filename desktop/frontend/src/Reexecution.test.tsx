@@ -7,7 +7,7 @@
 // holds its acknowledgement and an uncertain delivery each say so, and nothing
 // is ever offered for resending. Every control is reached from the keyboard.
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { facadeStub, installFacade } from "./testkit/wails";
@@ -106,6 +106,8 @@ function renderPanel(handlers: FacadeHandlers = {}, entries: Artifact[] = ENTRIE
     ...handlers,
   });
   render(<PrivacyPanel workspace={WORKSPACE_ROOT} entries={entries} onRefresh={() => events.push("refresh")} />);
+  // Reexecution is its own task of the privacy panel.
+  fireEvent.click(screen.getByRole("tab", { name: "Reexecute" }));
   return { events };
 }
 

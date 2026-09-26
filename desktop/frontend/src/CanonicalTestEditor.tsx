@@ -179,13 +179,13 @@ export function CanonicalTestEditor({
         onRetry={retainer.retry}
         onKeepAsNew={retainer.keepAsNew}
         onDiscard={() => {
-          const id = retainer.currentId();
-          if (id !== "") {
-            retainer.drop(id);
-          }
-          retainer.clear();
-          setDocument("");
-          setResult(null);
+          // The text leaves the screen only once its retained draft is gone; a
+          // refused discard keeps it editable beside the reason.
+          void retainer.dropCurrent().then((discarded) => {
+            if (!discarded) return;
+            setDocument("");
+            setResult(null);
+          });
         }}
       />
       <p role="status">

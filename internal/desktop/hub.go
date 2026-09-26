@@ -213,6 +213,9 @@ func (a *App) selectHubConfig(path string) HubResult {
 	if err != nil {
 		return HubResult{State: Failed, Reason: err.Error()}
 	}
+	// Another configuration is another hub: an audit export of this one is
+	// not held for it.
+	a.forgetHubAudit()
 	return HubResult{
 		State:         Completed,
 		Connected:     false,
@@ -263,6 +266,7 @@ func (a *App) ConnectHub() HubResult {
 func (a *App) DisconnectHub() HubResult {
 	return run(a, false, false, func(ctx context.Context) HubResult {
 		a.hub.Disconnect()
+		a.forgetHubAudit()
 		status := a.hub.Status()
 		hubURL := ""
 		if status.Config != nil {

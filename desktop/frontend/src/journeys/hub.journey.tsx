@@ -59,9 +59,9 @@ async function openHub(user: UserEvent, hub: Hub) {
 async function signIn(user: UserEvent, hub: Hub, subject: string, lifetimeSeconds?: number) {
   const panel = hubPanel();
   await press(user, await panel.findByRole("button", { name: "Sign in" }));
-  const login = await panel.findByRole("link", { name: "Open login window" });
+  const login = await panel.findByRole("link", { name: "Open sign-in page" });
   expect(await hub.signIn(login.getAttribute("href") ?? "", subject, lifetimeSeconds)).toBe(200);
-  expect(await panel.findByRole("heading", { name: "Authenticated User" })).toBeTruthy();
+  expect(await panel.findByRole("heading", { name: "Signed-in identity" })).toBeTruthy();
 }
 
 /** A colleague's own window, licensed, connected to the hub and signed in
@@ -96,19 +96,19 @@ test(
     await openHub(user, hub);
     let panel = hubPanel();
     await press(user, await panel.findByRole("button", { name: "Sign in" }));
-    await panel.findByRole("link", { name: "Open login window" });
+    await panel.findByRole("link", { name: "Open sign-in page" });
     await press(user, panel.getByRole("button", { name: "Cancel sign-in" }));
     await waitFor(() => expect(journey.callsTo("CompleteHubAuth").at(-1)?.result).toMatchObject({ state: "cancelled" }));
     await signIn(user, hub, "analyst");
     panel = hubPanel();
-    expect(panel.getByText("Subject:").parentElement?.textContent).toBe("Subject: analyst");
+    expect(panel.getByText("Subject ID").parentElement?.textContent).toBe("Subject ID analyst");
     const project = within(panel.getByText(PROJECT, { selector: "strong" }).closest("li")!);
     expect(project.getByText("Authorized")).toBeTruthy();
 
     // Evidence published to the project, under the digest the hub stores it by.
     await press(user, project.getByRole("button", { name: "View artifacts" }));
-    await enter(user, await panel.findByLabelText("Upload source path:"), journey.path("handover/reschedule-summary.txt"));
-    await press(user, panel.getByRole("button", { name: "Publish Artifact" }));
+    await enter(user, await panel.findByLabelText("Artifact file"), journey.path("handover/reschedule-summary.txt"));
+    await press(user, panel.getByRole("button", { name: "Upload artifact" }));
     expect(await panel.findByText(byContent(/^Transfer state: completed \(65 bytes\)$/))).toBeTruthy();
     const digest = journey.digest("handover/reschedule-summary.txt");
     expect(await panel.findByText(byContent(new RegExp(`^Artifact digest: ${digest}$`)))).toBeTruthy();
@@ -124,11 +124,10 @@ test(
     expect(
       await reviewer.call("PostHubReview", { project: PROJECT, id: "reviewer-confirms", expected: 0, kind: "comment", evidence: digest, parent: "", recipient: "", text: "Confirmed on the lab fixture.", release: "" }),
     ).toMatchObject({ state: "completed", head: 1 });
-    const decision = within(team.getByRole("heading", { name: "Review actions" }).parentElement!);
-    await user.selectOptions(decision.getByLabelText("Kind"), "comment");
-    await enter(user, decision.getByLabelText("Command ID"), "analyst-finding");
-    await enter(user, decision.getByLabelText("Evidence digest"), digest);
-    await enter(user, decision.getByLabelText("Text"), "The reschedule is matched on the filler identifier.");
+    const decision = within(team.getByRole("group", { name: "Review actions" }));
+    await user.selectOptions(decision.getByLabelText("Decision type"), "comment");
+    await enter(user, decision.getByLabelText("Evidence SHA-256"), digest);
+    await enter(user, decision.getByLabelText("Comment"), "The reschedule is matched on the filler identifier.");
     await press(user, decision.getByRole("button", { name: "Post comment" }));
     expect((await team.findAllByText("hub head or revision conflict; fetch current state and renew the action")).length).toBeGreaterThan(0);
     expect(journey.callsTo("PostHubReview").at(-1)?.result).toMatchObject({ state: "failed" });
@@ -183,7 +182,8 @@ test(
     // released bytes rather than a typed value.
     await press(user, suites().getByRole("tab", { name: "Releases" }));
     const releases = suites();
-    await enter(user, releases.getByLabelText("To"), "reschedule-release-1.json");
+    await releases.findAllByRole("option", { name: "reschedule-release-1.json" });
+    await user.selectOptions(releases.getByLabelText("Later release"), "reschedule-release-1.json");
     await enter(user, releases.getByLabelText("Project"), PROJECT);
     await enter(user, releases.getByLabelText("Reviewer"), "reviewer");
     await enter(user, releases.getAllByLabelText("Command ID").at(-1)!, "release-review-1");
@@ -272,8 +272,8 @@ test(
     await signIn(user, hub, "analyst");
     let panel = hubPanel();
     await press(user, panel.getByRole("button", { name: "View artifacts" }));
-    await enter(user, await panel.findByLabelText("Upload source path:"), source);
-    await press(user, panel.getByRole("button", { name: "Publish Artifact" }));
+    await enter(user, await panel.findByLabelText("Artifact file"), source);
+    await press(user, panel.getByRole("button", { name: "Upload artifact" }));
     expect(await panel.findByText("operation activation is missing or invalid; select and activate an operation policy")).toBeTruthy();
     expect(panel.getByText(/^Transfer state:/).textContent).toBe("Transfer state: permission_denied");
     const viewer = await colleagueSignedIn(hub, "viewer");
@@ -287,7 +287,7 @@ test(
     // reads back exactly its bytes by its digest.
     await activateLicense(user, journey);
     panel = hubPanel();
-    await press(user, panel.getByRole("button", { name: "Publish Artifact" }));
+    await press(user, panel.getByRole("button", { name: "Upload artifact" }));
     expect(await panel.findByText(byContent(/^Transfer state: completed \(65 bytes\)$/))).toBeTruthy();
     expect(panel.getByText(byContent(new RegExp(`^Artifact digest: ${digest}$`)))).toBeTruthy();
     expect(await viewer.call("DownloadHubArtifact", { project: PROJECT, digest, destination_path: received })).toMatchObject({
@@ -298,16 +298,19 @@ test(
 
     // Recorded as a revision, the evidence is listed among the project's
     // artifacts and downloads byte for byte.
-    const lifecycle = within(teamPanel().getByRole("heading", { name: "Lifecycle / conflict / admin" }).parentElement!);
-    await enter(user, lifecycle.getByLabelText("Command ID"), "reschedule-summary-1");
-    await enter(user, lifecycle.getByLabelText("Resource"), "reschedule-summary");
-    await enter(user, lifecycle.getByLabelText("Artifact digest"), digest);
+    await press(user, teamPanel().getByRole("tab", { name: "Revisions" }));
+    const lifecycle = within(teamPanel().getByRole("group", { name: "Revisions" }));
+    await enter(user, lifecycle.getByLabelText("Resource ID"), "reschedule-summary");
+    await enter(user, lifecycle.getByLabelText("Artifact SHA-256"), digest);
+    await enter(user, lifecycle.getByLabelText("Reason"), "Reschedule summary handed over for review");
     await press(user, lifecycle.getByRole("button", { name: "Record revision" }));
-    expect(await teamPanel().findByRole("heading", { name: "Lifecycle (head 1)" })).toBeTruthy();
+    expect(await lifecycle.findByText(byContent(/^Recorded revision by analyst@https:\/\/idp\.journey\.test for reschedule-summary · event #1 · command revision-[0-9a-f]{16}$/))).toBeTruthy();
+    expect(await teamPanel().findByRole("heading", { name: "Revision history" })).toBeTruthy();
+    expect(teamPanel().getByText("Event head: 1")).toBeTruthy();
     await press(user, panel.getByRole("button", { name: "View artifacts" }));
     const listed = within((await panel.findByTitle(digest)).closest("tr")!);
     journey.makeFolder("downloads");
-    await enter(user, panel.getByLabelText("Download destination path:"), journey.path("downloads/reschedule-summary.txt"));
+    await enter(user, panel.getByLabelText("Download file"), journey.path("downloads/reschedule-summary.txt"));
     await press(user, listed.getByRole("button", { name: "Download" }));
     await waitFor(() => expect(journey.callsTo("DownloadHubArtifact").at(-1)?.result).toMatchObject({ state: "completed", digest }));
     expect(journey.readFile("downloads/reschedule-summary.txt")).toBe(journey.readFile("handover/reschedule-summary.txt"));
@@ -316,7 +319,7 @@ test(
     // longer match their digest: the hub refuses to serve them, the window
     // says so, and nothing is written.
     journey.changeFile(`hub-operator/artifacts/${digest}`, "Reschedule accepted by the downstream system; synthetic evidence.\n");
-    await enter(user, panel.getByLabelText("Download destination path:"), journey.path("downloads/damaged.txt"));
+    await enter(user, panel.getByLabelText("Download file"), journey.path("downloads/damaged.txt"));
     await press(user, listed.getByRole("button", { name: "Download" }));
     expect(await panel.findByText("download failed with status 503")).toBeTruthy();
     expect(journey.callsTo("DownloadHubArtifact").at(-1)?.result).toMatchObject({ state: "failed" });
@@ -324,39 +327,45 @@ test(
 
     // Signed in as a viewer, whose role may not write, the hub refuses the
     // same publication.
-    await press(user, panel.getByRole("button", { name: "Log out" }));
+    await press(user, panel.getByRole("button", { name: "Sign out and disconnect" }));
     await press(user, await panel.findByRole("button", { name: "Connect to hub" }));
     await signIn(user, hub, "viewer");
     panel = hubPanel();
     await press(user, panel.getByRole("button", { name: "View artifacts" }));
-    await press(user, await panel.findByRole("button", { name: "Publish Artifact" }));
+    await press(user, await panel.findByRole("button", { name: "Upload artifact" }));
     expect(await panel.findByText("hub access refused; insufficient permissions or role revoked")).toBeTruthy();
     expect(journey.callsTo("UploadHubArtifact").at(-1)?.result).toMatchObject({ state: "permission_denied" });
 
     // Once the session the identity provider issued expires, the window
     // refuses to use it and sends nothing; signing in again is the person's
     // own act.
-    await press(user, panel.getByRole("button", { name: "Log out" }));
+    await press(user, panel.getByRole("button", { name: "Sign out and disconnect" }));
     await press(user, await panel.findByRole("button", { name: "Connect to hub" }));
     await signIn(user, hub, "analyst", 8);
     panel = hubPanel();
-    const expires = Date.parse(panel.getByText("Session expires:").parentElement?.textContent?.replace("Session expires: ", "") ?? "");
+    const expires = Date.parse(panel.getByText("Session expires").parentElement?.textContent?.replace("Session expires ", "") ?? "");
     expect(Number.isNaN(expires)).toBe(false);
     await press(user, panel.getByRole("button", { name: "View artifacts" }));
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, expires - Date.now()) + 500));
+    await press(user, teamPanel().getByRole("tab", { name: "Notifications" }));
     await press(user, teamPanel().getByRole("button", { name: "Load notifications" }));
     expect(await teamPanel().findByText("sign-in required or session expired")).toBeTruthy();
-    await press(user, panel.getByRole("button", { name: "Publish Artifact" }));
+    await press(user, panel.getByRole("button", { name: "Upload artifact" }));
     await waitFor(() =>
       expect(journey.callsTo("UploadHubArtifact").at(-1)?.result).toMatchObject({
         state: "permission_denied",
         reason: "sign-in required or session expired",
       }),
     );
-    await press(user, panel.getByRole("button", { name: "Refresh status" }));
+    await press(user, panel.getByRole("button", { name: "Refresh connection status" }));
     expect(await panel.findByText("hub session expired; sign in again")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Team collaboration" })).toBeNull();
+    // The ended session took the project's results with it; the new session
+    // opens the project again.
+    expect(panel.queryByRole("button", { name: "Upload artifact" })).toBeNull();
     await signIn(user, hub, "analyst");
+    await press(user, panel.getByRole("button", { name: "View artifacts" }));
+    await press(user, teamPanel().getByRole("tab", { name: "Notifications" }));
 
     // The hub's operator takes the service down: what the person asks for is
     // reported as failed and not retried, and asking again once the service
@@ -380,7 +389,7 @@ test(
       custody_warning: "Downloaded copies remain under local custody and cannot be revoked.",
     });
     expect(screen.queryByRole("region", { name: "Team collaboration" })).toBeNull();
-    expect(panel.queryByRole("button", { name: "Publish Artifact" })).toBeNull();
+    expect(panel.queryByRole("button", { name: "Upload artifact" })).toBeNull();
     await press(user, panel.getByRole("button", { name: "Connect to hub" }));
     expect(await panel.findByRole("button", { name: "Sign in" })).toBeTruthy();
     expect(journey.callsTo("ConnectHub").at(-1)?.result).toMatchObject({ connected: true, authenticated: false });
@@ -443,7 +452,7 @@ test(
     journey.makeFolder("downloads");
     await journey.launch();
     await activateLicense(user, journey);
-    await journey.chooseFolder(journey.path("support-work"), "Open a readmit workspace folder");
+    await journey.chooseFolder(journey.path("support-work"), "Open workspace");
     await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
     expect(await within(region("Workspace")).findByText("published-support")).toBeTruthy();
     await openHub(user, hub);
@@ -452,20 +461,24 @@ test(
 
     // The person asks the reviewer to approve the summary's exact bytes.
     const team = teamPanel();
+    await press(user, team.getByRole("tab", { name: "Support approvals" }));
     await team.findByRole("option", { name: "published-support" });
-    await user.selectOptions(team.getByLabelText("Published support bundle"), "published-support");
-    await enter(user, team.getByLabelText("Support command id"), "support-request-1");
-    await enter(user, team.getByLabelText("Reviewer to ask (request)"), "reviewer");
+    await user.selectOptions(team.getByLabelText("Support bundle"), "published-support");
+    await enter(user, team.getByLabelText("Reviewer subject ID"), "reviewer");
     await press(user, team.getByRole("button", { name: "Request approval" }));
     expect((await team.findByText(byContent(/^Recorded: support-request by /))).textContent).toBe(
       "Recorded: support-request by analyst@https://idp.journey.test",
     );
-    const digestField = team.getByLabelText("Approved summary digest") as HTMLInputElement;
+    // The request's command ID is the one the window allocated for it.
+    const requestId = (journey.callsTo("PostHubSupportReview").at(-1)?.args[0] as { id: string }).id;
+    expect(requestId).toMatch(/^support-[0-9a-f]{16}$/);
+    expect(team.getByText("Approval status: requested; not yet approved.")).toBeTruthy();
+    const digestField = team.getByLabelText("Summary SHA-256") as HTMLInputElement;
     expect(digestField.value).toBe(summaryDigest);
 
     // Until an approval names those bytes the hub serves nothing under them.
     const download = team.getByRole("button", { name: "Download summary" });
-    await enter(user, team.getByLabelText("Download the approved summary to"), journey.path("downloads/support.json"));
+    await enter(user, team.getByLabelText("Summary download file"), journey.path("downloads/support.json"));
     await press(user, download);
     expect(
       await team.findByText("Export permission_denied — hub access refused; insufficient permissions or role revoked"),
@@ -484,7 +497,7 @@ test(
         id: "support-approval-1",
         recipient: "",
       }),
-    ).toMatchObject({ state: "completed", events: [{ parent: "support-request-1", evidence: summaryDigest }] });
+    ).toMatchObject({ state: "completed", events: [{ parent: requestId, evidence: summaryDigest }] });
     expect(
       await reviewer.call("PostHubReview", {
         project: PROJECT,
@@ -500,6 +513,7 @@ test(
     ).toMatchObject({ state: "completed", head: 4 });
 
     // The person's notifications hold what was addressed to them.
+    await press(user, team.getByRole("tab", { name: "Notifications" }));
     await press(user, team.getByRole("button", { name: "Load notifications" }));
     expect(await team.findByText("comment · Approved; download the summary from the hub. (from reviewer)")).toBeTruthy();
 
@@ -507,24 +521,27 @@ test(
     // policy was announced; a query naming the evidence by anything but its
     // digest is refused before the hub is asked; the notification search
     // finds what was addressed to the person.
-    const search = within(team.getByRole("form", { name: "Search team activity" }));
-    await enter(user, search.getByLabelText("Text contains"), "support");
-    await enter(user, search.getByLabelText("Evidence (whole SHA-256 digest)"), summaryDigest);
-    await enter(user, search.getByLabelText("After sequence"), "1");
+    await press(user, team.getByRole("tab", { name: "Reviews" }));
+    let search = within(team.getByRole("form", { name: "Search team activity" }));
+    await enter(user, search.getByLabelText("Search text"), "support");
+    await enter(user, search.getByLabelText("Evidence SHA-256"), summaryDigest);
+    await enter(user, search.getByLabelText("After event number"), "1");
     await press(user, search.getByRole("button", { name: "Search history" }));
     expect(await search.findByText("History matching: 2 (head 4)")).toBeTruthy();
     expect(search.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
       `#2 support-request by analyst@https://idp.journey.test · evidence ${summaryDigest.slice(0, 12)}… — support`,
       `#3 support-approval by reviewer@https://idp.journey.test · evidence ${summaryDigest.slice(0, 12)}… — support`,
     ]);
-    await enter(user, search.getByLabelText("Evidence (whole SHA-256 digest)"), "published-support");
+    await enter(user, search.getByLabelText("Evidence SHA-256"), "published-support");
     await press(user, search.getByRole("button", { name: "Search history" }));
     expect(
       await search.findByText("name the evidence by its whole SHA-256 digest: 64 lowercase hexadecimal characters"),
     ).toBeTruthy();
-    await enter(user, search.getByLabelText("Text contains"), "download");
-    await enter(user, search.getByLabelText("Evidence (whole SHA-256 digest)"), "");
-    await enter(user, search.getByLabelText("After sequence"), "");
+    await press(user, team.getByRole("tab", { name: "Notifications" }));
+    search = within(team.getByRole("form", { name: "Search team activity" }));
+    await enter(user, search.getByLabelText("Search text"), "download");
+    await enter(user, search.getByLabelText("Evidence SHA-256"), "");
+    await enter(user, search.getByLabelText("After event number"), "");
     await press(user, search.getByRole("button", { name: "Search notifications" }));
     expect(await search.findByText("Notifications matching: 1 (head 4)")).toBeTruthy();
     expect(search.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
@@ -533,8 +550,12 @@ test(
 
     // A digest no approval names is refused, though the hub holds its bytes:
     // the policy's own digest.
-    await enter(user, digestField, policyDigest);
-    await press(user, download);
+    await press(user, team.getByRole("tab", { name: "Support approvals" }));
+    const summaryField = () => team.getByLabelText("Summary SHA-256") as HTMLInputElement;
+    const downloadSummary = () => team.getByRole("button", { name: "Download summary" });
+    expect(summaryField().value).toBe(summaryDigest);
+    await enter(user, summaryField(), policyDigest);
+    await press(user, downloadSummary());
     await waitFor(() => expect(journey.callsTo("DownloadHubExport")).toHaveLength(2));
     await waitFor(() =>
       expect(journey.callsTo("DownloadHubExport").at(-1)?.result).toMatchObject({ state: "permission_denied" }),
@@ -542,8 +563,8 @@ test(
     expect(() => journey.readFile("downloads/support.json")).toThrow();
 
     // The approved digest downloads the summary, byte for byte.
-    await enter(user, digestField, summaryDigest);
-    await press(user, download);
+    await enter(user, summaryField(), summaryDigest);
+    await press(user, downloadSummary());
     expect(await team.findByText(byContent(/^Export completed — /))).toBeTruthy();
     expect(journey.callsTo("DownloadHubExport").at(-1)?.result).toMatchObject({ state: "completed", digest: summaryDigest });
     expect(journey.readFile("downloads/support.json")).toBe(summary);
@@ -578,7 +599,7 @@ test(
     const saveTitle = "Name the file to save the artifact as";
     const outcome = () => operator.getByText(/^(Store|Read):/).textContent;
     const readAs = async (address: string, name: string) => {
-      await enter(user, operator.getByLabelText("Artifact digest (SHA-256)"), address);
+      await enter(user, operator.getByLabelText("Artifact SHA-256"), address);
       await journey.nameNewFolder(journey.path(`received/${name}`), saveTitle);
       const asked = journey.callsTo("ReadOperatorHubArtifact").length;
       await press(user, operator.getByRole("button", { name: "Download…" }));
@@ -629,7 +650,7 @@ test(
 
     // A digest typed in capitals is not the whole lowercase digest: it is
     // refused before any dialog opens, and stays in the field to correct.
-    await enter(user, operator.getByLabelText("Artifact digest (SHA-256)"), digest.toUpperCase());
+    await enter(user, operator.getByLabelText("Artifact SHA-256"), digest.toUpperCase());
     await press(user, operator.getByRole("button", { name: "Download…" }));
     expect(await operator.findByText("an artifact is named by its whole SHA-256 digest: 64 lowercase hexadecimal characters")).toBeTruthy();
     expect(outcome()).toBe("Read: failed");
@@ -683,6 +704,6 @@ test(
       connected: false,
       custody_warning: "Downloaded copies remain under local custody and cannot be revoked.",
     });
-    expect(operator.getByRole("note").textContent).toBe("Custody Notice: Downloaded copies remain under local custody and cannot be revoked.");
+    expect(operator.getByRole("note").textContent).toBe("Copy custody: Downloaded copies remain under local custody and cannot be revoked.");
   },
 );

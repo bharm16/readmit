@@ -108,7 +108,7 @@ export function OperatorHub() {
 
         {status?.custody_warning ? (
           <div className="hub-custody-warning" role="note">
-            <strong>Custody Notice: </strong>
+            <strong>Copy custody: </strong>
             {status.custody_warning}
           </div>
         ) : null}
@@ -135,8 +135,12 @@ export function OperatorHub() {
                 Upload file…
               </button>
             </div>
+            <p className="hub-hint">
+              Stores the file you choose in the operator-only hub at {status?.hub_url ?? "the connected hub"}, where every
+              client of its certificate authority can read it. Download saves to a new file you name.
+            </p>
             <form className="hub-operator-read" onSubmit={read}>
-              <label htmlFor="hub-operator-digest">Artifact digest (SHA-256)</label>
+              <label htmlFor="hub-operator-digest">Artifact SHA-256</label>
               <input
                 id="hub-operator-digest"
                 type="text"

@@ -31,6 +31,7 @@ export interface Artifact {
   schema?: string;
   provenance?: string;
   reason?: string;
+  role?: SuiteRole;
 }
 
 /** internal/assertion.Change */
@@ -2587,6 +2588,12 @@ export interface Lane {
   latest: string | null;
 }
 
+/** internal/desktop.LaterProfilePin */
+export interface LaterProfilePin {
+  pin?: ProfileVersionPin;
+  refusal?: string;
+}
+
 /** internal/desktop.LicenseActivateRequest */
 export interface LicenseActivateRequest {
   entitlement?: string;
@@ -3096,6 +3103,8 @@ export interface ObservationCollectFacadeRequest {
   policy_file?: string;
   produced?: string[];
   authorize: boolean;
+  expected_source_identity?: string;
+  expected_window_identity?: string;
 }
 
 /** internal/desktop.ObservationCompletionResult */
@@ -3787,6 +3796,7 @@ export interface ProfileCompareResult {
   reason?: string;
   comparison?: ProfileVersionComparison;
   assessment?: ProfileAssessment;
+  later_pin?: LaterProfilePin;
 }
 
 /** internal/desktop.ProfileLibraryEntry */
@@ -5843,6 +5853,13 @@ export interface ScenarioKindAvailability {
   states: ScenarioState[];
 }
 
+/** internal/desktop.ScenarioLibraryChoiceResult */
+export interface ScenarioLibraryChoiceResult {
+  state: State;
+  reason?: string;
+  path?: string;
+}
+
 /** internal/desktop.ScenarioLibraryCompareView */
 export interface ScenarioLibraryCompareView {
   id: string;
@@ -6782,6 +6799,15 @@ export interface SuiteRequirementCoverage {
   state: string;
 }
 
+/** internal/desktop.SuiteRole */
+export type SuiteRole =
+  | "suite-definition"
+  | "prepared-suite"
+  | "test-release"
+  | "suite-releases"
+  | "suite-coverage"
+  | "suite-promotion";
+
 /** internal/suite.Row */
 export interface SuiteRow {
   id: string;
@@ -7638,6 +7664,7 @@ export interface Facade {
   ChooseOperatorHubConfig(): Promise<HubResult>;
   ChoosePacketExportPath(): Promise<PacketPathResult>;
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
+  ChooseScenarioLibraryImport(): Promise<ScenarioLibraryChoiceResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
   CleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult>;
@@ -7826,6 +7853,7 @@ export interface Facade {
   SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;
   SaveFilter(filter: Filter): Promise<FiltersResult>;
   SaveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult>;
+  SaveHubAudit(project: string): Promise<HubTransferResult>;
   SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
   SaveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult>;
   SaveNote(path: string, note: ProjectNote): Promise<RevisionsResult>;

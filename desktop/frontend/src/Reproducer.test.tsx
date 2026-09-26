@@ -89,8 +89,8 @@ async function openGrid(facade: Awaited<ReturnType<typeof renderApp>>["facade"],
   await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText(CASE_IDENTITY);
   facade.reply({ OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
-  await user.selectOptions(screen.getByLabelText("Index file in this folder"), INDEX_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open the grid" }));
+  await user.selectOptions(screen.getByLabelText("Index"), INDEX_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open index" }));
   return within(await screen.findByRole("region", { name: "Reproducer editor" }));
 }
 

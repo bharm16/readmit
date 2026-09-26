@@ -33,9 +33,14 @@ function scenarios() {
   return within(region("Synthetic scenario authoring"));
 }
 
+/** The library the Library tab opens and adds to, not the file an import reads. */
+function libraryFile(): HTMLElement {
+  return scenarios().getAllByLabelText("Library file").find((field) => !field.closest("fieldset"))!;
+}
+
 /** The panel's canonical scenario document as it stands. */
 function scenarioDocument(): string {
-  return (scenarios().getByLabelText("Scenario document") as HTMLTextAreaElement).value;
+  return (scenarios().getByLabelText("Scenario definition") as HTMLTextAreaElement).value;
 }
 
 /** The sentence the command line refused with, without its program name. */
@@ -51,7 +56,7 @@ function licensedCommandLine(args: string[]) {
 
 /** Opens a folder of this machine as the workspace, from the window. */
 async function openWorkspace(user: UserEvent, folder: string): Promise<void> {
-  await journey.chooseFolder(journey.path(folder), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path(folder), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByRole("region", { name: "Synthetic scenario authoring" })).toBeTruthy();
 }
@@ -76,16 +81,22 @@ test("a scenario is bound to a local profile, refused an unsupported one, saved,
   await openWorkspace(user, "work");
   const blank = scenarioDocument();
 
+  // Design is headed once; the profile binding and the events it offers are
+  // named groups within it.
+  expect(scenarios().getByRole("heading", { name: "Design" })).toBeTruthy();
+  const binding = within(scenarios().getByRole("group", { name: "Profile and template" }));
+  expect(scenarios().getByRole("group", { name: "Lifecycle events" })).toBeTruthy();
+
   // A local profile of a family the reader does not know is refused in its
   // words and pins nothing: the document keeps the profile it had.
-  await enter(user, scenarios().getByLabelText("Local profile entry"), "mdm-profile.json");
-  await press(user, scenarios().getByRole("button", { name: "Use local profile" }));
+  await enter(user, binding.getByLabelText("Local profile file"), "mdm-profile.json");
+  await press(user, binding.getByRole("button", { name: "Use local profile" }));
   expect(await scenarios().findByText("a local profile names one of the message families ADT, SIU, ORM, ORU")).toBeTruthy();
   expect(scenarioDocument()).toBe(blank);
 
   // An ADT profile pins the ADT lifecycle; the SIU steps the document holds
   // are then refused on save exactly as the command refuses them.
-  await enter(user, scenarios().getByLabelText("Local profile entry"), "adt-profile.json");
+  await enter(user, scenarios().getByLabelText("Local profile file"), "adt-profile.json");
   await press(user, scenarios().getByRole("button", { name: "Use local profile" }));
   expect(await scenarios().findByText("Pinned fixture-local-siu@1 → readmit-adt-lifecycle-v1 (readmit-scenario-generator-v1)")).toBeTruthy();
   expect(scenarioDocument()).toContain('"profile": "readmit-adt-lifecycle-v1"');
@@ -97,10 +108,10 @@ test("a scenario is bound to a local profile, refused an unsupported one, saved,
 
   // The SIU profile pins the SIU lifecycle back, and the scenario is saved
   // from the keyboard: Tab from its name reaches Save, and Enter saves.
-  await enter(user, scenarios().getByLabelText("Local profile entry"), "siu-profile.json");
+  await enter(user, scenarios().getByLabelText("Local profile file"), "siu-profile.json");
   await press(user, scenarios().getByRole("button", { name: "Use local profile" }));
   expect(await scenarios().findByText("Pinned fixture-local-siu@1 → readmit-siu-lifecycle-v1 (readmit-scenario-generator-v1)")).toBeTruthy();
-  await enter(user, scenarios().getByLabelText("Save as"), "scenario.json");
+  await enter(user, within(scenarios().getByRole("group", { name: "Save" })).getByLabelText("Scenario file"), "scenario.json");
   await user.tab();
   expect(document.activeElement).toBe(scenarios().getByRole("button", { name: "Save scenario" }));
   await user.keyboard("{Enter}");
@@ -122,17 +133,17 @@ test("a scenario is bound to a local profile, refused an unsupported one, saved,
   const kept = scenarioDocument();
   const unsupported = await journey.commandLine(["scenario", "preview", "work/unsupported.json"]);
   expect(unsupported.code).not.toBe(0);
-  await enter(user, scenarios().getByLabelText("Open entry"), "unsupported.json");
+  await enter(user, within(scenarios().getByRole("group", { name: "Open" })).getByLabelText("Scenario file"), "unsupported.json");
   await press(user, scenarios().getByRole("button", { name: "Open scenario" }));
   expect(await scenarios().findByText(refusal(unsupported.stderr))).toBeTruthy();
   expect(scenarioDocument()).toBe(kept);
 
   // A designed scenario opens in its canonical form and, saved again,
   // previews exactly as the original does.
-  await enter(user, scenarios().getByLabelText("Open entry"), "designed.json");
+  await enter(user, within(scenarios().getByRole("group", { name: "Open" })).getByLabelText("Scenario file"), "designed.json");
   await press(user, scenarios().getByRole("button", { name: "Open scenario" }));
   expect(await scenarios().findByText("Opened siu-appointment-lifecycle version 1 (readmit-siu-lifecycle-v1) from designed.json.")).toBeTruthy();
-  await enter(user, scenarios().getByLabelText("Save as"), "designed-copy.json");
+  await enter(user, within(scenarios().getByRole("group", { name: "Save" })).getByLabelText("Scenario file"), "designed-copy.json");
   await press(user, scenarios().getByRole("button", { name: "Save scenario" }));
   expect(await scenarios().findByText("Saved siu-appointment-lifecycle version 1 (readmit-siu-lifecycle-v1) as designed-copy.json.")).toBeTruthy();
   const original = await journey.commandLine(["scenario", "preview", "work/designed.json"]);
@@ -163,13 +174,13 @@ test("library templates are saved, versioned, compared, checked, exported and im
 
   // A new library of one template of the shipped plan: the template carries
   // the digest the expectations pin.
-  await enter(user, scenarios().getByLabelText("Library entry"), "authored.json");
-  await enter(user, scenarios().getByLabelText("Template id"), "siu-cancel-book");
+  await enter(user, libraryFile(), "authored.json");
+  await enter(user, scenarios().getByLabelText("Template ID"), "siu-cancel-book");
   await enter(user, scenarios().getByLabelText("Template version"), "1");
   await user.selectOptions(scenarios().getByLabelText("Template profile"), "readmit-siu-lifecycle-v1");
-  await enter(user, scenarios().getByLabelText("Plan document or entry"), "cancel-book-plan.json");
-  await enter(user, scenarios().getByLabelText("Coverage tags, comma-separated"), "cancel-before-book, booking, absent-patient-name");
-  await press(user, scenarios().getByRole("button", { name: "Save library entry" }));
+  await enter(user, scenarios().getByLabelText("Saved plan file"), "cancel-book-plan.json");
+  await enter(user, scenarios().getByLabelText("Coverage tags"), "cancel-before-book, booking, absent-patient-name");
+  await press(user, scenarios().getByRole("button", { name: "Add template version" }));
   expect(await scenarios().findByText("Saved the template into authored.json; it now holds 1 template.")).toBeTruthy();
   const templates = () => within(scenarios().getByRole("list", { name: "Library templates" }));
   expect(
@@ -184,7 +195,7 @@ test("library templates are saved, versioned, compared, checked, exported and im
   expect(await scenarios().findByText(passed.stdout.trimEnd())).toBeTruthy();
   const wrong = await journey.commandLine(["scenario", "check-library", "work/authored.json", "work/wrong-expectations.json"]);
   expect(wrong.code).not.toBe(0);
-  await enter(user, scenarios().getByLabelText("Expectations entry"), "wrong-expectations.json");
+  await enter(user, scenarios().getByLabelText("Expectations file"), "wrong-expectations.json");
   await press(user, scenarios().getByRole("button", { name: "Check expectations" }));
   expect(await scenarios().findByText(refusal(wrong.stderr))).toBeTruthy();
   expect(scenarios().queryByText(/^Fixture checks passed/)).toBeNull();
@@ -193,29 +204,29 @@ test("library templates are saved, versioned, compared, checked, exported and im
   // plan under that revision is refused and the library keeps its bytes; a
   // third revision holds the other plan.
   await enter(user, scenarios().getByLabelText("Template version"), "2");
-  await press(user, scenarios().getByRole("button", { name: "Save library entry" }));
+  await press(user, scenarios().getByRole("button", { name: "Add template version" }));
   expect(await scenarios().findByText("Saved the template into authored.json; it now holds 2 templates.")).toBeTruthy();
   const versioned = journey.digest("work/authored.json");
-  await enter(user, scenarios().getByLabelText("Plan document or entry"), "reseeded-plan.json");
-  await press(user, scenarios().getByRole("button", { name: "Save library entry" }));
+  await enter(user, scenarios().getByLabelText("Saved plan file"), "reseeded-plan.json");
+  await press(user, scenarios().getByRole("button", { name: "Add template version" }));
   expect(await scenarios().findByText("cannot overwrite another library revision; bump the template version")).toBeTruthy();
   expect(journey.digest("work/authored.json")).toBe(versioned);
   await enter(user, scenarios().getByLabelText("Template version"), "3");
-  await press(user, scenarios().getByRole("button", { name: "Save library entry" }));
+  await press(user, scenarios().getByRole("button", { name: "Add template version" }));
   expect(await scenarios().findByText("Saved the template into authored.json; it now holds 3 templates.")).toBeTruthy();
 
-  await enter(user, scenarios().getByLabelText("From version"), "1");
-  await enter(user, scenarios().getByLabelText("To version"), "2");
+  await enter(user, scenarios().getByLabelText("Earlier version"), "1");
+  await enter(user, scenarios().getByLabelText("Later version"), "2");
   await press(user, scenarios().getByRole("button", { name: "Compare revisions" }));
   expect(await scenarios().findByText("siu-cancel-book version 1 and version 2: the same plan.")).toBeTruthy();
-  await enter(user, scenarios().getByLabelText("To version"), "3");
+  await enter(user, scenarios().getByLabelText("Later version"), "3");
   await press(user, scenarios().getByRole("button", { name: "Compare revisions" }));
   expect(await scenarios().findByText("siu-cancel-book version 1 and version 3: different plans.")).toBeTruthy();
   expect(within(scenarios().getByLabelText("Revisions 1 and 3")).getByText(pinned)).toBeTruthy();
 
   // An export is the library's exact bytes and is checked by the command;
   // exporting over it again is refused.
-  await enter(user, scenarios().getByLabelText("Export as"), "exported.json");
+  await enter(user, scenarios().getByLabelText("Export file"), "exported.json");
   await press(user, scenarios().getByRole("button", { name: "Export library" }));
   expect(await scenarios().findByText("Exported authored.json to exported.json, byte for byte.")).toBeTruthy();
   const exported = journey.digest("work/exported.json");
@@ -228,8 +239,11 @@ test("library templates are saved, versioned, compared, checked, exported and im
 
   // A library from elsewhere on the machine is imported by its absolute
   // path as its exact bytes, and the command checks the import.
-  await enter(user, scenarios().getByLabelText("Library file to import (absolute path)"), outside);
-  await enter(user, scenarios().getByLabelText("Import as"), "imported.json");
+  const importing = within(scenarios().getByRole("group", { name: "Import" }));
+  await journey.chooseFiles([outside], "Choose the scenario library to import");
+  await press(user, importing.getByRole("button", { name: "Browse…" }));
+  await waitFor(() => expect((importing.getByLabelText("Library file") as HTMLInputElement).value).toBe(outside));
+  await enter(user, importing.getByLabelText("Imported library file"), "imported.json");
   await press(user, scenarios().getByRole("button", { name: "Import library" }));
   expect(await scenarios().findByText(`Imported ${outside} as imported.json, byte for byte.`)).toBeTruthy();
   expect(journey.digest("work/imported.json")).toBe(journey.digest("elsewhere/shipped-library.json"));
@@ -238,8 +252,8 @@ test("library templates are saved, versioned, compared, checked, exported and im
 
   // A library entry the panel never opened is saved as a new library, so an
   // existing entry at that name is refused rather than replaced.
-  await enter(user, scenarios().getByLabelText("Library entry"), "imported.json");
-  await press(user, scenarios().getByRole("button", { name: "Save library entry" }));
+  await enter(user, libraryFile(), "imported.json");
+  await press(user, scenarios().getByRole("button", { name: "Add template version" }));
   expect(await scenarios().findByText("cannot create destination; file already exists in workspace")).toBeTruthy();
   expect(journey.digest("work/imported.json")).toBe(journey.digest("elsewhere/shipped-library.json"));
 });
@@ -257,7 +271,7 @@ test("SIU fixtures generated in the window are the command line's family byte fo
   await enter(user, scenarios().getByLabelText(/^Base time/), "2026-01-02T03:04:05");
   await user.selectOptions(scenarios().getByLabelText("Generator version"), "readmit-synth-v1");
   await user.selectOptions(scenarios().getByLabelText("Profile version"), "readmit-siu-v1");
-  await enter(user, scenarios().getByLabelText("Output directory"), "siu-family");
+  await enter(user, scenarios().getByLabelText("Output folder"), "siu-family");
 
   // A base time without its zone is refused as the command refuses it.
   const zoneless = await licensedCommandLine([
@@ -317,7 +331,7 @@ test("a fixture check holds its regeneration in memory, refuses an unlicensed ex
   await openWorkspace(user, "work");
   await openTab(user, "Library");
 
-  await enter(user, scenarios().getByLabelText("Library entry"), "shipped-library.json");
+  await enter(user, libraryFile(), "shipped-library.json");
   await press(user, scenarios().getByRole("button", { name: "Open library" }));
   expect(await scenarios().findByText("Opened shipped-library.json: 1 template.")).toBeTruthy();
 
@@ -329,7 +343,7 @@ test("a fixture check holds its regeneration in memory, refuses an unlicensed ex
     "--profile-version", "readmit-siu-v1", "--output", "unlicensed-family",
   ]);
   expect(unlicensed.code).not.toBe(0);
-  await enter(user, scenarios().getByLabelText("Export as"), "wide-export.json");
+  await enter(user, scenarios().getByLabelText("Export file"), "wide-export.json");
   await press(user, scenarios().getByRole("button", { name: "Export library" }));
   expect(await scenarios().findByText(refusal(unlicensed.stderr))).toBeTruthy();
   expect(journey.callsTo("ExportScenarioLibrary")[0]?.result).toMatchObject({ state: "permission_denied" });
@@ -337,7 +351,7 @@ test("a fixture check holds its regeneration in memory, refuses an unlicensed ex
 
   // The check generates every stream of the pinned plan in memory, so the
   // temporary folder holds none of it, and the verdict is the command's own.
-  await enter(user, scenarios().getByLabelText("Expectations entry"), "expectations.json");
+  await enter(user, scenarios().getByLabelText("Expectations file"), "expectations.json");
   await press(user, scenarios().getByRole("button", { name: "Check expectations" }));
   const passed = await journey.commandLine(["scenario", "check-library", "work/shipped-library.json", "work/expectations.json"]);
   expect(passed.code).toBe(0);

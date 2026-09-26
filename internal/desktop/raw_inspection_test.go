@@ -341,7 +341,7 @@ func TestChooseInspectionPathKinds(t *testing.T) {
 	if got := app.ChooseInspectionPath("round-trip-folder"); got.State != desktop.Completed || got.Path != "/chosen/folder" {
 		t.Fatalf("round-trip-folder: %+v", got)
 	}
-	if got := strings.Join(c.titles, "|"); got != "Choose the HL7 file to inspect|Choose the folder for the byte-identical copy" {
+	if got := strings.Join(c.titles, "|"); got != "Open HL7 file|Choose copy destination" {
 		t.Fatalf("dialog titles: %s", got)
 	}
 	c.files = []string{"/chosen/a.hl7", "/chosen/b.hl7"}

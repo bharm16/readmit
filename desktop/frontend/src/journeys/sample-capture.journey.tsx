@@ -51,7 +51,7 @@ test("the frozen receiver fixtures are imported by the guided sample without act
   journey.makeFolder("work");
   await journey.launch();
 
-  await journey.chooseFolder(journey.path("work"), "Choose a folder for the readmit sample workspace");
+  await journey.chooseFolder(journey.path("work"), "Choose sample location");
   await press(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
   const importing = within(await guided.findByRole("form", { name: "Import fixtures" }));
@@ -77,14 +77,14 @@ test("the frozen receiver fixtures are imported by the guided sample without act
   await enter(user, name, "receiver-sample");
 
   // A dismissed dialog imports nothing.
-  await journey.dismissDialog("folder", "Choose the folder holding the frozen receiver fixtures");
+  await journey.dismissDialog("folder", "Choose fixture folder");
   await press(user, submit);
   expect(await guided.findByText("no folder was chosen")).toBeTruthy();
   expect(written("receiver-sample")).toBe(false);
 
   // Bytes that are not the frozen fixtures are refused before a case exists,
   // in the words the command line refuses them with.
-  await journey.chooseFolder(altered, "Choose the folder holding the frozen receiver fixtures");
+  await journey.chooseFolder(altered, "Choose fixture folder");
   await press(user, submit);
   expect(await guided.findByText("sample requires the unchanged frozen synthetic fixtures")).toBeTruthy();
   const refused = await journey.commandLine(["sample", "capture", "--fixtures", "altered", "--output", "work/readmit-sample/command-altered"]);
@@ -95,7 +95,7 @@ test("the frozen receiver fixtures are imported by the guided sample without act
 
   // From the keyboard: Tab to the import and Enter, then the folder holding
   // the fixtures in the host's own dialog.
-  await journey.chooseFolder(fixtures, "Choose the folder holding the frozen receiver fixtures");
+  await journey.chooseFolder(fixtures, "Choose fixture folder");
   await tabTo(user, submit);
   await user.keyboard("{Enter}");
   const facts = await guided.findByText(/^receiver-sample: /);
@@ -128,7 +128,7 @@ test("the frozen receiver fixtures are imported by the guided sample without act
 
   // A second import over the first is refused and leaves the case as it was.
   const manifest = journey.digest("work/readmit-sample/receiver-sample/manifest.json");
-  await journey.chooseFolder(fixtures, "Choose the folder holding the frozen receiver fixtures");
+  await journey.chooseFolder(fixtures, "Choose fixture folder");
   await press(user, submit);
   expect(await guided.findByText("cannot create bundle; destination must be new and parent readable and writable")).toBeTruthy();
   expect(journey.digest("work/readmit-sample/receiver-sample/manifest.json")).toBe(manifest);

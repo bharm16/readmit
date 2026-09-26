@@ -255,7 +255,7 @@ test("an assertion set is imported into the structured draft, an undecodable one
   expect(downstream.received()).toHaveLength(2);
   const explain = (set: string) => journey.commandLine(["explain", "interface/reschedule.run", "--assertions", `interface/${set}`]);
 
-  await journey.chooseFolder(journey.path("interface"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("interface"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const panel = within(await screen.findByRole("region", { name: "Assertion set authoring" }));
   const clauses = () => panel.queryAllByRole("button", { name: /^Remove / }).map((button) => button.textContent);

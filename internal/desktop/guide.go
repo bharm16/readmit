@@ -197,7 +197,7 @@ func (a *App) CaptureSample(request SampleCaptureRequest) CaseResult {
 		if artifactpath.EntryName(request.Output) != nil {
 			return CaseResult{State: Failed, Reason: "the sample case needs one new folder name in the open workspace, never a path"}
 		}
-		fixtures, declined := a.chooseFolder(ctx, "Choose the folder holding the frozen receiver fixtures")
+		fixtures, declined := a.chooseFolder(ctx, "Choose fixture folder")
 		if fixtures == "" {
 			return declined.evidence()
 		}

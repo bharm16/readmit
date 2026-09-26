@@ -107,7 +107,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // Dismissing the save dialog names nothing, and nothing can be backed up
   // without a destination.
   let backup = await section(user, "Backup", "Backups");
-  await journey.dismissDialog("save", "Choose a new folder for the backup");
+  await journey.dismissDialog("save", "New backup folder");
   await press(user, backup.getByRole("button", { name: "Choose destination…" }));
   await waitFor(() => expect(journey.callsTo("ChooseMaintenancePath").at(-1)?.result).toMatchObject({ state: "cancelled" }));
   expect(await feedback("no new folder was named")).toBeTruthy();
@@ -117,7 +117,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // A verified backup into a new folder named in the save dialog, which the
   // backup creates, verified again from the folder a person picks, as the
   // command line verifies it.
-  await nameNew(user, backup, "Choose destination…", "backups/before-cleanup", "Choose a new folder for the backup");
+  await nameNew(user, backup, "Choose destination…", "backups/before-cleanup", "New backup folder");
   await press(user, backup.getByRole("button", { name: "Create backup" }));
   expect(await feedback("Backup created.")).toBeTruthy();
   expect(maintenance().getByText(byContent(/^Complete · \d+ files · \d+ bytes · /)).textContent).toMatch(
@@ -127,12 +127,12 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // confirms replacing it — is refused by the backup with its reason, and the
   // backup already there is left as it was.
   const kept = journey.digest("backups/before-cleanup/backup.json");
-  await nameNew(user, backup, "Choose destination…", "backups/before-cleanup", "Choose a new folder for the backup");
+  await nameNew(user, backup, "Choose destination…", "backups/before-cleanup", "New backup folder");
   await press(user, backup.getByRole("button", { name: "Create backup" }));
   expect(await feedback("cannot create backup; destination must be new and parent writable")).toBeTruthy();
   expect(journey.digest("backups/before-cleanup/backup.json")).toBe(kept);
   backup = await section(user, "Backup", "Backups");
-  await choose(user, backup, "Browse backup…", "backups/before-cleanup", "Choose the backup folder to verify or restore");
+  await choose(user, backup, "Browse backup…", "backups/before-cleanup", "Open backup folder");
   await press(user, backup.getByRole("button", { name: "Verify backup" }));
   expect(await feedback("Backup verified.")).toBeTruthy();
   const verified = await journey.commandLine(["backup", "verify", "backups/before-cleanup"]);
@@ -142,34 +142,43 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
 
   // A quota below what the project already holds is refused and changes
   // nothing; one it fits within is set, as the command line then reads it.
-  let storage = await section(user, "Storage and indexes", "Storage quota and index rebuild");
+  let storage = await section(user, "Storage", "Storage quota and index rebuild");
   const used = (await storage.findByText(byContent(/^Used \d+ files \/ \d+ bytes · no quota declared$/))).textContent ?? "";
   const [, files, bytes] = /^Used (\d+) files \/ (\d+) bytes/.exec(used)!;
   expect((await journey.commandLine(["project", "quota", PROJECT])).stdout).toBe(
     `Retained files: ${files}\nRetained bytes: ${bytes}\nQuota declared: false\n`,
   );
-  await enter(user, storage.getByLabelText("Maximum retained files"), "5000");
-  await enter(user, storage.getByLabelText("Maximum retained bytes"), "1000");
-  await press(user, storage.getByRole("button", { name: "Set retained-file quota" }));
+  await enter(user, storage.getByLabelText("File limit"), "5000");
+  await enter(user, storage.getByLabelText("Storage limit (bytes)"), "1000");
+  await press(user, storage.getByRole("button", { name: "Save quota" }));
   expect(await storage.findByText("project quota exceeded; no document was changed")).toBeTruthy();
   expect((await journey.commandLine(["project", "quota", PROJECT])).stdout).toContain("Quota declared: false\n");
-  await enter(user, storage.getByLabelText("Maximum retained bytes"), "500000000");
-  await press(user, storage.getByRole("button", { name: "Set retained-file quota" }));
+  await enter(user, storage.getByLabelText("Storage limit (bytes)"), "500000000");
+  await press(user, storage.getByRole("button", { name: "Save quota" }));
   expect(await storage.findByText(byContent(/ · limit 5000 files \/ 500000000 bytes · within quota$/))).toBeTruthy();
   const quota = await journey.commandLine(["project", "quota", PROJECT]);
   expect(quota.code).toBe(0);
   expect(quota.stdout).toContain("Quota declared: true\nMaximum files: 5000\nMaximum bytes: 500000000\n");
 
   // The disposable index is rebuilt from the case's canonical evidence.
-  storage = await section(user, "Storage and indexes", "Storage quota and index rebuild");
-  await enter(user, storage.getByLabelText("Case name"), "reschedule-feed");
-  await enter(user, storage.getByLabelText("Index file name"), "reschedule-feed.index.json");
-  await press(user, storage.getByRole("button", { name: "Rebuild index" }));
+  storage = await section(user, "Storage", "Storage quota and index rebuild");
+  // Inspecting it and setting up its rebuild writes nothing; the rebuild
+  // keeps the policy the index was built under.
+  const indexSetup = within(storage.getByRole("region", { name: "Index setup" }));
+  const builtBefore = journey.callsTo("BuildIndex").length;
+  await enter(user, indexSetup.getByLabelText("Case"), "reschedule-feed");
+  await enter(user, indexSetup.getByLabelText("Index file"), "reschedule-feed.index.json");
+  await press(user, indexSetup.getByRole("button", { name: "Inspect index" }));
+  await press(user, await indexSetup.findByRole("button", { name: "Set up rebuild" }));
+  const rebuild = within(await indexSetup.findByRole("form", { name: "Build index form" }));
+  expect((rebuild.getByLabelText("Replace selected index") as HTMLInputElement).checked).toBe(true);
+  expect(journey.callsTo("BuildIndex")).toHaveLength(builtBefore);
+  await press(user, rebuild.getByRole("button", { name: "Rebuild index" }));
   expect(await feedback("Index rebuilt from canonical evidence.")).toBeTruthy();
 
   // Migration and retirement are previewed before anything changes.
-  let lifecycle = await section(user, "Archive and migrate", "Archive, delete and migration");
-  await press(user, lifecycle.getByRole("button", { name: "Preview schema migration" }));
+  let lifecycle = await section(user, "Archive and migration", "Archive, delete and migration");
+  await press(user, lifecycle.getByRole("button", { name: "Preview migration" }));
   expect(await lifecycle.findByText("project.json: readmit-project/v1 → unchanged")).toBeTruthy();
   expect(lifecycle.getByText("reschedule-feed.index.json: readmit-index/v1 → rebuild-on-restore")).toBeTruthy();
   await press(user, lifecycle.getByRole("button", { name: "Preview cleanup" }));
@@ -179,7 +188,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
       "Unlinking a project is not forensic secure erasure and does not revoke remote copies. The recovery archive is retained.",
     ),
   ).toBeTruthy();
-  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-kept", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-kept", "New archive folder");
   await press(user, lifecycle.getByRole("button", { name: "Archive" }));
   expect(await feedback("Archive created; source kept.")).toBeTruthy();
   expect((await journey.commandLine(["project", "show", PROJECT])).code).toBe(0);
@@ -187,7 +196,7 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // The project changes after the preview, and the delete that preview
   // allowed is refused: nothing is deleted.
   journey.writeFile(`${PROJECT}/handover-notes.txt`, "Filler identifiers differ between the two systems.\n");
-  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-stale", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-stale", "New archive folder");
   await user.click(lifecycle.getByLabelText("Confirm deletion"));
   await press(user, lifecycle.getByRole("button", { name: "Delete source" }));
   expect(await lifecycle.findByText("the project changed since the retirement preview; nothing was deleted")).toBeTruthy();
@@ -196,9 +205,9 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // Previewed again, and deleted only once confirmed against that preview:
   // the confirmation given for the stale one does not carry over. The source
   // is unlinked after a verified archive, which is kept.
-  lifecycle = await section(user, "Archive and migrate", "Archive, delete and migration");
+  lifecycle = await section(user, "Archive and migration", "Archive, delete and migration");
   await press(user, lifecycle.getByRole("button", { name: "Preview cleanup" }));
-  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-deleted", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-deleted", "New archive folder");
   const confirmation = lifecycle.getByLabelText("Confirm deletion") as HTMLInputElement;
   expect(confirmation.checked).toBe(false);
   expect((lifecycle.getByRole("button", { name: "Delete source" }) as HTMLButtonElement).disabled).toBe(true);
@@ -215,8 +224,8 @@ test("a project is backed up, held to a quota, reindexed, archived, refused a st
   // The recovery archive restores into a new folder, which the window
   // reopens with the case, the test and the run the project held.
   const restore = await section(user, "Restore", "Restore a backup");
-  await choose(user, restore, "Choose backup…", "backups/archive-deleted", "Choose the backup folder to verify or restore");
-  await nameNew(user, restore, "Choose new restore destination…", "investigations/scheduling-restored", "Choose a new folder for the restored project");
+  await choose(user, restore, "Choose backup…", "backups/archive-deleted", "Open backup folder");
+  await nameNew(user, restore, "Choose new restore destination…", "investigations/scheduling-restored", "New restore folder");
   await press(user, restore.getByRole("button", { name: "Restore backup" }));
   expect(await within(region("Workspace")).findByText(journey.path("investigations/scheduling-restored"), { selector: ".root" })).toBeTruthy();
   expect(await within(region("Evidence")).findByText("Reschedule is refused")).toBeTruthy();
@@ -252,7 +261,7 @@ test("a project's earlier settings are recovered from the copy the window lists,
   await press(user, evidence.getByRole("button", { name: "Maintenance" }));
   let recovery = await section(user, "Recovery copies", "Recover a project document");
   await press(user, await recoveryCopy(recovery, original, "readable"));
-  await press(user, recovery.getByRole("button", { name: "Recover copy" }));
+  await press(user, recovery.getByRole("button", { name: "Recover document" }));
   expect(
     await feedback(`Recovered project.json from project.json.recovery-${original}; the document it replaced is kept as a recovery copy.`),
   ).toBeTruthy();
@@ -274,7 +283,7 @@ test("a project's earlier settings are recovered from the copy the window lists,
   recovery = await section(user, "Recovery copies", "Recover a project document");
   await press(user, await recoveryCopy(recovery, renamed, "readable"));
   journey.changeFile(`${INTERFACE}/project.json.recovery-${renamed}`, "damaged after it was listed\n");
-  await press(user, recovery.getByRole("button", { name: "Recover copy" }));
+  await press(user, recovery.getByRole("button", { name: "Recover document" }));
   expect(await feedback("recovery copy is damaged")).toBeTruthy();
   expect(journey.digest(`${INTERFACE}/project.json`)).toBe(original);
   expect(((await recoveryCopy(recovery, renamed, "damaged")) as HTMLInputElement).disabled).toBe(true);
@@ -325,12 +334,12 @@ test("a staged candidate is checked and its rollback archive taken once approved
   const upgrade = within(await screen.findByRole("region", { name: "Upgrade and rollback" }));
 
   // Dismissing the folder dialog chooses nothing, and nothing can be checked.
-  await journey.dismissDialog("folder", "Choose the staged upgrade package folder");
+  await journey.dismissDialog("folder", "Open staged upgrade folder");
   await press(user, upgrade.getByRole("button", { name: "Browse upgrade…" }));
   expect(await feedback("no folder was chosen")).toBeTruthy();
   expect((upgrade.getByRole("button", { name: "Check staged upgrade" }) as HTMLButtonElement).disabled).toBe(true);
 
-  await choose(user, upgrade, "Browse upgrade…", "staged/readmit-9.9.9", "Choose the staged upgrade package folder");
+  await choose(user, upgrade, "Browse upgrade…", "staged/readmit-9.9.9", "Open staged upgrade folder");
   await press(user, upgrade.getByRole("button", { name: "Check staged upgrade" }));
   expect(await upgrade.findByText(`installed ${installed} → candidate 9.9.9 · signed=false · refused`)).toBeTruthy();
   expect(upgrade.getByText(`${pkg} · pkg · intact`)).toBeTruthy();
@@ -355,12 +364,12 @@ test("a staged candidate is checked and its rollback archive taken once approved
   // the rollback point, and installing is still refused.
   const project = journey.digest(`${INTERFACE}/project.json`);
   await user.click(upgrade.getByRole("checkbox", { name: /Administrator approves taking a rollback archive/ }));
-  await nameNew(user, upgrade, "Choose destination…", `${INTERFACE}/rollback`, "Choose a new folder for the recovery archive");
+  await nameNew(user, upgrade, "Choose destination…", `${INTERFACE}/rollback`, "New archive folder");
   await press(user, upgrade.getByRole("button", { name: "Create rollback archive" }));
   expect(await feedback("output must be outside the immutable input case")).toBeTruthy();
   expect((await journey.commandLine(["backup", "verify", `${INTERFACE}/rollback`])).code).not.toBe(0);
   expect(journey.digest(`${INTERFACE}/project.json`)).toBe(project);
-  await nameNew(user, upgrade, "Choose destination…", "backups/rollback", "Choose a new folder for the recovery archive");
+  await nameNew(user, upgrade, "Choose destination…", "backups/rollback", "New archive folder");
   await press(user, upgrade.getByRole("button", { name: "Create rollback archive" }));
   expect(await feedback(`Rollback point taken. Installing this candidate is still refused: ${DEVELOPMENT_PREVIEW}`)).toBeTruthy();
   expect(
@@ -385,7 +394,7 @@ test("a staged candidate is checked and its rollback archive taken once approved
   await press(user, upgrade.getByRole("button", { name: "Check staged upgrade" }));
   expect(await upgrade.findByText(`${pkg} · pkg · altered`)).toBeTruthy();
   expect(await feedback(DEVELOPMENT_PREVIEW)).toBeTruthy();
-  await nameNew(user, upgrade, "Choose destination…", "backups/rollback-partway", "Choose a new folder for the recovery archive");
+  await nameNew(user, upgrade, "Choose destination…", "backups/rollback-partway", "New archive folder");
   await press(user, upgrade.getByRole("button", { name: "Create rollback archive" }));
   expect(await feedback(NOT_STAGED)).toBeTruthy();
   expect(maintenance().queryByText(byContent(/^Complete · /))).toBeNull();
@@ -415,10 +424,10 @@ test("on a full disk an archive, a delete and a rollback archive are refused wit
   const evidence = within(region("Evidence"));
   await press(user, evidence.getByRole("button", { name: "Maintenance" }));
 
-  const lifecycle = await section(user, "Archive and migrate", "Archive, delete and migration");
+  const lifecycle = await section(user, "Archive and migration", "Archive, delete and migration");
   await press(user, lifecycle.getByRole("button", { name: "Preview cleanup" }));
   expect(await lifecycle.findByText(byContent(/^\d+ files · \d+ bytes · compatible=true$/))).toBeTruthy();
-  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-full", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose archive destination…", "backups/archive-full", "New archive folder");
   await press(user, lifecycle.getByRole("button", { name: "Archive" }));
   expect(await feedback(DISK_FULL)).toBeTruthy();
   // The incomplete archive is kept for inspection and is refused as one.
@@ -426,7 +435,7 @@ test("on a full disk an archive, a delete and a rollback archive are refused wit
   expect(incomplete.code).not.toBe(0);
   expect(incomplete.stderr).toContain("backup is incomplete");
 
-  await nameNew(user, lifecycle, "Choose archive destination…", "backups/delete-full", "Choose a new folder for the recovery archive");
+  await nameNew(user, lifecycle, "Choose archive destination…", "backups/delete-full", "New archive folder");
   expect(maintenance().queryByText(DISK_FULL, { selector: "p[role=status]" })).toBeNull();
   await user.click(lifecycle.getByLabelText("Confirm deletion"));
   // Naming the folder cleared the archive's refusal, so this one is the delete's.
@@ -436,9 +445,9 @@ test("on a full disk an archive, a delete and a rollback archive are refused wit
   expect(journey.digest(`${INTERFACE}/capture.bin`)).toBe(capture);
 
   const upgrade = await section(user, "Staged upgrade", "Upgrade and rollback");
-  await choose(user, upgrade, "Browse upgrade…", "staged/readmit-9.9.9", "Choose the staged upgrade package folder");
+  await choose(user, upgrade, "Browse upgrade…", "staged/readmit-9.9.9", "Open staged upgrade folder");
   await user.click(upgrade.getByRole("checkbox", { name: /Administrator approves taking a rollback archive/ }));
-  await nameNew(user, upgrade, "Choose destination…", "backups/rollback-full", "Choose a new folder for the recovery archive");
+  await nameNew(user, upgrade, "Choose destination…", "backups/rollback-full", "New archive folder");
   await press(user, upgrade.getByRole("button", { name: "Create rollback archive" }));
   expect(await feedback(DISK_FULL)).toBeTruthy();
   expect((await journey.commandLine(["backup", "verify", "backups/rollback-full"])).stderr).toContain("backup is incomplete");
@@ -452,10 +461,10 @@ test("on a full disk an archive, a delete and a rollback archive are refused wit
   await press(user, await navigation.findByRole("button", { name: journey.path(INTERFACE) }));
   await press(user, await navigation.findByRole("button", { name: "Open project" }));
   await press(user, await within(region("Evidence")).findByRole("button", { name: "Maintenance" }));
-  const again = await section(user, "Archive and migrate", "Archive, delete and migration");
+  const again = await section(user, "Archive and migration", "Archive, delete and migration");
   await press(user, again.getByRole("button", { name: "Preview cleanup" }));
   expect(await again.findByText(byContent(/^\d+ files · \d+ bytes · compatible=true$/))).toBeTruthy();
-  await nameNew(user, again, "Choose archive destination…", "backups/delete-with-room", "Choose a new folder for the recovery archive");
+  await nameNew(user, again, "Choose archive destination…", "backups/delete-with-room", "New archive folder");
   await user.click(again.getByLabelText("Confirm deletion"));
   await press(user, again.getByRole("button", { name: "Delete source" }));
   expect(await again.findByText("Project unlinked; recovery archive retained. This is not secure erasure.")).toBeTruthy();

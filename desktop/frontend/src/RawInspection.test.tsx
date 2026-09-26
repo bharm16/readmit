@@ -126,13 +126,13 @@ test("raw inspection chooses a file natively, pages every row the command report
   expect(list.getAllByRole("listitem")).toHaveLength(200);
   expect(screen.queryByText(/escaped-token/)).toBeNull();
 
-  await user.click(screen.getByRole("button", { name: "Next rows" }));
+  await user.click(screen.getByRole("button", { name: "Next page" }));
   expect(await screen.findByText("Rows 201–250 of 250")).toBeTruthy();
   // A later page names the digest the shown rows were read from.
   expect(facade.callsTo("InspectRawFile")[1]?.args[0]).toMatchObject({ offset: 200, limit: 0, expect: DIGEST });
   expect(rowsList().getAllByRole("listitem")).toHaveLength(50);
-  expect((screen.getByRole("button", { name: "Next rows" }) as HTMLButtonElement).disabled).toBe(true);
-  await user.click(screen.getByRole("button", { name: "Previous rows" }));
+  expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(screen.getByRole("button", { name: "Previous page" }));
   expect(await screen.findByText("Rows 1–200 of 250")).toBeTruthy();
 
   // Asking for values is a new declaration: what was shown without them goes.
@@ -191,7 +191,7 @@ test("raw inspection reports refusals, a denied file and a dismissed dialog, and
   facade.reply({
     InspectRawFile: () => ({ state: "failed", reason: "the file changed since its earlier rows were read; inspect it again" }),
   });
-  await user.click(screen.getByRole("button", { name: "Next rows" }));
+  await user.click(screen.getByRole("button", { name: "Next page" }));
   expect(await screen.findByText("the file changed since its earlier rows were read; inspect it again")).toBeTruthy();
   expect(screen.queryByRole("list", { name: "Inspection rows" })).toBeNull();
 
@@ -230,7 +230,7 @@ test("a byte-identical copy is written to a new file of a natively chosen folder
   expect(screen.queryByText("no folder was chosen")).toBeNull();
   expect(facade.callsTo("ChooseInspectionPath").map((call) => call.args[0])).toEqual(["file", "round-trip-folder", "round-trip-folder"]);
   expect((write as HTMLButtonElement).disabled).toBe(true);
-  await user.type(screen.getByLabelText("New file name"), "copy.hl7");
+  await user.type(screen.getByLabelText("Copy filename"), "copy.hl7");
   await user.click(write);
   expect(await screen.findByText(/Wrote 4096 bytes to .*copy\.hl7 · SHA-256 0{64} · the same bytes the inspection read/)).toBeTruthy();
   expect(facade.oneCall("WriteRoundTrip")).toEqual([
@@ -272,4 +272,73 @@ test("the palette opens raw inspection and a keyboard alone chooses, declares an
   await user.keyboard("{Enter}");
   expect(await screen.findByText("Rows 1–200 of 250")).toBeTruthy();
   expect(facade.oneCall("InspectRawFile")[0]).toMatchObject({ file: FILE, format: "auto", terminator: "auto", show_values: true });
+});
+
+test("the input format names its choices in words while sending the unchanged values, and showing values stays outside it", async () => {
+  const facade = installFacade(handlers());
+  render(<RawInspection busy={false} indicators={new Map()} request={0} />);
+  const user = await openScreen();
+  const format = within(screen.getByRole("group", { name: "Input format" }));
+  const framing = format.getByLabelText("Framing") as HTMLSelectElement;
+  const terminator = format.getByLabelText("Segment terminator") as HTMLSelectElement;
+  expect([...framing.options].map((option) => [option.value, option.text])).toEqual([
+    ["auto", "Detect automatically"],
+    ["raw", "Raw HL7"],
+    ["mllp", "MLLP frames"],
+  ]);
+  expect([...terminator.options].map((option) => [option.value, option.text])).toEqual([
+    ["auto", "Detect automatically"],
+    ["cr", "CR"],
+    ["lf", "LF"],
+    ["crlf", "CRLF"],
+  ]);
+  // Detection is still the default, and nothing about the values display
+  // belongs to how the file is framed.
+  expect(framing.value).toBe("auto");
+  expect(terminator.value).toBe("auto");
+  expect(format.queryByLabelText("Show values")).toBeNull();
+  const show = screen.getByLabelText("Show values");
+  expect(show.getAttribute("aria-describedby")).toBe("raw-values-warning");
+  expect(document.getElementById("raw-values-warning")?.textContent).toMatch(/may contain patient data/);
+
+  await user.click(screen.getByRole("button", { name: "Browse…" }));
+  await screen.findByText(FILE);
+  await user.selectOptions(framing, "MLLP frames");
+  await user.selectOptions(terminator, "CRLF");
+  await user.click(screen.getByRole("button", { name: "Inspect" }));
+  await screen.findByText("Rows 1–200 of 250");
+  expect(facade.oneCall("InspectRawFile")[0]).toMatchObject({ format: "mllp", terminator: "crlf" });
+  // Paging keeps its visible range and its boundary: the first page has no
+  // previous page.
+  expect((screen.getByRole("button", { name: "Previous page" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Next page" }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+test("the byte-identical copy is its own subview below the result, holding its destination, write and outcome", async () => {
+  installFacade(
+    handlers({
+      WriteRoundTrip: (request) => ({ state: "completed", path: `${request.folder}/${request.name}`, bytes: 4096, sha256: "1".repeat(64) }),
+    }),
+  );
+  render(<RawInspection busy={false} indicators={new Map()} request={0} />);
+  const user = await openScreen();
+  const copy = screen.getByRole("group", { name: "Byte-identical copy" });
+  const inputs = screen.getByRole("group", { name: "Input format" });
+  // The copy's controls are not mixed into the input selection.
+  expect(within(inputs).queryByRole("button", { name: "Choose destination…" })).toBeNull();
+  expect(within(copy).queryByLabelText("Framing")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Browse…" }));
+  await screen.findByText(FILE);
+  await user.click(screen.getByRole("button", { name: "Inspect" }));
+  const rows = await screen.findByRole("list", { name: "Inspection rows" });
+  // Below the result.
+  expect(rows.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await user.click(within(copy).getByRole("button", { name: "Choose destination…" }));
+  await within(copy).findByText(FOLDER);
+  await user.type(within(copy).getByLabelText("Copy filename"), "copy.hl7");
+  await user.click(within(copy).getByRole("button", { name: "Save copy" }));
+  // The copy reports its own digest, and does not claim the inspected bytes
+  // when the identities differ.
+  const outcome = await within(copy).findByText(/Wrote 4096 bytes to .*copy\.hl7 · SHA-256 1{64}$/);
+  expect(outcome.textContent).not.toMatch(/the same bytes the inspection read/);
 });

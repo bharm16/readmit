@@ -81,9 +81,9 @@ test.skipIf(!measuring())(
 
     // Index build, once: the click to the first grid window drawn.
     const inspector = within(region("Inspector"));
-    await press(user, await inspector.findByRole("button", { name: "Build case index" }));
+    await press(user, await inspector.findByRole("button", { name: "Set up index" }));
     const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-    await user.click(form.getByRole("radio", { name: /Cryptographic digests/ }));
+    await user.click(form.getByRole("radio", { name: /SHA-256 digests/ }));
     const built = await timed(
       () => press(user, form.getByRole("button", { name: "Build index" })),
       async () => {
@@ -105,7 +105,7 @@ test.skipIf(!measuring())(
       const from = (sample + 1) * GRID_WINDOW + 1;
       const before = journey.calls.length;
       const elapsed = await timed(
-        () => press(user, inspector.getByRole("button", { name: `Next ${GRID_WINDOW}` })),
+        () => press(user, inspector.getByRole("button", { name: `Next ${GRID_WINDOW} occurrences` })),
         async () => {
           expect(await inspector.findByText(`Occurrences ${from}–${from + GRID_WINDOW - 1}`)).toBeTruthy();
         },

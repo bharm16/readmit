@@ -13,6 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { facadeStub, installFacade } from "./testkit/wails";
 import type { FacadeHandlers } from "./testkit/wails";
+import { expectTabPattern } from "./testkit/tabs";
 import type { Artifact } from "./bindings";
 import {
   PRIVACY_REVIEW_IDENTITY,
@@ -48,9 +49,10 @@ const ENTRIES: Artifact[] = [
   { name: BUNDLE_ENTRY, kind: "support" },
 ];
 
-test("the disclosure pickers list declared policy and inventory kinds, not unrelated JSON", () => {
+test("the disclosure pickers list declared policy and inventory kinds, not unrelated JSON", async () => {
   renderPanel();
-  const policies = within(screen.getByLabelText("Disclosure policy"));
+  await openTask(userEvent.setup(), "Create review");
+  const policies = within(screen.getByLabelText("Disclosure policy", { selector: "select" }));
   const inventories = within(screen.getByLabelText("Original-artifact inventory"));
   expect(policies.getByRole("option", { name: POLICY_ENTRY })).toBeTruthy();
   expect(policies.queryByRole("option", { name: INVENTORY_ENTRY })).toBeNull();
@@ -78,10 +80,16 @@ function renderPanel(handlers: FacadeHandlers = {}, entries: Artifact[] = ENTRIE
   return { events };
 }
 
+/** Brings one privacy task on screen, as a person picks it from the tabs. */
+async function openTask(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getByRole("tab", { name }));
+}
+
 async function selectDerivationInputs(user: ReturnType<typeof userEvent.setup>) {
+  await openTask(user, "Create review");
   await user.selectOptions(screen.getByLabelText("Case"), CASE_ENTRY);
-  await user.selectOptions(screen.getByLabelText("Original specification"), SPEC_ENTRY);
-  await user.selectOptions(screen.getByLabelText("Disclosure policy"), POLICY_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Original test file"), SPEC_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Disclosure policy", { selector: "select" }), POLICY_ENTRY);
   await user.selectOptions(screen.getByLabelText("Original-artifact inventory"), INVENTORY_ENTRY);
 }
 
@@ -99,14 +107,18 @@ test("a derived review reports its identity and statements, and pre-fills the ex
   });
   await selectDerivationInputs(user);
   await user.click(screen.getByRole("button", { name: "Create review" }));
-  await waitFor(() => expect(screen.getByText(/ready-for-approval/)).toBeTruthy());
-  expect(screen.getByText(PRIVACY_REVIEW_IDENTITY)).toBeTruthy();
-  expect(screen.getByText(/disclosure-reviewed-extract/)).toBeTruthy();
-  expect(screen.getByText(new RegExp(PRIVATE_ENTRY))).toBeTruthy();
+  const created = within(screen.getByRole("tabpanel", { name: "Create review" }));
+  await waitFor(() => expect(created.getByText(/ready-for-approval/)).toBeTruthy());
+  expect(created.getByText(PRIVACY_REVIEW_IDENTITY)).toBeTruthy();
+  expect(created.getByText(/disclosure-reviewed-extract/)).toBeTruthy();
+  expect(created.getByText(new RegExp(PRIVATE_ENTRY))).toBeTruthy();
   // The export selections are the derivation's own outputs, so the journey
-  // continues without retyping anything.
-  expect((screen.getByLabelText("Review to export") as HTMLSelectElement).value).toBe(REVIEW_ENTRY);
-  expect((screen.getByLabelText("Its private local state") as HTMLInputElement).value).toBe(PRIVATE_ENTRY);
+  // continues without retyping anything, and the export step names the
+  // identity its approval must name.
+  await openTask(user, "Export packet");
+  expect(within(screen.getByRole("tabpanel", { name: "Export packet" })).getByText(PRIVACY_REVIEW_IDENTITY)).toBeTruthy();
+  expect((screen.getByLabelText("Disclosure review") as HTMLSelectElement).value).toBe(REVIEW_ENTRY);
+  expect((screen.getByLabelText("Private state folder") as HTMLInputElement).value).toBe(PRIVATE_ENTRY);
 });
 
 test("a blocked review shows every unresolved surface as an explicit blocker and establishes nothing", async () => {
@@ -159,7 +171,8 @@ test("a blocked review shows every unresolved surface as an explicit blocker and
   await user.click(screen.getByRole("button", { name: "Create review" }));
   await waitFor(() => expect(screen.getAllByText(/blocked/)[0]).toBeTruthy());
   // Selecting the review in the export step reads it and lists the blockers.
-  await user.selectOptions(screen.getByLabelText("Review to export"), REVIEW_ENTRY);
+  await openTask(user, "Export packet");
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), REVIEW_ENTRY);
   await waitFor(() => expect(screen.getByText(/Unresolved surfaces/)).toBeTruthy());
   expect(screen.getByText(/case · unmapped-field/)).toBeTruthy();
   expect(screen.getByText(/case · unknown-segment/)).toBeTruthy();
@@ -180,10 +193,11 @@ test("the packet exports only under the exact approval, and changing the review 
       return privacyExportResult();
     },
   });
+  await openTask(user, "Export packet");
   const approval = screen.getByLabelText("Review ID", { selector: "#privacy-export-approval" });
   expect((approval as HTMLInputElement).disabled).toBe(true);
-  await user.selectOptions(screen.getByLabelText("Review to export"), REVIEW_ENTRY);
-  await user.type(screen.getByLabelText("Its private local state"), PRIVATE_ENTRY);
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), REVIEW_ENTRY);
+  await user.type(screen.getByLabelText("Private state folder"), PRIVATE_ENTRY);
   await user.type(screen.getByLabelText("Review ID", { selector: "#privacy-export-approval" }), PRIVACY_REVIEW_IDENTITY);
   await user.click(screen.getByRole("button", { name: "Export packet" }));
   await waitFor(() => expect(screen.getByText(/external equivalence declined/)).toBeTruthy());
@@ -192,7 +206,7 @@ test("the packet exports only under the exact approval, and changing the review 
 
   // Selecting a different review clears the typed approval: an approval is a
   // fresh act over the identity the bytes have now, never a retained one.
-  await user.selectOptions(screen.getByLabelText("Review to export"), "");
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), "");
   expect((screen.getByLabelText("Review ID", { selector: "#privacy-export-approval" }) as HTMLInputElement).value).toBe("");
 });
 
@@ -240,7 +254,8 @@ test("the sharing policy is authored through structured controls and the summary
       };
     },
   });
-  await user.type(screen.getByLabelText("New policy document"), SHARING_ENTRY);
+  await openTask(user, "Support bundle");
+  await user.type(screen.getByLabelText("Sharing policy file"), SHARING_ENTRY);
   await user.click(screen.getByRole("button", { name: "Save sharing policy" }));
   await waitFor(() => expect(screen.getByText(/Saved sharing\.json/)).toBeTruthy());
   await user.selectOptions(screen.getByLabelText("Sharing policy"), SHARING_ENTRY);
@@ -260,7 +275,7 @@ test("the sharing policy is authored through structured controls and the summary
   await user.click(screen.getByRole("button", { name: "Export support bundle" }));
   await waitFor(() => expect(screen.getByText(/does not name the summary/)).toBeTruthy());
 
-  await user.clear(screen.getByLabelText("Preview ID"));
+  expect((screen.getByLabelText("Preview ID") as HTMLInputElement).value).toBe("");
   await user.type(screen.getByLabelText("Preview ID"), PRIVACY_SUMMARY_IDENTITY);
   await user.click(screen.getByRole("button", { name: "Export support bundle" }));
   await waitFor(() => expect(screen.getByText(/support\.json, event\.json, identity\.sha256/)).toBeTruthy());
@@ -281,6 +296,7 @@ async function tabTo(user: ReturnType<typeof userEvent.setup>, control: HTMLElem
 /** Selects the sharing policy and the derived review with its private state,
  * and previews the summary they produce. */
 async function previewSummary(user: ReturnType<typeof userEvent.setup>) {
+  await openTask(user, "Support bundle");
   await user.selectOptions(screen.getByLabelText("Sharing policy"), SHARING_ENTRY);
   await screen.findByText(/Support allowed · local-file · 4096 bytes/);
   await user.selectOptions(screen.getByLabelText("Source"), REVIEW_ENTRY);
@@ -400,6 +416,10 @@ test("a publication into a destination that already exists is refused with the w
   expect(screen.queryByText(/^Bundle/)).toBeNull();
   await user.clear(screen.getByLabelText("New support folder"));
   await user.type(screen.getByLabelText("New support folder"), "support-002");
+  // The refused attempt spent the approval: the next one is typed again.
+  expect((screen.getByLabelText("Preview ID") as HTMLInputElement).value).toBe("");
+  expect((screen.getByRole("button", { name: "Export support bundle" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.type(screen.getByLabelText("Preview ID"), PRIVACY_SUMMARY_IDENTITY);
   await user.click(screen.getByRole("button", { name: "Export support bundle" }));
   expect(await screen.findByText(/^Bundle/)).toBeTruthy();
   expect(screen.queryByText(/^the publication was refused/)).toBeNull();
@@ -414,7 +434,8 @@ test("a bundle is verified offline, a bundle changed since is refused when verif
       return supportPreviewResult();
     },
   });
-  const picker = screen.getByLabelText("Verify a support bundle") as HTMLSelectElement;
+  await openTask(user, "Support bundle");
+  const picker = screen.getByLabelText("Verify support bundle") as HTMLSelectElement;
   const again = screen.getByRole("button", { name: "Verify again" }) as HTMLButtonElement;
   expect(again.disabled).toBe(true);
   await user.selectOptions(picker, BUNDLE_ENTRY);
@@ -463,12 +484,208 @@ test("a sharing policy the decoder refuses is named as refused, and another poli
   await screen.findByText(/Support allowed · local-file · 4096 bytes/);
   await user.click(screen.getByRole("button", { name: "Preview summary" }));
   await screen.findByText(PRIVACY_SUMMARY_IDENTITY);
-  await user.type(screen.getByLabelText("New policy document"), "sharing-2.json");
-  await user.clear(screen.getByLabelText("Byte bound"));
-  await user.type(screen.getByLabelText("Byte bound"), "2048");
+  await user.type(screen.getByLabelText("Sharing policy file"), "sharing-2.json");
+  await user.clear(screen.getByLabelText("Maximum summary bytes"));
+  await user.type(screen.getByLabelText("Maximum summary bytes"), "2048");
   await user.click(screen.getByRole("button", { name: "Save sharing policy" }));
   expect(await screen.findByText(/^Support allowed · local-file · 2048 bytes\.$/)).toBeTruthy();
   expect(screen.queryByText(/4096 bytes\.$/)).toBeNull();
   expect(screen.queryByText(PRIVACY_SUMMARY_IDENTITY)).toBeNull();
   expect(within(screen.getByLabelText("Sharing policy")).getAllByRole("option")).toHaveLength(3);
+});
+
+test("each privacy task is its own tab: one task's controls are on screen at a time, arrow keys move between them, and an unfinished entry survives looking elsewhere", async () => {
+  const user = userEvent.setup();
+  renderPanel({ OpenReview: () => ({ state: "failed" as const, reason: "not read in this test" }) });
+  const names = ["Disclosure policy", "Artifact inventory", "Create review", "Export packet", "Reexecute", "Support bundle"];
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(names);
+  expect(screen.getByRole("tab", { name: "Disclosure policy", selected: true })).toBeTruthy();
+  const list = screen.getByRole("tablist", { name: "Privacy tasks" });
+  expectTabPattern(list);
+  expect(screen.getByRole("button", { name: "Save policy" })).toBeTruthy();
+  for (const hidden of ["Save inventory", "Create review", "Export packet", "Send once", "Export support bundle"]) {
+    expect(screen.queryByRole("button", { name: hidden })).toBeNull();
+  }
+
+  await user.click(screen.getByRole("tab", { name: "Disclosure policy" }));
+  await user.keyboard("{ArrowRight}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Artifact inventory", selected: true }));
+  expect(screen.getByRole("button", { name: "Save inventory" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Save policy" })).toBeNull();
+  await user.keyboard("{End}");
+  expect(screen.getByRole("tabpanel", { name: "Support bundle" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Export support bundle" })).toBeTruthy();
+  await user.keyboard("{ArrowRight}");
+  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Disclosure policy", selected: true }));
+  await user.keyboard("{ArrowLeft}{ArrowLeft}");
+  expect(screen.getByRole("group", { name: "Rerun" })).toBeTruthy();
+  expectTabPattern(list);
+
+  await openTask(user, "Export packet");
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), REVIEW_ENTRY);
+  await user.type(screen.getByLabelText("Private state folder"), PRIVATE_ENTRY);
+  await openTask(user, "Support bundle");
+  await openTask(user, "Export packet");
+  expect((screen.getByLabelText("Private state folder") as HTMLInputElement).value).toBe(PRIVATE_ENTRY);
+});
+
+test("changing the export's review or private state, or creating another review, withdraws the approval typed for it", async () => {
+  const user = userEvent.setup();
+  const OTHER_REVIEW = "review-002";
+  renderPanel({
+    OpenReview: () => ({ state: "failed" as const, reason: "not read in this test" }),
+    DeriveExportReview: () => privacyReviewResult(),
+  }, [...ENTRIES, { name: OTHER_REVIEW, kind: "review" }]);
+  const approval = () => screen.getByLabelText("Review ID", { selector: "#privacy-export-approval" }) as HTMLInputElement;
+  const exportButton = () => screen.getByRole("button", { name: "Export packet" }) as HTMLButtonElement;
+
+  await openTask(user, "Export packet");
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), REVIEW_ENTRY);
+  await user.type(screen.getByLabelText("Private state folder"), PRIVATE_ENTRY);
+  await user.type(approval(), PRIVACY_REVIEW_IDENTITY);
+  expect(exportButton().disabled).toBe(false);
+
+  // Its private state.
+  await user.type(screen.getByLabelText("Private state folder"), "-2");
+  expect(approval().value).toBe("");
+  expect(exportButton().disabled).toBe(true);
+
+  // Its review.
+  await user.type(approval(), PRIVACY_REVIEW_IDENTITY);
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), OTHER_REVIEW);
+  expect(approval().value).toBe("");
+  expect(exportButton().disabled).toBe(true);
+
+  // A review created since replaces the selection, and the approval with it.
+  await user.type(approval(), PRIVACY_REVIEW_IDENTITY);
+  await selectDerivationInputs(user);
+  await user.click(screen.getByRole("button", { name: "Create review" }));
+  await within(screen.getByRole("tabpanel", { name: "Create review" })).findByText(/ready-for-approval/);
+  await openTask(user, "Export packet");
+  expect((screen.getByLabelText("Disclosure review") as HTMLSelectElement).value).toBe(REVIEW_ENTRY);
+  expect((screen.getByLabelText("Private state folder") as HTMLInputElement).value).toBe(PRIVATE_ENTRY);
+  expect(approval().value).toBe("");
+  expect(exportButton().disabled).toBe(true);
+});
+
+test("changing the summary's source or private state withdraws its preview and the approval typed against it", async () => {
+  const user = userEvent.setup();
+  renderPanel(supportHandlers);
+  const approval = () => screen.getByLabelText("Preview ID") as HTMLInputElement;
+
+  await previewSummary(user);
+  await user.type(approval(), PRIVACY_SUMMARY_IDENTITY);
+  await user.type(screen.getByLabelText("Private state"), "-2");
+  expect(approval().value).toBe("");
+  expect(approval().disabled).toBe(true);
+  expect(screen.queryByText(PRIVACY_SUMMARY_IDENTITY)).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Preview summary" }));
+  await screen.findByText(PRIVACY_SUMMARY_IDENTITY);
+  await user.type(approval(), PRIVACY_SUMMARY_IDENTITY);
+  await user.selectOptions(screen.getByLabelText("Source"), "");
+  expect(approval().value).toBe("");
+  expect(approval().disabled).toBe(true);
+  expect(screen.queryByText(PRIVACY_SUMMARY_IDENTITY)).toBeNull();
+  expect((screen.getByRole("button", { name: "Export support bundle" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("a review answer that arrives after its policy was replaced is not shown under the new selection", async () => {
+  const user = userEvent.setup();
+  const NEWER_POLICY = "newer-policy.json";
+  const facade = installFacade({
+    SaveEditorDraft: (draft) => ({ state: "completed" as const, drafts: [{ ...draft, id: "draft-1" }] }),
+    DiscardEditorDraft: () => ({ state: "completed" as const, drafts: [] }),
+    SaveRedactPolicy: ({ output, policy }) => ({ state: "completed" as const, entry: output, policy }),
+  });
+  render(<PrivacyPanel workspace={WORKSPACE_ROOT} entries={[...ENTRIES, { name: NEWER_POLICY, kind: "redact-policy" }]} onRefresh={() => {}} />);
+  const deriving = facade.park("DeriveExportReview");
+  await selectDerivationInputs(user);
+  await user.click(screen.getByRole("button", { name: "Create review" }));
+  await waitFor(() => expect(deriving.size).toBe(1));
+
+  // While the review is being created, another policy is saved and becomes
+  // the selected one.
+  await openTask(user, "Disclosure policy");
+  await user.type(screen.getByLabelText("Policy file"), NEWER_POLICY);
+  await user.click(screen.getByRole("button", { name: "Save policy" }));
+  await screen.findByText(`Saved disclosure policy ${NEWER_POLICY}.`);
+
+  // The old selection's answer arrives late: it describes a policy no longer
+  // selected, so it is not shown and does not become the export's review.
+  deriving.resolve(privacyReviewResult());
+  await openTask(user, "Create review");
+  expect((screen.getByLabelText("Disclosure policy", { selector: "select" }) as HTMLSelectElement).value).toBe(NEWER_POLICY);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Create review" })).toBeTruthy());
+  expect(screen.queryByText(/ready-for-approval/)).toBeNull();
+  expect(screen.queryByText(PRIVACY_REVIEW_IDENTITY)).toBeNull();
+  expect((screen.getByLabelText("Disclosure review") as HTMLSelectElement).value).toBe("");
+  expect((facade.oneCall("DeriveExportReview")[0] as { policy: string }).policy).toBe(POLICY_ENTRY);
+});
+
+test("a double click on Export packet sends one export, which spends the approval", async () => {
+  const user = userEvent.setup();
+  const { events } = renderPanel({ OpenReview: () => ({ state: "failed" as const, reason: "not read in this test" }) });
+  const exporting = facadeStub().park("ExportDerivedPacket");
+  await openTask(user, "Export packet");
+  await user.selectOptions(screen.getByLabelText("Disclosure review"), REVIEW_ENTRY);
+  await user.type(screen.getByLabelText("Private state folder"), PRIVATE_ENTRY);
+  await user.type(screen.getByLabelText("Review ID", { selector: "#privacy-export-approval" }), PRIVACY_REVIEW_IDENTITY);
+  await user.dblClick(screen.getByRole("button", { name: "Export packet" }));
+  await waitFor(() => expect(exporting.size).toBe(1));
+  expect(facadeStub().callsTo("ExportDerivedPacket")).toHaveLength(1);
+  exporting.resolve(privacyExportResult());
+  await screen.findByText(/external equivalence declined/);
+  expect(facadeStub().callsTo("ExportDerivedPacket")).toHaveLength(1);
+  expect((screen.getByLabelText("Review ID", { selector: "#privacy-export-approval" }) as HTMLInputElement).value).toBe("");
+  expect((screen.getByRole("button", { name: "Export packet" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(events.filter((event) => event === "refresh")).toHaveLength(1);
+});
+
+test("a double click on Export support bundle publishes one bundle, which spends the approval", async () => {
+  const user = userEvent.setup();
+  renderPanel(supportHandlers);
+  const publishing = facadeStub().park("PublishSupportSummary");
+  await previewSummary(user);
+  await user.type(screen.getByLabelText("Preview ID"), PRIVACY_SUMMARY_IDENTITY);
+  await user.dblClick(screen.getByRole("button", { name: "Export support bundle" }));
+  await waitFor(() => expect(publishing.size).toBe(1));
+  expect(facadeStub().callsTo("PublishSupportSummary")).toHaveLength(1);
+  publishing.resolve({
+    state: "completed" as const,
+    outcome: {
+      bundle: "support-001",
+      identity: PRIVACY_SUMMARY_IDENTITY,
+      files: ["support.json", "event.json", "identity.sha256"],
+      exclusions: [],
+      no_upload: "Publishing this bundle wrote a local directory.",
+      limitations: [],
+    },
+  });
+  expect(await screen.findByText(/^Bundle/)).toBeTruthy();
+  expect(facadeStub().callsTo("PublishSupportSummary")).toHaveLength(1);
+  expect((screen.getByLabelText("Preview ID") as HTMLInputElement).value).toBe("");
+  expect((screen.getByRole("button", { name: "Export support bundle" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("destination choices show captions while the saved sharing policy carries the exact destination tokens", async () => {
+  const user = userEvent.setup();
+  renderPanel({
+    SaveSharingPolicy: (request) => {
+      expect(request.destinations).toEqual(["local-file", "customer-hub-download"]);
+      expect(request.support).toBe(false);
+      expect(request.max_bytes).toBe(2048);
+      return supportPolicyResult({ entry: request.output, support: false, destinations: request.destinations, max_bytes: request.max_bytes });
+    },
+  });
+  await openTask(user, "Support bundle");
+  const destinations = screen.getByLabelText("Destinations") as HTMLSelectElement;
+  expect(within(destinations).getAllByRole("option").map((option) => option.textContent)).toEqual(["Local file", "Local file and customer-hub download"]);
+  await user.type(screen.getByLabelText("Sharing policy file"), "sharing-hub.json");
+  await user.selectOptions(screen.getByLabelText("Allow support preparation"), "Denied");
+  await user.selectOptions(destinations, "Local file and customer-hub download");
+  await user.clear(screen.getByLabelText("Maximum summary bytes"));
+  await user.type(screen.getByLabelText("Maximum summary bytes"), "2048");
+  await user.click(screen.getByRole("button", { name: "Save sharing policy" }));
+  expect(await screen.findByText("Saved sharing-hub.json: support denied, local-file, customer-hub-download, 2048 bytes.")).toBeTruthy();
 });

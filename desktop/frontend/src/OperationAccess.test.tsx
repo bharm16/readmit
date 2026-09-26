@@ -154,7 +154,7 @@ test("a received license is verified, configured, created and activated without 
 
   // The role selections come from what the document assigns, not free text.
   await user.selectOptions(admin.getByLabelText("Author"), "alice");
-  await user.selectOptions(admin.getByLabelText("Device to activate"), "laptop");
+  await user.selectOptions(admin.getByLabelText("Device"), "laptop");
   await user.selectOptions(admin.getByLabelText("Runner authority"), "ci-pool");
   // The build-one flow's folder choice sits in the received-license block,
   // apart from the window's supplied-folder selection of the same name.

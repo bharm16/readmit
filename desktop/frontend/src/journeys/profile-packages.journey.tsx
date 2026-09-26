@@ -57,7 +57,7 @@ async function receivedPackage(): Promise<string> {
 
 /** Opens the workspace the packages arrived in, through the host's dialog. */
 async function openInterfaces(user: UserEvent): Promise<ReturnType<typeof within>> {
-  await journey.chooseFolder(journey.path("interfaces"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("interfaces"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   return within(await screen.findByRole("region", { name: "Profiles" }));
 }
@@ -80,8 +80,8 @@ test("a profile package is imported into a new directory, shows what it verified
   const form = within(panel.getByRole("form", { name: "Import package" }));
   const outcome = () => within(panel.getByRole("region", { name: "Package import" }));
   const importInto = async (file: string, output: string) => {
-    await enter(user, form.getByLabelText("Package File:"), file);
-    await enter(user, form.getByLabelText("Output Directory:"), output);
+    await enter(user, form.getByLabelText("Package file"), file);
+    await enter(user, form.getByLabelText("Import folder"), output);
     await press(user, form.getByRole("button", { name: "Import Package" }));
   };
 
@@ -177,9 +177,9 @@ test("an existing local profile opened in the profile panel resolves against its
 
   // From the keyboard: the profile the command line imported, and the pack
   // beside it.
-  await user.type(form.getByLabelText("Profile entry"), "imported/profile.json");
+  await user.type(form.getByLabelText("Profile file"), "imported/profile.json");
   await user.tab();
-  expect(document.activeElement).toBe(form.getByLabelText("Pack entry"));
+  expect(document.activeElement).toBe(form.getByLabelText("Pack file (optional)"));
   await user.keyboard("imported/pack.json{Enter}");
   expect(await panel.findByRole("heading", { name: "Open imported/profile.json: completed" })).toBeTruthy();
   expect(panel.getByText(sealed.content.sha256)).toBeTruthy();
@@ -189,11 +189,11 @@ test("an existing local profile opened in the profile panel resolves against its
     ),
   ).toBeTruthy();
   expect((panel.getByLabelText("Profile ID") as HTMLInputElement).value).toBe(profile.profile.id);
-  expect((panel.getByLabelText("Pinned Pack ID") as HTMLInputElement).value).toBe(profile.base.pack.id);
+  expect((panel.getByLabelText("Pack ID") as HTMLInputElement).value).toBe(profile.base.pack.id);
 
   // A pack the profile does not pin is read for nothing, and the window says
   // so while the seal stays the profile's own.
-  await enter(user, form.getByLabelText("Pack entry"), "adt-pack.json");
+  await enter(user, form.getByLabelText("Pack file (optional)"), "adt-pack.json");
   await press(user, form.getByRole("button", { name: "Open Profile" }));
   expect(
     await panel.findByText(`Not resolved against the pinned pack ${pinned}: no pack offered satisfies the pin, so nothing was read from one.`),
@@ -202,8 +202,8 @@ test("an existing local profile opened in the profile panel resolves against its
   expect(panel.getByText(sealed.content.sha256)).toBeTruthy();
 
   // A profile the reader refuses replaces nothing the editor holds.
-  await enter(user, form.getByLabelText("Profile entry"), "refused-profile.json");
-  await enter(user, form.getByLabelText("Pack entry"), "");
+  await enter(user, form.getByLabelText("Profile file"), "refused-profile.json");
+  await enter(user, form.getByLabelText("Pack file (optional)"), "");
   await press(user, form.getByRole("button", { name: "Open Profile" }));
   expect(await panel.findByRole("heading", { name: "Open refused-profile.json: failed" })).toBeTruthy();
   expect((panel.getByLabelText("Profile ID") as HTMLInputElement).value).toBe(profile.profile.id);
@@ -212,7 +212,7 @@ test("an existing local profile opened in the profile panel resolves against its
   // says what to do, and once the edit is discarded the profile opens.
   await enter(user, panel.getByLabelText("Profile ID"), "edited-in-the-window");
   expect(await panel.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
-  await enter(user, form.getByLabelText("Profile entry"), "imported/profile.json");
+  await enter(user, form.getByLabelText("Profile file"), "imported/profile.json");
   await press(user, form.getByRole("button", { name: "Open Profile" }));
   expect((await form.findByRole("alert")).textContent).toMatch(/^This editor holds unstored edits\./);
   expect((panel.getByLabelText("Profile ID") as HTMLInputElement).value).toBe("edited-in-the-window");
@@ -225,4 +225,72 @@ test("an existing local profile opened in the profile panel resolves against its
 
   // Opening read the import and changed none of it.
   expect(IMPORTED.map((name) => journey.digest(`interfaces/imported/${name}`))).toEqual(importedDigests);
+});
+
+test("a profile with conditional values, optional and unbounded repetitions, every rule kind and a Z-segment is edited through its field details and saved as a new revision without losing an untouched clause", async () => {
+  const user = userEvent.setup();
+  for (const fixture of ["local-profile.json", "profile-pack.json"]) {
+    journey.placeFixture(fixture, `interfaces/${fixture}`);
+  }
+  const original = fixtureDocument("local-profile.json");
+  await journey.launch();
+  await activateLicense(user, journey);
+  const panel = await openInterfaces(user);
+  const form = within(panel.getByRole("form", { name: "Open profile" }));
+  await enter(user, form.getByLabelText("Profile file"), "local-profile.json");
+  await enter(user, form.getByLabelText("Pack file (optional)"), "profile-pack.json");
+  await press(user, form.getByRole("button", { name: "Open Profile" }));
+  expect(await panel.findByRole("heading", { name: "Open local-profile.json: completed" })).toBeTruthy();
+
+  // The opened clauses are shown as the file declares them.
+  const zpd = within(panel.getByRole("region", { name: "Segment ZPD" }));
+  expect(zpd.getByText("Site-defined Z-segment")).toBeTruthy();
+  expect((within(zpd.getByRole("group", { name: "Repetitions" })).getByLabelText("Unbounded") as HTMLInputElement).checked).toBe(true);
+  await press(user, zpd.getByRole("button", { name: "Edit field ZPD-3" }));
+  let detail = within(panel.getByRole("region", { name: "Field ZPD-3" }));
+  expect(within(detail.getByRole("group", { name: "Allowed values" })).getAllByRole("textbox").map((input) => (input as HTMLInputElement).value)).toEqual(["BOOKED", "RESCHEDULED"]);
+  expect((detail.getByLabelText("Terminology set") as HTMLSelectElement).value).toBe("local-visit-reason");
+
+  // A new revision: the version, one date binding cleared and one name.
+  await enter(user, panel.getByLabelText("Version"), "2");
+  const sch = within(panel.getByRole("region", { name: "Segment SCH" }));
+  await press(user, sch.getByRole("button", { name: "Edit field SCH-11" }));
+  detail = within(panel.getByRole("region", { name: "Field SCH-11" }));
+  expect((detail.getByLabelText("Date rule") as HTMLSelectElement).value).toBe("appointment-instant");
+  await user.selectOptions(detail.getByLabelText("Date rule"), "None");
+  await enter(user, detail.getByLabelText("Field name"), "Appointment timing");
+  expect(await panel.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
+
+  // A field made conditional again gets no condition invented for it: the
+  // shared reader refuses it until the person authors one.
+  await user.selectOptions(detail.getByLabelText("Usage"), "O");
+  await user.selectOptions(detail.getByLabelText("Usage"), "C");
+  const condition = within(detail.getByRole("group", { name: "Condition" }));
+  expect((condition.getByLabelText("Condition segment") as HTMLInputElement).value).toBe("");
+  await press(user, panel.getByRole("button", { name: "Validate" }));
+  expect(await panel.findByRole("heading", { name: "Validation: failed" })).toBeTruthy();
+  expect(panel.getByText("SCH-11 is conditional, so it declares the condition its presence depends on")).toBeTruthy();
+  await enter(user, condition.getByLabelText("Condition segment"), "ZPD");
+  await enter(user, condition.getByLabelText("Condition field position"), "2");
+  await user.selectOptions(condition.getByLabelText("Operator"), "present");
+
+  // The shared reader accepts it, and the revision is saved beside the original.
+  await press(user, panel.getByRole("button", { name: "Validate" }));
+  expect(await panel.findByRole("heading", { name: "Validation: completed" })).toBeTruthy();
+  const saving = within(panel.getByRole("group", { name: "Save revision" }));
+  await enter(user, saving.getByLabelText("Profile file"), "local-profile-v2.json");
+  await enter(user, saving.getByLabelText("Version seal file"), "local-profile-v2-seal.json");
+  await press(user, panel.getByRole("button", { name: "Save revision" }));
+  expect(await panel.findByRole("heading", { name: "Saved revision" })).toBeTruthy();
+
+  const expected = structuredClone(original);
+  expected.profile.version = "2";
+  const timing = expected.segments[0].fields[2];
+  delete timing.date;
+  timing.name = "Appointment timing";
+  expect(JSON.parse(journey.readFile("interfaces/local-profile-v2.json"))).toEqual(expected);
+  expect(fixtureDocument("local-profile.json")).toEqual(original);
+  const seal = JSON.parse(journey.readFile("interfaces/local-profile-v2-seal.json"));
+  expect(seal.profile).toEqual({ id: original.profile.id, version: "2" });
+  expect(seal.content.sha256).toBe(journey.digest("interfaces/local-profile-v2.json"));
 });

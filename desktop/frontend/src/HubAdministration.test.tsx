@@ -6,8 +6,8 @@ import { installFacade, installHubAdmin } from "./testkit/wails";
 import type { HubAdminRequest, HubAdminResult } from "./bindings";
 
 async function fillCommon(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText("Local configuration"), "/local/config.json");
-  await user.type(screen.getByLabelText("Host configuration"), "/etc/readmit-hub/config.json");
+  await user.type(screen.getByLabelText("Local configuration copy"), "/local/config.json");
+  await user.type(screen.getByLabelText("Configuration path on hub host"), "/etc/readmit-hub/config.json");
 }
 
 async function reviewCommand(operation: HubAdminRequest["operation"], label: string) {
@@ -24,20 +24,20 @@ async function reviewCommand(operation: HubAdminRequest["operation"], label: str
   };
   const admin = installHubAdmin({ Preview: async () => result });
   render(<HubAdministration />);
-  await user.selectOptions(screen.getByLabelText("Operator step"), operation);
+  await user.selectOptions(screen.getByLabelText("Host operation"), operation);
   expect(screen.getByRole("option", { name: label, selected: true })).toBeTruthy();
   await fillCommon(user);
   if (["backup", "verify-backup", "restore", "schedule-pin"].includes(operation)) {
-    await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Hub host test specification path" : "Hub host backup directory"), "/customer/entry");
+    await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Test path on hub host" : "Backup folder on hub host"), "/customer/entry");
   }
   if (operation === "verify-backup" || operation === "restore" || operation === "schedule-pin") {
-    await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Local test" : "Local backup"), "/local/entry");
+    await user.type(screen.getByLabelText(operation === "schedule-pin" ? "Local test copy" : "Local backup copy"), "/local/entry");
   }
   if (operation === "schedule-init") {
-    await user.type(screen.getByLabelText("Local copy of operation policy"), "/local/operation.json");
-    await user.type(screen.getByLabelText("Hub host operation policy path"), "/etc/readmit-hub/operation.json");
-    await user.type(screen.getByLabelText("Local copy of schedule policy"), "/local/schedules.json");
-    await user.type(screen.getByLabelText("Hub host schedule policy path"), "/etc/readmit-hub/schedules.json");
+    await user.type(screen.getByLabelText("Local operation-policy copy"), "/local/operation.json");
+    await user.type(screen.getByLabelText("Operation-policy path on hub host"), "/etc/readmit-hub/operation.json");
+    await user.type(screen.getByLabelText("Local schedule-policy copy"), "/local/schedules.json");
+    await user.type(screen.getByLabelText("Schedule-policy path on hub host"), "/etc/readmit-hub/schedules.json");
   }
   const button = screen.getByRole("button", { name: "Preview command" });
   await user.click(button);
@@ -51,6 +51,12 @@ async function reviewCommand(operation: HubAdminRequest["operation"], label: str
   expect(screen.getByText("Host state described by this operation.")).toBeTruthy();
   expect(screen.getByText("The desktop never runs the command.")).toBeTruthy();
   if (result.local_result) expect(screen.getByText(result.local_result)).toBeTruthy();
+  // The command follows its prerequisites and what it affects, under its
+  // own heading; local copies and hub host paths are grouped apart.
+  const headings = screen.getAllByRole("heading").map((heading) => heading.textContent);
+  expect(headings.slice(headings.indexOf("Prerequisites"))).toEqual(["Prerequisites", "Affected resources", "Unaffected resources", "Host command"]);
+  expect(screen.getByRole("group", { name: "Local copies" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Hub host paths" })).toBeTruthy();
 }
 
 test("hub administration reviews migrate through its bound Go preview", async () => reviewCommand("migrate", "Migrate metadata"));
@@ -70,12 +76,12 @@ test("hub administration refuses an invalid preview and clears stale commands wh
   await fillCommon(user);
   await user.click(screen.getByRole("button", { name: "Preview command" }));
   expect(await screen.findByText(answer.command!)).toBeTruthy();
-  await user.clear(screen.getByLabelText("Host configuration"));
+  await user.clear(screen.getByLabelText("Configuration path on hub host"));
   expect(screen.queryByText(answer.command!)).toBeNull();
   answer = { state: "failed", reason: "enter a clean absolute Linux path for the hub configuration" };
   await user.click(screen.getByRole("button", { name: "Preview command" }));
   expect((await screen.findByRole("alert")).textContent).toContain("enter a clean absolute Linux path");
-  expect(screen.queryByText(/Reviewed host command:/)).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Host command" })).toBeNull();
   expect(admin.callsTo("Preview")).toHaveLength(2);
 });
 
@@ -93,7 +99,7 @@ test("hub administration cancels a busy review from the keyboard without publish
   await user.click(screen.getByRole("button", { name: "Preview command" }));
   expect(await screen.findByText("Checking local copies…")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Preview command" }).hasAttribute("disabled")).toBe(true);
-  const cancel = screen.getByRole("button", { name: "Cancel handoff" });
+  const cancel = screen.getByRole("button", { name: "Cancel review" });
   cancel.focus();
   await user.keyboard("{Enter}");
   expect(admin.callsTo("CancelPreview")).toHaveLength(1);
@@ -105,13 +111,20 @@ test("hub administration cancels a busy review from the keyboard without publish
   expect(screen.queryByText("stale command")).toBeNull();
 });
 
-test("hub administration cancels an idle handoff without a Go operation", async () => {
+test("hub administration clears a shown preview without a Go operation, and offers no cancel when nothing runs", async () => {
   const user = userEvent.setup();
   installFacade();
-  const admin = installHubAdmin({});
+  const admin = installHubAdmin({ Preview: async () => ({ state: "completed", command: "readmit-hub -config '/etc/readmit-hub/config.json' migrate" }) });
   render(<HubAdministration />);
-  await user.click(screen.getByRole("button", { name: "Cancel handoff" }));
-  expect(await screen.findByText(/handoff review cancelled; no host action was taken/)).toBeTruthy();
-  expect(admin.callsTo("Preview")).toHaveLength(0);
+  expect(screen.queryByRole("button", { name: "Cancel review" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Clear preview" })).toBeNull();
+  await fillCommon(user);
+  await user.click(screen.getByRole("button", { name: "Preview command" }));
+  expect(await screen.findByText("readmit-hub -config '/etc/readmit-hub/config.json' migrate")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Cancel review" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Clear preview" }));
+  expect(await screen.findByText("Preview cleared; no host action was taken.")).toBeTruthy();
+  expect(screen.queryByText("readmit-hub -config '/etc/readmit-hub/config.json' migrate")).toBeNull();
+  expect(admin.callsTo("Preview")).toHaveLength(1);
   expect(admin.callsTo("CancelPreview")).toHaveLength(0);
 });

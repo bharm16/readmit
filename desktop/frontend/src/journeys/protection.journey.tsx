@@ -57,7 +57,7 @@ test("a control is retired only once the person confirms it, writes no new packa
 
   await journey.launch();
   await activateLicense(user, journey);
-  await journey.chooseFolder(journey.path("lab"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("lab"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   // The panel is drawn once the folder is open.
   await within(region("Privacy")).findByRole("region", { name: "Protection" });
@@ -65,23 +65,28 @@ test("a control is retired only once the person confirms it, writes no new packa
 
   // No protection document exists yet: the person names one, and registering
   // the first control writes it.
-  await enter(user, panel.getByLabelText("New protection document"), "protection.json");
-  await press(user, panel.getByRole("button", { name: "Use this document" }));
+  await enter(user, panel.getByLabelText("New protection file"), "protection.json");
+  await press(user, panel.getByRole("button", { name: "Select file" }));
   expect(await panel.findByText("No control is registered in protection.json yet. Registering the first one writes it.")).toBeTruthy();
   await enter(user, panel.getByLabelText("Control name"), CONTROL);
-  await enter(user, panel.getByLabelText("Absolute path of the program that prints the key"), store);
-  await enter(user, panel.getByLabelText("One locator argument (never key material)"), LOCATOR);
+  await enter(user, panel.getByLabelText("Key lookup program"), store);
+  await enter(user, panel.getByLabelText("Lookup argument"), LOCATOR);
   await press(user, panel.getByRole("button", { name: "Add argument" }));
   await press(user, panel.getByRole("button", { name: "Register control" }));
   expect(await panel.findByText(/^Registered\. Registering a reference proves nothing about the store behind it/)).toBeTruthy();
   expect(controlRow().getByRole("cell", { name: "active" })).toBeTruthy();
   expect(controlRow().getByRole("cell", { name: "******** · 1 locator arguments" })).toBeTruthy();
 
-  // Active, the control writes a package of the specification.
-  await user.selectOptions(panel.getByLabelText("Control"), CONTROL);
-  await user.selectOptions(panel.getByLabelText("Entries to pack (copied, never moved)"), "reschedule-test.json");
-  await enter(user, panel.getByLabelText("New package folder"), "before-retirement");
-  await press(user, panel.getByRole("button", { name: "Pack protected package" }));
+  // Active, the control writes a package of the specification, chosen from the
+  // protection file the packing task names itself.
+  const packing = within(panel.getByRole("group", { name: "Encrypted transfer packages" }));
+  await within(packing.getByLabelText("Protection file")).findByRole("option", { name: "protection.json" });
+  await user.selectOptions(packing.getByLabelText("Protection file"), "protection.json");
+  await packing.findByRole("option", { name: CONTROL });
+  await user.selectOptions(packing.getByLabelText("Protection control"), CONTROL);
+  await user.selectOptions(panel.getByLabelText("Package contents"), "reschedule-test.json");
+  await enter(user, panel.getByLabelText("Package folder"), "before-retirement");
+  await press(user, panel.getByRole("button", { name: "Create encrypted package" }));
   expect(await panel.findByText(byContent(/^Package before-retirement · /))).toHaveProperty(
     "textContent",
     `Package before-retirement · control ${CONTROL} · key generation 1 · 1 entries.`,
@@ -96,7 +101,7 @@ test("a control is retired only once the person confirms it, writes no new packa
   // nothing on disk changed.
   panel = protection();
   const retire = panel.getByRole("button", { name: `Retire ${CONTROL}` });
-  await user.click(panel.getByLabelText("New protection document"));
+  await user.click(panel.getByLabelText("New protection file"));
   await tabTo(user, retire);
   await user.keyboard("{Enter}");
   const question = within(panel.getByRole("group", { name: `Retire ${CONTROL}?` }));
@@ -118,7 +123,7 @@ test("a control is retired only once the person confirms it, writes no new packa
   ).toBeTruthy();
   expect(controlRow().getByRole("cell", { name: "retired" })).toBeTruthy();
   expect((panel.getByRole("button", { name: `Retire ${CONTROL}` }) as HTMLButtonElement).disabled).toBe(true);
-  expect(within(panel.getByLabelText("Control")).getAllByRole("option").map((option) => option.textContent)).toEqual([
+  expect(within(panel.getByLabelText("Protection control")).getAllByRole("option").map((option) => option.textContent)).toEqual([
     "Select a control…",
   ]);
   expect(journey.callsTo("RetireProtectionControl")).toHaveLength(1);

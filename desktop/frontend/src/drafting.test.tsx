@@ -7,7 +7,7 @@
 import { expect, test } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useRetainer } from "./drafting";
+import { RetentionStatus, useRetainer } from "./drafting";
 import { installFacade } from "./testkit/wails";
 import { WORKSPACE_ROOT } from "./testkit/fixtures";
 import type { EditorDraft, EditorDraftsResult } from "./bindings";
@@ -77,4 +77,32 @@ test("an edit queued behind a retention that found its draft gone is not written
   // The queued edit's turn in the chain has come and gone.
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+});
+
+test("a retention status offers only the draft actions its owner really provides, each named for the draft", async () => {
+  const user = userEvent.setup();
+  const pressed: string[] = [];
+  const { rerender } = render(
+    <RetentionStatus retention={{ state: "not-retained", reason: "The disk refused the write." }} />,
+  );
+  // The status and its reason stay as they are; with no owner operations, no
+  // action is presented.
+  expect(screen.getByText("This edit was not retained.")).toBeTruthy();
+  expect(screen.getByText("The disk refused the write.")).toBeTruthy();
+  expect(screen.queryAllByRole("button")).toHaveLength(0);
+
+  const owner = {
+    onRetry: () => pressed.push("retry"),
+    onKeepAsNew: () => pressed.push("keep"),
+    onDiscard: () => pressed.push("discard"),
+  };
+  rerender(<RetentionStatus retention={{ state: "not-retained" }} {...owner} />);
+  expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Retry draft save", "Discard draft"]);
+  await user.click(screen.getByRole("button", { name: "Retry draft save" }));
+  rerender(<RetentionStatus retention={{ state: "conflict" }} {...owner} />);
+  expect(screen.getByText("This edit was not retained: the draft it continues is no longer kept.")).toBeTruthy();
+  expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Keep as new draft", "Discard draft"]);
+  await user.click(screen.getByRole("button", { name: "Keep as new draft" }));
+  await user.click(screen.getByRole("button", { name: "Discard draft" }));
+  expect(pressed).toEqual(["retry", "keep", "discard"]);
 });
