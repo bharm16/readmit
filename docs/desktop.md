@@ -370,7 +370,7 @@ msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
 ```
 
 Removing the application removes the application. It never removes evidence, a
-project, or the seven local shell-state documents described under Appearance;
+project, or the eight local shell-state documents described under Appearance;
 the uninstaller does not delete those owner-only files.
 
 Continuous integration downloads the built packages onto fresh native runners,
@@ -925,6 +925,145 @@ exactly as it was. A revision is registered from the reproducer panel after a
 build, through the operation `readmit project revise` runs (see
 [building a reproducer](#building-a-reproducer)), and a revision registered on
 the command line is navigable here as well.
+
+## Named objects, whole saves and reviewed actions
+
+A screen asks the facade for named objects rather than files. `ListCatalog`
+lists one kind of object of the open project — Case, Test, Suite, Run,
+Environment, Observation, Report, CheckGroup, Profile, Scenario, Analysis,
+Variant, Backup, Runner or Schedule — or, for the Project kind, every project
+this viewer has opened. Each row is a `CatalogItem`: an `ItemRef` (kind, a
+stable application identity, and the revision of an object the application
+saved), a display name, dates, an availability, a reason when it is not
+available, the actions permitted now, and one typed summary of its kind.
+
+Every row is read through the reader that object always had: a registered
+case through the verification `readmit project show` makes, a test through
+the spec reader, a run through the run and result readers, an environment
+through the target reader, and so on. Nothing is parsed or evaluated in the
+window. An object that is missing, unreadable or declares a contract this
+release does not read stays a named row — `missing`, `unreadable` or
+`unsupported` — with the reader's reason and a way to act on it; a readable
+row permits nothing by being readable, and its capabilities are what the
+operation guard admits now. A date is shown only when the evidence declares
+it or the application recorded doing the thing itself; a file's modification
+time never stands in for one, and an unknown date is null.
+
+| Kind | Summary |
+| --- | --- |
+| Case | registered or not, investigation status and owner, interface revision, evidence state |
+| Test | source case, current version, latest run whose retained test is exactly this one |
+| Suite | included tests, environments it binds |
+| Run | address actually reached, start and completion, outcome, uncertain deliveries |
+| Environment | declared classification, address and transport |
+| Observation | source type, latest completed collection among the project's completion records |
+| Report | form, related case, state |
+| Profile | family, protocol version, published version |
+
+A page holds at most 200 rows. The first page is cut from a snapshot of the
+whole ordered list, which the process holds for ten minutes; `NextCursor`
+continues exactly that snapshot whatever changed on disk since, and a cursor
+whose snapshot is no longer held is refused. Ties break by identity. A
+project folder past the listing's own bound of 1024 entries is refused
+rather than listed in part. The query takes a kind, a name to match against display
+names only, typed filters (availability, case status, owner) and an order.
+
+The identities and the application's own metadata live in the project's
+catalog, `readmit-catalog/v1` in the project's `.readmit` folder, beside
+evidence and never inside it. Listing and opening objects are reads: they
+write nothing into the project, and an object the catalog has not recorded
+yet is listed under the identity derived from its kind and entry — the
+identity recording it keeps. The catalog is written only by an author's
+writes: opening a project by name records every object its readers recognize
+there, rewriting none of their bytes, and settles interrupted saves; a
+viewer without an author seat opens the same project read as it is. An
+object's name is one a person gave it or one it declares itself; a file name
+is never made into one, so an object that declares none is listed without a
+name for its screen to compose one from its summary. `RenameItem` changes a
+display name only: a project's title, a registered case's recorded title, or
+catalog metadata. `LocateItem` associates a missing object with the entry
+that now holds the same kind of object, under the same identity — a
+registered case only with the very evidence the project recorded — and a
+missing project with the folder whose catalog records its identity.
+
+### Projects by name
+
+`CreateNamedProject` creates a project from a name alone: a
+`readmit-project/v2` document with no interface revision declared, in a new
+folder the application names inside the remembered projects folder
+(`ChooseProjectLocation`, `ProjectLocation`). That folder is asked for once,
+asked for again when it is gone, and never created. Two projects may share a
+name; they never share a folder or an identity. `OpenNamedProject` opens a
+project in any folder under the identity its catalog recorded, so a moved
+project is the same project with the same cases, tests and history; its
+result says whether that identity is recorded yet. A
+request carries a `RequestContext` — the folder, the identity the window
+expects there, and the window's request generation — and every result
+answers it, so an answer that arrives after the window moved on is dropped,
+and a folder that now holds a different project is refused.
+
+### One Save per editor
+
+`SaveItem` publishes a whole draft of an Environment, a Test or an
+Observation (a source and its window together) as one revision, or nothing.
+The draft is validated first through the readers a save stages it through
+(`ValidateDraft` runs the same step alone and writes nothing). Every member
+is then written as a new file of the project, named by the application,
+read back and read again through its reader, and only then does the catalog
+name the new revision. `BaseRevision` is compared with the current revision,
+so a stale edit is a conflict that publishes nothing and keeps the draft;
+a writer that loses a race to another withdraws what it staged. A project
+keeps at most 64 interrupted saves; a new save past that is refused until one
+is retried or discarded, and the ones held always list.
+`IntentID` is allocated once per click and reused on every retry: the same
+submission is answered with its revision and written nowhere again, and a
+different submission under the same identity is refused. A save with no
+`Item` creates an object with a new identity, which is also how a copy is
+saved; the original is untouched. A file an older panel or a person wrote is
+never rewritten: saving an object that was discovered in one publishes its
+first revision beside it.
+
+A pending record written before the first file is what recovery reads. When
+a project is opened after an interruption, a save whose every file verified
+is published; any other is listed as incomplete work under its operation,
+with the previous revision still current, until the same click is retried or
+`DiscardIncompleteSave` drops what it staged. A save is never reported done
+because its first file was written.
+
+An editor draft of a catalog object carries the object and the revision the
+edit began from in its `item` member, so recovery returns it to that object;
+the draft store is written as `readmit-desktop-drafts/v2` only while it
+holds such a draft. A draft never holds an action review.
+
+### Reviewed actions
+
+`PrepareAction` prepares the review of a send (`replay.send`), an export
+(`export.derived-packet`) or a version approval (`suite.approve-promotion`).
+It reads the objects, resolves the destination and a fresh output entry,
+decides whether the action could proceed, and binds the project, the
+reviewer (the local account, and the customer-hub subject when one is signed
+in), the exact case and target configuration with the key material it
+trusts, the send policy, the operation policy and the admission it grants,
+the selected messages and the output under an opaque token. The token is
+internal: the window passes it back and never shows it. It expires fifteen
+minutes after it was prepared and dies with the process.
+
+`ExecuteReviewedAction` is the final explicit Send, Export or Approve. It is
+admitted once, atomically with the click's `IntentID`: the same click again
+is answered with the original result and nothing is sent twice; a different
+request under that click is refused; an expired, withdrawn, used or unknown
+review does nothing. Every binding is read again before any effect, and a
+change is answered as a `stale` review carrying a refreshed one, which needs
+a click of its own. An approval records a durable decision about the exact
+version shown, requires its rationale, and sends nothing; the recorded
+approval stays evidence of that version whatever changes later. A send whose
+deliveries no acknowledgement settled is `uncertain`, never completed.
+`WithdrawReview` ends a review. The click's `IntentID` is the operation the
+action runs as, so `CancelOperation` with it stops that action — and only
+that one — while the call has not returned.
+
+The command line keeps its exact-identity approvals unchanged; the window no
+longer asks anyone to transcribe one.
 
 ## Notes and the editable project document
 
@@ -2229,10 +2368,12 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
-nowhere. The shell keeps seven separate owner-only local documents: recent
+nowhere. The shell keeps eight separate owner-only local documents: recent
 folder paths (`readmit-desktop-recent/v1`), saved filters (`readmit-filters/v1`),
 the working session (`readmit-desktop-session/v1`), editor drafts
-(`readmit-desktop-drafts/v1`), and selected paths for the operation policy
+(`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
+edits), the projects folder and the projects opened
+(`readmit-desktop-projects/v1`), and selected paths for the operation policy
 (`readmit-desktop-operation-selection/v1`), commercial destinations
 (`readmit-desktop-commercial-selection/v1`) and customer hub configuration
 (`readmit-desktop-hub-selection/v1`). Saved filter terms and retained drafts may

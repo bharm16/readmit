@@ -180,7 +180,7 @@ func TestRecoveryCopiesReportsCopiesRecoverRefuses(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, project.DocumentName+".recovery-"+damaged), []byte("damaged"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	later := []byte(`{"schema":"readmit-project/v2"}` + "\n")
+	later := []byte(`{"schema":"readmit-project/v3"}` + "\n")
 	if err := os.WriteFile(filepath.Join(root, project.DocumentName+".recovery-"+digestOf(later)), later, 0600); err != nil {
 		t.Fatal(err)
 	}

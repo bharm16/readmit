@@ -1,7 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
-amended: 2026-09-24
+amended: 2026-09-26
 ---
 
 # The desktop application is a separate module over a typed Go facade
@@ -56,18 +56,20 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps seven bounded, versioned local documents: recent folder paths
+- The shell keeps eight bounded, versioned local documents: recent folder paths
   (`readmit-desktop-recent/v1`), saved filters with the active selection
   (`readmit-filters/v1`), the working session a viewer has not stored
   (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
   open, and the note drafts they had typed — the editor draft store
-  (`readmit-desktop-drafts/v1`) holding every editor's unstored work under
-  internal identities, and the paths of three operator-supplied files the
+  (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
+  edits) holding every editor's unstored work under internal identities, the
+  remembered projects (`readmit-desktop-projects/v1`, amended 2026-09-26),
+  and the paths of three operator-supplied files the
   person selected: the operation policy
   (`readmit-desktop-operation-selection/v1`), the commercial destinations
   (`readmit-desktop-commercial-selection/v1`) and the customer hub
   configuration (`readmit-desktop-hub-selection/v1`). Saved field terms and a
-  retained draft can contain patient data typed by the operator. All seven files
+  retained draft can contain patient data typed by the operator. All eight files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is
@@ -140,3 +142,32 @@ The narrow second facade's parity tests live in `desktop/hubadmin`, where the
 hub module can be imported, and the real-facade journey exercises its
 production binding. Evidence work and every other desktop capability remain
 under `internal/desktop` as this decision originally required.
+
+## Named objects, whole saves and reviewed actions (amended 2026-09-26)
+
+The redesign (#545, #547) has the window work with named objects rather than
+files. Three things are added, and the separation above is unchanged: every
+object is still read and written by the shared Go readers and writers, and
+nothing is parsed, evaluated or permitted in TypeScript.
+
+- **A project-side catalog.** Each project holds a `readmit-catalog/v1`
+  document in its own `.readmit` folder: the application's stable identity
+  for the project and for each object in it, the names people gave them, the
+  application's record of when it did things to them, and the revisions it
+  saved. It is mutable metadata beside evidence, like `revisions.json`, never
+  inside it, and it restates nothing evidence holds. Saved revisions are new
+  project entries the application names, published whole: staged, verified
+  through their readers, then named current by one atomic replacement of the
+  catalog, with a pending record recovery completes or reports.
+- **An eighth shell document.** `readmit-desktop-projects/v1` remembers the
+  folder new projects are created in and each project this viewer opened, by
+  identity, folder and name. The editor draft store gains
+  `readmit-desktop-drafts/v2`, written only while a draft names the catalog
+  object and revision it edits; v1 stores are read and written as before.
+- **Reviews held by the backend.** A reviewed send, export or approval is
+  bound to its exact inputs under an opaque token held in the process alone:
+  it is never written to any document, it expires after fifteen minutes, it
+  dies with the process, and it is consumed once with the click that executes
+  it. Restoring a window therefore never restores an approval or resends
+  anything, which is the rule this decision already stated for sessions.
+

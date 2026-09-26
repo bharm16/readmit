@@ -869,3 +869,36 @@ func TestApplicationCreatedProjectReadsThroughTheCommandLine(t *testing.T) {
 		t.Fatalf("the registered case is not the evidence the command line verified: %+v", registered)
 	}
 }
+
+// A project the window creates from a name alone is a readmit-project/v2
+// document the command line reads as exactly that: no interface version
+// declared, and a case registered on the command line left with its
+// interface version unassigned rather than given one nobody chose.
+func TestANamedProjectReadsThroughTheCommandLine(t *testing.T) {
+	parent := t.TempDir()
+	app := desktopApp(t, parent)
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
+	if created.State != desktop.Completed || created.Project == nil {
+		t.Fatalf("the shell could not create the project: %+v", created)
+	}
+	root := created.Context.Project
+	stdout, stderr, err := run(t, "project", "show", root)
+	if err != nil || stderr != "" {
+		t.Fatalf("project show: %v %s", err, stderr)
+	}
+	for _, want := range []string{"Project: Scheduling QA", "Document: readmit-project/v2", "Cases: 0"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("project show omitted %q of the named project:\n%s", want, stdout)
+		}
+	}
+	registerFrozenCase(t, root, "regression")
+	cases := app.ListCatalog(desktop.CatalogQuery{Context: created.Context, Kind: desktop.CaseItem})
+	if cases.Page == nil || len(cases.Page.Items) != 1 {
+		t.Fatalf("the catalog did not list what the command line registered: %+v", cases)
+	}
+	registered := cases.Page.Items[0]
+	if registered.Summary.Case == nil || !registered.Summary.Case.Registered || registered.Summary.Case.InterfaceVersion != "" ||
+		registered.Summary.Case.Evidence != "verified" || registered.Name != "Duplicate appointment after reschedule" {
+		t.Fatalf("the registered case: %+v %+v", registered, registered.Summary.Case)
+	}
+}

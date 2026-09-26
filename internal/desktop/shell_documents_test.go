@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// The seven shell documents share one store, so they share one set of
+// The eight shell documents share one store, so they share one set of
 // guarantees and this is where those guarantees are tested once: what the
 // store reads and refuses to read, how it replaces a document, and what the
 // remembered selections read and write. The documents' own tests keep their

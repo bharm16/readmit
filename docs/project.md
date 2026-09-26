@@ -84,7 +84,9 @@ identifier of 1–64 letters, digits, `.`, `_` or `-`. Every case names exactly
 one **declared** version, so evidence gathered against different versions of the
 same interface stays separable and a typo cannot invent a version. `project
 settings --interface-version ID` declares a further one; a declared version is
-never removed, and the first one declared at `init` becomes the default.
+never removed, and the first one declared at `init` becomes the default. A
+project created by name (`readmit-project/v2`, below) may declare none yet, and
+its cases may leave theirs unassigned.
 
 ## Case metadata
 
@@ -223,9 +225,10 @@ where the subject is checked against what this project registers. See
 
 The project document is one canonical file of the project directory,
 `project.json`, a strict-JSON document under the versioned contract
-`readmit-project/v1`. Unknown members and
-unknown versions are errors: there is no migration and no repair, and a document
-this release cannot read is reported and left exactly as written. A new or
+`readmit-project/v1` (or `readmit-project/v2`, below). Unknown members and
+unknown versions are errors: reading never migrates or repairs, and a document
+this release cannot read is reported and left exactly as written. The one
+conversion is the explicit v1-to-v2 migration described below. A new or
 changed member means a new version string and a reader that supports both, never
 a member added to `v1`. See
 [ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md).
@@ -262,6 +265,49 @@ project past a bound is refused rather than truncated. Titles are valid UTF-8
 with no control characters, and every identifier — owner, tag, incident
 reference, interface version — uses letters, digits, `.`, `_` and `-` only, so
 none of them can carry a separator or a line break into a rendered report.
+
+## A project created by name: readmit-project/v2
+
+A project created from the desktop by naming it is a `readmit-project/v2`
+document. It has exactly the members of v1; what differs is what it allows. A
+v2 project may declare no interface version at all, and a case registered in
+it may leave its interface version unassigned — an empty
+`interface_version` — until a person assigns one. Nothing invents a version
+for either. A version that is assigned must still be one the project
+declares.
+
+```json
+{"schema":"readmit-project/v2","settings":{"title":"Scheduling QA"},"interface_versions":[],"cases":[]}
+```
+
+Every reader of a project reads both contracts, each as the version it
+declares, so `readmit project show` and every other command read a v2
+project. A v1 project is never converted by reading or by a write: it keeps
+v1's rules, and a change that needs the v2 model — unassigning a case's
+interface version — is refused on it. Converting a v1 project is an explicit
+act, the desktop's `MigrateProjectDocument`, which changes only the declared
+contract and retains the v1 bytes as the document's recovery copy. `readmit
+project init` still writes v1 and still asks for an interface version.
+
+The project's display name is its `title`; the folder it lives in is chosen
+by the application when a project is created by name, and neither is derived
+from the other afterwards.
+
+## The project catalog: readmit-catalog/v1
+
+The desktop keeps a catalog of each project's named objects in
+`.readmit/catalog.json`, a strict-JSON `readmit-catalog/v1` document beside
+evidence. It records the project's stable identity, and for each object its
+kind, its identity, the name a person gave it, the project entry that holds
+it or the revisions the application saved of it, and the application's own
+record of when it created, changed and last opened it. It never restates
+what evidence contains: an object is read through its own reader every time
+it is listed. Each saved revision names the files it consists of — new
+entries of the project the application named — with their SHA-256, and a
+`readmit-catalog-pending/v1` record under `.readmit/pending` holds a save
+until it is published or discarded. Deleting the catalog loses the names
+and dates the application recorded and the association of saved revisions,
+never evidence; the objects are discovered again under derived identities.
 
 ## The editable document: readmit-revisions/v1
 

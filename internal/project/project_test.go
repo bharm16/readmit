@@ -69,8 +69,8 @@ func TestDecodeRejectsUnknownMembersAndUnsupportedVersions(t *testing.T) {
 		"unknown document member":         `{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":[],"cases":[],"notes":"x"}`,
 		"unknown case member":             `{"schema":"readmit-project/v1","settings":{"title":"t"},"interface_versions":[],"cases":[{"name":"c","priority":1}]}`,
 		"unknown settings member":         `{"schema":"readmit-project/v1","settings":{"title":"t","quota":2},"interface_versions":[],"cases":[]}`,
-		"unsupported version":             `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
-		"later version with a new member": `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`,
+		"unsupported version":             `{"schema":"readmit-project/v3","settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
+		"later version with a new member": `{"schema":"readmit-project/v3","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`,
 		"absent version":                  `{"settings":{"title":"t"},"interface_versions":[],"cases":[]}`,
 		"not an object":                   `[]`,
 		"empty":                           ``,
@@ -129,7 +129,7 @@ func TestValidateRefusesUnusableDocuments(t *testing.T) {
 // not as an invalid document, even though it carries members this release has
 // never seen. That distinction is what a caller separates recovery advice on.
 func TestALaterVersionIsReportedAsAVersionRatherThanAsInvalid(t *testing.T) {
-	later := []byte(`{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`)
+	later := []byte(`{"schema":"readmit-project/v3","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`)
 	if _, err := project.Decode(later); !errors.Is(err, project.ErrUnsupportedVersion) {
 		t.Fatalf("a later version was reported as %v", err)
 	}

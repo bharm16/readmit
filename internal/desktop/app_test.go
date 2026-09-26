@@ -543,7 +543,7 @@ func TestOpenProjectSeparatesAnEmptyProjectFromAFailure(t *testing.T) {
 	// release has never seen. That is the shape the reader must still report as
 	// a version it cannot read, rather than as an invalid document.
 	unsupported := t.TempDir()
-	later := `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`
+	later := `{"schema":"readmit-project/v3","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`
 	if err := os.WriteFile(filepath.Join(unsupported, "project.json"), []byte(later), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +583,7 @@ func TestWorkspaceListsAProjectDocumentByItsDeclaredContract(t *testing.T) {
 		t.Fatalf("the project document was not listed by its declared contract: %+v", artifact)
 	}
 
-	later := `{"schema":"readmit-project/v2","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`
+	later := `{"schema":"readmit-project/v3","settings":{"title":"t"},"interface_versions":["a"],"cases":[],"suites":[]}`
 	if err := os.WriteFile(filepath.Join(root, "project.json"), []byte(later), 0600); err != nil {
 		t.Fatal(err)
 	}

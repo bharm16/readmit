@@ -15,15 +15,15 @@ import (
 	"github.com/bharm16/readmit/internal/operationguard"
 )
 
-// This file holds what the shell's seven local documents share: recent
-// workspaces, saved filters, working session, editor drafts, and operation,
-// commercial and hub selections. One store owns the folder they live in, the
-// file names they are kept under, the one rule they are read by, and the one
-// way any of them is replaced. Each document supplies only its contract
+// This file holds what the shell's eight local documents share: recent
+// workspaces, saved filters, working session, editor drafts, remembered
+// projects, and operation, commercial and hub selections. One store owns
+// the folder they live in, the file names they are kept under, the one rule
+// they are read by, and the one way any of them is replaced. Each document supplies only its contract
 // version and its decoder. replaceDocument, beneath the store, is also how a
 // workspace save writes over an entry it may overwrite.
 
-// ShellDocuments is the store of the shell's seven local documents. They are
+// ShellDocuments is the store of the shell's eight local documents. They are
 // separate owner-only files that live beside each other in one folder, each
 // named by the store and none derived from another, and none of them is
 // evidence: no case, run, result, review or report ever holds one.
@@ -32,7 +32,7 @@ type ShellDocuments struct {
 	Folder string
 }
 
-// The seven file names. The store owns them: nothing the shell is wired up
+// The eight file names. The store owns them: nothing the shell is wired up
 // with names a document, only the folder they all live in.
 const (
 	recentName              = "recent.json"
@@ -42,6 +42,7 @@ const (
 	operationSelectionName  = "operations.json"
 	commercialSelectionName = "commercial.json"
 	hubSelectionName        = "hub.json"
+	projectsName            = "projects.json"
 )
 
 // DefaultShellDocuments is the store over this account's own configuration
