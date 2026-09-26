@@ -27,8 +27,8 @@ import {
   type RetirementPreview,
   type UpgradeResult,
 } from "./bindings";
-import type { Indicators } from "./shell";
-import { Report } from "./shell";
+import type { IndexDraft, Indicators } from "./shell";
+import { IndexSetup, newIndexDraft, rebuildIndexDraft, Report } from "./shell";
 import { useLifecycle } from "./lifecycle";
 
 type Tab = "backup" | "restore" | "storage" | "lifecycle" | "recovery" | "upgrade";
@@ -74,9 +74,9 @@ function BackupReport({ result }: { result: BackupResult | null }) {
             {report.complete ? "Complete" : "Incomplete"} · {report.files} files · {report.bytes} bytes
             {report.root ? ` · ${report.root}` : ""}
           </p>
-          <InventoryList title="Canonical evidence" entries={report.evidence} />
-          <InventoryList title="Mutable project documents" entries={report.mutable} />
-          <InventoryList title="Declared exclusions (indexes)" entries={report.exclusions} />
+          <InventoryList title="Evidence" entries={report.evidence} />
+          <InventoryList title="Project documents" entries={report.mutable} />
+          <InventoryList title="Excluded indexes" entries={report.exclusions} />
           <InventoryList title="Credential references" entries={report.credentials} />
           <InventoryList title="Protection key references" entries={report.protection} />
         </>
@@ -98,6 +98,7 @@ export function MaintenancePanel({
   onReopen,
   onProjectChanged,
   onClose,
+  now = Date.now,
 }: {
   workspace: string;
   project: string | null;
@@ -109,6 +110,8 @@ export function MaintenancePanel({
    * the project is read again. */
   onProjectChanged: (path: string) => void;
   onClose: () => void;
+  /** Reads the current time an index deadline must lie after. */
+  now?: () => number;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const { running, run } = useLifecycle<"working">();
@@ -121,11 +124,18 @@ export function MaintenancePanel({
   const [rollbackDestination, setRollbackDestination] = useState("");
   const [report, setReport] = useState<{ tab: Tab; result: BackupResult } | null>(null);
   const [quota, setQuota] = useState<ProjectQuotaResult | null>(null);
-  const [maxBytes, setMaxBytes] = useState("500000000");
-  const [maxFiles, setMaxFiles] = useState("20000");
+  // The limits being declared. They start from the quota the project really
+  // declares, or empty when it declares none — never from a guessed default.
+  const [maxBytes, setMaxBytes] = useState("");
+  const [maxFiles, setMaxFiles] = useState("");
   const [indexCase, setIndexCase] = useState("");
   const [indexName, setIndexName] = useState("search.index.json");
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
+  // The index the shared setup was opened for, with its draft. Opening setup
+  // writes nothing; only its Build index or Rebuild index does. The identity
+  // is the case identity the inspection verified, or empty when none was.
+  const [indexSetup, setIndexSetup] = useState<{ case: string; target: string | null; identity: string } | null>(null);
+  const [indexDraft, setIndexDraft] = useState<IndexDraft>(() => newIndexDraft(""));
   const [migration, setMigration] = useState<MigrationPreviewResult | null>(null);
   const [preview, setPreview] = useState<RetirementPreview | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -186,14 +196,53 @@ export function MaintenancePanel({
     });
   }, [project, readCopies, run]);
 
+  // A quota answer that carries the declaration fills the limits in from it:
+  // a declared limit as its number (zero included), an undeclared one as empty.
+  const showQuota = useCallback((result: ProjectQuotaResult) => {
+    setQuota(result);
+    if (result.quota) {
+      setMaxBytes(result.quota.declared ? String(result.quota.max_bytes ?? 0) : "");
+      setMaxFiles(result.quota.declared ? String(result.quota.max_files ?? 0) : "");
+    }
+  }, []);
+
   const refreshQuota = useCallback(async () => {
     if (!project) {
       return;
     }
     await run("working", async () => {
-      setQuota(await inspectProjectQuota(project));
+      showQuota(await inspectProjectQuota(project));
     });
-  }, [project, run]);
+  }, [project, run, showQuota]);
+
+  const limitsReady = /^\d+$/.test(maxBytes) && /^\d+$/.test(maxFiles);
+  const inspected = indexResult?.index ?? null;
+
+  // What was inspected, and any setup opened from it, belongs to the case and
+  // file named when it was read; naming others withdraws both.
+  const withdrawIndex = () => {
+    setIndexResult(null);
+    setIndexSetup(null);
+  };
+
+  // Opens the shared index setup. An inspected index of this case's own
+  // evidence is prefilled with its policy — fields, stored content, retention
+  // end and file — and only that file is offered for replacement; anything
+  // else needs a new declaration written to a new file.
+  const openIndexSetup = () => {
+    const sameCase = inspected !== null && inspected.identity !== "" && !inspected.stale;
+    if (inspected) {
+      const prefilled = rebuildIndexDraft(inspected, newIndexDraft(indexName));
+      setIndexDraft(sameCase ? prefilled : { ...prefilled, replace: false });
+    } else {
+      setIndexDraft(newIndexDraft(indexName));
+    }
+    setIndexSetup({
+      case: indexCase,
+      target: sameCase ? inspected!.index_name : null,
+      identity: sameCase ? inspected!.identity : "",
+    });
+  };
 
   useEffect(() => {
     if (tab === "storage" && project) {
@@ -224,8 +273,8 @@ export function MaintenancePanel({
           [
             ["backup", "Backup"],
             ["restore", "Restore"],
-            ["storage", "Storage and indexes"],
-            ["lifecycle", "Archive and migrate"],
+            ["storage", "Storage"],
+            ["lifecycle", "Archive and migration"],
             ["recovery", "Recovery copies"],
             ["upgrade", "Staged upgrade"],
           ] as const
@@ -337,87 +386,155 @@ export function MaintenancePanel({
       {tab === "storage" ? (
         <section aria-label="Storage quota and index rebuild">
           {!project ? <p className="hint">Open a project to inspect quota and rebuild indexes.</p> : null}
-          <Report indicators={indicators} progress={null} result={quota} />
-          {quota?.quota ? (
-            <p className="reason">
-              Used {quota.quota.used_files} files / {quota.quota.used_bytes} bytes
-              {quota.quota.declared
-                ? ` · limit ${quota.quota.max_files} files / ${quota.quota.max_bytes} bytes · ${quota.quota.within ? "within" : "over"} quota`
-                : " · no quota declared"}
+          <section aria-label="Quota">
+            <h4>Quota</h4>
+            <Report indicators={indicators} progress={null} result={quota} />
+            {quota?.quota ? (
+              <p className="reason">
+                Used {quota.quota.used_files} files / {quota.quota.used_bytes} bytes
+                {quota.quota.declared
+                  ? ` · limit ${quota.quota.max_files ?? 0} files / ${quota.quota.max_bytes ?? 0} bytes · ${quota.quota.within ? "within" : "over"} quota`
+                  : " · no quota declared"}
+              </p>
+            ) : null}
+            {quota?.quota?.explain ? <p className="hint">{quota.quota.explain}</p> : null}
+            <label htmlFor="quota-bytes">Storage limit (bytes)</label>
+            <input
+              id="quota-bytes"
+              inputMode="numeric"
+              aria-describedby="quota-limits-hint"
+              value={maxBytes}
+              disabled={blocked || !project}
+              onChange={(e) => setMaxBytes(e.target.value)}
+            />
+            <label htmlFor="quota-files">File limit</label>
+            <input
+              id="quota-files"
+              inputMode="numeric"
+              aria-describedby="quota-limits-hint"
+              value={maxFiles}
+              disabled={blocked || !project}
+              onChange={(e) => setMaxFiles(e.target.value)}
+            />
+            <p id="quota-limits-hint" className="hint">
+              Both limits are whole numbers of retained bytes and files. Saving declares them for this project; nothing
+              is enforced until you do.
             </p>
-          ) : null}
-          {quota?.quota?.explain ? <p className="hint">{quota.quota.explain}</p> : null}
-          <label htmlFor="quota-bytes">Maximum retained bytes</label>
-          <input id="quota-bytes" value={maxBytes} disabled={blocked || !project} onChange={(e) => setMaxBytes(e.target.value)} />
-          <label htmlFor="quota-files">Maximum retained files</label>
-          <input id="quota-files" value={maxFiles} disabled={blocked || !project} onChange={(e) => setMaxFiles(e.target.value)} />
-          <button
-            type="button"
-            disabled={blocked || !project}
-            onClick={() => {
-              void (async () => {
-                await run("working", async () => {
-                  setQuota(
-                    await setProjectQuota({
+            {limitsReady ? null : (maxBytes !== "" || maxFiles !== "") ? (
+              <p className="hint warning">Enter both limits as whole numbers, without signs or decimals.</p>
+            ) : null}
+            <button
+              type="button"
+              disabled={blocked || !project || !limitsReady}
+              onClick={() => {
+                if (!limitsReady) return;
+                void (async () => {
+                  await run("working", async () => {
+                    const result = await setProjectQuota({
                       project: project!,
                       max_bytes: Number(maxBytes),
                       max_files: Number(maxFiles),
-                    }),
-                  );
-                });
-              })();
-            }}
-          >
-            Set retained-file quota
-          </button>
-          <h4>Index</h4>
-          <p className="hint">
-            Indexes are derived and disposable. This reuses the same BuildIndex / DescribeIndex controls as the
-            explorer (#248); it does not create a second search path.
-          </p>
-          <label htmlFor="index-case">Case name</label>
-          <input id="index-case" value={indexCase} disabled={blocked} onChange={(e) => setIndexCase(e.target.value)} />
-          <label htmlFor="index-name">Index file name</label>
-          <input id="index-name" value={indexName} disabled={blocked} onChange={(e) => setIndexName(e.target.value)} />
-          <button
-            type="button"
-            disabled={blocked || !indexCase || !indexName}
-            onClick={() => {
-              void (async () => {
-                await run("working", async () => {
-                  setIndexResult(await describeIndex(root, indexCase, indexName));
-                });
-              })();
-            }}
-          >
-            Describe index
-          </button>
-          <button
-            type="button"
-            disabled={blocked || !indexCase || !indexName}
-            onClick={() => {
-              void (async () => {
-                await run("working", async () => {
-                  const request: BuildIndexRequest = {
-                    workspace: root,
-                    case: indexCase,
-                    identity: "",
-                    output: indexName,
-                    fields: ["PID-3"],
-                    retention: "states",
-                    retain_until: "indefinite",
-                    replace: true,
-                  };
-                  const built = await buildIndex(request);
-                  setFeedback(built.reason ?? (built.state === "completed" ? "Index rebuilt from canonical evidence." : null));
-                  setIndexResult(await describeIndex(root, indexCase, indexName));
-                });
-              })();
-            }}
-          >
-            Rebuild index
-          </button>
-          <Report indicators={indicators} progress={null} result={indexResult} />
+                    });
+                    // A refusal keeps what was typed, so it can be corrected.
+                    if (result.state === "completed") {
+                      showQuota(result);
+                    } else {
+                      setQuota(result);
+                    }
+                  });
+                })();
+              }}
+            >
+              Save quota
+            </button>
+          </section>
+          <section aria-label="Index setup">
+            <h4>Index setup</h4>
+            <p className="hint">
+              Indexes are derived and disposable. This reuses the same BuildIndex / DescribeIndex controls as the
+              explorer (#248); it does not create a second search path.
+            </p>
+            <label htmlFor="index-case">Case</label>
+            <input
+              id="index-case"
+              value={indexCase}
+              disabled={blocked}
+              onChange={(e) => {
+                setIndexCase(e.target.value);
+                withdrawIndex();
+              }}
+            />
+            <label htmlFor="index-name">Index file</label>
+            <input
+              id="index-name"
+              value={indexName}
+              disabled={blocked}
+              onChange={(e) => {
+                setIndexName(e.target.value);
+                withdrawIndex();
+              }}
+            />
+            <button
+              type="button"
+              disabled={blocked || !indexCase || !indexName}
+              onClick={() => {
+                void (async () => {
+                  await run("working", async () => {
+                    setIndexSetup(null);
+                    setIndexResult(await describeIndex(root, indexCase, indexName));
+                  });
+                })();
+              }}
+            >
+              Inspect index
+            </button>
+            <Report indicators={indicators} progress={null} result={indexResult} />
+            {inspected ? (
+              <p className="reason">
+                {inspected.index_name} · {inspected.retention} · fields {inspected.fields.join(", ")} · retain until{" "}
+                {inspected.retain_until || "indefinite"}
+              </p>
+            ) : null}
+            {indexResult && !indexSetup ? (
+              <button type="button" disabled={blocked} onClick={openIndexSetup}>
+                {inspected ? "Set up rebuild" : "Set up index"}
+              </button>
+            ) : null}
+            {indexSetup ? (
+              <IndexSetup
+                mode={indexSetup.target ? "rebuild" : "build"}
+                draft={indexDraft}
+                onDraft={setIndexDraft}
+                caseName={indexSetup.case}
+                identity={indexSetup.identity}
+                replaceTarget={indexSetup.target}
+                busy={blocked}
+                now={now()}
+                onClose={() => setIndexSetup(null)}
+                onBuild={(request: BuildIndexRequest) => {
+                  const rebuilding = request.replace === true;
+                  void (async () => {
+                    await run("working", async () => {
+                      const built = await buildIndex({ ...request, workspace: root });
+                      setFeedback(
+                        built.reason ??
+                          (built.state === "completed"
+                            ? rebuilding
+                              ? "Index rebuilt from canonical evidence."
+                              : "Index built from canonical evidence."
+                            : null),
+                      );
+                      if (built.state === "completed") {
+                        setIndexSetup(null);
+                        setIndexName(request.output);
+                        setIndexResult(await describeIndex(root, request.case, request.output));
+                      }
+                    });
+                  })();
+                }}
+              />
+            ) : null}
+          </section>
         </section>
       ) : null}
 
@@ -437,7 +554,7 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Preview schema migration
+            Preview migration
           </button>
           <Report indicators={indicators} progress={null} result={migration} />
           {migration?.guidance ? <p className="hint">{migration.guidance}</p> : null}
@@ -576,6 +693,11 @@ export function MaintenancePanel({
               })}
             </fieldset>
           ) : null}
+          <p className="hint">
+            {chosenCopy
+              ? `Replaces ${chosenCopy.document} with the copy ${copyName(chosenCopy)}. Only this one document changes; the rest of the project is not rolled back.`
+              : "Select a readable recovery copy to recover the one document it belongs to."}
+          </p>
           <button
             type="button"
             disabled={blocked || !project || !chosenCopy}
@@ -605,7 +727,7 @@ export function MaintenancePanel({
               })();
             }}
           >
-            Recover copy
+            Recover document
           </button>
         </section>
       ) : null}
@@ -646,8 +768,8 @@ export function MaintenancePanel({
                     installed {upgrade.view.plan.installed} → candidate {upgrade.view.plan.candidate} · signed=
                     {String(upgrade.view.plan.signed_for_distribution)} · {upgrade.view.plan.state}
                   </p>
-                  <section className="maintenance-inventory" aria-label="Staged packages">
-                    <h4>Staged packages</h4>
+                  <section className="maintenance-inventory" aria-label="Candidate packages">
+                    <h4>Candidate packages</h4>
                     <ul>
                       {upgrade.view.plan.staged.map((staged) => (
                         <li key={staged.name}>
@@ -656,8 +778,8 @@ export function MaintenancePanel({
                       ))}
                     </ul>
                   </section>
-                  <section className="maintenance-inventory" aria-label="Local review">
-                    <h4>Local review</h4>
+                  <section className="maintenance-inventory" aria-label="Local compatibility">
+                    <h4>Local compatibility</h4>
                     <p className="hint">Reviewed on this machine for candidate {upgrade.view.plan.candidate}.</p>
                     <ul>
                       {upgrade.view.plan.retained.map((retained) => (

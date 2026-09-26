@@ -137,7 +137,7 @@ export function OperationAccess() {
               <option value={NONE}>No author role</option>
               {(document.assignments ?? []).map(entry => <option key={entry.author} value={entry.author}>{entry.author}</option>)}
             </select>
-            <label htmlFor="license-device">Device to activate</label>
+            <label htmlFor="license-device">Device</label>
             <select id="license-device" value={device} disabled={busy || author === NONE} onChange={event => setDevice(event.target.value)}>
               <option value={NONE}>No author role</option>
               {devices.map(name => <option key={name} value={name}>{name}</option>)}

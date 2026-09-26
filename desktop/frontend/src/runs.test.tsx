@@ -568,3 +568,27 @@ test("a disconnected application reports the fixed failure sentence and never a 
   expect(screen.getByText(/Operation: failed/)).toBeTruthy();
   expect(facade.callsTo("StartDurableRun")).toHaveLength(1);
 });
+
+// A suite handed over from the suite panel arrives with the environment it
+// was prepared against; the run view still preflights it itself and sends
+// nothing until its own explicit decision.
+test("a handed-over suite preflights with the environment it was prepared against", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({ PreflightRun: () => runPreflightResult() });
+  render(
+    <RunPanel
+      workspace={WORKSPACE_ROOT}
+      entries={ENTRIES}
+      onWatch={async () => {}}
+      onRefresh={() => {}}
+      onOpenCase={() => {}}
+      initialSpec={SUITE_ENTRY}
+      initialEnvironment="east"
+    />,
+  );
+  expect((screen.getByLabelText("Saved test or suite") as HTMLSelectElement).value).toBe(SUITE_ENTRY);
+  expect((screen.getByLabelText("Suite environment") as HTMLSelectElement).value).toBe("east");
+  await user.click(screen.getByRole("button", { name: "Preview run" }));
+  expect(facade.oneCall("PreflightRun")[0]).toEqual({ workspace: WORKSPACE_ROOT, spec: SUITE_ENTRY, environment: "east" });
+  expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
+});

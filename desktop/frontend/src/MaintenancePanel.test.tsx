@@ -192,9 +192,9 @@ test("backup verify restore reopen journey separates inventory classes", async (
 
   await user.click(screen.getByRole("button", { name: "Choose destination…" }));
   await user.click(screen.getByRole("button", { name: "Create backup" }));
-  expect(await screen.findByText("Canonical evidence")).toBeTruthy();
-  expect(screen.getByText("Mutable project documents")).toBeTruthy();
-  expect(screen.getByText("Declared exclusions (indexes)")).toBeTruthy();
+  expect(await screen.findByText("Evidence")).toBeTruthy();
+  expect(screen.getByText("Project documents")).toBeTruthy();
+  expect(screen.getByText("Excluded indexes")).toBeTruthy();
   expect(screen.getByText("Credential references")).toBeTruthy();
 
   await user.click(screen.getByRole("button", { name: "Verify backup" }));
@@ -398,12 +398,12 @@ test("a folder named for one writer is never offered to another, and each sectio
   await user.click(backup.getByRole("button", { name: "Create backup" }));
   await waitFor(() => expect(feedback()).toBe("Backup created."));
   expect(stub.callsTo("CreateProjectBackup")[0]?.args[0]).toEqual({ project: PROJECT, destination: `${WORKSPACE_ROOT}/backup-destination` });
-  expect(backup.getByText("Canonical evidence")).toBeTruthy();
+  expect(backup.getByText("Evidence")).toBeTruthy();
 
-  await user.click(screen.getByRole("tab", { name: "Archive and migrate" }));
+  await user.click(screen.getByRole("tab", { name: "Archive and migration" }));
   expect(feedback()).toBeNull();
   const lifecycle = section("Archive, delete and migration");
-  expect(lifecycle.queryByText("Canonical evidence")).toBeNull();
+  expect(lifecycle.queryByText("Evidence")).toBeNull();
   await user.click(lifecycle.getByRole("button", { name: "Preview cleanup" }));
   expect(await lifecycle.findByText("No archive destination chosen.")).toBeTruthy();
   expect(isDisabled(lifecycle.getByRole("button", { name: "Archive" }))).toBe(true);
@@ -413,12 +413,12 @@ test("a folder named for one writer is never offered to another, and each sectio
   await user.click(screen.getByRole("tab", { name: "Staged upgrade" }));
   const upgrade = section("Upgrade and rollback");
   expect(upgrade.getByText("No rollback destination chosen.")).toBeTruthy();
-  expect(upgrade.queryByText("Canonical evidence")).toBeNull();
+  expect(upgrade.queryByText("Evidence")).toBeNull();
 
   // Back on the backup section, its own folder and report are as it left them.
   await user.click(screen.getByRole("tab", { name: "Backup" }));
   expect(section("Backups").getByText(`${WORKSPACE_ROOT}/backup-destination`)).toBeTruthy();
-  expect(section("Backups").getByText("Canonical evidence")).toBeTruthy();
+  expect(section("Backups").getByText("Evidence")).toBeTruthy();
 });
 
 test("a migration preview lists each document's plan with its guidance, and an incompatible project is refused", async () => {
@@ -454,14 +454,14 @@ test("a migration preview lists each document's plan with its guidance, and an i
   );
   panel({ initialTab: "lifecycle" });
   const lifecycle = section("Archive, delete and migration");
-  await tabTo(user, lifecycle.getByRole("button", { name: "Preview schema migration" }));
+  await tabTo(user, lifecycle.getByRole("button", { name: "Preview migration" }));
   await user.keyboard("{Enter}");
   expect(await lifecycle.findByText("project.json: readmit-project/v1 → unchanged")).toBeTruthy();
   expect(lifecycle.getByText("search.index.json: readmit-index/v1 → rebuild-on-restore")).toBeTruthy();
   expect(lifecycle.getByText("Supported documents stay unchanged. Indexes rebuild on restore.")).toBeTruthy();
 
   compatible = false;
-  await user.click(lifecycle.getByRole("button", { name: "Preview schema migration" }));
+  await user.click(lifecycle.getByRole("button", { name: "Preview migration" }));
   await waitFor(() => expect(feedback()).toBe("unsupported or damaged documents; no migration available"));
   expect(lifecycle.getByText("project.json: → refused")).toBeTruthy();
   expect(lifecycle.queryByText("project.json: readmit-project/v1 → unchanged")).toBeNull();
@@ -492,17 +492,17 @@ test("quota limits are declared as typed from the keyboard, and a refused declar
   const storage = section("Storage quota and index rebuild");
   expect(await storage.findByText("Used 3 files / 100 bytes · no quota declared")).toBeTruthy();
 
-  await user.clear(storage.getByLabelText("Maximum retained bytes"));
-  await user.type(storage.getByLabelText("Maximum retained bytes"), "50");
-  await user.clear(storage.getByLabelText("Maximum retained files"));
-  await user.type(storage.getByLabelText("Maximum retained files"), "5000");
-  await tabTo(user, storage.getByRole("button", { name: "Set retained-file quota" }));
+  await user.clear(storage.getByLabelText("Storage limit (bytes)"));
+  await user.type(storage.getByLabelText("Storage limit (bytes)"), "50");
+  await user.clear(storage.getByLabelText("File limit"));
+  await user.type(storage.getByLabelText("File limit"), "5000");
+  await tabTo(user, storage.getByRole("button", { name: "Save quota" }));
   await user.keyboard("{Enter}");
   expect(await storage.findByText("project quota exceeded; no document was changed")).toBeTruthy();
 
-  await user.clear(storage.getByLabelText("Maximum retained bytes"));
-  await user.type(storage.getByLabelText("Maximum retained bytes"), "1000000");
-  await user.click(storage.getByRole("button", { name: "Set retained-file quota" }));
+  await user.clear(storage.getByLabelText("Storage limit (bytes)"));
+  await user.type(storage.getByLabelText("Storage limit (bytes)"), "1000000");
+  await user.click(storage.getByRole("button", { name: "Save quota" }));
   expect(await storage.findByText("Used 3 files / 100 bytes · limit 5000 files / 1000000 bytes · within quota")).toBeTruthy();
   expect(stub.callsTo("SetProjectQuota").map((call) => call.args[0])).toEqual([
     { project: PROJECT, max_bytes: 50, max_files: 5000 },
@@ -542,12 +542,19 @@ test("the recovery copies are listed, one is recovered from the keyboard and the
     isDisabled(recovery.getByRole("radio", { name: `project.json.recovery-${STANDING} · 322 bytes · readable · the document as it stands` })),
   ).toBe(true);
   expect(isDisabled(recovery.getByRole("radio", { name: `quota.json.recovery-${DAMAGED} · 7 bytes · damaged` }))).toBe(true);
-  const recover = recovery.getByRole("button", { name: "Recover copy" });
+  const recover = recovery.getByRole("button", { name: "Recover document" });
   expect(isDisabled(recover)).toBe(true);
+  expect(recovery.getByText("Select a readable recovery copy to recover the one document it belongs to.")).toBeTruthy();
 
   await tabTo(user, earlier);
   await user.keyboard(" ");
   expect((earlier as HTMLInputElement).checked).toBe(true);
+  // The one document and the exact copy that would replace it are named.
+  expect(
+    recovery.getByText(
+      `Replaces project.json with the copy project.json.recovery-${EARLIER}. Only this one document changes; the rest of the project is not rolled back.`,
+    ),
+  ).toBeTruthy();
   await tabTo(user, recover);
   await user.keyboard("{Enter}");
   await waitFor(() =>
@@ -564,7 +571,7 @@ test("the recovery copies are listed, one is recovered from the keyboard and the
   expect(
     await recovery.findByRole("radio", { name: `project.json.recovery-${EARLIER} · 310 bytes · readable · the document as it stands` }),
   ).toBeTruthy();
-  expect(isDisabled(recovery.getByRole("button", { name: "Recover copy" }))).toBe(true);
+  expect(isDisabled(recovery.getByRole("button", { name: "Recover document" }))).toBe(true);
 });
 
 test("a recovery the project refuses is reported, the copies are read again and the project is not", async () => {
@@ -586,12 +593,12 @@ test("a recovery the project refuses is reported, the copies are read again and 
   panel({ initialTab: "recovery", onProjectChanged: (path) => changed.push(path) });
   const recovery = section("Recover a project document");
   await user.click(await recovery.findByRole("radio", { name: `revisions.json.recovery-${EARLIER} · 90 bytes · readable` }));
-  await user.click(recovery.getByRole("button", { name: "Recover copy" }));
+  await user.click(recovery.getByRole("button", { name: "Recover document" }));
   await waitFor(() => expect(feedback()).toBe("recovery copy is damaged"));
   const listed = await recovery.findByRole("radio", { name: `revisions.json.recovery-${EARLIER} · 90 bytes · damaged` });
   expect(isDisabled(listed)).toBe(true);
   expect((listed as HTMLInputElement).checked).toBe(false);
-  expect(isDisabled(recovery.getByRole("button", { name: "Recover copy" }))).toBe(true);
+  expect(isDisabled(recovery.getByRole("button", { name: "Recover document" }))).toBe(true);
   expect(changed).toEqual([]);
 });
 
@@ -609,7 +616,7 @@ test("a project with no recovery copies, and one whose copies cannot be listed, 
   panel({ initialTab: "recovery" });
   const recovery = section("Recover a project document");
   expect(await recovery.findByText("No document of this project has been replaced, so it holds no recovery copies.")).toBeTruthy();
-  expect(isDisabled(recovery.getByRole("button", { name: "Recover copy" }))).toBe(true);
+  expect(isDisabled(recovery.getByRole("button", { name: "Recover document" }))).toBe(true);
 
   refused = true;
   await user.click(screen.getByRole("tab", { name: "Backup" }));
@@ -618,7 +625,7 @@ test("a project with no recovery copies, and one whose copies cannot be listed, 
   expect(await reopened.findByText("this account cannot open the chosen folder")).toBeTruthy();
   expect(reopened.queryByRole("radio")).toBeNull();
   expect(reopened.queryByText("No document of this project has been replaced, so it holds no recovery copies.")).toBeNull();
-  expect(isDisabled(reopened.getByRole("button", { name: "Recover copy" }))).toBe(true);
+  expect(isDisabled(reopened.getByRole("button", { name: "Recover document" }))).toBe(true);
 });
 
 function stagedPlan(candidate: string, staged: UpgradeStaging, state: UpgradeOutcome): UpgradePlan {
@@ -660,8 +667,8 @@ test("a staged candidate's plan is shown whole, and choosing another candidate w
   await tabTo(user, upgrade.getByRole("button", { name: "Check staged upgrade" }));
   await user.keyboard("{Enter}");
   expect(await upgrade.findByText("installed dev → candidate 9.9.9 · signed=false · refused")).toBeTruthy();
-  expect(within(upgrade.getByRole("region", { name: "Staged packages" })).getByText("readmit-desktop_9.9.9_arm64.pkg · pkg · altered")).toBeTruthy();
-  expect(within(upgrade.getByRole("region", { name: "Local review" })).getByText("project · project · readable")).toBeTruthy();
+  expect(within(upgrade.getByRole("region", { name: "Candidate packages" })).getByText("readmit-desktop_9.9.9_arm64.pkg · pkg · altered")).toBeTruthy();
+  expect(within(upgrade.getByRole("region", { name: "Local compatibility" })).getByText("project · project · readable")).toBeTruthy();
   expect(stub.callsTo("CheckStagedUpgrade")[0]?.args[0]).toEqual({
     candidate: `${WORKSPACE_ROOT}/upgrade-candidate-1`,
     projects: [PROJECT],
@@ -671,7 +678,7 @@ test("a staged candidate's plan is shown whole, and choosing another candidate w
   await user.click(upgrade.getByRole("button", { name: "Browse upgrade…" }));
   expect(await upgrade.findByText(`${WORKSPACE_ROOT}/upgrade-candidate-2`)).toBeTruthy();
   expect(upgrade.queryByText("installed dev → candidate 9.9.9 · signed=false · refused")).toBeNull();
-  expect(upgrade.queryByRole("region", { name: "Staged packages" })).toBeNull();
+  expect(upgrade.queryByRole("region", { name: "Candidate packages" })).toBeNull();
   expect((upgrade.getByRole("checkbox", { name: /Administrator approves taking a rollback archive/ }) as HTMLInputElement).checked).toBe(false);
 });
 
@@ -741,5 +748,130 @@ test("a rollback archive is prepared only once approved and named, from the keyb
     ),
   );
   expect(upgrade.queryByText(`Complete · 2 files · 40 bytes · ${WORKSPACE_ROOT}/rollback`)).toBeNull();
-  expect(within(upgrade.getByRole("region", { name: "Staged packages" })).getByText("readmit-desktop_9.9.9_arm64.pkg · pkg · absent")).toBeTruthy();
+  expect(within(upgrade.getByRole("region", { name: "Candidate packages" })).getByText("readmit-desktop_9.9.9_arm64.pkg · pkg · absent")).toBeTruthy();
+});
+
+test("quota limits start from the declared quota, an undeclared one from nothing, and only whole numbers are saved", async () => {
+  const user = userEvent.setup();
+  let declared = false;
+  const stub = installFacade(
+    handlers({
+      InspectProjectQuota: async () => ({
+        state: "completed",
+        quota: declared
+          ? { declared: true, max_files: 0, max_bytes: 4096, used_bytes: 100, used_files: 3, within: false, explain: "" }
+          : { declared: false, used_bytes: 100, used_files: 3, within: true, explain: "" },
+      }),
+    }),
+  );
+  panel({ initialTab: "storage" });
+  const quota = section("Quota");
+  expect(await quota.findByText("Used 3 files / 100 bytes · no quota declared")).toBeTruthy();
+  // Nothing is guessed: an undeclared quota leaves both limits empty and
+  // Save quota waits for a declaration.
+  expect((quota.getByLabelText("Storage limit (bytes)") as HTMLInputElement).value).toBe("");
+  expect((quota.getByLabelText("File limit") as HTMLInputElement).value).toBe("");
+  const save = quota.getByRole("button", { name: "Save quota" });
+  expect(isDisabled(save)).toBe(true);
+
+  for (const refused of ["-5", "2.5", "1e3", "lots"]) {
+    await user.clear(quota.getByLabelText("Storage limit (bytes)"));
+    await user.type(quota.getByLabelText("Storage limit (bytes)"), refused);
+    await user.clear(quota.getByLabelText("File limit"));
+    await user.type(quota.getByLabelText("File limit"), "10");
+    expect(isDisabled(save)).toBe(true);
+    expect(quota.getByText("Enter both limits as whole numbers, without signs or decimals.")).toBeTruthy();
+  }
+  expect(stub.callsTo("SetProjectQuota")).toHaveLength(0);
+
+  // A declared quota, zero included, is what the fields hold when read again.
+  declared = true;
+  await user.click(screen.getByRole("tab", { name: "Backup" }));
+  await user.click(screen.getByRole("tab", { name: "Storage" }));
+  const reread = section("Quota");
+  expect(await reread.findByText("Used 3 files / 100 bytes · limit 0 files / 4096 bytes · over quota")).toBeTruthy();
+  expect((reread.getByLabelText("Storage limit (bytes)") as HTMLInputElement).value).toBe("4096");
+  expect((reread.getByLabelText("File limit") as HTMLInputElement).value).toBe("0");
+});
+
+test("rebuilding an index from maintenance uses the shared setup, prefilled with that index's own policy", async () => {
+  const user = userEvent.setup();
+  const deadline = "2027-03-04T05:06:07Z";
+  const stub = installFacade(
+    handlers({
+      DescribeIndex: async (_workspace, caseName, indexName) => ({
+        state: "failed",
+        reason: "the retention declared for this index has ended; build it again from this case, or delete it",
+        index: {
+          index_name: indexName,
+          case_name: caseName,
+          identity: "case-identity",
+          schema: "readmit-index/v1",
+          provenance: "captured",
+          retention: "values",
+          retain_until: deadline,
+          retention_state: "ended",
+          fields: ["PID-3", "PV1-19", "OBX[1]-3"],
+          sources: 1,
+          records: 4,
+          decoded: 4,
+          undecodable: 0,
+          built_at: "2026-09-21T00:00:00Z",
+          applicable: false,
+          expired: true,
+        },
+      }),
+      BuildIndex: async () => ({ state: "completed" }),
+    }),
+  );
+  panel({ initialTab: "storage", now: () => Date.parse("2027-01-01T00:00:00Z") });
+  // The quota is read as the section opens; its controls wait for that read.
+  expect(await section("Quota").findByText("Used 3 files / 100 bytes · no quota declared")).toBeTruthy();
+  const setup = section("Index setup");
+  await user.type(setup.getByLabelText("Case"), "regression");
+  await user.clear(setup.getByLabelText("Index file"));
+  await user.type(setup.getByLabelText("Index file"), "regression.index.json");
+  await user.click(setup.getByRole("button", { name: "Inspect index" }));
+  await user.click(await setup.findByRole("button", { name: "Set up rebuild" }));
+  // Inspecting and setting up write nothing.
+  expect(stub.callsTo("BuildIndex")).toHaveLength(0);
+  const form = within(setup.getByRole("form", { name: "Build index form" }));
+  expect(form.getByRole("heading", { name: "Rebuild index" })).toBeTruthy();
+  expect((form.getByLabelText("Retain indefinitely") as HTMLInputElement).checked).toBe(false);
+  expect(form.getByText(`Stored as ${new Date(deadline).toISOString()} (UTC)`)).toBeTruthy();
+  await user.click(form.getByRole("button", { name: "Rebuild index" }));
+  await waitFor(() => expect(feedback()).toBe("Index rebuilt from canonical evidence."));
+  expect(stub.callsTo("BuildIndex").map((call) => call.args[0])).toEqual([
+    {
+      workspace: PROJECT,
+      case: "regression",
+      // The case identity the inspection verified, so the facade refuses the
+      // write if the case has changed since.
+      identity: "case-identity",
+      output: "regression.index.json",
+      fields: ["PID-3", "PV1-19", "OBX[1]-3"],
+      retention: "values",
+      retain_until: new Date(deadline).toISOString(),
+      replace: true,
+    },
+  ]);
+});
+
+test("with no index to inspect, maintenance asks for a new declaration and replaces nothing", async () => {
+  const user = userEvent.setup();
+  const stub = installFacade(handlers({ DescribeIndex: async () => ({ state: "empty", reason: "no index has been built for this case" }) }));
+  panel({ initialTab: "storage" });
+  // The quota is read as the section opens; its controls wait for that read.
+  expect(await section("Quota").findByText("Used 3 files / 100 bytes · no quota declared")).toBeTruthy();
+  const setup = section("Index setup");
+  await user.type(setup.getByLabelText("Case"), "regression");
+  await user.click(setup.getByRole("button", { name: "Inspect index" }));
+  await user.click(await setup.findByRole("button", { name: "Set up index" }));
+  const form = within(setup.getByRole("form", { name: "Build index form" }));
+  expect(form.getByRole("heading", { name: "Build index" })).toBeTruthy();
+  expect(form.queryByLabelText("Replace selected index")).toBeNull();
+  // Naming another case withdraws the setup opened for this one.
+  await user.type(setup.getByLabelText("Case"), "-other");
+  expect(setup.queryByRole("form", { name: "Build index form" })).toBeNull();
+  expect(stub.callsTo("BuildIndex")).toHaveLength(0);
 });

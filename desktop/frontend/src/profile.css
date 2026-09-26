@@ -268,3 +268,106 @@
 .notice-text {
   white-space: pre-wrap;
 }
+
+/* The segment list beside the selected field's detail editor; they stack in
+   a narrow window or at a large text size rather than scrolling sideways. */
+.profile-structure {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 60rem) {
+  .profile-structure {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.field-detail,
+.rule-card,
+.repetitions,
+.pinned-pack,
+.condition-inputs,
+.allowed-values {
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 0.8rem;
+  min-width: 0;
+}
+
+.field-detail h5 {
+  margin: 0 0 0.6rem;
+}
+
+.field-detail-grid,
+.rule-card,
+.repetition-bounds,
+.pinned-pack {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+  gap: 0.6rem;
+}
+
+.field-detail label,
+.rule-card label,
+.repetition-bounds label,
+.pinned-pack label,
+.condition-inputs label,
+.allowed-values label,
+.add-segment-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.field-detail label.inline-choice,
+.repetitions label.inline-choice {
+  flex-direction: row;
+  align-items: center;
+  display: inline-flex;
+  margin-right: 1rem;
+}
+
+.rule-code-row,
+.allowed-value-row,
+.rule-actions,
+.add-segment-row,
+.confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+  grid-column: 1 / -1;
+}
+
+.rule-collection {
+  margin-top: 1.2rem;
+}
+
+.field-row-selected {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.field-actions {
+  white-space: nowrap;
+}
+
+/* Long synthetic identifiers, selectors and digests wrap instead of widening
+   the window. */
+.selector-tag,
+.segment-id,
+.segment-desc,
+.digest,
+.pin-change,
+.compared-inputs,
+.seal-details code,
+.field-detail h5,
+.rule-card legend,
+.fields-table td,
+.impact-table td {
+  overflow-wrap: anywhere;
+}

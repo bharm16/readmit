@@ -177,7 +177,7 @@ export function RawInspection({
             <span className="raw-path">{file || "No file chosen."}</span>
           </div>
           <fieldset disabled={disabled}>
-            <legend>Declarations</legend>
+            <legend>Input format</legend>
             <label>
               Framing
               <select
@@ -187,9 +187,9 @@ export function RawInspection({
                   invalidate();
                 }}
               >
-                <option value="auto">Detect (auto)</option>
-                <option value="raw">raw</option>
-                <option value="mllp">mllp</option>
+                <option value="auto">Detect automatically</option>
+                <option value="raw">Raw HL7</option>
+                <option value="mllp">MLLP frames</option>
               </select>
             </label>
             <label>
@@ -201,15 +201,21 @@ export function RawInspection({
                   invalidate();
                 }}
               >
-                <option value="auto">Detect (auto)</option>
-                <option value="cr">cr</option>
-                <option value="lf">lf</option>
-                <option value="crlf">crlf</option>
+                <option value="auto">Detect automatically</option>
+                <option value="cr">CR</option>
+                <option value="lf">LF</option>
+                <option value="crlf">CRLF</option>
               </select>
             </label>
+          </fieldset>
+          {/* Showing values is a choice about what is displayed, not about how
+              the file is framed, so it sits beside its warning outside the
+              input format. */}
+          <div className="raw-values">
             <label className="raw-check">
               <input
                 type="checkbox"
+                disabled={disabled}
                 aria-describedby="raw-values-warning"
                 checked={showValues}
                 onChange={(event) => {
@@ -222,7 +228,7 @@ export function RawInspection({
             <p className="hint" id="raw-values-warning">
               Values may contain patient data and are shown as escaped byte strings.
             </p>
-          </fieldset>
+          </div>
           <button type="button" disabled={disabled || !file} onClick={() => void inspect(0)}>
             Inspect
           </button>
@@ -252,13 +258,13 @@ export function RawInspection({
               </ol>
               <div className="raw-paging">
                 <button type="button" disabled={disabled || view.offset === 0} onClick={() => void inspect(Math.max(0, view.offset - view.limit), view.sha256)}>
-                  Previous rows
+                  Previous page
                 </button>
                 <span>
                   Rows {view.rows.length === 0 ? 0 : view.offset + 1}–{last} of {view.total}
                 </span>
                 <button type="button" disabled={disabled || last >= view.total} onClick={() => void inspect(last, view.sha256)}>
-                  Next rows
+                  Next page
                 </button>
               </div>
             </>
@@ -267,7 +273,7 @@ export function RawInspection({
             <legend>Byte-identical copy</legend>
             <p className="hint">
               Writes the file's exact bytes to a new file, as <code>readmit inspect --roundtrip</code> does, once
-              it parses under the declarations above. An existing file is never overwritten.
+              it parses under the input format above. An existing file is never overwritten.
             </p>
             <div className="raw-choice">
               <button type="button" onClick={() => void choose("round-trip-folder")}>
@@ -276,7 +282,7 @@ export function RawInspection({
               <span className="raw-path">{folder || "No folder chosen."}</span>
             </div>
             <label>
-              New file name
+              Copy filename
               <input
                 value={name}
                 onChange={(event) => {
@@ -288,18 +294,18 @@ export function RawInspection({
             <button type="button" disabled={!file || !folder || !name.trim()} onClick={() => void copy()}>
               Save copy
             </button>
+            <Report
+              indicators={indicators}
+              progress={working === "copying" ? "Writing the copy." : null}
+              result={copyChosen ?? (copied && copied.state !== "completed" ? copied : null)}
+            />
+            {copied?.state === "completed" ? (
+              <p className="raw-summary" role="status">
+                Wrote {copied.bytes} bytes to {copied.path} · SHA-256 {copied.sha256}
+                {view && view.sha256 === copied.sha256 ? " · the same bytes the inspection read" : ""}
+              </p>
+            ) : null}
           </fieldset>
-          <Report
-            indicators={indicators}
-            progress={working === "copying" ? "Writing the copy." : null}
-            result={copyChosen ?? (copied && copied.state !== "completed" ? copied : null)}
-          />
-          {copied?.state === "completed" ? (
-            <p className="raw-summary" role="status">
-              Wrote {copied.bytes} bytes to {copied.path} · SHA-256 {copied.sha256}
-              {view && view.sha256 === copied.sha256 ? " · the same bytes the inspection read" : ""}
-            </p>
-          ) : null}
         </div>
       ) : null}
     </section>

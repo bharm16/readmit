@@ -76,11 +76,11 @@ test("a delivered license file is activated here, used by the command line with 
   await journey.chooseFiles([journey.path("delivery", "trust.json")], "Choose your vendor's verification keys file");
   await press(user, license().getByRole("button", { name: "Activate license…" }));
   await press(user, license().getByRole("button", { name: "Choose file…" }));
-  const review = within(await license().findByRole("group", { name: "License to activate" }));
+  const review = within(await license().findByRole("group", { name: "Activation review" }));
   expect(review.getByText(/^License for test-organization on the test-only plan: 1 author seat and 16 runner slots, valid from \S+ until \S+, with grace until \S+\. It was checked on this computer with your vendor's verification keys\.$/)).toBeTruthy();
-  expect((review.getByLabelText("Who uses this computer") as HTMLSelectElement).value).toBe("test-author");
-  expect((review.getByLabelText("This computer") as HTMLSelectElement).value).toBe("test-device");
-  expect((review.getByLabelText("Tests run from this computer count against") as HTMLSelectElement).value).toBe("test-runner");
+  expect((review.getByLabelText("Licensed person") as HTMLSelectElement).value).toBe("test-author");
+  expect((review.getByLabelText("Licensed device") as HTMLSelectElement).value).toBe("test-device");
+  expect((review.getByLabelText("Runner pool") as HTMLSelectElement).value).toBe("test-runner");
   await press(user, review.getByRole("button", { name: "Activate" }));
   expect(await license().findByText("This computer's license is activated.")).toBeTruthy();
   expect(license().getByText("Licensed to test-organization on the test-only plan: 1 author seat and 16 runner slots.")).toBeTruthy();
@@ -115,7 +115,7 @@ test("a delivered license file is activated here, used by the command line with 
   await journey.chooseFiles([journey.path("renewal", "entitlement.json")], "Choose your license file");
   await press(user, license().getByRole("button", { name: "Renew license…" }));
   await press(user, license().getByRole("button", { name: "Choose file…" }));
-  const renewal = within(await license().findByRole("group", { name: "Renewed license" }));
+  const renewal = within(await license().findByRole("group", { name: "Renewal review" }));
   await press(user, renewal.getByRole("button", { name: "Install renewal" }));
   expect(await license().findByText("The renewed license replaced the previous one.")).toBeTruthy();
   expect(license().getByText(/^Valid until \S+\.$/)).toBeTruthy();
@@ -129,9 +129,9 @@ test("a delivered license file is activated here, used by the command line with 
   await journey.chooseFiles([journey.path("delivery", "entitlement.json")], "Choose your license file");
   await press(user, license().getByRole("button", { name: "Renew license…" }));
   await press(user, license().getByRole("button", { name: "Choose file…" }));
-  await press(user, within(await license().findByRole("group", { name: "Renewed license" })).getByRole("button", { name: "Install renewal" }));
+  await press(user, within(await license().findByRole("group", { name: "Renewal review" })).getByRole("button", { name: "Install renewal" }));
   expect(await license().findByText("this license is already activated here, or is older than the one activated on this computer")).toBeTruthy();
-  await press(user, within(license().getByRole("group", { name: "Renewed license" })).getByRole("button", { name: "Cancel" }));
+  await press(user, within(license().getByRole("group", { name: "Renewal review" })).getByRole("button", { name: "Cancel" }));
   expect((await journey.commandLine(["license", "show"])).stdout).toContain("Issue sequence: 2\n");
 
   // A copy saves byte for byte, as `readmit license export` writes it.

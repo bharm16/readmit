@@ -108,6 +108,17 @@ type ProfileCompareResult struct {
 	Reason     string                     `json:"reason,omitzero"`
 	Comparison *profileversion.Comparison `json:"comparison,omitzero"`
 	Assessment *ProfileAssessment         `json:"assessment,omitzero"`
+	// LaterPin is present when the assessment finds a test affected: the
+	// exact pin that test may be updated to, or why it may not be.
+	LaterPin *LaterProfilePin `json:"later_pin,omitzero"`
+}
+
+// LaterProfilePin is the exact pin of the later profile one comparison
+// compared, sealed over the very document compared, or the reason no saved
+// test can be pinned to it. Exactly one of the two is set.
+type LaterProfilePin struct {
+	Pin     *profileversion.Pin `json:"pin,omitzero"`
+	Refusal string              `json:"refusal,omitzero"`
 }
 
 func (r *ProfileCompareResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -394,11 +405,11 @@ func (a *App) SaveProfile(request ProfileSaveRequest) LocalProfileResult {
 func (a *App) CompareProfiles(request ProfileCompareRequest) ProfileCompareResult {
 	return run(a, false, false, func(context.Context) ProfileCompareResult {
 		root, _ := resolveFolder(request.Workspace)
-		fromProfile, err := a.resolveProfileDoc(root, request.From)
+		fromProfile, _, err := a.resolveProfileDoc(root, request.From)
 		if err != nil {
 			return ProfileCompareResult{State: Failed, Reason: "from profile: " + err.Error()}
 		}
-		toProfile, err := a.resolveProfileDoc(root, request.To)
+		toProfile, toFile, err := a.resolveProfileDoc(root, request.To)
 		if err != nil {
 			return ProfileCompareResult{State: Failed, Reason: "to profile: " + err.Error()}
 		}
@@ -423,6 +434,9 @@ func (a *App) CompareProfiles(request ProfileCompareRequest) ProfileCompareResul
 			result.Assessment = &ProfileAssessment{
 				Comparison: assessment.Comparison,
 				Tests:      assessment.Tests,
+			}
+			if len(assessment.Affected()) > 0 {
+				result.LaterPin = laterProfilePin(toProfile, toFile)
 			}
 		}
 		return result
@@ -713,14 +727,34 @@ func (a *App) checkProfileImmutability(root string, profile localprofile.Profile
 	return profileversion.VerifyFolder(root, profile)
 }
 
-func (a *App) resolveProfileDoc(root, fileOrDoc string) (localprofile.Profile, error) {
+// resolveProfileDoc reads a profile from a workspace file, or else as the
+// document itself, and says whether it was a file.
+func (a *App) resolveProfileDoc(root, fileOrDoc string) (localprofile.Profile, bool, error) {
 	if root != "" && artifactpath.EntryName(fileOrDoc) == nil {
 		data, declined := workspaceDocument(root, fileOrDoc, localprofile.MaxProfileBytes, "the profile")
 		if data != nil && declined.state == "" {
-			return localprofile.Decode(data)
+			profile, err := localprofile.Decode(data)
+			return profile, true, err
 		}
 	}
-	return localprofile.Decode([]byte(fileOrDoc))
+	profile, err := localprofile.Decode([]byte(fileOrDoc))
+	return profile, false, err
+}
+
+// laterProfilePin decides the pin an affected test may move to: the seal over
+// the later profile exactly as compared, so it can name no other profile or
+// version than the comparison's. A later profile that is no file of the
+// workspace is refused, since a pin must name a document a test can be held to.
+func laterProfilePin(later localprofile.Profile, fromFile bool) *LaterProfilePin {
+	if !fromFile {
+		return &LaterProfilePin{Refusal: "the later profile is not a file of the open workspace, so no saved test can be pinned to it"}
+	}
+	seal, err := profileversion.Seal(later)
+	if err != nil {
+		return &LaterProfilePin{Refusal: "the later profile's version seal could not be made: " + err.Error()}
+	}
+	pin := seal.Pin()
+	return &LaterProfilePin{Pin: &pin}
 }
 
 func (a *App) resolveReferencesData(root, fileOrDoc string) ([]byte, error) {

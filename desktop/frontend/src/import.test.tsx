@@ -415,6 +415,8 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
   expect(await screen.findByText("Imported feed")).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(listings + 1);
   const privacy = within(screen.getByRole("region", { name: "Privacy review" }));
+  // The case is chosen in the Create review task, one of the panel's tasks.
+  await user.click(privacy.getByRole("tab", { name: "Create review" }));
   expect(await privacy.findByRole("option", { name: "imported-case-01" })).toBeTruthy();
 });
 
@@ -667,6 +669,39 @@ test("a committed import whose retention was refused leaves no retention reporte
   expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
   expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
   expect(screen.queryByText("Retaining this draft…")).toBeNull();
+});
+
+test("a refused discard of the import draft keeps the text and still offers Retry draft save", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openWorkspaceWithProject(user);
+  const held = { id: "import-draft", kind: "import", workspace: WORKSPACE_ROOT, case: "", identity: "", content_schema: "readmit-desktop-drafts/v1", content: {} };
+  let writable = true;
+  facade.reply({
+    SaveEditorDraft: async () =>
+      writable ? { state: "completed" as const, drafts: [held] } : { state: "failed" as const, reason: "the draft store is not writable", drafts: [held] },
+    DiscardEditorDraft: async () => ({ state: "failed" as const, reason: "the draft store is locked", drafts: [held] }),
+  });
+  const evidence = screen.getByRole("region", { name: "Evidence" });
+  await user.click(within(evidence).getByRole("button", { name: "Import" }));
+  const title = screen.getByLabelText("Case title") as HTMLInputElement;
+  fireEvent.change(title, { target: { value: "Reschedule" } });
+  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
+  writable = false;
+  fireEvent.change(title, { target: { value: "Reschedule duplicate" } });
+  expect(await screen.findByText("the draft store is not writable")).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Discard draft" }));
+  // The refusal is shown; the text stays, and so does the way to save it.
+  expect(await screen.findByText("the draft store is locked")).toBeTruthy();
+  expect(facade.oneCall("DiscardEditorDraft")).toEqual(["import-draft"]);
+  expect(title.value).toBe("Reschedule duplicate");
+  const saves = facade.callsTo("SaveEditorDraft").length;
+  writable = true;
+  await user.click(screen.getByRole("button", { name: "Retry draft save" }));
+  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
+  const retried = facade.callsTo("SaveEditorDraft");
+  expect(retried).toHaveLength(saves + 1);
+  expect((retried[saves]?.args[0] as { id: string }).id).toBe("import-draft");
 });
 
 // Every value an import plan may declare is offered as the facade publishes it

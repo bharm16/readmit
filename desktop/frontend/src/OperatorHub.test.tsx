@@ -91,13 +91,13 @@ test("the operator-only hub mode chooses its configuration, connects deliberatel
   await waitFor(() => expect(connect.hasAttribute("disabled")).toBe(false));
   await user.click(connect);
   expect(await operator.findByText("Connected to operator-only hub (https://hub.example.com:8443)")).toBeTruthy();
-  expect(operator.getByRole("note").textContent).toBe(`Custody Notice: ${custody}`);
+  expect(operator.getByRole("note").textContent).toBe(`Copy custody: ${custody}`);
   expect(operator.getByRole("button", { name: "Upload file…" })).toBeTruthy();
 
   operator.getByRole("button", { name: "Disconnect" }).focus();
   await user.keyboard("[Space]");
   expect(await operator.findByText("Not connected")).toBeTruthy();
-  expect(operator.getByRole("note").textContent).toBe(`Custody Notice: ${custody}`);
+  expect(operator.getByRole("note").textContent).toBe(`Copy custody: ${custody}`);
   expect(operator.queryByRole("button", { name: "Upload file…" })).toBeNull();
   expect(operator.getByRole("button", { name: "Connect" })).toBeTruthy();
   await user.click(disclosure);
@@ -189,7 +189,7 @@ test("the operator-only hub mode stores a chosen file and reads an artifact by d
   // A read needs a digest; Enter in the field reads it.
   const read = operator.getByRole("button", { name: "Download…" });
   expect(read.hasAttribute("disabled")).toBe(true);
-  const field = operator.getByLabelText("Artifact digest (SHA-256)");
+  const field = operator.getByLabelText("Artifact SHA-256");
   await user.type(field, `${digest}{Enter}`);
   expect(await operator.findByText(teamMode)).toBeTruthy();
   expect(outcome()).toBe("Read: permission_denied");
@@ -238,7 +238,7 @@ test("the operator-only hub mode shows a refused digest and a busy answer, and h
   const operator = await operatorMode(user);
   await user.click(operator.getByRole("button", { name: "Choose configuration…" }));
   await user.click(await operator.findByRole("button", { name: "Connect" }));
-  const field = await operator.findByLabelText("Artifact digest (SHA-256)");
+  const field = await operator.findByLabelText("Artifact SHA-256");
   const read = operator.getByRole("button", { name: "Download…" });
 
   await user.type(field, "A1B2{Enter}");

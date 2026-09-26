@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HubPanel } from "./HubPanel";
 import { installFacade, uninstallFacade } from "./testkit/wails";
@@ -49,7 +49,7 @@ test("HubPanel displays offline mode initially and allows selecting hub config",
   await user.click(chooseBtn);
 
   expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
-  expect(await screen.findByText(/Configuration: \/etc\/readmit\/hub-client\.json/i)).toBeTruthy();
+  expect(await screen.findByText(/Configuration file: \/etc\/readmit\/hub-client\.json/i)).toBeTruthy();
 
   uninstallFacade();
 });
@@ -79,7 +79,7 @@ test("HubPanel runs prerequisite diagnostics and displays check results", async 
 
   render(<HubPanel />);
 
-  const diagBtn = await screen.findByRole("button", { name: /Diagnose prerequisites/i });
+  const diagBtn = await screen.findByRole("button", { name: /Check connection setup/i });
   await user.click(diagBtn);
 
   expect(facade.callsTo("DiagnoseHub").length).toBe(1);
@@ -174,7 +174,7 @@ test("HubPanel performs first-party PKCE sign-in and shows authorized projects a
   expect(facade.callsTo("CompleteHubAuth").length).toBe(1);
 
   // Authenticated state displayed
-  expect(await screen.findByText(/Subject:/i)).toBeTruthy();
+  expect(await screen.findByText(/Subject ID/i)).toBeTruthy();
   expect(screen.getByText(/analyst@customer\.example/i)).toBeTruthy();
 
   // Authorized project & effective capabilities
@@ -230,7 +230,7 @@ test("HubPanel displays project artifacts, handles download with custody notice,
   expect(screen.getByText("lead@hospital.org")).toBeTruthy();
 
   // Download
-  const destInput = screen.getByLabelText(/Download destination path:/i);
+  const destInput = screen.getByLabelText(/Download file/i);
   await user.type(destInput, "/tmp/downloaded.bin");
 
   const dlBtn = screen.getByRole("button", { name: /^Download$/i });
@@ -240,10 +240,10 @@ test("HubPanel displays project artifacts, handles download with custody notice,
   expect(await screen.findByText(/Transfer state:/i)).toBeTruthy();
 
   // Upload
-  const srcInput = screen.getByLabelText(/Upload source path:/i);
+  const srcInput = screen.getByLabelText(/Artifact file/i);
   await user.type(srcInput, "/tmp/local-evidence.bin");
 
-  const uploadBtn = screen.getByRole("button", { name: /Publish Artifact/i });
+  const uploadBtn = screen.getByRole("button", { name: /Upload artifact/i });
   await user.click(uploadBtn);
 
   expect(facade.callsTo("UploadHubArtifact").length).toBe(1);
@@ -280,7 +280,7 @@ test("HubPanel shows a failed sign-in as a recoverable error and the next action
   await user.click(await screen.findByRole("button", { name: /Sign in/i }));
   expect(await screen.findByRole("button", { name: "Cancel sign-in" })).toBeTruthy();
   expect(screen.getByRole("button", { name: /Sign in/i }).hasAttribute("disabled")).toBe(true);
-  expect(screen.getByRole("button", { name: /Refresh status/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Refresh connection status/i }).hasAttribute("disabled")).toBe(true);
 
   signIn.resolve({
     state: "failed",
@@ -363,17 +363,17 @@ test("HubPanel shows a remembered configuration that no longer validates and rec
 
   render(<HubPanel />);
   expect(await screen.findByText(/^the remembered hub configuration no longer validates \(hub endpoint must be/)).toBeTruthy();
-  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.getByText("Configuration file: /etc/readmit/hub-client.json")).toBeTruthy();
   expect(screen.getByText(/Offline \/ Local Mode/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Check connection setup/i }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: /Choose configuration…/i }).hasAttribute("disabled")).toBe(false);
 
   await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
   expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
   await waitFor(() => expect(screen.queryByText(/no longer validates/)).toBeNull());
-  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
-  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByText("Configuration file: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Check connection setup/i }).hasAttribute("disabled")).toBe(false);
   expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(false);
   // Only the person's own choice was acted on.
   expect(facade.calls.map((call) => call.method).filter((method) => method !== "HubStatus")).toEqual(["ChooseHubConfig"]);
@@ -407,12 +407,12 @@ test.each([
   });
 
   render(<HubPanel />);
-  expect(await screen.findByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(await screen.findByText("Configuration file: /etc/readmit/hub-client.json")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
   expect(await screen.findByText(refused)).toBeTruthy();
-  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.getByText("Configuration file: /etc/readmit/hub-client.json")).toBeTruthy();
   expect(screen.queryByText(/No configuration file selected/)).toBeNull();
-  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(false);
+  expect(screen.getByRole("button", { name: /Check connection setup/i }).hasAttribute("disabled")).toBe(false);
   expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(false);
   expect(screen.getByRole("button", { name: /Choose configuration…/i }).hasAttribute("disabled")).toBe(false);
 
@@ -422,7 +422,7 @@ test.each([
     ChooseHubConfig: async () => ({ ...selected, config_path: "/etc/readmit/replacement/hub-client.json" }),
   });
   await user.click(screen.getByRole("button", { name: /Choose configuration…/i }));
-  expect(await screen.findByText("Configuration: /etc/readmit/replacement/hub-client.json")).toBeTruthy();
+  expect(await screen.findByText("Configuration file: /etc/readmit/replacement/hub-client.json")).toBeTruthy();
   expect(screen.queryByText(refused)).toBeNull();
   expect(facade.calls.map((call) => call.method)).toEqual(["HubStatus", "ChooseHubConfig", "ChooseHubConfig"]);
 
@@ -461,9 +461,9 @@ test("HubPanel keeps a remembered configuration's reason when choosing another i
   );
   expect(facade.callsTo("ChooseHubConfig").length).toBe(1);
   expect(screen.getByText(stale)).toBeTruthy();
-  expect(screen.getByText("Configuration: /etc/readmit/hub-client.json")).toBeTruthy();
+  expect(screen.getByText("Configuration file: /etc/readmit/hub-client.json")).toBeTruthy();
   expect(screen.queryByText("no configuration file was chosen")).toBeNull();
-  expect(screen.getByRole("button", { name: /Diagnose prerequisites/i }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: /Check connection setup/i }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: /Connect to hub/i }).hasAttribute("disabled")).toBe(true);
   expect(facade.callsTo("HubStatus").length).toBe(1);
 
@@ -492,10 +492,10 @@ test("HubPanel shows an upload the license does not admit as refused with why, a
 
   render(<HubPanel />);
   await user.click(await screen.findByRole("button", { name: /View artifacts/i }));
-  const publish = await screen.findByRole("button", { name: "Publish Artifact" });
+  const publish = await screen.findByRole("button", { name: "Upload artifact" });
   expect(publish.hasAttribute("disabled")).toBe(true);
 
-  await user.type(screen.getByLabelText("Upload source path:"), "/workspace-under-test/evidence.txt");
+  await user.type(screen.getByLabelText("Artifact file"), "/workspace-under-test/evidence.txt");
   await user.tab();
   expect(document.activeElement).toBe(publish);
   await user.keyboard("{Enter}");
@@ -505,7 +505,7 @@ test("HubPanel shows an upload the license does not admit as refused with why, a
   expect(facade.callsTo("ListHubProjectArtifacts").length).toBe(1);
 
   await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
-  await user.click(screen.getByLabelText("Upload source path:"));
+  await user.click(screen.getByLabelText("Artifact file"));
   await user.tab();
   expect(document.activeElement).toBe(publish);
   await user.keyboard("[Space]");
@@ -517,5 +517,84 @@ test("HubPanel shows an upload the license does not admit as refused with why, a
   ]);
   await waitFor(() => expect(facade.callsTo("ListHubProjectArtifacts").length).toBe(2));
 
+  uninstallFacade();
+});
+
+// One selected hub, session and project at a time: results belong to the
+// context that produced them. A team read still in flight when another project
+// is chosen never lands under it, and signing out takes the project's
+// artifacts and team work with it — while an offline draft stays available
+// for local retention only.
+test("HubPanel keeps results to the project, configuration and session that produced them", async () => {
+  const user = userEvent.setup();
+  const twoProjects = defaultHubResult({
+    projects: [
+      { project: "cardio-icu", authorized: true, capabilities: ["evidence.read"], head: 12 },
+      { project: "neuro-icu", authorized: true, capabilities: ["evidence.read", "admin"], head: 3 },
+    ],
+  });
+  const facade = installFacade({
+    HubStatus: async () => twoProjects,
+    ListHubProjectArtifacts: async (project: string) =>
+      defaultArtifactsResult({
+        project,
+        artifacts: [{ digest: (project === "cardio-icu" ? "c" : "n").repeat(64), resource: "evidence", kind: "record", actor: `${project}-lead@hospital.org`, at: "2026-09-21T10:00:00Z" }],
+      }),
+    DisconnectHub: async () => ({ state: "completed", connected: false, authenticated: false, config_path: "/etc/readmit/hub-client.json" }),
+    SaveHubOfflineDraft: async () => ({ state: "completed", drafts: [] }),
+  });
+  render(<HubPanel workspace="/workspace-under-test" />);
+  const views = await screen.findAllByRole("button", { name: "View artifacts" });
+  await user.click(views[0]!);
+  expect(await screen.findByText("cardio-icu-lead@hospital.org")).toBeTruthy();
+  expect(screen.getByRole("columnheader", { name: "SHA-256" })).toBeTruthy();
+  expect(screen.getByText(/Uploads the file's bytes to project cardio-icu on https:\/\/hub\.customer\.example:8443/)).toBeTruthy();
+
+  // A team history read for cardio-icu is still in flight when neuro-icu is chosen.
+  const reading = facade.park("ListHubReviews");
+  await user.click(screen.getByRole("button", { name: "Review history" }));
+  await waitFor(() => expect(reading.size).toBe(1));
+  await user.click(views[1]!);
+  expect(await screen.findByText("neuro-icu-lead@hospital.org")).toBeTruthy();
+  expect(screen.queryByText("cardio-icu-lead@hospital.org")).toBeNull();
+  reading.resolve({ state: "completed", project: "cardio-icu", head: 9, events: [] });
+  await waitFor(() => expect(facade.callsTo("ListHubReviews")).toHaveLength(1));
+  expect(screen.queryByText(/Review history \(head 9\)/)).toBeNull();
+  expect(screen.getByText(/Project neuro-icu\./)).toBeTruthy();
+
+  // The offline draft keeps its project and resource after sign-out.
+  await user.click(screen.getByRole("tab", { name: "Revisions" }));
+  await user.type(screen.getByLabelText("Resource ID"), "case-one");
+  await user.click(screen.getByRole("button", { name: "Sign out and disconnect" }));
+  expect(screen.queryByText("neuro-icu-lead@hospital.org")).toBeNull();
+  expect(screen.queryByRole("region", { name: "Team collaboration" })).toBeNull();
+  const draft = within(await screen.findByRole("group", { name: "Offline revision draft" }));
+  expect(draft.getByText(/local edit of case-one in neuro-icu/)).toBeTruthy();
+  expect(draft.getByText(/reconnecting uploads nothing/)).toBeTruthy();
+  await user.type(draft.getByLabelText("Edited file"), "/workspace-under-test/offline.bin");
+  await user.click(draft.getByRole("button", { name: "Save offline draft" }));
+  expect(facade.oneCall("SaveHubOfflineDraft")[0]).toMatchObject({ project: "neuro-icu", resource: "case-one", local_path: "/workspace-under-test/offline.bin" });
+  uninstallFacade();
+});
+
+// Another configuration is another hub: choosing one clears the previous
+// hub's project, artifacts and any offline draft context.
+test("HubPanel clears a project's artifacts and offline context when another configuration is chosen", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    HubStatus: async () => defaultHubResult(),
+    ListHubProjectArtifacts: async () => defaultArtifactsResult(),
+    ChooseHubConfig: async () => ({ state: "completed", connected: false, authenticated: false, config_path: "/etc/readmit/replacement/hub-client.json", hub_url: "https://other.example:8443" }),
+  });
+  render(<HubPanel workspace="/workspace-under-test" />);
+  await user.click(await screen.findByRole("button", { name: "View artifacts" }));
+  expect(await screen.findByText("lead@hospital.org")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Choose configuration…" }));
+  expect(await screen.findByText("Configuration file: /etc/readmit/replacement/hub-client.json")).toBeTruthy();
+  expect(screen.queryByText("lead@hospital.org")).toBeNull();
+  expect(screen.queryByText(/Artifacts: cardio-icu/)).toBeNull();
+  expect(screen.queryByRole("region", { name: "Team collaboration" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Offline revision draft" })).toBeNull();
+  expect(facade.callsTo("ChooseHubConfig")).toHaveLength(1);
   uninstallFacade();
 });

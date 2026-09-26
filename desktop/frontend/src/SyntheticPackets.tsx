@@ -109,7 +109,7 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
   }
 
   return <section aria-labelledby="synthetic-packets-title" className="run-history">
-    <h4 id="synthetic-packets-title">Synthetic sample packets</h4>
+    <h4 id="synthetic-packets-title">Samples</h4>
     <p>Generate the committed synthetic SIU scenario ({SCENARIO}) against fresh built-in defective and fixed receivers on loopback, verify a packet offline, and prepare runnable copies outside it. A synthetic packet is never your own evidence: every message and ledger identifier in it is invented, and it establishes nothing about a production receiver, a downstream workflow or readiness for patient data.</p>
 
     <div className="actions">
@@ -133,15 +133,16 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
     </div>
 
     {verified ? <div className="actions">
-      <h5>Runnable copies</h5>
+      <h5>Rerun copies</h5>
       <p>Prepare a separate, writable rerun workspace outside the sealed packet: the same synthetic case, runnable copies of its historical specification for the baseline, post-fix and reintroduced trials, and a target on the loopback address below. Preparing is offline and never edits the packet.</p>
-      <label htmlFor="synthetic-rerun-address">Loopback address for manual reruns</label>
-      <input id="synthetic-rerun-address" value={address} disabled={busy}
+      <label htmlFor="synthetic-rerun-address">Loopback address</label>
+      <input id="synthetic-rerun-address" value={address} disabled={busy} aria-describedby="synthetic-rerun-address-hint"
         onChange={(e) => { setAddress(e.target.value); setRerun(null); }} />
+      <p className="hint" id="synthetic-rerun-address-hint">Used only when you rerun the copies manually: a numeric loopback address and port on this machine, where you start the built-in fixture as the copies' RERUN.md describes.</p>
       <button ref={rerunChooser} disabled={busy} onClick={() => void choose("rerun-destination", setRerunDestination)}>Choose destination…</button>
       <p className="hint">{rerunDestination || "No folder named for the runnable copies."}</p>
-      <button disabled={busy || !rerunDestination || !address} onClick={() => void prepare()}>Prepare copies</button>
-      <p className="hint">Preparing runnable copies does not run or send anything.</p>
+      <button disabled={busy || !rerunDestination || !address} aria-describedby="synthetic-rerun-prepare-hint" onClick={() => void prepare()}>Prepare copies</button>
+      <p className="hint" id="synthetic-rerun-prepare-hint">Preparing runnable copies does not run or send anything.</p>
       <div role="status" aria-live="polite">
         {choice?.kind === "rerun-destination" && choice.answer.reason ? <p>{choice.answer.reason}</p> : null}
         {rerun?.reason ? <p>{rerun.reason}</p> : null}
@@ -164,7 +165,7 @@ function SyntheticPacketDetails({ view }: { view: SyntheticPacketView }) {
 
 function SyntheticRerunDetails({ view }: { view: SyntheticRerunView }) {
   return <div className="run-evidence">
-    <p>Runnable copies prepared in {view.folder}: packet {view.packet_identity.slice(0, 12)}… · no connection opened.</p>
+    <p>Rerun copies prepared in {view.folder}: packet {view.packet_identity.slice(0, 12)}… · no connection opened.</p>
     <p>Trials: baseline (defective), post-fix (fixed), reintroduced (defective) on {view.address} · bindings changed: {view.changed_bindings.join(", ")}; input identity and assertion semantics preserved.</p>
     <p>Synthetic-only: the copies rerun the committed synthetic scenario against the built-in fixture, never your own evidence. Follow the folder's RERUN.md and wait for Listening before each test.</p>
   </div>;

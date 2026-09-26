@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   bindScenarioProfile,
   checkScenarioLibrary,
+  chooseScenarioLibraryImport,
   compareScenarioLibraryEntries,
   exportScenarioLibrary,
   generateScenario,
@@ -17,6 +18,7 @@ import {
   type ScenarioCatalog,
   type ScenarioDocumentResult,
   type ScenarioGenerateResult,
+  type ScenarioLibraryChoiceResult,
   type ScenarioLibraryResult,
   type ScenarioPreviewResult,
   type ScenarioProfileBindResult,
@@ -42,6 +44,7 @@ type Action =
   | "check"
   | "export"
   | "import"
+  | "choose-import"
   | "synth";
 
 /** The library tab's calls, whose progress and outcome the tab shows. */
@@ -70,6 +73,7 @@ const PROGRESS: Record<Action, string> = {
   check: "Checking the expectations against a fresh regeneration of the pinned plan.",
   export: "Exporting the library.",
   import: "Importing the library.",
+  "choose-import": "Waiting for the library file to be chosen.",
   synth: "Generating the SIU family.",
 };
 
@@ -113,6 +117,28 @@ function librarySentence({ action, result, entry, source }: LibraryOutcome): str
   }
 }
 
+/** The top-level members of a document's text, when the text is one JSON
+ * object; null for anything else, which stays editable as text. */
+function parsedObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The text a retained draft carries: the document exactly as it was typed. */
+function draftText(content: unknown): string | null {
+  return typeof content === "string" ? content : null;
+}
+
+/** The two independent documents this panel edits, each with its own draft:
+ * a scenario definition (readmit-scenario/v1) and a generator plan
+ * (readmit-scenario-generator/v1). Neither is ever derived from the other. */
+const SCENARIO_DRAFT = { kind: "scenario", identity: "scenario-draft", content_schema: "readmit-scenario-draft/v1" };
+const PLAN_DRAFT = { kind: "generator-plan", identity: "generator-plan-draft", content_schema: "readmit-generator-plan-draft/v1" };
+
 export function ScenarioPanel({
   workspace,
   drafts,
@@ -129,12 +155,18 @@ export function ScenarioPanel({
   onStartTestDraft: (caseName: string) => void;
 }) {
   const [tab, setTab] = useState<TabId>("design");
-  const [documentText, setDocumentText] = useState(SIU_BLANK);
+  const [scenarioText, setScenarioText] = useState(SIU_BLANK);
+  // The scenario definition as it was last opened or saved: text that differs
+  // from it is unsaved work an open must not replace unasked.
+  const [scenarioSaved, setScenarioSaved] = useState(SIU_BLANK);
+  const [planText, setPlanText] = useState("");
   const [saveOutput, setSaveOutput] = useState("scenario.json");
   const [openEntry, setOpenEntry] = useState("scenario.json");
+  const [openGuard, setOpenGuard] = useState(false);
   const [profileEntry, setProfileEntry] = useState("profile.json");
   const [catalog, setCatalog] = useState<ScenarioCatalog | null>(null);
   const [bindResult, setBindResult] = useState<ScenarioProfileBindResult | null>(null);
+  const [bindNotice, setBindNotice] = useState<string | null>(null);
   const [documentOutcome, setDocumentOutcome] = useState<{ action: "save" | "open"; entry: string; result: ScenarioDocumentResult } | null>(null);
   const [preview, setPreview] = useState<ScenarioPreviewResult | null>(null);
   const [reveal, setReveal] = useState(false);
@@ -147,6 +179,7 @@ export function ScenarioPanel({
   const [templateId, setTemplateId] = useState("siu-appointment-lifecycle");
   const [templateVer, setTemplateVer] = useState("1");
   const [templateProfile, setTemplateProfile] = useState("readmit-siu-lifecycle-v1");
+  const [planMode, setPlanMode] = useState<"saved" | "json">("saved");
   const [planEntry, setPlanEntry] = useState("plan.json");
   const [coverage, setCoverage] = useState("desktop");
   const [compareFrom, setCompareFrom] = useState("1");
@@ -154,6 +187,7 @@ export function ScenarioPanel({
   const [expectationsEntry, setExpectationsEntry] = useState("expectations.json");
   const [exportName, setExportName] = useState("library-export.json");
   const [importPath, setImportPath] = useState("");
+  const [importChoice, setImportChoice] = useState<ScenarioLibraryChoiceResult | null>(null);
   const [importName, setImportName] = useState("library-import.json");
   const [libraryOutcome, setLibraryOutcome] = useState<LibraryOutcome | null>(null);
   const [synthSeed, setSynthSeed] = useState("");
@@ -165,7 +199,8 @@ export function ScenarioPanel({
   // A check runs under the facade's scenario-check operation, so its Cancel
   // stops that check and nothing else.
   const { running, run, cancel } = useLifecycle<Action>({ names: { check: "scenario-check" } });
-  const retainer = useRetainer();
+  const scenarioRetainer = useRetainer();
+  const planRetainer = useRetainer();
   const disabled = busy || running !== null;
   const loaded = useRef<string | null>(null);
 
@@ -174,36 +209,77 @@ export function ScenarioPanel({
       return;
     }
     loaded.current = workspace;
-    const held = draftFor(drafts, "scenario", workspace);
-    if (held && typeof held.content === "string") {
-      try {
-        const parsed = JSON.parse(held.content) as { document?: string };
-        if (parsed.document) {
-          setDocumentText(parsed.document);
-          retainer.keepId(held.id);
-        }
-      } catch {
-        setDocumentText(held.content);
-        retainer.keepId(held.id);
-      }
+    const scenarioHeld = draftFor(drafts, SCENARIO_DRAFT.kind, workspace);
+    const scenarioDraft = draftText(scenarioHeld?.content);
+    if (scenarioHeld && scenarioDraft !== null) {
+      setScenarioText(scenarioDraft);
+      scenarioRetainer.keepId(scenarioHeld.id);
+    }
+    const planHeld = draftFor(drafts, PLAN_DRAFT.kind, workspace);
+    const planDraft = draftText(planHeld?.content);
+    if (planHeld && planDraft !== null) {
+      setPlanText(planDraft);
+      planRetainer.keepId(planHeld.id);
     }
     void scenarioCatalog().then((result) => {
       if (result.state === "completed" && result.catalog) {
         setCatalog(result.catalog);
       }
     });
-  }, [workspace, drafts, retainer]);
+  }, [workspace, drafts, scenarioRetainer, planRetainer]);
 
-  function persistDocument(next: string) {
-    setDocumentText(next);
-    retainer.save({
-      id: "",
-      kind: "scenario",
-      workspace,
-      case: "",
-      identity: "scenario-draft",
-      content_schema: "readmit-scenario-draft/v1",
-      content: next,
+  /** The scenario definition changed. Its preview described the text it was
+   * made from, so it is withdrawn; an edit is retained as the draft. */
+  function changeScenario(next: string, retain: boolean) {
+    if (next !== scenarioText) {
+      setPreview(null);
+    }
+    setScenarioText(next);
+    if (retain) {
+      scenarioRetainer.save({ id: "", workspace, case: "", ...SCENARIO_DRAFT, content: next });
+    }
+  }
+
+  /** The generator plan changed. The cases generated from the earlier plan
+   * are no longer offered as its result; an edit is retained as the draft. */
+  function changePlan(next: string) {
+    setPlanText(next);
+    setGenerateResult(null);
+    planRetainer.save({ id: "", workspace, case: "", ...PLAN_DRAFT, content: next });
+  }
+
+  /** The scenario definition was opened or saved as it now stands, so no
+   * draft of it needs keeping. A draft the store could not drop is reported
+   * by its retention status, and the text stays. */
+  async function settleScenario(document: string) {
+    changeScenario(document, false);
+    setScenarioSaved(document);
+    await scenarioRetainer.dropCurrent();
+  }
+
+  async function saveScenarioDefinition(): Promise<boolean> {
+    const saved = await run("save", async () => {
+      setDocumentOutcome(null);
+      const result = await saveScenario({ workspace, document: scenarioText, output: saveOutput });
+      setDocumentOutcome({ action: "save", entry: saveOutput, result });
+      if (result.state === "completed" && result.document) {
+        await settleScenario(result.document);
+        return true;
+      }
+      return false;
+    });
+    return saved === true;
+  }
+
+  async function openScenarioDefinition() {
+    setOpenGuard(false);
+    await run("open", async () => {
+      setDocumentOutcome(null);
+      const result = await openScenario(workspace, openEntry);
+      setDocumentOutcome({ action: "open", entry: openEntry, result });
+      if (result.state === "completed" && result.document) {
+        await settleScenario(result.document);
+      }
     });
   }
 
@@ -220,7 +296,12 @@ export function ScenarioPanel({
       }
     });
 
-  const selectedProfile = catalog?.profiles.find((profile) => documentText.includes(profile.name));
+  // The lifecycle profile the scenario definition names, read from the
+  // document itself rather than searched for in its text.
+  const scenario = parsedObject(scenarioText);
+  const namedProfile = typeof scenario?.profile === "string" ? scenario.profile : null;
+  const selectedProfile = catalog?.profiles.find((profile) => profile.name === namedProfile);
+  const scenarioDirty = scenarioText !== scenarioSaved;
   const runningLibraryAction = LIBRARY_ACTIONS.find((action) => action === running) ?? null;
   const seedDeclared = synthSeed.trim() !== "";
   const seedPlain = PLAIN_SEED.test(synthSeed.trim());
@@ -229,6 +310,11 @@ export function ScenarioPanel({
   if (!profileNames.includes(templateProfile)) {
     profileNames.unshift(templateProfile);
   }
+  const libraryPlan = planMode === "saved" ? planEntry : planText;
+  const discardDraft = (retainer: ReturnType<typeof useRetainer>) => () => {
+    const id = retainer.currentId();
+    if (id) void retainer.drop(id);
+  };
 
   return (
     <section className="scenario-panel" aria-label="Synthetic scenario authoring">
@@ -238,7 +324,8 @@ export function ScenarioPanel({
           Design supported lifecycle sequences, preview them through the shared engine, generate
           deterministic artifacts, and continue into inspection or a test draft by reference.
         </p>
-        <RetentionStatus retention={retainer.retention} onRetry={retainer.retry} onKeepAsNew={retainer.keepAsNew} onDiscard={() => { const id = retainer.currentId(); if (id) void retainer.drop(id); }} />
+        <RetentionStatus retention={scenarioRetainer.retention} onRetry={scenarioRetainer.retry} onKeepAsNew={scenarioRetainer.keepAsNew} onDiscard={discardDraft(scenarioRetainer)} />
+        <RetentionStatus retention={planRetainer.retention} onRetry={planRetainer.retry} onKeepAsNew={planRetainer.keepAsNew} onDiscard={discardDraft(planRetainer)} />
       </header>
 
       <nav className="scenario-tabs" aria-label="Scenario authoring tabs">
@@ -265,69 +352,94 @@ export function ScenarioPanel({
 
       {tab === "design" ? (
         <div className="scenario-section">
-          <h3>Profile and template</h3>
-          <p>
-            Name a saved local interface profile of the workspace to pin the lifecycle profile its
-            message family selects and the generator version. A profile the local profile reader
-            refuses pins nothing, and nothing is substituted for it. Unavailable events stay visible
-            with their refusal reasons.
-          </p>
-          <label>
-            Local profile entry
-            <input value={profileEntry} onChange={(event) => setProfileEntry(event.target.value)} disabled={disabled} />
-          </label>
-          <button
-            type="button"
-            disabled={disabled || profileEntry.trim() === ""}
-            onClick={() =>
-              void run("bind", async () => {
-                setBindResult(null);
-                const result = await bindScenarioProfile({ workspace, entry: profileEntry });
-                setBindResult(result);
-                if (result.state === "completed" && result.available && result.lifecycle_profile) {
-                  persistDocument(
-                    documentText.replace(/"profile":\s*"[^"]+"/, `"profile": "${result.lifecycle_profile}"`),
-                  );
-                }
-              })
-            }
-          >
-            Use local profile
-          </button>
-          <Report
-            indicators={indicators}
-            progress={running === "bind" ? PROGRESS.bind : null}
-            result={bindResult && bindResult.state !== "completed" ? bindResult : null}
-          />
-          {bindResult?.state === "completed" ? (
-            <p role="status">
-              {bindResult.available
-                ? `Pinned ${bindResult.profile_id}@${bindResult.profile_version} → ${bindResult.lifecycle_profile} (${bindResult.generator_version})`
-                : bindResult.reason}
+          <h3>Design</h3>
+          <fieldset>
+            <legend>Profile and template</legend>
+            <p>
+              Name a saved local interface profile of the workspace to pin the lifecycle profile its
+              message family selects and the generator version. A profile the local profile reader
+              refuses pins nothing, and nothing is substituted for it. Unavailable events stay visible
+              with their refusal reasons.
             </p>
-          ) : null}
+            <label>
+              Local profile file
+              <input value={profileEntry} onChange={(event) => setProfileEntry(event.target.value)} disabled={disabled} />
+            </label>
+            <button
+              type="button"
+              disabled={disabled || profileEntry.trim() === ""}
+              onClick={() =>
+                void run("bind", async () => {
+                  setBindResult(null);
+                  setBindNotice(null);
+                  const result = await bindScenarioProfile({ workspace, entry: profileEntry });
+                  setBindResult(result);
+                  if (result.state === "completed" && result.available && result.lifecycle_profile) {
+                    // The lifecycle profile is written into the document's own
+                    // profile member; text that is not one JSON object is left
+                    // exactly as it is.
+                    const document = parsedObject(scenarioText);
+                    if (document === null) {
+                      setBindNotice(
+                        "The scenario definition is not one JSON object, so the lifecycle profile was not written into it. Correct the definition, then use the local profile again.",
+                      );
+                    } else {
+                      changeScenario(JSON.stringify({ ...document, profile: result.lifecycle_profile }, null, 2), true);
+                    }
+                  }
+                })
+              }
+            >
+              Use local profile
+            </button>
+            <Report
+              indicators={indicators}
+              progress={running === "bind" ? PROGRESS.bind : null}
+              result={bindResult && bindResult.state !== "completed" ? bindResult : null}
+            />
+            {bindResult?.state === "completed" ? (
+              <p role="status">
+                {bindResult.available
+                  ? `Pinned ${bindResult.profile_id}@${bindResult.profile_version} → ${bindResult.lifecycle_profile} (${bindResult.generator_version})`
+                  : bindResult.reason}
+              </p>
+            ) : null}
+            {bindNotice ? (
+              <p className="scenario-note" role="alert">
+                {bindNotice}
+              </p>
+            ) : null}
+          </fieldset>
 
-          <h3>Lifecycle events</h3>
-          <ul className="scenario-events">
-            {(selectedProfile?.events ?? []).map((event) => (
-              <li key={event.event}>
-                <strong>{event.event}</strong> — {event.description}
-              </li>
-            ))}
-            {(catalog?.all_events ?? [])
-              .filter((event) => selectedProfile && event.profile === selectedProfile.name && !event.available)
-              .map((event) => (
-                <li key={`unavail-${event.event}`} className="unavailable">
-                  <strong>{event.event}</strong> unavailable: {event.reason}
+          <fieldset>
+            <legend>Lifecycle events</legend>
+            {scenario === null ? (
+              <p className="scenario-note">
+                The scenario definition is not one JSON object, so the lifecycle profile it names cannot be read. Its
+                events are listed once it is.
+              </p>
+            ) : null}
+            <ul className="scenario-events">
+              {(selectedProfile?.events ?? []).map((event) => (
+                <li key={event.event}>
+                  <strong>{event.event}</strong> — {event.description}
                 </li>
               ))}
-          </ul>
+              {(catalog?.all_events ?? [])
+                .filter((event) => selectedProfile && event.profile === selectedProfile.name && !event.available)
+                .map((event) => (
+                  <li key={`unavail-${event.event}`} className="unavailable">
+                    <strong>{event.event}</strong> unavailable: {event.reason}
+                  </li>
+                ))}
+            </ul>
+          </fieldset>
 
           <label>
-            Scenario document
+            Scenario definition
             <textarea
-              value={documentText}
-              onChange={(event) => persistDocument(event.target.value)}
+              value={scenarioText}
+              onChange={(event) => changeScenario(event.target.value, true)}
               rows={18}
               disabled={disabled}
               spellCheck={false}
@@ -339,47 +451,78 @@ export function ScenarioPanel({
             these controls and the shared templates.
           </p>
           <div className="scenario-actions">
-            <label>
-              Save as
-              <input value={saveOutput} onChange={(event) => setSaveOutput(event.target.value)} disabled={disabled} />
-            </label>
-            <button
-              type="button"
-              disabled={disabled || saveOutput.trim() === ""}
-              onClick={() =>
-                void run("save", async () => {
-                  setDocumentOutcome(null);
-                  const result = await saveScenario({ workspace, document: documentText, output: saveOutput });
-                  setDocumentOutcome({ action: "save", entry: saveOutput, result });
-                  if (result.state === "completed" && result.document) {
-                    persistDocument(result.document);
-                  }
-                })
-              }
-            >
-              Save scenario
-            </button>
-            <label>
-              Open entry
-              <input value={openEntry} onChange={(event) => setOpenEntry(event.target.value)} disabled={disabled} />
-            </label>
-            <button
-              type="button"
-              disabled={disabled || openEntry.trim() === ""}
-              onClick={() =>
-                void run("open", async () => {
-                  setDocumentOutcome(null);
-                  const result = await openScenario(workspace, openEntry);
-                  setDocumentOutcome({ action: "open", entry: openEntry, result });
-                  if (result.state === "completed" && result.document) {
-                    persistDocument(result.document);
-                  }
-                })
-              }
-            >
-              Open scenario
-            </button>
+            <fieldset className="scenario-task" disabled={disabled}>
+              <legend>Save</legend>
+              <label>
+                Scenario file
+                <input value={saveOutput} onChange={(event) => setSaveOutput(event.target.value)} />
+              </label>
+              <button
+                type="button"
+                disabled={saveOutput.trim() === ""}
+                onClick={() => void saveScenarioDefinition()}
+              >
+                Save scenario
+              </button>
+            </fieldset>
+            <fieldset className="scenario-task" disabled={disabled}>
+              <legend>Open</legend>
+              <label>
+                Scenario file
+                <input value={openEntry} onChange={(event) => setOpenEntry(event.target.value)} />
+              </label>
+              <button
+                type="button"
+                disabled={openEntry.trim() === ""}
+                onClick={() => (scenarioDirty ? setOpenGuard(true) : void openScenarioDefinition())}
+              >
+                Open scenario
+              </button>
+            </fieldset>
           </div>
+          {openGuard ? (
+            <div className="scenario-guard" role="alert">
+              <p>
+                The scenario definition has changes that are not saved to a file. Opening {openEntry} would replace
+                them. Save them to {saveOutput} first, discard them, or keep editing.
+              </p>
+              <div className="scenario-actions">
+                <button
+                  type="button"
+                  disabled={disabled || saveOutput.trim() === ""}
+                  onClick={() =>
+                    void (async () => {
+                      if (await saveScenarioDefinition()) {
+                        await openScenarioDefinition();
+                      } else {
+                        setOpenGuard(false);
+                      }
+                    })()
+                  }
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() =>
+                    void (async () => {
+                      if (await scenarioRetainer.dropCurrent()) {
+                        await openScenarioDefinition();
+                      } else {
+                        setOpenGuard(false);
+                      }
+                    })()
+                  }
+                >
+                  Discard
+                </button>
+                <button type="button" disabled={disabled} onClick={() => setOpenGuard(false)}>
+                  Keep editing
+                </button>
+              </div>
+            </div>
+          ) : null}
           <Report
             indicators={indicators}
             progress={running === "save" || running === "open" ? PROGRESS[running] : null}
@@ -397,6 +540,11 @@ export function ScenarioPanel({
 
       {tab === "preview" ? (
         <div className="scenario-section">
+          <h3>Preview</h3>
+          <p className="scenario-note">
+            Previews the scenario definition&apos;s designed transitions through the shared engine. These are the
+            outcomes its profile gives each step, not outcomes observed in production.
+          </p>
           <label>
             <input
               type="checkbox"
@@ -417,7 +565,7 @@ export function ScenarioPanel({
               void run("preview", async () => {
                 const result = await previewScenario({
                   workspace,
-                  document: documentText,
+                  document: scenarioText,
                   reveal_sensitive: reveal,
                 });
                 setPreview(result);
@@ -435,13 +583,13 @@ export function ScenarioPanel({
               <table>
                 <thead>
                   <tr>
-                    <th>#</th>
-                    <th>When</th>
+                    <th>Step</th>
+                    <th>Time</th>
                     <th>Event</th>
                     <th>Subject</th>
-                    <th>Expected</th>
-                    <th>From</th>
-                    <th>To</th>
+                    <th>Expected outcome</th>
+                    <th>Previous state</th>
+                    <th>Next state</th>
                     <th>Reason</th>
                   </tr>
                 </thead>
@@ -479,29 +627,52 @@ export function ScenarioPanel({
 
       {tab === "generate" ? (
         <div className="scenario-section">
+          <h3>Generate</h3>
           <p>
             Generation writes a new family with exact inputs and provenance, then a generated case
             that is never labelled as captured customer evidence. Continue by reference into the
             existing inspector or test authoring surface — expectations stay independently authored.
           </p>
           <label>
-            Generator plan document
+            Generator plan
             <textarea
-              value={documentText}
-              onChange={(event) => persistDocument(event.target.value)}
+              value={planText}
+              onChange={(event) => changePlan(event.target.value)}
               rows={12}
               disabled={disabled}
               spellCheck={false}
+              aria-describedby="scenario-plan-help"
             />
           </label>
+          <p className="scenario-note" id="scenario-plan-help">
+            A generator plan (<code>readmit-scenario-generator/v1</code>) is a different document from the scenario
+            definition, kept and read separately: nothing is converted from one into the other.
+          </p>
           <label>
-            Output directory
-            <input value={generateOutput} onChange={(event) => setGenerateOutput(event.target.value)} disabled={disabled} />
+            Output folder
+            <input
+              value={generateOutput}
+              onChange={(event) => setGenerateOutput(event.target.value)}
+              disabled={disabled}
+              aria-describedby="scenario-generate-output-help"
+            />
           </label>
+          <p className="scenario-note" id="scenario-generate-output-help">
+            A new folder of the workspace, never an existing one; it records the plan&apos;s exact inputs and
+            deterministic provenance beside the streams.
+          </p>
           <label>
-            Case name
-            <input value={caseName} onChange={(event) => setCaseName(event.target.value)} disabled={disabled} />
+            Case folder
+            <input
+              value={caseName}
+              onChange={(event) => setCaseName(event.target.value)}
+              disabled={disabled}
+              aria-describedby="scenario-case-help"
+            />
           </label>
+          <p className="scenario-note" id="scenario-case-help">
+            The new workspace folder the generated case is written to.
+          </p>
           <label>
             <input
               type="checkbox"
@@ -509,16 +680,16 @@ export function ScenarioPanel({
               onChange={(event) => setRegister(event.target.checked)}
               disabled={disabled}
             />
-            Register generated case in the project
+            Add generated case to project
           </label>
           <button
             type="button"
-            disabled={disabled}
+            disabled={disabled || planText.trim() === ""}
             onClick={() =>
               void run("generate", async () => {
                 const result = await generateScenario({
                   workspace,
-                  document: documentText,
+                  document: planText,
                   output_name: generateOutput,
                   case_name: caseName,
                   register_in_project: register,
@@ -528,7 +699,7 @@ export function ScenarioPanel({
               })
             }
           >
-            Generate artifact
+            Generate cases
           </button>
           {generateResult?.state === "completed" ? (
             <div>
@@ -558,6 +729,7 @@ export function ScenarioPanel({
 
       {tab === "library" ? (
         <div className="scenario-section">
+          <h3>Library</h3>
           <p>
             A library pins reusable generator plans; independent expectations stay a separate,
             separately authored document. Every library here is read as
@@ -565,7 +737,7 @@ export function ScenarioPanel({
           </p>
           <div className="scenario-actions">
             <label>
-              Library entry
+              Library file
               <input value={libraryEntry} onChange={(event) => setLibraryEntry(event.target.value)} disabled={disabled} />
             </label>
             <button
@@ -580,7 +752,7 @@ export function ScenarioPanel({
           <fieldset disabled={disabled}>
             <legend>Template</legend>
             <label>
-              Template id
+              Template ID
               <input value={templateId} onChange={(event) => setTemplateId(event.target.value)} />
             </label>
             <label>
@@ -597,22 +769,54 @@ export function ScenarioPanel({
                 ))}
               </select>
             </label>
+            <fieldset className="scenario-plan-mode">
+              <legend>Generator plan</legend>
+              <label className="scenario-choice">
+                <input type="radio" name="scenario-plan-mode" checked={planMode === "saved"} onChange={() => setPlanMode("saved")} />
+                Choose saved plan
+              </label>
+              <label className="scenario-choice">
+                <input type="radio" name="scenario-plan-mode" checked={planMode === "json"} onChange={() => setPlanMode("json")} />
+                Canonical JSON
+              </label>
+              {planMode === "saved" ? (
+                <label>
+                  Saved plan file
+                  <input value={planEntry} onChange={(event) => setPlanEntry(event.target.value)} />
+                </label>
+              ) : (
+                <label>
+                  Generator plan JSON
+                  <textarea
+                    value={planText}
+                    onChange={(event) => changePlan(event.target.value)}
+                    rows={10}
+                    spellCheck={false}
+                  />
+                </label>
+              )}
+              <p className="scenario-note">
+                {planMode === "saved"
+                  ? "A generator plan saved as a file of the workspace."
+                  : "The generator plan being edited under Generate, sent as its canonical JSON."}
+              </p>
+            </fieldset>
             <label>
-              Plan document or entry
-              <input value={planEntry} onChange={(event) => setPlanEntry(event.target.value)} />
+              Coverage tags
+              <input value={coverage} onChange={(event) => setCoverage(event.target.value)} aria-describedby="scenario-coverage-help" />
             </label>
-            <label>
-              Coverage tags, comma-separated
-              <input value={coverage} onChange={(event) => setCoverage(event.target.value)} />
-            </label>
+            <p className="scenario-note" id="scenario-coverage-help">
+              Separate tags with commas. Tags declare what a template is meant to cover; they are not measured
+              coverage.
+            </p>
             <p className="scenario-note">
               {openedLibrary !== null && openedLibrary === libraryEntry
-                ? `Saving adds this revision to ${libraryEntry}, the library opened above. Another revision is never overwritten.`
-                : `Saving creates ${libraryEntry || "the library entry"} as a new library; an existing entry is never replaced. Open a library first to add a revision to it.`}
+                ? `Adding this template version adds it to ${libraryEntry}, the library opened above. Another revision is never overwritten.`
+                : `Adding this template version creates ${libraryEntry || "the library file"} as a new library; an existing file is never replaced. Open a library first to add a revision to it.`}
             </p>
             <button
               type="button"
-              disabled={libraryEntry.trim() === ""}
+              disabled={libraryEntry.trim() === "" || libraryPlan.trim() === ""}
               onClick={() => {
                 const into = openedLibrary !== null && openedLibrary === libraryEntry ? libraryEntry : "";
                 library("library-save", "", () =>
@@ -623,26 +827,27 @@ export function ScenarioPanel({
                     template_id: templateId,
                     template_version: templateVer,
                     profile: templateProfile,
-                    plan: planEntry,
+                    plan: libraryPlan,
                     coverage,
                   }),
                 );
               }}
             >
-              Save library entry
+              Add template version
             </button>
           </fieldset>
 
           <fieldset disabled={disabled}>
             <legend>Compare two revisions</legend>
             <label>
-              From version
+              Earlier version
               <input value={compareFrom} onChange={(event) => setCompareFrom(event.target.value)} />
             </label>
             <label>
-              To version
+              Later version
               <input value={compareTo} onChange={(event) => setCompareTo(event.target.value)} />
             </label>
+            <p className="scenario-note">Both are versions of template {templateId}.</p>
             <button
               type="button"
               onClick={() =>
@@ -664,7 +869,7 @@ export function ScenarioPanel({
           <fieldset disabled={disabled}>
             <legend>Check expectations</legend>
             <label>
-              Expectations entry
+              Expectations file
               <input value={expectationsEntry} onChange={(event) => setExpectationsEntry(event.target.value)} />
             </label>
             <button
@@ -692,9 +897,12 @@ export function ScenarioPanel({
           <fieldset disabled={disabled}>
             <legend>Export</legend>
             <label>
-              Export as
-              <input value={exportName} onChange={(event) => setExportName(event.target.value)} />
+              Export file
+              <input value={exportName} onChange={(event) => setExportName(event.target.value)} aria-describedby="scenario-export-help" />
             </label>
+            <p className="scenario-note" id="scenario-export-help">
+              A new file of the workspace holding the library&apos;s exact bytes.
+            </p>
             <button
               type="button"
               disabled={exportName.trim() === ""}
@@ -709,13 +917,45 @@ export function ScenarioPanel({
           <fieldset disabled={disabled}>
             <legend>Import</legend>
             <label>
-              Library file to import (absolute path)
-              <input value={importPath} onChange={(event) => setImportPath(event.target.value)} />
+              Library file
+              <input value={importPath} readOnly placeholder="None chosen" aria-describedby="scenario-import-help" />
             </label>
+            <button
+              type="button"
+              onClick={() =>
+                void run("choose-import", async () => {
+                  const choice = await chooseScenarioLibraryImport();
+                  setImportChoice(choice);
+                  if (choice.state === "completed" && choice.path) {
+                    setImportPath(choice.path);
+                  }
+                })
+              }
+            >
+              Browse…
+            </button>
+            <Report
+              indicators={indicators}
+              progress={null}
+              result={importChoice && importChoice.state !== "completed" && importChoice.state !== "cancelled" ? importChoice : null}
+            />
+            <p className="scenario-note" id="scenario-import-help">
+              A library file from elsewhere on this computer, read by its full path.
+            </p>
+            <details>
+              <summary>Details</summary>
+              <label>
+                Full path
+                <input value={importPath} onChange={(event) => setImportPath(event.target.value)} />
+              </label>
+            </details>
             <label>
-              Import as
-              <input value={importName} onChange={(event) => setImportName(event.target.value)} />
+              Imported library file
+              <input value={importName} onChange={(event) => setImportName(event.target.value)} aria-describedby="scenario-imported-help" />
             </label>
+            <p className="scenario-note" id="scenario-imported-help">
+              A new file of the workspace; the library&apos;s bytes are copied exactly.
+            </p>
             <button
               type="button"
               disabled={importPath.trim() === "" || importName.trim() === ""}
@@ -764,6 +1004,7 @@ export function ScenarioPanel({
 
       {tab === "synth" ? (
         <div className="scenario-section">
+          <h3>SIU fixtures</h3>
           <p>
             Generate the reproducible SIU synthetic family, as <code>readmit synth</code> does, from a
             seed, base time, generator version and profile version you declare. Nothing is inferred
@@ -781,9 +1022,12 @@ export function ScenarioPanel({
               </p>
             ) : null}
             <label>
-              Base time (RFC 3339, whole seconds, with a zone)
-              <input value={synthBase} onChange={(event) => setSynthBase(event.target.value)} />
+              Base time
+              <input value={synthBase} onChange={(event) => setSynthBase(event.target.value)} aria-describedby="scenario-base-time-help" />
             </label>
+            <p className="scenario-note" id="scenario-base-time-help">
+              RFC 3339, whole seconds, with a zone, such as 2026-01-02T03:04:05Z.
+            </p>
             <label>
               Generator version
               <select value={synthGenerator} onChange={(event) => setSynthGenerator(event.target.value)}>
@@ -799,9 +1043,12 @@ export function ScenarioPanel({
               </select>
             </label>
             <label>
-              Output directory
-              <input value={synthOutput} onChange={(event) => setSynthOutput(event.target.value)} />
+              Output folder
+              <input value={synthOutput} onChange={(event) => setSynthOutput(event.target.value)} aria-describedby="scenario-synth-output-help" />
             </label>
+            <p className="scenario-note" id="scenario-synth-output-help">
+              A new folder of the workspace; the family records its declared inputs so it is reproduced exactly.
+            </p>
             <button
               type="button"
               disabled={!canSynth}
@@ -847,7 +1094,19 @@ export function ScenarioPanel({
 
       {tab === "raw" ? (
         <div className="scenario-section">
-          <textarea value={documentText} onChange={(event) => persistDocument(event.target.value)} rows={24} disabled={disabled} spellCheck={false} />
+          <h3>Raw</h3>
+          <p className="scenario-note">
+            The exact text of each document, as its reader receives it. The scenario definition and the generator
+            plan are separate documents with separate contracts.
+          </p>
+          <label>
+            Scenario JSON
+            <textarea value={scenarioText} onChange={(event) => changeScenario(event.target.value, true)} rows={24} disabled={disabled} spellCheck={false} />
+          </label>
+          <label>
+            Generator plan JSON
+            <textarea value={planText} onChange={(event) => changePlan(event.target.value)} rows={24} disabled={disabled} spellCheck={false} />
+          </label>
         </div>
       ) : null}
     </section>

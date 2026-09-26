@@ -267,7 +267,7 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
         <label htmlFor="license-contents">License file contents</label>
         <textarea id="license-contents" rows={6} spellCheck={false} value={pasted} disabled={busy} onChange={(event) => setPasted(event.target.value)} />
         <button type="button" disabled={busy || pasted.trim() === ""} onClick={() => startReview(pasted, false)}>Verify license</button>
-        <button type="button" disabled={busy} onClick={() => { setPasting(false); setPasted(""); }}>Cancel pasting</button>
+        <button type="button" disabled={busy} onClick={() => { setPasting(false); setPasted(""); }}>Cancel paste</button>
       </div>
     ) : null}
 
@@ -284,33 +284,38 @@ export function ComputerLicense({ portal, onChanged }: { portal: string | undefi
           }
         }}
       >
-        <h5 id="license-review-title">{review.renewal ? "Renewed license" : "License to activate"}</h5>
+        <h5 id="license-review-title">{review.renewal ? "Renewal review" : "Activation review"}</h5>
         {document ? <p>{describeReceived(document)}</p> : <>
           <p role="note">{review.reason}</p>
           <button type="button" disabled={busy} onClick={() => startReview(reviewed, true)}>Verify with keys…</button>
         </>}
         {document && review.renewal ? <p>Activating it replaces this computer's license in place, for the same person and computer.</p> : null}
         {document && !review.renewal && document.operation_capable ? <>
-          <label htmlFor="license-person">Who uses this computer</label>
+          <label htmlFor="license-person">Licensed person</label>
           <select id="license-person" value={author} disabled={busy} onChange={(event) => { setAuthor(event.target.value); setDevice(""); }}>
-            <option value="">Choose a person</option>
+            <option value="">Select a licensed person…</option>
             {assignments.map((entry) => <option key={entry.author} value={entry.author}>{entry.author}</option>)}
           </select>
-          <label htmlFor="license-computer">This computer</label>
+          <label htmlFor="license-computer">Licensed device</label>
           <select id="license-computer" value={device} disabled={busy || author === ""} onChange={(event) => setDevice(event.target.value)}>
-            <option value="">Choose a computer</option>
+            <option value="">Select a licensed device…</option>
             {devices.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
-          <label htmlFor="license-pool">Tests run from this computer count against</label>
-          <select id="license-pool" value={pool} disabled={busy} onChange={(event) => setPool(event.target.value)}>
+          <label htmlFor="license-pool">Runner pool</label>
+          <select id="license-pool" aria-describedby="license-pool-help" value={pool} disabled={busy} onChange={(event) => setPool(event.target.value)}>
             <option value="">No runner pool: this computer runs no tests</option>
             {pools.map((entry) => <option key={entry.id} value={entry.id}>{entry.id} ({count(entry.instances, "slot")})</option>)}
           </select>
+          <p className="hint" id="license-pool-help">
+            {pool
+              ? `Tests run from this computer count against the ${pool} runner pool's slots.`
+              : "No runner pool: this computer runs no tests, and uses no runner slot."}
+          </p>
         </> : null}
         {document && !review.renewal && !document.operation_capable ? <>
-          <label htmlFor="license-computer">This computer</label>
+          <label htmlFor="license-computer">Licensed device</label>
           <select id="license-computer" value={device} disabled={busy} onChange={(event) => setDevice(event.target.value)}>
-            <option value="">Choose a computer</option>
+            <option value="">Select a licensed device…</option>
             {devices.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
           <p role="note">This license is in an earlier format that lists licensed computers; activating it does not let this computer create or run new work.</p>

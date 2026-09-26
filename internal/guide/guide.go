@@ -149,13 +149,13 @@ func (p Progress) Complete() bool { return p.Next == "" }
 // path, in the order it is walked.
 func Steps() []Step {
 	return []Step{
-		{ID: StepSample, Title: "Create sample",
+		{ID: StepSample, Title: "Create sample workspace",
 			Detail: "Writes the frozen synthetic cases, an index of the one this path uses, and a practice endpoint beside them. The evidence is generated, never imported, and the folder is new."},
-		{ID: StepTest, Title: "Author a regression test over the sample case",
+		{ID: StepTest, Title: "Create sample test",
 			Detail: "Answers the authoring stages over the verified case and saves a readmit-test/v1 spec into the workspace. Expect one appointment on the ledger."},
-		{ID: StepBaseline, Title: "Run it against the fixture as it misbehaves",
+		{ID: StepBaseline, Title: "Run failing example",
 			Detail: "Sends the saved spec at a practice receiver in its defective mode. The test is meant to fail here: the reschedule leaves a second appointment behind."},
-		{ID: StepPostFix, Title: "Run the same spec against the corrected fixture",
+		{ID: StepPostFix, Title: "Run fixed example",
 			Detail: "Sends the same bytes at a practice receiver whose defect is corrected. The reschedule now updates the original appointment and the test passes."},
 	}
 }

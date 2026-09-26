@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>readmit preview</title>
+<title>Overview | readmit</title>
 <meta name="description" content="Local-first HL7 v2 incident reproduction and regression testing. An honest preview of what is implemented today.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 <header>
   <div class="brand">readmit <span>· unsigned development preview</span></div>
-  <nav aria-label="Site">
+  <nav aria-label="Main navigation">
     <ul>
       <li><a href="index.html" aria-current="page">Overview</a></li>
       <li><a href="download.html">Download</a></li>
@@ -21,7 +22,7 @@
     </ul>
   </nav>
 </header>
-<main>
+<main id="content" tabindex="-1">
   <h1>Reproduce an HL7 v2 incident locally, then prove the fix held.</h1>
   <p>readmit is a command-line tool, with a separate desktop shell, for healthcare integration engineers. It captures HL7 v2 evidence into verifiable case bundles, diagnoses a narrow scheduling profile, compares fields, replays selected messages to an explicitly approved test endpoint, evaluates declarative regression tests, and seals the evidence into a packet another person can verify offline. It runs on one machine, keeps evidence in plain directories, and opens no connection nobody configured.</p>
 
@@ -33,7 +34,7 @@
   <h2>Features</h2>
   <div class="grid">
     <div class="card">
-      <h3>Capture and verify evidence</h3>
+      <h3>Capture evidence</h3>
       <p>Import HL7 files, folders, ZIP archives and CSV, JSON, XML or text envelopes into a versioned case bundle with a SHA-256 identity. Modifying a byte fails verification; nothing is ever overwritten.</p>
     </div>
     <div class="card">
@@ -41,19 +42,19 @@
       <p>Evidence-bound findings for the <code>readmit-siu-v1</code> scheduling fixture profile, separated into observed facts, profile violations and hypotheses. Field-aware diffs between files, cases, runs and results.</p>
     </div>
     <div class="card">
-      <h3>Replay and test safely</h3>
+      <h3>Replay and test</h3>
       <p>Previews by default. A send needs an explicit test target, and any non-loopback destination needs a policy naming it. Regression specs are strict JSON with no hooks; results retain the evidence they were judged on.</p>
     </div>
     <div class="card">
-      <h3>Receive, observe, collect</h3>
+      <h3>Collectors and observations</h3>
       <p>A bounded generic MLLP collector with original and enhanced acknowledgement modes and mutual TLS; observation windows over file exports and approved HTTPS APIs; collection from a directory or the customer's own transfer program.</p>
     </div>
     <div class="card">
-      <h3>Package for another person</h3>
+      <h3>Export and protect</h3>
       <p>Policy-driven redaction with a fail-closed export review, encrypted transfer packages under a key readmit never holds, and a sealed synthetic engagement packet with rerun instructions.</p>
     </div>
     <div class="card">
-      <h3>Keep credentials out of it</h3>
+      <h3>Credential references</h3>
       <p>readmit registers references to credentials and keys held in an operating-system or customer-managed store. No command accepts a secret value, and a resolved value cannot be printed or serialized.</p>
     </div>
   </div>

@@ -47,6 +47,7 @@ export function RunPanel({
   onRefresh,
   onOpenCase,
   initialSpec,
+  initialEnvironment,
   onConfigureEnvironment,
   onOpenLicense,
 }: {
@@ -56,6 +57,9 @@ export function RunPanel({
   onRefresh: () => void;
   onOpenCase: (name: string) => void;
   initialSpec?: string;
+  /** The environment a prepared suite was handed over with; the run view
+   * still preflights it and asks its own send decision. */
+  initialEnvironment?: string;
   /** Where the repair actions lead: a preflight refusal is about the
    * environment's targets or the operation admission, so its next action
    * opens the real configuration screen instead of restating the reason. */
@@ -93,6 +97,12 @@ export function RunPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSpec]);
+
+  useEffect(() => {
+    if (initialEnvironment) {
+      setEnvironment(initialEnvironment);
+    }
+  }, [initialEnvironment]);
 
   useEffect(() => () => { if (poll.current !== null) window.clearInterval(poll.current); }, []);
 
@@ -254,7 +264,9 @@ export function RunPanel({
         <select id="run-environment" value={environment} disabled={busy}
           onChange={(e) => { setEnvironment(e.target.value); invalidate(); }}>
           <option value="">Select an environment…</option>
-          {(plan?.suite?.environments ?? []).map((id) => <option key={id} value={id}>{id}</option>)}
+          {/* Before a preflight lists the suite's environments, the one a
+            * prepared suite was handed over with is offered as chosen. */}
+          {(plan?.suite?.environments ?? (environment ? [environment] : [])).map((id) => <option key={id} value={id}>{id}</option>)}
         </select>
       </> : null}
     </div>

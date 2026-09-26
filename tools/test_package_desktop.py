@@ -323,6 +323,45 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(packaging.numeric_version("0.1.0-alpha.2"), "0.1.0")
         self.assertEqual(packaging.numeric_version("0.0.0+dev.abc1234"), "0.0.0")
 
+    def test_product_identity_and_installer_labels_are_compatibility_keeps(self):
+        # #525 IP01-IP07: the display name and summary feed identifiers, the
+        # installation folder and the product's visible name on every platform,
+        # so a label cleanup keeps them and their single source exactly.
+        declaration = self.declaration
+        self.assertEqual(declaration["display_name"], "readmit")
+        self.assertEqual(declaration["summary"], "Local HL7 v2 inspection and case evidence")
+        self.assertEqual(declaration["product"], "readmit-desktop")
+        self.assertEqual(declaration["bundle_identifier"], "com.readmit.desktop")
+        self.assertEqual(declaration["upgrade_code"], "1B6F9D3E-4C5A-4F2B-9E7D-3A8C10D45E62")
+        self.assertEqual(declaration["manufacturer"], "readmit")
+        self.assertEqual(declaration["maintainer"], "readmit maintainers <maintainers@readmit.invalid>")
+        self.assertEqual(declaration["webview2"]["message"],
+                         "readmit needs the Microsoft Edge WebView2 Runtime. Install the Evergreen Standalone "
+                         "Installer on this machine first; readmit downloads nothing itself.")
+        self.assertEqual(packaging.package_name(declaration, "1.2.3", self.target(LINUX), "deb"),
+                         "readmit-desktop_1.2.3_amd64.deb")
+        entry = packaging.desktop_entry(declaration)
+        self.assertIn("Name=readmit\n", entry)
+        self.assertIn("Comment=Local HL7 v2 inspection and case evidence\n", entry)
+        self.assertIn("Exec=/usr/bin/readmit-desktop\n", entry)
+        self.assertIn("THIRD_PARTY_NOTICES.md", packaging.desktop_legal())
+        # The Windows template takes every linked value from the declaration.
+        wix = packaging.WIX_SOURCE.read_text(encoding="utf-8")
+        for linked in ('<Package Name="$(var.DisplayName)" Manufacturer="$(var.Manufacturer)"',
+                       '<SummaryInformation Description="$(var.Summary)" />',
+                       'DowngradeErrorMessage="A newer version of $(var.DisplayName) is already installed."',
+                       '<Launch Condition="Installed OR READMITWEBVIEW2" Message="$(var.WebView2Message)" />',
+                       '<Directory Id="INSTALLFOLDER" Name="$(var.DisplayName)" />',
+                       '<Feature Id="Main" Title="$(var.DisplayName)" Level="1">',
+                       '<Shortcut Id="ReadmitStartMenu" Name="$(var.DisplayName)"',
+                       'Source="$(var.BuildDir)\\readmit-desktop.exe"'):
+            self.assertIn(linked, wix)
+        # The native window keeps the product name, and the installed build
+        # answers with the identity the packaging checks read.
+        shell = (packaging.ROOT / "desktop" / "main.go").read_text(encoding="utf-8")
+        self.assertRegex(shell, r'\n\t\tTitle:\s+"readmit",\n')
+        self.assertIn('fmt.Printf("readmit-desktop version %s\\n", engine.Version())', shell)
+
     def test_the_macos_bundle_carries_the_full_release_identity(self):
         output = self.work / "bundle"
         output.mkdir()

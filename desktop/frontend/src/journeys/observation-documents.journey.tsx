@@ -53,6 +53,17 @@ function identityOf(file: string): string {
   return journey.digest(canonical);
 }
 
+/** Names a document in its file field and opens it. */
+async function openDocument(user: UserEvent, panel: ReturnType<typeof within>, kind: "Source" | "Window", name: string) {
+  await enter(user, panel.getByLabelText(`${kind} file`), name);
+  await press(user, panel.getByRole("button", { name: `Open ${kind.toLowerCase()}` }));
+}
+
+/** The saved-configuration summary's two lines. */
+function savedIDs(panel: ReturnType<typeof within>): string[] {
+  return [panel.getByText(byContent(/^Saved source ID/)).textContent ?? "", panel.getByText(byContent(/^Saved window ID/)).textContent ?? ""];
+}
+
 async function openObservation(user: UserEvent) {
   await press(user, within(region("Evidence")).getByRole("button", { name: "Observations" }));
   return within(await screen.findByRole("region", { name: "Observation setup" }));
@@ -72,6 +83,17 @@ async function pressSave(user: UserEvent, panel: ReturnType<typeof within>): Pro
 async function save(user: UserEvent, panel: ReturnType<typeof within>) {
   const windows = await pressSave(user, panel);
   await waitFor(() => expect(journey.callsTo("SaveObservationWindow")[windows]?.settled).toBe(true));
+}
+
+/** Declares that nothing was in scope before collection, for a new window
+ * whose pre-existing state the panel leaves for the person to choose, and
+ * returns to the source view. */
+async function declareEmpty(user: UserEvent, panel: ReturnType<typeof within>) {
+  await press(user, panel.getByRole("tab", { name: "Completion rules" }));
+  const state = panel.getByLabelText("Pre-existing state") as HTMLSelectElement;
+  await waitFor(() => expect(state.disabled).toBe(false));
+  await user.selectOptions(state, "Declared empty");
+  await press(user, panel.getByRole("tab", { name: "Source" }));
 }
 
 /** Saves a source the writer refuses: the window is then not saved at all. */
@@ -97,27 +119,35 @@ test("a source and a window saved in observation setup show the identities each 
 
   // The export is named relative to the folder the source is saved in, and
   // the window settles on two samples ten milliseconds apart.
-  await enter(user, panel.getByLabelText("Export path"), "exports/appointments.csv");
+  await enter(user, panel.getByLabelText("Export file"), "exports/appointments.csv");
+  await press(user, panel.getByRole("tab", { name: "Completion rules" }));
   await enter(user, panel.getByLabelText("Quiet period"), "10ms");
   await enter(user, panel.getByLabelText("Stable samples"), "2");
+  // A new window's pre-existing state is never chosen for the person: Save
+  // waits, saying why, until they choose one.
+  expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).value).toBe("");
+  expect(panel.getByRole("button", { name: "Save observation" }).matches(":disabled")).toBe(true);
+  expect(panel.getByText("Choose the pre-existing state under Completion rules before saving: readmit does not choose it for you.")).toBeTruthy();
+  await declareEmpty(user, panel);
   await save(user, panel);
   expect(await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.")).toBeTruthy();
   const source = identityOf(SOURCE);
   const window = identityOf(WINDOW);
-  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(`Pinned identities — source: ${source}; window: ${window}`);
+  expect(savedIDs(panel)).toEqual([`Saved source ID: ${source} (observation-source.json)`, `Saved window ID: ${window} (observation-window.json)`]);
   expect(panel.getByText(`Source document observation-source.json: saved readmit-observation-source/v1, identity ${source}.`)).toBeTruthy();
   expect(panel.getByText(`Window document observation-window.json: saved readmit-observation-window/v1, identity ${window}.`)).toBeTruthy();
   // The source keeps the path as it was typed, in the editor and on disk.
   expect((JSON.parse(journey.readFile(SOURCE)) as { file: { path: string } }).file.path).toBe("exports/appointments.csv");
-  expect((panel.getByLabelText("Export path") as HTMLInputElement).value).toBe("exports/appointments.csv");
+  await press(user, panel.getByRole("tab", { name: "Source" }));
+  expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("exports/appointments.csv");
 
   // Each saved document, validated on its own — the window's from the
   // keyboard — reports the identity it was saved with and collects nothing.
-  await press(user, panel.getByRole("button", { name: "Validate source" }));
+  await press(user, panel.getByRole("button", { name: "Validate saved source" }));
   expect(
     await panel.findByText(`Source document observation-source.json: valid readmit-observation-source/v1, identity ${source}. Nothing was collected.`),
   ).toBeTruthy();
-  await tabTo(user, panel.getByRole("button", { name: "Validate window" }));
+  await tabTo(user, panel.getByRole("button", { name: "Validate saved window" }));
   await user.keyboard("{Enter}");
   expect(
     await panel.findByText(`Window document observation-window.json: valid readmit-observation-window/v1, identity ${window}. Nothing was observed.`),
@@ -137,7 +167,7 @@ test("a source and a window saved in observation setup show the identities each 
   const before = [journey.readFile(SOURCE), journey.readFile(WINDOW)];
   await save(user, panel);
   expect([journey.readFile(SOURCE), journey.readFile(WINDOW)]).toEqual(before);
-  expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toBe(`Pinned identities — source: ${source}; window: ${window}`);
+  expect(savedIDs(panel)).toEqual([`Saved source ID: ${source} (observation-source.json)`, `Saved window ID: ${window} (observation-window.json)`]);
 
   // The command line collects the export the saved source names beside it,
   // for the window the saved window declares.
@@ -148,6 +178,19 @@ test("a source and a window saved in observation setup show the identities each 
   expect(collected.stderr).toBe("");
   expect(collected.code).toBe(0);
   expect(JSON.parse(collected.stdout)).toMatchObject({ status: "complete", records_observed: 2, window_identity: window });
+
+  // The window collects only the saved pair the person reviewed: a source
+  // changed on disk after they authorized is refused before anything is
+  // collected, and nothing is written.
+  await press(user, panel.getByRole("tab", { name: "Collect and results" }));
+  await user.click(panel.getByLabelText(/I authorize a read-only collection/));
+  journey.changeFile(SOURCE, journey.readFile(SOURCE).replace('"max_age":"1h"', '"max_age":"2h"'));
+  await press(user, panel.getByRole("button", { name: "Collect once" }));
+  await waitFor(() => expect(journey.callsTo("CollectObservation")[0]?.settled).toBe(true));
+  expect(
+    await panel.findByText("the saved observation source changed since it was reviewed; open it again before collecting", { selector: "p" }),
+  ).toBeTruthy();
+  expect(exists(journey.path(PROJECT, "observation-completion.json")) || exists(journey.path(PROJECT, "observation-snapshot"))).toBe(false);
 });
 
 test("an invalid document, an unsupported version, a refused write and an abandoned edit leave the saved documents as they were, refused in the command line's words", async () => {
@@ -157,6 +200,7 @@ test("an invalid document, an unsupported version, a refused write and an abando
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
   const caseEntries = namesIn(journey.path(PROJECT, "reschedule-feed"));
   const panel = await openObservation(user);
+  await declareEmpty(user, panel);
   await save(user, panel);
   expect(await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.")).toBeTruthy();
   const saved = [journey.readFile(SOURCE), journey.readFile(WINDOW)];
@@ -168,17 +212,17 @@ test("an invalid document, an unsupported version, a refused write and an abando
   journey.writeFile(`${PROJECT}/hand-window.json`, WINDOW_THAT_CANNOT_COMPLETE);
   const cannotComplete = await journey.commandLine(["observe", "validate", `${PROJECT}/hand-window.json`]);
   expect(cannotComplete.code).toBe(1);
-  await enter(user, panel.getByLabelText("Window document"), "hand-window.json");
+  await openDocument(user, panel, "Window", "hand-window.json");
   expect(await panel.findByText(`Window document hand-window.json not opened: ${refusal(cannotComplete.stderr)}`)).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Validate window" }));
+  await press(user, panel.getByRole("button", { name: "Validate saved window" }));
   expect(await panel.findByText(`Window document hand-window.json refused: ${refusal(cannotComplete.stderr)}`)).toBeTruthy();
 
   // Documents written under versions this release does not read.
   journey.writeFile(`${PROJECT}/later-window.json`, WINDOW_THAT_CANNOT_COMPLETE.replace('"quiet_period": "30s"', '"quiet_period": "1s"').replace("window/v1", "window/v2"));
   const laterWindow = await journey.commandLine(["observe", "validate", `${PROJECT}/later-window.json`]);
   expect(laterWindow.code).toBe(1);
-  await enter(user, panel.getByLabelText("Window document"), "later-window.json");
-  await press(user, panel.getByRole("button", { name: "Validate window" }));
+  await openDocument(user, panel, "Window", "later-window.json");
+  await press(user, panel.getByRole("button", { name: "Validate saved window" }));
   expect(await panel.findByText(`Window document later-window.json refused: ${refusal(laterWindow.stderr)}`)).toBeTruthy();
   journey.writeFile(`${PROJECT}/later-source.json`, saved[0]!.replace("readmit-observation-source/v1", "readmit-observation-source/v4"));
   const laterSource = await licensed([
@@ -186,9 +230,9 @@ test("an invalid document, an unsupported version, a refused write and an abando
     "--out", `${PROJECT}/never.json`, "--snapshot", `${PROJECT}/never`,
   ]);
   expect(laterSource.code).toBe(1);
-  await enter(user, panel.getByLabelText("Source document"), "later-source.json");
+  await openDocument(user, panel, "Source", "later-source.json");
   expect(await panel.findByText(`Source document later-source.json not opened: ${refusal(laterSource.stderr)}`)).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Validate source" }));
+  await press(user, panel.getByRole("button", { name: "Validate saved source" }));
   expect(await panel.findByText(`Source document later-source.json refused: ${refusal(laterSource.stderr)}`)).toBeTruthy();
   expect(exists(journey.path(PROJECT, "never.json")) || exists(journey.path(PROJECT, "never"))).toBe(false);
   // A document the window could not read is never replaced by what the
@@ -200,16 +244,16 @@ test("an invalid document, an unsupported version, a refused write and an abando
 
   // A declaration the writer refuses is not written: the saved source keeps
   // its bytes, and the command line refuses the same bound in the same words.
-  await enter(user, panel.getByLabelText("Source document"), "observation-source.json");
-  await enter(user, panel.getByLabelText("Window document"), "observation-window.json");
-  await waitFor(() => expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toMatch(new RegExp(`^Pinned identities — source: ${source};`)));
+  await openDocument(user, panel, "Source", "observation-source.json");
+  await openDocument(user, panel, "Window", "observation-window.json");
+  await waitFor(() => expect(savedIDs(panel)[0]).toBe(`Saved source ID: ${source} (observation-source.json)`));
   journey.writeFile(`${PROJECT}/unbounded-source.json`, saved[0]!.replace('"max_age":"1h"', '"max_age":"forever"'));
   const unbounded = await licensed([
     "observe", "collect", `${PROJECT}/unbounded-source.json`, "--window", WINDOW,
     "--out", `${PROJECT}/never.json`, "--snapshot", `${PROJECT}/never`,
   ]);
   expect(unbounded.code).toBe(1);
-  await enter(user, panel.getByLabelText("Freshness max age"), "forever");
+  await enter(user, panel.getByLabelText("Maximum data age"), "forever");
   await saveRefused(user, panel);
   expect(
     await panel.findByText(`Not saved: ${refusal(unbounded.stderr)}. A collection reads the documents saved before.`),
@@ -219,9 +263,9 @@ test("an invalid document, an unsupported version, a refused write and an abando
   // A save into the retained case is refused by the shared output
   // reservation, creates nothing inside the case, and the case still
   // verifies as the command line reads it.
-  await enter(user, panel.getByLabelText("Source document"), "reschedule-feed/observations/observation-source.json");
-  expect(panel.getByRole("group", { name: "Replace source document?" })).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Replace source document" }));
+  await openDocument(user, panel, "Source", "reschedule-feed/observations/observation-source.json");
+  expect(panel.getByRole("group", { name: "Replace unsaved source edits?" })).toBeTruthy();
+  await press(user, panel.getByRole("button", { name: "Open selected source" }));
   await saveRefused(user, panel);
   expect(
     await panel.findByText("Not saved: cannot write an observation source here. A collection reads the documents saved before."),
@@ -235,18 +279,20 @@ test("an invalid document, an unsupported version, a refused write and an abando
   // An edit the person abandons — the panel closed from the keyboard without
   // saving — writes nothing, and the panel opened again shows the saved
   // documents with the identity they were saved with.
-  await enter(user, panel.getByLabelText("Source document"), "observation-source.json");
-  await waitFor(() => expect(panel.getByText(byContent(/^Pinned identities/)).textContent).toMatch(new RegExp(`^Pinned identities — source: ${source};`)));
-  await enter(user, panel.getByLabelText("Export path"), "exports/elsewhere.csv");
-  await enter(user, panel.getByLabelText("Deadline"), "4m");
+  await openDocument(user, panel, "Source", "observation-source.json");
+  await waitFor(() => expect(savedIDs(panel)[0]).toBe(`Saved source ID: ${source} (observation-source.json)`));
+  await enter(user, panel.getByLabelText("Export file"), "exports/elsewhere.csv");
+  await press(user, panel.getByRole("tab", { name: "Completion rules" }));
+  await enter(user, panel.getByLabelText("Collection deadline"), "4m");
   await tabTo(user, panel.getByRole("button", { name: "Close" }));
   await user.keyboard("{Enter}");
   await waitFor(() => expect(screen.queryByRole("region", { name: "Observation setup" })).toBeNull());
   expect([journey.readFile(SOURCE), journey.readFile(WINDOW)]).toEqual(saved);
   const reopened = await openObservation(user);
-  await waitFor(() => expect((reopened.getByLabelText("Export path") as HTMLInputElement).value).toBe("export.csv"));
-  expect((reopened.getByLabelText("Deadline") as HTMLInputElement).value).toBe("30s");
-  await press(user, reopened.getByRole("button", { name: "Validate source" }));
+  await waitFor(() => expect((reopened.getByLabelText("Export file") as HTMLInputElement).value).toBe("export.csv"));
+  await press(user, reopened.getByRole("tab", { name: "Completion rules" }));
+  expect((reopened.getByLabelText("Collection deadline") as HTMLInputElement).value).toBe("30s");
+  await press(user, reopened.getByRole("button", { name: "Validate saved source" }));
   expect(
     await reopened.findByText(`Source document observation-source.json: valid readmit-observation-source/v1, identity ${source}. Nothing was collected.`),
   ).toBeTruthy();

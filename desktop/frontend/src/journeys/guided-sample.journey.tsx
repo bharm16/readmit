@@ -36,7 +36,7 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
 
   // Start from the first-run choice, picking the new sample's folder in the
   // host's own dialog.
-  await journey.chooseFolder(journey.path("work"), "Choose a folder for the readmit sample workspace");
+  await journey.chooseFolder(journey.path("work"), "Choose sample location");
   await press(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
   await press(user, await guided.findByRole("button", { name: "Open case" }));
@@ -113,8 +113,8 @@ test("the guided sample is authored, fails on the defect, passes once it is corr
     if (!step) throw new Error(`no guided step titled ${title}`);
     return step.textContent ?? "";
   };
-  expect(runStep("Run it against the fixture as it misbehaves")).toContain("baseline-runassertion_failure");
-  expect(runStep("Run the same spec against the corrected fixture")).toContain("post-fix-runpass");
+  expect(runStep("Run failing example")).toContain("baseline-runassertion_failure");
+  expect(runStep("Run fixed example")).toContain("post-fix-runpass");
   // Reopening read; it sent nothing again.
   expect(journey.callsTo("RunPractice")).toHaveLength(2);
 

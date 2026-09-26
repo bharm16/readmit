@@ -16,7 +16,7 @@
 // and reviewed and approved for promotion without the terminal, as the
 // command line reviews and approves it.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region, whenEnabled } from "../testkit/journey";
@@ -56,34 +56,34 @@ async function suiteView(user: UserEvent, name: string) {
 async function authorSuite(user: UserEvent): Promise<string> {
   const panel = await suiteView(user, "Configuration");
   await press(user, panel.getByRole("button", { name: "New suite" }));
-  await enter(user, panel.getByLabelText("Suite id"), "reschedule-regression");
+  await enter(user, panel.getByLabelText("Suite ID"), "reschedule-regression");
   const [suiteOwner] = panel.getAllByLabelText("Owner");
   await enter(user, suiteOwner!, "interface-team");
   const [suiteTags] = panel.getAllByLabelText("Tags");
   await enter(user, suiteTags!, "regression");
 
   // One environment binds the suite's one parameter to the downstream target.
-  await enter(user, panel.getByLabelText("Environment id"), "downstream");
+  await enter(user, panel.getByLabelText("Environment ID"), "downstream");
   await enter(user, panel.getByLabelText("Site"), "scheduling-lab");
-  const [bindingParameter] = panel.getAllByLabelText("Parameter");
+  const [bindingParameter] = panel.getAllByLabelText("Parameter ID");
   await enter(user, bindingParameter!, "scheduling");
   await user.selectOptions(panel.getByLabelText("Target"), "downstream-target.json");
 
   // One data table names the imported case.
-  await enter(user, panel.getByLabelText("Table id"), "feeds");
-  await enter(user, panel.getByLabelText("Row id"), "reschedule");
+  await enter(user, panel.getByLabelText("Table ID"), "feeds");
+  await enter(user, panel.getByLabelText("Row ID"), "reschedule");
   await user.selectOptions(panel.getByLabelText("Case"), "reschedule-feed");
 
   // One test over the saved template, in the case's exact send order. The
   // order field splits what it holds as it changes, so the list goes in at
   // once, the way a person pastes it.
-  await enter(user, panel.getByLabelText("Test id"), "reschedule-accepted");
-  await user.selectOptions(panel.getByLabelText("Template"), "reschedule-ack-test.json");
+  await enter(user, panel.getByLabelText("Test ID"), "reschedule-accepted");
+  await user.selectOptions(panel.getByLabelText("Test template"), "reschedule-ack-test.json");
   await enter(user, panel.getAllByLabelText("Owner").at(-1)!, "interface-team");
-  await enter(user, panel.getAllByLabelText("Parameter").at(-1)!, "scheduling");
-  await user.selectOptions(panel.getByLabelText("Table"), "feeds");
-  await user.selectOptions(panel.getByLabelText("Isolation"), "shared");
-  await user.click(panel.getByLabelText("Send order (exact)"));
+  await enter(user, panel.getAllByLabelText("Parameter ID").at(-1)!, "scheduling");
+  await user.selectOptions(panel.getByLabelText("Data table"), "feeds");
+  await user.selectOptions(panel.getByLabelText("State isolation"), "shared");
+  await user.click(panel.getByLabelText("Message send order"));
   await user.paste("s0001-e000001, s0002-e000001");
 
   // The expansion is previewed exactly, and nothing is sent to preview it.
@@ -110,7 +110,7 @@ async function prepareSuite(user: UserEvent, output: string) {
   await enter(user, panel.getByLabelText("Environment"), "downstream");
   await enter(user, panel.getByLabelText("Output folder"), output);
   await press(user, panel.getByRole("button", { name: "Prepare suite" }));
-  expect(await panel.findByText(`Prepared ${output}; 1 jobs. Nothing was sent.`)).toBeTruthy();
+  expect(await panel.findByText(`Prepared ${output} from ${SUITE} against environment downstream; 1 jobs. Nothing was sent.`)).toBeTruthy();
   return panel;
 }
 
@@ -192,6 +192,15 @@ test("a suite over the saved test fails on the downstream's defect and passes on
   const prepared = await prepareSuite(user, "prepared-downstream");
   await press(user, prepared.getByRole("button", { name: "Go to runs" }));
   expect((runs().getByLabelText("Saved test or suite") as HTMLSelectElement).value).toBe(SUITE);
+  // The handoff carries the environment the suite was prepared against, and
+  // the run view names the prepared folder it came from while saying it does
+  // not read it: its own preflight decides what runs.
+  expect((runs().getByLabelText("Suite environment") as HTMLSelectElement).value).toBe("downstream");
+  expect(screen.getByRole("note", { name: "Suite handoff" }).textContent).toBe(
+    `Handed over from Suites: ${SUITE} prepared against environment downstream into prepared folder prepared-downstream ` +
+      `with no release pins. The run view selected ${SUITE} and environment downstream and preflights them again. ` +
+      "It does not read the prepared folder.",
+  );
   expect(downstream.received()).toHaveLength(0);
 
   // The defect: the suite's one job sends both messages, the reschedule is
@@ -240,18 +249,22 @@ async function declareCoverage(user: UserEvent) {
   await coverage.findAllByRole("option", { name: "prepared-downstream" });
   const [authoredFrom] = coverage.getAllByLabelText("Prepared suite");
   await user.selectOptions(authoredFrom!, "prepared-downstream");
-  await enter(user, coverage.getByLabelText("Requirement 1"), "reschedule-accepted");
-  await enter(user, coverage.getByLabelText("Requirement jobs 1"), JOB);
-  await enter(user, coverage.getByLabelText("Coverage file"), "coverage.json");
+  await enter(user, coverage.getByLabelText("Requirement ID 1"), "reschedule-accepted");
+  await enter(user, coverage.getByLabelText("Job IDs 1"), JOB);
+  await enter(user, coverage.getAllByLabelText("Coverage file")[0]!, "coverage.json");
   await press(user, coverage.getByRole("button", { name: "Save coverage" }));
   expect(await coverage.findByText("Saved coverage.json.")).toBeTruthy();
 }
 
-/** The runner, schedules and CI panel's CI handoff view. */
-async function ciHandoffs(user: UserEvent) {
-  const panel = within(region("Privacy")).getByRole("region", { name: "Runners, schedules and CI" });
-  await press(user, within(panel).getByRole("tab", { name: "CI handoff" }));
-  return within(within(panel).getByRole("region", { name: "CI handoffs" }));
+/** One task of the runner, schedules and CI panel's CI handoff view:
+ * generating the workflow, inspecting results or verifying a gate. */
+async function ciHandoffs(user: UserEvent, task: "Generate workflow" | "Inspect results" | "Verify gate") {
+  const panel = within(within(region("Privacy")).getByRole("region", { name: "Runners, schedules and CI" }));
+  await press(user, panel.getByRole("tab", { name: "CI handoff" }));
+  const handoffs = within(panel.getByRole("region", { name: "CI handoffs" }));
+  await press(user, handoffs.getByRole("tab", { name: task }));
+  const heading = { "Generate workflow": "CI setup", "Inspect results": "CI results", "Verify gate": "Verify gate" }[task];
+  return within(handoffs.getByRole("group", { name: heading }));
 }
 
 /** The six variables the handoff's checklist tells the customer to
@@ -269,8 +282,8 @@ function provisioned(handoff: string, runDirectory: string): Record<string, stri
 /** What the application reads back from one CI run directory, once this
  * inspection's own answer is drawn: the suite gate, or the refusal. */
 async function inspectCI(user: UserEvent, runDirectory: string): Promise<string> {
-  const panel = await ciHandoffs(user);
-  await enter(user, panel.getByLabelText("CI output directory"), journey.path(runDirectory));
+  const panel = await ciHandoffs(user, "Inspect results");
+  await enter(user, panel.getByLabelText("CI results folder"), journey.path(runDirectory));
   const asked = journey.callsTo("InspectCIResults").length;
   await press(user, panel.getByRole("button", { name: "Open CI results" }));
   await waitFor(() => expect(journey.callsTo("InspectCIResults")[asked]?.settled).toBe(true));
@@ -291,15 +304,15 @@ test("a suite handed to CI runs as the workflow the application wrote, and its g
 
   // The handoff: the documented POSIX workflow for this suite, written once
   // to a new file for the customer administrator to install.
-  const ci = await ciHandoffs(user);
+  const ci = await ciHandoffs(user, "Generate workflow");
   await user.selectOptions(ci.getByLabelText("Integration"), "posix");
-  await enter(user, ci.getByLabelText("Installed executable"), journey.commandLineExecutable);
-  await enter(user, ci.getByLabelText("Activated operation policy"), journey.path("vendor-delivered-license", "operation-policy.json"));
-  await enter(user, ci.getByLabelText("Saved suite"), journey.path(PROJECT, SUITE));
-  await enter(user, ci.getByLabelText("Environment"), "downstream");
-  await enter(user, ci.getByLabelText("Run directory (fresh per invocation)"), journey.path("ci-runs", "first"));
-  await enter(user, ci.getByLabelText("Coverage declaration"), journey.path(PROJECT, "coverage.json"));
-  await enter(user, ci.getByLabelText("Handoff destination"), journey.path("readmit-suite-ci.sh"));
+  await enter(user, ci.getByLabelText("Executable path on CI agent"), journey.commandLineExecutable);
+  await enter(user, ci.getByLabelText("Operation policy on CI agent"), journey.path("vendor-delivered-license", "operation-policy.json"));
+  await enter(user, ci.getByLabelText("Suite file on CI agent"), journey.path(PROJECT, SUITE));
+  await enter(user, ci.getByLabelText("Environment ID"), "downstream");
+  await enter(user, ci.getByLabelText("Run folder on CI agent"), journey.path("ci-runs", "first"));
+  await enter(user, ci.getByLabelText("Coverage file on CI agent"), journey.path(PROJECT, "coverage.json"));
+  await enter(user, ci.getByLabelText("Workflow output file"), journey.path("readmit-suite-ci.sh"));
   await press(user, ci.getByRole("button", { name: "Generate configuration" }));
   expect(await ci.findByText(`Saved to ${journey.path("readmit-suite-ci.sh")}. Install it as the customer administrator.`)).toBeTruthy();
   expect(downstream.received()).toHaveLength(0);
@@ -561,24 +574,27 @@ test("a suite pinned to the release identity the window reads is reviewed and ap
     "invalid suite declarations or references",
   );
   expect((await editor.findByRole("alert")).textContent).toBe(refusal);
-  expect((editor.getByLabelText("Suite id") as HTMLInputElement).value).toBe("reschedule-regression");
+  expect((editor.getByLabelText("Suite ID") as HTMLInputElement).value).toBe("reschedule-regression");
   await user.clear(pasted);
   await user.click(pasted);
   await user.paste(saved);
   await press(user, editor.getByRole("button", { name: "Import JSON" }));
   expect(await editor.findByText("Validated and loaded into the editor; nothing was saved.")).toBeTruthy();
-  expect((editor.getByLabelText("Suite id") as HTMLInputElement).value).toBe("reschedule-regression");
+  expect((editor.getByLabelText("Suite ID") as HTMLInputElement).value).toBe("reschedule-regression");
 
   // The suite's one test is pinned to the release: the window reads the
   // full release identity from the retained release — the identity
   // `readmit expectation show` prints — and saves the references.
   const releases = await suiteView(user, "Releases");
   await enter(user, releases.getByLabelText("Test 1"), "reschedule-accepted");
-  await enter(user, releases.getByLabelText("Release entry 1"), "reschedule-release-1.json");
-  await press(user, releases.getByRole("button", { name: "Read identity of release entry 1" }));
+  // The release file is chosen from the workspace's test releases, once the
+  // folder has been read again after the release was written.
+  await releases.findAllByRole("option", { name: "reschedule-release-1.json" });
+  await user.selectOptions(releases.getByLabelText("Release file 1"), "reschedule-release-1.json");
+  await press(user, releases.getByRole("button", { name: "Read release ID of release file 1" }));
   expect(await releases.findByText(`Test reschedule, revision 1, local approver ${APPROVER}.`)).toBeTruthy();
   const release = JSON.parse((await printed("expectation", "reschedule-release-1.json")).stdout) as Printed;
-  expect((releases.getByLabelText("Release identity 1") as HTMLInputElement).value).toBe(release.identity);
+  expect((releases.getByLabelText("Release ID 1") as HTMLInputElement).value).toBe(release.identity);
   await enter(user, releases.getByLabelText("Release pins file"), "releases.json");
   await press(user, releases.getByRole("button", { name: "Save release pins" }));
   expect(await releases.findByText("Saved releases.json.")).toBeTruthy();
@@ -615,8 +631,8 @@ test("a suite pinned to the release identity the window reads is reviewed and ap
   // the command line approving the same review with the same label and
   // rationale writes the same approval under the same identity.
   await enter(user, promotion.getByLabelText("Local approver"), APPROVER);
-  await enter(user, promotion.getByLabelText("Approval rationale"), "Reviewed the downstream mapping and isolation");
-  await enter(user, promotion.getByLabelText("New approval entry"), "downstream-promotion.json");
+  await enter(user, promotion.getByLabelText("Rationale"), "Reviewed the downstream mapping and isolation");
+  await enter(user, promotion.getByLabelText("Approval file"), "downstream-promotion.json");
   await press(user, promotion.getByRole("button", { name: "Approve promotion" }));
   const approved = await promotion.findByText(byContent(/^Approved and saved downstream-promotion\.json\. Approval identity: [0-9a-f]{64}$/));
   const approvalIdentity = (approved.textContent ?? "").replace(/^.*Approval identity: /, "");
@@ -649,8 +665,9 @@ test("a suite pinned to the release identity the window reads is reviewed and ap
 async function promoteSuite(user: UserEvent, revision: string): Promise<string> {
   const releases = await suiteView(user, "Releases");
   await enter(user, releases.getByLabelText("Test 1"), "reschedule-accepted");
-  await enter(user, releases.getByLabelText("Release entry 1"), RELEASE.output);
-  await press(user, releases.getByRole("button", { name: "Read identity of release entry 1" }));
+  await releases.findAllByRole("option", { name: RELEASE.output });
+  await user.selectOptions(releases.getByLabelText("Release file 1"), RELEASE.output);
+  await press(user, releases.getByRole("button", { name: "Read release ID of release file 1" }));
   expect(await releases.findByText(`Test reschedule, revision 1, local approver ${APPROVER}.`)).toBeTruthy();
   await enter(user, releases.getByLabelText("Release pins file"), "releases.json");
   await press(user, releases.getByRole("button", { name: "Save release pins" }));
@@ -665,8 +682,8 @@ async function promoteSuite(user: UserEvent, revision: string): Promise<string> 
   await press(user, promotion.getByRole("button", { name: "Review promotion" }));
   await promotion.findByText(byContent(/^Review identity [0-9a-f]{64}: /));
   await enter(user, promotion.getByLabelText("Local approver"), APPROVER);
-  await enter(user, promotion.getByLabelText("Approval rationale"), "Reviewed the downstream mapping and isolation");
-  await enter(user, promotion.getByLabelText("New approval entry"), "downstream-promotion.json");
+  await enter(user, promotion.getByLabelText("Rationale"), "Reviewed the downstream mapping and isolation");
+  await enter(user, promotion.getByLabelText("Approval file"), "downstream-promotion.json");
   await press(user, promotion.getByRole("button", { name: "Approve promotion" }));
   const approved = await promotion.findByText(byContent(/^Approved and saved downstream-promotion\.json\. Approval identity: [0-9a-f]{64}$/));
   return (approved.textContent ?? "").replace(/^.*Approval identity: /, "");
@@ -687,9 +704,9 @@ async function gateCommand(args: string[]): Promise<GateRun> {
  * identity typed beside it, and returns the verdict line the window drew with
  * the summary the facade answered. */
 async function verifyInWindow(user: UserEvent, snapshot: string, identity: string) {
-  const panel = await ciHandoffs(user);
-  await enter(user, panel.getByLabelText("Retained gate snapshot"), journey.path(snapshot));
-  await enter(user, panel.getByLabelText("Pinned gate policy identity"), identity);
+  const panel = await ciHandoffs(user, "Verify gate");
+  await enter(user, panel.getByLabelText("Gate snapshot folder"), journey.path(snapshot));
+  await enter(user, panel.getByLabelText("Pinned gate policy ID"), identity);
   const asked = journey.callsTo("VerifyCIGate").length;
   await press(user, panel.getByRole("button", { name: "Verify gate" }));
   const line = await panel.findByText(byContent(/^Retained change gate: \w+ \(exit \d\)\.$/));
@@ -765,33 +782,34 @@ test("a suite's reviewed change gate retained by the workflow the application wr
 
   // The window reads the policy's identity, the one
   // `readmit suite gate-policy` prints, for the person to pin.
-  const ci = await ciHandoffs(user);
-  await enter(user, ci.getByLabelText("Gate policy file"), journey.path("gate-policy.json"));
-  await press(user, ci.getByRole("button", { name: "Open gate policy" }));
-  const read = await ci.findByText(byContent(/^Identity [0-9a-f]{64} for environment downstream, /));
+  const inspecting = await ciHandoffs(user, "Inspect results");
+  await enter(user, inspecting.getByLabelText("Gate policy file"), journey.path("gate-policy.json"));
+  await press(user, inspecting.getByRole("button", { name: "Open gate policy" }));
+  const read = await inspecting.findByText(byContent(/^Identity [0-9a-f]{64} for environment downstream, /));
   const identity = /[0-9a-f]{64}/.exec(read.textContent ?? "")![0];
   expect((await journey.commandLine(["suite", "gate-policy", journey.path("gate-policy.json")])).stdout.trim()).toBe(identity);
 
   // The gated handoff: the documented POSIX workflow with the change gate
   // after the suite, every pin typed as reviewed.
+  const ci = await ciHandoffs(user, "Generate workflow");
   await user.selectOptions(ci.getByLabelText("Integration"), "posix");
-  await enter(user, ci.getByLabelText("Installed executable"), journey.commandLineExecutable);
-  await enter(user, ci.getByLabelText("Activated operation policy"), license);
-  await enter(user, ci.getByLabelText("Saved suite"), journey.path(PROJECT, SUITE));
-  await enter(user, ci.getByLabelText("Environment"), "downstream");
-  await enter(user, ci.getByLabelText("Run directory (fresh per invocation)"), journey.path("ci-runs", "first"));
-  await enter(user, ci.getByLabelText("Coverage declaration"), journey.path(PROJECT, "coverage.json"));
-  await enter(user, ci.getByLabelText("Handoff destination"), journey.path("readmit-suite-gate.sh"));
+  await enter(user, ci.getByLabelText("Executable path on CI agent"), journey.commandLineExecutable);
+  await enter(user, ci.getByLabelText("Operation policy on CI agent"), license);
+  await enter(user, ci.getByLabelText("Suite file on CI agent"), journey.path(PROJECT, SUITE));
+  await enter(user, ci.getByLabelText("Environment ID"), "downstream");
+  await enter(user, ci.getByLabelText("Run folder on CI agent"), journey.path("ci-runs", "first"));
+  await enter(user, ci.getByLabelText("Coverage file on CI agent"), journey.path(PROJECT, "coverage.json"));
+  await enter(user, ci.getByLabelText("Workflow output file"), journey.path("readmit-suite-gate.sh"));
   await press(user, ci.getByRole("checkbox", { name: /Include change gate/ }));
-  await enter(user, ci.getByLabelText("Release references"), journey.path(PROJECT, "releases.json"));
-  await enter(user, ci.getByLabelText("Promotion approval"), journey.path(PROJECT, "downstream-promotion.json"));
-  await enter(user, ci.getByLabelText("Promotion approval identity"), promotion);
+  await enter(user, ci.getByLabelText("Release pins file"), journey.path(PROJECT, "releases.json"));
+  await enter(user, ci.getByLabelText("Promotion approval file"), journey.path(PROJECT, "downstream-promotion.json"));
+  await enter(user, ci.getByLabelText("Promotion approval ID"), promotion);
   await enter(user, ci.getByLabelText("Target revision (operator-declared)"), "fixture-build-7");
-  await enter(user, ci.getByLabelText("Reviewed baseline run directory"), journey.path("ci-runs", "baseline"));
-  await enter(user, ci.getByLabelText("Reviewed gate policy"), journey.path("gate-policy.json"));
+  await enter(user, ci.getByLabelText("Baseline run folder"), journey.path("ci-runs", "baseline"));
+  await enter(user, ci.getByLabelText("Gate policy file"), journey.path("gate-policy.json"));
   // A snapshot inside the run it judges is refused before anything is written.
-  await enter(user, ci.getByLabelText("Reviewed gate policy identity"), identity);
-  await enter(user, ci.getByLabelText("Gate snapshot directory (fresh per invocation)"), journey.path("ci-runs", "first", "gate"));
+  await enter(user, ci.getByLabelText("Gate policy ID"), identity);
+  await enter(user, ci.getByLabelText("Gate snapshot folder"), journey.path("ci-runs", "first", "gate"));
   await press(user, ci.getByRole("button", { name: "Generate configuration" }));
   expect(
     await ci.findByText(
@@ -799,7 +817,7 @@ test("a suite's reviewed change gate retained by the workflow the application wr
     ),
   ).toBeTruthy();
   expect(() => journey.readFile("readmit-suite-gate.sh")).toThrow();
-  await enter(user, ci.getByLabelText("Gate snapshot directory (fresh per invocation)"), journey.path("ci-gates", "first"));
+  await enter(user, ci.getByLabelText("Gate snapshot folder"), journey.path("ci-gates", "first"));
   await press(user, ci.getByRole("button", { name: "Generate configuration" }));
   expect(await ci.findByText(`Saved to ${journey.path("readmit-suite-gate.sh")}. Install it as the customer administrator.`)).toBeTruthy();
   const workflow = journey.readFile("readmit-suite-gate.sh");

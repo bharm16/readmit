@@ -185,6 +185,7 @@ class Coverage:
             self.by_path.setdefault(decision["path"], []).append(decision)
         self.exclusions = inventory.get("exclusions", [])
         self.pending = set(inventory.get("pending", []))
+        self.implemented = {d["id"] for d in inventory.get("decisions", []) if d.get("status", "implemented") == "implemented"}
 
     def covered(self, path: str, candidate: str) -> bool:
         for decision in self.by_path.get(path, []):
@@ -202,6 +203,15 @@ class Coverage:
             flat = normalized(text)
             for decision in decisions:
                 status = decision.get("status", "implemented")
+                # A later reviewed decision may replace an earlier one's final
+                # text for the same occurrence. The earlier entry stays for
+                # traceability and names the implemented decision that now
+                # governs, whose own checks then apply.
+                if status == "superseded":
+                    successor = decision.get("superseded_by")
+                    if successor not in self.implemented:
+                        problems.append(f"{path}: {decision['id']} is superseded but names no implemented decision replacing it: {successor!r}")
+                    continue
                 if status != "implemented":
                     continue
                 current, final = decision.get("current", ""), decision.get("final", "")

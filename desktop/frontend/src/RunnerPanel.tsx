@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { TaskTabs } from "./TaskTabs";
 import "./runner.css";
 import {
   previewRunnerConfig,
@@ -52,18 +53,38 @@ function parseArguments(value: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-function Field(props: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; disabled?: boolean }) {
+function Field(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  /** A constraint the input keeps beside it: its format, where the path
+   * lives, or what the value is not. */
+  help?: string;
+  readOnly?: boolean;
+}) {
+  const input = useId();
+  const help = useId();
   return (
-    <label className="runner-field">
-      <span>{props.label}</span>
+    <div className="runner-field">
+      <label htmlFor={input}>{props.label}</label>
       <input
+        id={input}
         type="text"
         value={props.value}
         placeholder={props.placeholder}
         disabled={props.disabled}
+        readOnly={props.readOnly}
+        aria-describedby={props.help ? help : undefined}
         onChange={(event) => props.onChange(event.target.value)}
       />
-    </label>
+      {props.help ? (
+        <span className="runner-note" id={help}>
+          {props.help}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -105,7 +126,10 @@ function ResultLine(props: { result: { state: State; reason?: string | undefined
   return <Refusal result={props.result} unexplained="the operation did not run" />;
 }
 
+type RunnerView = "status" | "configuration" | "grant" | "recovery" | "update";
+
 function RunnerSection() {
+  const [view, setView] = useState<RunnerView>("status");
   const [config, setConfig] = useState<RunnerConfigRequest>({
     hub: "",
     project: "",
@@ -141,13 +165,19 @@ function RunnerSection() {
   const [job, setJob] = useState({ id: "", spec: "", output: "" });
   const [jobResult, setJobResult] = useState<RunnerDocumentResult | null>(null);
   const [jobPath, setJobPath] = useState("");
-  const [preview, setPreview] = useState<RunnerJobPreviewResult | null>(null);
-  const [expected, setExpected] = useState("");
+  // A preview names the configuration and job file it was asked for. Its
+  // prepared input ID is the only identity a send carries, and only while
+  // both still name what the preview read: changing either withdraws it, and
+  // an answer that arrives after they changed is discarded.
+  const [preview, setPreview] = useState<{ result: RunnerJobPreviewResult; config: string; job: string } | null>(null);
   const [execution, setExecution] = useState<RunnerExecutionResult | null>(null);
-  // Execute is disabled while its job runs, so the focus moves to Cancel, the
-  // one action the running job offers, rather than being left on nothing. The
-  // execution runs under the facade's runner operation, which Cancel stops,
-  // so it can reach only this panel's work and never another panel's.
+  const inputs = useRef({ config: "", job: "" });
+  inputs.current = { config: configPath, job: jobPath };
+  // Send is disabled while its job runs, so the focus moves to Cancel job,
+  // the one action the running job offers, rather than being left on
+  // nothing. The execution runs under the facade's runner operation, which
+  // Cancel job stops, so it can reach only this panel's work and never
+  // another panel's.
   const cancelControl = useRef<HTMLButtonElement>(null);
   const lifecycle = useLifecycle<"working" | "executing">({
     names: { executing: "runner" },
@@ -212,19 +242,22 @@ function RunnerSection() {
   }
 
   async function handlePreflight() {
+    const asked = { config: configPath, job: jobPath };
     await lifecycle.run("working", async () => {
-      const result = await inspectRunnerJob(configPath, jobPath);
-      setPreview(result);
-      if (result.input_identity) {
-        setExpected(result.input_identity);
+      setPreview(null);
+      const result = await inspectRunnerJob(asked.config, asked.job);
+      if (inputs.current.config === asked.config && inputs.current.job === asked.job) {
+        setPreview({ result, ...asked });
       }
     });
   }
 
   async function handleExecute() {
+    if (!previewed) return;
+    const request = { config_path: previewed.config, job_path: previewed.job, expected_identity: previewed.result.input_identity ?? "" };
     await lifecycle.run("executing", async () => {
       setExecution(null);
-      setExecution(await executeRunnerJob({ config_path: configPath, job_path: jobPath, expected_identity: expected }));
+      setExecution(await executeRunnerJob(request));
       void handleInspect();
     });
   }
@@ -248,71 +281,27 @@ function RunnerSection() {
     setUpdateCheck(null);
   }
 
+  function changeConfigPath(path: string) {
+    setConfigPath(path);
+    setUpdateCheck(null);
+    setPreview(null);
+  }
+
+  function changeJobPath(path: string) {
+    setJobPath(path);
+    setPreview(null);
+  }
+
   const configured = inspection?.state === "completed" && inspection.config !== undefined;
+  // The preview that still describes the configuration and job file named now.
+  const previewed =
+    preview && preview.result.state === "completed" && preview.config === configPath && preview.job === jobPath && preview.result.input_identity
+      ? preview
+      : null;
 
   return (
     <section className="runner-section" aria-label="Runner">
       <h4>Runner setup</h4>
-      <p className="runner-note">
-        Every document is generated and validated here; nothing is hand-authored JSON. The shipped
-        native service unit (<code>runner/readmit-runner.service</code>) and container image
-        definition (<code>runner/Dockerfile</code>) are the installation handoffs that consume the
-        configuration this panel writes. Installing a service, provisioning credentials and
-        restarting the hub remain customer-administrator actions. Credential members are
-        references into your own store, never values.
-      </p>
-      <div className="runner-form">
-        <Field label="Hub URL" value={config.hub} onChange={(hub) => setConfig({ ...config, hub })} placeholder="https://hub.example:8443" />
-        <Field label="Project" value={config.project} onChange={(project) => setConfig({ ...config, project })} />
-        <Field label="Environment" value={config.environment} onChange={(environment) => setConfig({ ...config, environment })} />
-        <Field label="Runner root" value={config.root} onChange={(root) => setConfig({ ...config, root })} />
-        <Field label="CA file" value={config.ca} onChange={(ca) => setConfig({ ...config, ca })} />
-        <Field label="Client certificate" value={config.certificate} onChange={(certificate) => setConfig({ ...config, certificate })} />
-        <Field label="Key reader program" value={keyArguments.command} onChange={(command) => setKeyArguments({ ...keyArguments, command })} />
-        <label className="runner-field">
-          <span>Key reader arguments (one per line)</span>
-          <textarea value={keyArguments.arguments} onChange={(event) => setKeyArguments({ ...keyArguments, arguments: event.target.value })} />
-        </label>
-        <Field label="Token reader program" value={tokenArguments.command} onChange={(command) => setTokenArguments({ ...tokenArguments, command })} />
-        <label className="runner-field">
-          <span>Token reader arguments (one per line)</span>
-          <textarea value={tokenArguments.arguments} onChange={(event) => setTokenArguments({ ...tokenArguments, arguments: event.target.value })} />
-        </label>
-        <Field label="Approved update key (standard base64)" value={config.update_key} onChange={(update_key) => setConfig({ ...config, update_key })} />
-        <Field label="Approved update engine" value={config.update_engine} onChange={(update_engine) => setConfig({ ...config, update_engine })} />
-        <Field label="Destination" value={config.output} onChange={(output) => setConfig({ ...config, output })} />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy} onClick={() => void handlePreview()}>
-          Preview configuration
-        </button>
-        <button type="button" disabled={busy} onClick={() => void handleSaveConfig()}>
-          Save configuration
-        </button>
-      </div>
-      <ResultLine result={document} done={document?.output ? `Saved to ${document.output}.` : undefined} />
-      {document?.document ? <pre className="runner-document">{document.document}</pre> : null}
-
-      <h4>Hub runner grant</h4>
-      <div className="runner-form">
-        <Field label="Existing policy (optional)" value={grant.policy} onChange={(policy) => setGrant({ ...grant, policy })} />
-        <Field label="Project" value={grant.project} onChange={(project) => setGrant({ ...grant, project })} />
-        <Field label="Subject" value={grant.subject} onChange={(subject) => setGrant({ ...grant, subject })} />
-        <Field label="Environment" value={grant.environment} onChange={(environment) => setGrant({ ...grant, environment })} />
-        <Field label="Engine (empty names this build)" value={grant.engine} onChange={(engine) => setGrant({ ...grant, engine })} />
-        <Field label="Maximum seconds per job" value={String(grant.max_seconds)} onChange={(value) => setGrant({ ...grant, max_seconds: Number(value) || 0 })} />
-        <Field label="Maximum retained jobs" value={String(grant.max_jobs)} onChange={(value) => setGrant({ ...grant, max_jobs: Number(value) || 0 })} />
-        <Field label="Destination" value={grant.output} onChange={(output) => setGrant({ ...grant, output })} />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy} onClick={() => void handleSaveGrant()}>
-          Save grant revision
-        </button>
-      </div>
-      <ResultLine result={grantResult} done={grantResult?.output ? `Saved to ${grantResult.output}. Installing it on the hub is the administrator's action.` : undefined} />
-      {grantResult?.document ? <pre className="runner-document">{grantResult.document}</pre> : null}
-
-      <h4>Authorized runner</h4>
       <p className="runner-note">
         Local use needs no hub and no runner; this section stays inert until you select an
         installed configuration. Reading it again after a disconnection shows the current state
@@ -320,200 +309,413 @@ function RunnerSection() {
       </p>
       <div className="runner-form">
         <Field
-          label="Configuration path"
+          label="Runner configuration file"
           value={configPath}
-          onChange={(path) => {
-            setConfigPath(path);
-            setUpdateCheck(null);
-          }}
+          disabled={busy}
+          onChange={changeConfigPath}
+          help="The installed configuration this window inspects and runs jobs with."
         />
       </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy || configPath === ""} onClick={() => void handleInspect()}>
-          Inspect runner
-        </button>
-        <button type="button" disabled={busy || configPath === ""} onClick={() => void handleEnroll()}>
-          Enroll (probe admission)
-        </button>
-      </div>
-      {inspection ? <ResultLine result={inspection} /> : null}
-      {configured && inspection ? (
-        <div className="runner-inspect" role="status">
-          <p>
-            <strong>{inspection.config?.project}</strong> at <strong>{inspection.config?.environment}</strong> on{" "}
-            {inspection.config?.hub} — this build pin: {inspection.engine}
-          </p>
-          {inspection.health ? (
-            <p>
-              Health: <strong>{inspection.health.state}</strong>, {inspection.health.jobs} retained job(s).
+      <TaskTabs<RunnerView>
+        label="Runner views"
+        id="runner-view"
+        tablistClass="runner-tabs"
+        panelClass="runner-section"
+        selected={view}
+        onSelect={setView}
+        tabs={[
+          { key: "status", label: "Status and jobs" },
+          { key: "configuration", label: "Configuration" },
+          { key: "grant", label: "Access grant" },
+          { key: "recovery", label: "Recovery" },
+          { key: "update", label: "Update verification" },
+        ]}
+      >
+        {view === "status" ? (
+          <>
+            <div className="runner-actions">
+              <button type="button" disabled={busy || configPath === ""} onClick={() => void handleInspect()}>
+                Inspect runner
+              </button>
+              <button type="button" disabled={busy || configPath === ""} onClick={() => void handleEnroll()}>
+                Check runner admission
+              </button>
+            </div>
+            <p className="runner-note">
+              Checking admission asks the hub whether this runner is admitted now. It installs no service.
             </p>
-          ) : (
-            <p className="runner-note">{inspection.health_note}</p>
-          )}
-          {inspection.jobs && inspection.jobs.length > 0 ? (
-            <table className="runner-table">
-              <thead>
-                <tr>
-                  <th>Job</th>
-                  <th>State</th>
-                  <th>Delivery</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inspection.jobs.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{entry.id}</td>
-                    <td>{entry.state ?? entry.reason}</td>
-                    <td>{entry.delivery_uncertain ? "uncertain — read recovery, never resend" : "no uncertain delivery"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-        </div>
-      ) : null}
-      {enrollment ? (
-        enrollment.state === "completed" ? (
-          <p className="runner-ok" role="status">
-            Admitted: lease until {enrollment.expires_at}, at most {enrollment.max_seconds}s per job
-            and {enrollment.max_jobs} retained jobs.
-          </p>
-        ) : (
-          <Refusal result={enrollment} denied="Admission refused: " />
-        )
-      ) : null}
+            {inspection ? <ResultLine result={inspection} /> : null}
+            {configured && inspection ? (
+              <div className="runner-inspect" role="status">
+                <p>
+                  <strong>{inspection.config?.project}</strong> at <strong>{inspection.config?.environment}</strong> on{" "}
+                  {inspection.config?.hub} — this build pin: {inspection.engine}
+                </p>
+                {inspection.health ? (
+                  <p>
+                    Health: <strong>{inspection.health.state}</strong>, {inspection.health.jobs} retained job(s).
+                  </p>
+                ) : (
+                  <p className="runner-note">{inspection.health_note}</p>
+                )}
+                {inspection.jobs && inspection.jobs.length > 0 ? (
+                  <table className="runner-table">
+                    <thead>
+                      <tr>
+                        <th>Job</th>
+                        <th>State</th>
+                        <th>Delivery</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inspection.jobs.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{entry.id}</td>
+                          <td>{entry.state ?? entry.reason}</td>
+                          <td>{entry.delivery_uncertain ? "uncertain — read recovery, never resend" : "no uncertain delivery"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : null}
+              </div>
+            ) : null}
+            {enrollment ? (
+              enrollment.state === "completed" ? (
+                <p className="runner-ok" role="status">
+                  Admitted: lease until {enrollment.expires_at}, at most {enrollment.max_seconds}s per job
+                  and {enrollment.max_jobs} retained jobs.
+                </p>
+              ) : (
+                <Refusal result={enrollment} denied="Admission refused: " />
+              )
+            ) : null}
 
-      <h4>Job execution</h4>
-      <p className="runner-note">
-        Execution asks the existing explicit approval and the runner's own admission. A retained
-        job id is never replayed, and an execution whose delivery stayed uncertain is never
-        offered again: read recovery, then choose a new job id only once receiver state is
-        established.
-      </p>
-      <div className="runner-form">
-        <Field label="Job id" value={job.id} onChange={(id) => setJob({ ...job, id })} />
-        <Field label="Spec path" value={job.spec} onChange={(spec) => setJob({ ...job, spec })} />
-        <Field label="Job document destination" value={job.output} onChange={(output) => setJob({ ...job, output })} />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy} onClick={() => void handleSaveJob()}>
-          Save job document
-        </button>
-      </div>
-      <ResultLine result={jobResult} done={jobResult?.output ? `Saved to ${jobResult.output}.` : undefined} />
-      <div className="runner-form">
-        <Field label="Job document" value={jobPath} onChange={setJobPath} />
-        <Field label="Prepared input identity" value={expected} onChange={setExpected} />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy || jobPath === ""} onClick={() => void handlePreflight()}>
-          Preflight job
-        </button>
-        <button type="button" disabled={busy || jobPath === ""} onClick={() => void handleExecute()}>
-          Execute job
-        </button>
-        {busy ? (
-          <button type="button" ref={cancelControl} onClick={lifecycle.cancel}>
-            Cancel
-          </button>
+            <h4>Job execution</h4>
+            <p className="runner-note">
+              Execution asks the existing explicit approval and the runner's own admission. A retained
+              job id is never replayed, and an execution whose delivery stayed uncertain is never
+              offered again: open its recovery, then choose a new job ID only once receiver state is
+              established.
+            </p>
+            <div role="group" aria-label="Create job">
+              <div className="runner-form">
+                <Field label="Job ID" value={job.id} disabled={busy} onChange={(id) => setJob({ ...job, id })} />
+                <Field label="Test file" value={job.spec} disabled={busy} onChange={(spec) => setJob({ ...job, spec })} />
+                <Field
+                  label="Job file"
+                  value={job.output}
+                  disabled={busy}
+                  onChange={(output) => setJob({ ...job, output })}
+                  help="A new local file. Saving it sends nothing."
+                />
+              </div>
+              <div className="runner-actions">
+                <button type="button" disabled={busy} onClick={() => void handleSaveJob()}>
+                  Save job
+                </button>
+              </div>
+              <ResultLine result={jobResult} done={jobResult?.output ? `Saved to ${jobResult.output}.` : undefined} />
+            </div>
+            <div role="group" aria-label="Send job">
+              <div className="runner-form">
+                <Field label="Job file" value={jobPath} disabled={busy} onChange={changeJobPath} />
+                <Field
+                  label="Prepared input ID"
+                  value={previewed?.result.input_identity ?? ""}
+                  readOnly
+                  onChange={() => {}}
+                  help="Filled by a successful preview of this job file under this configuration."
+                />
+              </div>
+              <div className="runner-actions">
+                <button type="button" disabled={busy || jobPath === "" || configPath === ""} onClick={() => void handlePreflight()}>
+                  Preview job
+                </button>
+                <button type="button" disabled={busy || !previewed} onClick={() => void handleExecute()}>
+                  Send job
+                </button>
+                {lifecycle.running === "executing" ? (
+                  <button type="button" ref={cancelControl} onClick={lifecycle.cancel}>
+                    Cancel job
+                  </button>
+                ) : null}
+              </div>
+              {preview ? (
+                preview.result.state === "completed" ? (
+                  <p className="runner-ok" role="status">
+                    Send job sends {preview.job} (job {preview.result.job_id}) to environment {preview.result.environment} under
+                    prepared inputs {preview.result.input_identity}, after the runner&apos;s own admission and your explicit
+                    approval.
+                  </p>
+                ) : (
+                  <Refusal result={preview.result} refused="Preflight refused: " />
+                )
+              ) : null}
+            </div>
+            {execution ? (
+              execution.state === "completed" && execution.summary ? (
+                <div className="runner-inspect" role="status">
+                  <p>
+                    Job {execution.job_id} finished: <strong>{execution.summary.state}</strong>.
+                    {execution.summary.delivery_uncertain
+                      ? " Delivery stayed uncertain; nothing will be resent from here."
+                      : ""}
+                  </p>
+                </div>
+              ) : (
+                <Refusal result={execution} denied="Not admitted: " />
+              )
+            ) : null}
+            <RunnerCapacity />
+          </>
         ) : null}
-      </div>
-      {preview ? (
-        preview.state === "completed" ? (
-          <p className="runner-ok" role="status">
-            Prepared inputs {preview.input_identity} bind environment {preview.environment}.
-          </p>
-        ) : (
-          <Refusal result={preview} refused="Preflight refused: " />
-        )
-      ) : null}
-      {execution ? (
-        execution.state === "completed" && execution.summary ? (
-          <div className="runner-inspect" role="status">
-            <p>
-              Job {execution.job_id} finished: <strong>{execution.summary.state}</strong>.
-              {execution.summary.delivery_uncertain
-                ? " Delivery stayed uncertain; nothing will be resent from here."
-                : ""}
-            </p>
-          </div>
-        ) : (
-          <Refusal result={execution} denied="Not admitted: " />
-        )
-      ) : null}
-      <div className="runner-form">
-        <Field label="Retained job id for recovery" value={recoveryJob} onChange={setRecoveryJob} />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy || recoveryJob === ""} onClick={() => void handleRecovery()}>
-          Read recovery
-        </button>
-      </div>
-      {recovery ? (
-        recovery.state === "completed" ? (
-          <p className="runner-ok" role="status">
-            {recovery.job_id}: {recovery.acknowledged} acknowledged, {recovery.uncertain} uncertain,{" "}
-            {recovery.not_attempted} not attempted. Recovery never sends.
-          </p>
-        ) : (
-          <Refusal result={recovery} />
-        )
-      ) : null}
 
-      <h4>Runner update</h4>
-      <p className="runner-note">
-        A staged candidate is checked against the deployment key and the approved update engine the
-        selected configuration pins, as <code>readmit runner verify-update</code> checks it: the
-        manifest's signature, this platform and the candidate's exact bytes. The candidate is read,
-        never run. Stopping the service, installing the verified bytes and changing the hub's
-        approved engine remain the administrator's actions.
-      </p>
-      <div className="runner-form">
-        <Field label="Update manifest" value={update.manifest} onChange={(manifest) => changeUpdate({ manifest })} />
-        <Field label="Staged candidate" value={update.candidate} onChange={(candidate) => changeUpdate({ candidate })} />
-      </div>
-      <div className="runner-actions">
-        <button
-          type="button"
-          disabled={busy || configPath === "" || update.manifest === "" || update.candidate === ""}
-          onClick={() => void handleVerifyUpdate()}
-        >
-          Verify staged update
-        </button>
-      </div>
-      <ResultLine
-        result={updateCheck}
-        done={`Verified: the staged candidate is the approved build ${updateCheck?.engine ?? ""} for this platform, signed by the pinned deployment key. It was not run; installing it is the administrator's action.`}
-      />
+        {view === "configuration" ? (
+          <>
+            <p className="runner-note">
+              Every document is generated and validated here; nothing is hand-authored JSON. The shipped
+              native service unit (<code>runner/readmit-runner.service</code>) and container image
+              definition (<code>runner/Dockerfile</code>) are the installation handoffs that consume the
+              configuration this panel writes. Installing a service, provisioning credentials and
+              restarting the hub remain customer-administrator actions. Credential members are
+              references into your own store, never values.
+            </p>
+            <div className="runner-form">
+              <Field label="Hub URL" value={config.hub} onChange={(hub) => setConfig({ ...config, hub })} placeholder="https://hub.example:8443" />
+              <Field label="Hub project" value={config.project} onChange={(project) => setConfig({ ...config, project })} />
+              <Field label="Environment ID" value={config.environment} onChange={(environment) => setConfig({ ...config, environment })} />
+              <Field
+                label="Runner data folder"
+                value={config.root}
+                onChange={(root) => setConfig({ ...config, root })}
+                help="Storage on the runner host, not this workspace."
+              />
+              <Field label="CA certificate file" value={config.ca} onChange={(ca) => setConfig({ ...config, ca })} />
+              <Field label="Client certificate file" value={config.certificate} onChange={(certificate) => setConfig({ ...config, certificate })} />
+              <Field
+                label="Key lookup program"
+                value={keyArguments.command}
+                onChange={(command) => setKeyArguments({ ...keyArguments, command })}
+                help="Absolute path of the program that reads the client key from your store. Never the key itself."
+              />
+              <div className="runner-field">
+                <label htmlFor="runner-key-arguments">Key lookup arguments</label>
+                <textarea
+                  id="runner-key-arguments"
+                  aria-describedby="runner-key-arguments-help"
+                  value={keyArguments.arguments}
+                  onChange={(event) => setKeyArguments({ ...keyArguments, arguments: event.target.value })}
+                />
+                <span className="runner-note" id="runner-key-arguments-help">
+                  One argument per line.
+                </span>
+              </div>
+              <Field
+                label="Token lookup program"
+                value={tokenArguments.command}
+                onChange={(command) => setTokenArguments({ ...tokenArguments, command })}
+                help="Absolute path of the program that reads the runner token from your store. Never the token itself."
+              />
+              <div className="runner-field">
+                <label htmlFor="runner-token-arguments">Token lookup arguments</label>
+                <textarea
+                  id="runner-token-arguments"
+                  aria-describedby="runner-token-arguments-help"
+                  value={tokenArguments.arguments}
+                  onChange={(event) => setTokenArguments({ ...tokenArguments, arguments: event.target.value })}
+                />
+                <span className="runner-note" id="runner-token-arguments-help">
+                  One argument per line.
+                </span>
+              </div>
+              <Field
+                label="Update verification key"
+                value={config.update_key}
+                onChange={(update_key) => setConfig({ ...config, update_key })}
+                help="The approved deployment public key, in standard base64. Not the client private key."
+              />
+              <Field
+                label="Approved engine version"
+                value={config.update_engine}
+                onChange={(update_engine) => setConfig({ ...config, update_engine })}
+                help="The exact build a staged update must be, not the latest available."
+              />
+              <Field
+                label="Configuration file"
+                value={config.output}
+                onChange={(output) => setConfig({ ...config, output })}
+                help="A new local file. It is not installed on the runner host automatically."
+              />
+            </div>
+            <div className="runner-actions">
+              <button type="button" disabled={busy} onClick={() => void handlePreview()}>
+                Preview configuration
+              </button>
+              <button type="button" disabled={busy} onClick={() => void handleSaveConfig()}>
+                Save configuration
+              </button>
+            </div>
+            <ResultLine result={document} done={document?.output ? `Saved to ${document.output}.` : undefined} />
+            {document?.document ? <pre className="runner-document">{document.document}</pre> : null}
+          </>
+        ) : null}
+
+        {view === "grant" ? (
+          <>
+            <h4>Hub runner grant</h4>
+            <div className="runner-form">
+              <Field
+                label="Existing grant policy (optional)"
+                value={grant.policy}
+                onChange={(policy) => setGrant({ ...grant, policy })}
+                help="Read to build the revision; it does not change the running hub."
+              />
+              <Field label="Project" value={grant.project} onChange={(project) => setGrant({ ...grant, project })} />
+              <Field
+                label="Runner subject"
+                value={grant.subject}
+                onChange={(subject) => setGrant({ ...grant, subject })}
+                help="The authenticated subject the hub admits, exactly as its identity provider issues it."
+              />
+              <Field label="Environment" value={grant.environment} onChange={(environment) => setGrant({ ...grant, environment })} />
+              <Field
+                label="Engine version (optional)"
+                value={grant.engine}
+                onChange={(engine) => setGrant({ ...grant, engine })}
+                help="Leave empty to name this build's engine."
+              />
+              <Field label="Job time limit (seconds)" value={String(grant.max_seconds)} onChange={(value) => setGrant({ ...grant, max_seconds: Number(value) || 0 })} />
+              <Field label="Maximum retained jobs" value={String(grant.max_jobs)} onChange={(value) => setGrant({ ...grant, max_jobs: Number(value) || 0 })} />
+              <Field
+                label="Grant file"
+                value={grant.output}
+                onChange={(output) => setGrant({ ...grant, output })}
+                help="A new local file. It is not installed on the hub automatically."
+              />
+            </div>
+            <div className="runner-actions">
+              <button type="button" disabled={busy} onClick={() => void handleSaveGrant()}>
+                Save grant revision
+              </button>
+            </div>
+            <ResultLine result={grantResult} done={grantResult?.output ? `Saved to ${grantResult.output}. Installing it on the hub is the administrator's action.` : undefined} />
+            {grantResult?.document ? <pre className="runner-document">{grantResult.document}</pre> : null}
+          </>
+        ) : null}
+
+        {view === "recovery" ? (
+          <>
+            <p className="runner-note">Recovery reads what the runner retained for one job. It never sends or resends.</p>
+            <div className="runner-form">
+              <Field label="Job ID" value={recoveryJob} disabled={busy} onChange={setRecoveryJob} />
+            </div>
+            <div className="runner-actions">
+              <button type="button" disabled={busy || recoveryJob === "" || configPath === ""} onClick={() => void handleRecovery()}>
+                Open recovery
+              </button>
+            </div>
+            {recovery ? (
+              recovery.state === "completed" ? (
+                <p className="runner-ok" role="status">
+                  {recovery.job_id}: {recovery.acknowledged} acknowledged, {recovery.uncertain} uncertain,{" "}
+                  {recovery.not_attempted} not attempted. Recovery never sends.
+                </p>
+              ) : (
+                <Refusal result={recovery} />
+              )
+            ) : null}
+          </>
+        ) : null}
+
+        {view === "update" ? (
+          <>
+            <h4>Runner update</h4>
+            <p className="runner-note">
+              A staged candidate is checked against the deployment key and the approved update engine the
+              selected configuration pins, as <code>readmit runner verify-update</code> checks it: the
+              manifest's signature, this platform and the candidate's exact bytes. The candidate is read,
+              never run. Stopping the service, installing the verified bytes and changing the hub's
+              approved engine remain the administrator's actions.
+            </p>
+            <div className="runner-form">
+              <Field label="Update manifest" value={update.manifest} onChange={(manifest) => changeUpdate({ manifest })} />
+              <Field label="Candidate file" value={update.candidate} onChange={(candidate) => changeUpdate({ candidate })} />
+            </div>
+            <div className="runner-actions">
+              <button
+                type="button"
+                disabled={busy || configPath === "" || update.manifest === "" || update.candidate === ""}
+                onClick={() => void handleVerifyUpdate()}
+              >
+                Verify update
+              </button>
+            </div>
+            <ResultLine
+              result={updateCheck}
+              done={`Verified: the staged candidate is the approved build ${updateCheck?.engine ?? ""} for this platform, signed by the pinned deployment key. It was not run; installing it is the administrator's action.`}
+            />
+          </>
+        ) : null}
+      </TaskTabs>
     </section>
   );
 }
 
-function ScheduleRow(props: { entry: ScheduleEntryInput; onChange: (entry: ScheduleEntryInput) => void; onRemove: () => void }) {
-  const { entry, onChange, onRemove } = props;
+function ScheduleRow(props: { entry: ScheduleEntryInput; index: number; onChange: (entry: ScheduleEntryInput) => void; onRemove: () => void }) {
+  const { entry, index, onChange, onRemove } = props;
   const set = (change: Partial<ScheduleEntryInput>) => onChange({ ...entry, ...change });
   return (
-    <div className="runner-schedule-row">
-      <Field label="Id" value={entry.id} onChange={(id) => set({ id })} />
-      <Field label="Zone" value={entry.zone} onChange={(zone) => set({ zone })} placeholder="UTC" />
-      <Field label="At (HH:MM)" value={entry.at} onChange={(at) => set({ at })} placeholder="02:30" />
-      <Field label="Window seconds" value={String(entry.window_seconds)} onChange={(value) => set({ window_seconds: Number(value) || 0 })} />
-      <Field label="Runner configuration" value={entry.runner_config} onChange={(runner_config) => set({ runner_config })} />
-      <Field label="Spec path" value={entry.spec} onChange={(spec) => set({ spec })} />
-      <Field label="Input pin (SHA-256)" value={entry.input_sha256} onChange={(input_sha256) => set({ input_sha256 })} />
-      <Field label="Notification route (HTTPS origin)" value={entry.route} onChange={(route) => set({ route })} placeholder="https://alerts.example/" />
-      <label className="runner-field">
-        <span>
+    <div className="runner-schedule-row" role="group" aria-label={`Schedule ${index + 1}`}>
+      <Field label="Schedule ID" value={entry.id} onChange={(id) => set({ id })} />
+      <Field
+        label="Time zone"
+        value={entry.zone}
+        onChange={(zone) => set({ zone })}
+        placeholder="UTC"
+        help="A named zone such as America/New_York. This computer's zone is never assumed."
+      />
+      <Field label="Daily time" value={entry.at} onChange={(at) => set({ at })} placeholder="02:30" help="HH:MM, 24-hour, in the time zone above." />
+      <Field
+        label="Start window (seconds)"
+        value={String(entry.window_seconds)}
+        onChange={(value) => set({ window_seconds: Number(value) || 0 })}
+        help="How long after the daily time a start may still begin; a start missed past it is recorded and skipped. Not a run time limit."
+      />
+      <Field
+        label="Runner configuration file"
+        value={entry.runner_config}
+        onChange={(runner_config) => set({ runner_config })}
+        help="Absolute path on the hub host."
+      />
+      <Field label="Test file" value={entry.spec} onChange={(spec) => set({ spec })} help="Absolute path on the hub host." />
+      <Field
+        label="Input SHA-256"
+        value={entry.input_sha256}
+        onChange={(input_sha256) => set({ input_sha256 })}
+        help="The full 64-character SHA-256 pin of the test's inputs."
+      />
+      <Field
+        label="Notification URL"
+        value={entry.route}
+        // A changed destination is not the one that was approved.
+        onChange={(route) => set({ route, approved: route === entry.route ? entry.approved : false })}
+        placeholder="https://alerts.example/"
+        help="An HTTPS origin only."
+      />
+      <div className="runner-field">
+        <label>
           <input type="checkbox" checked={entry.approved} onChange={(event) => set({ approved: event.target.checked })} />{" "}
-          Approved for notifications
-        </span>
-      </label>
+          Approve notifications
+        </label>
+        <span className="runner-note">Approves the fixed alert body for this schedule&apos;s URL only. It authorizes no execution.</span>
+      </div>
       <button type="button" onClick={onRemove}>
-        Remove schedule
+        Remove from draft
       </button>
       <p className="runner-note">
-        Removing the entry is how a schedule stops: the backend defines no pause, and a changed
-        policy file stops the running service until an administrator reviews and restarts it.
+        Removes this row from the unsaved draft only. The installed policy and the running service are
+        unchanged until an administrator installs a saved revision; the backend defines no pause.
       </p>
     </div>
   );
@@ -537,16 +739,51 @@ function SchedulesSection() {
   const [output, setOutput] = useState("");
   const [anchor, setAnchor] = useState("");
   const [entries, setEntries] = useState<ScheduleEntryInput[]>([]);
+  // Whether the rows were edited since they were last opened, so opening a
+  // policy asks before it replaces them.
+  const [dirty, setDirty] = useState(false);
   const [installedPath, setInstalledPath] = useState("");
+  // The read, the preview and the save each keep their own answer. A preview
+  // describes the rows it was asked for and is withdrawn when they change.
+  const [opened, setOpened] = useState<SchedulePreviewResult | null>(null);
+  const [replacing, setReplacing] = useState<SchedulePreviewResult | null>(null);
   const [preview, setPreview] = useState<SchedulePreviewResult | null>(null);
+  const [saved, setSaved] = useState<SchedulePreviewResult | null>(null);
   const lifecycle = useLifecycle<"working">();
   const busy = lifecycle.running !== null;
 
-  async function run(call: () => Promise<SchedulePreviewResult>) {
+  function editRows(next: ScheduleEntryInput[]) {
+    setEntries(next);
+    setDirty(true);
+    setPreview(null);
+    setSaved(null);
+  }
+
+  function load(result: SchedulePreviewResult) {
+    setEntries((result.entries ?? []).map((view) => ({ ...view.entry })));
+    setDirty(false);
+    setPreview(null);
+    setSaved(null);
+    setReplacing(null);
+  }
+
+  async function open() {
     await lifecycle.run("working", async () => {
-      setPreview(await call());
+      setReplacing(null);
+      const result = await openSchedulePolicy(installedPath);
+      setOpened(result);
+      if (result.state !== "completed") return;
+      if (dirty && entries.length > 0) setReplacing(result);
+      else load(result);
     });
   }
+
+  const empty = entries.length === 0;
+  // Whether the draft rows are exactly what the opened file declares; once
+  // they are not, the opened read no longer describes the draft.
+  const draftIsOpened =
+    opened?.state === "completed" &&
+    JSON.stringify(entries) === JSON.stringify((opened.entries ?? []).map((view) => ({ ...view.entry })));
 
   return (
     <section className="runner-section" aria-label="Recurring schedules">
@@ -558,49 +795,122 @@ function SchedulesSection() {
         Installing the revision and restarting the hub service remain the administrator's actions.
       </p>
       <div className="runner-form">
-        <Field label="Installed policy (to read)" value={installedPath} onChange={setInstalledPath} />
+        <Field
+          label="Schedule policy file"
+          value={installedPath}
+          onChange={setInstalledPath}
+          help="A local copy to read. Reading it does not show that the hub installed it."
+        />
       </div>
       <div className="runner-actions">
-        <button type="button" disabled={busy || installedPath === ""} onClick={() => void run(() => openSchedulePolicy(installedPath))}>
-          Open installed policy
+        <button type="button" disabled={busy || installedPath === ""} onClick={() => void open()}>
+          Open schedule policy
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setEntries([...entries, emptyScheduleEntry()])}
-        >
+        <button type="button" disabled={busy} onClick={() => editRows([...entries, emptyScheduleEntry()])}>
           Add schedule
         </button>
       </div>
+      {opened && opened.state !== "completed" ? <Refusal result={opened} /> : null}
+      {replacing ? (
+        <div role="group" aria-label="Replace draft" className="runner-actions">
+          <p role="alert">The draft has unsaved edits. Replace its rows with the {replacing.entries?.length ?? 0} schedule(s) of the opened policy?</p>
+          <button type="button" onClick={() => load(replacing)}>
+            Replace draft
+          </button>
+          <button type="button" onClick={() => setReplacing(null)}>
+            Keep draft
+          </button>
+        </div>
+      ) : null}
+      {opened?.state === "completed" && !replacing ? (
+        <div role="group" aria-label="Opened policy">
+          <p className="runner-note">
+            {draftIsOpened
+              ? "Opened this policy file into the draft below. Reading it does not show that the hub installed it."
+              : "The draft below differs from this policy file. Reading it does not show that the hub installed it."}
+          </p>
+          <SchedulePreviewView preview={opened} />
+        </div>
+      ) : null}
       {entries.map((entry, index) => (
         <ScheduleRow
           key={index}
+          index={index}
           entry={entry}
-          onChange={(next) => setEntries(entries.map((existing, at) => (at === index ? next : existing)))}
-          onRemove={() => setEntries(entries.filter((_, at) => at !== index))}
+          onChange={(next) => editRows(entries.map((existing, at) => (at === index ? next : existing)))}
+          onRemove={() => editRows(entries.filter((_, at) => at !== index))}
         />
       ))}
+      {empty ? (
+        <p className="runner-note" role="status">
+          The draft holds no schedule. A schedule policy must declare at least one, so an empty draft cannot be
+          previewed or saved; the installed policy is unchanged and scheduling has not stopped.
+        </p>
+      ) : null}
       <div className="runner-form">
-        <Field label="Preview anchor day (optional)" value={anchor} onChange={setAnchor} placeholder="2026-01-01" />
-        <Field label="Revision destination" value={output} onChange={setOutput} />
+        <Field
+          label="Preview start date (optional)"
+          value={anchor}
+          onChange={(value) => {
+            setAnchor(value);
+            setPreview(null);
+          }}
+          placeholder="2026-01-01"
+          help="YYYY-MM-DD. Leave empty to start from each schedule's current day in its own time zone. It changes only the preview."
+        />
+        <Field
+          label="Policy revision file"
+          value={output}
+          onChange={setOutput}
+          help="A new local file. Saving it deploys nothing."
+        />
       </div>
       <div className="runner-actions">
         <button
           type="button"
-          disabled={busy || entries.length === 0}
-          onClick={() => void run(() => previewSchedulePolicy({ output: "", anchor, entries }))}
+          disabled={busy || empty}
+          onClick={() =>
+            void lifecycle.run("working", async () => {
+              setPreview(await previewSchedulePolicy({ output: "", anchor, entries }));
+            })
+          }
         >
-          Preview revision
+          Preview schedule policy
         </button>
         <button
           type="button"
-          disabled={busy || entries.length === 0 || output === ""}
-          onClick={() => void run(() => saveSchedulePolicy({ output, anchor, entries }))}
+          disabled={busy || empty || output === ""}
+          onClick={() =>
+            void lifecycle.run("working", async () => {
+              const result = await saveSchedulePolicy({ output, anchor, entries });
+              setSaved(result);
+              // The saved revision now describes these rows; its own view
+              // replaces the preview, and the draft matches a saved file.
+              if (result.state === "completed") {
+                setPreview(null);
+                setDirty(false);
+              }
+            })
+          }
         >
-          Save revision
+          Save schedule policy
         </button>
       </div>
-      {preview ? <SchedulePreviewView preview={preview} /> : null}
+      {preview ? (
+        <div role="group" aria-label="Policy preview">
+          <SchedulePreviewView preview={preview} />
+        </div>
+      ) : null}
+      {saved ? (
+        saved.state === "completed" ? (
+          <div role="group" aria-label="Saved revision">
+            <p className="runner-ok">Saved {output}. Nothing was installed on the hub.</p>
+            <SchedulePreviewView preview={saved} />
+          </div>
+        ) : (
+          <Refusal result={saved} />
+        )
+      ) : null}
     </section>
   );
 }
@@ -707,7 +1017,10 @@ function GateVerification(props: { result: CIGateVerifyResult }) {
   );
 }
 
+type CITask = "generate" | "inspect" | "verify";
+
 function CISection() {
+  const [task, setTask] = useState<CITask>("generate");
   const [request, setRequest] = useState<CIHandoffRequest>({
     integration: "posix",
     binary: "",
@@ -784,168 +1097,229 @@ function CISection() {
 
   return (
     <section className="runner-section" aria-label="CI handoffs">
-      <h4>CI setup</h4>
-      <p className="runner-note">
-        The generated file is the documented workflow for one supported integration, unchanged.
-        Provision its six variables on a customer-owned, trusted agent; this application never
-        commits to a repository, authorizes a third-party service or uploads anything.
-      </p>
-      <div className="runner-form">
-        <label className="runner-field">
-          <span>Integration</span>
-          <select value={request.integration} onChange={(event) => setRequest({ ...request, integration: event.target.value })}>
-            <option value="posix">POSIX shell</option>
-            <option value="github">GitHub Actions</option>
-            <option value="azure">Azure DevOps</option>
-          </select>
-        </label>
-        <Field label="Installed executable" value={request.binary} onChange={(binary) => setRequest({ ...request, binary })} />
-        <Field label="Activated operation policy" value={request.operation_policy} onChange={(operation_policy) => setRequest({ ...request, operation_policy })} />
-        <Field label="Saved suite" value={request.suite_file} onChange={(suite_file) => setRequest({ ...request, suite_file })} />
-        <Field label="Environment" value={request.environment} onChange={(environment) => setRequest({ ...request, environment })} />
-        <Field label="Run directory (fresh per invocation)" value={request.run_directory} onChange={(run_directory) => setRequest({ ...request, run_directory })} />
-        <Field label="Coverage declaration" value={request.coverage_file} onChange={(coverage_file) => setRequest({ ...request, coverage_file })} />
-        <Field label="Handoff destination" value={request.output} onChange={(output) => setRequest({ ...request, output })} />
-      </div>
-      <fieldset className="runner-gate-step">
-        <legend>Reviewed change gate</legend>
-        <label className="runner-field">
-          <span>
-            <input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Include
-            change gate
-          </span>
-        </label>
-        <p className="runner-note">
-          The reviewed change gate runs after the suite; including it approves no gate and implies
-          no passing result.
-        </p>
-        {gated ? (
-          <>
+      <TaskTabs<CITask>
+        label="CI tasks"
+        id="ci-task"
+        tablistClass="runner-tabs"
+        panelClass="runner-section"
+        selected={task}
+        onSelect={setTask}
+        tabs={[
+          { key: "generate", label: "Generate workflow" },
+          { key: "inspect", label: "Inspect results" },
+          { key: "verify", label: "Verify gate" },
+        ]}
+      >
+        {/* Every task stays mounted, so a verification keeps running and
+          * holds the other tasks' controls while another task is shown. */}
+        <div hidden={task !== "generate"} role="group" aria-labelledby="ci-setup-title">
+            <h4 id="ci-setup-title">CI setup</h4>
             <p className="runner-note">
-              The step runs <code>readmit suite gate</code> after <code>suite ci</code>, even when the
-              suite failed, and never replaces the suite&apos;s exit status. The suite then runs with
-              the approved promotion the gate policy pins. Pin the identity reviewed for the policy;
-              the workflow never computes one.
+              The generated file is the documented workflow for one supported integration, unchanged.
+              Provision its six variables on a customer-owned, trusted agent; this application never
+              commits to a repository, authorizes a third-party service, uploads, installs or runs anything.
             </p>
             <div className="runner-form">
-              <Field label="Release references" value={gate.releases} onChange={(releases) => setGate({ ...gate, releases })} />
-              <Field label="Promotion approval" value={gate.promotion} onChange={(promotion) => setGate({ ...gate, promotion })} />
-              <Field
-                label="Promotion approval identity"
-                value={gate.promotion_identity}
-                onChange={(promotion_identity) => setGate({ ...gate, promotion_identity })}
-              />
-              <Field label="Target revision (operator-declared)" value={gate.revision} onChange={(revision) => setGate({ ...gate, revision })} />
-              <Field label="Reviewed baseline run directory" value={gate.baseline} onChange={(baseline) => setGate({ ...gate, baseline })} />
-              <Field label="Reviewed gate policy" value={gate.policy} onChange={(policy) => setGate({ ...gate, policy })} />
-              <Field
-                label="Reviewed gate policy identity"
-                value={gate.policy_identity}
-                onChange={(policy_identity) => setGate({ ...gate, policy_identity })}
-              />
-              <Field
-                label="Gate snapshot directory (fresh per invocation)"
-                value={gate.snapshot_directory}
-                onChange={(snapshot_directory) => setGate({ ...gate, snapshot_directory })}
-              />
+              <label className="runner-field">
+                <span>Integration</span>
+                <select value={request.integration} onChange={(event) => setRequest({ ...request, integration: event.target.value })}>
+                  <option value="posix">POSIX shell</option>
+                  <option value="github">GitHub Actions</option>
+                  <option value="azure">Azure DevOps</option>
+                </select>
+              </label>
             </div>
-          </>
-        ) : null}
-      </fieldset>
-      <div className="runner-actions">
-        <button type="button" disabled={busy} onClick={() => void handleGenerate()}>
-          Generate configuration
-        </button>
-      </div>
-      {handoff ? (
-        handoff.state === "completed" ? (
-          <div className="runner-inspect" role="status">
-            <p className="runner-ok">Saved to {handoff.output}. Install it as the customer administrator.</p>
-            <pre className="runner-document">{handoff.document}</pre>
-          </div>
-        ) : (
-          <Refusal result={handoff} />
-        )
-      ) : null}
+            <fieldset className="runner-gate-step">
+              <legend>Paths on the CI agent</legend>
+              <p className="runner-note">These name the customer&apos;s agent filesystem, not this computer.</p>
+              <div className="runner-form">
+                <Field label="Executable path on CI agent" value={request.binary} onChange={(binary) => setRequest({ ...request, binary })} />
+                <Field
+                  label="Operation policy on CI agent"
+                  value={request.operation_policy}
+                  onChange={(operation_policy) => setRequest({ ...request, operation_policy })}
+                  help="Must already be activated on the agent; naming it here activates nothing."
+                />
+                <Field label="Suite file on CI agent" value={request.suite_file} onChange={(suite_file) => setRequest({ ...request, suite_file })} />
+                <Field label="Environment ID" value={request.environment} onChange={(environment) => setRequest({ ...request, environment })} />
+                <Field
+                  label="Run folder on CI agent"
+                  value={request.run_directory}
+                  onChange={(run_directory) => setRequest({ ...request, run_directory })}
+                  help="Fresh per invocation; never a resume path."
+                />
+                <Field label="Coverage file on CI agent" value={request.coverage_file} onChange={(coverage_file) => setRequest({ ...request, coverage_file })} />
+              </div>
+            </fieldset>
+            <fieldset className="runner-gate-step">
+              <legend>On this computer</legend>
+              <div className="runner-form">
+                <Field
+                  label="Workflow output file"
+                  value={request.output}
+                  onChange={(output) => setRequest({ ...request, output })}
+                  help="Where the generated workflow is written on this computer."
+                />
+              </div>
+            </fieldset>
+            <fieldset className="runner-gate-step">
+              <legend>Change gate</legend>
+              <label className="runner-field">
+                <span>
+                  <input type="checkbox" checked={gated} onChange={(event) => setGated(event.target.checked)} /> Include
+                  change gate
+                </span>
+              </label>
+              <p className="runner-note">
+                The reviewed change gate runs after the suite; including it approves no gate and implies
+                no passing result.
+              </p>
+              {gated ? (
+                <>
+                  <p className="runner-note">
+                    The step runs <code>readmit suite gate</code> after <code>suite ci</code>, even when the
+                    suite failed, and never replaces the suite&apos;s exit status. The suite then runs with
+                    the approved promotion the gate policy pins. Pin the identity reviewed for the policy;
+                    the workflow never computes one and never approves what it finds later. These paths are
+                    on the CI agent.
+                  </p>
+                  <div className="runner-form">
+                    <Field label="Release pins file" value={gate.releases} onChange={(releases) => setGate({ ...gate, releases })} />
+                    <Field label="Promotion approval file" value={gate.promotion} onChange={(promotion) => setGate({ ...gate, promotion })} />
+                    <Field
+                      label="Promotion approval ID"
+                      value={gate.promotion_identity}
+                      onChange={(promotion_identity) => setGate({ ...gate, promotion_identity })}
+                      help="The full reviewed identity of that approval."
+                    />
+                    <Field label="Target revision (operator-declared)" value={gate.revision} onChange={(revision) => setGate({ ...gate, revision })} />
+                    <Field
+                      label="Baseline run folder"
+                      value={gate.baseline}
+                      onChange={(baseline) => setGate({ ...gate, baseline })}
+                      help="The reviewed baseline run."
+                    />
+                    <Field label="Gate policy file" value={gate.policy} onChange={(policy) => setGate({ ...gate, policy })} help="The reviewed gate policy." />
+                    <Field
+                      label="Gate policy ID"
+                      value={gate.policy_identity}
+                      onChange={(policy_identity) => setGate({ ...gate, policy_identity })}
+                      help="The full identity reviewed for that policy; the workflow pins it."
+                    />
+                    <Field
+                      label="Gate snapshot folder"
+                      value={gate.snapshot_directory}
+                      onChange={(snapshot_directory) => setGate({ ...gate, snapshot_directory })}
+                      help="Fresh per invocation, on the CI agent."
+                    />
+                  </div>
+                </>
+              ) : null}
+            </fieldset>
+            <div className="runner-actions">
+              <button type="button" disabled={busy} onClick={() => void handleGenerate()}>
+                Generate configuration
+              </button>
+            </div>
+            {handoff ? (
+              handoff.state === "completed" ? (
+                <div className="runner-inspect" role="status">
+                  <p className="runner-ok">Saved to {handoff.output}. Install it as the customer administrator.</p>
+                  <details>
+                    <summary>Generated workflow</summary>
+                    <pre className="runner-document">{handoff.document}</pre>
+                  </details>
+                </div>
+              ) : (
+                <Refusal result={handoff} />
+              )
+            ) : null}
+        </div>
 
-      <h4>CI results</h4>
-      <div className="runner-form">
-        <Field label="CI output directory" value={resultsDirectory} onChange={changeResultsDirectory} disabled={busy} />
-        <Field label="Gate policy file" value={policyPath} onChange={changePolicyPath} disabled={busy} />
-      </div>
-      <div className="runner-actions">
-        <button type="button" disabled={busy || resultsDirectory === ""} onClick={() => void handleResults()}>
-          Open CI results
-        </button>
-        <button type="button" disabled={busy || policyPath === ""} onClick={() => void handlePolicy()}>
-          Open gate policy
-        </button>
-      </div>
-      {results ? (
-        results.state === "completed" ? (
-          <div className="runner-inspect" role="status">
-            {results.ci ? (
-              <p>
-                Suite gate: <strong>{results.ci.state}</strong> (exit {results.ci.exit_code}).
-              </p>
+        <div hidden={task !== "inspect"} role="group" aria-labelledby="ci-results-title">
+            <h4 id="ci-results-title">CI results</h4>
+            <p className="runner-note">Both read local retained copies on this computer.</p>
+            <div className="runner-form">
+              <Field label="CI results folder" value={resultsDirectory} onChange={changeResultsDirectory} disabled={busy} />
+              <Field label="Gate policy file" value={policyPath} onChange={changePolicyPath} disabled={busy} />
+            </div>
+            <div className="runner-actions">
+              <button type="button" disabled={busy || resultsDirectory === ""} onClick={() => void handleResults()}>
+                Open CI results
+              </button>
+              <button type="button" disabled={busy || policyPath === ""} onClick={() => void handlePolicy()}>
+                Open gate policy
+              </button>
+            </div>
+            {results ? (
+              results.state === "completed" ? (
+                <div className="runner-inspect" role="status">
+                  {results.ci ? (
+                    <p>
+                      Suite gate: <strong>{results.ci.state}</strong> (exit {results.ci.exit_code}).
+                    </p>
+                  ) : null}
+                  {results.gate ? (
+                    <p>
+                      Change gate: <strong>{results.gate.state}</strong> (exit {results.gate.exit_code}).
+                    </p>
+                  ) : null}
+                  {results.warning ? <p className="runner-note">{results.warning}</p> : null}
+                </div>
+              ) : (
+                <Refusal result={results} />
+              )
             ) : null}
-            {results.gate ? (
-              <p>
-                Change gate: <strong>{results.gate.state}</strong> (exit {results.gate.exit_code}).
-              </p>
+            {policy ? (
+              policy.state === "completed" ? (
+                <div className="runner-inspect" role="status">
+                  <p>
+                    Identity <code>{policy.identity}</code> for environment {policy.environment}, engine{" "}
+                    {policy.engine}, {policy.specifications} pinned specification(s), retention until{" "}
+                    {policy.retain_until}. Pin this identity in protected customer configuration; reading
+                    a policy approves nothing.
+                  </p>
+                </div>
+              ) : (
+                <Refusal result={policy} />
+              )
             ) : null}
-            {results.warning ? <p className="runner-note">{results.warning}</p> : null}
-          </div>
-        ) : (
-          <Refusal result={results} />
-        )
-      ) : null}
-      {policy ? (
-        policy.state === "completed" ? (
-          <div className="runner-inspect" role="status">
-            <p>
-              Identity <code>{policy.identity}</code> for environment {policy.environment}, engine{" "}
-              {policy.engine}, {policy.specifications} pinned specification(s), retention until{" "}
-              {policy.retain_until}. Pin this identity in protected customer configuration; reading
-              a policy approves nothing.
+        </div>
+
+        <div hidden={task !== "verify"} role="group" aria-labelledby="ci-verify-title">
+            <h4 id="ci-verify-title">Verify gate</h4>
+            <p className="runner-note">
+              Verification reads only the retained snapshot, as <code>readmit suite verify-gate</code>{" "}
+              does: every retained byte is checked against the snapshot&apos;s manifest and the assessment
+              is repeated at the instant it was retained, against the identity pinned for its policy.
+              Nothing is sent, rerun or changed, and an unknown gate is never a pass.
             </p>
-          </div>
-        ) : (
-          <Refusal result={policy} />
-        )
-      ) : null}
-
-      <h4>Verify gate</h4>
-      <p className="runner-note">
-        Verification reads only the retained snapshot, as <code>readmit suite verify-gate</code>{" "}
-        does: every retained byte is checked against the snapshot&apos;s manifest and the assessment
-        is repeated at the instant it was retained, against the identity pinned for its policy.
-        Nothing is sent, rerun or changed, and an unknown gate is never a pass.
-      </p>
-      <div className="runner-form">
-        <Field label="Retained gate snapshot" value={snapshot.directory} onChange={(directory) => changeSnapshot({ directory })} disabled={busy} />
-        <Field label="Pinned gate policy identity" value={snapshot.identity} onChange={(identity) => changeSnapshot({ identity })} disabled={busy} />
-      </div>
-      <div className="runner-actions">
-        <button
-          type="button"
-          disabled={busy || snapshot.directory === "" || snapshot.identity === ""}
-          onClick={() => void handleVerify()}
-        >
-          Verify gate
-        </button>
-        {verifying ? (
-          <button type="button" ref={cancelVerification} onClick={lifecycle.cancel}>
-            Cancel verification
-          </button>
-        ) : null}
-      </div>
-      {verifying ? (
-        <p className="runner-note" role="status">
-          Verifying the retained snapshot…
-        </p>
-      ) : null}
-      {verification ? <GateVerification result={verification} /> : null}
+            <div className="runner-form">
+              <Field label="Gate snapshot folder" value={snapshot.directory} onChange={(directory) => changeSnapshot({ directory })} disabled={busy} />
+              <Field label="Pinned gate policy ID" value={snapshot.identity} onChange={(identity) => changeSnapshot({ identity })} disabled={busy} />
+            </div>
+            <div className="runner-actions">
+              <button
+                type="button"
+                disabled={busy || snapshot.directory === "" || snapshot.identity === ""}
+                onClick={() => void handleVerify()}
+              >
+                Verify gate
+              </button>
+              {verifying ? (
+                <button type="button" ref={cancelVerification} onClick={lifecycle.cancel}>
+                  Cancel verification
+                </button>
+              ) : null}
+            </div>
+            {verifying ? (
+              <p className="runner-note" role="status">
+                Verifying the retained snapshot…
+              </p>
+            ) : null}
+            {verification ? <GateVerification result={verification} /> : null}
+        </div>
+      </TaskTabs>
     </section>
   );
 }
@@ -974,7 +1348,7 @@ function RunnerCapacity() {
         runners.state === "completed" ? <>
           <p>Organization {runners.organization}, authority {runners.authority}: {runners.active} active, {runners.stale} stale, {runners.free} free of {runners.instances} granted instances. Stale capacity is held until an operator reconciles it.</p>
           {runners.admissions?.length ? <table>
-            <thead><tr><th>Instance</th><th>State</th><th>Admitted</th><th>Lease until</th><th>Settle</th></tr></thead>
+            <thead><tr><th>Instance ID</th><th>Admission state</th><th>Admitted at</th><th>Lease expires</th><th>Actions</th></tr></thead>
             <tbody>
               {runners.admissions.map(admission => <tr key={admission.instance}>
                 <td>{admission.instance}</td>
@@ -999,21 +1373,23 @@ export function RunnerPanel() {
   return (
     <section className="runner-panel" aria-labelledby="runner-panel-title">
       <h3 id="runner-panel-title">Runners, schedules and CI</h3>
-      <div className="runner-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "runner"} onClick={() => setTab("runner")}>
-          Runner
-        </button>
-        <button type="button" role="tab" aria-selected={tab === "schedules"} onClick={() => setTab("schedules")}>
-          Schedules
-        </button>
-        <button type="button" role="tab" aria-selected={tab === "ci"} onClick={() => setTab("ci")}>
-          CI handoff
-        </button>
-      </div>
-      {tab === "runner" ? <RunnerSection /> : null}
-      {tab === "runner" ? <RunnerCapacity /> : null}
-      {tab === "schedules" ? <SchedulesSection /> : null}
-      {tab === "ci" ? <CISection /> : null}
+      <TaskTabs<"runner" | "schedules" | "ci">
+        label="Runner areas"
+        id="runner-area"
+        tablistClass="runner-tabs"
+        panelClass="runner-section"
+        selected={tab}
+        onSelect={setTab}
+        tabs={[
+          { key: "runner", label: "Runner" },
+          { key: "schedules", label: "Schedules" },
+          { key: "ci", label: "CI handoff" },
+        ]}
+      >
+        {tab === "runner" ? <RunnerSection /> : null}
+        {tab === "schedules" ? <SchedulesSection /> : null}
+        {tab === "ci" ? <CISection /> : null}
+      </TaskTabs>
     </section>
   );
 }

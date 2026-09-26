@@ -470,7 +470,7 @@ def guided_sample(app, work, command, record):
     app.checkpoint("first-run")
     work.mkdir()
     app.press("Explore sample")
-    app.choose_folder("Choose a folder for the readmit sample workspace", work)
+    app.choose_folder("Choose sample location", work)
     app.press("Open case", within="Guided sample", timeout=120)
     app.read_out(r"regression · regression\.index\.json · verified [0-9a-f]{64}", timeout=120)
 
@@ -530,7 +530,7 @@ def guided_sample(app, work, command, record):
     # a new folder named in the host's save dialog, which the export creates.
     review = sample / "practice-review"
     app.select("Packets", "practice-packet", within="Investigation packets")
-    app.press("Verify read-only", within="Investigation packets")
+    app.press("Verify packet", within="Investigation packets")
     # A shortened identity and its ellipsis are two text elements, which some
     # platforms read out with a space between them.
     app.read_out(rf"Verified: identity {packet[:12]} ?… · contract readmit-retained-packet/v1 · state complete")
@@ -586,7 +586,7 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     app.read_out(r"License: active\. Organization: test-organization\.")
 
     app.press("Create project…")
-    app.choose_folder("Open a readmit workspace folder", work / "investigations")
+    app.choose_folder("Open workspace", work / "investigations")
     app.press("Create a project…", within="Evidence")
     app.fill("Project folder", "upgrade-check", within="Evidence")
     app.fill("Title", "Staged upgrade check", within="Evidence")
@@ -602,7 +602,7 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     (work / "backups").mkdir()
     backup = work / "backups" / "before-upgrade"
     app.press("Choose destination…")
-    app.name_new_folder("Choose a new folder for the backup", backup)
+    app.name_new_folder("New backup folder", backup)
     app.read_out(re.escape(str(backup)))
     app.press("Create backup", timeout=120)
     record["native_backup"] = app.read_out(r"Backup created\.", timeout=120)
@@ -610,7 +610,7 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     app.press("Staged upgrade", role="tab")
     app.checkpoint("staged-upgrade")
     app.press("Browse upgrade…")
-    app.choose_folder("Choose the staged upgrade package folder", staged)
+    app.choose_folder("Open staged upgrade folder", staged)
     app.read_out(re.escape(str(staged)))
     app.press("Check staged upgrade")
     # The candidate this commit built is the build already installed, and it
@@ -625,7 +625,7 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     rollback = work / "rollback-window"
     app.press("Administrator approves taking a rollback archive (installing still uses the native installer)", role="checkbox")
     app.press("Choose destination…")
-    app.name_new_folder("Choose a new folder for the recovery archive", rollback)
+    app.name_new_folder("New archive folder", rollback)
     app.read_out(re.escape(str(rollback)))
     app.press("Create rollback archive", timeout=120)
     record["native_rollback"] = app.read_out(

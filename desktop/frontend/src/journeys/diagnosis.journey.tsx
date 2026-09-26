@@ -153,7 +153,7 @@ function caseIdentity(day: string): string {
 
 /** Opens the clinic folder and verifies Wednesday's case. */
 async function openWednesday(user: UserEvent) {
-  await journey.chooseFolder(journey.path("clinic"), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path("clinic"), "Open workspace");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("wednesday", { selector: ".name" })).closest("li") as HTMLElement;

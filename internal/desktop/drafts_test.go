@@ -265,6 +265,34 @@ func TestANoteDraftMayBeUnfinishedButNotUnacceptable(t *testing.T) {
 	}
 }
 
+// A suite draft keeps the expected-override text a person edited exactly as
+// typed, invalid JSON included, so an interruption returns the edit; it stays
+// held to its own contract and its bound.
+func TestASuiteDraftRetainsEditedExpectedOverridesAsTyped(t *testing.T) {
+	store := draftsStore(t)
+	app := draftsApp(t, store)
+	edited := `{"schema":"readmit-suite-draft/v1","entry":"suite.json","document":"{}","expected":{"patients/one":"{\"PID-3\": "}}`
+	result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteDraftSchema, edited))
+	if result.State != desktop.Completed || len(result.Drafts) != 1 {
+		t.Fatalf("an edited suite draft was not retained: %+v", result)
+	}
+	var held struct {
+		Expected map[string]string `json:"expected"`
+	}
+	if err := json.Unmarshal(result.Drafts[0].Content, &held); err != nil || held.Expected["patients/one"] != `{"PID-3": ` {
+		t.Fatalf("the edited text did not come back as typed: %+v %v", held, err)
+	}
+	for name, draft := range map[string]string{
+		"unknown member":    `{"schema":"readmit-suite-draft/v1","document":"","pins":[]}`,
+		"oversized edits":   `{"schema":"readmit-suite-draft/v1","document":"","expected":{"t/r":"` + strings.Repeat("x", 1<<20) + `"}}`,
+		"non-text override": `{"schema":"readmit-suite-draft/v1","document":"","expected":{"t/r":{}}}`,
+	} {
+		if result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteDraftSchema, draft)); result.State != desktop.Failed {
+			t.Fatalf("the store retained a suite draft with %s: %+v", name, result)
+		}
+	}
+}
+
 // Past the bound the new draft is refused rather than another one being
 // dropped, and past the content bound the draft is refused rather than
 // truncated. Both refusals report what stays retained.

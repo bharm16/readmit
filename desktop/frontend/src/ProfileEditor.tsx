@@ -15,15 +15,23 @@ import {
   type EditorDraft,
   type Field,
   type LocalProfile,
+  type LocalProfileAuthority,
+  type LocalProfileBinding,
+  type LocalProfileCardinality,
   type LocalProfileConditionOperator,
+  type LocalProfileDateHandling,
+  type LocalProfilePrecision,
   type LocalProfileResolution,
   type LocalProfileResult,
+  type LocalProfileTerminologySet,
+  type LocalProfileTimeZoneRule,
   type LocalProfileUsage,
   type ProfileCompareResult,
   type ProfileLibraryResult,
   type ProfilePackageResult,
   type ProfilePackResult,
   type ProfileUpgradePinResult,
+  type ProfileVersionPin,
   type Segment,
   type State,
 } from "./bindings";
@@ -35,14 +43,48 @@ type TabId = "packs" | "editor" | "compare" | "exchange" | "raw";
 
 const HL7_VERSIONS = ["2.3.1", "2.4", "2.5", "2.5.1", "2.6", "2.7.1", "2.8.2"];
 const FAMILIES = ["ADT", "SIU", "ORM", "ORU"];
-const USAGES = ["R", "RE", "O", "C", "X"];
-const CONDITION_OPERATORS = ["present", "absent", "value_in"];
 const DATA_TYPES = [
   "AD", "CE", "CF", "CNE", "CP", "CQ", "CWE", "CX", "DLN", "DR", "DT", "DTM",
   "ED", "EI", "EIP", "FN", "FT", "HD", "ID", "IS", "MO", "MSG", "NM", "PL",
   "PT", "RP", "SAD", "SI", "SN", "ST", "TM", "TS", "TX", "VID", "XAD", "XCN",
   "XON", "XPN", "XTN",
 ];
+const UNIVERSAL_ID_TYPES = [
+  "DNS", "GUID", "HCD", "HL7", "ISO", "L", "M", "N", "Random", "URI", "UUID", "x400", "x500",
+];
+
+// Each caption names the profile contract's own meaning of a code; the code
+// itself is what the document keeps.
+const USAGE_CAPTIONS: Record<LocalProfileUsage, string> = {
+  R: "R — Required",
+  RE: "RE — Required or empty",
+  O: "O — Optional",
+  C: "C — Conditional",
+  X: "X — Not supported",
+};
+const OPERATOR_CAPTIONS: Record<LocalProfileConditionOperator, string> = {
+  present: "Present",
+  absent: "Absent",
+  value_in: "One of these values",
+};
+const BINDING_CAPTIONS: Record<LocalProfileBinding, string> = {
+  required: "Required",
+  suggested: "Suggested",
+};
+const PRECISION_CAPTIONS: Record<LocalProfilePrecision, string> = {
+  year: "Year",
+  month: "Month",
+  day: "Day",
+  hour: "Hour",
+  minute: "Minute",
+  second: "Second",
+  fraction: "Fraction",
+};
+const TIME_ZONE_CAPTIONS: Record<LocalProfileTimeZoneRule, string> = {
+  required: "Required",
+  optional: "Optional",
+  forbidden: "Forbidden",
+};
 
 // What an import that did not complete is called, by the state it answered.
 function importHeading(state: State): string {
@@ -114,6 +156,232 @@ function emptyProfile(): LocalProfile {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Whether a parsed document has every member the structured editor reads,
+ * with the kind of value it reads there. This is no validation — the shared Go
+ * reader decides what a profile may say — only a guard that a document merely
+ * tagged with the schema is never handed to controls that would fail on a
+ * missing member. */
+function editableProfile(value: unknown): value is LocalProfile {
+  if (!isRecord(value) || !isRecord(value.profile) || !isRecord(value.base) || !isRecord(value.base.pack)) {
+    return false;
+  }
+  const texts = (record: Record<string, unknown>, ...keys: string[]) => keys.every((key) => typeof record[key] === "string");
+  if (!texts(value.profile, "id", "version") || !texts(value.base, "hl7_version", "family") || !texts(value.base.pack, "id", "version")) {
+    return false;
+  }
+  const cardinality = (item: unknown) => item === undefined || (isRecord(item) && typeof item.min === "number" && typeof item.max === "string");
+  const list = (item: unknown, each: (entry: Record<string, unknown>) => boolean) =>
+    item === undefined || (Array.isArray(item) && item.every((entry) => isRecord(entry) && each(entry)));
+  const optionalText = (record: Record<string, unknown>, ...keys: string[]) =>
+    keys.every((key) => record[key] === undefined || typeof record[key] === "string");
+  if (!Array.isArray(value.segments)) {
+    return false;
+  }
+  return (
+    list(value.segments, (segment) =>
+      typeof segment.id === "string" &&
+      optionalText(segment, "description") &&
+      cardinality(segment.cardinality) &&
+      Array.isArray(segment.fields) &&
+      list(segment.fields, (field) =>
+        typeof field.position === "number" &&
+        typeof field.usage === "string" &&
+        optionalText(field, "name", "type", "terminology", "authority", "date") &&
+        cardinality(field.cardinality) &&
+        (field.condition === undefined ||
+          (isRecord(field.condition) &&
+            typeof field.condition.segment === "string" &&
+            typeof field.condition.position === "number" &&
+            typeof field.condition.operator === "string" &&
+            (field.condition.values === undefined ||
+              (Array.isArray(field.condition.values) && field.condition.values.every((entry) => typeof entry === "string"))))),
+      ),
+    ) &&
+    list(value.terminology, (set) =>
+      typeof set.id === "string" &&
+      typeof set.binding === "string" &&
+      optionalText(set, "description") &&
+      list(set.codes, (code) => typeof code.code === "string" && optionalText(code, "display")) &&
+      Array.isArray(set.codes),
+    ) &&
+    list(value.authorities, (authority) =>
+      typeof authority.id === "string" && optionalText(authority, "description", "namespace", "universal_id", "universal_id_type"),
+    ) &&
+    list(value.dates, (date) =>
+      typeof date.id === "string" && typeof date.precision === "string" && typeof date.timezone === "string" && optionalText(date, "description"),
+    )
+  );
+}
+
+/** A copy of a record with one optional text member set, or left out when it
+ * is empty: an optional member the person cleared is not written as "". */
+function withText<T extends object>(record: T, key: keyof T & string, value: string): T {
+  const next = { ...record } as Record<string, unknown>;
+  if (value === "") {
+    delete next[key];
+  } else {
+    next[key] = value;
+  }
+  return next as T;
+}
+
+/** The selector of one field: its segment and position. */
+function selectorOf(segment: Segment, field: Field): string {
+  return `${segment.id}-${field.position}`;
+}
+
+/** The exact identity of a pin, as a person compares two of them. */
+function pinText(pin: ProfileVersionPin): string {
+  return `${pin.id} version ${pin.version} · SHA-256 ${pin.sha256}`;
+}
+
+/** A whole-number input that keeps what is typed while it is not yet a
+ * number, such as while it is cleared to type another, and commits only a
+ * whole number. */
+function WholeNumber({
+  value,
+  min,
+  disabled,
+  describedBy,
+  onCommit,
+}: {
+  /** Undefined until the person enters a number: none is assumed. */
+  value: number | undefined;
+  min: number;
+  disabled?: boolean;
+  describedBy?: string;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState(value === undefined ? "" : String(value));
+  useEffect(() => {
+    setText((typed) => (value === undefined ? typed : typed !== "" && Number(typed) === value ? typed : String(value)));
+  }, [value]);
+  return (
+    <input
+      type="number"
+      min={min}
+      value={text}
+      disabled={disabled}
+      aria-describedby={describedBy}
+      onChange={(e) => {
+        setText(e.target.value);
+        if (/^[0-9]+$/.test(e.target.value)) {
+          onCommit(Number(e.target.value));
+        }
+      }}
+    />
+  );
+}
+
+/** How many times a segment or field may repeat: not specified at all, or a
+ * minimum with a maximum that is a count or unbounded ("*"). Neither "not
+ * specified" nor "unbounded" is written as zero. */
+function Repetitions({
+  group,
+  value,
+  disabled,
+  onChange,
+}: {
+  group: string;
+  value: LocalProfileCardinality | undefined;
+  disabled: boolean;
+  onChange: (next: LocalProfileCardinality | undefined) => void;
+}) {
+  const unbounded = value?.max === "*";
+  return (
+    <fieldset className="repetitions" disabled={disabled}>
+      <legend>Repetitions</legend>
+      <label className="inline-choice">
+        <input type="radio" name={group} checked={value === undefined} onChange={() => onChange(undefined)} />
+        Not specified
+      </label>
+      <label className="inline-choice">
+        <input
+          type="radio"
+          name={group}
+          checked={value !== undefined}
+          onChange={() => onChange(value ?? { min: 0, max: "1" })}
+        />
+        Specified
+      </label>
+      {value !== undefined && (
+        <div className="repetition-bounds">
+          <label>
+            <span>Minimum</span>
+            <WholeNumber value={value.min} min={0} onCommit={(min) => onChange({ ...value, min })} />
+          </label>
+          <label>
+            <span>Maximum</span>
+            <input
+              type="number"
+              min={0}
+              value={unbounded ? "" : value.max}
+              disabled={disabled || unbounded}
+              onChange={(e) => onChange({ ...value, max: e.target.value })}
+            />
+          </label>
+          <label className="inline-choice">
+            <input
+              type="checkbox"
+              checked={unbounded}
+              onChange={(e) => onChange({ ...value, max: e.target.checked ? "*" : "" })}
+            />
+            Unbounded
+          </label>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+/** Which result the result box answers: a validation, a save, or an open. */
+type ResultKind = { kind: "validation" } | { kind: "save" } | { kind: "open"; entry: string };
+
+function resultHeading(kind: ResultKind, state: State): string {
+  switch (kind.kind) {
+    case "validation":
+      return `Validation: ${state}`;
+    case "save":
+      return state === "completed" ? "Saved revision" : `Save result: ${state}`;
+    case "open":
+      return `Open ${kind.entry}: ${state}`;
+  }
+}
+
+/** One answered comparison and the exact inputs it answered for. An update of
+ * a test pin is bound to exactly this: changing any input withdraws it. */
+interface Compared {
+  from: string;
+  to: string;
+  references: string;
+  result: ProfileCompareResult;
+}
+
+/** An answered pin update, with the exact identities it moved between. */
+interface PinUpdate {
+  test: string;
+  was: ProfileVersionPin;
+  now: ProfileVersionPin;
+  result: ProfileUpgradePinResult;
+}
+
+/** A condition as the person authors it: a member not yet entered is blank,
+ * never a guessed value. */
+type AuthoredCondition = Omit<Condition, "operator"> & { operator: LocalProfileConditionOperator | "" };
+
+/** The kinds of rule a field references by ID, with the names they are shown
+ * under. */
+type RuleKind = "terminology" | "authority" | "date";
+const RULE_NAMES: Record<RuleKind, { one: string; field: string }> = {
+  terminology: { one: "Terminology set", field: "terminology set" },
+  authority: { one: "Assigning authority", field: "assigning authority" },
+  date: { one: "Date rule", field: "date rule" },
+};
+
 export function ProfileEditor({
   workspace,
   drafts,
@@ -126,10 +394,25 @@ export function ProfileEditor({
   const [activeTab, setActiveTab] = useState<TabId>("editor");
   const [rawJson, setRawJson] = useState("");
   const [profile, setProfile] = useState<LocalProfile>(emptyProfile());
+  // Whether the canonical JSON is a document the structured editor can show.
+  // While it is not, the structured controls are withheld, so they can never
+  // write the last editable profile over text a person is still fixing.
+  const [structured, setStructured] = useState(true);
   const [packEntry, setPackEntry] = useState("profile-pack.json");
   const [libraryDir, setLibraryDir] = useState("");
   const [saveOutput, setSaveOutput] = useState("profile-v1.json");
   const [sealOutput, setSealOutput] = useState("profile-v1-seal.json");
+
+  // The field whose clauses the detail panel edits, by segment and field index.
+  const [selected, setSelected] = useState<{ segment: number; field: number } | null>(null);
+  // The segment being added, while its row is open.
+  const [newSegment, setNewSegment] = useState<{ id: string; description: string } | null>(null);
+  // The segment whose removal is awaiting confirmation.
+  const [confirmingRemoval, setConfirmingRemoval] = useState<number | null>(null);
+  // Why a rule could not be removed: the fields that still reference it.
+  const [ruleNotice, setRuleNotice] = useState<{ kind: RuleKind; text: string } | null>(null);
+  // The control focus moves to once the edit that removed the focused one lands.
+  const [focusAfter, setFocusAfter] = useState<string | null>(null);
 
   // Pack inspection and library state
   const [packResult, setPackResult] = useState<ProfilePackResult | null>(null);
@@ -137,20 +420,20 @@ export function ProfileEditor({
 
   // Profile validation and seal state
   const [profileResult, setProfileResult] = useState<LocalProfileResult | null>(null);
-  // Which action the result below answers: a validation or save, or an open.
-  const [resultLabel, setResultLabel] = useState("Validation Result");
+  // Which action the result below answers: a validation, a save, or an open.
+  const [resultKind, setResultKind] = useState<ResultKind>({ kind: "validation" });
 
   // Opening an existing profile
   const [openEntry, setOpenEntry] = useState("");
   const [openPack, setOpenPack] = useState("");
   const [openNotice, setOpenNotice] = useState<string | null>(null);
 
-  // Version comparison and pin upgrade state
+  // Version comparison and pin update state
   const [compareFrom, setCompareFrom] = useState("profile-v1.json");
   const [compareTo, setCompareTo] = useState("profile-v2.json");
   const [compareRefs, setCompareRefs] = useState("references.json");
-  const [compareResult, setCompareResult] = useState<ProfileCompareResult | null>(null);
-  const [upgradeResult, setUpgradeResult] = useState<ProfileUpgradePinResult | null>(null);
+  const [compared, setCompared] = useState<Compared | null>(null);
+  const [pinUpdate, setPinUpdate] = useState<PinUpdate | null>(null);
 
   // Package exchange state
   const [pkgExportProfile, setPkgExportProfile] = useState("profile.json");
@@ -183,6 +466,12 @@ export function ProfileEditor({
   const retainer = useRetainer();
   const disabled = busy || pending;
 
+  useEffect(() => {
+    if (focusAfter === null) return;
+    document.getElementById(focusAfter)?.focus();
+    setFocusAfter(null);
+  }, [focusAfter]);
+
   // Restore draft on mount for this workspace
   const loaded = useRef<string | null>(null);
   useEffect(() => {
@@ -190,25 +479,37 @@ export function ProfileEditor({
     loaded.current = workspace;
     const held = draftFor(drafts, "local-profile", workspace);
     if (held && typeof held.content === "string") {
-      try {
-        const parsed = JSON.parse(held.content);
-        if (parsed && typeof parsed === "object") {
-          setProfile(parsed as LocalProfile);
-          setRawJson(held.content);
-          retainer.keepId(held.id);
-        }
-      } catch {
-        setRawJson(held.content);
-        retainer.keepId(held.id);
-      }
+      adoptRaw(held.content);
+      retainer.keepId(held.id);
     } else {
       setRawJson(JSON.stringify(profile, null, 2));
     }
   }, [workspace, drafts, retainer]);
 
-  // Synchronize draft save on edit
+  /** Shows raw text, and the profile it holds when that is one the structured
+   * editor can show. */
+  function adoptRaw(text: string) {
+    setRawJson(text);
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (editableProfile(parsed)) {
+        setProfile(parsed);
+        setStructured(true);
+        return;
+      }
+    } catch {
+      // Keep typing in raw view
+    }
+    setStructured(false);
+    setSelected(null);
+  }
+
+  // Synchronize draft save on edit. An edit withdraws the result of an
+  // earlier validation, save or open: it described other content.
   function updateProfile(next: LocalProfile) {
     setProfile(next);
+    setStructured(true);
+    setProfileResult(null);
     const jsonStr = JSON.stringify(next, null, 2);
     setRawJson(jsonStr);
     retainer.save({
@@ -223,15 +524,8 @@ export function ProfileEditor({
   }
 
   function updateRawJson(next: string) {
-    setRawJson(next);
-    try {
-      const parsed = JSON.parse(next);
-      if (parsed && typeof parsed === "object" && parsed.schema === "readmit-local-profile/v1") {
-        setProfile(parsed as LocalProfile);
-      }
-    } catch {
-      // Keep typing in raw view
-    }
+    adoptRaw(next);
+    setProfileResult(null);
     retainer.save({
       id: "",
       kind: "local-profile",
@@ -243,11 +537,103 @@ export function ProfileEditor({
     });
   }
 
+  function updateSegment(segIdx: number, next: Segment) {
+    const segments = [...profile.segments];
+    segments[segIdx] = next;
+    updateProfile({ ...profile, segments });
+  }
+
+  function updateField(segIdx: number, fldIdx: number, next: Field) {
+    const segment = profile.segments[segIdx]!;
+    const fields = [...segment.fields];
+    fields[fldIdx] = next;
+    updateSegment(segIdx, { ...segment, fields });
+  }
+
+  function removeSegment(segIdx: number) {
+    setConfirmingRemoval(null);
+    setSelected(null);
+    updateProfile({ ...profile, segments: profile.segments.filter((_, idx) => idx !== segIdx) });
+    setFocusAfter("profile-add-segment");
+  }
+
+  function addSegment() {
+    if (!newSegment) return;
+    const id = newSegment.id.trim().toUpperCase();
+    if (!id) return;
+    const segment: Segment = { id, cardinality: { min: 1, max: "1" }, fields: [] };
+    const description = newSegment.description.trim();
+    updateProfile({
+      ...profile,
+      segments: [...profile.segments, description ? { ...segment, description } : segment],
+    });
+    setNewSegment(null);
+    setFocusAfter("profile-add-segment");
+  }
+
+  function addField(segIdx: number) {
+    const segment = profile.segments[segIdx]!;
+    const position = segment.fields.length > 0 ? Math.max(...segment.fields.map((f) => f.position)) + 1 : 1;
+    updateSegment(segIdx, { ...segment, fields: [...segment.fields, { position, usage: "O" }] });
+    setSelected({ segment: segIdx, field: segment.fields.length });
+    setFocusAfter("profile-field-detail-heading");
+  }
+
+  function removeField(segIdx: number, fldIdx: number) {
+    const segment = profile.segments[segIdx]!;
+    updateSegment(segIdx, { ...segment, fields: segment.fields.filter((_, idx) => idx !== fldIdx) });
+    setSelected(null);
+    setFocusAfter(`profile-add-field-${segIdx}`);
+  }
+
+  /** The selectors of every field that references one rule by its ID. */
+  function usersOf(kind: RuleKind, id: string): string[] {
+    if (id === "") return [];
+    return profile.segments.flatMap((segment) =>
+      segment.fields.filter((field) => field[kind] === id).map((field) => selectorOf(segment, field)),
+    );
+  }
+
+  /** Removes one rule unless a field still references it; then the fields are
+   * named and nothing is cleared or retargeted. */
+  function removeRule(kind: RuleKind, id: string, remove: () => void) {
+    const users = usersOf(kind, id);
+    if (users.length > 0) {
+      setRuleNotice({
+        kind,
+        text: `${RULE_NAMES[kind].one} ${id} is used by ${users.join(", ")}. Choose another ${RULE_NAMES[kind].field}, or none, for those fields before removing it.`,
+      });
+      return;
+    }
+    setRuleNotice(null);
+    remove();
+  }
+
+  function updateTerminology(idx: number, next: LocalProfileTerminologySet) {
+    const terminology = [...(profile.terminology ?? [])];
+    terminology[idx] = next;
+    updateProfile({ ...profile, terminology });
+  }
+
+  function updateAuthority(idx: number, next: LocalProfileAuthority) {
+    const authorities = [...(profile.authorities ?? [])];
+    authorities[idx] = next;
+    updateProfile({ ...profile, authorities });
+  }
+
+  function updateDate(idx: number, next: LocalProfileDateHandling) {
+    const dates = [...(profile.dates ?? [])];
+    dates[idx] = next;
+    updateProfile({ ...profile, dates });
+  }
+
   async function discardDraft() {
     await lifecycle.run("working", async () => {
       if (!await retainer.dropCurrent()) return;
       const clean = emptyProfile();
       setProfile(clean);
+      setStructured(true);
+      setSelected(null);
       setRawJson(JSON.stringify(clean, null, 2));
       setProfileResult(null);
     });
@@ -282,10 +668,12 @@ export function ProfileEditor({
     setOpenNotice(null);
     await lifecycle.run("opening", async () => {
       const res = await openProfile(workspace, openEntry, openPack);
-      setResultLabel(`Open ${openEntry}`);
+      setResultKind({ kind: "open", entry: openEntry });
       setProfileResult(res);
       if (res.state === "completed" && res.profile) {
         setProfile(res.profile);
+        setStructured(true);
+        setSelected(null);
         setRawJson(res.document ?? JSON.stringify(res.profile, null, 2));
       }
     });
@@ -298,7 +686,7 @@ export function ProfileEditor({
         document: rawJson,
         pack: packEntry,
       });
-      setResultLabel("Validation Result");
+      setResultKind({ kind: "validation" });
       setProfileResult(res);
     });
   }
@@ -311,7 +699,7 @@ export function ProfileEditor({
         output: saveOutput,
         seal_output: sealOutput,
       });
-      setResultLabel("Validation Result");
+      setResultKind({ kind: "save" });
       setProfileResult(res);
       if (res.state === "completed") {
         const id = retainer.currentId();
@@ -324,39 +712,50 @@ export function ProfileEditor({
   }
 
   async function handleCompareProfiles() {
+    const inputs = { from: compareFrom, to: compareTo, references: compareRefs };
     await lifecycle.run("working", async () => {
-      const res = await compareProfiles({
-        workspace,
-        from: compareFrom,
-        to: compareTo,
-        references: compareRefs,
-      });
-      setCompareResult(res);
+      setPinUpdate(null);
+      const result = await compareProfiles({ workspace, ...inputs });
+      setCompared({ ...inputs, result });
     });
   }
 
-  async function handleUpgradePin(test: AssessedTest) {
-    const comparison = compareResult?.comparison;
-    if (!comparison) return;
+  /** Changing a compared profile or the references file withdraws the
+   * comparison and every action bound to it. */
+  function withdrawComparison() {
+    setCompared(null);
+    setPinUpdate(null);
+  }
+
+  async function handleUpdatePin(test: AssessedTest) {
+    const bound = compared;
+    // The comparison decided this pin in Go; it is only passed back.
+    const now = bound?.result.later_pin?.pin;
+    if (!bound || !now) return;
     await lifecycle.run("working", async () => {
-      const res = await upgradeProfilePin({
+      const result = await upgradeProfilePin({
         workspace,
-        references: compareRefs,
+        references: bound.references,
         test: test.test,
         was_pin: test.pinned,
-        now_pin: {
-          id: comparison.profile,
-          version: comparison.to,
-          sha256: profileResult?.seal?.content.sha256 ?? test.pinned.sha256,
-        },
-        output: compareRefs,
+        now_pin: now,
+        output: bound.references,
       });
-      setUpgradeResult(res);
-      if (res.state === "completed") {
-        // Re-run comparison to update impacted tests view
-        void handleCompareProfiles();
+      setPinUpdate({ test: test.test, was: test.pinned, now, result });
+      if (result.state === "completed") {
+        // The references file changed, so the assessment no longer describes it.
+        setCompared(null);
       }
     });
+  }
+
+  /** An export input changed, so the disclosure confirmation given for the
+   * previous inputs no longer holds. */
+  function exportInput(set: (value: string) => void) {
+    return (value: string) => {
+      set(value);
+      setPkgExportReviewed(false);
+    };
   }
 
   async function handleExportPackage() {
@@ -392,6 +791,554 @@ export function ProfileEditor({
       const res = await inspectProfilePackage(workspace, pkgInspectFile);
       setPackageResult(res);
     });
+  }
+
+  /** A field's reference to one rule collection, by the rule's real ID. The
+   * select writes only its own member; a reference to an ID the profile does
+   * not declare stays selected, named as undeclared, rather than cleared. */
+  function RuleReference({ kind, segIdx, fldIdx }: { kind: RuleKind; segIdx: number; fldIdx: number }) {
+    const field = profile.segments[segIdx]!.fields[fldIdx]!;
+    const current = field[kind] ?? "";
+    const declared = (kind === "terminology" ? profile.terminology : kind === "authority" ? profile.authorities : profile.dates) ?? [];
+    const ids = declared.map((rule) => rule.id).filter((id) => id !== "");
+    return (
+      <label>
+        <span>{RULE_NAMES[kind].one}</span>
+        <select
+          value={current}
+          disabled={disabled}
+          onChange={(e) => updateField(segIdx, fldIdx, withText(field, kind, e.target.value))}
+        >
+          <option value="">None</option>
+          {ids.map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+          {current !== "" && !ids.includes(current) && <option value={current}>{`${current} (not declared)`}</option>}
+        </select>
+      </label>
+    );
+  }
+
+  /** Every clause of the selected field: where it is, what it is called and
+   * what the profile requires of it. */
+  function renderFieldDetail() {
+    if (!selected) return null;
+    const segment = profile.segments[selected.segment];
+    const field = segment?.fields[selected.field];
+    if (!segment || !field) return null;
+    const { segment: segIdx, field: fldIdx } = selected;
+    const selector = selectorOf(segment, field);
+    const resolved = profileResult?.resolution?.segments
+      .find((s) => s.id === segment.id)
+      ?.fields.find((f) => f.position === field.position);
+    const set = (next: Field) => updateField(segIdx, fldIdx, next);
+    // A conditional field's condition is the person's to author: until they
+    // enter some of it there is none, and what they have not entered stays
+    // blank. The shared reader refuses either at validation and save, saying
+    // what is missing.
+    const condition: AuthoredCondition = field.condition ?? { segment: "", position: 0, operator: "" };
+    const setCondition = (next: AuthoredCondition) => set({ ...field, condition: next as Condition });
+    return (
+      <section key={`${segIdx}-${fldIdx}`} className="field-detail" aria-labelledby="profile-field-detail-heading">
+        <h5 id="profile-field-detail-heading" tabIndex={-1}>
+          Field {selector}
+        </h5>
+        <div className="field-detail-grid">
+          <label>
+            <span>Position</span>
+            <WholeNumber
+              value={field.position}
+              min={1}
+              disabled={disabled}
+              describedBy="profile-position-help"
+              onCommit={(position) => set({ ...field, position })}
+            />
+          </label>
+          <p id="profile-position-help" className="hint">
+            Any position of the segment; the preceding positions need not be listed. Validation refuses a position
+            that is repeated or out of range.
+          </p>
+          <label>
+            <span>Field name</span>
+            <input
+              type="text"
+              value={field.name ?? ""}
+              disabled={disabled}
+              onChange={(e) => set(withText(field, "name", e.target.value))}
+            />
+          </label>
+          {resolved?.pack_name && resolved.pack_name !== field.name && (
+            <p className="pack-name-note">Pinned pack label: {resolved.pack_name}</p>
+          )}
+          <label>
+            <span>Usage</span>
+            <select
+              value={field.usage}
+              disabled={disabled}
+              onChange={(e) => {
+                const usage = e.target.value as LocalProfileUsage;
+                const next: Field = { ...field, usage };
+                if (usage !== "C") {
+                  delete next.condition;
+                }
+                set(next);
+              }}
+            >
+              {(Object.keys(USAGE_CAPTIONS) as LocalProfileUsage[]).map((usage) => (
+                <option key={usage} value={usage}>
+                  {USAGE_CAPTIONS[usage]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {field.usage === "C" && (
+          <fieldset className="condition-inputs" disabled={disabled}>
+            <legend>Condition</legend>
+            <label>
+              <span>Operator</span>
+              <select
+                value={condition.operator}
+                onChange={(e) => {
+                  const operator = e.target.value as LocalProfileConditionOperator;
+                  const next: AuthoredCondition = { segment: condition.segment, position: condition.position, operator };
+                  if (operator === "value_in") {
+                    next.values = condition.values ?? [];
+                  }
+                  setCondition(next);
+                }}
+              >
+                {condition.operator === "" && (
+                  <option value="" disabled>
+                    Choose an operator
+                  </option>
+                )}
+                {(Object.keys(OPERATOR_CAPTIONS) as LocalProfileConditionOperator[]).map((operator) => (
+                  <option key={operator} value={operator}>
+                    {OPERATOR_CAPTIONS[operator]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint">
+              Present: the named position carries a value. Absent: the named position is omitted, empty or explicitly
+              null. One of these values: the named position carries one of the allowed values.
+            </p>
+            <label>
+              <span>Condition segment</span>
+              <input
+                type="text"
+                value={condition.segment}
+                aria-describedby="profile-condition-segment-help"
+                onChange={(e) => setCondition({ ...condition, segment: e.target.value })}
+              />
+            </label>
+            <p id="profile-condition-segment-help" className="hint">
+              For example SCH.
+            </p>
+            <label>
+              <span>Condition field position</span>
+              <WholeNumber
+                value={condition.position === 0 ? undefined : condition.position}
+                min={1}
+                onCommit={(position) => setCondition({ ...condition, position })}
+              />
+            </label>
+            {condition.operator === "value_in" && (
+              <fieldset className="allowed-values">
+                <legend>Allowed values</legend>
+                {(condition.values ?? []).map((value, idx) => (
+                  <div key={idx} className="allowed-value-row">
+                    <label>
+                      <span>Value {idx + 1}</span>
+                      <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => {
+                          const values = [...(condition.values ?? [])];
+                          values[idx] = e.target.value;
+                          setCondition({ ...condition, values });
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCondition({ ...condition, values: (condition.values ?? []).filter((_, at) => at !== idx) })
+                      }
+                    >
+                      Remove value {idx + 1}
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCondition({ ...condition, values: [...(condition.values ?? []), ""] })}
+                >
+                  Add value
+                </button>
+              </fieldset>
+            )}
+          </fieldset>
+        )}
+
+        <Repetitions
+          group="profile-field-repetitions"
+          value={field.cardinality}
+          disabled={disabled}
+          onChange={(cardinality) => {
+            const next: Field = { ...field };
+            if (cardinality) {
+              next.cardinality = cardinality;
+            } else {
+              delete next.cardinality;
+            }
+            set(next);
+          }}
+        />
+
+        <div className="field-detail-grid">
+          <label>
+            <span>Data type</span>
+            <select
+              value={field.type ?? ""}
+              disabled={disabled}
+              onChange={(e) => set(withText(field, "type", e.target.value))}
+            >
+              <option value="">Not specified</option>
+              {DATA_TYPES.map((dt) => (
+                <option key={dt} value={dt}>
+                  {dt}
+                </option>
+              ))}
+              {field.type && !DATA_TYPES.includes(field.type) && <option value={field.type}>{field.type}</option>}
+            </select>
+          </label>
+          {RuleReference({ kind: "terminology", segIdx, fldIdx })}
+          {RuleReference({ kind: "authority", segIdx, fldIdx })}
+          {RuleReference({ kind: "date", segIdx, fldIdx })}
+        </div>
+      </section>
+    );
+  }
+
+  /** The three rule collections a field references by ID. */
+  function renderRules() {
+    const terminology = profile.terminology ?? [];
+    const authorities = profile.authorities ?? [];
+    const dates = profile.dates ?? [];
+    const notice = (kind: RuleKind) =>
+      ruleNotice?.kind === kind && (
+        <p className="warning-text" role="alert">
+          {ruleNotice.text}
+        </p>
+      );
+    const usedBy = (kind: RuleKind, id: string, helpId: string) => {
+      const users = usersOf(kind, id);
+      return users.length > 0 ? (
+        <p id={helpId} className="hint">
+          Used by {users.join(", ")}. Choose another {RULE_NAMES[kind].field}, or none, for those fields before
+          changing this ID or removing it.
+        </p>
+      ) : null;
+    };
+    return (
+      <>
+        <section className="rule-collection" aria-labelledby="profile-terminology-heading">
+          <h4 id="profile-terminology-heading">Terminology</h4>
+          {terminology.map((set, idx) => {
+            const helpId = `profile-terminology-${idx}-users`;
+            const inUse = usersOf("terminology", set.id).length > 0;
+            const name = set.id || `${idx + 1}`;
+            return (
+              <fieldset key={idx} className="rule-card" disabled={disabled}>
+                <legend>{`Terminology set ${name}`}</legend>
+                <label>
+                  <span>Set ID</span>
+                  <input
+                    type="text"
+                    value={set.id}
+                    readOnly={inUse}
+                    aria-describedby={inUse ? helpId : undefined}
+                    onChange={(e) => updateTerminology(idx, { ...set, id: e.target.value })}
+                  />
+                </label>
+                {usedBy("terminology", set.id, helpId)}
+                <label>
+                  <span>Description (optional)</span>
+                  <input
+                    type="text"
+                    value={set.description ?? ""}
+                    onChange={(e) => updateTerminology(idx, withText(set, "description", e.target.value))}
+                  />
+                </label>
+                <label>
+                  <span>Binding</span>
+                  <select
+                    value={set.binding}
+                    onChange={(e) => updateTerminology(idx, { ...set, binding: e.target.value as LocalProfileBinding })}
+                  >
+                    {!(set.binding in BINDING_CAPTIONS) && <option value={set.binding}>Choose a binding</option>}
+                    {(Object.keys(BINDING_CAPTIONS) as LocalProfileBinding[]).map((binding) => (
+                      <option key={binding} value={binding}>
+                        {BINDING_CAPTIONS[binding]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {set.codes.map((code, at) => (
+                  <div key={at} className="rule-code-row">
+                    <label>
+                      <span>Code</span>
+                      <input
+                        type="text"
+                        value={code.code}
+                        onChange={(e) => {
+                          const codes = [...set.codes];
+                          codes[at] = { ...code, code: e.target.value };
+                          updateTerminology(idx, { ...set, codes });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <span>Display text (optional)</span>
+                      <input
+                        type="text"
+                        value={code.display ?? ""}
+                        onChange={(e) => {
+                          const codes = [...set.codes];
+                          codes[at] = withText(code, "display", e.target.value);
+                          updateTerminology(idx, { ...set, codes });
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      aria-label={`Remove code ${code.code || at + 1} from ${name}`}
+                      onClick={() => updateTerminology(idx, { ...set, codes: set.codes.filter((_, other) => other !== at) })}
+                    >
+                      Remove code
+                    </button>
+                  </div>
+                ))}
+                <div className="rule-actions">
+                  <button
+                    type="button"
+                    aria-label={`Add code to ${name}`}
+                    onClick={() => updateTerminology(idx, { ...set, codes: [...set.codes, { code: "" }] })}
+                  >
+                    Add code
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    aria-label={`Remove set ${name}`}
+                    onClick={() =>
+                      removeRule("terminology", set.id, () =>
+                        updateProfile({ ...profile, terminology: terminology.filter((_, other) => other !== idx) }),
+                      )
+                    }
+                  >
+                    Remove set
+                  </button>
+                </div>
+              </fieldset>
+            );
+          })}
+          {notice("terminology")}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() =>
+              updateProfile({ ...profile, terminology: [...terminology, { id: "", binding: "" as LocalProfileBinding, codes: [] }] })
+            }
+          >
+            Add set
+          </button>
+        </section>
+
+        <section className="rule-collection" aria-labelledby="profile-authorities-heading">
+          <h4 id="profile-authorities-heading">Authorities</h4>
+          <p className="hint">
+            Each authority declares a namespace, a universal ID, or both, and a universal ID is declared together with
+            its type.
+          </p>
+          {authorities.map((authority, idx) => {
+            const helpId = `profile-authority-${idx}-users`;
+            const inUse = usersOf("authority", authority.id).length > 0;
+            const name = authority.id || `${idx + 1}`;
+            return (
+              <fieldset key={idx} className="rule-card" disabled={disabled}>
+                <legend>{`Assigning authority ${name}`}</legend>
+                <label>
+                  <span>Authority ID</span>
+                  <input
+                    type="text"
+                    value={authority.id}
+                    readOnly={inUse}
+                    aria-describedby={inUse ? helpId : undefined}
+                    onChange={(e) => updateAuthority(idx, { ...authority, id: e.target.value })}
+                  />
+                </label>
+                {usedBy("authority", authority.id, helpId)}
+                <label>
+                  <span>Description (optional)</span>
+                  <input
+                    type="text"
+                    value={authority.description ?? ""}
+                    onChange={(e) => updateAuthority(idx, withText(authority, "description", e.target.value))}
+                  />
+                </label>
+                <label>
+                  <span>Namespace (optional)</span>
+                  <input
+                    type="text"
+                    value={authority.namespace ?? ""}
+                    onChange={(e) => updateAuthority(idx, withText(authority, "namespace", e.target.value))}
+                  />
+                </label>
+                <label>
+                  <span>Universal ID (optional)</span>
+                  <input
+                    type="text"
+                    value={authority.universal_id ?? ""}
+                    onChange={(e) => updateAuthority(idx, withText(authority, "universal_id", e.target.value))}
+                  />
+                </label>
+                <label>
+                  <span>Universal ID type</span>
+                  <select
+                    value={authority.universal_id_type ?? ""}
+                    onChange={(e) => updateAuthority(idx, withText(authority, "universal_id_type", e.target.value))}
+                  >
+                    <option value="">Not specified</option>
+                    {UNIVERSAL_ID_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                    {authority.universal_id_type && !UNIVERSAL_ID_TYPES.includes(authority.universal_id_type) && (
+                      <option value={authority.universal_id_type}>{authority.universal_id_type}</option>
+                    )}
+                  </select>
+                </label>
+                <div className="rule-actions">
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    aria-label={`Remove authority ${name}`}
+                    onClick={() =>
+                      removeRule("authority", authority.id, () =>
+                        updateProfile({ ...profile, authorities: authorities.filter((_, other) => other !== idx) }),
+                      )
+                    }
+                  >
+                    Remove authority
+                  </button>
+                </div>
+              </fieldset>
+            );
+          })}
+          {notice("authority")}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => updateProfile({ ...profile, authorities: [...authorities, { id: "" }] })}
+          >
+            Add authority
+          </button>
+        </section>
+
+        <section className="rule-collection" aria-labelledby="profile-dates-heading">
+          <h4 id="profile-dates-heading">Date rules</h4>
+          {dates.map((date, idx) => {
+            const helpId = `profile-date-${idx}-users`;
+            const inUse = usersOf("date", date.id).length > 0;
+            const name = date.id || `${idx + 1}`;
+            return (
+              <fieldset key={idx} className="rule-card" disabled={disabled}>
+                <legend>{`Date rule ${name}`}</legend>
+                <label>
+                  <span>Rule ID</span>
+                  <input
+                    type="text"
+                    value={date.id}
+                    readOnly={inUse}
+                    aria-describedby={inUse ? helpId : undefined}
+                    onChange={(e) => updateDate(idx, { ...date, id: e.target.value })}
+                  />
+                </label>
+                {usedBy("date", date.id, helpId)}
+                <label>
+                  <span>Description (optional)</span>
+                  <input
+                    type="text"
+                    value={date.description ?? ""}
+                    onChange={(e) => updateDate(idx, withText(date, "description", e.target.value))}
+                  />
+                </label>
+                <label>
+                  <span>Precision</span>
+                  <select
+                    value={date.precision}
+                    onChange={(e) => updateDate(idx, { ...date, precision: e.target.value as LocalProfilePrecision })}
+                  >
+                    {!(date.precision in PRECISION_CAPTIONS) && <option value={date.precision}>Choose a precision</option>}
+                    {(Object.keys(PRECISION_CAPTIONS) as LocalProfilePrecision[]).map((precision) => (
+                      <option key={precision} value={precision}>
+                        {PRECISION_CAPTIONS[precision]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Time zone</span>
+                  <select
+                    value={date.timezone}
+                    onChange={(e) => updateDate(idx, { ...date, timezone: e.target.value as LocalProfileTimeZoneRule })}
+                  >
+                    {!(date.timezone in TIME_ZONE_CAPTIONS) && <option value={date.timezone}>Choose an offset rule</option>}
+                    {(Object.keys(TIME_ZONE_CAPTIONS) as LocalProfileTimeZoneRule[]).map((rule) => (
+                      <option key={rule} value={rule}>
+                        {TIME_ZONE_CAPTIONS[rule]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="rule-actions">
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    aria-label={`Remove date rule ${name}`}
+                    onClick={() =>
+                      removeRule("date", date.id, () => updateProfile({ ...profile, dates: dates.filter((_, other) => other !== idx) }))
+                    }
+                  >
+                    Remove date rule
+                  </button>
+                </div>
+              </fieldset>
+            );
+          })}
+          {notice("date")}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() =>
+              updateProfile({
+                ...profile,
+                dates: [...dates, { id: "", precision: "" as LocalProfilePrecision, timezone: "" as LocalProfileTimeZoneRule }],
+              })
+            }
+          >
+            Add date rule
+          </button>
+        </section>
+      </>
+    );
   }
 
   return (
@@ -470,7 +1417,7 @@ export function ProfileEditor({
             </p>
             <div className="pack-input-row">
               <label>
-                <span>Profile entry</span>
+                <span>Profile file</span>
                 <input
                   type="text"
                   placeholder="profile.json or folder/profile.json"
@@ -480,10 +1427,10 @@ export function ProfileEditor({
                 />
               </label>
               <label>
-                <span>Pack entry</span>
+                <span>Pack file (optional)</span>
                 <input
                   type="text"
-                  placeholder="Empty for the pinned pack in the workspace"
+                  aria-describedby="profile-open-pack-help"
                   value={openPack}
                   disabled={disabled}
                   onChange={(e) => setOpenPack(e.target.value)}
@@ -493,6 +1440,9 @@ export function ProfileEditor({
                 Open Profile
               </button>
             </div>
+            <p id="profile-open-pack-help" className="hint">
+              Empty for the pinned pack in the workspace.
+            </p>
             {openNotice && (
               <p className="warning-text" role="alert">
                 {openNotice}
@@ -500,430 +1450,330 @@ export function ProfileEditor({
             )}
           </form>
 
-          <div className="profile-meta-grid">
-            <label>
-              <span>Profile ID</span>
-              <input
-                type="text"
-                aria-label="Profile ID"
-                value={profile.profile.id}
-                disabled={disabled}
-                onChange={(e) =>
-                  updateProfile({
-                    ...profile,
-                    profile: { ...profile.profile, id: e.target.value },
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span>Version</span>
-              <input
-                type="text"
-                aria-label="Profile Version"
-                value={profile.profile.version}
-                disabled={disabled}
-                onChange={(e) =>
-                  updateProfile({
-                    ...profile,
-                    profile: { ...profile.profile, version: e.target.value },
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span>Pinned Pack ID</span>
-              <input
-                type="text"
-                aria-label="Pinned Pack ID"
-                value={profile.base.pack.id}
-                disabled={disabled}
-                onChange={(e) =>
-                  updateProfile({
-                    ...profile,
-                    base: {
-                      ...profile.base,
-                      pack: { ...profile.base.pack, id: e.target.value },
-                    },
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span>Pinned Pack Version</span>
-              <input
-                type="text"
-                aria-label="Pinned Pack Version"
-                value={profile.base.pack.version}
-                disabled={disabled}
-                onChange={(e) =>
-                  updateProfile({
-                    ...profile,
-                    base: {
-                      ...profile.base,
-                      pack: { ...profile.base.pack, version: e.target.value },
-                    },
-                  })
-                }
-              />
-            </label>
-            <label>
-              <span>HL7 Version</span>
-              <select
-                aria-label="HL7 Version"
-                value={profile.base.hl7_version}
-                disabled={disabled}
-                onChange={(e) =>
-                  updateProfile({
-                    ...profile,
-                    base: { ...profile.base, hl7_version: e.target.value },
-                  })
-                }
-              >
-                {HL7_VERSIONS.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Message Family</span>
-              <select
-                aria-label="Message Family"
-                value={profile.base.family}
-                disabled={disabled}
-                onChange={(e) =>
-                  updateProfile({
-                    ...profile,
-                    base: { ...profile.base, family: e.target.value },
-                  })
-                }
-              >
-                {FAMILIES.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="section-toolbar">
-            <h4>Segments and fields</h4>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                const id = prompt("Segment ID (e.g. SCH or ZPD):")?.trim().toUpperCase();
-                if (!id) return;
-                const newSeg: Segment = {
-                  id,
-                  description: id.startsWith("Z") ? "Site-defined Z-segment" : "Constrained segment",
-                  cardinality: { min: 1, max: "1" },
-                  fields: [],
-                };
-                updateProfile({ ...profile, segments: [...profile.segments, newSeg] });
-              }}
-            >
-              + Add Segment
-            </button>
-          </div>
-
-          {profile.segments.map((seg, segIdx) => {
-            const isSiteDefined = seg.id.startsWith("Z");
-            return (
-              <div key={seg.id} className="segment-card" data-testid={`segment-${seg.id}`}>
-                <div className="segment-header">
-                  <strong>
-                    {seg.id} {isSiteDefined && <span className="badge badge-site">Site-defined Z-segment</span>}
-                  </strong>
-                  <span className="segment-desc">{seg.description}</span>
-                  <span className="cardinality-badge">
-                    [{seg.cardinality?.min ?? 0}..{seg.cardinality?.max ?? "1"}]
-                  </span>
-                  <button
-                    type="button"
-                    className="danger-btn"
+          {!structured ? (
+            <p className="warning-text" role="alert">
+              The canonical JSON is not a profile document these controls can show, so they are withheld and nothing
+              here can replace it. Correct it under Canonical JSON; validating reports what the profile reader refuses.
+            </p>
+          ) : (
+            <>
+              <div className="profile-meta-grid">
+                <label>
+                  <span>Profile ID</span>
+                  <input
+                    type="text"
+                    value={profile.profile.id}
                     disabled={disabled}
-                    onClick={() => {
-                      const next = profile.segments.filter((_, idx) => idx !== segIdx);
-                      updateProfile({ ...profile, segments: next });
-                    }}
-                  >
-                    Remove Segment
-                  </button>
-                </div>
-
-                <div className="fields-table-wrapper">
-                  <table className="fields-table">
-                    <thead>
-                      <tr>
-                        <th>Selector</th>
-                        <th>Position</th>
-                        <th>Name</th>
-                        <th>Origin</th>
-                        <th>Usage</th>
-                        <th>Condition</th>
-                        <th>Cardinality</th>
-                        <th>Data Type</th>
-                        <th>Terminology / Auth / Date</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {seg.fields.map((fld, fldIdx) => {
-                        const selector = `${seg.id}-${fld.position}`;
-                        // Look up resolution if available
-                        const resolvedSeg = profileResult?.resolution?.segments.find((s) => s.id === seg.id);
-                        const resolvedFld = resolvedSeg?.fields.find((f) => f.position === fld.position);
-                        const origin = resolvedFld?.usage_origin ?? "local";
-
-                        return (
-                          <tr key={fld.position} data-testid={`field-row-${selector}`}>
-                            <td>
-                              <code className="selector-tag">{selector}</code>
-                            </td>
-                            <td>{fld.position}</td>
-                            <td>
-                              <input
-                                type="text"
-                                aria-label={`Name for ${selector}`}
-                                value={fld.name ?? ""}
-                                disabled={disabled}
-                                onChange={(e) => {
-                                  const updated = [...seg.fields];
-                                  updated[fldIdx] = { ...fld, name: e.target.value };
-                                  const nextSegs = [...profile.segments];
-                                  nextSegs[segIdx] = { ...seg, fields: updated };
-                                  updateProfile({ ...profile, segments: nextSegs });
-                                }}
-                              />
-                              {resolvedFld?.pack_name && resolvedFld.pack_name !== fld.name && (
-                                <div className="pack-name-note">Pack: {resolvedFld.pack_name}</div>
-                              )}
-                            </td>
-                            <td>
-                              <span className={`badge badge-origin-${origin}`}>{origin}</span>
-                            </td>
-                            <td>
-                              <select
-                                aria-label={`Usage for ${selector}`}
-                                value={fld.usage}
-                                disabled={disabled}
-                                 onChange={(e) => {
-                                  const updated = [...seg.fields];
-                                  const nextFld: Field = {
-                                    ...fld,
-                                    usage: e.target.value as LocalProfileUsage,
-                                  };
-                                  if (e.target.value === "C") {
-                                    nextFld.condition = fld.condition ?? { segment: seg.id, position: 1, operator: "present" };
-                                  } else {
-                                    delete nextFld.condition;
-                                  }
-                                  updated[fldIdx] = nextFld;
-                                  const nextSegs = [...profile.segments];
-                                  nextSegs[segIdx] = { ...seg, fields: updated };
-                                  updateProfile({ ...profile, segments: nextSegs });
-                                }}
-                              >
-                                {USAGES.map((u) => (
-                                  <option key={u} value={u}>
-                                    {u}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td>
-                              {fld.usage === "C" ? (
-                                <div className="condition-inputs">
-                                  <select
-                                    aria-label={`Condition operator for ${selector}`}
-                                    value={fld.condition?.operator ?? "present"}
-                                    disabled={disabled}
-                                    onChange={(e) => {
-                                      const updated = [...seg.fields];
-                                      const cond: Condition = {
-                                        segment: fld.condition?.segment ?? seg.id,
-                                        position: fld.condition?.position ?? 1,
-                                        operator: e.target.value as LocalProfileConditionOperator,
-                                      };
-                                      if (e.target.value === "value_in") {
-                                        cond.values = fld.condition?.values ?? ["VAL"];
-                                      }
-                                      updated[fldIdx] = {
-                                        ...fld,
-                                        condition: cond,
-                                      };
-                                      const nextSegs = [...profile.segments];
-                                      nextSegs[segIdx] = { ...seg, fields: updated };
-                                      updateProfile({ ...profile, segments: nextSegs });
-                                    }}
-                                  >
-                                    {CONDITION_OPERATORS.map((op) => (
-                                      <option key={op} value={op}>
-                                        {op}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <input
-                                    type="text"
-                                    placeholder="Seg (e.g. SCH)"
-                                    style={{ width: "50px" }}
-                                    aria-label={`Condition segment for ${selector}`}
-                                    value={fld.condition?.segment ?? ""}
-                                    onChange={(e) => {
-                                      const updated = [...seg.fields];
-                                      if (fld.condition) {
-                                        updated[fldIdx] = {
-                                          ...fld,
-                                          condition: { ...fld.condition, segment: e.target.value },
-                                        };
-                                        const nextSegs = [...profile.segments];
-                                        nextSegs[segIdx] = { ...seg, fields: updated };
-                                        updateProfile({ ...profile, segments: nextSegs });
-                                      }
-                                    }}
-                                  />
-                                  <input
-                                    type="number"
-                                    placeholder="Pos"
-                                    style={{ width: "45px" }}
-                                    aria-label={`Condition position for ${selector}`}
-                                    value={fld.condition?.position ?? 1}
-                                    onChange={(e) => {
-                                      const updated = [...seg.fields];
-                                      if (fld.condition) {
-                                        updated[fldIdx] = {
-                                          ...fld,
-                                          condition: { ...fld.condition, position: Number(e.target.value) },
-                                        };
-                                        const nextSegs = [...profile.segments];
-                                        nextSegs[segIdx] = { ...seg, fields: updated };
-                                        updateProfile({ ...profile, segments: nextSegs });
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <span className="text-muted">—</span>
-                              )}
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                style={{ width: "60px" }}
-                                aria-label={`Cardinality max for ${selector}`}
-                                value={fld.cardinality?.max ?? "1"}
-                                disabled={disabled}
-                                onChange={(e) => {
-                                  const updated = [...seg.fields];
-                                  updated[fldIdx] = {
-                                    ...fld,
-                                    cardinality: { min: fld.cardinality?.min ?? 0, max: e.target.value },
-                                  };
-                                  const nextSegs = [...profile.segments];
-                                  nextSegs[segIdx] = { ...seg, fields: updated };
-                                  updateProfile({ ...profile, segments: nextSegs });
-                                }}
-                              />
-                            </td>
-                            <td>
-                              <select
-                                aria-label={`Data type for ${selector}`}
-                                value={fld.type ?? ""}
-                                disabled={disabled}
-                                onChange={(e) => {
-                                  const updated = [...seg.fields];
-                                  const nextFld: Field = { ...fld };
-                                  if (e.target.value) {
-                                    nextFld.type = e.target.value;
-                                  } else {
-                                    delete nextFld.type;
-                                  }
-                                  updated[fldIdx] = nextFld;
-                                  const nextSegs = [...profile.segments];
-                                  nextSegs[segIdx] = { ...seg, fields: updated };
-                                  updateProfile({ ...profile, segments: nextSegs });
-                                }}
-                              >
-                                <option value="">(None)</option>
-                                {DATA_TYPES.map((dt) => (
-                                  <option key={dt} value={dt}>
-                                    {dt}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                placeholder="Terminology / Auth / Date ID"
-                                aria-label={`Linked rules for ${selector}`}
-                                value={fld.terminology ?? fld.authority ?? fld.date ?? ""}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  const updated = [...seg.fields];
-                                  const nextFld: Field = { ...fld };
-                                  if (val) {
-                                    nextFld.terminology = val;
-                                  } else {
-                                    delete nextFld.terminology;
-                                  }
-                                  updated[fldIdx] = nextFld;
-                                  const nextSegs = [...profile.segments];
-                                  nextSegs[segIdx] = { ...seg, fields: updated };
-                                  updateProfile({ ...profile, segments: nextSegs });
-                                }}
-                              />
-                            </td>
-                            <td>
-                              <button
-                                type="button"
-                                className="danger-btn"
-                                disabled={disabled}
-                                onClick={() => {
-                                  const updated = seg.fields.filter((_, idx) => idx !== fldIdx);
-                                  const nextSegs = [...profile.segments];
-                                  nextSegs[segIdx] = { ...seg, fields: updated };
-                                  updateProfile({ ...profile, segments: nextSegs });
-                                }}
-                              >
-                                ×
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <button
-                    type="button"
+                    onChange={(e) =>
+                      updateProfile({
+                        ...profile,
+                        profile: { ...profile.profile, id: e.target.value },
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Version</span>
+                  <input
+                    type="text"
+                    value={profile.profile.version}
                     disabled={disabled}
-                    onClick={() => {
-                      const nextPos = seg.fields.length > 0 ? Math.max(...seg.fields.map((f) => f.position)) + 1 : 1;
-                      const newFld: Field = {
-                        position: nextPos,
-                        name: `Field ${nextPos}`,
-                        usage: "O",
-                        cardinality: { min: 0, max: "1" },
-                        type: "ST",
-                      };
-                      const updated = [...seg.fields, newFld];
-                      const nextSegs = [...profile.segments];
-                      nextSegs[segIdx] = { ...seg, fields: updated };
-                      updateProfile({ ...profile, segments: nextSegs });
-                    }}
+                    onChange={(e) =>
+                      updateProfile({
+                        ...profile,
+                        profile: { ...profile.profile, version: e.target.value },
+                      })
+                    }
+                  />
+                </label>
+                <fieldset className="pinned-pack" disabled={disabled}>
+                  <legend>Pinned metadata pack</legend>
+                  <label>
+                    <span>Pack ID</span>
+                    <input
+                      type="text"
+                      value={profile.base.pack.id}
+                      onChange={(e) =>
+                        updateProfile({
+                          ...profile,
+                          base: {
+                            ...profile.base,
+                            pack: { ...profile.base.pack, id: e.target.value },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Pack version</span>
+                    <input
+                      type="text"
+                      value={profile.base.pack.version}
+                      onChange={(e) =>
+                        updateProfile({
+                          ...profile,
+                          base: {
+                            ...profile.base,
+                            pack: { ...profile.base.pack, version: e.target.value },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                </fieldset>
+                <label>
+                  <span>HL7 version</span>
+                  <select
+                    value={profile.base.hl7_version}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      updateProfile({
+                        ...profile,
+                        base: { ...profile.base, hl7_version: e.target.value },
+                      })
+                    }
                   >
-                    + Add Field to {seg.id}
-                  </button>
-                </div>
+                    {HL7_VERSIONS.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                    {!HL7_VERSIONS.includes(profile.base.hl7_version) && (
+                      <option value={profile.base.hl7_version}>{`${profile.base.hl7_version} (not supported)`}</option>
+                    )}
+                  </select>
+                </label>
+                <label>
+                  <span>Message family</span>
+                  <select
+                    value={profile.base.family}
+                    disabled={disabled}
+                    onChange={(e) =>
+                      updateProfile({
+                        ...profile,
+                        base: { ...profile.base, family: e.target.value },
+                      })
+                    }
+                  >
+                    {FAMILIES.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                    {!FAMILIES.includes(profile.base.family) && (
+                      <option value={profile.base.family}>{`${profile.base.family} (not supported)`}</option>
+                    )}
+                  </select>
+                </label>
               </div>
-            );
-          })}
 
-          <div className="profile-actions-bar">
+              <div className="section-toolbar">
+                <h4>Segments and fields</h4>
+                {newSegment === null && (
+                  <button
+                    type="button"
+                    id="profile-add-segment"
+                    disabled={disabled}
+                    onClick={() => {
+                      setNewSegment({ id: "", description: "" });
+                      setFocusAfter("profile-new-segment-id");
+                    }}
+                  >
+                    Add segment
+                  </button>
+                )}
+              </div>
+
+              {newSegment !== null && (
+                <div className="add-segment-row" role="group" aria-label="New segment">
+                  <label>
+                    <span>Segment ID</span>
+                    <input
+                      id="profile-new-segment-id"
+                      type="text"
+                      value={newSegment.id}
+                      disabled={disabled}
+                      aria-describedby="profile-new-segment-help"
+                      onChange={(e) => setNewSegment({ ...newSegment, id: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>Description (optional)</span>
+                    <input
+                      type="text"
+                      value={newSegment.description}
+                      disabled={disabled}
+                      onChange={(e) => setNewSegment({ ...newSegment, description: e.target.value })}
+                    />
+                  </label>
+                  <button type="button" disabled={disabled || newSegment.id.trim() === ""} onClick={addSegment}>
+                    Add segment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewSegment(null);
+                      setFocusAfter("profile-add-segment");
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <p id="profile-new-segment-help" className="hint">
+                    For example SCH, or ZPD: an ID beginning with Z is a site-defined Z-segment.
+                  </p>
+                </div>
+              )}
+
+              <div className="profile-structure">
+                <div className="segment-list">
+                  {profile.segments.map((seg, segIdx) => {
+                    const isSiteDefined = seg.id.startsWith("Z");
+                    return (
+                      <section
+                        key={segIdx}
+                        className="segment-card"
+                        aria-label={`Segment ${seg.id}`}
+                        data-testid={`segment-${seg.id}`}
+                      >
+                        <div className="segment-header">
+                          <strong className="segment-id">
+                            {seg.id} {isSiteDefined && <span className="badge badge-site">Site-defined Z-segment</span>}
+                          </strong>
+                          {seg.description && <span className="segment-desc">{seg.description}</span>}
+                          <button
+                            type="button"
+                            className="danger-btn"
+                            aria-label={`Remove segment ${seg.id}`}
+                            disabled={disabled}
+                            onClick={() => (seg.fields.length > 0 ? setConfirmingRemoval(segIdx) : removeSegment(segIdx))}
+                          >
+                            Remove segment
+                          </button>
+                        </div>
+                        {confirmingRemoval === segIdx && (
+                          <div className="confirm-row" role="alert">
+                            <p>
+                              Remove segment {seg.id} and its {seg.fields.length}{" "}
+                              {seg.fields.length === 1 ? "field rule" : "field rules"} from this draft? Only the draft
+                              changes; original evidence is never changed.
+                            </p>
+                            <button type="button" className="danger-btn" onClick={() => removeSegment(segIdx)}>
+                              Confirm removal
+                            </button>
+                            <button type="button" onClick={() => setConfirmingRemoval(null)}>
+                              Keep segment
+                            </button>
+                          </div>
+                        )}
+                        <Repetitions
+                          group={`profile-segment-${segIdx}-repetitions`}
+                          value={seg.cardinality}
+                          disabled={disabled}
+                          onChange={(cardinality) => {
+                            const next: Segment = { ...seg };
+                            if (cardinality) {
+                              next.cardinality = cardinality;
+                            } else {
+                              delete next.cardinality;
+                            }
+                            updateSegment(segIdx, next);
+                          }}
+                        />
+
+                        <div className="fields-table-wrapper">
+                          <table className="fields-table">
+                            <thead>
+                              <tr>
+                                <th>Selector</th>
+                                <th>Position</th>
+                                <th>Field name</th>
+                                <th>Usage</th>
+                                <th>Rule origin</th>
+                                <th>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {seg.fields.map((fld, fldIdx) => {
+                                const selector = selectorOf(seg, fld);
+                                const resolvedFld = profileResult?.resolution?.segments
+                                  .find((s) => s.id === seg.id)
+                                  ?.fields.find((f) => f.position === fld.position);
+                                const origin = resolvedFld?.usage_origin;
+                                const isSelected = selected?.segment === segIdx && selected.field === fldIdx;
+                                return (
+                                  <tr
+                                    key={fldIdx}
+                                    data-testid={`field-row-${selector}`}
+                                    className={isSelected ? "field-row-selected" : undefined}
+                                  >
+                                    <td>
+                                      <code className="selector-tag">{selector}</code>
+                                    </td>
+                                    <td>{fld.position}</td>
+                                    <td>
+                                      {fld.name ?? <span className="text-muted">Not specified</span>}
+                                      {resolvedFld?.pack_name && resolvedFld.pack_name !== fld.name && (
+                                        <div className="pack-name-note">Pinned pack label: {resolvedFld.pack_name}</div>
+                                      )}
+                                    </td>
+                                    <td>{USAGE_CAPTIONS[fld.usage] ?? fld.usage}</td>
+                                    <td>
+                                      {origin ? (
+                                        <span className={`badge badge-origin-${origin}`}>{origin}</span>
+                                      ) : (
+                                        <span className="text-muted">Not resolved</span>
+                                      )}
+                                    </td>
+                                    <td className="field-actions">
+                                      <button
+                                        type="button"
+                                        aria-label={`Edit field ${selector}`}
+                                        aria-pressed={isSelected}
+                                        disabled={disabled}
+                                        onClick={() => {
+                                          setSelected({ segment: segIdx, field: fldIdx });
+                                          setFocusAfter("profile-field-detail-heading");
+                                        }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="danger-btn"
+                                        aria-label={`Remove field ${selector}`}
+                                        disabled={disabled}
+                                        onClick={() => removeField(segIdx, fldIdx)}
+                                      >
+                                        Remove field
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          <button
+                            type="button"
+                            id={`profile-add-field-${segIdx}`}
+                            aria-label={`Add field to ${seg.id}`}
+                            disabled={disabled}
+                            onClick={() => addField(segIdx)}
+                          >
+                            Add field
+                          </button>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+                {renderFieldDetail()}
+              </div>
+
+              {renderRules()}
+            </>
+          )}
+
+          <div className="profile-actions-bar" role="group" aria-label="Save revision">
             <button
               type="button"
               className="primary-btn"
@@ -940,7 +1790,7 @@ export function ProfileEditor({
               Save revision
             </button>
             <label>
-              <span>Output entry:</span>
+              <span>Profile file</span>
               <input
                 type="text"
                 value={saveOutput}
@@ -949,7 +1799,7 @@ export function ProfileEditor({
               />
             </label>
             <label>
-              <span>Seal output:</span>
+              <span>Version seal file</span>
               <input
                 type="text"
                 value={sealOutput}
@@ -957,13 +1807,15 @@ export function ProfileEditor({
                 onChange={(e) => setSealOutput(e.target.value)}
               />
             </label>
+            <p className="hint">
+              Saving writes a new revision; an existing file is never replaced. The version seal records the revision's
+              exact content digest; it is not an approval or a certificate.
+            </p>
           </div>
 
           {profileResult && (
             <div className={`result-box result-${profileResult.state}`}>
-              <h4>
-                {resultLabel}: {profileResult.state}
-              </h4>
+              <h4>{resultHeading(resultKind, profileResult.state)}</h4>
               {profileResult.reason && <p className="error-text">{profileResult.reason}</p>}
               {profileResult.resolution && <PinStatus resolution={profileResult.resolution} />}
               {profileResult.seal && (
@@ -996,7 +1848,7 @@ export function ProfileEditor({
           <h4>Open pack</h4>
           <div className="pack-input-row">
             <label>
-              <span>Pack Entry in Workspace:</span>
+              <span>Pack file</span>
               <input
                 type="text"
                 value={packEntry}
@@ -1022,16 +1874,16 @@ export function ProfileEditor({
                 </div>
               )}
 
-              <h5>Declared Support Levels by Combination</h5>
+              <h5>Declared support</h5>
               <table className="support-levels-table">
                 <thead>
                   <tr>
-                    <th>HL7 Version</th>
-                    <th>Message Family</th>
-                    <th>Lossless Parsing</th>
-                    <th>Dictionary Labels</th>
-                    <th>Structure Validation</th>
-                    <th>Workflow Evaluation</th>
+                    <th>HL7 version</th>
+                    <th>Message family</th>
+                    <th>Lossless parsing</th>
+                    <th>Field labels</th>
+                    <th>Structure validation</th>
+                    <th>Workflow evaluation</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1056,10 +1908,10 @@ export function ProfileEditor({
           <p className="hint">Opens a local directory of packs on this computer, not an online marketplace.</p>
           <div className="pack-input-row">
             <label>
-              <span>Library Directory Path:</span>
+              <span>Pack library folder (optional)</span>
               <input
                 type="text"
-                placeholder="One folder of the workspace, or empty for the workspace itself"
+                aria-describedby="profile-library-help"
                 value={libraryDir}
                 disabled={disabled}
                 onChange={(e) => setLibraryDir(e.target.value)}
@@ -1069,6 +1921,9 @@ export function ProfileEditor({
               Open Library
             </button>
           </div>
+          <p id="profile-library-help" className="hint">
+            One folder of the workspace, or empty for the workspace itself.
+          </p>
 
           {libraryResult && (
             <div className="library-results">
@@ -1079,7 +1934,7 @@ export function ProfileEditor({
                 <table className="matrix-table">
                   <thead>
                     <tr>
-                      <th>HL7 Version</th>
+                      <th>HL7 version</th>
                       <th>Family</th>
                       <th>Parse</th>
                       <th>Labels</th>
@@ -1108,6 +1963,7 @@ export function ProfileEditor({
         </div>
       )}
 
+
       {/* TAB 3: VERSION COMPARISON & IMPACT */}
       {activeTab === "compare" && (
         <div className="tab-panel" role="tabpanel" aria-label="Versions and pins">
@@ -1119,30 +1975,39 @@ export function ProfileEditor({
 
           <div className="compare-inputs-grid">
             <label>
-              <span>From Profile Entry:</span>
+              <span>Earlier profile</span>
               <input
                 type="text"
                 value={compareFrom}
                 disabled={disabled}
-                onChange={(e) => setCompareFrom(e.target.value)}
+                onChange={(e) => {
+                  setCompareFrom(e.target.value);
+                  withdrawComparison();
+                }}
               />
             </label>
             <label>
-              <span>To Profile Entry:</span>
+              <span>Later profile</span>
               <input
                 type="text"
                 value={compareTo}
                 disabled={disabled}
-                onChange={(e) => setCompareTo(e.target.value)}
+                onChange={(e) => {
+                  setCompareTo(e.target.value);
+                  withdrawComparison();
+                }}
               />
             </label>
             <label>
-              <span>References Index Entry:</span>
+              <span>Test references file</span>
               <input
                 type="text"
                 value={compareRefs}
                 disabled={disabled}
-                onChange={(e) => setCompareRefs(e.target.value)}
+                onChange={(e) => {
+                  setCompareRefs(e.target.value);
+                  withdrawComparison();
+                }}
               />
             </label>
             <button
@@ -1155,75 +2020,115 @@ export function ProfileEditor({
             </button>
           </div>
 
-          {compareResult && (
-            <div className="compare-results">
-              <h4>Differences ({compareResult.comparison?.changes.length ?? 0})</h4>
-              {compareResult.comparison?.changes.map((c, idx) => (
-                <div key={idx} className="diff-item">
-                  <span className={`badge badge-kind-${c.kind}`}>{c.kind}</span>
-                  <strong>{c.part}{c.subject ? ` (${c.subject})` : ""}:</strong> {c.detail}
-                </div>
-              ))}
-
-              {upgradeResult && (
-                <div className={`seal-box ${upgradeResult.state === "completed" ? "valid" : "invalid"}`} style={{ marginTop: "1rem", marginBottom: "1rem" }}>
-                  <strong>Upgrade Pin: {upgradeResult.state}</strong>
-                  {upgradeResult.reason && <p>{upgradeResult.reason}</p>}
-                </div>
-              )}
-
-              <h4>Impacted Tests from Reference Index</h4>
-              {compareResult.assessment?.tests && compareResult.assessment.tests.length > 0 ? (
-                <table className="impact-table">
-                  <thead>
-                    <tr>
-                      <th>Test Spec</th>
-                      <th>Case</th>
-                      <th>Pinned Version</th>
-                      <th>Checksum</th>
-                      <th>Impact</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {compareResult.assessment.tests.map((test, idx) => (
-                      <tr key={idx} className={`impact-row-${test.impact}`}>
-                        <td>{test.test}</td>
-                        <td>{test.case}</td>
-                        <td>v{test.pinned.version}</td>
-                        <td><code>{test.pinned.sha256.slice(0, 12)}…</code></td>
-                        <td>
-                          <span className={`badge badge-impact-${test.impact}`}>{test.impact}</span>
-                        </td>
-                        <td>
-                          {test.impact === "affected" ? (
-                            <button
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => void handleUpgradePin(test)}
-                            >
-                              Upgrade Pin
-                            </button>
-                          ) : (
-                            <span className="text-muted">No upgrade needed</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {pinUpdate && (
+            <section
+              className={`seal-box ${pinUpdate.result.state === "completed" ? "valid" : "invalid"}`}
+              aria-label="Test pin update"
+            >
+              <strong>Update test pin: {pinUpdate.result.state}</strong>
+              {pinUpdate.result.state === "completed" ? (
+                <p>
+                  Updated the pin of {pinUpdate.test} in {pinUpdate.result.output ?? ""} from {pinText(pinUpdate.was)} to{" "}
+                  {pinText(pinUpdate.now)}. The references file changed, so compare again to assess it.
+                </p>
               ) : (
-                <p className="hint">No tests referenced or no impact assessed.</p>
+                pinUpdate.result.reason && <p>{pinUpdate.result.reason}</p>
+              )}
+            </section>
+          )}
+
+          {compared && (
+            <div className="compare-results">
+              {compared.result.state !== "completed" ? (
+                <>
+                  <h4>Comparison: {compared.result.state}</h4>
+                  {compared.result.reason && <p className="error-text">{compared.result.reason}</p>}
+                </>
+              ) : (
+                <>
+                  {compared.result.comparison && (
+                    <p className="compared-inputs">
+                      Earlier profile {compared.from} ({compared.result.comparison.profile} version{" "}
+                      {compared.result.comparison.from}) · Later profile {compared.to} (
+                      {compared.result.comparison.profile} version {compared.result.comparison.to})
+                      {compared.references ? ` · Test references file ${compared.references}` : ""}
+                    </p>
+                  )}
+                  <h4>Differences ({compared.result.comparison?.changes.length ?? 0})</h4>
+                  {compared.result.comparison?.changes.map((c, idx) => (
+                    <div key={idx} className="diff-item">
+                      <span className={`badge badge-kind-${c.kind}`}>{c.kind}</span>
+                      <strong>{c.part}{c.subject ? ` (${c.subject})` : ""}:</strong> {c.detail}
+                    </div>
+                  ))}
+
+                  <h4>Impacted Tests from Reference Index</h4>
+                  {compared.result.assessment?.tests && compared.result.assessment.tests.length > 0 ? (
+                    <table className="impact-table">
+                      <thead>
+                        <tr>
+                          <th>Test</th>
+                          <th>Case</th>
+                          <th>Pinned version</th>
+                          <th>SHA-256</th>
+                          <th>Impact</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {compared.result.assessment.tests.map((test, idx) => {
+                          const later = compared.result.later_pin;
+                          return (
+                            <tr key={idx} className={`impact-row-${test.impact}`}>
+                              <td>{test.test}</td>
+                              <td>{test.case}</td>
+                              <td>v{test.pinned.version}</td>
+                              <td>
+                                <code className="digest">{test.pinned.sha256}</code>
+                              </td>
+                              <td>
+                                <span className={`badge badge-impact-${test.impact}`}>{test.impact}</span>
+                              </td>
+                              <td>
+                                {test.impact !== "affected" ? (
+                                  <span className="text-muted">No pin update needed</span>
+                                ) : later?.pin ? (
+                                  <>
+                                    <p id={`profile-pin-change-${idx}`} className="pin-change">
+                                      From {pinText(test.pinned)} to {pinText(later.pin)}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      disabled={disabled}
+                                      aria-describedby={`profile-pin-change-${idx}`}
+                                      onClick={() => void handleUpdatePin(test)}
+                                    >
+                                      Update test pin
+                                    </button>
+                                  </>
+                                ) : (
+                                  <p className="warning-text">{later?.refusal ?? ""}</p>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="hint">No tests referenced or no impact assessed.</p>
+                  )}
+                </>
               )}
             </div>
           )}
         </div>
       )}
-
       {/* TAB 4: PACKAGE EXCHANGE */}
       {activeTab === "exchange" && (
         <div className="tab-panel" role="tabpanel" aria-label="Package Exchange">
-          <h4>Export package</h4>
+          <section aria-labelledby="profile-export-heading">
+          <h4 id="profile-export-heading">Export package</h4>
           <p className="hint">
             Export creates an offline package holding a verified local profile, its pinned pack, its canonical version seal,
             and its reviewed origin. No patient evidence is included.
@@ -1231,51 +2136,56 @@ export function ProfileEditor({
 
           <div className="exchange-grid">
             <label>
-              <span>Profile Entry:</span>
+              <span>Profile file</span>
               <input
                 type="text"
                 value={pkgExportProfile}
                 disabled={disabled}
-                onChange={(e) => setPkgExportProfile(e.target.value)}
+                onChange={(e) => exportInput(setPkgExportProfile)(e.target.value)}
               />
             </label>
             <label>
-              <span>Pack Entry:</span>
+              <span>Pack file</span>
               <input
                 type="text"
                 value={pkgExportPack}
                 disabled={disabled}
-                onChange={(e) => setPkgExportPack(e.target.value)}
+                onChange={(e) => exportInput(setPkgExportPack)(e.target.value)}
               />
             </label>
             <label>
-              <span>Version Seal Entry:</span>
+              <span>Version seal file</span>
               <input
                 type="text"
                 value={pkgExportVersion}
                 disabled={disabled}
-                onChange={(e) => setPkgExportVersion(e.target.value)}
+                onChange={(e) => exportInput(setPkgExportVersion)(e.target.value)}
               />
             </label>
             <label>
-              <span>Origin Entry:</span>
+              <span>Origin file</span>
               <input
                 type="text"
                 value={pkgExportOrigin}
                 disabled={disabled}
-                onChange={(e) => setPkgExportOrigin(e.target.value)}
+                onChange={(e) => exportInput(setPkgExportOrigin)(e.target.value)}
               />
             </label>
             <label>
-              <span>Output Package File:</span>
+              <span>Package file</span>
               <input
                 type="text"
                 value={pkgExportOutput}
                 disabled={disabled}
-                onChange={(e) => setPkgExportOutput(e.target.value)}
+                aria-describedby="profile-export-output-help"
+                onChange={(e) => exportInput(setPkgExportOutput)(e.target.value)}
               />
             </label>
           </div>
+          <p id="profile-export-output-help" className="hint">
+            A new file of the workspace; an existing file is never replaced. Changing any of these files clears the
+            confirmation below.
+          </p>
 
           <div className="review-confirmation">
             <label>
@@ -1299,6 +2209,7 @@ export function ProfileEditor({
           >
             Export Package
           </button>
+          </section>
 
           <hr className="divider" />
 
@@ -1310,7 +2221,7 @@ export function ProfileEditor({
             </p>
             <div className="exchange-grid">
               <label>
-                <span>Package File:</span>
+                <span>Package file</span>
                 <input
                   type="text"
                   value={pkgImportFile}
@@ -1319,15 +2230,19 @@ export function ProfileEditor({
                 />
               </label>
               <label>
-                <span>Output Directory:</span>
+                <span>Import folder</span>
                 <input
                   type="text"
+                  aria-describedby="profile-import-folder-help"
                   value={pkgImportOutput}
                   disabled={disabled}
                   onChange={(e) => setPkgImportOutput(e.target.value)}
                 />
               </label>
             </div>
+            <p id="profile-import-folder-help" className="hint">
+              A new folder of the workspace; an existing folder is refused.
+            </p>
             <button type="submit" ref={importButton} disabled={disabled || !pkgImportFile || !pkgImportOutput}>
               Import Package
             </button>
@@ -1419,10 +2334,11 @@ export function ProfileEditor({
 
           <hr className="divider" />
 
-          <h4>Inspect Package</h4>
+          <section aria-labelledby="profile-inspect-heading">
+          <h4 id="profile-inspect-heading">Inspect Package</h4>
           <div className="pack-input-row">
             <label>
-              <span>Package File to Inspect:</span>
+              <span>Package file</span>
               <input
                 type="text"
                 value={pkgInspectFile}
@@ -1438,6 +2354,7 @@ export function ProfileEditor({
               Inspect Package
             </button>
           </div>
+          </section>
 
           {packageResult && (
             <div className={`result-box result-${packageResult.state}`}>

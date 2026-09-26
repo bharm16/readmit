@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -522,4 +523,28 @@ func entries(t *testing.T, root string) []string {
 		names = append(names, entry.Name())
 	}
 	return names
+}
+
+// The steps' titles are the reviewed short stage names (#525 GS01-GS04). Only
+// the titles changed: the IDs progress is keyed by, the order the path is
+// walked in and every detail sentence stay exactly as they were.
+func TestStepTitlesAreTheReviewedNamesOverUnchangedIDsOrderAndDetails(t *testing.T) {
+	want := []guide.Step{
+		{ID: guide.StepSample, Title: "Create sample workspace",
+			Detail: "Writes the frozen synthetic cases, an index of the one this path uses, and a practice endpoint beside them. The evidence is generated, never imported, and the folder is new."},
+		{ID: guide.StepTest, Title: "Create sample test",
+			Detail: "Answers the authoring stages over the verified case and saves a readmit-test/v1 spec into the workspace. Expect one appointment on the ledger."},
+		{ID: guide.StepBaseline, Title: "Run failing example",
+			Detail: "Sends the saved spec at a practice receiver in its defective mode. The test is meant to fail here: the reschedule leaves a second appointment behind."},
+		{ID: guide.StepPostFix, Title: "Run fixed example",
+			Detail: "Sends the same bytes at a practice receiver whose defect is corrected. The reschedule now updates the original appointment and the test passes."},
+	}
+	if got := guide.Steps(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("the guided steps are\n%+v\nwant\n%+v", got, want)
+	}
+	for id, step := range map[string]string{"sample": guide.StepSample, "test": guide.StepTest, "baseline": guide.StepBaseline, "post-fix": guide.StepPostFix} {
+		if id != step {
+			t.Fatalf("step ID %q changed to %q", id, step)
+		}
+	}
 }

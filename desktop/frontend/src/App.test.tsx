@@ -56,6 +56,11 @@ import {
   runPreflightResult,
   runProgressResult,
   scenarioCatalogFixture,
+  suiteArtifacts,
+  suitePreparedResult,
+  SUITE_ENTRY,
+  SUITE_PREPARED,
+  SUITE_RELEASES,
   vocabularyFixture,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
@@ -210,8 +215,8 @@ async function openWorkspaceWithVerifiedCase(
     OpenGrid: () =>
       gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]),
   });
-  await user.selectOptions(screen.getByLabelText("Index file in this folder"), INDEX_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open the grid" }));
+  await user.selectOptions(screen.getByLabelText("Index"), INDEX_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open index" }));
   await screen.findByText(`Inspect ${GRID_OCCURRENCE}`);
 }
 
@@ -354,7 +359,7 @@ test("saving the authored test hands the draft to the engine and reads the guide
     expectations: [{ id: "ledger-has-booking", operator: "ledger_count" as const, count: 1 }],
   };
   facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: true, covered: true, expectation: "ledger-has-booking" }, messages: [], uncovered: [] } } } }) });
-  await user.type(screen.getAllByLabelText("Name")[1] as HTMLElement, "booking-regression");
+  await user.type(screen.getAllByLabelText("Name")[0] as HTMLElement, "booking-regression");
   await user.click(screen.getAllByRole("button", { name: "Save name" })[1] as HTMLElement);
   expect(await screen.findByText("Chosen: appointment-ledger")).toBeTruthy();
   const authorRequest = facade.oneCall("AuthorTest")[0];
@@ -419,7 +424,7 @@ test("a saved test is at once an entry the run panel offers, read back from the 
         { name: "reschedule-test.json", kind: "spec" },
       ]),
   });
-  await user.type(screen.getAllByLabelText("Name")[1] as HTMLElement, "booking-regression");
+  await user.type(screen.getAllByLabelText("Name")[0] as HTMLElement, "booking-regression");
   await user.click(screen.getAllByRole("button", { name: "Save name" })[1] as HTMLElement);
   await screen.findByText("Chosen: ack-contract");
   await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
@@ -478,7 +483,7 @@ test("a refused save reports the refusal and keeps the draft a person is working
     expectations: [],
   };
   facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } } } }) });
-  await user.type(screen.getAllByLabelText("Name")[1] as HTMLElement, "booking-regression");
+  await user.type(screen.getAllByLabelText("Name")[0] as HTMLElement, "booking-regression");
   await user.click(screen.getAllByRole("button", { name: "Save name" })[1] as HTMLElement);
   await screen.findByText("Chosen: ack-contract");
   facade.reply({ SaveTest: () => refused("The workspace already holds that entry.") });
@@ -1007,7 +1012,7 @@ test("closing asks before dropping text the store refused to retain, and not aft
     expect(closeAsked).toBe(1);
     // The retention lands, and closing is safe again.
     facade.reply({ SaveEditorDraft: () => ({ state: "completed" }) });
-    await user.click(screen.getByRole("button", { name: "Retain it again" }));
+    await user.click(screen.getByRole("button", { name: "Retry draft save" }));
     await screen.findByText("Retained. It will come back if this window stops.");
     window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
     expect(closeAsked).toBe(1);
@@ -1052,8 +1057,8 @@ test("a page of the grid is one read, and the index details beside it are that r
       index: indexDetailsFixture({ applicable: true }),
     }),
   });
-  await user.selectOptions(screen.getByLabelText("Index file in this folder"), INDEX_ENTRY);
-  await user.click(screen.getByRole("button", { name: "Open the grid" }));
+  await user.selectOptions(screen.getByLabelText("Index"), INDEX_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Open index" }));
   expect(await screen.findByLabelText("Active index details")).toBeTruthy();
 
   // The evidence changed between the two page reads: the next one is refused,
@@ -1064,7 +1069,7 @@ test("a page of the grid is one read, and the index details beside it are that r
       index: indexDetailsFixture({ applicable: false, stale: true }),
     }),
   });
-  await user.click(screen.getByRole("button", { name: `Next ${GRID_WINDOW}` }));
+  await user.click(screen.getByRole("button", { name: `Next ${GRID_WINDOW} occurrences` }));
   expect(await screen.findByRole("alert", { name: "Index rebuild notice" })).toBeTruthy();
   expect(screen.getByText(/built from different evidence than this case/)).toBeTruthy();
   expect(screen.queryByLabelText("Active index details")).toBeNull();
@@ -1089,7 +1094,7 @@ test("verifying an unindexed case shows unindexed view and keeps inspector avail
   await screen.findByText(CASE_IDENTITY);
 
   expect(await screen.findByText("Case is unindexed")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Build case index" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Set up index" })).toBeTruthy();
   expect(screen.getByRole("region", { name: "Inspector" })).toBeTruthy();
   expect(facade.callsTo("OpenGrid")).toHaveLength(0);
 });
@@ -1147,7 +1152,7 @@ test("building an index from the unindexed case view calls BuildIndex and opens 
   await user.click(screen.getByRole("button", { name: "Open case" }));
   await screen.findByText("Case is unindexed");
 
-  await user.click(screen.getByRole("button", { name: "Build case index" }));
+  await user.click(screen.getByRole("button", { name: "Set up index" }));
   await user.click(screen.getByRole("button", { name: "Build index" }));
 
   await waitFor(() => expect(facade.callsTo("BuildIndex")).toHaveLength(1));
@@ -1272,4 +1277,36 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
     });
   });
   expect(screen.getByText("Only a confirmed finding promotes anything.")).toBeTruthy();
+});
+
+// Go to runs seeds the run view with the suite entry and environment, and
+// the run view names what was handed over — the prepared folder and the
+// release pins the person prepared with — while saying plainly that its own
+// preflight applies neither.
+test("the suite handoff names the prepared folder and release pins beside the run view, which applies neither", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ PrepareSuite: () => suitePreparedResult() });
+  facade.reply({ SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, suiteArtifacts()) });
+  await user.click(screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
+  await screen.findByText(WORKSPACE_ROOT);
+  const suites = within(screen.getByRole("region", { name: "Suites" }));
+  await user.click(suites.getByRole("tab", { name: "Prepare" }));
+  await user.selectOptions(suites.getByLabelText("Suite entry"), SUITE_ENTRY);
+  await user.type(suites.getByLabelText("Environment"), "east");
+  await user.selectOptions(suites.getByLabelText("Release pins (optional)"), SUITE_RELEASES);
+  await user.type(suites.getByLabelText("Output folder"), SUITE_PREPARED);
+  await user.click(suites.getByRole("button", { name: "Prepare suite" }));
+  await user.click(await suites.findByRole("button", { name: "Go to runs" }));
+
+  const notice = screen.getByRole("note", { name: "Suite handoff" });
+  expect(notice.textContent).toBe(
+    `Handed over from Suites: ${SUITE_ENTRY} prepared against environment east into prepared folder ${SUITE_PREPARED} ` +
+      `with release pins ${SUITE_RELEASES}. The run view selected ${SUITE_ENTRY} and environment east and preflights them ` +
+      "again. It does not apply these release pins or read the prepared folder.",
+  );
+  expect((screen.getByLabelText("Saved test or suite") as HTMLSelectElement).value).toBe(SUITE_ENTRY);
+  expect((screen.getByLabelText("Suite environment") as HTMLSelectElement).value).toBe("east");
+  // Nothing was preflighted or sent by the handoff itself.
+  expect(facade.callsTo("PreflightRun")).toHaveLength(0);
+  expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
 });

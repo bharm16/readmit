@@ -366,11 +366,11 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   // index untouched.
   const incidentIndex = journey.digest(`${PROJECT}/incident.index.json`);
   expect(await inspector.findByText("Case is unindexed")).toBeTruthy();
-  expect(inspector.queryByRole("button", { name: "Rebuild index" })).toBeNull();
-  await press(user, inspector.getByRole("button", { name: "Build case index" }));
+  expect(inspector.queryByRole("button", { name: "Set up rebuild" })).toBeNull();
+  await press(user, inspector.getByRole("button", { name: "Set up index" }));
   const indexing = within(await inspector.findByRole("form", { name: "Build index form" }));
-  expect((indexing.getByLabelText("Output index file") as HTMLInputElement).value).toBe("edited-case.index.json");
-  expect(indexing.queryByLabelText("Replace existing file if present")).toBeNull();
+  expect((indexing.getByLabelText("Index file") as HTMLInputElement).value).toBe("edited-case.index.json");
+  expect(indexing.queryByLabelText("Replace selected index")).toBeNull();
   await press(user, indexing.getByRole("button", { name: "Build index" }));
   expect(await inspector.findByText("Showing 2 of 2 matching")).toBeTruthy();
   expect(journey.digest(`${PROJECT}/incident.index.json`)).toBe(incidentIndex);

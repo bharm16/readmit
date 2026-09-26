@@ -120,13 +120,13 @@ func (a *App) ChooseInspectionPath(kind string) InspectionPathResult {
 	return run(a, true, false, func(ctx context.Context) InspectionPathResult {
 		switch kind {
 		case inspectionFile:
-			path, declined := a.chooseOneFile(ctx, "Choose the HL7 file to inspect")
+			path, declined := a.chooseOneFile(ctx, "Open HL7 file")
 			if path == "" {
 				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
 			}
 			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
 		case roundTripFolder:
-			folder, declined := a.chooseFolder(ctx, "Choose the folder for the byte-identical copy")
+			folder, declined := a.chooseFolder(ctx, "Choose copy destination")
 			if folder == "" {
 				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
 			}

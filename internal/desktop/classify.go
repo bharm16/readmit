@@ -139,6 +139,38 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 	return kind, known
 }
 
+// suiteSchemaRoles are the suite workflow's flat documents by the contract
+// each declares.
+var suiteSchemaRoles = map[string]SuiteRole{
+	"readmit-suite/v1":           SuiteDefinitionRole,
+	"readmit-suite-releases/v1":  SuiteReleasesRole,
+	"readmit-test-release/v1":    TestReleaseRole,
+	"readmit-suite-coverage/v1":  SuiteCoverageRole,
+	"readmit-suite-promotion/v1": SuitePromotionRole,
+}
+
+// suiteRole names which suite artifact one suite-kind entry declares: a
+// directory named by its suite.json marker is a prepared suite, and a flat
+// document is named by the contract it declares within the sniff bound. Like
+// classify, it is a claim the listing makes; the entry's own reader still
+// decides whether it is one.
+func suiteRole(root, name string, isDir bool, kind Kind) SuiteRole {
+	if kind != SuiteArtifact && kind != SuiteReleasesArtifact {
+		return ""
+	}
+	if isDir {
+		if kind == SuiteArtifact {
+			return PreparedSuiteRole
+		}
+		return ""
+	}
+	schema, ok := sniffSchema(filepath.Join(root, name))
+	if !ok {
+		return ""
+	}
+	return suiteSchemaRoles[schema]
+}
+
 // refinedMarker lets a marker file's own declared contract refine what the
 // directory is called, exactly as a flat file's declared contract already
 // does. Two names carry more than one contract: review.json is an export

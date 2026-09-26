@@ -74,7 +74,7 @@ export async function activateLicense(user: UserEvent, journey: Journey): Promis
  * in the project's own folder. Returns the project's folder. */
 export async function createProject(user: UserEvent, journey: Journey, parent: string, name: string, title: string): Promise<string> {
   journey.makeFolder(parent);
-  await journey.chooseFolder(journey.path(parent), "Open a readmit workspace folder");
+  await journey.chooseFolder(journey.path(parent), "Open workspace");
   await press(user, screen.getByRole("button", { name: "Create project…" }));
   const evidence = within(region("Evidence"));
   await press(user, await evidence.findByRole("button", { name: "Create a project…" }));
@@ -204,7 +204,7 @@ export async function configureTarget(user: UserEvent, address: string): Promise
  * scheduling export the investigation imports. */
 export async function buildIndex(user: UserEvent, occurrences = 2): Promise<void> {
   const inspector = within(region("Inspector"));
-  await press(user, await inspector.findByRole("button", { name: "Build case index" }));
+  await press(user, await inspector.findByRole("button", { name: "Set up index" }));
   const form = within(await inspector.findByRole("form", { name: "Build index form" }));
   await press(user, form.getByRole("button", { name: "Build index" }));
   expect(await inspector.findByText(`Showing ${Math.min(occurrences, GRID_WINDOW)} of ${occurrences} matching`)).toBeTruthy();
@@ -352,21 +352,21 @@ export interface RunnerForm {
   destination: string;
 }
 
-/** Fills the runner configuration form of the runner view field by field.
- * Its project, environment and destination come before the grant form's
- * fields of the same names. */
+/** Fills the runner configuration form of the runner view field by field,
+ * in its Configuration view. */
 export async function fillRunnerForm(user: UserEvent, view: ReturnType<typeof within>, form: RunnerForm): Promise<void> {
+  await press(user, view.getByRole("tab", { name: "Configuration" }));
   await enter(user, view.getByLabelText("Hub URL"), form.hub);
-  await enter(user, view.getAllByLabelText("Project")[0]!, form.project);
-  await enter(user, view.getAllByLabelText("Environment")[0]!, form.environment);
-  await enter(user, view.getByLabelText("Runner root"), form.root);
-  await enter(user, view.getByLabelText("CA file"), form.ca);
-  await enter(user, view.getByLabelText("Client certificate"), form.certificate);
-  await enter(user, view.getByLabelText("Key reader program"), form.key.program);
-  await enter(user, view.getByLabelText("Key reader arguments (one per line)"), form.key.arguments);
-  await enter(user, view.getByLabelText("Token reader program"), form.token.program);
-  await enter(user, view.getByLabelText("Token reader arguments (one per line)"), form.token.arguments);
-  await enter(user, view.getByLabelText("Approved update key (standard base64)"), form.updateKey);
-  await enter(user, view.getByLabelText("Approved update engine"), form.updateEngine);
-  await enter(user, view.getAllByLabelText("Destination")[0]!, form.destination);
+  await enter(user, view.getByLabelText("Hub project"), form.project);
+  await enter(user, view.getByLabelText("Environment ID"), form.environment);
+  await enter(user, view.getByLabelText("Runner data folder"), form.root);
+  await enter(user, view.getByLabelText("CA certificate file"), form.ca);
+  await enter(user, view.getByLabelText("Client certificate file"), form.certificate);
+  await enter(user, view.getByLabelText("Key lookup program"), form.key.program);
+  await enter(user, view.getByLabelText("Key lookup arguments"), form.key.arguments);
+  await enter(user, view.getByLabelText("Token lookup program"), form.token.program);
+  await enter(user, view.getByLabelText("Token lookup arguments"), form.token.arguments);
+  await enter(user, view.getByLabelText("Update verification key"), form.updateKey);
+  await enter(user, view.getByLabelText("Approved engine version"), form.updateEngine);
+  await enter(user, view.getByLabelText("Configuration file"), form.destination);
 }

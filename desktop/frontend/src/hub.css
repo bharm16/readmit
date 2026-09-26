@@ -222,3 +222,20 @@
   font-family: monospace;
   min-width: 36ch;
 }
+
+/* The team panel's tasks: one tablist, wrapping at large text sizes. */
+.hub-team-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.hub-team-tabs button[aria-selected="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.hub-command-details dl {
+  margin: 0.25rem 0;
+}

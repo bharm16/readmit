@@ -130,14 +130,34 @@ const (
 	UnsupportedArtifact     Kind = "unsupported"
 )
 
+// SuiteRole names which of the suite workflow's artifacts one suite-kind entry
+// declares, so each suite picker offers only the contract it needs: a suite
+// definition, a prepared suite directory, a released test version, a release
+// pin set, a coverage declaration or a promotion approval. It is presentation
+// metadata taken from the declared contract or the directory's fixed-name
+// marker, never from a file name, and it admits nothing: the reader that opens
+// the entry still decides what it is.
+type SuiteRole string
+
+const (
+	SuiteDefinitionRole SuiteRole = "suite-definition"
+	PreparedSuiteRole   SuiteRole = "prepared-suite"
+	TestReleaseRole     SuiteRole = "test-release"
+	SuiteReleasesRole   SuiteRole = "suite-releases"
+	SuiteCoverageRole   SuiteRole = "suite-coverage"
+	SuitePromotionRole  SuiteRole = "suite-promotion"
+)
+
 // Artifact is one entry of a workspace folder. Schema and Provenance are what
-// the entry declares; listing a folder verifies nothing.
+// the entry declares; listing a folder verifies nothing. Role is present only
+// for the suite workflow's entries.
 type Artifact struct {
-	Name       string `json:"name"`
-	Kind       Kind   `json:"kind"`
-	Schema     string `json:"schema,omitzero"`
-	Provenance string `json:"provenance,omitzero"`
-	Reason     string `json:"reason,omitzero"`
+	Name       string    `json:"name"`
+	Kind       Kind      `json:"kind"`
+	Schema     string    `json:"schema,omitzero"`
+	Provenance string    `json:"provenance,omitzero"`
+	Reason     string    `json:"reason,omitzero"`
+	Role       SuiteRole `json:"role,omitzero"`
 }
 
 // Workspace is an opened folder and what it declares it holds.
@@ -289,6 +309,10 @@ type App struct {
 	// configuration, the connection, the signed-in session and a pending
 	// sign-in, whose rules the connection owns.
 	hub *hubclient.Connection
+	// hubAudit is the audit export the hub last answered, held for
+	// SaveHubAudit until the window disconnects.
+	hubAuditMu sync.Mutex
+	hubAudit   *retainedHubAudit
 	// The hub panel's operator-only mode: its configuration and connection,
 	// held for this window only and never remembered.
 	hubOperatorMu         sync.Mutex
@@ -443,7 +467,7 @@ func (a *App) begin(operation string) (context.Context, func(), bool) {
 // SelectWorkspace asks the host for a folder and opens it as a workspace.
 func (a *App) SelectWorkspace() WorkspaceResult {
 	return run(a, true, false, func(ctx context.Context) WorkspaceResult {
-		folder, declined := a.chooseFolder(ctx, "Open a readmit workspace folder")
+		folder, declined := a.chooseFolder(ctx, "Open workspace")
 		if folder == "" {
 			return declined.workspace()
 		}
@@ -469,7 +493,7 @@ func (a *App) CreateSampleWorkspace() WorkspaceResult {
 }
 
 func (a *App) createSampleWorkspace(ctx context.Context) WorkspaceResult {
-	parent, declined := a.chooseFolder(ctx, "Choose a folder for the readmit sample workspace")
+	parent, declined := a.chooseFolder(ctx, "Choose sample location")
 	if parent == "" {
 		return declined.workspace()
 	}
@@ -876,7 +900,7 @@ func describe(root string, entry fs.DirEntry) Artifact {
 			if kind == PreparedRerunArtifact {
 				return Artifact{Name: name, Kind: kind, Reason: "Use RERUN.md to run the prepared trials; there is no window action for this folder."}
 			}
-			return Artifact{Name: name, Kind: kind}
+			return Artifact{Name: name, Kind: kind, Role: suiteRole(root, name, entry.IsDir(), kind)}
 		}
 	}
 	reason := "not a case bundle this release supports"

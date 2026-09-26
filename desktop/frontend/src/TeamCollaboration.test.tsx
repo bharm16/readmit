@@ -12,6 +12,7 @@ import type {
   HubReviewCommandRequest,
   HubSupportReviewRequest,
   HubReviewEventView,
+  HubLifecycleEventView,
 } from "./bindings";
 
 const evidence = "a".repeat(64);
@@ -87,13 +88,17 @@ test("TeamCollaboration loads history, posts a comment with service identity, an
   expect(await screen.findByText(/Assigned for review/i)).toBeTruthy();
   expect(screen.getByText(/doctor@hospital\.org/i)).toBeTruthy();
 
-  await user.type(screen.getByLabelText(/Evidence digest/i), evidence);
-  await user.type(screen.getByLabelText(/Recipient subject/i), "reviewer@hospital.org");
+  const decision = within(screen.getByRole("group", { name: "Review actions" }));
+  await user.type(decision.getByLabelText("Evidence SHA-256"), evidence);
+  await user.type(decision.getByLabelText("Recipient subject ID"), "reviewer@hospital.org");
   await user.click(screen.getByRole("button", { name: /Post comment/i }));
   expect(facade.callsTo("PostHubReview").length).toBe(1);
   expect(captured?.evidence).toBe(evidence);
   expect(captured?.kind).toBe("comment");
   expect(captured?.expected).toBe(1);
+  // A comment carries no release; its command ID is a new one in the hub's grammar.
+  expect(captured?.release).toBe("");
+  expect(captured?.id).toMatch(/^review-[0-9a-f]{16}$/);
   expect(await screen.findByText(/Posted team comment/i)).toBeTruthy();
   expect(screen.getByText(/Review history \(head 2\)/i)).toBeTruthy();
   // The history shown after the decision is the hub's whole history, read
@@ -134,7 +139,7 @@ test("TeamCollaboration shows a recorded decision, never a refusal, when the his
   render(<TeamCollaboration project="cardio-study" />);
   await user.click(screen.getByRole("button", { name: /Review history/i }));
   expect(await screen.findByText(/Review history \(head 0\)/i)).toBeTruthy();
-  await user.type(screen.getByLabelText(/Evidence digest/i), evidence);
+  await user.type(within(screen.getByRole("group", { name: "Review actions" })).getByLabelText("Evidence SHA-256"), evidence);
   await user.click(screen.getByRole("button", { name: /Post comment/i }));
 
   expect(await screen.findByText(/Recorded once/i)).toBeTruthy();
@@ -194,6 +199,7 @@ test("TeamCollaboration shows concurrent tips, resolves explicitly, and retains 
     PostHubLifecycle: async (req) => {
       expect(req.kind).toBe("resolve");
       expect(req.parents).toEqual(["edit-a", "edit-b"]);
+      expect(req).toMatchObject({ resource: "case-one", artifact: evidence, subject: "", until: "", reason: "keep both as new revision", expected: 2 });
       return resolved;
     },
     SaveHubOfflineDraft: async () => drafts,
@@ -201,21 +207,24 @@ test("TeamCollaboration shows concurrent tips, resolves explicitly, and retains 
 
   render(<TeamCollaboration project="cardio-study" workspace="/workspace-under-test" />);
 
+  await user.click(screen.getByRole("tab", { name: "Revisions" }));
   await user.click(screen.getByRole("button", { name: /Version history/i }));
   expect(await screen.findByText(/edit-a, edit-b/i)).toBeTruthy();
   expect(screen.getByText(/Do not overwrite silently/i)).toBeTruthy();
+  expect(screen.getByText("Event head: 2")).toBeTruthy();
 
-  const kindSelects = screen.getAllByLabelText(/^Kind$/i);
-  await user.selectOptions(kindSelects[1]!, "resolve");
-  const lifeIds = screen.getAllByDisplayValue("life-cmd-1");
-  await user.clear(lifeIds[0]!);
-  await user.type(lifeIds[0]!, "resolve-1");
-  await user.type(screen.getByLabelText(/Artifact digest/i), evidence);
-  await user.type(screen.getByLabelText(/Parents \(comma-separated tip ids\)/i), "edit-a, edit-b");
+  const revisions = within(screen.getByRole("group", { name: "Revisions" }));
+  await user.selectOptions(revisions.getByLabelText("Action"), "resolve");
+  await user.type(revisions.getByLabelText("Resource ID"), "case-one");
+  await user.type(revisions.getByLabelText("Artifact SHA-256"), evidence);
+  await user.type(revisions.getByLabelText("Parent revision IDs"), "edit-a, edit-b");
+  await user.type(revisions.getByLabelText("Reason"), "keep both as new revision");
   await user.click(screen.getByRole("button", { name: /Resolve conflict/i }));
   expect(facade.callsTo("PostHubLifecycle").length).toBe(1);
+  // The hub's recorded event is shown as it answered: kind, actor, resource and event number.
+  expect(await screen.findByText("Recorded resolve by doctor@hospital.org@https://idp.example for case-one · event #3 · command resolve-1")).toBeTruthy();
 
-  await user.type(screen.getByLabelText(/Local edited path/i), "/workspace-under-test/offline.bin");
+  await user.type(screen.getByLabelText("Edited file"), "/workspace-under-test/offline.bin");
   await user.click(screen.getByRole("button", { name: /Save offline draft/i }));
   expect(facade.callsTo("SaveHubOfflineDraft").length).toBe(1);
   expect(await screen.findByText(/Drafts retained: 1/i)).toBeTruthy();
@@ -272,10 +281,10 @@ test("a sharing policy is announced, a summary requested and approved, and the a
   ];
   render(<TeamCollaboration project="cardio-study" workspace="/workspace-under-test" entries={entries} />);
 
-  await user.selectOptions(screen.getByLabelText(/Sharing policy entry/i), "sharing-policy.json");
-  await user.selectOptions(screen.getByLabelText(/Published support bundle/i), "support-bundle");
-  await user.type(screen.getByLabelText(/Support command id/i), "sup-1");
-  await user.type(screen.getByLabelText(/Reviewer to ask/i), "reviewer@hospital.org");
+  await user.click(screen.getByRole("tab", { name: "Support approvals" }));
+  await user.selectOptions(screen.getByLabelText("Sharing policy file"), "sharing-policy.json");
+  await user.selectOptions(screen.getByLabelText("Support bundle"), "support-bundle");
+  await user.type(screen.getByLabelText("Reviewer subject ID"), "reviewer@hospital.org");
 
   await user.click(screen.getByRole("button", { name: /Announce policy/i }));
   const announced = facade.callsTo("PostHubSupportReview")[0]?.args[0] as HubSupportReviewRequest;
@@ -294,11 +303,14 @@ test("a sharing policy is announced, a summary requested and approved, and the a
   const approved = facade.callsTo("PostHubSupportReview")[2]?.args[0] as HubSupportReviewRequest;
   expect(approved.kind).toBe("support-approval");
   expect(approved.recipient).toBe("");
+  // Three deliberate commands, three command IDs.
+  expect(new Set([announced.id, asked.id, approved.id]).size).toBe(3);
+  expect(screen.getByText("Approval status: approved in this window.")).toBeTruthy();
 
   // The digest input is filled by the journey; an authorized user could also
   // name a digest a teammate's approval recorded — the hub decides either way.
-  expect((screen.getByLabelText(/Approved summary digest/i) as HTMLInputElement).value).toBe("e".repeat(64));
-  await user.type(screen.getByLabelText(/Download the approved summary to/i), "/downloads/support.json");
+  expect((screen.getByLabelText("Summary SHA-256") as HTMLInputElement).value).toBe("e".repeat(64));
+  await user.type(screen.getByLabelText("Summary download file"), "/downloads/support.json");
   await user.click(screen.getByRole("button", { name: /Download summary/i }));
   expect(facade.callsTo("DownloadHubExport").length).toBe(1);
   expect(await screen.findByText(/Export completed — \/downloads\/support\.json/)).toBeTruthy();
@@ -347,6 +359,8 @@ test("notifications addressed to the signed-in person are listed, an empty list 
   ];
   const facade = installFacade({ ListHubNotifications: async () => answers.shift()! });
   render(<TeamCollaboration project="cardio-study" />);
+  // Switching task asks nothing of the hub.
+  await user.click(screen.getByRole("tab", { name: "Notifications" }));
   expect(facade.calls).toEqual([]);
 
   const load = screen.getByRole("button", { name: "Load notifications" });
@@ -384,18 +398,18 @@ test("history and notifications are searched with the person's query, and a quer
     SearchHubNotifications: async () => ({ state: "completed", project: "cardio-study", head: 3, events: [] }),
   });
   render(<TeamCollaboration project="cardio-study" />);
-  const form = within(screen.getByRole("form", { name: "Search team activity" }));
+  let form = within(screen.getByRole("form", { name: "Search team activity" }));
 
-  await user.type(form.getByLabelText("After sequence"), "-1");
+  await user.type(form.getByLabelText("After event number"), "-1");
   await user.click(form.getByRole("button", { name: "Search history" }));
   expect((await form.findByRole("alert")).textContent).toBe("Search after a sequence number: a whole number, 0 or more.");
   expect(facade.calls).toEqual([]);
 
   // Typed, then submitted with Enter from the last field.
-  await user.clear(form.getByLabelText("After sequence"));
-  await user.type(form.getByLabelText("After sequence"), "1");
-  await user.type(form.getByLabelText("Text contains"), "reschedule");
-  await user.type(form.getByLabelText("Evidence (whole SHA-256 digest)"), `${evidence}{Enter}`);
+  await user.clear(form.getByLabelText("After event number"));
+  await user.type(form.getByLabelText("After event number"), "1");
+  await user.type(form.getByLabelText("Search text"), "reschedule");
+  await user.type(form.getByLabelText("Evidence SHA-256"), `${evidence}{Enter}`);
   const query = { project: "cardio-study", after: 1, text: "reschedule", evidence };
   expect(await form.findByText("History matching: 1 (head 3)")).toBeTruthy();
   expect(facade.oneCall("SearchHubReviews")).toEqual([query]);
@@ -405,6 +419,8 @@ test("history and notifications are searched with the person's query, and a quer
   ]);
 
   // The notifications, by the keyboard: the same query, only what is addressed to this person.
+  await user.click(screen.getByRole("tab", { name: "Notifications" }));
+  form = within(screen.getByRole("form", { name: "Search team activity" }));
   await tabTo(user, form.getByRole("button", { name: "Search notifications" }));
   await user.keyboard("[Space]");
   expect(await form.findByText("Notifications matching: 0 (head 3)")).toBeTruthy();
@@ -414,8 +430,10 @@ test("history and notifications are searched with the person's query, and a quer
   // A query the application refuses says why, and shows no matches.
   const refused = "name the evidence by its whole SHA-256 digest: 64 lowercase hexadecimal characters";
   facade.reply({ SearchHubReviews: async () => ({ state: "failed", project: "cardio-study", reason: refused }) });
-  await user.clear(form.getByLabelText("Evidence (whole SHA-256 digest)"));
-  await user.type(form.getByLabelText("Evidence (whole SHA-256 digest)"), "the reschedule message");
+  await user.click(screen.getByRole("tab", { name: "Reviews" }));
+  form = within(screen.getByRole("form", { name: "Search team activity" }));
+  await user.clear(form.getByLabelText("Evidence SHA-256"));
+  await user.type(form.getByLabelText("Evidence SHA-256"), "the reschedule message");
   await user.click(form.getByRole("button", { name: "Search history" }));
   expect(await form.findByText(refused)).toBeTruthy();
   expect(form.getByText("History search did not complete")).toBeTruthy();
@@ -450,17 +468,18 @@ test("a support summary digest the hub refuses is reported as refused, and the a
           },
   });
   render(<TeamCollaboration project="cardio-study" workspace="/workspace-under-test" />);
+  await user.click(screen.getByRole("tab", { name: "Support approvals" }));
   const download = screen.getByRole("button", { name: "Download summary" });
   expect(download.hasAttribute("disabled")).toBe(true);
 
-  await user.type(screen.getByLabelText("Approved summary digest"), "d".repeat(64));
-  await user.type(screen.getByLabelText("Download the approved summary to"), "/workspace-under-test/support.json");
+  await user.type(screen.getByLabelText("Summary SHA-256"), "d".repeat(64));
+  await user.type(screen.getByLabelText("Summary download file"), "/workspace-under-test/support.json");
   await user.click(download);
   expect(await screen.findByText("Export permission_denied — hub access refused; insufficient permissions or role revoked")).toBeTruthy();
   expect(screen.queryByText(/Export completed/)).toBeNull();
 
-  await user.clear(screen.getByLabelText("Approved summary digest"));
-  await user.type(screen.getByLabelText("Approved summary digest"), approved);
+  await user.clear(screen.getByLabelText("Summary SHA-256"));
+  await user.type(screen.getByLabelText("Summary SHA-256"), approved);
   await tabTo(user, download);
   await user.keyboard("{Enter}");
   expect(
@@ -473,5 +492,232 @@ test("a support summary digest the hub refuses is reported as refused, and the a
     { project: "cardio-study", digest: approved, destination_path: "/workspace-under-test/support.json" },
   ]);
 
+  uninstallFacade();
+});
+
+// Each decision type shows and sends only the members it carries; the others
+// are sent empty even when a person typed them under another type.
+test("each review decision type shows only its own fields and sends only them", async () => {
+  const user = userEvent.setup();
+  const posted: HubReviewCommandRequest[] = [];
+  installFacade({
+    PostHubReview: async (request) => {
+      posted.push(request);
+      return { state: "failed", project: "cardio-study", reason: "refused for the test" };
+    },
+  });
+  render(<TeamCollaboration project="cardio-study" />);
+  const decision = within(screen.getByRole("group", { name: "Review actions" }));
+  const fields = () => decision.getAllByRole("textbox").map((field) => field.closest("label")?.firstChild?.textContent);
+  await user.type(decision.getByLabelText("Evidence SHA-256"), evidence);
+  expect(fields()).toEqual(["Evidence SHA-256", "Recipient subject ID", "Parent command ID", "Comment"]);
+  await user.type(decision.getByLabelText("Parent command ID"), "earlier-comment");
+
+  await user.selectOptions(decision.getByLabelText("Decision type"), "assignment");
+  expect(fields()).toEqual(["Evidence SHA-256", "Recipient subject ID", "Assignment note"]);
+  await user.type(decision.getByLabelText("Recipient subject ID"), "reviewer");
+  await user.type(decision.getByLabelText("Assignment note"), "Please check the reschedule");
+  await user.click(decision.getByRole("button", { name: "Assign" }));
+  expect(posted.at(-1)).toMatchObject({ kind: "assignment", recipient: "reviewer", parent: "", release: "", text: "Please check the reschedule" });
+
+  await user.selectOptions(decision.getByLabelText("Decision type"), "review-request");
+  expect(fields()).toEqual(["Evidence SHA-256", "Release SHA-256", "Recipient subject ID", "Rationale"]);
+  await user.type(decision.getByLabelText("Release SHA-256"), "d".repeat(64));
+  await user.type(decision.getByLabelText("Rationale"), "Review the release");
+  await user.click(decision.getByRole("button", { name: "Request review" }));
+  expect(posted.at(-1)).toMatchObject({ kind: "review-request", recipient: "reviewer", parent: "", release: "d".repeat(64) });
+
+  await user.selectOptions(decision.getByLabelText("Decision type"), "approval");
+  expect(fields()).toEqual(["Evidence SHA-256", "Release SHA-256", "Parent command ID", "Rationale"]);
+  await user.type(decision.getByLabelText("Rationale"), "Approved as reviewed");
+  await user.click(decision.getByRole("button", { name: "Approve review" }));
+  expect(posted.at(-1)).toMatchObject({ kind: "approval", recipient: "", parent: "earlier-comment", release: "d".repeat(64), text: "Approved as reviewed" });
+  uninstallFacade();
+});
+
+// A command keeps its ID while it is retried unchanged; changing what it says
+// or starting a new one after it was recorded allocates a new ID, and no
+// stale-head refusal writes anything by itself.
+test("a retried decision keeps its command ID, and an edited or new decision gets its own", async () => {
+  const user = userEvent.setup();
+  const answers: HubReviewsResult[] = [
+    { state: "failed", project: "cardio-study", reason: "hub unreachable; retry the request" },
+    { state: "failed", project: "cardio-study", reason: "hub unreachable; retry the request" },
+    { state: "failed", project: "cardio-study", reason: "the review head changed; read the history again and renew the action" },
+    { state: "completed", project: "cardio-study", head: 1, events: [comment(1, "doctor@hospital.org", "", "Edited comment", "any")] },
+    { state: "failed", project: "cardio-study", reason: "hub unreachable; retry the request" },
+  ];
+  const facade = installFacade({
+    PostHubReview: async () => answers.shift()!,
+    ListHubReviews: async () => ({ state: "completed", project: "cardio-study", head: 1, events: [comment(1, "doctor@hospital.org", "", "Edited comment", "any")] }),
+  });
+  render(<TeamCollaboration project="cardio-study" />);
+  const decision = within(screen.getByRole("group", { name: "Review actions" }));
+  expect(decision.getByText("A new ID is assigned when you submit.")).toBeTruthy();
+  await user.type(decision.getByLabelText("Evidence SHA-256"), evidence);
+  const post = decision.getByRole("button", { name: "Post comment" });
+  await user.click(post);
+  expect((await screen.findAllByText("hub unreachable; retry the request")).length).toBeGreaterThan(0);
+  await user.click(post);
+  const ids = () => facade.callsTo("PostHubReview").map((call) => (call.args[0] as HubReviewCommandRequest).id);
+  await waitFor(() => expect(ids()).toHaveLength(2));
+  expect(ids()[1]).toBe(ids()[0]);
+  expect(decision.getByText(ids()[0]!)).toBeTruthy();
+
+  await user.clear(decision.getByLabelText("Comment"));
+  await user.type(decision.getByLabelText("Comment"), "Edited comment");
+  await user.click(post);
+  await waitFor(() => expect(ids()).toHaveLength(3));
+  expect(ids()[2]).not.toBe(ids()[0]);
+  // A stale head is reported; nothing is posted again until the person acts.
+  expect((await screen.findAllByText(/the review head changed/)).length).toBeGreaterThan(0);
+  expect(facade.callsTo("PostHubReview")).toHaveLength(3);
+
+  await user.click(post);
+  expect(await screen.findByText("Review history (head 1)")).toBeTruthy();
+  const recorded = ids()[3]!;
+  expect(recorded).toBe(ids()[2]);
+  // Recorded: the next decision is a new command.
+  await user.click(post);
+  await waitFor(() => expect(ids()).toHaveLength(5));
+  expect(ids()[4]).not.toBe(recorded);
+  uninstallFacade();
+});
+
+function lifecycleEvent(sequence: number, kind: string, extra: Partial<HubLifecycleEventView> = {}): HubLifecycleEventView {
+  return {
+    schema: "readmit-hub-lifecycle-event/v1",
+    project: "cardio-study",
+    sequence,
+    issuer: "https://idp.example",
+    actor: "admin@hospital.org",
+    at: "2026-09-23T10:00:00Z",
+    kind,
+    reason: "Recorded for the test",
+    command_id: `${kind}-cmd`,
+    ...extra,
+  };
+}
+
+// Removing a user is confirmed first, naming the exact subject and what the
+// hub cannot take back; the recorded event is shown even when the history
+// cannot be read again afterwards.
+test("removing a user is confirmed by name, and a failed history read never recasts the recorded removal", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    PostHubLifecycle: async (request) => ({
+      state: "completed",
+      project: "cardio-study",
+      head: 4,
+      event: lifecycleEvent(4, request.kind, { subject: request.subject, reason: request.reason }),
+      warning: "Downloaded copies remain under local custody and cannot be revoked.",
+    }),
+    ListHubLifecycle: async () => ({ state: "failed", project: "cardio-study", reason: "hub unreachable; retry the read" }),
+  });
+  render(<TeamCollaboration project="cardio-study" capabilities={["admin"]} />);
+  await user.click(screen.getByRole("tab", { name: "Administration" }));
+  expect(screen.getByText(/The service grants you admin on this project/)).toBeTruthy();
+  const access = within(screen.getByRole("group", { name: "Access" }));
+  expect(access.getAllByRole("textbox").map((field) => field.closest("label")?.firstChild?.textContent)).toEqual(["User subject ID", "Reason"]);
+  await user.type(access.getByLabelText("User subject ID"), "analyst@hospital.org");
+  await user.type(access.getByLabelText("Reason"), "role ended");
+  await user.click(access.getByRole("button", { name: "Remove user" }));
+  expect(facade.callsTo("PostHubLifecycle")).toHaveLength(0);
+  const confirm = within(access.getByRole("group", { name: "Confirm user removal" }));
+  expect(confirm.getByText(/Remove analyst@hospital\.org from cardio-study\?.*cannot be revoked/)).toBeTruthy();
+  await user.click(confirm.getByRole("button", { name: "Confirm removal" }));
+  expect(facade.oneCall("PostHubLifecycle")[0]).toMatchObject({ kind: "remove-user", subject: "analyst@hospital.org", resource: "", artifact: "", until: "", parents: [], reason: "role ended" });
+  expect(await access.findByText("Recorded remove-user by admin@hospital.org@https://idp.example for analyst@hospital.org · event #4 · command remove-user-cmd")).toBeTruthy();
+  expect(screen.queryByText("hub unreachable; retry the read")).toBeNull();
+  uninstallFacade();
+});
+
+// Retention names its artifact and full RFC 3339 instant; retiring asks first.
+test("retention sends only its artifact, instant and reason, and retiring is confirmed", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    PostHubLifecycle: async (request) => ({ state: "completed", project: "cardio-study", event: lifecycleEvent(5, request.kind, { artifact: request.artifact }) }),
+    ListHubLifecycle: async () => ({ state: "completed", project: "cardio-study", head: 5, tips: {} }),
+  });
+  render(<TeamCollaboration project="cardio-study" />);
+  await user.click(screen.getByRole("tab", { name: "Administration" }));
+  expect(screen.getByText(/has not granted you admin/)).toBeTruthy();
+  const retention = within(screen.getByRole("group", { name: "Retention" }));
+  await user.type(retention.getByLabelText("Artifact SHA-256"), evidence);
+  await user.type(retention.getByLabelText("Retain until"), "2027-01-31T00:00:00Z");
+  expect(retention.getByText(/never read as local time/)).toBeTruthy();
+  await user.type(retention.getByLabelText("Reason"), "legal hold");
+  await user.click(retention.getByRole("button", { name: "Set retention" }));
+  expect(facade.oneCall("PostHubLifecycle")[0]).toMatchObject({ kind: "retention", artifact: evidence, until: "2027-01-31T00:00:00Z", subject: "", resource: "", reason: "legal hold" });
+
+  await user.selectOptions(retention.getByLabelText("Action"), "retire");
+  expect(retention.queryByLabelText("Retain until")).toBeNull();
+  await user.click(retention.getByRole("button", { name: "Retire artifact" }));
+  expect(facade.callsTo("PostHubLifecycle")).toHaveLength(1);
+  await user.click(within(retention.getByRole("group", { name: "Confirm retirement" })).getByRole("button", { name: "Confirm retirement" }));
+  expect(facade.callsTo("PostHubLifecycle")[1]?.args[0]).toMatchObject({ kind: "retire", artifact: evidence, until: "", subject: "" });
+  uninstallFacade();
+});
+
+test("an audit export shows its review and lifecycle events and is saved only on an explicit choice", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    PostHubLifecycle: async () => ({
+      state: "completed",
+      project: "cardio-study",
+      warning: "Downloaded copies remain under local custody and cannot be revoked.",
+      audit: {
+        schema: "readmit-hub-audit/v2",
+        project: "cardio-study",
+        review_head: 1,
+        reviews: [comment(1, "reviewer@hospital.org", "", "Confirmed on the lab fixture", "reviewer-confirms")],
+        lifecycle: [lifecycleEvent(2, "retention", { artifact: evidence })],
+        warning: "Downloaded copies remain under local custody and cannot be revoked.",
+      },
+    }),
+    SaveHubAudit: async () => ({
+      state: "completed",
+      transfer_state: "completed",
+      size: 512,
+      path: "/workspace-under-test/audit.json",
+      warning: "Downloaded copies remain under local custody and cannot be revoked.",
+    }),
+  });
+  render(<TeamCollaboration project="cardio-study" />);
+  await user.click(screen.getByRole("tab", { name: "Administration" }));
+  const audit = within(screen.getByRole("group", { name: "Audit export" }));
+  await user.type(audit.getByLabelText("Reason"), "quarterly review");
+  await user.click(audit.getByRole("button", { name: "Submit audit export" }));
+  expect(facade.oneCall("PostHubLifecycle")[0]).toMatchObject({ kind: "audit-export", reason: "quarterly review", artifact: "", subject: "", until: "" });
+  expect(await audit.findByRole("heading", { name: "Review events" })).toBeTruthy();
+  expect(audit.getByText("#1 comment by reviewer@hospital.org@https://idp.example — Confirmed on the lab fixture")).toBeTruthy();
+  expect(audit.getByRole("heading", { name: "Lifecycle events" })).toBeTruthy();
+  expect(audit.getByText("#2 retention by admin@hospital.org@https://idp.example — Recorded for the test")).toBeTruthy();
+  expect(audit.getAllByText(/cannot be revoked/).length).toBeGreaterThan(0);
+  // Nothing is saved until the person chooses to.
+  expect(facade.callsTo("SaveHubAudit")).toHaveLength(0);
+  await user.click(audit.getByRole("button", { name: "Save audit file…" }));
+  expect(facade.oneCall("SaveHubAudit")).toEqual(["cardio-study"]);
+  expect(await audit.findByText(/Saved the audit export to \/workspace-under-test\/audit\.json/)).toBeTruthy();
+  uninstallFacade();
+});
+
+// The event head is what the hub reported. A read that failed reports none,
+// and it is shown as not reported, never as an empty history at event 0; a
+// completed read of an empty history is event 0, which the facade leaves out.
+test("a missing event head is shown as not reported, never as 0", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ListHubLifecycle: async (): Promise<HubLifecycleResult> => ({ state: "failed", reason: "the hub could not be reached" }),
+  });
+  render(<TeamCollaboration project="cardio-study" workspace="/workspace-under-test" />);
+  await user.click(screen.getByRole("tab", { name: "Revisions" }));
+  await user.click(screen.getByRole("button", { name: /Version history/i }));
+  expect(await screen.findByText("Event head: not reported")).toBeTruthy();
+  expect(screen.queryByText("Event head: 0")).toBeNull();
+
+  facade.reply({ ListHubLifecycle: async (): Promise<HubLifecycleResult> => ({ state: "completed", project: "cardio-study" }) });
+  await user.click(screen.getByRole("button", { name: /Version history/i }));
+  expect(await screen.findByText("Event head: 0")).toBeTruthy();
   uninstallFacade();
 });

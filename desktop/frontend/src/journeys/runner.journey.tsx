@@ -41,18 +41,28 @@ function pause(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+/** The runner view's group that creates a job file. */
+function creating(view: ReturnType<typeof within>) {
+  return within(view.getByRole("group", { name: "Create job" }));
+}
+
+/** The runner view's group that previews and sends a job file. */
+function sending(view: ReturnType<typeof within>) {
+  return within(view.getByRole("group", { name: "Send job" }));
+}
+
 /** Saves the job document for the job id and spec the form holds. */
 async function saveJob(user: UserEvent, view: ReturnType<typeof within>, id: string) {
-  await enter(user, view.getByLabelText("Job document destination"), journey.path(`runner/documents/${id}.json`));
-  await press(user, view.getByRole("button", { name: "Save job document" }));
+  await enter(user, creating(view).getByLabelText("Job file"), journey.path(`runner/documents/${id}.json`));
+  await press(user, creating(view).getByRole("button", { name: "Save job" }));
   expect(await outcome(view, new RegExp(`^Saved to .*${id}\\.json\\.$`))).toBe(`Saved to ${journey.path(`runner/documents/${id}.json`)}.`);
 }
 
-/** Executes the job document the form holds and returns the facade's answer
+/** Sends the job file the last preview bound and returns the facade's answer
  * once it has settled. */
 async function execute(user: UserEvent, view: ReturnType<typeof within>) {
   const asked = journey.callsTo("ExecuteRunnerJob").length;
-  await press(user, view.getByRole("button", { name: "Execute job" }));
+  await press(user, sending(view).getByRole("button", { name: "Send job" }));
   await waitFor(() => expect(journey.callsTo("ExecuteRunnerJob")[asked]?.settled).toBe(true), { timeout: 60_000 });
   return journey.callsTo("ExecuteRunnerJob")[asked]?.result;
 }
@@ -80,31 +90,29 @@ test(
 
     // The runner's configuration, generated from the form.
     const view = await runnerView(user, "Runner", "Runner");
-    await enter(user, view.getByLabelText("Hub URL"), `https://${hub.address}`);
-    const [configProject] = view.getAllByLabelText("Project");
-    await enter(user, configProject!, HUB_PROJECT);
-    const [configEnvironment] = view.getAllByLabelText("Environment");
-    await enter(user, configEnvironment!, ENVIRONMENT);
-    await enter(user, view.getByLabelText("Runner root"), runnerRoot);
-    await enter(user, view.getByLabelText("CA file"), hub.certificateAuthority);
-    await enter(user, view.getByLabelText("Client certificate"), hub.clientCertificate);
-    await enter(user, view.getByLabelText("Key reader program"), "/bin/cat");
-    await enter(user, view.getByLabelText("Key reader arguments (one per line)"), hub.clientKey);
-    await enter(user, view.getByLabelText("Token reader program"), "/bin/cat");
-    await enter(user, view.getByLabelText("Token reader arguments (one per line)"), token);
-    await enter(user, view.getByLabelText("Approved update key (standard base64)"), "A".repeat(43) + "=");
-    await enter(user, view.getByLabelText("Approved update engine"), "next-approved-build");
-    const [configDestination] = view.getAllByLabelText("Destination");
-    await enter(user, configDestination!, journey.path("runner/documents/runner.json"));
+    await fillRunnerForm(user, view, {
+      hub: `https://${hub.address}`,
+      project: HUB_PROJECT,
+      environment: ENVIRONMENT,
+      root: runnerRoot,
+      ca: hub.certificateAuthority,
+      certificate: hub.clientCertificate,
+      key: { program: "/bin/cat", arguments: hub.clientKey },
+      token: { program: "/bin/cat", arguments: token },
+      updateKey: "A".repeat(43) + "=",
+      updateEngine: "next-approved-build",
+      destination: journey.path("runner/documents/runner.json"),
+    });
     await press(user, view.getByRole("button", { name: "Save configuration" }));
     expect(await outcome(view, /^Saved to .*runner\.json\.$/)).toBe(`Saved to ${journey.path("runner/documents/runner.json")}.`);
 
     // The hub-side grant for the runner in this environment, generated from
     // its own form; installing it is the hub operator's step.
-    await enter(user, view.getAllByLabelText("Project").at(-1)!, HUB_PROJECT);
-    await enter(user, view.getByLabelText("Subject"), "runner");
-    await enter(user, view.getAllByLabelText("Environment").at(-1)!, ENVIRONMENT);
-    await enter(user, view.getAllByLabelText("Destination").at(-1)!, journey.path("runner/documents/runners.json"));
+    await press(user, view.getByRole("tab", { name: "Access grant" }));
+    await enter(user, view.getByLabelText("Project"), HUB_PROJECT);
+    await enter(user, view.getByLabelText("Runner subject"), "runner");
+    await enter(user, view.getByLabelText("Environment"), ENVIRONMENT);
+    await enter(user, view.getByLabelText("Grant file"), journey.path("runner/documents/runners.json"));
     await press(user, view.getByRole("button", { name: "Save grant revision" }));
     expect(await outcome(view, /^Saved to .*runners\.json\. /)).toBe(
       `Saved to ${journey.path("runner/documents/runners.json")}. Installing it on the hub is the administrator's action.`,
@@ -113,14 +121,15 @@ test(
     // A job pinned to the saved test's prepared inputs, preflighted without
     // contacting the hub or sending.
     downstream.reset();
-    await enter(user, view.getByLabelText("Configuration path"), journey.path("runner/documents/runner.json"));
-    await enter(user, view.getByLabelText("Job id"), "reschedule-001");
-    await enter(user, view.getByLabelText("Spec path"), journey.path(PROJECT, "reschedule-ack-test.json"));
+    await enter(user, view.getByLabelText("Runner configuration file"), journey.path("runner/documents/runner.json"));
+    await press(user, view.getByRole("tab", { name: "Status and jobs" }));
+    await enter(user, creating(view).getByLabelText("Job ID"), "reschedule-001");
+    await enter(user, creating(view).getByLabelText("Test file"), journey.path(PROJECT, "reschedule-ack-test.json"));
     await saveJob(user, view, "reschedule-001");
-    await enter(user, view.getByLabelText("Job document"), journey.path("runner/documents/reschedule-001.json"));
-    await press(user, view.getByRole("button", { name: "Preflight job" }));
-    const prepared = await outcome(view, /^Prepared inputs /);
-    expect(prepared).toMatch(new RegExp(`^Prepared inputs [0-9a-f]{64} bind environment ${ENVIRONMENT}\\.$`));
+    await enter(user, sending(view).getByLabelText("Job file"), journey.path("runner/documents/reschedule-001.json"));
+    await press(user, sending(view).getByRole("button", { name: "Preview job" }));
+    const prepared = await outcome(view, /^Send job sends /);
+    expect(prepared).toMatch(new RegExp(`^Send job sends \\S+reschedule-001\\.json \\(job reschedule-001\\) to environment ${ENVIRONMENT} under prepared inputs [0-9a-f]{64}, `));
     expect(downstream.received()).toHaveLength(2);
 
     // The operator installs the grant. The runner is inspected offline, then
@@ -128,11 +137,11 @@ test(
     await hub.restart(["-runner-policy", journey.path("runner/documents/runners.json")]);
     await press(user, view.getByRole("button", { name: "Inspect runner" }));
     expect(await outcome(view, /^Health: /)).toBe("Health: idle, 0 retained job(s).");
-    await press(user, view.getByRole("button", { name: "Enroll (probe admission)" }));
+    await press(user, view.getByRole("button", { name: "Check runner admission" }));
     const leased = /hub refused admission \(Conflict\): environment leased or recovering$/;
     expect(await outcome(view, /^Admission refused: /)).toMatch(leased);
     await pause(10_500);
-    await press(user, view.getByRole("button", { name: "Enroll (probe admission)" }));
+    await press(user, view.getByRole("button", { name: "Check runner admission" }));
     expect(await outcome(view, /^Admitted: /)).toMatch(/^Admitted: lease until \S+, at most 300s per job and 100 retained jobs\.$/);
 
     // While the probe's own lease holds the environment, the job's admission
@@ -149,9 +158,11 @@ test(
 
     // Recovery reads the retained job offline, and the same job is never
     // run again, whatever is asked.
-    await enter(user, view.getByLabelText("Retained job id for recovery"), "reschedule-001");
-    await press(user, view.getByRole("button", { name: "Read recovery" }));
+    await press(user, view.getByRole("tab", { name: "Recovery" }));
+    await enter(user, view.getByLabelText("Job ID"), "reschedule-001");
+    await press(user, view.getByRole("button", { name: "Open recovery" }));
     expect(await outcome(view, /^reschedule-001: /)).toBe("reschedule-001: 2 acknowledged, 0 uncertain, 0 not attempted. Recovery never sends.");
+    await press(user, view.getByRole("tab", { name: "Status and jobs" }));
     expect(await execute(user, view)).toMatchObject({
       state: "failed",
       reason: "runner operation refused; check private configuration, admission, and retained status",
@@ -163,7 +174,7 @@ test(
     // window's own durable run retain one verdict, as the command line reads
     // each of them back.
     downstream.reset();
-    await enter(user, view.getByLabelText("Job id"), "cli-001");
+    await enter(user, creating(view).getByLabelText("Job ID"), "cli-001");
     await saveJob(user, view, "cli-001");
     const cli = await journey.commandLine([
       "--operation-policy",
@@ -196,9 +207,13 @@ test(
     // Once the system is fixed, the next job passes.
     downstream.setMode("fixed");
     downstream.reset();
-    await enter(user, view.getByLabelText("Job id"), "reschedule-002");
+    await enter(user, creating(view).getByLabelText("Job ID"), "reschedule-002");
     await saveJob(user, view, "reschedule-002");
-    await enter(user, view.getByLabelText("Job document"), journey.path("runner/documents/reschedule-002.json"));
+    await enter(user, sending(view).getByLabelText("Job file"), journey.path("runner/documents/reschedule-002.json"));
+    // Another job file is another preview: nothing is sent until it is previewed.
+    expect((sending(view).getByRole("button", { name: "Send job" }) as HTMLButtonElement).disabled).toBe(true);
+    await press(user, sending(view).getByRole("button", { name: "Preview job" }));
+    await outcome(view, /^Send job sends \S+reschedule-002\.json /);
     expect(await execute(user, view)).toMatchObject({ state: "completed", summary: { state: "passed" } });
     expect(await outcome(view, /^Job reschedule-002 finished: /)).toBe("Job reschedule-002 finished: passed.");
     expect(downstream.ledger()).toEqual({ "PLACER-101": MOVED });
@@ -209,29 +224,29 @@ test(
     // hub's schedule policy: its pin is the prepared identity the preflight
     // showed, its occurrences follow the zone's clock through a spring-forward
     // gap, and the hub's operator initializes and serves it.
-    const pin = prepared.replace(/^Prepared inputs ([0-9a-f]{64}) .*$/, "$1");
+    const pin = prepared.replace(/^.* under prepared inputs ([0-9a-f]{64}),.*$/, "$1");
     const schedules = await runnerView(user, "Schedules", "Recurring schedules");
     await press(user, schedules.getByRole("button", { name: "Add schedule" }));
-    await enter(user, schedules.getByLabelText("Id"), "nightly-reschedule");
-    await enter(user, schedules.getByLabelText("Zone"), "America/Chicago");
-    await enter(user, schedules.getByLabelText("At (HH:MM)"), "02:30");
-    await enter(user, schedules.getByLabelText("Window seconds"), "600");
-    await enter(user, schedules.getByLabelText("Runner configuration"), journey.path("runner/documents/runner.json"));
-    await enter(user, schedules.getByLabelText("Spec path"), journey.path(PROJECT, "reschedule-ack-test.json"));
-    await enter(user, schedules.getByLabelText("Input pin (SHA-256)"), "0".repeat(64));
-    await enter(user, schedules.getByLabelText("Notification route (HTTPS origin)"), "https://alerts.journey.test/");
-    await user.click(schedules.getByLabelText("Approved for notifications"));
-    await enter(user, schedules.getByLabelText("Preview anchor day (optional)"), "2026-03-07");
-    await enter(user, schedules.getByLabelText("Revision destination"), journey.path("runner/documents/schedules.json"));
+    await enter(user, schedules.getByLabelText("Schedule ID"), "nightly-reschedule");
+    await enter(user, schedules.getByLabelText("Time zone"), "America/Chicago");
+    await enter(user, schedules.getByLabelText("Daily time"), "02:30");
+    await enter(user, schedules.getByLabelText("Start window (seconds)"), "600");
+    await enter(user, schedules.getByLabelText("Runner configuration file"), journey.path("runner/documents/runner.json"));
+    await enter(user, schedules.getByLabelText("Test file"), journey.path(PROJECT, "reschedule-ack-test.json"));
+    await enter(user, schedules.getByLabelText("Input SHA-256"), "0".repeat(64));
+    await enter(user, schedules.getByLabelText("Notification URL"), "https://alerts.journey.test/");
+    await user.click(schedules.getByLabelText("Approve notifications"));
+    await enter(user, schedules.getByLabelText("Preview start date (optional)"), "2026-03-07");
+    await enter(user, schedules.getByLabelText("Policy revision file"), journey.path("runner/documents/schedules.json"));
 
     // A pin that is not the spec's prepared inputs is shown as a mismatch,
     // and no revision is written with it.
-    await press(user, schedules.getByRole("button", { name: "Preview revision" }));
+    await press(user, schedules.getByRole("button", { name: "Preview schedule policy" }));
     expect(await schedules.findByText(byContent(/^nightly-reschedule at /))).toBeTruthy();
     expect(schedules.getByText(byContent(/^nightly-reschedule at /)).textContent).toBe(
       `nightly-reschedule at 02:30 in America/Chicago, window 600s — pin mismatch (${pin}).`,
     );
-    await press(user, schedules.getByRole("button", { name: "Save revision" }));
+    await press(user, schedules.getByRole("button", { name: "Save schedule policy" }));
     expect(
       await schedules.findByText(
         "Refused: an entry's input pin does not match the prepared inputs of its spec; recompute the pin before enabling the schedule",
@@ -241,8 +256,8 @@ test(
     // With the prepared identity as its pin, the revision previews its
     // occurrences — the spring-forward night has no 02:30 and is marked, not
     // shifted — and is saved.
-    await enter(user, schedules.getByLabelText("Input pin (SHA-256)"), pin);
-    await press(user, schedules.getByRole("button", { name: "Preview revision" }));
+    await enter(user, schedules.getByLabelText("Input SHA-256"), pin);
+    await press(user, schedules.getByRole("button", { name: "Preview schedule policy" }));
     await waitFor(() =>
       expect(schedules.getByText(byContent(/^nightly-reschedule at /)).textContent).toBe(
         `nightly-reschedule at 02:30 in America/Chicago, window 600s — pin computed (${pin}).`,
@@ -250,7 +265,7 @@ test(
     );
     expect(schedules.getByText("2026-03-08: dst-gap")).toBeTruthy();
     expect(schedules.getByText(byContent(/^Concurrency: serial-skip-missed\. /))).toBeTruthy();
-    await press(user, schedules.getByRole("button", { name: "Save revision" }));
+    await press(user, schedules.getByRole("button", { name: "Save schedule policy" }));
     await waitFor(() => expect(journey.callsTo("SaveSchedulePolicy").at(-1)?.result).toMatchObject({ state: "completed" }));
     const identity = (await schedules.findByText(byContent(/^Policy identity [0-9a-f]{64} — /))).textContent?.replace(/^Policy identity ([0-9a-f]{64}) .*$/, "$1");
     expect(JSON.parse(journey.readFile("runner/documents/schedules.json"))).toMatchObject({
@@ -274,9 +289,9 @@ test(
     // The installed revision reopens in the window with the identity the hub
     // binds its journal to.
     const installed = await runnerView(user, "Schedules", "Recurring schedules");
-    await enter(user, installed.getByLabelText("Installed policy (to read)"), journey.path("runner/documents/schedules.json"));
+    await enter(user, installed.getByLabelText("Schedule policy file"), journey.path("runner/documents/schedules.json"));
     const opened = journey.callsTo("OpenSchedulePolicy").length;
-    await press(user, installed.getByRole("button", { name: "Open installed policy" }));
+    await press(user, installed.getByRole("button", { name: "Open schedule policy" }));
     await waitFor(() => expect(journey.callsTo("OpenSchedulePolicy")[opened]?.settled).toBe(true));
     expect(journey.callsTo("OpenSchedulePolicy")[opened]?.result).toMatchObject({ state: "completed", identity });
     expect(await installed.findByText(identity!)).toBeTruthy();
@@ -330,11 +345,12 @@ test(
 
     // The grant the hub's operator installed before this runner's last update
     // pins the build it ran then.
-    await enter(user, view.getAllByLabelText("Project").at(-1)!, HUB_PROJECT);
-    await enter(user, view.getByLabelText("Subject"), "runner");
-    await enter(user, view.getAllByLabelText("Environment").at(-1)!, ENVIRONMENT);
-    await enter(user, view.getByLabelText("Engine (empty names this build)"), "retired-build");
-    await enter(user, view.getAllByLabelText("Destination").at(-1)!, journey.path("runner/documents/runners.json"));
+    await press(user, view.getByRole("tab", { name: "Access grant" }));
+    await enter(user, view.getByLabelText("Project"), HUB_PROJECT);
+    await enter(user, view.getByLabelText("Runner subject"), "runner");
+    await enter(user, view.getByLabelText("Environment"), ENVIRONMENT);
+    await enter(user, view.getByLabelText("Engine version (optional)"), "retired-build");
+    await enter(user, view.getByLabelText("Grant file"), journey.path("runner/documents/runners.json"));
     await press(user, view.getByRole("button", { name: "Save grant revision" }));
     expect(await outcome(view, /^Saved to .*runners\.json\. /)).toBe(
       `Saved to ${journey.path("runner/documents/runners.json")}. Installing it on the hub is the administrator's action.`,
@@ -343,10 +359,11 @@ test(
 
     // Under the stale grant the hub refuses this build's admission, with its
     // own reason.
-    await enter(user, view.getByLabelText("Configuration path"), configuration);
+    await enter(user, view.getByLabelText("Runner configuration file"), configuration);
+    await press(user, view.getByRole("tab", { name: "Status and jobs" }));
     await press(user, view.getByRole("button", { name: "Inspect runner" }));
     expect(await outcome(view, /^Health: /)).toBe("Health: idle, 0 retained job(s).");
-    await press(user, view.getByRole("button", { name: "Enroll (probe admission)" }));
+    await press(user, view.getByRole("button", { name: "Check runner admission" }));
     expect(await outcome(view, /^Admission refused: /)).toMatch(/hub refused admission \(Forbidden\): version or environment refused$/);
 
     // The window revises the installed policy. A policy a later release
@@ -356,9 +373,10 @@ test(
       "runner/documents/runners-later.json",
       journey.readFile("runner/documents/runners.json").replace("readmit-runner-policy/v1", "readmit-runner-policy/v2"),
     );
-    await enter(user, view.getByLabelText("Existing policy (optional)"), journey.path("runner/documents/runners-later.json"));
-    await enter(user, view.getByLabelText("Engine (empty names this build)"), "");
-    await enter(user, view.getAllByLabelText("Destination").at(-1)!, journey.path("runner/documents/runners-revision.json"));
+    await press(user, view.getByRole("tab", { name: "Access grant" }));
+    await enter(user, view.getByLabelText("Existing grant policy (optional)"), journey.path("runner/documents/runners-later.json"));
+    await enter(user, view.getByLabelText("Engine version (optional)"), "");
+    await enter(user, view.getByLabelText("Grant file"), journey.path("runner/documents/runners-revision.json"));
     await press(user, view.getByRole("button", { name: "Save grant revision" }));
     expect(await outcome(view, /^Refused: /)).toBe("Refused: the existing runner policy could not be read through its own strict reader");
     expect(() => journey.readFile("runner/documents/runners-revision.json")).toThrow();
@@ -366,7 +384,7 @@ test(
     // Over the installed policy, saved from the keyboard, this build replaces
     // the stale grant for the pair rather than joining it. The revision is a
     // new file, shown as it was written.
-    await enter(user, view.getByLabelText("Existing policy (optional)"), journey.path("runner/documents/runners.json"));
+    await enter(user, view.getByLabelText("Existing grant policy (optional)"), journey.path("runner/documents/runners.json"));
     await tabTo(user, view.getByRole("button", { name: "Save grant revision" }));
     await user.keyboard("{Enter}");
     expect(await outcome(view, /^Saved to .*runners-revision\.json\. /)).toBe(
@@ -385,8 +403,9 @@ test(
     // The operator installs the revision and restarts the hub with it. Once
     // the restarted hub issues leases, the same probe is admitted.
     await hub.restart(["-runner-policy", journey.path("runner/documents/runners-revision.json")]);
+    await press(user, view.getByRole("tab", { name: "Status and jobs" }));
     await pause(10_500);
-    await press(user, view.getByRole("button", { name: "Enroll (probe admission)" }));
+    await press(user, view.getByRole("button", { name: "Check runner admission" }));
     expect(await outcome(view, /^Admitted: /)).toMatch(/^Admitted: lease until \S+, at most 300s per job and 100 retained jobs\.$/);
     await pause(10_500);
 
@@ -395,18 +414,20 @@ test(
     // keyboard once the first message has reached it.
     downstream.reset();
     downstream.holdAcknowledgements();
-    await enter(user, view.getByLabelText("Job id"), "reschedule-001");
-    await enter(user, view.getByLabelText("Spec path"), journey.path(PROJECT, "reschedule-ack-test.json"));
+    await enter(user, creating(view).getByLabelText("Job ID"), "reschedule-001");
+    await enter(user, creating(view).getByLabelText("Test file"), journey.path(PROJECT, "reschedule-ack-test.json"));
     await saveJob(user, view, "reschedule-001");
-    await enter(user, view.getByLabelText("Job document"), journey.path("runner/documents/reschedule-001.json"));
-    await press(user, view.getByRole("button", { name: "Preflight job" }));
-    expect(await outcome(view, /^Prepared inputs /)).toMatch(new RegExp(`^Prepared inputs [0-9a-f]{64} bind environment ${ENVIRONMENT}\\.$`));
-    // Execute is disabled while the job runs, and the focus moves to Cancel,
-    // the one action the running job offers.
+    await enter(user, sending(view).getByLabelText("Job file"), journey.path("runner/documents/reschedule-001.json"));
+    await press(user, sending(view).getByRole("button", { name: "Preview job" }));
+    expect(await outcome(view, /^Send job sends /)).toMatch(
+      new RegExp(`^Send job sends \\S+reschedule-001\\.json \\(job reschedule-001\\) to environment ${ENVIRONMENT} under prepared inputs [0-9a-f]{64}, `),
+    );
+    // Send job is disabled while the job runs, and the focus moves to Cancel
+    // job, the one action the running job offers.
     const asked = journey.callsTo("ExecuteRunnerJob").length;
-    await tabTo(user, view.getByRole("button", { name: "Execute job" }));
+    await tabTo(user, sending(view).getByRole("button", { name: "Send job" }));
     await user.keyboard("{Enter}");
-    const cancel = await view.findByRole("button", { name: "Cancel" });
+    const cancel = await view.findByRole("button", { name: "Cancel job" });
     await waitFor(() => expect(document.activeElement).toBe(cancel));
     await waitFor(() => expect(downstream.received()).toHaveLength(1), { timeout: 60_000 });
     await user.keyboard("{Enter}");
@@ -424,9 +445,11 @@ test(
 
     // Recovery reads the cancelled job as uncertain, in the window and on the
     // command line, and offers nothing to resume.
-    await enter(user, view.getByLabelText("Retained job id for recovery"), "reschedule-001");
-    await press(user, view.getByRole("button", { name: "Read recovery" }));
+    await press(user, view.getByRole("tab", { name: "Recovery" }));
+    await enter(user, view.getByLabelText("Job ID"), "reschedule-001");
+    await press(user, view.getByRole("button", { name: "Open recovery" }));
     expect(await outcome(view, /^reschedule-001: /)).toBe("reschedule-001: 0 acknowledged, 1 uncertain, 1 not attempted. Recovery never sends.");
+    await press(user, view.getByRole("tab", { name: "Status and jobs" }));
     const recovery = await journey.commandLine(["run", "status", `${runnerRoot}/reschedule-001/run`, "--recovery", "--json"]);
     expect(recovery.code).toBe(2);
     expect(JSON.parse(recovery.stdout)).toMatchObject({
@@ -437,21 +460,24 @@ test(
       safe_to_repeat: false,
     });
 
-    // Its job id is occupied from now on. The preflight says so, the window's
-    // execution and the command line's runner are each refused with the
-    // runner's reason, and the downstream system receives nothing more.
-    await press(user, view.getByRole("button", { name: "Preflight job" }));
+    // Its job id is occupied from now on. The window's execution was already
+    // sent once under its preview and is refused with the runner's reason;
+    // a fresh preview says the id is retained and offers no send; the command
+    // line's runner is refused too, and the downstream system receives
+    // nothing more.
+    expect(await execute(user, view)).toMatchObject({ state: "failed", job_id: "reschedule-001", reason: RUNNER_REFUSED });
+    await press(user, sending(view).getByRole("button", { name: "Preview job" }));
     expect(await outcome(view, /^Preflight refused: /)).toBe(
       "Preflight refused: job id reschedule-001 is already retained in this runner's root and never runs again; read its recovery, and save a new job document with a new job id once receiver state is established",
     );
-    expect(await execute(user, view)).toMatchObject({ state: "failed", job_id: "reschedule-001", reason: RUNNER_REFUSED });
+    expect((sending(view).getByRole("button", { name: "Send job" }) as HTMLButtonElement).disabled).toBe(true);
     expect(await runnerExecute("reschedule-001")).toMatchObject({ code: 1, stdout: "", stderr: `readmit: ${RUNNER_REFUSED}\n` });
     expect(downstream.received()).toHaveLength(1);
 
     // A new job id the window writes runs unchanged through the command
     // line's runner, over the configuration the window wrote.
     downstream.reset();
-    await enter(user, view.getByLabelText("Job id"), "reschedule-002");
+    await enter(user, creating(view).getByLabelText("Job ID"), "reschedule-002");
     await saveJob(user, view, "reschedule-002");
     const next = await runnerExecute("reschedule-002");
     expect(next.code).toBe(0);

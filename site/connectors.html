@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>readmit sources and connectors</title>
+<title>Sources | readmit</title>
 <meta name="description" content="Which observation sources and connectors readmit implements, and which are explicitly not available.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 <header>
   <div class="brand">readmit <span>· unsigned development preview</span></div>
-  <nav aria-label="Site">
+  <nav aria-label="Main navigation">
     <ul>
       <li><a href="index.html">Overview</a></li>
       <li><a href="download.html">Download</a></li>
@@ -21,54 +22,57 @@
     </ul>
   </nav>
 </header>
-<main>
-  <h1>Observation sources and connectors</h1>
+<main id="content" tabindex="-1">
+  <h1>Sources and connectors</h1>
   <p>readmit gets evidence from a small number of places, each one declared in a versioned document an operator selects explicitly. This page lists every source the current branch reads, and names the ones it does not, so that no connector has to be inferred from silence. "Implemented" means a documentation page describes it and a test exercises it; see <a href="https://github.com/bharm16/readmit/blob/main/site/CLAIMS.md">CLAIMS.md</a>.</p>
 
   <h2>Implemented</h2>
-  <div class="table-wrap">
+  <div class="table-wrap" role="region" aria-labelledby="implemented-sources" tabindex="0">
   <table>
-    <thead><tr><th>Source</th><th>Status</th><th>How it is reached</th><th>Documentation</th></tr></thead>
+    <caption id="implemented-sources">Implemented sources and how each is reached</caption>
+    <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Access method</th><th scope="col">Documentation</th></tr></thead>
     <tbody>
-      <tr><td>HL7 files, raw or MLLP</td><td><span class="status yes">Implemented</span></td><td>One raw message per file with CR, LF or CRLF endings, or one or more MLLP frames. Mixed endings, batch wrappers and concatenated raw messages are rejected rather than repaired.</td><td><a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a></td></tr>
-      <tr><td>Folders and ZIP archives</td><td><span class="status yes">Implemented</span></td><td><code>import</code> under a declared plan: framing, boundary, terminator, encoding, direction and membership each a flag with no default. Absolute, traversing, linked or repeated archive entries are refused before they are read.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/import.md">import</a></td></tr>
-      <tr><td>CSV, JSON, XML and timestamped text envelopes</td><td><span class="status yes">Implemented</span></td><td><code>import --recipe</code>: a strict-JSON recipe names one typed operator for each of payload, observed time, source, direction and channel. CSV is read byte-exactly; XML character data from the member's own bytes.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/mapping.md">mapping</a></td></tr>
-      <tr><td>A directory this machine can already open</td><td><span class="status yes">Implemented</span></td><td><code>readmit-source/v1</code> kind <code>directory</code>: a local export folder, a mounted share, a tree another tool synced. One directory's own entries; no recursion.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
-      <tr><td>A remote export through your own transfer program</td><td><span class="status yes">Implemented</span></td><td>Kind <code>transfer</code>: readmit runs the read-only program you declare, with a two-verb <code>list</code> / <code>get</code> contract, and gives it a credential reference on standard input. This is how an SFTP export is collected. <strong>readmit implements no SSH or SFTP client</strong> and cannot establish what answered.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
-      <tr><td>File export as an observation</td><td><span class="status yes">Implemented</span></td><td><code>observe collect</code> over a <code>readmit-observation-source/v1</code> or <code>/v2</code> declaring a bounded JSON, CSV, XML or text export and the locator of the record key. An export older than the declared bound is stale evidence.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
-      <tr><td>Approved HTTPS API as an observation</td><td><span class="status yes">Implemented</span></td><td><code>GET</code> only, no redirect followed, no proxy from the environment, TLS 1.2 floor with verification always on, destination checked by the same send policy a replay is held to, credential by reference. A response stating neither <code>Age</code> nor <code>Date</code> is ambiguous, not current.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
-      <tr><td>Downstream HL7 capture as an observation</td><td><span class="status yes">Implemented</span></td><td><code>readmit-observation-source/v2</code> kind <code>downstream-capture</code>: <code>collect</code> retains what the downstream system was sent, and the observation reads that sealed case under one shared field selector naming the position its record key sits at. Nothing is asked of the system under test — no acknowledgement receipt and no ledger export — and the capture is opened through the verifying case reader and never written to.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
-      <tr><td>Inbound MLLP: plain, TLS, mutual TLS</td><td><span class="status yes">Implemented</span></td><td><code>collect</code> binds loopback unless <code>--approved-bind</code>; declaring a client CA requires and verifies a client certificate it issued; the private key is a credential reference. <code>listen</code> is the SIU fixture receiver.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/collect.md">collect</a>, <a href="https://github.com/bharm16/readmit/blob/main/docs/listen.md">listen</a></td></tr>
-      <tr><td>Outbound MLLP to a recorded test environment</td><td><span class="status yes">Implemented</span></td><td><code>replay</code>, <code>test --send</code> and <code>target check</code> resolve the address at the point of sending and deny what no policy names. <code>test</code> sends to literal loopback only. This release's MLLP transport presents no client certificate.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/replay.md">replay</a>, <a href="https://github.com/bharm16/readmit/blob/main/docs/target.md">target</a></td></tr>
+      <tr><th scope="row">HL7 files (raw or MLLP)</th><td><span class="status yes">Implemented</span></td><td>One raw message per file with CR, LF or CRLF endings, or one or more MLLP frames. Mixed endings, batch wrappers and concatenated raw messages are rejected rather than repaired.</td><td><a href="https://github.com/bharm16/readmit/blob/main/README.md">README</a></td></tr>
+      <tr><th scope="row">Folders and ZIP archives</th><td><span class="status yes">Implemented</span></td><td><code>import</code> under a declared plan: framing, boundary, terminator, encoding, direction and membership each a flag with no default. Absolute, traversing, linked or repeated archive entries are refused before they are read.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/import.md">import</a></td></tr>
+      <tr><th scope="row">CSV, JSON, XML and text envelopes</th><td><span class="status yes">Implemented</span></td><td><code>import --recipe</code>: a strict-JSON recipe names one typed operator for each of payload, observed time, source, direction and channel. CSV is read byte-exactly; XML character data from the member's own bytes.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/mapping.md">mapping</a></td></tr>
+      <tr><th scope="row">Accessible directory</th><td><span class="status yes">Implemented</span></td><td><code>readmit-source/v1</code> kind <code>directory</code>: a local export folder, a mounted share, a tree another tool synced. One directory's own entries; no recursion.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
+      <tr><th scope="row">Remote export via transfer program</th><td><span class="status yes">Implemented</span></td><td>Kind <code>transfer</code>: readmit runs the read-only program you declare, with a two-verb <code>list</code> / <code>get</code> contract, and gives it a credential reference on standard input. This is how an SFTP export is collected. <strong>readmit implements no SSH or SFTP client</strong> and cannot establish what answered.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
+      <tr><th scope="row">File observation</th><td><span class="status yes">Implemented</span></td><td><code>observe collect</code> over a <code>readmit-observation-source/v1</code> or <code>/v2</code> declaring a bounded JSON, CSV, XML or text export and the locator of the record key. An export older than the declared bound is stale evidence.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
+      <tr><th scope="row">HTTPS observation</th><td><span class="status yes">Implemented</span></td><td><code>GET</code> only, no redirect followed, no proxy from the environment, TLS 1.2 floor with verification always on, destination checked by the same send policy a replay is held to, credential by reference. A response stating neither <code>Age</code> nor <code>Date</code> is ambiguous, not current.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
+      <tr><th scope="row">Downstream capture observation</th><td><span class="status yes">Implemented</span></td><td><code>readmit-observation-source/v2</code> kind <code>downstream-capture</code>: <code>collect</code> retains what the downstream system was sent, and the observation reads that sealed case under one shared field selector naming the position its record key sits at. Nothing is asked of the system under test — no acknowledgement receipt and no ledger export — and the capture is opened through the verifying case reader and never written to.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/observe.md">observe</a></td></tr>
+      <tr><th scope="row">Inbound MLLP <span class="qualifier">Plain · TLS · mutual TLS</span></th><td><span class="status yes">Implemented</span></td><td><code>collect</code> binds loopback unless <code>--approved-bind</code>; declaring a client CA requires and verifies a client certificate it issued; the private key is a credential reference. <code>listen</code> is the SIU fixture receiver.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/collect.md">collect</a>, <a href="https://github.com/bharm16/readmit/blob/main/docs/listen.md">listen</a></td></tr>
+      <tr><th scope="row">Outbound MLLP <span class="qualifier">To a recorded test environment</span></th><td><span class="status yes">Implemented</span></td><td><code>replay</code>, <code>test --send</code> and <code>target check</code> resolve the address at the point of sending and deny what no policy names. <code>test</code> sends to literal loopback only. This release's MLLP transport presents no client certificate.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/replay.md">replay</a>, <a href="https://github.com/bharm16/readmit/blob/main/docs/target.md">target</a></td></tr>
     </tbody>
   </table>
   </div>
 
   <h2>Declarable but not collected</h2>
-  <div class="table-wrap">
+  <div class="table-wrap" role="region" aria-labelledby="declared-sources" tabindex="0">
   <table>
-    <thead><tr><th>Source</th><th>Status</th><th>What happens</th><th>Documentation</th></tr></thead>
+    <caption id="declared-sources">Sources that are declarable but not collected</caption>
+    <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">What happens</th><th scope="col">Documentation</th></tr></thead>
     <tbody>
-      <tr><td>Application interface as an evidence source</td><td><span class="status part">Declared only</span></td><td>A <code>readmit-source/v1</code> of kind <code>api</code> is read and validated; <code>source diagnose</code> records it as unsupported and <code>source collect</code> refuses it by name. The read-only contract a conforming collection would have to satisfy is documented so nobody has to guess.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
+      <tr><th scope="row">API evidence source</th><td><span class="status part">Declared only</span></td><td>A <code>readmit-source/v1</code> of kind <code>api</code> is read and validated; <code>source diagnose</code> records it as unsupported and <code>source collect</code> refuses it by name. The read-only contract a conforming collection would have to satisfy is documented so nobody has to guess.</td><td><a href="https://github.com/bharm16/readmit/blob/main/docs/source.md">source</a></td></tr>
     </tbody>
   </table>
   </div>
 
   <h2>Not available</h2>
-  <div class="table-wrap">
+  <div class="table-wrap" role="region" aria-labelledby="unavailable-sources" tabindex="0">
   <table>
-    <thead><tr><th>Source</th><th>Status</th><th>Where it stands</th></tr></thead>
+    <caption id="unavailable-sources">Sources that are not available and their implementation status</caption>
+    <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Implementation status</th></tr></thead>
     <tbody>
-      <tr><td>PostgreSQL, SQL Server, Oracle</td><td><span class="status no">Not available</span></td><td>Database observation is selected in <a href="https://github.com/bharm16/readmit/blob/main/docs/product-decisions.md">decision D3</a> with named drivers and test targets. The drivers are not installed and no command reads a database. Canonical evidence is a directory, never a database.</td></tr>
-      <tr><td>Mirth Connect and Open Integration Engine exports</td><td><span class="status no">Not available</span></td><td>Adapters for Mirth 4.5.2 and OIE 4.6.0 are selected in <a href="https://github.com/bharm16/readmit/blob/main/docs/product-decisions.md">decision D2</a>. No engine export format is implemented, named or assumed. A generic CSV, JSON, XML or text envelope from any tool can still be mapped with <code>import --recipe</code>, which makes no claim about the engine that wrote it.</td></tr>
-      <tr><td>SSH or SFTP inside readmit</td><td><span class="status no">Not available</span></td><td>By decision: Cobra stays the released executable's only direct dependency. Use your own client through a <code>transfer</code> source.</td></tr>
-      <tr><td>Scheduling, polling daemons, watching a folder</td><td><span class="status no">Not available</span></td><td>By design. Every collection and observation is one foreground run with cancellation.</td></tr>
-      <tr><td>Plain HTTP, any method but GET, writing to any source</td><td><span class="status no">Not available</span></td><td>By design. readmit serves nothing over HTTP and never writes to, acknowledges or marks anything at a source.</td></tr>
+      <tr><th scope="row">PostgreSQL, SQL Server, Oracle</th><td><span class="status no">Not available</span></td><td>Database observation is selected in <a href="https://github.com/bharm16/readmit/blob/main/docs/product-decisions.md">decision D3</a> with named drivers and test targets. The drivers are not installed and no command reads a database. Canonical evidence is a directory, never a database.</td></tr>
+      <tr><th scope="row">Mirth Connect and Open Integration Engine exports</th><td><span class="status no">Not available</span></td><td>Adapters for Mirth 4.5.2 and OIE 4.6.0 are selected in <a href="https://github.com/bharm16/readmit/blob/main/docs/product-decisions.md">decision D2</a>. No engine export format is implemented, named or assumed. A generic CSV, JSON, XML or text envelope from any tool can still be mapped with <code>import --recipe</code>, which makes no claim about the engine that wrote it.</td></tr>
+      <tr><th scope="row">Built-in SSH/SFTP</th><td><span class="status no">Not available</span></td><td>By decision: Cobra stays the released executable's only direct dependency. Use your own client through a <code>transfer</code> source.</td></tr>
+      <tr><th scope="row">Background collection <span class="qualifier">Scheduling, polling daemons, watching a folder</span></th><td><span class="status no">Not available</span></td><td>By design. Every collection and observation is one foreground run with cancellation.</td></tr>
+      <tr><th scope="row">HTTP methods and source writes <span class="qualifier">Plain HTTP, any method but GET, writing to any source</span></th><td><span class="status no">Not available</span></td><td>By design. readmit serves nothing over HTTP and never writes to, acknowledges or marks anything at a source.</td></tr>
     </tbody>
   </table>
   </div>
 
-  <h2>What every source has in common</h2>
+  <h2>Source requirements</h2>
   <ul>
     <li>A source is declared in a strict-JSON document with a version; unknown members are errors, and an omitted quota is an error rather than a likely value.</li>
     <li>A collection or observation that could not run is an execution error, never evidence that nothing was there.</li>

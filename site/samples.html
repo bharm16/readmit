@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>readmit sample projects</title>
+<title>Samples | readmit</title>
 <meta name="description" content="Synthetic sample projects that complete real readmit workflows, with the transcript of a real run.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 <header>
   <div class="brand">readmit <span>· unsigned development preview</span></div>
-  <nav aria-label="Site">
+  <nav aria-label="Main navigation">
     <ul>
       <li><a href="index.html">Overview</a></li>
       <li><a href="download.html">Download</a></li>
@@ -21,16 +22,16 @@
     </ul>
   </nav>
 </header>
-<main>
+<main id="content" tabindex="-1">
   <h1>Samples</h1>
   <p>Every sample is synthetic and every step in it is a command the product actually runs. No sample contains patient data, and none has been edited to look better than it ran. The transcripts below were captured from the built executable on the current branch; the exact text can change as output changes, and the tests, not this page, are what hold each sample to the product.</p>
 
-  <h2>1. The synthetic evaluation walkthrough</h2>
+  <h2 id="walkthrough">1. Synthetic walkthrough</h2>
   <p>One shell script, ten steps, one new directory: inspect, generate, verify, capture, index, diagnose, diff, validate a regression spec locally, run it against fresh loopback fixtures, and verify the sealed packet. It is in the repository at <a href="https://github.com/bharm16/readmit/blob/main/samples/synthetic-walkthrough/README.md">samples/synthetic-walkthrough</a>, and <code>TestSyntheticWalkthroughCompletesEveryStepAgainstTheBuiltExecutable</code> runs the same file in CI.</p>
-  <pre><code>go build -trimpath -o readmit ./cmd/readmit
+  <pre tabindex="0" role="region" aria-labelledby="walkthrough"><code>go build -trimpath -o readmit ./cmd/readmit
 sh samples/synthetic-walkthrough/walkthrough.sh</code></pre>
-  <p>Excerpts from a real run (long inspection output elided):</p>
-  <pre><code>== 2. synth: the reproducible seed-zero SIU family
+  <p id="walkthrough-excerpts">Excerpts from a real run (long inspection output elided):</p>
+  <pre tabindex="0" role="region" aria-labelledby="walkthrough-excerpts"><code>== 2. synth: the reproducible seed-zero SIU family
 Synthetic SIU family: complete
 Provenance: generated
 Cases: regression (S12, S13); cancellation (S12, S13, S15); invalid (S12, S13 with an unbooked filler identifier)
@@ -76,13 +77,13 @@ Synthetic-only; input unchanged; appointment-ledger boundary
 Walkthrough complete: readmit-walkthrough</code></pre>
   <p>The identities printed by step 2 are the frozen values in <a href="https://github.com/bharm16/readmit/blob/main/docs/synth-v1-vector.md">the v1 reference vector</a>; the packet identity is omitted above because it differs per run, as the packet records fresh loopback ports. The finding in step 6 is <code>siu.booking-not-observed</code>, the hypothesis the documentation reserves for the deliberately defective case. Step 7 writes a Markdown diff whose summary line begins <code>Paired=2; changed=1; unchanged=1</code>: exactly the one filler identifier the invalid case changes.</p>
 
-  <h2>2. The fail, pass, fail regression demonstration</h2>
+  <h2>2. Fail–pass–fail regression</h2>
   <p>Two terminals: one runs the fixture receiver in defective mode, then fixed mode, then defective again; the other runs the same unchanged spec against each. The baseline fails on the ledger count, the fix passes, and reintroducing the defect fails again. This is the demonstration <code>report --scenario</code> automates; the manual procedure, with its reset instructions, is in the <a href="https://github.com/bharm16/readmit/blob/main/docs/test-runner.md">test runner documentation</a>, and <code>TestTestExecutableUnchangedSpecFailsPassesAndCatchesReintroduction</code> runs it.</p>
 
-  <h2>3. Redact and export a synthetic case</h2>
+  <h2>3. Synthetic redaction and export</h2>
   <p>Capture the committed <code>redact-booking.mllp</code> and <code>redact-reschedule.mllp</code> fixtures, apply the committed policy, review the export, and watch the blocked policy refuse. The scenario and the fixtures ship in every archive; the procedure is in the <a href="https://github.com/bharm16/readmit/blob/main/docs/redact.md">redaction documentation</a>, and <code>TestRedactExecutableGeneratesOnlyDerivedProofAndNoPlantedValues</code> runs it.</p>
 
-  <h2>4. The guided sample in the desktop shell</h2>
+  <h2>4. Guided desktop sample</h2>
   <p>The desktop shell's <em>Create sample workspace</em> action writes the same seed-zero case bundles the walkthrough generates, byte for byte, into a new <code>readmit-sample</code> folder and opens it. It is written as a workspace rather than a family: the <code>family.json</code> completion record is not kept, because nothing may be written inside retained evidence, and two entries that are not evidence are written beside the cases — a loopback practice endpoint, so a test has a target to name, and a states-only index of the sample case, so the message grid can be opened without <code>readmit index build</code>. <code>TestDesktopSampleWorkspaceHoldsTheCommandLineFamilyBytes</code> holds the generated bytes to the command line's output.</p>
   <p>From there the whole investigation is finished in the window, with nothing typed into a shell: author a regression test over the sample case, run it against a practice receiver the application binds on a loopback port of the same machine and watch it fail on the fixture's defect, then run the same spec against the corrected receiver and watch it pass. The case, the spec and both results are ordinary artifacts the command line reads, and where you are in the path is read back out of the folder rather than remembered. <code>TestTheGuidedSampleIsCompletedThroughTheWindowAlone</code> completes every step through the application facade and reads the result back with the built executable. No desktop package is signed for distribution, so this is a path through a shell built from a checkout, not one an engineer installs today. There is no screenshot of it yet; see <a href="limitations.html">limitations</a>, and <a href="https://github.com/bharm16/readmit/blob/main/docs/guided-sample.md">the guided sample</a> for what none of it establishes.</p>
 

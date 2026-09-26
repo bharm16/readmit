@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Download readmit</title>
+<title>Download | readmit</title>
 <meta name="description" content="What is actually published, what CI builds and tests, how to check an archive or package, and how to build the current branch.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 <header>
   <div class="brand">readmit <span>· unsigned development preview</span></div>
-  <nav aria-label="Site">
+  <nav aria-label="Main navigation">
     <ul>
       <li><a href="index.html">Overview</a></li>
       <li><a href="download.html" aria-current="page">Download</a></li>
@@ -21,7 +22,7 @@
     </ul>
   </nav>
 </header>
-<main>
+<main id="content" tabindex="-1">
   <h1>Download</h1>
 
   <div class="notice">
@@ -29,28 +30,29 @@
     Three different things are easy to confuse, so this page keeps them apart: what is <em>published</em> (an early prerelease containing <code>readmit inspect</code> only), what CI <em>builds and installation-tests</em> when a run is started by hand or a release is tagged (the current branch, as unsigned CLI archives and unsigned native desktop packages that are never published), and a <em>published complete product</em> (which does not exist yet; <a href="https://github.com/bharm16/readmit/blob/main/docs/release-acceptance.md">release acceptance</a> is open). Nothing is code-signed for distribution or notarized; an operating-system or endpoint policy may refuse to run any of it.
   </div>
 
-  <h2>The published candidate: <code>v0.1.0-alpha.2</code></h2>
+  <h2>Published candidate: <code>v0.1.0-alpha.2</code></h2>
   <p>The only published archives are the <code>v0.1.0-alpha.2</code> GitHub prerelease, built from an early commit that shipped <code>readmit inspect</code> alone. Every other workflow described on this site landed on <code>main</code> afterwards and is in no published archive. Treating the prerelease as the product would understate the current code and overstate the release; this page does neither.</p>
   <p>Archives, <code>checksums.txt</code> and build provenance are published only on <a href="https://github.com/bharm16/readmit/releases">GitHub Releases</a>. Each archive holds one static executable with no runtime, installer or container requirement, plus the README, the documentation pages, third-party notices and licenses, the field-label source, and synthetic fixtures.</p>
 
-  <h3>Command-line archives CI builds</h3>
+  <h3 id="cli-archives">CLI archives built in CI</h3>
   <p>These five archives are the shape of the next release. When a run is started by hand or a release is tagged, CI cross-builds each one and runs the exact artifact on its native runner, but only a <code>v*</code> tag publishes anything, so today they are previews of an unpublished release.</p>
-  <div class="table-wrap">
+  <div class="table-wrap" role="region" aria-labelledby="cli-archives-table" tabindex="0">
   <table>
-    <thead><tr><th>Archive</th><th>Operating-system floor</th><th>Tested in CI on</th></tr></thead>
+    <caption id="cli-archives-table">CLI archives built in CI: minimum OS and CI test platform per archive</caption>
+    <thead><tr><th scope="col">Archive</th><th scope="col">Minimum OS</th><th scope="col">CI test platform</th></tr></thead>
     <tbody>
-      <tr><td><code>readmit_VERSION_darwin_arm64.tar.gz</code></td><td>macOS 13 or newer, Apple silicon</td><td><code>macos-15</code></td></tr>
-      <tr><td><code>readmit_VERSION_darwin_amd64.tar.gz</code></td><td>macOS 13 or newer, Intel</td><td><code>macos-15-intel</code></td></tr>
-      <tr><td><code>readmit_VERSION_linux_amd64.tar.gz</code></td><td>Linux kernel 3.2 or newer, x86-64</td><td><code>ubuntu-24.04</code></td></tr>
-      <tr><td><code>readmit_VERSION_linux_arm64.tar.gz</code></td><td>Linux kernel 3.2 or newer, arm64</td><td><code>ubuntu-24.04-arm</code></td></tr>
-      <tr><td><code>readmit_VERSION_windows_amd64.zip</code></td><td>Windows 10 or Windows Server 2016 or newer, x86-64</td><td><code>windows-2025</code></td></tr>
+      <tr><th scope="row"><code>readmit_VERSION_darwin_arm64.tar.gz</code></th><td>macOS 13 or newer, Apple silicon</td><td><code>macos-15</code></td></tr>
+      <tr><th scope="row"><code>readmit_VERSION_darwin_amd64.tar.gz</code></th><td>macOS 13 or newer, Intel</td><td><code>macos-15-intel</code></td></tr>
+      <tr><th scope="row"><code>readmit_VERSION_linux_amd64.tar.gz</code></th><td>Linux kernel 3.2 or newer, x86-64</td><td><code>ubuntu-24.04</code></td></tr>
+      <tr><th scope="row"><code>readmit_VERSION_linux_arm64.tar.gz</code></th><td>Linux kernel 3.2 or newer, arm64</td><td><code>ubuntu-24.04-arm</code></td></tr>
+      <tr><th scope="row"><code>readmit_VERSION_windows_amd64.zip</code></th><td>Windows 10 or Windows Server 2016 or newer, x86-64</td><td><code>windows-2025</code></td></tr>
     </tbody>
   </table>
   </div>
   <p class="muted"><code>VERSION</code> is the release tag without its leading <code>v</code>, so the current prerelease is <code>readmit_0.1.0-alpha.2_darwin_arm64.tar.gz</code>. The floors follow <a href="https://go.dev/wiki/MinimumRequirements">Go's supported platforms</a>. CI runs the exact archives on the current runner for each target; it does not certify every older release in the range. There is no Windows arm64 archive.</p>
 
-  <h3>Verify archive</h3>
-  <pre><code>shasum -a 256 readmit_0.1.0-alpha.2_darwin_arm64.tar.gz   # macOS
+  <h3 id="verify-archive">Verify archive</h3>
+  <pre tabindex="0" role="region" aria-labelledby="verify-archive"><code>shasum -a 256 readmit_0.1.0-alpha.2_darwin_arm64.tar.gz   # macOS
 sha256sum readmit_0.1.0-alpha.2_linux_amd64.tar.gz        # Linux
 Get-FileHash .\readmit_0.1.0-alpha.2_windows_amd64.zip -Algorithm SHA256   # Windows
 # compare with the matching line of checksums.txt, then extract and run:
@@ -58,23 +60,24 @@ tar -xzf readmit_0.1.0-alpha.2_darwin_arm64.tar.gz
 ./readmit inspect testdata/fixtures/adt-cr.hl7</code></pre>
   <p>GitHub build provenance is attested for each published executable and is separate from OS code signing. With the GitHub CLI: <code>gh attestation verify ./readmit --repo bharm16/readmit</code> (or <code>readmit.exe</code>).</p>
 
-  <h2>Desktop packages</h2>
+  <h2 id="desktop-packages">Desktop packages</h2>
   <p>The desktop shell is distributed as each platform's own package, never inside a CLI archive. When a run is started by hand, CI builds each package natively on its target runner, installs it through the platform's own installer, checks the installed application, and removes it — so the packaging is exercised, while no package and no installer is published anywhere and no window is opened on any runner, because no runner has a display. Every build writes a <code>readmit-desktop-package/v1</code> manifest beside the packages naming each package, its format and its SHA-256 digest, and recording <code>"signed_for_distribution": false</code>.</p>
-  <div class="table-wrap">
+  <div class="table-wrap" role="region" aria-labelledby="desktop-packages-table" tabindex="0">
   <table>
-    <thead><tr><th>Target</th><th>Package</th><th>What the package declares</th><th>Signature</th></tr></thead>
+    <caption id="desktop-packages-table">Desktop packages: declared requirements and signing status per platform</caption>
+    <thead><tr><th scope="col">Platform</th><th scope="col">Package</th><th scope="col">Declared requirements</th><th scope="col">Signing status</th></tr></thead>
     <tbody>
-      <tr><td>Ubuntu 24.04 LTS, x86-64 and arm64</td><td><code>.deb</code></td><td><code>libgtk-3-0 (>= 3.24)</code> and <code>libwebkit2gtk-4.1-0 (>= 2.44)</code>, so the webview arrives from the distribution's own repositories; installs <code>/usr/bin/readmit-desktop</code> and an application entry</td><td>unsigned</td></tr>
-      <tr><td>macOS 13 or newer, Intel and Apple silicon</td><td><code>.dmg</code> to open and drag; <code>.pkg</code> for managed installation into <code>/Applications</code></td><td><code>CFBundleIdentifier</code> <code>com.readmit.desktop</code> and <code>LSMinimumSystemVersion</code> 13.0; the webview is part of the operating system</td><td>unsigned; on Apple silicon only the linker's ad-hoc signature, which names no authority</td></tr>
-      <tr><td>Windows 10 / Server 2016 or newer, x64</td><td><code>.msi</code></td><td>A per-machine install under <code>Program Files</code>, a Start Menu entry, and the Microsoft Edge WebView2 Runtime as a launch condition: where the runtime is absent the MSI refuses and names the Evergreen Standalone Installer an administrator stages offline, rather than installing a window that cannot open</td><td>unsigned</td></tr>
+      <tr><th scope="row">Ubuntu 24.04 LTS, x86-64 and arm64</th><td><code>.deb</code></td><td><code>libgtk-3-0 (>= 3.24)</code> and <code>libwebkit2gtk-4.1-0 (>= 2.44)</code>, so the webview arrives from the distribution's own repositories; installs <code>/usr/bin/readmit-desktop</code> and an application entry</td><td>unsigned</td></tr>
+      <tr><th scope="row">macOS 13 or newer, Intel and Apple silicon</th><td><code>.dmg</code> to open and drag; <code>.pkg</code> for managed installation into <code>/Applications</code></td><td><code>CFBundleIdentifier</code> <code>com.readmit.desktop</code> and <code>LSMinimumSystemVersion</code> 13.0; the webview is part of the operating system</td><td>unsigned; on Apple silicon only the linker's ad-hoc signature, which names no authority</td></tr>
+      <tr><th scope="row">Windows 10 / Server 2016 or newer, x64</th><td><code>.msi</code></td><td>A per-machine install under <code>Program Files</code>, a Start Menu entry, and the Microsoft Edge WebView2 Runtime as a launch condition: where the runtime is absent the MSI refuses and names the Evergreen Standalone Installer an administrator stages offline, rather than installing a window that cannot open</td><td>unsigned</td></tr>
     </tbody>
   </table>
   </div>
   <p>No package downloads a prerequisite, reaches a network, or installs a service, daemon or scheduled task. Verification re-reads the manifest strictly, re-computes every digest, and opens each package with the tools that wrote it; a manifest claiming a distribution signature is refused by name. Signed and notarized installers are selected in the product decisions and remain a release gate — this page's table is the whole truth of the current state, and it is not that future state.</p>
 
-  <h2>Build from source</h2>
+  <h2 id="build-from-source">Build from source</h2>
   <p>To evaluate the workflows on this site before the next tagged prerelease, build from source with the pinned Go 1.27.1 toolchain. The build is static, needs no C compiler, and produces one file.</p>
-  <pre><code>git clone https://github.com/bharm16/readmit
+  <pre tabindex="0" role="region" aria-labelledby="build-from-source"><code>git clone https://github.com/bharm16/readmit
 cd readmit
 go build -trimpath -o readmit ./cmd/readmit
 ./readmit --help
@@ -91,7 +94,7 @@ sh samples/synthetic-walkthrough/walkthrough.sh</code></pre>
     <li>No support offering, published license terms or evaluation program yet. The <a href="https://github.com/bharm16/readmit/blob/main/docs/support-matrix.md">support matrix</a> states this in full.</li>
   </ul>
 
-  <h2>Upgrading and removing</h2>
+  <h2>Upgrade and uninstall</h2>
   <p>Evidence directories are versioned strict-JSON files and raw payloads that a newer executable reads through explicit contract versions; a version it does not read is refused, never migrated in place. To upgrade the command line, extract the new archive beside or over the old executable. To remove it, delete the directory; it wrote nothing anywhere else except the evidence and documents you asked it to write, and the desktop shell's named local documents described in the <a href="https://github.com/bharm16/readmit/blob/main/docs/desktop.md">desktop contract</a>. The desktop packages uninstall through the platform's own installer, and removing the application leaves evidence and project documents wherever you kept them.</p>
 </main>
 <footer>

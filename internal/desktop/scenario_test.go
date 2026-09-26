@@ -628,3 +628,38 @@ func TestBindScenarioProfileRefusesWhatTheLocalProfileReaderRefuses(t *testing.T
 		}
 	}
 }
+
+// The library to import is chosen in the host's file dialog and answered as
+// the full path the import reads, which then copies exactly those bytes; a
+// dismissed dialog chooses nothing and two files are refused.
+func TestChooseScenarioLibraryImportAnswersThePathTheImportReads(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "shipped-library.json")
+	if err := os.WriteFile(outside, []byte(fixture(t, "scenario-library.json")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := &chooser{files: []string{outside}}
+	app := newApp(t, c)
+	root := t.TempDir()
+	chosen := app.ChooseScenarioLibraryImport()
+	if chosen.State != desktop.Completed || chosen.Path != outside {
+		t.Fatalf("chosen: %+v", chosen)
+	}
+	if got := strings.Join(c.titles, "|"); got != "Choose the scenario library to import" {
+		t.Fatalf("dialog title: %s", got)
+	}
+	imported := app.ImportScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: chosen.Path, Output: "imported.json"})
+	if imported.State != desktop.Completed {
+		t.Fatalf("import of the chosen library: %+v", imported)
+	}
+	if !bytes.Equal(mustRead(t, filepath.Join(root, "imported.json")), mustRead(t, outside)) {
+		t.Fatal("the import is not the chosen library's bytes")
+	}
+	c.files = []string{outside, outside}
+	if got := app.ChooseScenarioLibraryImport(); got.State != desktop.Failed || got.Path != "" || got.Reason != "choose exactly one file" {
+		t.Fatalf("two files: %+v", got)
+	}
+	c.files = nil
+	if got := app.ChooseScenarioLibraryImport(); got.State != desktop.Cancelled || got.Path != "" {
+		t.Fatalf("dismissed: %+v", got)
+	}
+}

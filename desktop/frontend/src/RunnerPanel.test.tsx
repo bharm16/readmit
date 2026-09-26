@@ -11,6 +11,7 @@ import type {
   RunnerInspectResult,
   RunnerExecutionResult,
   RunnerRecoveryResult,
+  RunnerJobPreviewResult,
   SchedulePreviewResult,
   CIHandoffResult,
   CIInspectResult,
@@ -26,6 +27,33 @@ function inspection(result: Partial<RunnerInspectResult>): RunnerInspectResult {
   return { state: "completed", ...result };
 }
 
+const CONFIG = "/etc/readmit-runner/config.json";
+const JOB = "/srv/jobs/nightly-001.json";
+const INPUT_ID = "f".repeat(64);
+
+/** A successful preview of the job file under the configuration. */
+function previewed(): RunnerJobPreviewResult {
+  return { state: "completed", job_id: "nightly-001", spec: "/srv/readmit/spec.json", input_identity: INPUT_ID, environment: "lab" };
+}
+
+/** The job file a preview and a send read, as opposed to the one Save job writes. */
+function sendJobFile(): HTMLElement {
+  return within(screen.getByRole("group", { name: "Send job" })).getByLabelText("Job file");
+}
+
+/** Previews the named job and waits until its send is offered. */
+async function previewJob(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Preview job" }));
+  await screen.findByText(/^Send job sends/);
+}
+
+/** Names the configuration and the job file, and previews them. */
+async function preparedJob(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(await screen.findByLabelText("Runner configuration file"), CONFIG);
+  await user.type(sendJobFile(), JOB);
+  await previewJob(user);
+}
+
 // A runner action answers one of six states, and only a failure is a refusal.
 // Busy, cancelled, nothing to show and permission denied each read as
 // themselves, through Status with their own word and shape; a refused
@@ -39,7 +67,7 @@ test("every state a runner action answers reads as itself, and only a failure as
       <RunnerPanel />
     </IndicatorsContext.Provider>,
   );
-  const save = await screen.findByRole("button", { name: "Save job document" });
+  const save = await screen.findByRole("button", { name: "Save job" });
   const others: State[] = ["busy", "cancelled", "empty", "permission_denied"];
   for (const state of others) {
     facade.reply({ SaveRunnerJob: () => ({ state, reason: `the job document answered ${state}` }) });
@@ -56,15 +84,22 @@ test("every state a runner action answers reads as itself, and only a failure as
   expect((await screen.findByText("Refused: the job document answered failed")).getAttribute("role")).toBe("alert");
 
   // An execution the runner cancelled is not refused, and one it did not
-  // admit keeps the section's own sentence.
-  await user.type(screen.getByLabelText("Job document"), "/srv/jobs/nightly-001.json");
-  facade.reply({ ExecuteRunnerJob: () => ({ state: "cancelled", job_id: "nightly-001", reason: "the execution was cancelled" }) });
-  await user.click(screen.getByRole("button", { name: "Execute job" }));
+  // admit keeps the section's own sentence. Each send follows its own preview.
+  await user.type(screen.getByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
+  await user.type(sendJobFile(), "/srv/jobs/nightly-001.json");
+  facade.reply({
+    InspectRunnerJob: () => previewed(),
+    ReadRunnerConfig: () => inspection({ state: "failed", reason: "the selected file must be a private regular file" }),
+    ExecuteRunnerJob: () => ({ state: "cancelled", job_id: "nightly-001", reason: "the execution was cancelled" }),
+  });
+  await previewJob(user);
+  await user.click(screen.getByRole("button", { name: "Send job" }));
   const cancelled = (await screen.findByText("the execution was cancelled")).closest("p");
   expect(cancelled?.className).toBe("status status-cancelled");
   expect(screen.queryByText(/Refused: the execution was cancelled/)).toBeNull();
   facade.reply({ ExecuteRunnerJob: () => ({ state: "permission_denied", job_id: "nightly-001", reason: "no runner instance is free" }) });
-  await user.click(screen.getByRole("button", { name: "Execute job" }));
+  await previewJob(user);
+  await user.click(screen.getByRole("button", { name: "Send job" }));
   expect(await screen.findByText("Not admitted: no runner instance is free")).toBeTruthy();
   uninstallFacade();
 });
@@ -84,8 +119,8 @@ test("enrollment reports the lease the hub granted", async () => {
       }),
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Configuration path"), "/etc/readmit-runner/config.json");
-  await user.click(screen.getByRole("button", { name: /Enroll \(probe admission\)/ }));
+  await user.type(await screen.findByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
+  await user.click(screen.getByRole("button", { name: "Check runner admission" }));
   expect(facade.callsTo("EnrollRunner").length).toBe(1);
   expect(
     await screen.findByText(/Admitted: lease until 2026-09-21T12:00:10Z, at most 300s per job/),
@@ -104,8 +139,8 @@ test("a denied runner or environment shows the hub's own reason", async () => {
       }),
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Configuration path"), "/etc/readmit-runner/config.json");
-  await user.click(screen.getByRole("button", { name: /Enroll \(probe admission\)/ }));
+  await user.type(await screen.findByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
+  await user.click(screen.getByRole("button", { name: "Check runner admission" }));
   expect(facade.callsTo("EnrollRunner").length).toBe(1);
   expect(await screen.findByText(/Admission refused:.*version or environment refused/)).toBeTruthy();
   uninstallFacade();
@@ -120,15 +155,21 @@ test("a retained job id is never replayed and no resend is offered", async () =>
       "runner operation refused; check private configuration, admission, and retained status",
   };
   const facade = installFacade({
+    InspectRunnerJob: async () => previewed(),
     ExecuteRunnerJob: async () => execution,
+    ReadRunnerConfig: async () => inspection({ state: "failed", reason: "the selected file must be a private regular file" }),
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Job document"), "/srv/jobs/nightly-001.json");
-  await user.click(screen.getByRole("button", { name: "Execute job" }));
+  await preparedJob(user);
+  expect(facade.oneCall("InspectRunnerJob")).toEqual([CONFIG, JOB]);
+  // The prepared input ID is the preview's, shown read-only.
+  expect((screen.getByLabelText("Prepared input ID") as HTMLInputElement).readOnly).toBe(true);
+  expect((screen.getByLabelText("Prepared input ID") as HTMLInputElement).value).toBe(INPUT_ID);
+  await user.click(screen.getByRole("button", { name: "Send job" }));
   expect(facade.oneCall("ExecuteRunnerJob")[0]).toMatchObject({
-    config_path: "",
-    job_path: "/srv/jobs/nightly-001.json",
-    expected_identity: "",
+    config_path: CONFIG,
+    job_path: JOB,
+    expected_identity: INPUT_ID,
   });
   expect(await screen.findByText(/Refused: runner operation refused/)).toBeTruthy();
   // The panel offers recovery vocabulary, never a resend of retained work.
@@ -148,8 +189,8 @@ test("resource contention is displayed as the hub's refusal, not retried", async
       }),
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Configuration path"), "/etc/readmit-runner/config.json");
-  await user.click(screen.getByRole("button", { name: /Enroll \(probe admission\)/ }));
+  await user.type(await screen.findByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
+  await user.click(screen.getByRole("button", { name: "Check runner admission" }));
   expect(await screen.findByText(/environment leased or recovering/)).toBeTruthy();
   expect(facade.callsTo("EnrollRunner").length).toBe(1);
   uninstallFacade();
@@ -160,6 +201,7 @@ test("cancellation keeps uncertain delivery and recovery reads without sending",
   const parked = new Parked();
   const facade = installFacade({
     Cancel: async () => {},
+    InspectRunnerJob: async () => previewed(),
     ExecuteRunnerJob: () => parked.arrive() as Promise<RunnerExecutionResult>,
     ReadRunnerRecovery: async () =>
       ({
@@ -193,10 +235,10 @@ test("cancellation keeps uncertain delivery and recovery reads without sending",
       }),
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Job document"), "/srv/jobs/nightly-001.json");
-  await user.click(screen.getByRole("button", { name: "Execute job" }));
+  await preparedJob(user);
+  await user.click(screen.getByRole("button", { name: "Send job" }));
   // The named cancel control reaches only this panel's operation.
-  await user.click(await screen.findByRole("button", { name: "Cancel" }));
+  await user.click(await screen.findByRole("button", { name: "Cancel job" }));
   parked.resolve({
     state: "failed",
     job_id: "nightly-001",
@@ -209,8 +251,10 @@ test("cancellation keeps uncertain delivery and recovery reads without sending",
 
   // After a disconnection, reading the configuration again is how the window
   // reconnects to current state before any new deliberate action.
-  await user.type(screen.getByLabelText("Retained job id for recovery"), "nightly-001");
-  await user.click(screen.getByRole("button", { name: /Read recovery/ }));
+  await user.click(screen.getByRole("tab", { name: "Recovery" }));
+  await user.type(screen.getByLabelText("Job ID"), "nightly-001");
+  await user.click(screen.getByRole("button", { name: "Open recovery" }));
+  expect(facade.oneCall("ReadRunnerRecovery")).toEqual([CONFIG, "nightly-001"]);
   expect(
     await screen.findByText(/nightly-001: 2 acknowledged, 1 uncertain, 0 not attempted\. Recovery never sends\./),
   ).toBeTruthy();
@@ -222,18 +266,20 @@ test("a running job takes the focus to Cancel, and Enter there cancels only the 
   const parked = new Parked();
   const facade = installFacade({
     Cancel: async () => {},
+    InspectRunnerJob: async () => previewed(),
     ExecuteRunnerJob: () => parked.arrive() as Promise<RunnerExecutionResult>,
     ReadRunnerConfig: async () => inspection({ state: "failed", reason: "the selected file must be a private regular file" }),
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Job document"), "/srv/jobs/nightly-001.json");
-  // From the job document: the pin, then Preflight, then Execute.
+  await preparedJob(user);
+  // From the job file: the prepared input ID, then Preview job, then Send job.
+  await user.click(sendJobFile());
   await user.tab();
   await user.tab();
   await user.tab();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Execute job" }));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Send job" }));
   await user.keyboard("{Enter}");
-  const cancel = await screen.findByRole("button", { name: "Cancel" });
+  const cancel = await screen.findByRole("button", { name: "Cancel job" });
   expect(document.activeElement).toBe(cancel);
   await user.keyboard("{Enter}");
   expect(facade.oneCall("Cancel")).toEqual(["runner"]);
@@ -288,13 +334,13 @@ test("schedule revisions show effective timing, missed and overlap semantics", a
   render(<RunnerPanel />);
   await user.click(await screen.findByRole("tab", { name: "Schedules" }));
   await user.click(screen.getByRole("button", { name: "Add schedule" }));
-  await user.click(screen.getByRole("button", { name: /Preview revision/ }));
+  await user.click(screen.getByRole("button", { name: "Preview schedule policy" }));
   expect(facade.callsTo("PreviewSchedulePolicy").length).toBe(1);
   expect(await screen.findByText(/2026-03-08: dst-gap/)).toBeTruthy();
   expect(await screen.findByText(/serial-skip-missed/)).toBeTruthy();
   expect(screen.getByText(/recorded and skipped, never replayed/)).toBeTruthy();
-  await user.type(await screen.findByLabelText("Revision destination"), "/tmp/schedules.json");
-  await user.click(screen.getByRole("button", { name: /Save revision/ }));
+  await user.type(await screen.findByLabelText("Policy revision file"), "/tmp/schedules.json");
+  await user.click(screen.getByRole("button", { name: "Save schedule policy" }));
   expect(facade.callsTo("SaveSchedulePolicy").length).toBe(1);
   expect(await screen.findByText("d".repeat(64))).toBeTruthy();
   uninstallFacade();
@@ -332,7 +378,7 @@ test("notifications show exactly the fixed approved body and nothing else", asyn
   render(<RunnerPanel />);
   await user.click(await screen.findByRole("tab", { name: "Schedules" }));
   await user.click(screen.getByRole("button", { name: "Add schedule" }));
-  await user.click(screen.getByRole("button", { name: /Preview revision/ }));
+  await user.click(screen.getByRole("button", { name: "Preview schedule policy" }));
   expect(facade.callsTo("PreviewSchedulePolicy").length).toBe(1);
   expect(
     await screen.findByText(/no names, paths, values or errors/),
@@ -377,9 +423,12 @@ test("the CI handoff is generated in-app and results are inspected in-app", asyn
   expect(facade.oneCall("SaveCIHandoff")[0]).toMatchObject({ integration: "posix" });
   expect(await screen.findByText(/Install it as the customer administrator\./)).toBeTruthy();
   expect(await screen.findByText(/\$READMIT_BIN.*suite ci/s)).toBeTruthy();
+  // The full workflow text is kept in its own labelled details.
+  expect(screen.getByText("Generated workflow").tagName).toBe("SUMMARY");
 
+  await user.click(screen.getByRole("tab", { name: "Inspect results" }));
   await user.type(
-    screen.getByLabelText("CI output directory"),
+    screen.getByLabelText("CI results folder"),
     "/var/lib/readmit-ci/run-1",
   );
   await user.click(screen.getByRole("button", { name: /Open CI results/ }));
@@ -398,10 +447,11 @@ test("the CI handoff is generated in-app and results are inspected in-app", asyn
   uninstallFacade();
 });
 
-/** The CI tab of a freshly rendered panel. */
-async function ciTab(user: ReturnType<typeof userEvent.setup>) {
+/** One task of the CI tab of a freshly rendered panel. */
+async function ciTab(user: ReturnType<typeof userEvent.setup>, task = "Generate workflow") {
   render(<RunnerPanel />);
   await user.click(await screen.findByRole("tab", { name: "CI handoff" }));
+  await user.click(screen.getByRole("tab", { name: task }));
 }
 
 const GATE_STEP = {
@@ -422,13 +472,13 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
   });
   await ciTab(user);
   // Without the step, the handoff asks for no gate and no gate field is offered.
-  expect(screen.queryByLabelText("Reviewed gate policy identity")).toBeNull();
+  expect(screen.queryByLabelText("Gate policy ID")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[0]?.args[0]).not.toHaveProperty("gate");
 
   // The step is chosen from the keyboard: the checkbox follows the handoff
   // destination, and Space checks it.
-  await user.click(screen.getByLabelText("Handoff destination"));
+  await user.click(screen.getByLabelText("Workflow output file"));
   await user.tab();
   const step = screen.getByRole("checkbox", { name: /Include change gate/ });
   expect(document.activeElement).toBe(step);
@@ -436,17 +486,18 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
   expect((step as HTMLInputElement).checked).toBe(true);
   expect(screen.getByText(/never replaces the suite's exit status/)).toBeTruthy();
   const fields: [string, string][] = [
-    ["Release references", GATE_STEP.releases],
-    ["Promotion approval", GATE_STEP.promotion],
-    ["Promotion approval identity", GATE_STEP.promotion_identity],
+    ["Release pins file", GATE_STEP.releases],
+    ["Promotion approval file", GATE_STEP.promotion],
+    ["Promotion approval ID", GATE_STEP.promotion_identity],
     ["Target revision (operator-declared)", GATE_STEP.revision],
-    ["Reviewed baseline run directory", GATE_STEP.baseline],
-    ["Reviewed gate policy", GATE_STEP.policy],
-    ["Reviewed gate policy identity", "B".repeat(64)],
-    ["Gate snapshot directory (fresh per invocation)", GATE_STEP.snapshot_directory],
+    ["Baseline run folder", GATE_STEP.baseline],
+    ["Gate policy file", GATE_STEP.policy],
+    ["Gate policy ID", "B".repeat(64)],
+    ["Gate snapshot folder", GATE_STEP.snapshot_directory],
   ];
+  const setup = within(screen.getByRole("group", { name: "CI setup" }));
   for (const [label, value] of fields) {
-    await user.type(screen.getByLabelText(label), value);
+    await user.type(setup.getByLabelText(label), value);
   }
   await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[1]?.args[0]).toMatchObject({ gate: { ...GATE_STEP, policy_identity: "B".repeat(64) } });
@@ -462,8 +513,8 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
       document: '#!/bin/sh\n"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY"\n',
     }),
   });
-  await user.clear(screen.getByLabelText("Reviewed gate policy identity"));
-  await user.type(screen.getByLabelText("Reviewed gate policy identity"), GATE_STEP.policy_identity);
+  await user.clear(setup.getByLabelText("Gate policy ID"));
+  await user.type(setup.getByLabelText("Gate policy ID"), GATE_STEP.policy_identity);
   await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[2]?.args[0]).toMatchObject({ gate: GATE_STEP });
   expect(await screen.findByText("Saved to /srv/readmit/handoff.sh. Install it as the customer administrator.")).toBeTruthy();
@@ -471,7 +522,7 @@ test("the reviewed change-gate step is added to the handoff only when asked for,
 
   // Unchecked, the next handoff asks for no gate again, whatever was typed.
   await user.click(step);
-  expect(screen.queryByLabelText("Reviewed gate policy identity")).toBeNull();
+  expect(screen.queryByLabelText("Gate policy ID")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Generate configuration" }));
   expect(facade.callsTo("SaveCIHandoff")[3]?.args[0]).not.toHaveProperty("gate");
   uninstallFacade();
@@ -510,12 +561,12 @@ test("a retained change gate is verified against its pinned identity, and what c
     unverified: ["approval", "pins", "coverage", "baseline", "retention", "target_revision"],
   };
   const facade = installFacade({ VerifyCIGate: async () => passed });
-  await ciTab(user);
+  await ciTab(user, "Verify gate");
   const verify = screen.getByRole("button", { name: "Verify gate" }) as HTMLButtonElement;
   expect(verify.disabled).toBe(true);
-  await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-1");
+  await user.type(screen.getByLabelText("Gate snapshot folder"), "/var/lib/readmit-ci/gate-1");
   expect(verify.disabled).toBe(true);
-  await user.type(screen.getByLabelText("Pinned gate policy identity"), GATE_STEP.policy_identity);
+  await user.type(screen.getByLabelText("Pinned gate policy ID"), GATE_STEP.policy_identity);
   await user.click(verify);
   expect(facade.oneCall("VerifyCIGate")).toEqual(["/var/lib/readmit-ci/gate-1", GATE_STEP.policy_identity]);
   const verified = await screen.findByRole("status");
@@ -529,9 +580,9 @@ test("a retained change gate is verified against its pinned identity, and what c
   expect(within(verified).getByText(/nothing was sent or rerun/)).toBeTruthy();
 
   // Another snapshot is another question: the reading of the first is withdrawn.
-  await user.clear(screen.getByLabelText("Retained gate snapshot"));
+  await user.clear(screen.getByLabelText("Gate snapshot folder"));
   expect(screen.queryByText(/Retained change gate:/)).toBeNull();
-  await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-2");
+  await user.type(screen.getByLabelText("Gate snapshot folder"), "/var/lib/readmit-ci/gate-2");
   facade.reply({ VerifyCIGate: async () => tampered });
   await user.click(verify);
   const refused = await screen.findByRole("alert");
@@ -544,7 +595,7 @@ test("a retained change gate is verified against its pinned identity, and what c
   facade.reply({
     VerifyCIGate: async () => ({ state: "failed", reason: "the pinned gate policy identity is its full 64-character lowercase SHA-256 identity" }),
   });
-  await user.type(screen.getByLabelText("Pinned gate policy identity"), "0");
+  await user.type(screen.getByLabelText("Pinned gate policy ID"), "0");
   await user.click(verify);
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Refused: the pinned gate policy identity is its full 64-character lowercase SHA-256 identity",
@@ -560,19 +611,20 @@ test("a running verification takes the focus to its Cancel, and Enter there canc
     Cancel: async () => {},
     VerifyCIGate: () => parked.arrive() as Promise<CIGateVerifyResult>,
   });
-  await ciTab(user);
-  await user.type(screen.getByLabelText("Retained gate snapshot"), "/var/lib/readmit-ci/gate-1");
-  await user.type(screen.getByLabelText("Pinned gate policy identity"), GATE_STEP.policy_identity);
+  await ciTab(user, "Verify gate");
+  await user.type(screen.getByLabelText("Gate snapshot folder"), "/var/lib/readmit-ci/gate-1");
+  await user.type(screen.getByLabelText("Pinned gate policy ID"), GATE_STEP.policy_identity);
   await user.tab();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Verify gate" }));
   await user.keyboard("{Enter}");
   const cancelControl = await screen.findByRole("button", { name: "Cancel verification" });
   expect(document.activeElement).toBe(cancelControl);
   expect(screen.getByText("Verifying the retained snapshot…")).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Generate configuration" }) as HTMLButtonElement).disabled).toBe(true);
+  // The other CI tasks' controls are held too, though another task is shown.
+  expect((screen.getByRole("button", { name: "Generate configuration", hidden: true }) as HTMLButtonElement).disabled).toBe(true);
   // The snapshot and its pin hold still while they are verified.
-  expect((screen.getByLabelText("Retained gate snapshot") as HTMLInputElement).disabled).toBe(true);
-  expect((screen.getByLabelText("Pinned gate policy identity") as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Gate snapshot folder") as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Pinned gate policy ID") as HTMLInputElement).disabled).toBe(true);
   await user.keyboard("{Enter}");
   // The cancel names the verification, so it can stop nothing another panel started.
   expect(facade.oneCall("Cancel")).toEqual(["ci-gate-verify"]);
@@ -592,7 +644,7 @@ test("a gate policy's identity and a directory's results are withdrawn once anot
     InspectCIResults: async () => ({ state: "completed", ci: { schema: "readmit-suite-ci/v1", state: "passed", exit_code: 0 } }),
     InspectGatePolicy: async () => ({ state: "completed", identity: "e".repeat(64), environment: "lab", engine: "engine-v1", specifications: 1, retain_until: "2036-01-01T00:00:00Z" }),
   });
-  await ciTab(user);
+  await ciTab(user, "Inspect results");
   await user.type(screen.getByLabelText("Gate policy file"), "/srv/readmit/gate-policy.json");
   await user.click(screen.getByRole("button", { name: "Open gate policy" }));
   expect(await screen.findByText("e".repeat(64))).toBeTruthy();
@@ -601,10 +653,10 @@ test("a gate policy's identity and a directory's results are withdrawn once anot
   await user.type(screen.getByLabelText("Gate policy file"), ".next");
   expect(screen.queryByText("e".repeat(64))).toBeNull();
 
-  await user.type(screen.getByLabelText("CI output directory"), "/var/lib/readmit-ci/run-1");
+  await user.type(screen.getByLabelText("CI results folder"), "/var/lib/readmit-ci/run-1");
   await user.click(screen.getByRole("button", { name: "Open CI results" }));
   expect(await screen.findByText((_, element) => element?.tagName === "P" && element.textContent === "Suite gate: passed (exit 0).")).toBeTruthy();
-  await user.type(screen.getByLabelText("CI output directory"), "0");
+  await user.type(screen.getByLabelText("CI results folder"), "0");
   expect(screen.queryByText(/Suite gate:/)).toBeNull();
   uninstallFacade();
 });
@@ -627,8 +679,8 @@ test("an interrupted facade reports the fixed unreachable sentence as a refusal"
     },
   });
   render(<RunnerPanel />);
-  await user.type(await screen.findByLabelText("Configuration path"), "/etc/readmit-runner/config.json");
-  await user.click(screen.getByRole("button", { name: /Enroll \(probe admission\)/ }));
+  await user.type(await screen.findByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
+  await user.click(screen.getByRole("button", { name: "Check runner admission" }));
   expect(await screen.findByText(/Refused: the application did not answer/)).toBeTruthy();
   expect(facadeStub().callsTo("EnrollRunner").length).toBe(1);
   uninstallFacade();
@@ -667,5 +719,222 @@ test("runner capacity is shown and settled explicitly, never silently", async ()
   await user.click(screen.getByRole("button", { name: "Release build-4821" }));
   expect(settled).toEqual([{ instance: "build-4822", reconcile: true }, { instance: "build-4821", reconcile: false }]);
   expect(facade.calls.length).toBeGreaterThan(0);
+  uninstallFacade();
+});
+
+// A preview is bound to the configuration and job file it read: changing
+// either withdraws the prepared input ID and the send until a fresh preview.
+test("a job preview is bound to its configuration and job file, and a late answer cannot restore it", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({ InspectRunnerJob: async () => previewed() });
+  render(<RunnerPanel />);
+  const send = () => screen.getByRole("button", { name: "Send job" }) as HTMLButtonElement;
+  expect(send().disabled).toBe(true);
+  await preparedJob(user);
+  expect(send().disabled).toBe(false);
+  expect(screen.getByText(`Send job sends ${JOB} (job nightly-001) to environment lab under prepared inputs ${INPUT_ID}, after the runner's own admission and your explicit approval.`)).toBeTruthy();
+
+  await user.type(sendJobFile(), "x");
+  expect(send().disabled).toBe(true);
+  expect((screen.getByLabelText("Prepared input ID") as HTMLInputElement).value).toBe("");
+  await user.clear(sendJobFile());
+  await user.type(sendJobFile(), JOB);
+  expect(send().disabled).toBe(true);
+  await previewJob(user);
+  await user.type(screen.getByLabelText("Runner configuration file"), "x");
+  expect(send().disabled).toBe(true);
+
+  // While a preview runs, the inputs it reads hold still, and no job is
+  // running for Cancel job to name.
+  const parked = facade.park("InspectRunnerJob");
+  await user.click(screen.getByRole("button", { name: "Preview job" }));
+  expect((sendJobFile() as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText("Runner configuration file") as HTMLInputElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Cancel job" })).toBeNull();
+  parked.resolve(previewed());
+  await screen.findByText(/^Send job sends/);
+  expect(facade.callsTo("ExecuteRunnerJob")).toHaveLength(0);
+  uninstallFacade();
+});
+
+test("the runner's work is split into status and jobs and four administrator views", async () => {
+  const user = userEvent.setup();
+  installFacade({});
+  render(<RunnerPanel />);
+  const views = screen.getByRole("tablist", { name: "Runner views" });
+  expect(within(views).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+    "Status and jobs", "Configuration", "Access grant", "Recovery", "Update verification",
+  ]);
+  expect(within(views).getByRole("tab", { selected: true }).textContent).toBe("Status and jobs");
+  expect(screen.queryByLabelText("Key lookup program")).toBeNull();
+  within(views).getByRole("tab", { name: "Status and jobs" }).focus();
+  await user.keyboard("{ArrowRight}");
+  expect(within(views).getByRole("tab", { selected: true }).textContent).toBe("Configuration");
+  expect(screen.getByLabelText("Key lookup program")).toBeTruthy();
+  expect(screen.getByText(/Never the key itself/)).toBeTruthy();
+  expect(screen.getByLabelText("Key lookup arguments")).toBeTruthy();
+  expect(screen.getByLabelText("Update verification key")).toBeTruthy();
+  expect(screen.getByText(/standard base64\. Not the client private key/)).toBeTruthy();
+  await user.keyboard("{End}");
+  expect(within(views).getByRole("tab", { selected: true }).textContent).toBe("Update verification");
+  expect(screen.getByRole("button", { name: "Verify update" })).toBeTruthy();
+  await user.click(within(views).getByRole("tab", { name: "Access grant" }));
+  expect(screen.getByLabelText("Engine version (optional)")).toBeTruthy();
+  expect(screen.getByText("Leave empty to name this build's engine.")).toBeTruthy();
+  uninstallFacade();
+});
+
+const OPENED: SchedulePreviewResult = {
+  state: "completed",
+  identity: "9".repeat(64),
+  concurrency: "serial-skip-missed",
+  entries: [
+    {
+      entry: {
+        id: "nightly",
+        zone: "America/New_York",
+        at: "02:30",
+        window_seconds: 900,
+        runner_config: "/etc/readmit-runner/config.json",
+        spec: "/srv/readmit/spec.json",
+        input_sha256: "b".repeat(64),
+        route: "https://alerts.example/",
+        approved: true,
+      },
+      pin_state: "computed",
+      occurrences: [{ day: "2026-03-08", state: "dst-gap" }],
+    },
+  ],
+};
+
+// Opening a schedule policy fills the editable rows with what it declares,
+// asks before replacing unsaved edits, and each row edits and saves back.
+test("an opened schedule policy becomes the editable draft and round-trips through save", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    OpenSchedulePolicy: async () => OPENED,
+    PreviewSchedulePolicy: async () => OPENED,
+    SaveSchedulePolicy: async () => ({ ...OPENED, identity: "8".repeat(64) }),
+  });
+  render(<RunnerPanel />);
+  await user.click(await screen.findByRole("tab", { name: "Schedules" }));
+  await user.type(screen.getByLabelText("Schedule policy file"), "/srv/readmit/schedules.json");
+  await user.click(screen.getByRole("button", { name: "Open schedule policy" }));
+  const row = within(await screen.findByRole("group", { name: "Schedule 1" }));
+  expect((row.getByLabelText("Schedule ID") as HTMLInputElement).value).toBe("nightly");
+  expect((row.getByLabelText("Time zone") as HTMLInputElement).value).toBe("America/New_York");
+  expect((row.getByLabelText("Start window (seconds)") as HTMLInputElement).value).toBe("900");
+  expect((row.getByRole("checkbox", { name: /Approve notifications/ }) as HTMLInputElement).checked).toBe(true);
+
+  // A preview describes the rows it was asked for; editing withdraws it.
+  expect(within(screen.getByRole("group", { name: "Opened policy" })).getByText("9".repeat(64))).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Preview schedule policy" }));
+  expect(await within(await screen.findByRole("group", { name: "Policy preview" })).findByText(/2026-03-08: dst-gap/)).toBeTruthy();
+  await user.clear(row.getByLabelText("Daily time"));
+  await user.type(row.getByLabelText("Daily time"), "03:15");
+  expect(screen.queryByRole("group", { name: "Policy preview" })).toBeNull();
+  // A changed notification URL is not the approved one.
+  await user.type(row.getByLabelText("Notification URL"), "x");
+  expect((row.getByRole("checkbox", { name: /Approve notifications/ }) as HTMLInputElement).checked).toBe(false);
+
+  await user.type(screen.getByLabelText("Policy revision file"), "/srv/readmit/schedules-2.json");
+  await user.click(screen.getByRole("button", { name: "Save schedule policy" }));
+  const saved = facade.oneCall("SaveSchedulePolicy")[0] as { entries: { id: string; at: string; approved: boolean }[] };
+  expect(saved.entries).toHaveLength(1);
+  expect(saved.entries[0]).toMatchObject({ id: "nightly", at: "03:15", approved: false });
+  expect(await screen.findByText("8".repeat(64))).toBeTruthy();
+  expect(screen.getByText(/Nothing was installed on the hub/)).toBeTruthy();
+
+  // Opening again over unsaved edits asks first; keeping the draft keeps it.
+  await user.type(row.getByLabelText("Schedule ID"), "-edited");
+  await user.click(screen.getByRole("button", { name: "Open schedule policy" }));
+  await user.click(await screen.findByRole("button", { name: "Keep draft" }));
+  expect((row.getByLabelText("Schedule ID") as HTMLInputElement).value).toBe("nightly-edited");
+  await user.click(screen.getByRole("button", { name: "Open schedule policy" }));
+  await user.click(await screen.findByRole("button", { name: "Replace draft" }));
+  expect((within(screen.getByRole("group", { name: "Schedule 1" })).getByLabelText("Schedule ID") as HTMLInputElement).value).toBe("nightly");
+  uninstallFacade();
+});
+
+// The opened-policy note says the draft holds the opened file only while it
+// does: once the rows differ from that file, the note says so instead, and
+// the file's own read stays shown beside it.
+test("the opened-policy note is qualified once the draft differs from the opened file", async () => {
+  const user = userEvent.setup();
+  installFacade({ OpenSchedulePolicy: async () => OPENED });
+  render(<RunnerPanel />);
+  await user.click(await screen.findByRole("tab", { name: "Schedules" }));
+  await user.type(screen.getByLabelText("Schedule policy file"), "/srv/readmit/schedules.json");
+  await user.click(screen.getByRole("button", { name: "Open schedule policy" }));
+  const row = within(await screen.findByRole("group", { name: "Schedule 1" }));
+  const opened = () => within(screen.getByRole("group", { name: "Opened policy" }));
+  expect(opened().getByText(/^Opened this policy file into the draft below\./)).toBeTruthy();
+
+  await user.clear(row.getByLabelText("Daily time"));
+  await user.type(row.getByLabelText("Daily time"), "03:15");
+  expect(opened().queryByText(/Opened this policy file into the draft below/)).toBeNull();
+  expect(opened().getByText(/^The draft below differs from this policy file\./)).toBeTruthy();
+  expect(opened().getByText("9".repeat(64))).toBeTruthy();
+
+  // Typing the opened value back makes the draft the opened file again.
+  await user.clear(row.getByLabelText("Daily time"));
+  await user.type(row.getByLabelText("Daily time"), "02:30");
+  expect(opened().getByText(/^Opened this policy file into the draft below\./)).toBeTruthy();
+
+  // Keeping an edited draft over a new read never claims the file was opened
+  // into it.
+  await user.type(row.getByLabelText("Schedule ID"), "-edited");
+  await user.click(screen.getByRole("button", { name: "Open schedule policy" }));
+  await user.click(await screen.findByRole("button", { name: "Keep draft" }));
+  expect(opened().queryByText(/Opened this policy file into the draft below/)).toBeNull();
+  expect(opened().getByText(/^The draft below differs from this policy file\./)).toBeTruthy();
+  uninstallFacade();
+});
+
+// The format needs at least one schedule. Removing the last row leaves an
+// editable empty draft that says so; nothing reports scheduling stopped and
+// nothing is saved in its place.
+test("removing the last schedule leaves an empty draft that cannot be saved and says the installed policy is unchanged", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({ OpenSchedulePolicy: async () => OPENED });
+  render(<RunnerPanel />);
+  await user.click(await screen.findByRole("tab", { name: "Schedules" }));
+  await user.type(screen.getByLabelText("Schedule policy file"), "/srv/readmit/schedules.json");
+  await user.click(screen.getByRole("button", { name: "Open schedule policy" }));
+  await screen.findByRole("group", { name: "Schedule 1" });
+  await user.type(screen.getByLabelText("Policy revision file"), "/srv/readmit/schedules-2.json");
+  await user.click(screen.getByRole("button", { name: "Remove from draft" }));
+  expect(screen.queryByRole("group", { name: "Schedule 1" })).toBeNull();
+  expect(screen.getByText(/A schedule policy must declare at least one.*the installed policy is unchanged and scheduling has not stopped/)).toBeTruthy();
+  expect((screen.getByRole("button", { name: "Preview schedule policy" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Save schedule policy" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facade.callsTo("SaveSchedulePolicy")).toHaveLength(0);
+  // The draft stays editable.
+  await user.click(screen.getByRole("button", { name: "Add schedule" }));
+  expect((screen.getByRole("button", { name: "Preview schedule policy" }) as HTMLButtonElement).disabled).toBe(false);
+  uninstallFacade();
+});
+
+// Paths the workflow names on the CI agent are grouped apart from the one
+// file written on this computer.
+test("CI agent paths and the local workflow output file are grouped apart", async () => {
+  const user = userEvent.setup();
+  installFacade({});
+  await ciTab(user);
+  const agent = within(screen.getByRole("group", { name: "Paths on the CI agent" }));
+  for (const label of [
+    "Executable path on CI agent",
+    "Operation policy on CI agent",
+    "Suite file on CI agent",
+    "Environment ID",
+    "Run folder on CI agent",
+    "Coverage file on CI agent",
+  ]) {
+    expect(agent.getByLabelText(label)).toBeTruthy();
+  }
+  expect(agent.getByText("Fresh per invocation; never a resume path.")).toBeTruthy();
+  const local = within(screen.getByRole("group", { name: "On this computer" }));
+  expect(local.getByLabelText("Workflow output file")).toBeTruthy();
+  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toContain("Verify gate");
   uninstallFacade();
 });

@@ -356,6 +356,32 @@ func TestDesktopHubCollaborationConflictAndAdmin(t *testing.T) {
 		t.Fatalf("audit-export: %+v", audit)
 	}
 
+	// The audit is saved only on an explicit choice, into a new file named
+	// in the save dialog, exactly as the hub answered it; another project's
+	// audit is not held, and a name already taken writes nothing.
+	fx.dialog.destination = filepath.Join(dir, "audit.json")
+	saved := app.SaveHubAudit("cardio-study")
+	if saved.State != desktop.Completed || filepath.Base(saved.Path) != "audit.json" || !strings.Contains(saved.Warning, "local custody") {
+		t.Fatalf("SaveHubAudit: %+v", saved)
+	}
+	if last := fx.dialog.titles[len(fx.dialog.titles)-1]; last != "Name the file to save the audit export as" {
+		t.Fatalf("SaveHubAudit opened %q", last)
+	}
+	var written hubprotocol.AuditExport
+	if raw, err := os.ReadFile(saved.Path); err != nil || json.Unmarshal(raw, &written) != nil ||
+		written.Schema != hubprotocol.AuditV1 || written.Project != "cardio-study" || written.Warning != hubprotocol.CustodyWarning {
+		t.Fatalf("saved audit %+v: %v", written, err)
+	}
+	if info, err := os.Stat(saved.Path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("saved audit mode: %v %v", info, err)
+	}
+	if again := app.SaveHubAudit("cardio-study"); again.State != desktop.Failed {
+		t.Fatalf("a taken name must write nothing: %+v", again)
+	}
+	if other := app.SaveHubAudit("other-study"); other.State != desktop.Failed {
+		t.Fatalf("another project's audit is not held: %+v", other)
+	}
+
 	custody := app.ExplainHubCustody()
 	if custody.State != desktop.Completed || !strings.Contains(custody.Reason, "cannot be revoked") {
 		t.Fatalf("ExplainHubCustody: %+v", custody)

@@ -264,7 +264,7 @@ test("a retention that failed is visible, with the text and a retry", async () =
   // one button asks the store again.
   expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe("still writing this");
   facade.reply({ SaveEditorDraft: () => retained() });
-  await user.click(screen.getByRole("button", { name: "Retain it again" }));
+  await user.click(screen.getByRole("button", { name: "Retry draft save" }));
   expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
 });
 
@@ -290,7 +290,7 @@ test("an edit that raced a discard is a conflict the person decides, never a sil
     SaveEditorDraft: (draft) =>
       retained({ drafts: [noteDraft("fresh-2", draft.content as Record<string, string>)] }),
   });
-  await user.click(screen.getByRole("button", { name: "Keep it as a new draft" }));
+  await user.click(screen.getByRole("button", { name: "Keep as new draft" }));
   await waitFor(() => {
     const last = facade.callsTo("SaveEditorDraft").at(-1)?.args[0] as { id: string };
     expect(last.id).toBe("");
@@ -311,4 +311,33 @@ test("a restored draft continues under its own identity after an interruption", 
   await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBe(1));
   const sent = facade.oneCall("SaveEditorDraft")[0] as { id: string };
   expect(sent.id).toBe("crash-id");
+});
+
+test("discarding a draft whose discard is refused keeps the text editable beside the reason", async () => {
+  const user = userEvent.setup();
+  const facade = renderEditor();
+  facade.reply({
+    SaveEditorDraft: (draft) => retained({ drafts: [noteDraft("held-1", draft.content as Record<string, string>)] }),
+  });
+  await user.type(screen.getByLabelText("Body"), "keep me");
+  await screen.findByText("Retained. It will come back if this window stops.");
+  // The draft is still held under its identity, but this write is refused.
+  facade.reply({
+    SaveEditorDraft: (draft) =>
+      retained({ state: "failed", reason: "The disk refused the write.", drafts: [noteDraft("held-1", draft.content as Record<string, string>)] }),
+  });
+  await user.type(screen.getByLabelText("Body"), "!");
+  expect(await screen.findByText("This edit was not retained.")).toBeTruthy();
+  // The draft's own discard is refused: the text stays on screen.
+  facade.reply({ DiscardEditorDraft: () => retained({ state: "failed", reason: "The draft store is read-only." }) });
+  await user.click(screen.getByRole("button", { name: "Discard draft" }));
+  expect(await screen.findByText("The draft store is read-only.")).toBeTruthy();
+  expect(facade.callsTo("DiscardEditorDraft").map((call) => call.args[0])).toEqual(["held-1"]);
+  expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe("keep me!");
+  // Once the discard is accepted, the text leaves with its draft.
+  facade.reply({ DiscardEditorDraft: () => retained() });
+  await user.click(screen.getByRole("button", { name: "Discard draft" }));
+  await waitFor(() => expect((screen.getByLabelText("Body") as HTMLTextAreaElement).value).toBe(""));
+  // No action reissues the note's own store.
+  expect(facade.callsTo("SaveNote")).toHaveLength(0);
 });

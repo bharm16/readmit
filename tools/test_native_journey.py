@@ -187,14 +187,14 @@ class Driver(unittest.TestCase):
 
     def test_a_new_folder_is_named_in_the_save_dialog_and_an_existing_one_picked_in_the_folder_dialog(self):
         app = self.application("windows", [[node(0, "Window")]])
-        app.name_new_folder("Choose a new folder for the backup", self.root / "backups" / "before-upgrade")
-        app.choose_folder("Choose the staged upgrade package folder", self.root / "staged")
-        self.assertEqual(self.sent("name_new_folder"), [{"op": "name_new_folder", "pid": 4242, "title": "Choose a new folder for the backup",
+        app.name_new_folder("New backup folder", self.root / "backups" / "before-upgrade")
+        app.choose_folder("Open staged upgrade folder", self.root / "staged")
+        self.assertEqual(self.sent("name_new_folder"), [{"op": "name_new_folder", "pid": 4242, "title": "New backup folder",
                                                          "path": str(self.root / "backups" / "before-upgrade"), "seconds": 90}])
-        self.assertEqual(self.sent("choose_folder"), [{"op": "choose_folder", "pid": 4242, "title": "Choose the staged upgrade package folder",
+        self.assertEqual(self.sent("choose_folder"), [{"op": "choose_folder", "pid": 4242, "title": "Open staged upgrade folder",
                                                        "path": str(self.root / "staged"), "seconds": 90}])
         self.assertEqual([step["step"] for step in app.steps],
-                         ["name new folder: Choose a new folder for the backup", "choose folder: Choose the staged upgrade package folder"])
+                         ["name new folder: New backup folder", "choose folder: Open staged upgrade folder"])
 
     def test_a_dialog_the_backend_could_not_answer_is_refused_by_its_kind_and_title(self):
         app = self.application("darwin", [[node(0, "AXWindow")]])

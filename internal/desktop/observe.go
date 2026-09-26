@@ -115,16 +115,21 @@ func (r *ObservationValidateResult) refuse(state State, reason string) {
 	r.State, r.Reason = state, reason
 }
 
-// ObservationCollectFacadeRequest authorizes one collection attempt.
+// ObservationCollectFacadeRequest authorizes one collection attempt. The
+// expected identities are those of the saved source and window the person
+// reviewed when they authorized it; a document changed on disk since is
+// refused before collection rather than substituted.
 type ObservationCollectFacadeRequest struct {
-	Workspace   string   `json:"workspace"`
-	SourceFile  string   `json:"source_file"`
-	WindowFile  string   `json:"window_file"`
-	OutputFile  string   `json:"output_file"`
-	SnapshotDir string   `json:"snapshot_dir"`
-	PolicyFile  string   `json:"policy_file,omitzero"`
-	Produced    []string `json:"produced,omitzero"`
-	Authorize   bool     `json:"authorize"`
+	Workspace              string   `json:"workspace"`
+	SourceFile             string   `json:"source_file"`
+	WindowFile             string   `json:"window_file"`
+	OutputFile             string   `json:"output_file"`
+	SnapshotDir            string   `json:"snapshot_dir"`
+	PolicyFile             string   `json:"policy_file,omitzero"`
+	Produced               []string `json:"produced,omitzero"`
+	Authorize              bool     `json:"authorize"`
+	ExpectedSourceIdentity string   `json:"expected_source_identity,omitzero"`
+	ExpectedWindowIdentity string   `json:"expected_window_identity,omitzero"`
 }
 
 // ObservationCompletionResult carries a retained completion and summary counts.
@@ -319,6 +324,7 @@ func (a *App) CollectObservation(request ObservationCollectFacadeRequest) Observ
 		completion, err := operation.CollectObservation(ctx, operation.ObservationCollectRequest{
 			SourcePath: sourcePath, WindowPath: windowPath, OutputPath: outputPath, SnapshotPath: snapshotPath,
 			PolicyPath: policyPath, Produced: request.Produced, Authorize: request.Authorize,
+			ExpectedSourceIdentity: request.ExpectedSourceIdentity, ExpectedWindowIdentity: request.ExpectedWindowIdentity,
 		})
 		if err != nil {
 			state := Failed

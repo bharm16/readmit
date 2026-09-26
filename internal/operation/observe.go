@@ -243,19 +243,37 @@ var ErrObservationPairMismatch = errors.New("the observation source and window m
 // querying any endpoint or database. The window is read first, then the
 // source, so a pair with both documents unreadable is refused for the window.
 func ValidateObservationPair(sourcePath, windowPath string) (observesource.Source, observewindow.Window, error) {
+	source, _, window, err := readObservationPair(sourcePath, windowPath)
+	return source, window, err
+}
+
+// readObservationPair is ValidateObservationPair also answering the identity
+// of the source as its document declares it, the one a save or validation of
+// that document reports, taken from the same read.
+func readObservationPair(sourcePath, windowPath string) (observesource.Source, string, observewindow.Window, error) {
 	window, err := observewindow.ReadWindow(windowPath)
 	if err != nil {
-		return observesource.Source{}, observewindow.Window{}, err
+		return observesource.Source{}, "", observewindow.Window{}, err
 	}
-	source, err := observesource.ReadSource(sourcePath)
+	declared, source, err := observesource.ReadDeclaredSource(sourcePath)
 	if err != nil {
-		return observesource.Source{}, observewindow.Window{}, err
+		return observesource.Source{}, "", observewindow.Window{}, err
 	}
 	if source.Observes != window.Source {
-		return observesource.Source{}, observewindow.Window{}, ErrObservationPairMismatch
+		return observesource.Source{}, "", observewindow.Window{}, ErrObservationPairMismatch
 	}
-	return source, window, nil
+	return source, declared.Identity(), window, nil
 }
+
+// ErrObservationSourceChanged and ErrObservationWindowChanged refuse a
+// collection whose saved document no longer has the identity the caller
+// reviewed: the file changed on disk since, and collecting would observe a
+// declaration nobody authorized. They are decided before anything is
+// collected or written.
+var (
+	ErrObservationSourceChanged = errors.New("the saved observation source changed since it was reviewed; open it again before collecting")
+	ErrObservationWindowChanged = errors.New("the saved observation window changed since it was reviewed; open it again before collecting")
+)
 
 // ObservationCollectRequest names the documents and destinations for one
 // authorized collection. Authorize must be true; opening an editor never sets it.
@@ -267,6 +285,11 @@ type ObservationCollectRequest struct {
 	PolicyPath   string
 	Produced     []string
 	Authorize    bool
+	// ExpectedSourceIdentity and ExpectedWindowIdentity, when set, are the
+	// identities of the saved documents the caller reviewed; a document whose
+	// identity differs is refused rather than collected.
+	ExpectedSourceIdentity string
+	ExpectedWindowIdentity string
 }
 
 // CollectObservation runs one authorized read-only collection and retains its
@@ -281,9 +304,15 @@ func CollectObservation(ctx context.Context, request ObservationCollectRequest) 
 	if request.SourcePath == "" || request.WindowPath == "" || request.OutputPath == "" || request.SnapshotPath == "" {
 		return observewindow.Completion{}, errors.New("collection requires a source, window, completion destination, and snapshot directory")
 	}
-	source, window, err := ValidateObservationPair(request.SourcePath, request.WindowPath)
+	source, sourceIdentity, window, err := readObservationPair(request.SourcePath, request.WindowPath)
 	if err != nil {
 		return observewindow.Completion{}, err
+	}
+	if request.ExpectedSourceIdentity != "" && sourceIdentity != request.ExpectedSourceIdentity {
+		return observewindow.Completion{}, ErrObservationSourceChanged
+	}
+	if request.ExpectedWindowIdentity != "" && window.Identity() != request.ExpectedWindowIdentity {
+		return observewindow.Completion{}, ErrObservationWindowChanged
 	}
 	var policy *sendpolicy.Policy
 	if request.PolicyPath != "" {

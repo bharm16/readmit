@@ -83,14 +83,14 @@ test("a chosen hub configuration is restored selected and offline when the windo
   await journey.launch();
   expect(await hubPanel().findByText("No configuration file selected. Working entirely offline.")).toBeTruthy();
   await chooseConfiguration(user);
-  expect(await hubPanel().findByText(`Configuration: ${configuration}`)).toBeTruthy();
+  expect(await hubPanel().findByText(`Configuration file: ${configuration}`)).toBeTruthy();
 
   // Closed and reopened, the window shows the configuration it remembered,
   // offline, with connecting left as the person's own next act.
   await journey.close();
   const reopenedFrom = journey.calls.length;
   await journey.launch();
-  expect(await hubPanel().findByText(`Configuration: ${configuration}`)).toBeTruthy();
+  expect(await hubPanel().findByText(`Configuration file: ${configuration}`)).toBeTruthy();
   expect(hubPanel().getByText("Offline / Local Mode")).toBeTruthy();
   await whenEnabled(hubPanel().getByRole("button", { name: "Connect to hub" }));
   await expectHubState(
@@ -116,7 +116,7 @@ test("a remembered hub configuration that stopped validating is shown with why a
   const configuration = writeConfiguration(`https://${hub.address}`);
   await journey.launch();
   await chooseConfiguration(user);
-  expect(await hubPanel().findByText(`Configuration: ${configuration}`)).toBeTruthy();
+  expect(await hubPanel().findByText(`Configuration file: ${configuration}`)).toBeTruthy();
   await journey.close();
 
   // While the window is closed the operator's file changes to name a plain
@@ -130,8 +130,8 @@ test("a remembered hub configuration that stopped validating is shown with why a
       /^the remembered hub configuration no longer validates \(.*endpoint.*https.*\); choose a hub configuration again$/,
     ),
   ).toBeTruthy();
-  expect(hubPanel().getByText(`Configuration: ${configuration}`)).toBeTruthy();
-  expect(hubPanel().getByRole("button", { name: "Diagnose prerequisites" }).hasAttribute("disabled")).toBe(true);
+  expect(hubPanel().getByText(`Configuration file: ${configuration}`)).toBeTruthy();
+  expect(hubPanel().getByRole("button", { name: "Check connection setup" }).hasAttribute("disabled")).toBe(true);
   expect(hubPanel().getByRole("button", { name: "Connect to hub" }).hasAttribute("disabled")).toBe(true);
   await expectHubState(
     user,
@@ -142,7 +142,7 @@ test("a remembered hub configuration that stopped validating is shown with why a
   writeConfiguration(`https://${hub.address}`);
   await chooseConfiguration(user);
   await waitFor(() => expect(hubPanel().queryByText(/no longer validates/)).toBeNull());
-  expect(hubPanel().getByText(`Configuration: ${configuration}`)).toBeTruthy();
+  expect(hubPanel().getByText(`Configuration file: ${configuration}`)).toBeTruthy();
   await whenEnabled(hubPanel().getByRole("button", { name: "Connect to hub" }));
   await journey.close();
   expect(hub.accepted()).toBe(0);

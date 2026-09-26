@@ -707,11 +707,9 @@ export function ImportPanel({
           retention={retainer.retention}
           onRetry={retainer.retry}
           onKeepAsNew={retainer.keepAsNew}
-          onDiscard={() => {
-            const id = retainer.currentId();
-            if (id) retainer.drop(id);
-            retainer.clear();
-          }}
+          // A refused discard keeps the draft's identity and text, so its
+          // refusal is shown with Retry draft save still able to write it.
+          onDiscard={() => void retainer.dropCurrent()}
         />
       </div>
 

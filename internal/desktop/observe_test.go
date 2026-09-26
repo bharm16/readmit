@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +129,65 @@ func TestObservationFacadeCollectsAndExplains(t *testing.T) {
 	if explained.State != desktop.Completed || explained.Completion == nil {
 		t.Fatalf("explain: %+v", explained)
 	}
+}
+
+// TestObservationFacadeRefusesCollectWhenSavedDocumentsChanged: the window
+// passes the identities of the saved pair a person reviewed, so a document
+// changed on disk since is refused before anything is collected rather than
+// silently substituted for the one they authorized.
+func TestObservationFacadeRefusesCollectWhenSavedDocumentsChanged(t *testing.T) {
+	app := workspaceApp(t)
+	dir := t.TempDir()
+	writeDocument(t, dir, "window.json", facadeWindowDocument)
+	writeDocument(t, dir, "source.json", facadeSourceDocument)
+	writeDocument(t, dir, "export.csv", "appointment,status\nA1,booked\n")
+	source := app.ValidateObservationSource(dir, "source.json")
+	window := app.ValidateObservationWindow(dir, "window.json")
+	if source.Identity == "" || window.Identity == "" {
+		t.Fatalf("saved identities: %+v %+v", source, window)
+	}
+	collect := func(output, sourceIdentity, windowIdentity string) desktop.ObservationCompletionResult {
+		return app.CollectObservation(desktop.ObservationCollectFacadeRequest{
+			Workspace: dir, SourceFile: "source.json", WindowFile: "window.json",
+			OutputFile: output + ".json", SnapshotDir: output, Authorize: true,
+			ExpectedSourceIdentity: sourceIdentity, ExpectedWindowIdentity: windowIdentity,
+		})
+	}
+
+	writeDocument(t, dir, "source.json", strings.Replace(facadeSourceDocument, `"max_age": "1h"`, `"max_age": "2h"`, 1))
+	if result := collect("changed-source", source.Identity, window.Identity); result.State != desktop.Failed ||
+		!errors.Is(errorOf(result.Reason), operation.ErrObservationSourceChanged) {
+		t.Fatalf("changed source collected: %+v", result)
+	}
+	writeDocument(t, dir, "source.json", facadeSourceDocument)
+	writeDocument(t, dir, "window.json", strings.Replace(facadeWindowDocument, `"deadline": "3s"`, `"deadline": "4s"`, 1))
+	if result := collect("changed-window", source.Identity, window.Identity); result.State != desktop.Failed ||
+		!errors.Is(errorOf(result.Reason), operation.ErrObservationWindowChanged) {
+		t.Fatalf("changed window collected: %+v", result)
+	}
+	for _, output := range []string{"changed-source", "changed-window"} {
+		if _, err := os.Stat(filepath.Join(dir, output+".json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("refused collection wrote %s: %v", output, err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, output)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("refused collection wrote snapshot %s: %v", output, err)
+		}
+	}
+
+	writeDocument(t, dir, "window.json", facadeWindowDocument)
+	if result := collect("reviewed", source.Identity, window.Identity); result.State != desktop.Completed {
+		t.Fatalf("reviewed pair: %+v", result)
+	}
+}
+
+// errorOf matches a facade reason against the sentinel it carries.
+func errorOf(reason string) error {
+	for _, sentinel := range []error{operation.ErrObservationSourceChanged, operation.ErrObservationWindowChanged} {
+		if reason == sentinel.Error() {
+			return sentinel
+		}
+	}
+	return errors.New(reason)
 }
 
 func TestObservationFacadeBindsCaptureWithoutCollecting(t *testing.T) {

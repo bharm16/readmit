@@ -52,12 +52,29 @@ nav a[aria-current="page"] { font-weight: 700; text-decoration: underline; text-
 main { padding-bottom: 3rem; }
 footer { border-top: 1px solid var(--line); padding: 1.25rem 16px 2.5rem; color: var(--muted); font-size: 0.9rem; }
 a { color: var(--accent); }
+a:focus-visible, .table-wrap:focus-visible, pre:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+main:focus { outline: none; }
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -10rem;
+  z-index: 2;
+  padding: 0.5rem 0.9rem;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  font-weight: 600;
+}
+.skip-link:focus { top: 0.5rem; }
 h1 { font-size: 1.9rem; line-height: 1.2; margin: 1.5rem 0 0.75rem; }
 h2 { font-size: 1.35rem; margin: 2rem 0 0.5rem; }
 h3 { font-size: 1.05rem; margin: 1.25rem 0 0.35rem; }
 p, li { max-width: 48rem; }
 code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 0.9em; }
-code { background: var(--panel); padding: 0.05em 0.3em; border-radius: 3px; }
+code { background: var(--panel); padding: 0.05em 0.3em; border-radius: 3px; overflow-wrap: anywhere; }
 pre {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -91,12 +108,28 @@ pre code { background: none; padding: 0; }
 .status.part { background: var(--warn-bg); border-color: var(--warn-line); }
 .table-wrap { overflow-x: auto; margin: 1rem 0; }
 table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); }
 th { background: var(--panel); }
+tbody th { background: none; font-weight: 600; }
+.qualifier { font-weight: 400; color: var(--muted); font-size: 0.9em; }
+/* On a narrow screen a table keeps every column in its source order, so a
+   row's name, status and boundary stay together; it scrolls sideways inside
+   its labelled, keyboard-focusable region rather than hiding a column. */
+@media (max-width: 40rem) {
+  table { min-width: 34rem; }
+}
 dl dt { font-weight: 600; margin-top: 0.75rem; }
 dl dd { margin: 0.1rem 0 0 0; color: var(--fg); }
 .muted { color: var(--muted); }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin: 1rem 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); gap: 1rem; margin: 1rem 0; }
 .card { border: 1px solid var(--line); border-radius: 6px; padding: 0.9rem 1rem; background: var(--panel); }
 .card h3 { margin-top: 0; }
 .card p { margin-bottom: 0; }
