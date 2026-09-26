@@ -12,5 +12,5 @@ func flushDirectory(root *os.Root, name string) error {
 		return err
 	}
 	defer directory.Close()
-	return directory.Sync()
+	return flushToDevice(directory)
 }

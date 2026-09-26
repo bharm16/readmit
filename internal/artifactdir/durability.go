@@ -58,7 +58,11 @@ func WriteFileSync(file DurableFile, data []byte) error {
 		err = io.ErrShortWrite
 	}
 	if err == nil {
-		err = file.Sync()
+		if real, ok := file.(*os.File); ok {
+			err = flushToDevice(real)
+		} else {
+			err = file.Sync()
+		}
 	}
 	return err
 }
@@ -101,7 +105,7 @@ func (d Durability) Sync(file *os.File) error {
 // syncFile is the file sync every Durable member write and Sync makes. It is
 // the seam tests take to see which files a writer built on them syncs, and
 // with what bytes.
-var syncFile = (*os.File).Sync
+var syncFile = flushToDevice
 
 // seamedFile is a file being written, synced as its durability says.
 type seamedFile struct {
