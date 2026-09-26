@@ -2,12 +2,13 @@ import type { RegionId, State } from "./bindings";
 
 // Fixed, bundled copy. Neither evidence nor diagnostic strings are used as
 // help lookup keys, URLs, or persisted context.
-const screens: Record<RegionId, { title: string; steps: string; guide: string }> = {
-  commands: { title: "Search and commands", steps: "Search finds the cases, registered case details and indexed message content of the open project. Ctrl+K (⌘K on a Mac) lists every command the window offers, with its shortcut.", guide: "guided-sample.md" },
-  navigation: { title: "Moving around", steps: "Projects lists the projects you opened recently. With a project open, Cases, Tests, Runs, Environments and Reports hold its work; Tools, Settings and Help are always there. F6 moves between the sidebar, the page, message details and the status line. If a saved project moved, open its new folder; never edit a sealed bundle to make it open.", guide: "project.md" },
+type Topic = "search" | RegionId | "privacy";
+const screens: Record<Topic, { title: string; steps: string; guide: string }> = {
+  search: { title: "Search and commands", steps: "Search finds the cases, registered case details and indexed message content of the open project. Ctrl+K (⌘K on a Mac) lists every command the window offers, with its shortcut.", guide: "guided-sample.md" },
+  navigation: { title: "Moving around", steps: "Projects lists the projects you opened recently. With a project open, Cases, Tests, Runs, Environments and Reports hold its work; Tools, Settings and Help are always there. F6 moves between the sidebar, the page and the details of a selection. If a saved project moved, open its new folder; never edit a sealed bundle to make it open.", guide: "project.md" },
   evidence: { title: "Cases and messages", steps: "Opening a case verifies it; unsupported entries are not empty cases. Inspect original evidence before making a reproducer or test. Filters can hide messages, so check the excluded and undecided counts. Correlation links and missing-ACK windows describe retained coverage, not proof of loss. Compare like observation boundaries.", guide: "correlate.md" },
   inspector: { title: "Message details and tests", steps: "Values are hidden until you choose to show them. Choose messages, declare the initial state and observation boundary, then review assertions before saving a test. A prepared test has sent nothing. A failed assertion differs from an execution error; an incomplete observation cannot prove absence.", guide: "test-authoring.md" },
-  privacy: { title: "Privacy, connections and license", steps: "The status line shows what is running. Settings › Security lists every destination this build can reach, what it carries and whether it is connected right now; nothing connects on its own. Reading, verifying and exporting stay available after a license expires; new work needs an activated license and a valid clock. Keep credentials in their approved store. Derive a disclosure review from what the project really holds and approve its exact identity before exporting. Hidden values do not make screenshots or notes safe to share.", guide: "redact.md" },
+  privacy: { title: "Privacy, connections and license", steps: "An operation shows its progress where it runs. Settings › Security lists every destination this build can reach, what it carries and whether it is connected right now; nothing connects on its own. Reading, verifying and exporting stay available after a license expires; new work needs an activated license and a valid clock. Keep credentials in their approved store. Derive a disclosure review from what the project really holds and approve its exact identity before exporting. Hidden values do not make screenshots or notes safe to share.", guide: "redact.md" },
 };
 
 const states: Record<State, { code: string; action: string }> = {
@@ -30,7 +31,7 @@ export function HelpTopics() {
   return (
     <>
       <div className="help-topics">
-        {(Object.keys(screens) as RegionId[]).map((region) => (
+        {(Object.keys(screens) as Topic[]).map((region) => (
           <section key={region} className="help-topic" aria-labelledby={`help-${region}`}>
             <h3 id={`help-${region}`}>{screens[region].title}</h3>
             <p>{screens[region].steps}</p>

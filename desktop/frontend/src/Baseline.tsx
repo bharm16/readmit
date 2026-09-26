@@ -1,3 +1,4 @@
+import { HIDDEN_VALUE } from "./display";
 import "./baseline.css";
 import { useState } from "react";
 import { approveBaseline, openBaseline, reviewBaseline, type BaselineResult } from "./bindings";
@@ -64,7 +65,7 @@ export function Baseline({ workspace, busy, onSaved }: { workspace: string; busy
       {result?.previous_approver ? <p>{inspecting ? "Local approver" : "Previous local approver"}: {result.previous_approver}. Rationale: {result.previous_rationale}</p> : null}
       {!review.values_shown ? <p>Values are hidden. Reveal them and review again to inspect exact changes.</p> : null}
       <table><caption>{inspecting ? "Retained expectations and configuration" : "All expectation and configuration changes"}</caption><thead><tr><th>Part</th><th>Change</th><th>Before</th><th>After</th></tr></thead>
-        <tbody>{review.changes.map(change => <tr key={change.part}><th>{change.part}</th><td>{change.kind}</td><td><pre>{change.before ?? (show ? "Absent" : "Hidden")}</pre></td><td><pre>{change.after ?? (show ? "Absent" : "Hidden")}</pre></td></tr>)}</tbody>
+        <tbody>{review.changes.map(change => <tr key={change.part}><th>{change.part}</th><td>{change.kind}</td><td><pre>{change.before ?? (show ? "Absent" : HIDDEN_VALUE)}</pre></td><td><pre>{change.after ?? (show ? "Absent" : HIDDEN_VALUE)}</pre></td></tr>)}</tbody>
       </table>
       {review.changes.length === 0 ? <p>No specification changes; an approval still requires a deliberate local decision.</p> : null}
       {!inspecting ? <fieldset disabled={disabled || Boolean(result?.output)}>

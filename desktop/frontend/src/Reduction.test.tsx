@@ -102,7 +102,7 @@ async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"],
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
   // The toolbar's Open workspace…, which the first-run panel names identically.
   await user.click(screen.getAllByRole("button", { name: "Open…" }).at(-1)!);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getAllByRole("button", { name: /^Open case(?: |$)/ })[0]!);
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("button", { name: "More case actions" }));

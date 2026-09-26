@@ -2,7 +2,7 @@
 .baseline-panel label { display: block; margin-block: .6rem; }
 .baseline-panel input:not([type="checkbox"]), .baseline-panel textarea { display: block; width: min(100%, 42rem); }
 .baseline-panel table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.baseline-panel th, .baseline-panel td { text-align: left; vertical-align: top; padding: .4rem; overflow-wrap: anywhere; border-bottom: 1px solid currentColor; }
+.baseline-panel th, .baseline-panel td { text-align: left; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid currentColor; }
 .baseline-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .baseline-panel p { overflow-wrap: anywhere; }
 .baseline-panel button { margin: .3rem; }

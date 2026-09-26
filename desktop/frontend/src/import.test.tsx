@@ -48,8 +48,8 @@ async function openWorkspaceWithProject(user: ReturnType<typeof userEvent.setup>
     ...handlers,
   });
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await screen.findByRole("heading", { name: "Scheduling investigation" });
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
   return { facade };
 }
 
@@ -62,8 +62,7 @@ test("opening import panel from project, selecting sources via native dialogs, a
 
   // Import panel is open and shows breadcrumbs
   expect(await screen.findByRole("heading", { name: "Import evidence", level: 3 })).toBeTruthy();
-  const breadcrumbs = screen.getByRole("navigation", { name: "Where you are" });
-  expect(within(breadcrumbs).getByRole("button", { name: "Scheduling investigation" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Back to cases" })).toBeTruthy();
 
   // Test selecting files via native dialog
   facade.reply({
@@ -413,7 +412,7 @@ test("recipe mapping authoring, preview, commit to project, and navigation into 
   expect(facade.callsTo("OpenProjectOverview")).toHaveLength(overviewReads + 1);
   expect(await screen.findByRole("heading", { level: 1, name: "Imported feed" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(listings + 1);
-  await goToView(user, "Reports", "Disclosure review");
+  await goToView(user, "Reports", "Share");
   const privacy = within(screen.getByRole("region", { name: "Privacy review" }));
   // The case is chosen in the Create review task, one of the panel's tasks.
   await user.click(privacy.getByRole("tab", { name: "Create review" }));
@@ -503,8 +502,8 @@ test("draft retention restores draft state and handles cancellation", async () =
   });
 
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await screen.findByRole("heading", { name: "Scheduling investigation" });
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
 
   const evidence = screen.getByRole("region", { name: "Main content" });
   await user.click(within(evidence).getByRole("button", { name: "Import" }));

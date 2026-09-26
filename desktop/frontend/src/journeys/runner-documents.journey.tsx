@@ -112,7 +112,7 @@ test("a runner configuration is refused while the runner would refuse it, previe
   const unactivated = "operation activation is missing or invalid; select and activate an operation policy";
   const denied = (await view.findByText(unactivated)).closest("p");
   expect(denied?.className).toBe("status status-permission_denied");
-  expect(within(denied as HTMLElement).getByText("Permission denied")).toBeTruthy();
+  expect(within(denied as HTMLElement).getByText("Access denied")).toBeTruthy();
   expect(view.queryByText(`Refused: ${unactivated}`)).toBeNull();
   expect(journey.callsTo("SaveRunnerConfig")[asked]?.result).toEqual({ state: "permission_denied", reason: unactivated });
   expect(() => journey.readFile("runner/documents/runner.json")).toThrow();

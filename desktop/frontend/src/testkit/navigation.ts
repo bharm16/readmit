@@ -27,9 +27,9 @@ export function page() {
   return within(screen.getByRole("region", { name: "Main content" }));
 }
 
-/** The details of the message open beside the case, once one is open. */
+/** The details of the selection open beside the list, once one is open. */
 export function details() {
-  return within(screen.getByRole("region", { name: "Message details" }));
+  return within(screen.getByRole("region", { name: "Details" }));
 }
 
 /** Goes to one destination of the sidebar. The project's own destinations
@@ -41,9 +41,23 @@ export async function goTo(
   await user.click(await sidebar().findByRole("button", { name: destination }));
 }
 
-/** Opens one view of the page shown now, by its tab's name. */
+/** Opens one view of the page shown now: its tab, its category, the action in
+ * its header that opens it, or the item of its More menu. */
 export async function openView(user: UserEvent, name: string): Promise<void> {
-  await user.click(await screen.findByRole("tab", { name }));
+  const shown = page();
+  if (shown.queryByRole("heading", { level: 1, name })) return;
+  const tab = shown.queryByRole("tab", { name });
+  if (tab) {
+    await user.click(tab);
+    return;
+  }
+  const button = shown.queryByRole("button", { name });
+  if (button) {
+    await user.click(button);
+    return;
+  }
+  await user.click(shown.getByRole("button", { name: /^More .* actions$/ }));
+  await user.click(await screen.findByRole("menuitem", { name }));
 }
 
 /** Goes to a destination and opens one of its views. */
@@ -79,8 +93,12 @@ export async function openListedCase(
   name: string,
 ): Promise<void> {
   await goTo(user, "Cases");
-  const trail = screen.queryByRole("navigation", { name: "Where you are" });
-  if (trail) await user.click(within(trail).getAllByRole("button")[0]!);
+  // Out of a case flow and the case, back to the list.
+  for (let step = 0; step < 3 && !screen.queryByRole("button", { name: `Open case ${name}` }); step++) {
+    const back = page().queryAllByRole("button", { name: /^Back to / })[0];
+    if (!back) break;
+    await user.click(back);
+  }
   await user.click(
     await screen.findByRole("button", { name: `Open case ${name}` }),
   );
@@ -92,8 +110,9 @@ export async function openCaseFlow(
 ): Promise<void> {
   await goTo(user, "Cases");
   if (!screen.queryByRole("button", { name: "More case actions" })) {
-    const trail = screen.getByRole("navigation", { name: "Where you are" });
-    await user.click(within(trail).getAllByRole("button").at(-1)!);
+    // A case flow is open: its way back leads to the case.
+    const back = page().getAllByRole("button", { name: /^Back to / }).find((button) => button.getAttribute("aria-label") !== "Back to cases");
+    await user.click(back!);
   }
   await user.click(screen.getByRole("button", { name: "More case actions" }));
   await user.click(screen.getByRole("menuitem", { name: action }));

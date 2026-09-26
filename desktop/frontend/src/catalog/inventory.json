@@ -3,13 +3,19 @@
     "name": "App",
     "source": "desktop/frontend/src/App.tsx",
     "exported": true,
-    "line": 298
+    "line": 304
   },
   {
     "name": "SuiteHandoffNotice",
     "source": "desktop/frontend/src/App.tsx",
     "exported": false,
-    "line": 3243
+    "line": 3327
+  },
+  {
+    "name": "GeneralEditor",
+    "source": "desktop/frontend/src/App.tsx",
+    "exported": false,
+    "line": 3347
   },
   {
     "name": "FieldInputs",
@@ -27,7 +33,7 @@
     "name": "Baseline",
     "source": "desktop/frontend/src/Baseline.tsx",
     "exported": true,
-    "line": 10
+    "line": 11
   },
   {
     "name": "CanonicalTestEditor",
@@ -52,6 +58,12 @@
     "source": "desktop/frontend/src/CapturePanel.tsx",
     "exported": true,
     "line": 204
+  },
+  {
+    "name": "CommandPalette",
+    "source": "desktop/frontend/src/CommandPalette.tsx",
+    "exported": true,
+    "line": 39
   },
   {
     "name": "Side",
@@ -81,13 +93,13 @@
     "name": "StateHelp",
     "source": "desktop/frontend/src/ContextHelp.tsx",
     "exported": true,
-    "line": 22
+    "line": 23
   },
   {
     "name": "HelpTopics",
     "source": "desktop/frontend/src/ContextHelp.tsx",
     "exported": true,
-    "line": 29
+    "line": 30
   },
   {
     "name": "ControlledDetails",
@@ -108,6 +120,18 @@
     "line": 20
   },
   {
+    "name": "DataTable",
+    "source": "desktop/frontend/src/DataTable.tsx",
+    "exported": true,
+    "line": 64
+  },
+  {
+    "name": "Pager",
+    "source": "desktop/frontend/src/DataTable.tsx",
+    "exported": true,
+    "line": 339
+  },
+  {
     "name": "Diagnosis",
     "source": "desktop/frontend/src/Diagnosis.tsx",
     "exported": true,
@@ -117,19 +141,19 @@
     "name": "WrittenIdentity",
     "source": "desktop/frontend/src/EnvironmentPanel.tsx",
     "exported": false,
-    "line": 77
+    "line": 78
   },
   {
     "name": "EnvironmentBanner",
     "source": "desktop/frontend/src/EnvironmentPanel.tsx",
     "exported": true,
-    "line": 143
+    "line": 144
   },
   {
     "name": "EnvironmentPanel",
     "source": "desktop/frontend/src/EnvironmentPanel.tsx",
     "exported": true,
-    "line": 190
+    "line": 191
   },
   {
     "name": "GuidedSample",
@@ -177,7 +201,7 @@
     "name": "Inspector",
     "source": "desktop/frontend/src/Inspector.tsx",
     "exported": true,
-    "line": 23
+    "line": 24
   },
   {
     "name": "InventoryList",
@@ -639,31 +663,31 @@
     "name": "SuitePanel",
     "source": "desktop/frontend/src/SuitePanel.tsx",
     "exported": true,
-    "line": 163
+    "line": 164
   },
   {
     "name": "ReleaseRead",
     "source": "desktop/frontend/src/SuitePanel.tsx",
     "exported": false,
-    "line": 1542
+    "line": 1543
   },
   {
     "name": "SuiteEditor",
     "source": "desktop/frontend/src/SuitePanel.tsx",
     "exported": false,
-    "line": 1575
+    "line": 1576
   },
   {
     "name": "ExpansionView",
     "source": "desktop/frontend/src/SuitePanel.tsx",
     "exported": false,
-    "line": 1957
+    "line": 1958
   },
   {
     "name": "CoverageView",
     "source": "desktop/frontend/src/SuitePanel.tsx",
     "exported": false,
-    "line": 2021
+    "line": 2022
   },
   {
     "name": "SyntheticPackets",
@@ -723,7 +747,13 @@
     "name": "TestAuthoring",
     "source": "desktop/frontend/src/TestAuthoring.tsx",
     "exported": true,
-    "line": 114
+    "line": 115
+  },
+  {
+    "name": "DisplayTerm",
+    "source": "desktop/frontend/src/display.tsx",
+    "exported": true,
+    "line": 62
   },
   {
     "name": "RetentionStatus",
@@ -735,37 +765,73 @@
     "name": "Page",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 38
+    "line": 34
+  },
+  {
+    "name": "BackLink",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 66
   },
   {
     "name": "EmptyState",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 74
+    "line": 79
   },
   {
     "name": "NavItem",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 129
+    "line": 134
+  },
+  {
+    "name": "ProjectSwitcher",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 164
+  },
+  {
+    "name": "OperationIndicator",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 205
+  },
+  {
+    "name": "Categories",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 222
+  },
+  {
+    "name": "Dialog",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 304
   },
   {
     "name": "Modal",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 175
+    "line": 398
+  },
+  {
+    "name": "ValueRows",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 430
   },
   {
     "name": "FormDialog",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 229
+    "line": 473
   },
   {
-    "name": "MoreMenu",
+    "name": "Menu",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 281
+    "line": 646
   },
   {
     "name": "Outcome",
@@ -777,43 +843,37 @@
     "name": "Status",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 38
+    "line": 39
   },
   {
     "name": "Badge",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 62
+    "line": 63
   },
   {
     "name": "Report",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 81
+    "line": 82
   },
   {
     "name": "Separator",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 104
-  },
-  {
-    "name": "Palette",
-    "source": "desktop/frontend/src/shell.tsx",
-    "exported": true,
-    "line": 163
+    "line": 106
   },
   {
     "name": "IndexSetup",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 369
+    "line": 239
   },
   {
     "name": "MessageGrid",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 650
+    "line": 520
   },
   {
     "name": "Lead",

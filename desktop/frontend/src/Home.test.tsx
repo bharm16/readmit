@@ -31,8 +31,9 @@ test("choosing a real project opens a chosen folder and reaches the project scre
   await user.click(page().getByRole("button", { name: "Open…" }));
   expect(facade.oneCall("SelectWorkspace")).toEqual([]);
   // The folder opens on its cases, and the sidebar names it.
-  expect(await page().findByRole("heading", { level: 1, name: "workspace-under-test" })).toBeTruthy();
-  expect(sidebar().getByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(sidebar().getByRole("button", { name: "Project: workspace-under-test" })).toBeTruthy();
+  expect(sidebar().getByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
 });
 
@@ -47,7 +48,7 @@ test("choosing the guided sample creates the real sample workspace", async () =>
   });
   await user.click(page().getByRole("button", { name: "Try demo" }));
   expect(facade.oneCall("CreateSampleWorkspace")).toEqual([]);
-  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(sidebar().getByRole("button", { name: "Cases" }).getAttribute("aria-current")).toBe("page");
 });
 
@@ -76,7 +77,7 @@ test("a new project asks for its name and versions, then its location, and opens
   await user.click(create);
   expect(facade.callsTo("CreateProject").length).toBe(1);
   // The created project opens, and the sheet closes.
-  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull();
 });
 
@@ -104,5 +105,5 @@ test("recent projects reopen from the home page", async () => {
   expect(list.getByText("workspace-under-test")).toBeTruthy();
   await user.click(list.getByRole("button", { name: `Open ${WORKSPACE_ROOT}` }));
   expect(facade.oneCall("OpenWorkspace")[0]).toBe(WORKSPACE_ROOT);
-  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
 });

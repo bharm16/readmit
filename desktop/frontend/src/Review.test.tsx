@@ -1,4 +1,4 @@
-import { openListedCase } from "./testkit/navigation";
+import { openListedCase, openView } from "./testkit/navigation";
 import { readCaseIdentity } from "./testkit/navigation";
 // Authoring, saving, reopening and previewing a transformation plan in the
 // review-and-transform panel, driven through the whole window as a person
@@ -102,11 +102,11 @@ function previewOf(planEntry: string, steps: TransformStep[]): TransformResult {
 async function openCase(facade: Awaited<ReturnType<typeof renderApp>>["facade"], user: UserEvent) {
   facade.reply({ SelectWorkspace: () => listing(), OpenWorkspace: () => listing(), OpenCase: () => caseResult() });
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getAllByRole("button", { name: /^Open case(?: |$)/ })[0]!);
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Reports" }));
-  await user.click(screen.getByRole("tab", { name: "Transform and export" }));
+  await openView(user, "Transform and export");
   return within(await screen.findByRole("region", { name: "Review and transform" }));
 }
 
@@ -290,7 +290,7 @@ test("a save this account cannot write is denied beside the steps, and a preview
   await openListedCase(user, OTHER_CASE_ENTRY);
   await readCaseIdentity(user, "other-identity-fixed-for-tests");
   await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Reports" }));
-  await user.click(screen.getByRole("tab", { name: "Transform and export" }));
+  await openView(user, "Transform and export");
   await waitFor(() => expect(panel.queryByText(/^Preview of /)).toBeNull());
   expect(panel.queryByText("this account cannot write into the open workspace")).toBeNull();
   expect(steps(panel)).toEqual([]);

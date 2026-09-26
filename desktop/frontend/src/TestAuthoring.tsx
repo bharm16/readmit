@@ -1,3 +1,4 @@
+import { TEST_BOUNDARIES } from "./display";
 import { useRef, useState } from "react";
 import type {
   FieldState,
@@ -358,7 +359,7 @@ export function TestAuthoring({
           disabled={busy}
           onClick={() => onAnswer({ stage: "boundary", boundary })}
         >
-          {draft?.boundary === boundary ? `Chosen: ${boundary}` : boundary}
+          {draft?.boundary === boundary ? `Chosen: ${TEST_BOUNDARIES[boundary]}` : TEST_BOUNDARIES[boundary]}
         </button>
       ))}
       {resolution?.setup ? <p className="hint">Initial state: {resolution.setup}.</p> : null}

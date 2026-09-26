@@ -46,9 +46,8 @@
 }
 
 .checklist li.done .check-mark {
-  background: var(--success);
   border-color: var(--success);
-  color: white;
+  color: var(--success);
 }
 
 .checklist li.current .check-mark {

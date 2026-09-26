@@ -20,6 +20,7 @@ import { onRetentionResult, savedId } from "./drafting";
 import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
+import { useLayoutEffect } from "react";
 import {
   authorTest,
   buildReproducer,
@@ -142,7 +143,19 @@ import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAuthoring";
 import { Diagnosis } from "./Diagnosis";
-import { Badge, MessageGrid, Palette, Report, Separator, Status } from "./shell";
+import { Badge, MessageGrid, Report, Separator, Status } from "./shell";
+import { CommandPalette, shortcut, type PaletteEntry } from "./CommandPalette";
+import { sidebarOf, useRoutes, viewOf, type ReturnContext, type Route } from "./routes";
+import { rootFontSize, useMeasured } from "./measure";
+import {
+  ICON_RAIL_REM,
+  INSPECTOR_MAX_REM,
+  INSPECTOR_MIN_REM,
+  INSPECTOR_REM,
+  LIST_MIN_REM,
+  RAIL_BREAKPOINT_REM,
+  SIDEBAR_REM,
+} from "./geometry";
 import { VocabularyContext } from "./vocabulary";
 import { ProjectPanel } from "./ProjectPanel";
 import { ImportPanel } from "./ImportPanel";
@@ -157,23 +170,27 @@ import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { IconButton } from "./IconButton";
 import { DemoCallout, NewProjectForm } from "./Home";
 import {
+  BackLink,
+  Categories,
   EmptyState,
+  FormDialog,
+  FrameContext,
   GLOBAL_DESTINATIONS,
   Modal,
-  MoreMenu,
+  Menu,
   NavItem,
+  OperationIndicator,
   PROJECT_DESTINATIONS,
   Page,
+  ProjectSwitcher,
+  ValueRows,
   folderName,
   humanize,
   type Destination,
 } from "./layout";
 
-/** The panes never collapse to nothing: either one keeps a usable share of the
- * window, whether it is dragged or moved with a keyboard. */
-const MIN_SPLIT = 20;
-const MAX_SPLIT = 80;
-const SPLIT_STEP = 5;
+/** How far one arrow key moves the details' edge, in rem. */
+const INSPECTOR_STEP = 1;
 
 /** Verifying a case, reading a project and searching all run to completion once
  * they start, so Cancel is offered only while an interruptible operation runs:
@@ -220,10 +237,8 @@ const CASE_FLOW_TITLES: Record<CaseFlow, string> = {
   reproduce: "Reproducer",
   reduce: "Reduce",
 };
-type TestsView = "suites" | "tests" | "assertions" | "profiles" | "scenarios" | "baselines";
-type RunsView = "run" | "details" | "compare";
-type ReportsView = "packets" | "disclosure" | "export" | "notes";
-type ToolsView = "inspect" | "benchmarks";
+type TestsView = "tests" | "suites";
+type LibraryView = "checks" | "profiles" | "scenarios";
 type SettingsView = "general" | "license" | "team" | "runners" | "security" | "storage";
 
 const CASE_VIEWS: { key: CaseView; label: string }[] = [
@@ -232,26 +247,17 @@ const CASE_VIEWS: { key: CaseView; label: string }[] = [
   { key: "findings", label: "Findings" },
 ];
 const TESTS_VIEWS: { key: TestsView; label: string }[] = [
+  { key: "tests", label: "Tests" },
   { key: "suites", label: "Suites" },
-  { key: "tests", label: "Test files" },
-  { key: "assertions", label: "Assertion sets" },
+];
+const LIBRARY_VIEWS: { key: LibraryView; label: string }[] = [
+  { key: "checks", label: "Checks" },
   { key: "profiles", label: "Profiles" },
   { key: "scenarios", label: "Scenarios" },
-  { key: "baselines", label: "Baselines" },
 ];
-const RUNS_VIEWS: { key: RunsView; label: string }[] = [
-  { key: "run", label: "Run a test" },
-  { key: "details", label: "Run details" },
-  { key: "compare", label: "Compare runs" },
-];
-const REPORTS_VIEWS: { key: ReportsView; label: string }[] = [
-  { key: "packets", label: "Packets" },
-  { key: "disclosure", label: "Disclosure review" },
-  { key: "export", label: "Transform and export" },
-  { key: "notes", label: "Notes" },
-];
-const TOOLS_VIEWS: { key: ToolsView; label: string }[] = [
-  { key: "inspect", label: "Inspect file" },
+const TOOLS: { key: "inspect-file" | "sample-data" | "benchmarks"; label: string }[] = [
+  { key: "inspect-file", label: "Inspect file" },
+  { key: "sample-data", label: "Sample data" },
   { key: "benchmarks", label: "Benchmarks" },
 ];
 const SETTINGS_VIEWS: { key: SettingsView; label: string }[] = [
@@ -263,7 +269,7 @@ const SETTINGS_VIEWS: { key: SettingsView; label: string }[] = [
   { key: "storage", label: "Storage" },
 ];
 
-/** What the status line says while one of this window's operations runs. */
+/** What the operation indicator says while one of this window's operations runs. */
 const PROGRESS: Record<Running, string> = {
   workspace: "Opening the folder…",
   case: "Verifying the case…",
@@ -377,25 +383,45 @@ export default function App() {
   // that was never acknowledged, so closing asks first.
   const [unsavedFailure, setUnsavedFailure] = useState(false);
 
-  const [focused, setFocused] = useState<RegionId>("commands");
+  const [focused, setFocused] = useState<RegionId>("navigation");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
   const [theme, setTheme] = useState<Theme>("system");
   const [scale, setScale] = useState(0);
-  const [split, setSplit] = useState(58);
+  const [editingGeneral, setEditingGeneral] = useState(false);
+  // The inspector width each project was last given, in rem. The shown width
+  // is clamped to the room there is now without overwriting the wider choice.
+  const [inspectorWidths, setInspectorWidths] = useState<Record<string, number>>({});
 
-  // Where the window is: one destination at a time and, inside some, one view.
+  // Where the window is: one route, with the way back kept per destination.
   // Every destination stays mounted, so an unfinished edit survives looking at
   // another; only the shown one is drawn and announced.
-  const [destination, setDestination] = useState<Destination>("home");
-  const [caseView, setCaseView] = useState<CaseView>("messages");
+  const { route, dispatch: routeTo } = useRoutes({ destination: "home" });
+  const place = route.destination;
+  const destination = sidebarOf(place);
+  const currentRoute = useRef<Route>(route);
+  currentRoute.current = route;
+  const caseView = viewOf(route, "cases", CASE_VIEWS);
+  const testsView = viewOf(route, "tests", TESTS_VIEWS);
+  const libraryView = viewOf(route, "library", LIBRARY_VIEWS);
+  const settingsView = viewOf(route, "settings", SETTINGS_VIEWS);
+  const setView = useCallback((view: string) => routeTo({ type: "view", view }), [routeTo]);
+  // What the place being left had, for Back to restore: the selection named,
+  // and how far its page had been scrolled.
+  const leaving = useCallback((selection?: string): ReturnContext => {
+    const body = document.querySelector<HTMLElement>(`.page[data-page="${currentRoute.current.destination}"] .page-body`);
+    return { ...(selection !== undefined ? { selection } : {}), ...(body ? { scrollTop: body.scrollTop } : {}) };
+  }, []);
+  // A route arrived at with a return context is where Back returned to: its
+  // selection and scroll position come back with it.
+  useLayoutEffect(() => {
+    const returned = route.returnContext;
+    if (!returned) return;
+    if (returned.selection !== undefined) setSelected(returned.selection);
+    const body = document.querySelector<HTMLElement>(`.page[data-page="${route.destination}"] .page-body`);
+    if (body && returned.scrollTop !== undefined) body.scrollTop = returned.scrollTop;
+  }, [route]);
   const [caseFlow, setCaseFlow] = useState<CaseFlow | null>(null);
   const [fileDetails, setFileDetails] = useState(false);
-  const [testsView, setTestsView] = useState<TestsView>("suites");
-  const [runsView, setRunsView] = useState<RunsView>("run");
-  const [reportsView, setReportsView] = useState<ReportsView>("packets");
-  const [toolsView, setToolsView] = useState<ToolsView>("inspect");
-  const [settingsView, setSettingsView] = useState<SettingsView>("general");
   const [creatingProject, setCreatingProject] = useState(false);
   const [searching, setSearching] = useState(false);
   // Counts requests to open storage on a named section, so the section asked
@@ -590,13 +616,17 @@ export default function App() {
       if (regions.length === 0) {
         return;
       }
-      const current = regions.findIndex((region) => region.id === focused);
-      const next = regions[(current + direction + regions.length) % regions.length];
+      // From outside every region, F6 starts at the first and Shift+F6 at the last.
+      const current = regions.findIndex((region) => regionElements.current[region.id]?.contains(document.activeElement));
+      const next =
+        current < 0
+          ? regions[direction > 0 ? 0 : regions.length - 1]
+          : regions[(current + direction + regions.length) % regions.length];
       if (next) {
         focusRegion(next.id);
       }
     },
-    [described, focused, focusRegion],
+    [described, focusRegion],
   );
 
   /** Everything derived from the one verified case lives only while that case
@@ -650,6 +680,10 @@ export default function App() {
           clearWorkspace();
           setSelected(null);
           setWorkspace(result);
+          // A project opened is a new history: nothing selected, typed or
+          // revealed in the last one comes with it.
+          routeTo({ type: "project", projectId: result.workspace.root, to: { destination: "cases" } });
+          setCaseFlow(null);
           setPracticeResult(null);
           setSampleCapture(null);
           setImporting(false);
@@ -669,7 +703,6 @@ export default function App() {
       });
       await refreshRecent();
       if (opened) {
-        setDestination("cases");
         focusRegion("evidence");
       }
       return opened;
@@ -749,8 +782,16 @@ export default function App() {
           clearCase();
           setSelected(name);
           setEvidence(result);
-          setDestination("cases");
-          setCaseView("messages");
+          const at = currentRoute.current;
+          if (at.destination === "cases" && at.objectId === name) {
+            routeTo({ type: "view", view: "messages" });
+          } else if (at.destination === "cases" && at.objectId !== undefined) {
+            // One case is open at a time: the new one takes the old one's
+            // place, and Back still leads to the list.
+            routeTo({ type: "replace", to: { destination: "cases", objectId: name, view: "messages" } });
+          } else {
+            routeTo({ type: "go", to: { destination: "cases", objectId: name, view: "messages" }, leaving: leaving(name) });
+          }
           setCaseFlow(null);
           outcome = result;
           const desc = await describeIndex(folder, name, "");
@@ -840,11 +881,10 @@ export default function App() {
       setRunSpecPath(selection.entry);
       setRunEnvironment(selection.environment);
       if (root) setSuiteHandoff({ workspace: root, handoff: selection });
-      setDestination("runs");
-      setRunsView("run");
+      routeTo({ type: "go", to: { destination: "run-test" }, leaving: leaving() });
       focusRegion("evidence");
     },
-    [focusRegion, root],
+    [focusRegion, leaving, root, routeTo],
   );
 
   // The project overview re-reads the project from disk every time: what the
@@ -857,10 +897,10 @@ export default function App() {
         setInvestigation(null);
         setInvestigation(await openProjectOverview(folder));
       });
-      setDestination("cases");
+      routeTo({ type: "destination", destination: "cases", leaving: leaving() });
       focusRegion("evidence");
     },
-    [focusRegion, run],
+    [focusRegion, leaving, routeTo, run],
   );
 
   // A new project is a new folder inside the one chosen for it. The window
@@ -882,7 +922,7 @@ export default function App() {
       });
       if (created === "") return answer;
       if (created === root) {
-        setDestination("cases");
+        routeTo({ type: "destination", destination: "cases" });
         return answer;
       }
       if (await openFolder(() => openWorkspace(created))) {
@@ -931,20 +971,28 @@ export default function App() {
 
   const register = useCallback(
     async (name: string, registration: CaseRegistration) => {
-      if (!root) return;
+      if (!root) return false;
+      let stored = false;
       await run("project", async () => {
-        settleProject(await registerCase(root, name, registration));
+        const answer = await registerCase(root, name, registration);
+        settleProject(answer);
+        stored = answer.state === "completed";
       });
+      return stored;
     },
     [root, run, settleProject],
   );
 
   const updateCase = useCallback(
     async (name: string, change: CaseChange) => {
-      if (!root) return;
+      if (!root) return false;
+      let stored = false;
       await run("project", async () => {
-        settleProject(await updateRegisteredCase(root, name, change));
+        const answer = await updateRegisteredCase(root, name, change);
+        settleProject(answer);
+        stored = answer.state === "completed";
       });
+      return stored;
     },
     [root, run, settleProject],
   );
@@ -984,7 +1032,7 @@ export default function App() {
         void readProject(root);
         return;
       }
-      setDestination("cases");
+      routeTo({ type: "destination", destination: "cases", leaving: leaving() });
       focusRegion(match.region);
     },
     [busy, focusRegion, inspect, opened, readProject, root, verifyCase],
@@ -1000,9 +1048,10 @@ export default function App() {
     setCaptureBinding(null);
     clearCase();
     setCaseFlow(null);
-    setDestination("cases");
+    if (currentRoute.current.objectId !== undefined) routeTo({ type: "back" });
+    else routeTo({ type: "destination", destination: "cases" });
     focusRegion("evidence");
-  }, [clearCase, focusRegion]);
+  }, [clearCase, focusRegion, routeTo]);
 
   const searchWorkspace = useCallback(
     async (folder: string, wanted: string) => {
@@ -1796,23 +1845,32 @@ export default function App() {
   );
 
 
-  // Moves to a destination and, where it has views, to one of them. Focus goes
+  // Moves to a sidebar destination, back where it was last left. Focus goes
   // to the page, so a keyboard user lands where the page now is.
   const go = useCallback(
     (to: Destination) => {
-      setDestination(to);
+      routeTo({ type: "destination", destination: to, leaving: leaving() });
       focusRegion("evidence");
     },
-    [focusRegion],
+    [focusRegion, leaving, routeTo],
   );
 
-  const openSettings = useCallback(
-    (view: SettingsView) => {
-      setSettingsView(view);
-      go("settings");
+  // Opens a place reached from inside another: a child destination, or a
+  // destination at one of its views.
+  const open = useCallback(
+    (to: Route) => {
+      routeTo({ type: "go", to, leaving: leaving() });
+      focusRegion("evidence");
     },
-    [go],
+    [focusRegion, leaving, routeTo],
   );
+
+  const back = useCallback(() => {
+    routeTo({ type: "back" });
+    focusRegion("evidence");
+  }, [focusRegion, routeTo]);
+
+  const openSettings = useCallback((view: SettingsView) => open({ destination: "settings", view }), [open]);
 
   const openStorage = useCallback(
     (tab: "backup" | "restore" | "storage" | "lifecycle" | "upgrade") => {
@@ -1827,71 +1885,43 @@ export default function App() {
   // the declared identifiers, so a command the window forgot is a type error
   // rather than a palette entry that quietly does nothing. Which key reaches
   // which command is not typed, and is what the facade's own tests check.
+  //
+  // Whether a command applies where the person is decides once, in
+  // available(), both what the palette lists and whether perform() runs it;
+  // the actions themselves carry no guards of their own.
   const actions: Record<CommandId, () => void> = {
-    "command-palette": () => {
-      setPaletteQuery("");
-      setPaletteOpen(true);
-    },
-    "search-workspace": () => {
-      if (root) setSearching(true);
-    },
-    "open-workspace": () => {
-      if (!busy) {
-        void openFolder(selectWorkspace);
-      }
-    },
-    "create-sample-workspace": () => {
-      if (!busy) {
-        void openFolder(createSampleWorkspace);
-      }
-    },
+    "command-palette": () => setPaletteOpen(true),
+    "search-workspace": () => setSearching(true),
+    "new-project": () => setCreatingProject(true),
+    "open-workspace": () => void openFolder(selectWorkspace),
+    "create-sample-workspace": () => void openFolder(createSampleWorkspace),
     "open-project": () => {
-      if (!busy && root) {
-        void readProject(root);
-      }
+      if (root) void readProject(root);
     },
-    "manage-profiles": () => {
-      setTestsView("profiles");
-      go("tests");
+    "create-test": () => {
+      go("cases");
+      setCaseFlow("test");
     },
-    "maintain-workspace": () => {
-      if (!root) {
-        return;
-      }
-      openStorage("backup");
-    },
-    "check-staged-upgrade": () => {
-      if (!root) {
-        return;
-      }
-      openStorage("upgrade");
-    },
-    "manage-scenarios": () => {
-      setTestsView("scenarios");
-      go("tests");
-    },
-    "manage-assertions": () => {
-      setTestsView("assertions");
-      go("tests");
-    },
+    "create-report": () => go("reports"),
+    "manage-profiles": () => open({ destination: "library", view: "profiles" }),
+    "maintain-workspace": () => openStorage("backup"),
+    "check-staged-upgrade": () => openStorage("upgrade"),
+    "manage-scenarios": () => open({ destination: "library", view: "scenarios" }),
+    "manage-assertions": () => open({ destination: "library", view: "checks" }),
     "inspect-raw-file": () => {
-      setToolsView("inspect");
-      go("tools");
+      open({ destination: "inspect-file" });
       setRawRequest((count) => count + 1);
     },
     "performance-corpus": () => {
-      setToolsView("benchmarks");
-      go("tools");
+      open({ destination: "benchmarks" });
       setCorpusRequest((count) => count + 1);
     },
     "cancel-operation": () => cancel(),
     "next-region": () => step(1),
     "previous-region": () => step(-1),
-    "go-to-commands": () => focusRegion("commands"),
     "go-to-navigation": () => focusRegion("navigation"),
     "go-to-evidence": () => focusRegion("evidence"),
     "go-to-inspector": () => focusRegion("inspector"),
-    "go-to-privacy": () => focusRegion("privacy"),
     "larger-text": () =>
       setScale((current) => Math.min((described?.text_scales.length ?? 1) - 1, current + 1)),
     "smaller-text": () => setScale((current) => Math.max(0, current - 1)),
@@ -1904,21 +1934,24 @@ export default function App() {
 
   // The keyboard listener is registered once and reads the current actions, so
   // a shortcut never runs a stale one and the window never re-binds its keys.
+  // Escape is not among them: it closes the topmost dialog or menu, and never
+  // cancels work that is running.
   const latest = useRef(actions);
   useEffect(() => {
     latest.current = actions;
   });
+  // Runs a command only where it applies; see available() below.
+  const perform = (id: CommandId) => {
+    if (available(id)) latest.current[id]();
+  };
+  const performLatest = useRef(perform);
+  performLatest.current = perform;
 
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       const chosen = ((): CommandId | null => {
         if (event.key === "F6") {
           return event.shiftKey ? "previous-region" : "next-region";
-        }
-        // An open native dialog owns Escape. Do not prevent its dismissal
-        // or cancel unrelated work behind it.
-        if (event.key === "Escape") {
-          return document.querySelector("dialog[open]") ? null : "cancel-operation";
         }
         if (!(event.ctrlKey || event.metaKey)) {
           return null;
@@ -1945,21 +1978,12 @@ export default function App() {
       })();
       if (chosen) {
         event.preventDefault();
-        latest.current[chosen]();
+        performLatest.current(chosen);
       }
     };
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
-  }, [paletteOpen]);
-
-  const listed = (described?.commands ?? []).filter((command) => {
-    const wanted = paletteQuery.trim().toLowerCase();
-    return (
-      wanted === "" ||
-      command.title.toLowerCase().includes(wanted) ||
-      (command.keys ?? "").toLowerCase().includes(wanted)
-    );
-  });
+  }, []);
 
   const artifacts = opened?.artifacts ?? [];
   const named = (kind: string) => artifacts.filter((artifact) => artifact.kind === kind).map((artifact) => artifact.name);
@@ -1969,7 +1993,7 @@ export default function App() {
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
   const subpage = importing && root ? "import" : capturing && root ? "capture" : observing && root ? "observe" : null;
   const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
-  const detailsShown = destination === "cases" && verified !== null && subpage === null && inspecting;
+  const detailsShown = place === "cases" && verified !== null && subpage === null && inspecting;
   const inspected =
     selectedOccurrence && inspectionResult?.inspection
       ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
@@ -2002,80 +2026,70 @@ export default function App() {
   );
   const interruptible = running === "workspace" || running === "diagnosis-groups";
 
+  // The window's own width decides the sidebar: a labelled 13rem sidebar where
+  // there is room, an icon rail below that with the project switcher moved
+  // into the page header, never both gone.
+  const [frame, setFrame] = useState<HTMLDivElement | null>(null);
+  const { width: frameWidth, rem } = useMeasured(frame);
+  const compact = frameWidth > 0 && frameWidth / rem < RAIL_BREAKPOINT_REM;
+  const switcher = root ? (
+    <ProjectSwitcher
+      name={projectName}
+      recent={recentProjects(recent?.roots ?? [], root)}
+      disabled={busy}
+      onOpenRecent={(folder) => void openFolder(() => openWorkspace(folder))}
+      onOpen={() => perform("open-workspace")}
+      onNew={() => perform("new-project")}
+      onSettings={() => perform("open-project")}
+    />
+  ) : null;
+
+  // The inspector keeps the width chosen for this project, clamped to the room
+  // there is now. When the list beside it would fall below its useful width,
+  // the selection is shown on its own with the way back to the list.
+  const sidebarRem = compact ? ICON_RAIL_REM : SIDEBAR_REM;
+  const workareaRem = frameWidth > 0 ? frameWidth / rem - sidebarRem : Number.POSITIVE_INFINITY;
+  const preferredInspector = (root !== null ? inspectorWidths[root] : undefined) ?? INSPECTOR_REM;
+  const inspectorRem = Math.max(INSPECTOR_MIN_REM, Math.min(preferredInspector, INSPECTOR_MAX_REM, workareaRem - LIST_MIN_REM - 1 / rem));
+  const detailOnly = detailsShown && workareaRem - inspectorRem - 1 / rem < LIST_MIN_REM;
+
   // Every region the facade declares has an element here, for the same reason
   // every command has an action: a region the window forgot is a type error.
   // ReactElement rather than ReactNode, because ReactNode admits null and would
   // accept a region entered as nothing. What a region then draws is beyond it.
   const content: Record<RegionId, ReactElement> = {
-    commands: (
-      <>
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            R
-          </span>
-          <span className="brand-name">Readmit</span>
-          <button type="button" className="command-button" title="Search commands (⌘K)" onClick={actions["command-palette"]}>
-            <span className="visually-hidden">Search commands</span>
-            <kbd aria-hidden="true">⌘K</kbd>
-          </button>
-        </div>
-        {root ? (
-          <button type="button" className="nav-item search-button" onClick={actions["search-workspace"]}>
-            <svg className="nav-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="M10.5 10.5 14 14" />
-            </svg>
-            <span className="nav-label">Search</span>
-            <kbd aria-hidden="true">⌘F</kbd>
-          </button>
-        ) : null}
-      </>
-    ),
     navigation: (
       <>
         <ul className="nav-list">
           <NavItem id="home" label="Projects" current={destination === "home"} onSelect={go} />
         </ul>
+        {root && !compact ? <div className="sidebar-switcher">{switcher}</div> : null}
         {root ? (
-          <>
-            <p className="nav-section-label">Project</p>
-            <div className="project-switcher">
-              <span className="project-name" title={projectName}>
-                {projectName}
-              </span>
-              <span className="project-path" title={root}>
-                {root}
-              </span>
-            </div>
-            <ul className="nav-list">
-              {PROJECT_DESTINATIONS.map((item) => (
-                <NavItem
-                  key={item.id}
-                  id={item.id}
-                  label={item.label}
-                  current={destination === item.id}
-                  onSelect={go}
-                />
-              ))}
-            </ul>
-          </>
+          <ul className="nav-list">
+            {PROJECT_DESTINATIONS.map((item) => (
+              <NavItem key={item.id} id={item.id} label={item.label} current={destination === item.id} onSelect={go} />
+            ))}
+          </ul>
         ) : null}
         <ul className="nav-list nav-footer">
           {GLOBAL_DESTINATIONS.map((item) => (
             <NavItem key={item.id} id={item.id} label={item.label} current={destination === item.id} onSelect={go} />
           ))}
         </ul>
+        {busy ? (
+          <OperationIndicator label={running ? PROGRESS[running] : "Working…"} onStop={interruptible ? () => cancel() : undefined} />
+        ) : null}
       </>
     ),
     evidence: (
       <>
         <Page
           id="home"
-          shown={destination === "home"}
+          shown={place === "home"}
           title="Projects"
           actions={
             <>
-              <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
+              <button type="button" disabled={busy} onClick={() => perform("open-workspace")}>
                 Open…
               </button>
               <button type="button" className="primary" disabled={busy} onClick={() => setCreatingProject(true)}>
@@ -2089,7 +2103,7 @@ export default function App() {
           {openNotice ? (
             <div className="notice danger">
               <Report indicators={indicators} progress={null} result={openNotice} />
-              <button type="button" className="action-retry-folder" disabled={busy} onClick={actions["open-workspace"]}>
+              <button type="button" className="action-retry-folder" disabled={busy} onClick={() => perform("open-workspace")}>
                 Choose another folder…
               </button>
             </div>
@@ -2101,28 +2115,19 @@ export default function App() {
             onReopen={(folder) => void openFolder(() => openWorkspace(folder))}
             onForget={forget}
           />
-          <DemoCallout busy={busy} onTryDemo={actions["create-sample-workspace"]} />
+          <DemoCallout busy={busy} onTryDemo={() => perform("create-sample-workspace")} />
         </Page>
 
         <Page
           id="cases"
-          shown={destination === "cases"}
-          eyebrow={
-            subpage !== null || verified ? (
-              <nav aria-label="Where you are" className="page-eyebrow">
-                <button type="button" onClick={subpage !== null ? leaveSubpage : backToProject}>
-                  {projectName || "Cases"}
-                </button>
-                <span aria-hidden="true">›</span>
-                {verified && caseFlow !== null && subpage === null ? (
-                  <>
-                    <button type="button" onClick={() => setCaseFlow(null)}>
-                      {caseTitle}
-                    </button>
-                    <span aria-hidden="true">›</span>
-                  </>
-                ) : null}
-              </nav>
+          shown={place === "cases"}
+          back={
+            subpage !== null ? (
+              <BackLink label="Cases" onBack={leaveSubpage} />
+            ) : verified && caseFlow !== null ? (
+              <BackLink label={caseTitle} name={caseTitle} onBack={() => setCaseFlow(null)} />
+            ) : verified ? (
+              <BackLink label="Cases" onBack={backToProject} />
             ) : null
           }
           title={
@@ -2136,16 +2141,7 @@ export default function App() {
                     ? caseFlow !== null
                       ? CASE_FLOW_TITLES[caseFlow]
                       : caseTitle
-                    : projectName || "Cases"
-          }
-          subtitle={
-            verified && subpage === null && caseFlow === null ? (
-              <>
-                {verified.messages} {verified.messages === 1 ? "message" : "messages"} · {verified.acknowledgements}{" "}
-                {verified.acknowledgements === 1 ? "ACK" : "ACKs"} · {verified.sources} {verified.sources === 1 ? "source" : "sources"} ·{" "}
-                {humanize(verified.provenance)}
-              </>
-            ) : null
+                    : "Cases"
           }
           actions={
             root && subpage === null && !verified ? (
@@ -2168,7 +2164,7 @@ export default function App() {
                 <button type="button" className="primary" disabled={busy} onClick={() => setCaseFlow("test")}>
                   Create test
                 </button>
-                <MoreMenu
+                <Menu
                   label="More case actions"
                   items={[
                     { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
@@ -2267,7 +2263,7 @@ export default function App() {
                         : null
                   }
                   indicators={indicators}
-                  onCreateSample={actions["create-sample-workspace"]}
+                  onCreateSample={() => perform("create-sample-workspace")}
                   onOpenCase={(name: string) => {
                     if (root) void verifyCase(root, name);
                   }}
@@ -2282,7 +2278,7 @@ export default function App() {
               {openNotice ? (
                 <div className="notice danger">
                   <Report indicators={indicators} progress={null} result={openNotice} />
-                  <button type="button" className="action-retry-folder" disabled={busy} onClick={actions["open-workspace"]}>
+                  <button type="button" className="action-retry-folder" disabled={busy} onClick={() => perform("open-workspace")}>
                     Choose another folder…
                   </button>
                 </div>
@@ -2308,9 +2304,7 @@ export default function App() {
                       Import evidence
                     </button>
                   }
-                >
-                  Import exported messages or capture them from a feed to start an investigation.
-                </EmptyState>
+                />
               ) : (
                 <ul className="item-list artifacts" aria-label="Cases in this folder">
                   {caseBundles.map((artifact) => (
@@ -2346,8 +2340,8 @@ export default function App() {
                 editable={editable}
                 onUpdateSettings={editSettings}
                 onReadEditable={() => void readEditable()}
-                onRegister={(name, registration) => void register(name, registration)}
-                onUpdateCase={(name, change) => void updateCase(name, change)}
+                onRegister={register}
+                onUpdateCase={updateCase}
                 onOpenCase={(name: string) => {
                   if (root) void verifyCase(root, name);
                 }}
@@ -2409,7 +2403,7 @@ export default function App() {
                 </div>
               ) : null}
               <div hidden={caseFlow !== null}>
-              <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setCaseView} keepMounted>
+              <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setView} keepMounted>
                 <TaskPanel tabs="case-views" tab="messages" className="task-panel view-panel" shown={caseView === "messages"}>
                   <Report indicators={indicators} progress={running === "case" ? "Verifying the case." : null} result={null} />
                   <MessageGrid
@@ -2498,7 +2492,7 @@ export default function App() {
                     onPromote={(status, reviewEntry, reportSHA256) =>
                       void promoteFinding(status, reviewEntry, reportSHA256)
                     }
-                    onManageProfiles={actions["manage-profiles"]}
+                    onManageProfiles={() => perform("manage-profiles")}
                     onSaved={() => void refreshListing()}
                   />
                 </TaskPanel>
@@ -2599,9 +2593,14 @@ export default function App() {
                       }}
                     />
                   ) : (
-                    <EmptyState title="Messages are not loaded yet">
-                      A reproducer is built from the messages of this case. Open them in Messages first.
-                    </EmptyState>
+                    <EmptyState
+                      title="Messages are not loaded yet"
+                      action={
+                        <button type="button" onClick={() => { setCaseFlow(null); setView("messages"); }}>
+                          Open messages
+                        </button>
+                      }
+                    />
                   )}
                 </div>
                 <div className="view-panel case-flow" hidden={caseFlow !== "test"}>
@@ -2663,9 +2662,14 @@ export default function App() {
                       }
                     />
                   ) : (
-                    <EmptyState title="Messages are not loaded yet">
-                      A test is written over the messages of this case. Open them in Messages first.
-                    </EmptyState>
+                    <EmptyState
+                      title="Messages are not loaded yet"
+                      action={
+                        <button type="button" onClick={() => { setCaseFlow(null); setView("messages"); }}>
+                          Open messages
+                        </button>
+                      }
+                    />
                   )}
                 </div>
                 <div className="view-panel case-flow" hidden={caseFlow !== "reduce"}>
@@ -2709,9 +2713,26 @@ export default function App() {
           ) : null}
         </Page>
 
-        <Page id="tests" shown={destination === "tests"} title="Tests">
+        <Page
+          id="tests"
+          shown={place === "tests"}
+          title="Tests"
+          actions={
+            root ? (
+              <>
+                <button type="button" onClick={() => open({ destination: "library" })}>
+                  Library
+                </button>
+                <Menu label="More test actions" items={[{ label: "Baselines", onSelect: () => open({ destination: "baselines" }) }]} />
+              </>
+            ) : null
+          }
+        >
           {root ? (
-            <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setTestsView} keepMounted>
+            <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setView} keepMounted>
+              <TaskPanel tabs="tests-views" tab="tests" className="task-panel view-panel" shown={testsView === "tests"}>
+                <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} />
+              </TaskPanel>
               <TaskPanel tabs="tests-views" tab="suites" className="task-panel view-panel" shown={testsView === "suites"}>
                 <SuitePanel
                   key={"suite-" + root}
@@ -2723,16 +2744,22 @@ export default function App() {
                   onSaved={() => void refreshListing()}
                 />
               </TaskPanel>
-              <TaskPanel tabs="tests-views" tab="tests" className="task-panel view-panel" shown={testsView === "tests"}>
-                <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} />
-              </TaskPanel>
-              <TaskPanel tabs="tests-views" tab="assertions" className="task-panel view-panel" shown={testsView === "assertions"}>
+            </TaskTabs>
+          ) : (
+            noProject("tests")
+          )}
+        </Page>
+
+        <Page id="library" shown={place === "library"} title="Library" back={<BackLink label="Tests" onBack={back} />}>
+          {root ? (
+            <TaskTabs label="Library views" id="library-views" tabs={LIBRARY_VIEWS} selected={libraryView} onSelect={setView} keepMounted>
+              <TaskPanel tabs="library-views" tab="checks" className="task-panel view-panel" shown={libraryView === "checks"}>
                 <AssertionSetAuthoring key={"assertions-" + root} workspace={root} drafts={drafts} busy={busy} inspected={inspected} />
               </TaskPanel>
-              <TaskPanel tabs="tests-views" tab="profiles" className="task-panel view-panel" shown={testsView === "profiles"}>
+              <TaskPanel tabs="library-views" tab="profiles" className="task-panel view-panel" shown={libraryView === "profiles"}>
                 <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} />
               </TaskPanel>
-              <TaskPanel tabs="tests-views" tab="scenarios" className="task-panel view-panel" shown={testsView === "scenarios"}>
+              <TaskPanel tabs="library-views" tab="scenarios" className="task-panel view-panel" shown={libraryView === "scenarios"}>
                 <ScenarioPanel
                   key={`scenario-${root}`}
                   workspace={root}
@@ -2747,47 +2774,64 @@ export default function App() {
                   }}
                 />
               </TaskPanel>
-              <TaskPanel tabs="tests-views" tab="baselines" className="task-panel view-panel" shown={testsView === "baselines"}>
-                <Baseline key={root} workspace={root} busy={busy} onSaved={() => void refreshListing()} />
-              </TaskPanel>
             </TaskTabs>
           ) : (
-            noProject("tests")
+            noProject("library")
           )}
         </Page>
 
-        <Page id="runs" shown={destination === "runs"} title="Runs">
+        <Page id="baselines" shown={place === "baselines"} title="Baselines" back={<BackLink label="Tests" onBack={back} />}>
+          {root ? <Baseline key={root} workspace={root} busy={busy} onSaved={() => void refreshListing()} /> : noProject("baselines")}
+        </Page>
+
+        <Page
+          id="runs"
+          shown={place === "runs"}
+          title="Runs"
+          actions={
+            root ? (
+              <>
+                <button type="button" onClick={() => open({ destination: "compare-runs" })}>
+                  Compare
+                </button>
+                <button type="button" className="primary" onClick={() => open({ destination: "run-test" })}>
+                  Run test
+                </button>
+              </>
+            ) : null
+          }
+        >
+          {root ? <RunExplanation key={"explain-" + root} workspace={root} entries={artifacts} busy={busy} /> : noProject("runs")}
+        </Page>
+
+        <Page id="run-test" shown={place === "run-test"} title="Run test" back={<BackLink label="Runs" onBack={back} />}>
           {root ? (
-            <TaskTabs label="Run views" id="runs-views" tabs={RUNS_VIEWS} selected={runsView} onSelect={setRunsView} keepMounted>
-              <TaskPanel tabs="runs-views" tab="run" className="task-panel view-panel" shown={runsView === "run"}>
-                {suiteHandoff && suiteHandoff.workspace === root ? <SuiteHandoffNotice handoff={suiteHandoff.handoff} /> : null}
-                <RunPanel
-                  workspace={root}
-                  entries={artifacts}
-                  onWatch={watch}
-                  onRefresh={() => void refreshListing()}
-                  onOpenCase={(name: string) => {
-                    if (root) void verifyCase(root, name);
-                  }}
-                  onConfigureEnvironment={() => go("environments")}
-                  onOpenLicense={() => openSettings("license")}
-                  {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
-                  {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
-                />
-              </TaskPanel>
-              <TaskPanel tabs="runs-views" tab="details" className="task-panel view-panel" shown={runsView === "details"}>
-                <RunExplanation key={"explain-" + root} workspace={root} entries={artifacts} busy={busy} />
-              </TaskPanel>
-              <TaskPanel tabs="runs-views" tab="compare" className="task-panel view-panel" shown={runsView === "compare"}>
-                <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={artifacts} />
-              </TaskPanel>
-            </TaskTabs>
+            <>
+              {suiteHandoff && suiteHandoff.workspace === root ? <SuiteHandoffNotice handoff={suiteHandoff.handoff} /> : null}
+              <RunPanel
+                workspace={root}
+                entries={artifacts}
+                onWatch={watch}
+                onRefresh={() => void refreshListing()}
+                onOpenCase={(name: string) => {
+                  if (root) void verifyCase(root, name);
+                }}
+                onConfigureEnvironment={() => go("environments")}
+                onOpenLicense={() => openSettings("license")}
+                {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
+                {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
+              />
+            </>
           ) : (
             noProject("runs")
           )}
         </Page>
 
-        <Page id="environments" shown={destination === "environments"} title="Environments">
+        <Page id="compare-runs" shown={place === "compare-runs"} title="Compare runs" back={<BackLink label="Runs" onBack={back} />}>
+          {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={artifacts} /> : noProject("runs")}
+        </Page>
+
+        <Page id="environments" shown={place === "environments"} title="Environments">
           {opened ? (
             <EnvironmentPanel
               workspace={root ?? ""}
@@ -2804,16 +2848,36 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="reports" shown={destination === "reports"} title="Reports">
+        <Page
+          id="reports"
+          shown={place === "reports"}
+          title="Reports"
+          actions={
+            root ? (
+              <>
+                <button type="button" onClick={() => open({ destination: "share-report" })}>
+                  Share
+                </button>
+                <Menu
+                  label="More report actions"
+                  items={[
+                    { label: "Transform and export", onSelect: () => open({ destination: "export-report" }) },
+                    { label: "Notes", onSelect: () => open({ destination: "notes" }) },
+                  ]}
+                />
+              </>
+            ) : null
+          }
+        >
+          {root ? <PacketPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} /> : noProject("reports")}
+        </Page>
+
+        <Page id="share-report" shown={place === "share-report"} title="Share report" back={<BackLink label="Reports" onBack={back} />}>
+          {root ? <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} /> : noProject("reports")}
+        </Page>
+
+        <Page id="export-report" shown={place === "export-report"} title="Transform and export" back={<BackLink label="Reports" onBack={back} />}>
           {root ? (
-            <TaskTabs label="Report views" id="reports-views" tabs={REPORTS_VIEWS} selected={reportsView} onSelect={setReportsView} keepMounted>
-              <TaskPanel tabs="reports-views" tab="packets" className="task-panel view-panel" shown={reportsView === "packets"}>
-                <PacketPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} />
-              </TaskPanel>
-              <TaskPanel tabs="reports-views" tab="disclosure" className="task-panel view-panel" shown={reportsView === "disclosure"}>
-                <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} />
-              </TaskPanel>
-              <TaskPanel tabs="reports-views" tab="export" className="task-panel view-panel" shown={reportsView === "export"}>
                 <Review
                   ruleEntries={named("rules")}
                   planEntries={named("plan")}
@@ -2840,81 +2904,86 @@ export default function App() {
                   onOpenPlan={openPlan}
                   onReview={(review, approve, offset) => void readReview(review, approve, offset)}
                 />
-              </TaskPanel>
-              <TaskPanel tabs="reports-views" tab="notes" className="task-panel view-panel" shown={reportsView === "notes"}>
-                <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} />
-              </TaskPanel>
-            </TaskTabs>
           ) : (
             noProject("reports")
           )}
         </Page>
 
-        <Page
-          id="tools"
-          shown={destination === "tools"}
-          title="Tools"
-          actions={
-            <button type="button" disabled={busy} onClick={actions["open-workspace"]}>
-              Open folder…
-            </button>
-          }
-        >
-          <TaskTabs
-            label="Tools"
-            id="tools-views"
-            tabs={TOOLS_VIEWS}
-            selected={toolsView}
-            onSelect={(view) => {
-              setToolsView(view);
-              if (view === "inspect") setRawRequest((count) => count + 1);
-              else setCorpusRequest((count) => count + 1);
-            }}
-            keepMounted
-          >
-            <TaskPanel tabs="tools-views" tab="inspect" className="task-panel view-panel" shown={toolsView === "inspect"}>
-              <RawInspection busy={busy} indicators={indicators} request={rawRequest} />
-            </TaskPanel>
-            <TaskPanel tabs="tools-views" tab="benchmarks" className="task-panel view-panel" shown={toolsView === "benchmarks"}>
-              <PerformanceCorpus busy={busy} indicators={indicators} request={corpusRequest} />
-            </TaskPanel>
-          </TaskTabs>
+        <Page id="notes" shown={place === "notes"} title="Notes" back={<BackLink label="Reports" onBack={back} />}>
+          {root ? <NoteDraft project={workspaceRoot} drafts={drafts} restored={restored} onChanged={() => void restore()} /> : noProject("reports")}
         </Page>
 
-        <Page id="settings" shown={destination === "settings"} title="Settings">
-          <TaskTabs label="Settings" id="settings-views" tabs={SETTINGS_VIEWS} selected={settingsView} onSelect={setSettingsView} keepMounted>
+        <Page id="tools" shown={place === "tools"} title="Tools">
+          <ul className="launcher" aria-label="Tools">
+            {TOOLS.map((tool) => (
+              <li key={tool.key}>
+                <button
+                  type="button"
+                  className="launcher-row"
+                  onClick={() => {
+                    open({ destination: tool.key });
+                    if (tool.key === "inspect-file") setRawRequest((count) => count + 1);
+                    if (tool.key === "benchmarks") setCorpusRequest((count) => count + 1);
+                  }}
+                >
+                  <span>{tool.label}</span>
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                    <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Page>
+
+        <Page id="inspect-file" shown={place === "inspect-file"} title="Inspect file" back={<BackLink label="Tools" onBack={back} />}>
+          <RawInspection busy={busy} indicators={indicators} request={rawRequest} />
+        </Page>
+
+        <Page id="sample-data" shown={place === "sample-data"} title="Sample data" back={<BackLink label="Tools" onBack={back} />}>
+          <EmptyState
+            title="Synthetic demo project"
+            action={
+              <button type="button" className="primary" disabled={busy} onClick={() => perform("create-sample-workspace")}>
+                Try demo
+              </button>
+            }
+          />
+        </Page>
+
+        <Page id="benchmarks" shown={place === "benchmarks"} title="Benchmarks" back={<BackLink label="Tools" onBack={back} />}>
+          <PerformanceCorpus busy={busy} indicators={indicators} request={corpusRequest} />
+        </Page>
+
+        <Page id="settings" shown={place === "settings"} title="Settings">
+          <Categories label="Settings categories" categories={SETTINGS_VIEWS} selected={settingsView} onSelect={setView}>
             <TaskPanel tabs="settings-views" tab="general" className="task-panel view-panel" shown={settingsView === "general"}>
-              <section className="card" aria-labelledby="appearance-title">
-                <h2 id="appearance-title">Appearance</h2>
-                <div className="setting-rows">
-                  <div className="setting-row">
-                    <label htmlFor="theme">Theme</label>
-                    <select id="theme" value={theme} onChange={(event) => setTheme(event.target.value as Theme)}>
-                      {(described?.themes ?? []).map((choice) => (
-                        <option key={choice} value={choice}>
-                          {choice === "system" ? "Match system" : choice === "light" ? "Light" : choice === "dark" ? "Dark" : humanize(choice)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="setting-row">
-                    <span id="text-size-label">Text size</span>
-                    <div className="text-size" role="group" aria-labelledby="text-size-label">
-                      <button type="button" onClick={actions["smaller-text"]} disabled={scale === 0}>
-                        Smaller
-                      </button>
-                      <span className="scale">{described?.text_scales[scale] ?? 100}%</span>
-                      <button
-                        type="button"
-                        onClick={actions["larger-text"]}
-                        disabled={scale >= (described?.text_scales.length ?? 1) - 1}
-                      >
-                        Larger
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </section>
+              <div className="section-header">
+                <h2>General</h2>
+                <button type="button" onClick={() => setEditingGeneral(true)}>
+                  Edit
+                </button>
+              </div>
+              <ValueRows
+                label="General"
+                rows={[
+                  { label: "Theme", value: themeLabel(theme) },
+                  { label: "Text size", value: `${described?.text_scales[scale] ?? 100}%` },
+                ]}
+              />
+              <GeneralEditor
+                open={editingGeneral}
+                themes={described?.themes ?? ["system"]}
+                scales={described?.text_scales ?? [100]}
+                theme={theme}
+                scale={scale}
+                onClose={() => setEditingGeneral(false)}
+                onSave={(nextTheme, nextScale) => {
+                  setTheme(nextTheme);
+                  setScale(nextScale);
+                  setEditingGeneral(false);
+                }}
+              />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="license" className="task-panel view-panel" shown={settingsView === "license"}>
               <OperationAccess />
@@ -2930,18 +2999,15 @@ export default function App() {
                 <PrivacyDisclosure
                   operations={described.privacy.operations}
                   workspaceOpen={root !== null}
-                  onOpenRunPanel={() => {
-                    setRunsView("run");
-                    go("runs");
-                  }}
+                  onOpenRunPanel={() => open({ destination: "run-test" })}
                   onStartCapture={() => {
                     setCapturing(true);
-                    go("cases");
+                    open({ destination: "cases" });
                   }}
                   onStartObservation={() => {
                     setCaptureBinding(null);
                     setObserving(true);
-                    go("cases");
+                    open({ destination: "cases" });
                   }}
                 />
               ) : null}
@@ -2980,10 +3046,10 @@ export default function App() {
                 noProject("storage and backups")
               )}
             </TaskPanel>
-          </TaskTabs>
+          </Categories>
         </Page>
 
-        <Page id="help" shown={destination === "help"} title="Help">
+        <Page id="help" shown={place === "help"} title="Help">
           <HelpTopics />
           <section className="card" aria-labelledby="privacy-help-title" style={{ marginTop: "1rem" }}>
             <h2 id="privacy-help-title">Privacy</h2>
@@ -3006,7 +3072,8 @@ export default function App() {
     ),
     inspector: (
       <>
-        <div className="details-close">
+        <div className="details-header">
+          {detailOnly ? <BackLink label="Messages" onBack={closeDetails} /> : null}
           <IconButton icon="close" label="Close message details" onClick={closeDetails} />
         </div>
         {verified ? (
@@ -3023,32 +3090,60 @@ export default function App() {
         ) : null}
       </>
     ),
-    privacy: (
-      <>
-        <div className="status-line" aria-live="polite">
-          {busy ? (
-            <>
-              <span className="spinner" aria-hidden="true" />
-              <span>{running ? PROGRESS[running] : "Working…"}</span>
-              {interruptible ? (
-                <button type="button" className="quiet" onClick={() => cancel()}>
-                  Cancel
-                </button>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-        <div className="status-links">
-          <button type="button" className="quiet" onClick={() => openSettings("security")}>
-            Privacy and connections
-          </button>
-          <button type="button" className="quiet" onClick={() => openSettings("license")}>
-            License
-          </button>
-        </div>
-      </>
-    ),
   };
+
+  // What the palette lists: the actions of where the person is first, then
+  // the destinations. It never lists itself, a project action with no project
+  // open, or Cancel while nothing cancellable runs.
+  function available(id: CommandId): boolean {
+    switch (id) {
+      case "command-palette":
+        return !paletteOpen;
+      case "new-project":
+      case "open-workspace":
+      case "create-sample-workspace":
+        return !busy;
+      case "cancel-operation":
+        return busy && interruptible;
+      case "create-test":
+        return root !== null && verified !== null;
+      case "go-to-inspector":
+        return detailsShown;
+      case "open-project":
+        return !busy && root !== null;
+      case "search-workspace":
+      case "create-report":
+      case "manage-profiles":
+      case "manage-scenarios":
+      case "manage-assertions":
+      case "maintain-workspace":
+      case "check-staged-upgrade":
+        return root !== null;
+      default:
+        return true;
+    }
+  }
+  const contextual: CommandId[] = ["cancel-operation", "create-test", "create-report", "search-workspace"];
+  const paletteEntries: PaletteEntry[] = [
+    ...(described?.commands ?? [])
+      // The palette never lists itself.
+      .filter((command) => command.id !== "command-palette" && available(command.id))
+      .sort((a, b) => Number(contextual.includes(b.id)) - Number(contextual.includes(a.id)))
+      .map((command) => ({
+        id: command.id,
+        label:
+          command.id === "cancel-operation" && running
+            ? `Cancel ${PROGRESS[running].replace(/…$/, "").replace(/^./, (first) => first.toLowerCase())}`
+            : command.title,
+        ...(command.keys ? { keys: shortcut(command.keys) } : {}),
+        run: () => perform(command.id),
+      })),
+    ...[{ id: "home" as Destination, label: "Projects" }, ...(root ? PROJECT_DESTINATIONS : []), ...GLOBAL_DESTINATIONS].map((item) => ({
+      id: `destination-${item.id}`,
+      label: item.label,
+      run: () => go(item.id),
+    })),
+  ];
 
   if (!described) {
     return (
@@ -3059,15 +3154,10 @@ export default function App() {
     );
   }
 
-  const panes = {
-    "--evidence-fraction": `${split}fr`,
-    "--inspector-fraction": `${100 - split}fr`,
-  } as CSSProperties;
-
   // Each region the facade declares, drawn where it sits: the sidebar holds
-  // search and navigation, the work area the page and message details, and the
-  // status line runs along the bottom. The order they are drawn in is the order
-  // the facade declares, which is the order Tab and F6 move through them.
+  // navigation, the work area the page and the details of a selection. The
+  // order they are drawn in is the order the facade declares, which is the
+  // order Tab and F6 move through them.
   const region = (id: RegionId, hidden = false) => {
     const declared = described.regions.find((entry) => entry.id === id);
     if (!declared) return null;
@@ -3087,34 +3177,35 @@ export default function App() {
     );
   };
 
+  const panes = { "--inspector-width": `${inspectorRem}rem` } as CSSProperties;
+
   return (
     <IndicatorsContext.Provider value={indicators}>
       <VocabularyContext.Provider value={described.vocabulary}>
-        <div className="app">
-          <aside className="sidebar">
-            {region("commands")}
-            {region("navigation")}
-          </aside>
-          <div className={`workarea${detailsShown ? " with-details" : ""}`} style={panes}>
-            {region("evidence")}
-            {detailsShown ? (
-              <Separator
-                split={split}
-                min={MIN_SPLIT}
-                max={MAX_SPLIT}
-                step={SPLIT_STEP}
-                onSplit={setSplit}
-                bounds={() => {
-                  const left = regionElements.current.evidence?.getBoundingClientRect().left;
-                  const right = regionElements.current.inspector?.getBoundingClientRect().right;
-                  return left === undefined || right === undefined ? null : { left, right };
-                }}
-              />
-            ) : null}
-            {region("inspector", !detailsShown)}
+        <FrameContext.Provider value={{ compact, switcher }}>
+          <div className={compact ? "app compact" : "app"} ref={setFrame}>
+            <nav className="sidebar" aria-label="Main">
+              {region("navigation")}
+            </nav>
+            <div className={`workarea${detailsShown ? (detailOnly ? " detail-only" : " with-details") : ""}`} style={panes}>
+              {region("evidence", detailOnly)}
+              {detailsShown && !detailOnly ? (
+                <Separator
+                  value={inspectorRem}
+                  min={INSPECTOR_MIN_REM}
+                  max={INSPECTOR_MAX_REM}
+                  step={INSPECTOR_STEP}
+                  onChange={(width) => {
+                    if (root !== null) setInspectorWidths((held) => ({ ...held, [root]: width }));
+                  }}
+                  edge={() => regionElements.current.inspector?.getBoundingClientRect().right ?? null}
+                  rem={rootFontSize}
+                />
+              ) : null}
+              {region("inspector", !detailsShown)}
+            </div>
           </div>
-          {region("privacy")}
-        </div>
+        </FrameContext.Provider>
 
         <Modal open={fileDetails && verified !== null} title="File details" onClose={() => setFileDetails(false)}>
           {verified ? (
@@ -3222,14 +3313,7 @@ export default function App() {
           />
         </Modal>
 
-        <Palette
-          open={paletteOpen}
-          commands={listed}
-          query={paletteQuery}
-          onQuery={setPaletteQuery}
-          onClose={() => setPaletteOpen(false)}
-          onRun={(command) => latest.current[command]()}
-        />
+        <CommandPalette open={paletteOpen} entries={paletteEntries} onClose={() => setPaletteOpen(false)} />
       </VocabularyContext.Provider>
     </IndicatorsContext.Provider>
   );
@@ -3252,4 +3336,78 @@ function SuiteHandoffNotice({ handoff }: { handoff: SuiteRunHandoff }) {
         : "It does not read the prepared folder."}
     </p>
   );
+}
+
+function themeLabel(theme: Theme): string {
+  return theme === "system" ? "System" : theme === "light" ? "Light" : theme === "dark" ? "Dark" : humanize(theme);
+}
+
+/** General settings' Edit sheet: the saved choices, prefilled; Save applies
+ * them together. */
+function GeneralEditor({
+  open,
+  themes,
+  scales,
+  theme,
+  scale,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  themes: Theme[];
+  scales: number[];
+  theme: Theme;
+  scale: number;
+  onClose: () => void;
+  onSave: (theme: Theme, scale: number) => void;
+}) {
+  const [draftTheme, setDraftTheme] = useState(theme);
+  const [draftScale, setDraftScale] = useState(scale);
+  useEffect(() => {
+    if (open) {
+      setDraftTheme(theme);
+      setDraftScale(scale);
+    }
+  }, [open, theme, scale]);
+  return (
+    <FormDialog
+      open={open}
+      title="General"
+      size="small"
+      submitLabel="Save"
+      dirty={draftTheme !== theme || draftScale !== scale}
+      onClose={onClose}
+      onSubmit={() => onSave(draftTheme, draftScale)}
+    >
+      <label htmlFor="theme">Theme</label>
+      <select id="theme" value={draftTheme} onChange={(event) => setDraftTheme(event.target.value as Theme)}>
+        {themes.map((choice) => (
+          <option key={choice} value={choice}>
+            {themeLabel(choice)}
+          </option>
+        ))}
+      </select>
+      <label htmlFor="text-size">Text size</label>
+      <select id="text-size" value={draftScale} onChange={(event) => setDraftScale(Number(event.target.value))}>
+        {scales.map((percent, index) => (
+          <option key={percent} value={index}>
+            {percent}%
+          </option>
+        ))}
+      </select>
+    </FormDialog>
+  );
+}
+
+/** The recent projects the switcher offers besides the open one, at most
+ * five. Two folders with the same name are told apart by the folder that
+ * holds each. */
+function recentProjects(roots: string[], open: string): { key: string; name: string }[] {
+  const others = roots.filter((folder) => folder !== open).slice(0, 5);
+  return others.map((folder) => {
+    const name = folderName(folder);
+    const shared = others.some((other) => other !== folder && folderName(other) === name);
+    const parent = folder.replace(/[\\/]+$/, "").slice(0, -name.length);
+    return { key: folder, name: shared ? `${name} — ${folderName(parent)}` : name };
+  });
 }

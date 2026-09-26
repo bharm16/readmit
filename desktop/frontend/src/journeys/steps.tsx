@@ -227,7 +227,7 @@ export async function beginAckTest(user: UserEvent, name: string): Promise<void>
     await panel.findByRole("button", { name: `Do not send ${occurrence}` });
   }
   await press(user, panel.getByRole("button", { name: "Send to downstream-target.json" }));
-  await press(user, await panel.findByRole("button", { name: "ack-contract" }));
+  await press(user, await panel.findByRole("button", { name: "Acknowledgements" }));
   expect(await panel.findByText("Initial state: operator-declared.")).toBeTruthy();
 }
 

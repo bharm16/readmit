@@ -150,7 +150,6 @@
 .hub-artifacts-table th,
 .hub-artifacts-table td {
   border: 1px solid var(--line);
-  padding: 0.5rem;
   text-align: left;
 }
 

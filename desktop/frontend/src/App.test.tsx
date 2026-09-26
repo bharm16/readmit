@@ -6,8 +6,8 @@ import { readCaseIdentity } from "./testkit/navigation";
 // here over that boundary. What the answers mean for the evidence is not:
 // domain decisions stay with the Go readers, which the shared-operation tests
 // exercise directly.
-import { expect, test } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import {
@@ -82,11 +82,15 @@ const GRID_WINDOW = vocabularyFixture().bounds.grid;
 
 test("the window draws every region the facade declares and its privacy disclosure as given", async () => {
   await renderApp();
-  // Message details is a region only while a message is open beside a case.
-  for (const region of ["Search", "Navigation", "Main content", "Status"]) {
+  // Details is a region only while a selection is open beside its list, and
+  // there is no status strip.
+  for (const region of ["Navigation", "Main content"]) {
     expect(screen.getByRole("region", { name: region })).toBeTruthy();
   }
-  expect(screen.queryByRole("region", { name: "Message details" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Status" })).toBeNull();
+  // With no project open the sidebar offers Projects and the utilities only.
+  expect(sidebar().getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual(["Projects", "Tools", "Settings", "Help"]);
   // The privacy statement and lists are the Help page's, as given.
   await goTo(userEvent.setup(), "Help");
   expect(
@@ -125,20 +129,32 @@ test("Ctrl+K opens the palette over the declared commands and runs the one chose
     SelectWorkspace: () => folderWithCase(),
   });
   await user.keyboard("{Control>}k{/Control}");
-  const palette = screen.getByRole("dialog", { name: "Command palette" });
-  expect(palette).toBeTruthy();
-  await user.type(screen.getByLabelText("Search commands"), "open");
-  const chosen = within(palette).getByRole("button", { name: /^Open…/ });
-  await user.click(chosen);
-  expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
+  const palette = screen.getByRole("dialog", { name: "Commands" });
+  // It never lists itself, project actions with no project, or idle Cancel.
+  const listed = within(palette).getAllByRole("option").map((option) => option.querySelector(".name")?.textContent);
+  expect(listed).not.toContain("Search commands");
+  expect(listed).not.toContain("Search this project");
+  expect(listed).not.toContain("Create report");
+  expect(listed.some((label) => label?.startsWith("Cancel"))).toBe(false);
+  expect(listed).toContain("New project");
+  expect(listed).toContain("Settings");
+  await user.type(screen.getByRole("combobox", { name: "Search commands" }), "open");
+  expect(within(palette).getAllByRole("option")[0]?.querySelector(".name")?.textContent).toBe("Open project");
+  await user.keyboard("{Enter}");
+  expect(screen.queryByRole("dialog", { name: "Commands" })).toBeNull();
   expect(facade.oneCall("SelectWorkspace")).toEqual([]);
 });
 
-test("Escape reaches the running operation's Cancel while the palette is closed", async () => {
+test("Escape cancels nothing, running or idle", async () => {
   const user = userEvent.setup();
-  const { facade } = await renderApp();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").length).toBe(1);
+  const parked = facade.park("SelectWorkspace");
+  await openFolder(user);
+  await user.keyboard("{Escape}");
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  parked.resolve(folderWithCase());
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
 });
 
 test("opening a workspace lists every entry as it declares itself, evidence or not", async () => {
@@ -147,7 +163,7 @@ test("opening a workspace lists every entry as it declares itself, evidence or n
     SelectWorkspace: () => folderWithCase(),
   });
   await openFolder(user);
-  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(facade.oneCall("Guide")[0]).toBe(WORKSPACE_ROOT);
   // The case is listed as a case; the index file is not evidence, so it is
   // listed among the folder's other files by the contract it declares.
@@ -204,13 +220,18 @@ test("while one operation runs the window offers Cancel and starts nothing else"
   const parked = facade.park("SelectWorkspace");
   await openFolder(user);
   expect(facade.callsTo("SelectWorkspace")).toHaveLength(1);
-  const cancel = within(screen.getByRole("region", { name: "Status" })).getByRole("button", { name: /^Cancel$/ });
-  expect((cancel as HTMLButtonElement).disabled).toBe(false);
+  // The operation shows where it can be reached from anywhere, with Stop, and
+  // the palette offers to cancel exactly it.
+  expect(within(sidebar().getByRole("status")).getByText("Opening the folder…")).toBeTruthy();
+  await user.keyboard("{Control>}k{/Control}");
+  expect(screen.getByRole("option", { name: "Cancel opening the folder" })).toBeTruthy();
+  await user.keyboard("{Escape}");
+  const stop = sidebar().getByRole("button", { name: "Stop" });
   expect((page().getByRole("button", { name: "Try demo" }) as HTMLButtonElement).disabled).toBe(true);
-  await user.click(cancel);
+  await user.click(stop);
   expect(facade.callsTo("Cancel")).toHaveLength(1);
   parked.resolve(folderWithCase());
-  expect(await sidebar().findByTitle(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await sidebar().findByRole("button", { name: /^Project: / })).toBeTruthy();
 });
 
 async function openWorkspaceWithVerifiedCase(
@@ -219,7 +240,7 @@ async function openWorkspaceWithVerifiedCase(
 ) {
   facade.reply({ SelectWorkspace: () => folderWithCase() });
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   facade.reply({
     OpenCase: () => caseResult(),
     DescribeIndex: () => indexResultFixture(),
@@ -227,7 +248,7 @@ async function openWorkspaceWithVerifiedCase(
   });
   await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   await readCaseIdentity(user, CASE_IDENTITY);
-  await screen.findByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` });
+  await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) });
 }
 
 test("a grid row selected by hand reveals that occurrence through the inspector", async () => {
@@ -236,7 +257,7 @@ test("a grid row selected by hand reveals that occurrence through the inspector"
     InspectOccurrence: () => inspectionResult(),
   });
   await openWorkspaceWithVerifiedCase(facade, user);
-  await user.click(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` }));
+  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
   const [workspace, name, indexName, offset, limit] = facade.oneCall("OpenGrid");
   expect([workspace, name, indexName, offset, limit]).toEqual([
     WORKSPACE_ROOT,
@@ -255,9 +276,9 @@ test("a grid row selected by hand reveals that occurrence through the inspector"
     node_offset: 0,
     byte_offset: -1,
   });
-  const inspector = screen.getByRole("region", { name: "Message details" });
+  const inspector = screen.getByRole("region", { name: "Details" });
   expect(inspector.textContent).toContain("s0001");
-  expect(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` }).closest("tr")?.getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }).closest("tr")?.getAttribute("aria-selected")).toBe("true");
 });
 
 test("a sequence event selected from the timeline selects the same occurrence in the inspector", async () => {
@@ -292,12 +313,12 @@ test("a refused inspection reports the refusal and keeps the grid for recovery",
     InspectOccurrence: () => refused("The evidence changed since this grid was read."),
   });
   await openWorkspaceWithVerifiedCase(facade, user);
-  await user.click(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` }));
+  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
   expect(
     await screen.findByText("The evidence changed since this grid was read."),
   ).toBeTruthy();
   expect(
-    screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` }),
+    screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }),
   ).toBeTruthy();
 });
 
@@ -348,7 +369,7 @@ test("an inspector that never answered is reported and leaves the prior result a
   await openWorkspaceWithVerifiedCase(facade, user);
   // No InspectOccurrence handler: the boundary rejects, the bindings answer
   // with the fixed unreachable sentence.
-  await user.click(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` }));
+  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
   expect(await screen.findByText("the application did not answer")).toBeTruthy();
   expect(facade.callsTo("InspectOccurrence").length).toBeGreaterThanOrEqual(1);
 });
@@ -375,7 +396,7 @@ test("saving the authored test hands the draft to the engine and reads the guide
   await user.click(screen.getByRole("button", { name: "Create test" }));
   await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
   await user.click(screen.getByRole("button", { name: "Save name" }));
-  expect(await screen.findByText("Chosen: appointment-ledger")).toBeTruthy();
+  expect(await screen.findByText("Chosen: Appointment records")).toBeTruthy();
   const authorRequest = facade.oneCall("AuthorTest")[0];
   expect(authorRequest).toMatchObject({
     workspace: WORKSPACE_ROOT,
@@ -441,12 +462,12 @@ test("a saved test is at once an entry the run panel offers, read back from the 
   await user.click(screen.getByRole("button", { name: "Create test" }));
   await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
   await user.click(screen.getByRole("button", { name: "Save name" }));
-  await screen.findByText("Chosen: ack-contract");
+  await screen.findByText("Chosen: Acknowledgements");
   await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
   await user.click(screen.getByRole("button", { name: "Save test" }));
   // The folder is read again after the save, and the run panel offers what it
   // now holds, selected for the run that comes next.
-  await goTo(user, "Runs");
+  await goToView(user, "Runs", "Run test");
   const saved = await screen.findByRole("option", { name: "reschedule-test.json (test)" });
   expect((saved as HTMLOptionElement).selected).toBe(true);
   expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
@@ -456,8 +477,8 @@ test("a saved suite is at once an entry the run panel offers, and a refused save
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await goTo(user, "Tests");
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await goToView(user, "Tests", "Suites");
   const suites = within(screen.getByRole("region", { name: "Suites" }));
   await user.click(suites.getByRole("button", { name: "New suite" }));
   await user.type(suites.getByLabelText("Version file"), "nightly.json");
@@ -479,7 +500,7 @@ test("a saved suite is at once an entry the run panel offers, and a refused save
       ]),
   });
   await user.click(suites.getByRole("button", { name: "Save version" }));
-  await goTo(user, "Runs");
+  await goToView(user, "Runs", "Run test");
   const runPanel = within(screen.getByRole("region", { name: "Runs" }));
   expect(await runPanel.findByRole("option", { name: "nightly.json (suite)" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
@@ -504,7 +525,7 @@ test("a refused save reports the refusal and keeps the draft a person is working
   await user.click(screen.getByRole("button", { name: "Create test" }));
   await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
   await user.click(screen.getByRole("button", { name: "Save name" }));
-  await screen.findByText("Chosen: ack-contract");
+  await screen.findByText("Chosen: Acknowledgements");
   facade.reply({ SaveTest: () => refused("The workspace already holds that entry.") });
   await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
   await user.click(screen.getByRole("button", { name: "Save test" }));
@@ -512,7 +533,7 @@ test("a refused save reports the refusal and keeps the draft a person is working
     await screen.findByText("The workspace already holds that entry."),
   ).toBeTruthy();
   // The draft the refusal left is exactly the one being worked on.
-  expect(screen.getByText("Chosen: ack-contract")).toBeTruthy();
+  expect(screen.getByText("Chosen: Acknowledgements")).toBeTruthy();
   expect(
     (screen.getByLabelText("New entry in this workspace") as HTMLInputElement).value,
   ).toBe("reschedule-test.json");
@@ -647,7 +668,7 @@ test("a cancelled folder dialog leaves the open workspace and its edits exactly 
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   // A second attempt is dismissed.
   facade.reply({ SelectWorkspace: () => dialogDismissed });
   await openFolder(user);
@@ -663,7 +684,7 @@ test("a folder this account cannot open leaves the investigation untouched as we
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   facade.reply({ SelectWorkspace: () => folderDenied });
   await openFolder(user);
   const navigation = within(screen.getByRole("region", { name: "Main content" }));
@@ -683,7 +704,7 @@ test("a refused case verification keeps the verified case and everything derived
   // Another verification of this case is refused.
   facade.reply({ OpenCase: () => refused("The evidence changed since it was registered.") });
   facade.reply({Search: () => ({state: "completed", matches:[{kind:"artifact", name:CASE_ENTRY, label:CASE_ENTRY, field:"name", region:"navigation"}]})});
-  await user.click(screen.getByRole("button", { name: "Search" }));
+  await user.keyboard("{Control>}f{/Control}");
   await user.type(screen.getByRole("searchbox", { name: "Search this project" }), "case{Enter}");
   await user.click(within(await screen.findByRole("list", { name: "Search results" })).getByRole("button", { name: /sample-case/ }));
   expect(
@@ -691,7 +712,7 @@ test("a refused case verification keeps the verified case and everything derived
   ).toBeTruthy();
   // The verified case, its grid and its inspector remain, for recovery.
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
-  expect(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeTruthy();
+  expect(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
 });
 
 test("recordings of where the viewer is are chained, so the newest place is recorded last", async () => {
@@ -699,7 +720,7 @@ test("recordings of where the viewer is are chained, so the newest place is reco
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   const parked = facade.park("RecordView");
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   // The viewer moves on while the earlier recording is still unanswered.
   facade.reply({ OpenCase: () => caseResult() });
   const buttons = screen.getAllByRole("button", { name: /^Open case(?: |$)/ });
@@ -957,7 +978,7 @@ test("the run folder a send writes is retained in the session as the folder itse
     OpenRunEvidence: () => runEvidenceResult(),
   });
   await openFolder(user);
-  await goTo(user, "Runs");
+  await goToView(user, "Runs", "Run test");
   await user.selectOptions(await screen.findByLabelText("Saved test or suite"), "reschedule-test.json");
   await user.click(screen.getByRole("button", { name: "Preview run" }));
   await screen.findByText(/Destination: job-001 \(generated\) · fresh/);
@@ -990,7 +1011,7 @@ test("reopening a folder that meets a held slot asks again and opens it", async 
     OpenWorkspace: () => (++asked === 1 ? { state: "busy" as const, reason: "another operation is running" } : folderWithCase()),
   });
   await user.click(await screen.findByRole("button", { name: "Reopen" }));
-  expect(await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT)).toBeTruthy();
+  expect(await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace")).toHaveLength(2);
 });
 
@@ -1057,11 +1078,11 @@ test("verifying a case auto-selects and opens an applicable index", async () => 
   });
 
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   await readCaseIdentity(user, CASE_IDENTITY);
 
-  expect(await screen.findByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeTruthy();
+  expect(await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
   expect(facade.callsTo("OpenGrid")).toHaveLength(1);
 });
 
@@ -1074,7 +1095,7 @@ test("a page of the grid is one read, and the index details beside it are that r
     OpenGrid: () => ({...gridResult([gridRow(GRID_OCCURRENCE)], {total:2*GRID_WINDOW,matched:2*GRID_WINDOW}), index:indexDetailsFixture({applicable:true})}),
   });
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   await readCaseIdentity(user, CASE_IDENTITY);
   const described = facade.callsTo("DescribeIndex").length;
@@ -1102,7 +1123,7 @@ test("a page of the grid is one read, and the index details beside it are that r
   expect(await screen.findByRole("alert", { name: "Index rebuild notice" })).toBeTruthy();
   expect(screen.getByText(/built from different evidence than this case/)).toBeTruthy();
   expect(screen.queryByLabelText("Active index details")).toBeNull();
-  expect(screen.queryByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeNull();
+  expect(screen.queryByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeNull();
 
   expect(facade.callsTo("OpenGrid").map((call) => call.args[3])).toEqual([0, GRID_WINDOW]);
   expect(facade.callsTo("DescribeIndex")).toHaveLength(described);
@@ -1118,13 +1139,13 @@ test("verifying an unindexed case shows unindexed view and keeps inspector avail
   });
 
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   await readCaseIdentity(user, CASE_IDENTITY);
 
   expect(await screen.findByText("Search is off for this case")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Enable search…" })).toBeTruthy();
-  expect(screen.queryByRole("region", { name: "Message details" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
   expect(facade.callsTo("OpenGrid")).toHaveLength(0);
 });
 
@@ -1151,9 +1172,9 @@ test("searching workspace with content hit badges match and navigates to inspect
   });
 
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
 
-  await user.click(screen.getByRole("button", { name: "Search" }));
+  await user.keyboard("{Control>}f{/Control}");
   const searchInput = screen.getByRole("searchbox", { name: "Search this project" });
   await user.type(searchInput, "MRN-1001{Enter}");
 
@@ -1177,7 +1198,7 @@ test("building an index from the unindexed case view calls BuildIndex and opens 
   });
 
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: /^Open case(?: |$)/ }));
   await screen.findByText("Search is off for this case");
 
@@ -1186,7 +1207,7 @@ test("building an index from the unindexed case view calls BuildIndex and opens 
 
   await waitFor(() => expect(facade.callsTo("BuildIndex")).toHaveLength(1));
   await waitFor(() => expect(facade.callsTo("OpenGrid")).toHaveLength(1));
-  expect(await screen.findByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeTruthy();
+  expect(await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
 });
 
 
@@ -1318,8 +1339,8 @@ test("the suite handoff names the prepared folder and release pins beside the ru
   const { facade } = await renderApp({ PrepareSuite: () => suitePreparedResult() });
   facade.reply({ SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, suiteArtifacts()) });
   await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
-  await goTo(user, "Tests");
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  await goToView(user, "Tests", "Suites");
   const suites = within(screen.getByRole("region", { name: "Suites" }));
   await user.click(suites.getByRole("tab", { name: "Prepare" }));
   await user.selectOptions(suites.getByLabelText("Suite entry"), SUITE_ENTRY);
@@ -1340,4 +1361,46 @@ test("the suite handoff names the prepared folder and release pins beside the ru
   // Nothing was preflighted or sent by the handoff itself.
   expect(facade.callsTo("PreflightRun")).toHaveLength(0);
   expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
+});
+
+/** The window's own width, which a real layout gives it and jsdom does not. */
+function windowWidth(width: number) {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("app") ? width : 0;
+  });
+  act(() => window.dispatchEvent(new Event("resize")));
+}
+afterEach(() => vi.restoreAllMocks());
+
+test("a narrow window keeps the project switcher, in the page header beside an icon rail", async () => {
+  const user = userEvent.setup();
+  await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await openFolder(user);
+  await sidebar().findByRole("button", { name: /^Project: / });
+  windowWidth(1100);
+  expect(document.querySelector(".app")?.classList.contains("compact")).toBe(false);
+  expect(page().queryByRole("button", { name: /^Project: / })).toBeNull();
+  windowWidth(820);
+  expect(document.querySelector(".app")?.classList.contains("compact")).toBe(true);
+  expect(sidebar().queryByRole("button", { name: /^Project: / })).toBeNull();
+  expect(page().getByRole("button", { name: /^Project: / })).toBeTruthy();
+  // The rail's destinations keep their names.
+  expect(sidebar().getByRole("button", { name: "Cases" })).toBeTruthy();
+});
+
+test("details sit beside a list that fits and are shown alone, with the way back, when it does not", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE) });
+  await openWorkspaceWithVerifiedCase(facade, user);
+  windowWidth(1100);
+  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
+  await screen.findByRole("region", { name: "Details" });
+  expect(document.querySelector(".workarea")?.classList.contains("with-details")).toBe(true);
+  expect(screen.getByRole("region", { name: "Main content" })).toBeTruthy();
+  windowWidth(820);
+  expect(document.querySelector(".workarea")?.classList.contains("detail-only")).toBe(true);
+  expect(screen.queryByRole("region", { name: "Main content" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Back to messages" }));
+  expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
+  expect(screen.getByRole("region", { name: "Main content" })).toBeTruthy();
 });

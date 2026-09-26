@@ -74,7 +74,7 @@ async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
   // The toolbar's Open workspace…, which the first-run panel names identically.
   await user.click(screen.getAllByRole("button", { name: "Open…" }).at(-1)!);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("button", { name: "More case actions" }));
@@ -205,7 +205,7 @@ test("two collections are compared through the facade, a mismatched pair is refu
   expect(panel.queryByRole("region", { name: "What differs in the selected row" })).toBeNull();
 });
 
-test("while a comparison, a reading under a policy or a policy open runs, Escape reaches Cancel, and what the facade completed is shown whole", async () => {
+test("while a comparison, a reading under a policy or a policy open runs, Escape cancels nothing, and what the facade completed is shown whole", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
@@ -217,11 +217,11 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
   expect((panel.getByLabelText("Compare with") as HTMLSelectElement).disabled).toBe(true);
   expect((panel.getByRole("button", { name: "Compare" }) as HTMLButtonElement).disabled).toBe(true);
 
-  // A comparison runs to completion once it starts: the window's Escape asks
-  // for a cancellation, and what the facade then answers is what is shown.
+  // A comparison runs to completion once it starts: Escape cancels nothing,
+  // and what the facade then answers is what is shown.
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
+  expect(facade.callsTo("Cancel").slice(cancels)).toEqual([]);
   parked.resolve(comparisonWindow(0));
   expect(await panel.findByText("Rows 1–200 of 251")).toBeTruthy();
   expect(panel.queryByText("Comparing these collections.")).toBeNull();
@@ -235,7 +235,7 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
   await user.keyboard("{Enter}");
   expect(await panel.findByText("Reading this comparison under the declared policy.")).toBeTruthy();
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""], [""]]);
+  expect(facade.callsTo("Cancel").slice(cancels)).toEqual([]);
   reading.resolve(normalizationWindow(0));
   expect(await section.findByText("Differences 1–200 of 250")).toBeTruthy();
   expect(panel.queryByText("cancelled")).toBeNull();
@@ -250,7 +250,7 @@ test("while a comparison, a reading under a policy or a policy open runs, Escape
   expect((editor.getByRole("button", { name: "Open" }) as HTMLButtonElement).disabled).toBe(true);
   expect((editor.getByRole("button", { name: "Add policy rule" }) as HTMLButtonElement).disabled).toBe(true);
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(3);
+  expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(0);
   opening.resolve({ state: "completed", document: JSON.stringify(RETAINED), sha256: POLICY_SHA256, policy: RETAINED });
   expect(await editor.findByText(`Opened ${POLICY} · exact bytes hash to ${POLICY_SHA256}`)).toBeTruthy();
   expect(editor.getAllByRole("button", { name: /^Remove policy rule / })).toHaveLength(2);

@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Inspector } from "./Inspector";
-import { MessageGrid, Palette } from "./shell";
+import { MessageGrid } from "./shell";
 import {
   CASE_IDENTITY,
   GRID_OCCURRENCE,
@@ -99,7 +99,7 @@ test("selecting a row hands that occurrence to the inspector", async () => {
       onInspect={(occurrence) => inspected.push(occurrence)}
     />,
   );
-  await user.click(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` }));
+  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
   expect(inspected).toEqual([GRID_OCCURRENCE]);
 });
 
@@ -550,7 +550,7 @@ test("the explorer shows messages first; setting up an index or a filter reads a
   expect(screen.getByRole("dialog", { name: "New filter" })).toBeTruthy();
   expect(calls).toEqual({ opened: [], saved: [], built: [], selected: [] });
   await user.click(screen.getByRole("button", { name: "Cancel" }));
-  expect(screen.getByRole("button", { name: `Inspect ${GRID_OCCURRENCE}` })).toBeTruthy();
+  expect(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
 });
 
 test("setting up a rebuild prefills the selected index's policy, and only Rebuild index writes", async () => {
@@ -704,10 +704,10 @@ test("the filter editor saves and applies one filter, and discarding clears only
   expect(within(form.getByLabelText("State")).getAllByRole("option").map((o) => [o.textContent, (o as HTMLOptionElement).value])).toEqual([
     ["Present", "present"],
     ["Empty", "empty"],
-    ["Explicit null", "null"],
-    ["Omitted", "omitted"],
+    ["Null", "null"],
+    ["Not present", "omitted"],
   ]);
-  await user.selectOptions(form.getByLabelText("State"), "Explicit null");
+  await user.selectOptions(form.getByLabelText("State"), "Null");
   fireEvent.change(form.getByLabelText("Before"), { target: { value: "2026-03-01T00:00" } });
   await user.click(form.getByRole("button", { name: "Save and apply" }));
   expect(calls.saved).toEqual([
@@ -753,41 +753,7 @@ test("paging is a pair of named chevrons beside the range, disabled at each end"
   rerender(<MessageGrid {...props} result={gridResult([gridRow("last")], { offset: GRID_WINDOW, limit: GRID_WINDOW, matched: GRID_WINDOW + 1, total: GRID_WINDOW + 1 })}/>);
   expect(next.disabled).toBe(true);
   expect(previous.disabled).toBe(false);
-  expect(screen.getByText(`${GRID_WINDOW + 1}–${GRID_WINDOW + 1}`)).toBeTruthy();
-});
-
-test("at a larger text scale the drawn rows and the scroll arithmetic stay on the same row", () => {
-  const root = document.documentElement;
-  root.style.fontSize = "32px";
-  try {
-    const rows = Array.from({ length: 100 }, (_, i) => gridRow(`occ-${String(i).padStart(3, "0")}`));
-    const { props } = explorer({ result: gridResult(rows, { matched: 100, total: 100 }) });
-    const { container } = render(<MessageGrid {...props} />);
-    const viewport = container.querySelector(".grid-scroll") as HTMLDivElement;
-    // Each row is 2rem: 64 pixels at a 32-pixel root.
-    expect(viewport.style.maxHeight).toBe(`${64 * 16}px`);
-    viewport.scrollTop = 64 * 40;
-    fireEvent.scroll(viewport);
-    const drawn = within(viewport).getAllByRole("row").filter((row) => row.getAttribute("aria-rowindex") !== "1");
-    // Row 40 is at the top of the viewport, with the overscan drawn before it.
-    expect(drawn[0]?.getAttribute("aria-rowindex")).toBe(String(40 - 8 + 2));
-    const spacer = container.querySelector("tbody tr.spacer td") as HTMLTableCellElement;
-    expect(spacer.style.height).toBe(`${(40 - 8) * 64}px`);
-  } finally {
-    root.style.fontSize = "";
-  }
-});
-
-test("the command palette closes from a named icon that cancels nothing", async () => {
-  const user = userEvent.setup();
-  let closed = 0;
-  render(<Palette open commands={[]} query="" onQuery={() => undefined} onClose={() => (closed += 1)} onRun={() => undefined} />);
-  const close = screen.getByRole("button", { name: "Close command palette" });
-  expect(close.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
-  expect(screen.getByRole("tooltip").textContent).toBe("Close command palette");
-  close.focus();
-  await user.keyboard("{Enter}");
-  expect(closed).toBe(1);
+  expect(screen.getByText(`${GRID_WINDOW + 1}–${GRID_WINDOW + 1} of ${GRID_WINDOW + 1}`)).toBeTruthy();
 });
 
 test("a new index draft survives closing setup without writing", async () => {

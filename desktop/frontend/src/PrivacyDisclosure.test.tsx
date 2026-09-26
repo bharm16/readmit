@@ -114,7 +114,7 @@ test("each activity's next action opens the screen where that activity lives", a
   // an open workspace, exactly as the disclosure says.
   await goTo(user, "Projects");
   await user.click(screen.getByRole("button", { name: "Open…" }));
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText("/workspace-under-test");
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await goToView(user, "Settings", "Security");
   const table = screen.getByRole("table", { name: /deliberately configured activities/i });
   const run = within(table).getByRole("row", { name: /Durable test execution/ });

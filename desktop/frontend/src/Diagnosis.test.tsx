@@ -410,7 +410,7 @@ function workspace() {
 async function openCase(facade: Stub, user: User) {
   facade.reply({ SelectWorkspace: () => workspace(), OpenWorkspace: () => workspace(), OpenCase: () => caseResult() });
   await user.click(screen.getAllByRole("button", { name: "Open…" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByText(WORKSPACE_ROOT);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   await user.click(screen.getByRole("button", { name: `Open case ${CASE_ENTRY}` }));
   await readCaseIdentity(user, CASE_IDENTITY);
   await user.click(screen.getByRole("tab", { name: "Findings" }));
@@ -500,7 +500,7 @@ test("a grouping has its own picker and reader, and its member labels use the fa
   expect(await panel.findByText("Groups 201–201 of 201 across 2 cases")).toBeTruthy();
 });
 
-test("recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping cancelled from the window's Cancel or Escape is shown as cancelled with no groups", async () => {
+test("recurring findings are grouped through the facade, paged over the grouping on screen from the keyboard, refused in the engine's words, and a grouping stopped from the window's Stop is shown as cancelled with no groups, and Escape stops nothing", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp();
   const panel = await openCase(facade, user);
@@ -555,7 +555,7 @@ test("recurring findings are grouped through the facade, paged over the grouping
   expect((panel.getByRole("button", { name: "Group findings" }) as HTMLButtonElement).disabled).toBe(true);
   expect((panel.getByRole("button", { name: "Open report" }) as HTMLButtonElement).disabled).toBe(true);
   const cancels = facade.callsTo("Cancel").length;
-  const cancel = within(screen.getByRole("region", { name: "Status" })).getByRole("button", { name: /^Cancel$/ }) as HTMLButtonElement;
+  const cancel = within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Stop" }) as HTMLButtonElement;
   expect(cancel.disabled).toBe(false);
   await user.click(cancel);
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
@@ -563,15 +563,17 @@ test("recurring findings are grouped through the facade, paged over the grouping
   expect(await panel.findByText(CANCELLED)).toBeTruthy();
   expect(panel.queryByText("Grouping findings across these cases.")).toBeNull();
   expect(groups()).toBeNull();
-  expect(within(screen.getByRole("region", { name: "Status" })).queryByRole("button", { name: /^Cancel$/ })).toBeNull();
+  expect(within(screen.getByRole("region", { name: "Navigation" })).queryByRole("button", { name: "Stop" })).toBeNull();
 
-  // Escape reaches the same Cancel while a grouping asked for from the
-  // keyboard runs.
+  // Escape stops nothing while a grouping asked for from the keyboard runs;
+  // Stop does.
   panel.getByRole("checkbox", { name: THIRD_CASE }).focus();
   await tabTo(user, panel.getByRole("button", { name: "Group findings" }));
   await user.keyboard("{Enter}");
   expect(await panel.findByText("Grouping findings across these cases.")).toBeTruthy();
   await user.keyboard("{Escape}");
+  expect(facade.callsTo("Cancel").slice(cancels)).toHaveLength(1);
+  await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Stop" }));
   expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""], [""]]);
   running.resolve({ state: "cancelled", reason: CANCELLED, offset: 0, total: 0 });
   expect(await panel.findByText(CANCELLED)).toBeTruthy();
@@ -747,11 +749,11 @@ test("a standalone decisions document is opened into the findings and saved thro
   expect((section.getByRole("button", { name: "Open decisions" }) as HTMLButtonElement).disabled).toBe(true);
   expect((panel.getByRole("button", { name: "Preview" }) as HTMLButtonElement).disabled).toBe(true);
   expect((panel.getByLabelText("Decision", { selector: "#diagnosis-verdict-f000001" }) as HTMLSelectElement).disabled).toBe(true);
-  // Escape while it reads reaches the window's Cancel; what the facade then
-  // answers is what is shown.
+  // Escape while it reads cancels nothing; what the facade then answers is
+  // what is shown.
   const cancels = facade.callsTo("Cancel").length;
   await user.keyboard("{Escape}");
-  expect(facade.callsTo("Cancel").slice(cancels).map((call) => call.args)).toEqual([[""]]);
+  expect(facade.callsTo("Cancel").slice(cancels)).toEqual([]);
   opening.resolve(retained(WORKSPACE_ROOT, DECISIONS));
   facade.reply({ OpenFindingDecisions: retained });
   expect(await section.findByText(`Opened ${DECISIONS} · exact bytes hash to ${DECISIONS_SHA256}`)).toBeTruthy();
