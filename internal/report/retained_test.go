@@ -22,6 +22,7 @@ import (
 )
 
 func TestAssembleRetainsActualRunsAndHonestSingleRun(t *testing.T) {
+	t.Parallel()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
 		t.Fatal(err)
@@ -61,6 +62,7 @@ func TestAssembleRetainsActualRunsAndHonestSingleRun(t *testing.T) {
 }
 
 func TestRetainedPacketRefusesTamperingMismatchesAndCancellation(t *testing.T) {
+	t.Parallel()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
 		t.Fatal(err)
@@ -131,6 +133,7 @@ func TestRetainedPacketRefusesTamperingMismatchesAndCancellation(t *testing.T) {
 }
 
 func TestRetainedImportedDurableRunAndExecutionFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now().UTC()
 	raw := []byte("MSH|^~\\&|TEST|LOCAL|||20260101000000||ADT^A01|CONTROL|P|2.5.1\rPID|1||PRIVATE-ID\r")
@@ -220,6 +223,7 @@ func TestRetainedImportedDurableRunAndExecutionFailure(t *testing.T) {
 }
 
 func TestRetainedRejectsResealedFalseSummary(t *testing.T) {
+	t.Parallel()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
 		t.Fatal(err)
@@ -255,6 +259,7 @@ func TestRetainedRejectsResealedFalseSummary(t *testing.T) {
 }
 
 func TestRetainedRefusesCaseMismatchAndIncompleteJob(t *testing.T) {
+	t.Parallel()
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
 		t.Fatal(err)

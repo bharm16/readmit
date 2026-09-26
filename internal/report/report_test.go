@@ -26,6 +26,7 @@ import (
 )
 
 func TestCreateSealsCanonicalSyntheticFailureAndPass(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "packet")
 	packet, err := report.Create(context.Background(), report.Scenario, dir)
 	if err != nil {
@@ -108,6 +109,7 @@ func TestTrialsOutlastTheirSendersStorage(t *testing.T) {
 }
 
 func TestPreparePreservesEvidenceAndOnlyRebindsRunnablePaths(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "packet")
 	packet, err := report.Create(context.Background(), report.Scenario, dir)
 	if err != nil {
@@ -160,6 +162,7 @@ func TestPreparePreservesEvidenceAndOnlyRebindsRunnablePaths(t *testing.T) {
 }
 
 func TestReadPreparationRefusesAnInvalidMarkerWithoutReadingRunnableEvidence(t *testing.T) {
+	t.Parallel()
 	packet := filepath.Join(t.TempDir(), "packet")
 	if _, err := report.Create(context.Background(), report.Scenario, packet); err != nil {
 		t.Fatal(err)
@@ -206,6 +209,7 @@ func TestReadPreparationRefusesAnInvalidMarkerWithoutReadingRunnableEvidence(t *
 }
 
 func TestOpenRejectsMissingExtraChangedAndOversizedContent(t *testing.T) {
+	t.Parallel()
 	original := filepath.Join(t.TempDir(), "packet")
 	if _, err := report.Create(context.Background(), report.Scenario, original); err != nil {
 		t.Fatal(err)
@@ -261,6 +265,7 @@ func TestOpenRejectsMissingExtraChangedAndOversizedContent(t *testing.T) {
 }
 
 func TestOpenRejectsResealedFalseSyntheticClaims(t *testing.T) {
+	t.Parallel()
 	original := filepath.Join(t.TempDir(), "packet")
 	if _, err := report.Create(context.Background(), report.Scenario, original); err != nil {
 		t.Fatal(err)
@@ -377,6 +382,7 @@ func TestOpenRejectsResealedFalseSyntheticClaims(t *testing.T) {
 }
 
 func TestDestinationsAndUnsupportedModesFailBeforeWriting(t *testing.T) {
+	t.Parallel()
 	parent := t.TempDir()
 	original := filepath.Join(parent, "packet")
 	if _, err := report.Create(context.Background(), report.Scenario, original); err != nil {

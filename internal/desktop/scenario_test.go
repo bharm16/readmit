@@ -484,6 +484,7 @@ func TestCheckScenarioLibraryCancelledWhileRegeneratingRemovesItsStreams(t *test
 // with nothing written. A library or expectations document past the plan
 // bound but inside the command's 4 MiB is read, as the command reads it.
 func TestScenarioLibraryDocumentsAreHeldToTheCommandsReader(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	root := t.TempDir()
 	plan := fixture(t, "scenario-generator.json")

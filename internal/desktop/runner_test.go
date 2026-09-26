@@ -208,6 +208,7 @@ func scheduleEntry(pin string, approved bool) desktop.ScheduleEntryInput {
 }
 
 func TestSchedulePreviewShowsZoneOccurrenceAndAlertSemantics(t *testing.T) {
+	t.Parallel()
 	app := workspaceApp(t)
 	pin := strings.Repeat("a", 64)
 	preview := app.PreviewSchedulePolicy(desktop.SchedulePolicyRequest{

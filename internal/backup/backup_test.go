@@ -1018,9 +1018,16 @@ func TestCancellationDuringFinalCopyDoesNotComplete(t *testing.T) {
 func TestExcludedIndexDoesNotConsumeStoredByteLimit(t *testing.T) {
 	opened := newProject(t)
 	// Sparse files put the scan near its real bound without allocating or
-	// copying a GiB. Cancellation stops the first copy after a successful scan.
+	// copying a GiB. Keep them below the project root: only top-level files
+	// can be indexes, and probing these zero-filled files as index documents
+	// needlessly reads a GiB. They still count toward the same backup bound.
+	// Cancellation stops the first copy after a successful scan.
+	dataDir := filepath.Join(opened.Root, "data")
+	if err := os.Mkdir(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	for n := range 16 {
-		f, err := os.Create(filepath.Join(opened.Root, fmt.Sprintf("data-%02d", n)))
+		f, err := os.Create(filepath.Join(dataDir, fmt.Sprintf("data-%02d", n)))
 		if err != nil {
 			t.Fatal(err)
 		}

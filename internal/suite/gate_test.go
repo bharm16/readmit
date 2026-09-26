@@ -62,6 +62,7 @@ func gateFixtureACK(t *testing.T, currentACK string) (string, suite.GatePolicy) 
 	return dir, policy
 }
 func TestGatePublicRetainsAndReassessesWithoutOriginalInputs(t *testing.T) {
+	t.Parallel()
 	dir, p := gateFixture(t)
 	output := filepath.Join(t.TempDir(), "retained")
 	var stdout, stderr bytes.Buffer
@@ -83,9 +84,43 @@ func TestGatePublicRetainsAndReassessesWithoutOriginalInputs(t *testing.T) {
 }
 
 func TestGateRefusesUnreviewedUnknownExcludedAndAlteredEvidence(t *testing.T) {
+	t.Parallel()
+	// The matrix changes retained evidence, not execution. Run the two
+	// fixtures once, then give each mutation its own complete copy and policy.
+	original, _ := gateFixture(t)
+	copyFixture := func(t *testing.T) (string, suite.GatePolicy) {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "fixture")
+		if err := os.CopyFS(dir, os.DirFS(original)); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, "policy.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := suite.DecodeGatePolicy(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dir, p
+	}
+	// A relocated unchanged copy must pass, so later refusals cannot be
+	// explained by broken fixture paths or identities after the copy.
+	t.Run("unchanged-copy", func(t *testing.T) {
+		dir, p := copyFixture(t)
+		output := filepath.Join(t.TempDir(), "retained")
+		r := suite.RetainGate(t.Context(), filepath.Join(dir, "current"), filepath.Join(dir, "baseline"), filepath.Join(dir, "policy.json"), p.Identity(), output, time.Now().UTC())
+		if r.ExitCode != 0 || r.State != "passed" {
+			t.Fatalf("copied fixture refused: %+v", r)
+		}
+		if verified := suite.VerifyGate(t.Context(), output, p.Identity(), time.Now().UTC()); verified.State != "passed" {
+			t.Fatalf("copied fixture retained invalid evidence: %+v", verified)
+		}
+	})
 	for _, kind := range []string{"policy-pin", "promotion-input", "promotion-job", "oversized", "baseline-pin", "environment", "revision", "engine", "approval", "quarantine", "expired-quarantine", "uncovered", "missing-report", "missing-engine", "missing-result", "altered-bytes", "symlink", "expired", "cancel", "existing-output"} {
 		t.Run(kind, func(t *testing.T) {
-			dir, p := gateFixture(t)
+			t.Parallel()
+			dir, p := copyFixture(t)
 			pin := p.Identity()
 			current := filepath.Join(dir, "current")
 			baseline := filepath.Join(dir, "baseline")
@@ -188,6 +223,7 @@ func TestGateRefusesUnreviewedUnknownExcludedAndAlteredEvidence(t *testing.T) {
 	}
 }
 func TestGateRetentionTamperMissingAndExpiryNeverPass(t *testing.T) {
+	t.Parallel()
 	dir, p := gateFixture(t)
 	out := filepath.Join(t.TempDir(), "retained")
 	now := time.Now().UTC()
@@ -213,6 +249,7 @@ func TestGateRetentionTamperMissingAndExpiryNeverPass(t *testing.T) {
 	}
 }
 func TestGatePolicyStrictReader(t *testing.T) {
+	t.Parallel()
 	_, p := gateFixture(t)
 	raw, _ := json.Marshal(p)
 	for _, input := range [][]byte{bytes.Replace(raw, []byte(`"schema":"readmit-ci-gate-policy/v1"`), []byte(`"schema":"readmit-ci-gate-policy/v2"`), 1), bytes.Replace(raw, []byte(`"coverage":{`), []byte(`"coverage":{"unknown":1,`), 1), bytes.Replace(raw, []byte(`"approver":"reviewer"`), []byte(`"approver":null`), 1), bytes.Replace(raw, []byte(`"approver":"reviewer"`), []byte(`"approver":"reviewer","approver":"reviewer"`), 1), bytes.Replace(raw, []byte(`"approver":"reviewer",`), nil, 1)} {
@@ -223,6 +260,7 @@ func TestGatePolicyStrictReader(t *testing.T) {
 }
 
 func TestGateActualFailedExecutionCannotPass(t *testing.T) {
+	t.Parallel()
 	dir, p := gateFixtureACK(t, "AE")
 	out := filepath.Join(t.TempDir(), "retained")
 	r := suite.RetainGate(t.Context(), filepath.Join(dir, "current"), filepath.Join(dir, "baseline"), filepath.Join(dir, "policy.json"), p.Identity(), out, time.Now().UTC())
@@ -234,6 +272,7 @@ func TestGateActualFailedExecutionCannotPass(t *testing.T) {
 	}
 }
 func TestGateCancelledSuiteRetainsSkippedEvidence(t *testing.T) {
+	t.Parallel()
 	dir, p := gateFixture(t)
 	current := filepath.Join(dir, "current")
 	os.RemoveAll(current)
@@ -256,6 +295,7 @@ func TestGateCancelledSuiteRetainsSkippedEvidence(t *testing.T) {
 }
 
 func TestGateCollectorErrorCannotPassOrDisappearDuringRetention(t *testing.T) {
+	t.Parallel()
 	dir, doc := fixture(t, "127.0.0.1:1")
 	const session = "0123456789abcdef0123456789abcdef"
 	observationPath := filepath.Join(dir, "ledger.json")
@@ -360,6 +400,7 @@ func FuzzDecodeGatePolicy(f *testing.F) {
 	})
 }
 func TestGateSummaryStrictReader(t *testing.T) {
+	t.Parallel()
 	valid := `{"schema":"readmit-ci-gate/v1","state":"passed","exit_code":0,"approval":"passed","pins":"passed","coverage":"passed","baseline":"passed","retention":"retained","target_revision":"operator_asserted"}`
 	if _, e := suite.DecodeGateReport([]byte(valid)); e != nil {
 		t.Fatal(e)
@@ -372,6 +413,7 @@ func TestGateSummaryStrictReader(t *testing.T) {
 }
 
 func TestGateFinalMetadataMustFitDeclaredRetentionBudget(t *testing.T) {
+	t.Parallel()
 	dir, p := gateFixture(t)
 	control := filepath.Join(t.TempDir(), "control")
 	current, baseline, policy := filepath.Join(dir, "current"), filepath.Join(dir, "baseline"), filepath.Join(dir, "policy.json")
