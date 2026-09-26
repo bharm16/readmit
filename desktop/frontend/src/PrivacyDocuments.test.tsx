@@ -61,7 +61,7 @@ test("disclosure documents reopen into structured controls and save new validate
 test("new disclosure documents start without values and show reader refusals", async () => {
   const user = userEvent.setup();
   installFacade({
-    SaveRedactPolicy: () => ({ state: "failed", reason: "invalid redaction policy; only explicit named policies are supported" }),
+    SaveRedactPolicy: () => ({ state: "failed", reason: "invalid redaction policy: required_failures declares no assertion position" }),
     SaveRedactInventory: () => ({ state: "failed", reason: "inventory requires explicit complete scope and supported bounded entries" }),
   });
   render(<PrivacyDocuments workspace={workspace} policyName="" inventoryName="" onSaved={() => { throw new Error("invalid document was saved"); }} />);
@@ -70,7 +70,7 @@ test("new disclosure documents start without values and show reader refusals", a
   expect(screen.queryByLabelText("Known value 1")).toBeNull();
   await user.type(screen.getByLabelText("Policy file"), "policy.json");
   await user.click(screen.getByRole("button", { name: "Save policy" }));
-  expect(await screen.findByText("invalid redaction policy; only explicit named policies are supported")).toBeTruthy();
+  expect(await screen.findByText("invalid redaction policy: required_failures declares no assertion position")).toBeTruthy();
   await user.type(screen.getByLabelText("New original-artifact inventory document"), "inventory.json");
   await user.click(screen.getByRole("button", { name: "Save inventory" }));
   expect(await screen.findByText("inventory requires explicit complete scope and supported bounded entries")).toBeTruthy();

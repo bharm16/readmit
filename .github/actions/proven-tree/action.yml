@@ -1,0 +1,34 @@
+name: Aggregate a workflow and record the tree it tested
+description: Require every needed job to finish as this event requires, then, on a pull request, record the tested tree for the push to main after the merge.
+inputs:
+  needs:
+    description: The aggregate job's needs context, as toJSON(needs).
+    required: true
+runs:
+  using: composite
+  steps:
+    # tools/proven_tree.py derives each job's expected result from the gates
+    # its condition names, so a job joins the aggregate by its needs entry.
+    - name: Require every job this event runs to succeed
+      shell: bash
+      env:
+        NEEDS: ${{ inputs.needs }}
+      run: python3 tools/proven_tree.py aggregate
+    # The record a later push to main looks for. Failing to write it only
+    # means that push runs in full, so it never fails the aggregate.
+    - name: Record the tree this pull-request run tested
+      id: tested
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 tools/proven_tree.py record
+    - if: steps.tested.outputs.name != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: ${{ steps.tested.outputs.name }}
+        path: tested-commit.txt
+        if-no-files-found: error
+        overwrite: true

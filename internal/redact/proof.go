@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/fixturetrial"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
 	"github.com/bharm16/readmit/internal/replay"
@@ -82,21 +82,6 @@ func fixtureTarget(address string) replay.Target {
 // sender's storage, rather than the fixture, end the session.
 const fixtureBudget = 30 * time.Second
 
-// fixtureReceiver configures the fresh built-in fixture one proof execution
-// sends to. Its live ledger is read back only by this process, and every copy
-// retained from it (the result's observations, the receiver case, an export
-// packet) is written synced, so it is installed in process: flushing it before
-// each ACK put the disk's latency inside the fixture target's message timeout,
-// which export packets record and cannot change.
-func fixtureReceiver(mode observation.Mode, dir string, messages int) receiver.Config {
-	return receiver.Config{Mode: mode, OutputPath: filepath.Join(dir, "receiver.case"), ObservationPath: filepath.Join(dir, "observation.json"), MaxFrameBytes: 1 << 20, IdleTimeout: fixtureBudget, MaxMessages: messages, InProcess: true}
-}
-
-// executeFixture sends one fixture spec to its receiver. It is the ordinary
-// test runner; it is the one seam this package's proof tests take, to stand
-// in a sender whose own storage stalls.
-var executeFixture = testrunner.Run
-
 // sessionFamily is one fixture proof session: the target and spec it sends,
 // beside the receiver's case and ledger and the result the runner writes. It
 // is a workspace, so it writes no completion record.
@@ -111,57 +96,49 @@ var sessionFamily = artifactdir.Family{
 	},
 }
 
+// runFixture sends one fixture spec to a freshly bound receiver. Its live
+// ledger is read back only by this process, and every copy retained from it
+// (the result's observations, the receiver case, an export packet) is written
+// synced, so the trial installs it in process: flushing it before each ACK put
+// the disk's latency inside the fixture target's message timeout, which export
+// packets record and cannot change.
 func runFixture(ctx context.Context, spec testrunner.Spec, caseReference, dir string, mode observation.Mode) (*testrunner.Artifact, error) {
 	session, err := artifactdir.Create(dir, sessionFamily, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
 	defer session.Close()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return nil, errors.New("cannot bind local proof receiver")
-	}
-	defer listener.Close()
-	r, err := receiver.New(fixtureReceiver(mode, dir, len(spec.Input.Messages)))
-	if err != nil {
-		return nil, err
-	}
-	proofCtx, cancel := context.WithTimeout(ctx, fixtureBudget)
-	done := make(chan error, 1)
-	go func() { _, err := r.Serve(proofCtx, listener); done <- err }()
-	waited := false
-	defer func() {
-		cancel()
-		if !waited {
-			<-done
-		}
-	}()
 	spec.Input.Case = caseReference
 	spec.Target = "target.json"
 	spec.Observation.Path = "observation.json"
-	targetBytes, err := encode(fixtureTarget(listener.Addr().String()))
-	if err != nil {
-		return nil, err
+	ran := fixturetrial.Run(ctx, fixturetrial.Trial{
+		Mode: mode, Dir: session.Path(), Spec: spec,
+		CasePath:        filepath.Join(dir, "receiver.case"),
+		ObservationPath: filepath.Join(dir, "observation.json"),
+		Budget:          fixtureBudget,
+		Configure: func(s fixturetrial.Session) error {
+			targetBytes, err := encode(fixtureTarget(s.Address()))
+			if err != nil {
+				return err
+			}
+			if err := session.WriteFile("target.json", targetBytes); err != nil {
+				return err
+			}
+			specBytes, err := encode(spec)
+			if err != nil {
+				return err
+			}
+			return session.WriteFile("spec.json", specBytes)
+		},
+	})
+	if ran.ConfigErr != nil {
+		return nil, ran.ConfigErr
 	}
-	specBytes, err := encode(spec)
-	if err != nil {
-		return nil, err
+	if ran.SenderErr != nil {
+		return nil, fmt.Errorf("fixture test did not complete: %w", ran.SenderErr)
 	}
-	if err := session.WriteFile("target.json", targetBytes); err != nil {
-		return nil, err
-	}
-	if err := session.WriteFile("spec.json", specBytes); err != nil {
-		return nil, err
-	}
-	executed, err := executeFixture(proofCtx, filepath.Join(dir, "spec.json"), filepath.Join(dir, "result"))
-	if err != nil {
-		return nil, fmt.Errorf("fixture test did not complete: %w", err)
-	}
-	cancel()
-	serveErr := <-done
-	waited = true
-	if serveErr != nil {
-		return nil, fmt.Errorf("fixture receiver could not finalize proof evidence (%w); sender %s", serveErr, outcome(executed))
+	if ran.ServeErr != nil {
+		return nil, fmt.Errorf("fixture receiver could not finalize proof evidence (%w); sender %s", ran.ServeErr, outcome(ran.Artifact))
 	}
 	if _, err := bundle.Open(filepath.Join(dir, "receiver.case")); err != nil {
 		return nil, fmt.Errorf("fixture receiver case: %w", err)

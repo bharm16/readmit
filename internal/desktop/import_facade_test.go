@@ -603,7 +603,7 @@ func TestAKilledImportLeavesNoRegisteredOrAcceptedPartialCase(t *testing.T) {
 // registering each, until it is killed.
 func importCrashLoop(t *testing.T) {
 	state := os.Getenv(importCrashState)
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, &chooser{}, state)
 	folder := os.Getenv(importCrashProject)
 	for i := 1; ; i++ {
 		result := app.CommitImport(registeredImport(folder, fmt.Sprintf("import-%d", i), os.Getenv(importCrashSource)))

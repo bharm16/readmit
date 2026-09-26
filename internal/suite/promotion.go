@@ -103,12 +103,15 @@ func promotionReview(prepared Prepared, environment, revision string) (Promotion
 // ReviewPromotion validates every parameter, release and target without sending.
 // Its temporary owner-only compilation is removed on return.
 func ReviewPromotion(path, environment, references, revision string) (PromotionReview, error) {
+	if references == "" {
+		return PromotionReview{}, errors.New("released suite requires references")
+	}
 	dir, e := os.MkdirTemp("", "readmit-promotion-")
 	if e != nil {
 		return PromotionReview{}, errors.New("cannot create private promotion preview")
 	}
 	defer os.RemoveAll(dir)
-	prepared, e := PrepareApproved(path, environment, filepath.Join(dir, "prepared"), references)
+	prepared, e := Prepare(Request{Path: path, Environment: environment, Output: filepath.Join(dir, "prepared"), References: references})
 	if e != nil {
 		return PromotionReview{}, e
 	}
@@ -137,11 +140,11 @@ func ApprovePromotion(path, environment, references, revision, reviewed, approve
 	return p, nil
 }
 
-// RunPromoted checks the externally selected approval identity, then checks the
-// complete freshly compiled inputs. The queue rechecks all sealed execution
+// runPromoted checks the externally selected approval identity, then checks
+// the complete freshly compiled inputs. The queue rechecks all sealed execution
 // plans before the first send. Existing destinations never resume uncertain work.
-func RunPromoted(ctx context.Context, path, environment, output, references, approval, pinned, revision string) (runqueue.Report, error) {
-	raw, e := read(approval, MaxBytes)
+func runPromoted(ctx context.Context, request Request) (runqueue.Report, error) {
+	raw, e := read(request.Promotion, MaxBytes)
 	if e != nil {
 		return runqueue.Report{}, e
 	}
@@ -149,14 +152,14 @@ func RunPromoted(ctx context.Context, path, environment, output, references, app
 	if e != nil {
 		return runqueue.Report{}, e
 	}
-	if !validDigest(pinned) || p.Identity() != pinned || p.Review.Environment != environment || p.Review.Revision != revision {
+	if !validDigest(request.PromotionIdentity) || p.Identity() != request.PromotionIdentity || p.Review.Environment != request.Environment || p.Review.Revision != request.Revision {
 		return runqueue.Report{}, errors.New("promotion approval, environment or revision assumption differs")
 	}
-	prepared, e := PrepareApproved(path, environment, output, references)
+	prepared, e := prepare(request.Path, request.Environment, request.Output, request.References, "")
 	if e != nil {
 		return runqueue.Report{}, e
 	}
-	review, e := promotionReview(prepared, environment, revision)
+	review, e := promotionReview(prepared, request.Environment, request.Revision)
 	if e != nil || review.Identity() != p.Reviewed {
 		_ = os.RemoveAll(prepared.Directory)
 		return runqueue.Report{}, errors.New("suite inputs changed since promotion approval")

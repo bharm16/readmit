@@ -10,7 +10,6 @@ import (
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/replay"
-	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // Run explicitly sends a spec, or writes a configuration-error result when local
@@ -100,9 +99,11 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 			return plan.named(finish(writer, result))
 		}
 	}
-	run, err := replay.ExecuteObserved(ctx, plan.replay, filepath.Join(dir, "run"), nil, func(decision sendpolicy.Decision) error {
-		return sendpolicy.WriteDecisionWithDurability(dir+".decision.json", decision, plan.durability)
-	}, observer)
+	run, err := replay.Send(ctx, plan.replay, filepath.Join(dir, "run"), replay.SendOptions{
+		Observer:           observer,
+		DecisionPath:       dir + replay.DecisionSuffix,
+		DecisionDurability: plan.durability,
+	})
 	if err != nil {
 		// A storage failure may leave an incomplete run. Do not certify that
 		// directory with a completed result identity or fabricate observations.

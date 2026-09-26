@@ -305,7 +305,7 @@ func TestProtectionCancellationNamesItsOwnOperationAndRecordsNothing(t *testing.
 func TestProtectionWritesAdmitTheAuthorAndReadsStayFree(t *testing.T) {
 	app := workspaceApp(t)
 	root, entry := protectionDocument(t, app, keyProgram(t, "test-only-not-a-real-key-4f8c1d2e6b0a9357", ""))
-	viewer := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	viewer := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
 
 	if denied := viewer.SaveProtectionControl(desktop.ProtectionControlRequest{
 		Workspace: root, Entry: "viewer.json", Name: "other",

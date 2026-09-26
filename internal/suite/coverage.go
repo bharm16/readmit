@@ -507,9 +507,14 @@ func coverageJob(ctx context.Context, s coverageSuite, j runqueue.Job) (JobCover
 	return row, path, nil
 }
 
-// The suite's old template references carry no digest. The new coverage author's
-// explicit spec pins bind the actual assessed assertions without reopening those
-// mutable templates. Recorded row/binding strings are checked offline as written.
+// verifyCoverageSpec holds one retained compiled specification to the
+// declaration the suite and its selected environment expand it from: the row's
+// case, the declared send order, the row's expected values and the
+// environment's binding resolution. The suite's old template references carry
+// no digest, so the coverage author's explicit spec pins bind the actual
+// assessed assertions without reopening those mutable templates; the
+// declaration walk is the one expansion rule this package decides, checked
+// offline as written.
 func verifyCoverageSpec(s coverageSuite, j runqueue.Job, pin string) error {
 	raw, err := read(filepath.Join(s.dir, j.Spec), testrunner.MaxSpecBytes)
 	if err != nil {
@@ -524,58 +529,45 @@ func verifyCoverageSpec(s coverageSuite, j runqueue.Job, pin string) error {
 		return err
 	}
 	bad := errors.New("prepared specification differs from declared suite row or environment")
-	for _, test := range s.document.Tests {
-		for _, table := range s.document.Tables {
-			if table.ID != test.Table {
-				continue
-			}
-			for _, row := range table.Rows {
-				if test.ID+"-"+row.ID != j.ID {
-					continue
-				}
-				suffix := string(os.PathSeparator) + row.Case
-				if !strings.HasSuffix(spec.Input.Case, suffix) || !slices.Equal(spec.Input.Messages, test.Sequence) {
+	declared, err := s.document.declare(s.selection.Environment)
+	if err != nil {
+		return err
+	}
+	for _, declaration := range declared {
+		if declaration.Job != j.ID {
+			continue
+		}
+		suffix := string(os.PathSeparator) + declaration.Case
+		if !strings.HasSuffix(spec.Input.Case, suffix) || !slices.Equal(spec.Input.Messages, declaration.Sequence) {
+			return bad
+		}
+		root := strings.TrimSuffix(spec.Input.Case, suffix)
+		if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+			return bad
+		}
+		used := 0
+		for _, a := range spec.Assertions {
+			if expected, ok := declaration.Expected[a.ID]; ok {
+				if !sameCoverageJSON(a.Expected, expected) {
 					return bad
 				}
-				root := strings.TrimSuffix(spec.Input.Case, suffix)
-				if !filepath.IsAbs(root) || filepath.Clean(root) != root {
-					return bad
-				}
-				used := 0
-				for _, a := range spec.Assertions {
-					if expected, ok := row.Expected[a.ID]; ok {
-						if !sameCoverageJSON(a.Expected, expected) {
-							return bad
-						}
-						used++
-					}
-				}
-				if used != len(row.Expected) {
-					return bad
-				}
-				for _, env := range s.document.Environments {
-					if env.ID != s.selection.Environment {
-						continue
-					}
-					for _, binding := range env.Bindings {
-						if binding.Parameter != test.Parameter {
-							continue
-						}
-						if spec.Target != artifactpath.JoinReference(root, binding.Target) {
-							return bad
-						}
-						if spec.Observation.Boundary == testrunner.LedgerBoundary {
-							if binding.Observation == "" || spec.Observation.Path != artifactpath.JoinReference(root, binding.Observation) {
-								return bad
-							}
-						} else if binding.Observation != "" {
-							return bad
-						}
-						return nil
-					}
-				}
+				used++
 			}
 		}
+		if used != len(declaration.Expected) {
+			return bad
+		}
+		observation, err := bindObservation(spec.Observation.Boundary, declaration.Observation)
+		if err != nil {
+			return bad
+		}
+		if spec.Target != artifactpath.JoinReference(root, declaration.Target) {
+			return bad
+		}
+		if spec.Observation.Boundary == testrunner.LedgerBoundary && spec.Observation.Path != artifactpath.JoinReference(root, observation) {
+			return bad
+		}
+		return nil
 	}
 	return bad
 }

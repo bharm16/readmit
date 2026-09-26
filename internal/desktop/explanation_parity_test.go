@@ -214,8 +214,7 @@ func explanationWorkspace(t *testing.T) (string, *ackingPeer) {
 func unlicensedApp(t *testing.T) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	return desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	return desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 }
 
 // commandStatus is the process status cli.Execute's answer stands for.

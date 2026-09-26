@@ -1,21 +1,22 @@
 package redact
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/fixturetrial"
 	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // Successful fixture ACKs have one closed shape. Their request control/trigger
 // come from approved evidence; only the valid UTC timestamp and already bound
 // receipt session vary. Matching two retained copies cannot approve extra text.
+// What remains here pins the approved evidence to the ledger; whether a
+// retained ACK is the canonical fixture acknowledgement is the fixture-trial
+// module's answer, which rebuilds the fixture's own bytes.
 func verifyFixtureACKs(source *bundle.Bundle, artifact *testrunner.Artifact) error {
 	invalid := errors.New("proof ACK is not the canonical built-in fixture acknowledgement")
 	if artifact.Run == nil || artifact.FinalObservation == nil || len(artifact.Run.Events) == 0 || len(artifact.Run.Events) != len(artifact.FinalObservation.Processed) {
@@ -50,21 +51,7 @@ func verifyFixtureACKs(source *bundle.Bundle, artifact *testrunner.Artifact) err
 		if err != nil {
 			return invalid
 		}
-		ack, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
-		if err != nil || len(ack.Messages) != 1 {
-			return invalid
-		}
-		stamp := string(ack.Bytes(ack.Messages[0].Segments[0].Field(7).Span))
-		parsed, err := time.Parse("20060102150405-0700", stamp)
-		if err != nil || parsed.UTC().Format("20060102150405-0700") != stamp {
-			return invalid
-		}
-		want := mllp.Frame(hl7.Encode([][]string{
-			{"MSH", "^~\\&", "READMIT", "FIXTURE", "", "", stamp, "", "ACK^" + trigger, fmt.Sprintf("READMITACK%06d", i+1), "P", "2.5.1"},
-			{"MSA", "AA", controlID},
-			{"ZRT", testrunner.ReceiptSchema, artifact.Result.ReceiverSessionID, receivedID},
-		}))
-		if !bytes.Equal(raw, want) {
+		if fixturetrial.VerifyACK(approved, raw, i+1, artifact.Result.ReceiverSessionID, receivedID) != nil {
 			return invalid
 		}
 	}

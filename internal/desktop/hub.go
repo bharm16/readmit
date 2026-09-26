@@ -2,9 +2,7 @@ package desktop
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +13,10 @@ import (
 )
 
 const (
+	// hubSelectionSchema is the versioned contract of the document that
+	// remembers the hub configuration a person selected, one of the shell
+	// document store's remembered selections. Its one path member is named
+	// "config".
 	hubSelectionSchema = "readmit-desktop-hub-selection/v1"
 	custodyNotice      = hubprotocol.CustodyWarning
 
@@ -35,40 +37,6 @@ const (
 	// progress.
 	hubRequestOperation = "hub"
 )
-
-type hubSelection struct {
-	Schema string `json:"schema"`
-	Config string `json:"config"`
-}
-
-// hubSelectionFile is the shell document that remembers the hub
-// configuration a person selected (readmit-desktop-hub-selection/v1), beside
-// the operation selection: the memory the window's hub connection keeps its
-// selection in.
-type hubSelectionFile string
-
-// Recall reads the remembered selection: nothing when there is no document,
-// and a refusal when the document is not a selection this window reads.
-func (f hubSelectionFile) Recall() (string, error) {
-	if _, err := os.Lstat(string(f)); errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	}
-	data, err := readOperationFile(string(f))
-	var sel hubSelection
-	if err != nil || json.Unmarshal(data, &sel, json.RejectUnknownMembers(true)) != nil || sel.Schema != hubSelectionSchema || !filepath.IsAbs(sel.Config) {
-		return "", errors.New("the remembered hub selection cannot be read")
-	}
-	return sel.Config, nil
-}
-
-// Remember replaces the document with one naming path.
-func (f hubSelectionFile) Remember(path string) error {
-	encoded, err := json.Marshal(hubSelection{Schema: hubSelectionSchema, Config: path})
-	if err != nil {
-		return err
-	}
-	return writeShellDocument(string(f), append(encoded, '\n'))
-}
 
 // HubProjectInfo describes one project available on the hub.
 type HubProjectInfo struct {
@@ -175,13 +143,13 @@ type HubUploadRequest struct {
 }
 
 // restoreHubSelection retains the configuration an earlier session selected,
-// remembered in the selection document at selectionPath. Restoring reads the
-// selection and the configuration it names, two local files, and nothing
-// else (hubclient.RestoreConnection): a restored configuration is selected
-// and offline, and one that can no longer be restored is shown with why until
-// a configuration is selected again.
-func (a *App) restoreHubSelection(selectionPath string) {
-	a.hub = hubclient.RestoreConnection(hubSelectionFile(selectionPath))
+// remembered in the shell document store's hub selection document. Restoring
+// reads the selection and the configuration it names, two local files, and
+// nothing else (hubclient.RestoreConnection): a restored configuration is
+// selected and offline, and one that can no longer be restored is shown with
+// why until a configuration is selected again.
+func (a *App) restoreHubSelection() {
+	a.hub = hubclient.RestoreConnection(a.selections.hub)
 }
 
 // ChooseHubConfig presents a dialog to select the customer hub configuration file.

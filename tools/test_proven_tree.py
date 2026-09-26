@@ -1,4 +1,4 @@
-"""Exercise the proven-tree check at its GitHub CLI boundary."""
+"""Exercise the proven-tree check, record and aggregate at their GitHub boundaries."""
 
 import json
 import os
@@ -13,7 +13,8 @@ from ci_timing import needs
 
 
 TOOL = Path(__file__).with_name("proven_tree.py")
-WORKFLOWS = TOOL.parent.parent / ".github" / "workflows"
+ROOT = TOOL.parent.parent
+WORKFLOWS = ROOT / ".github" / "workflows"
 REPOSITORY = "example/readmit"
 COMMIT = "c" * 40
 TREE = "7" * 40
@@ -69,14 +70,15 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
             f"repos/{REPOSITORY}/actions/runs/{RUN}": self.run,
         }
 
-    def check(self, *arguments):
+    def check(self, command="check"):
         self.answers_file.write_text(json.dumps(self.answers))
         result = subprocess.run(
-            [sys.executable, str(TOOL), "--artifact", "proven-tree-ci", *arguments],
-            env=self.environment, capture_output=True, text=True, timeout=30,
+            [sys.executable, str(TOOL), command],
+            env=self.environment, capture_output=True, text=True, timeout=30, cwd=self.directory,
         )
-        self.assertEqual(result.returncode, 0, "the check must never fail the job: " + result.stderr)
-        outputs = dict(line.split("=", 1) for line in self.output.read_text().splitlines())
+        self.assertEqual(result.returncode, 0, f"the {command} must never fail the job: " + result.stderr)
+        text = self.output.read_text() if self.output.exists() else ""
+        outputs = dict(line.split("=", 1) for line in text.splitlines())
         return outputs, result.stdout
 
     def calls(self):
@@ -218,17 +220,99 @@ sys.stdout.write(answer if isinstance(answer, str) else json.dumps(answer))
                             self.assertIn(f"needs.{needed}.", condition,
                                           f"{name} would run whatever {needed} did")
 
-    def test_each_workflow_records_the_name_its_check_reads(self):
-        # A record named differently from what the push checks would make
-        # every push to main run in full; this keeps the two spellings together.
+    def test_a_pull_request_records_the_name_its_push_looks_for(self):
         for workflow in ("ci.yml", "desktop.yml"):
             with self.subTest(workflow=workflow):
-                text = (WORKFLOWS / workflow).read_text()
-                checked = re.findall(r"tools/proven_tree\.py --artifact ([a-z0-9-]+)", text)
-                recorded = re.findall(r"name: ([a-z0-9-]+)-\$\{\{ steps\.tested\.outputs\.tree \}\}", text)
-                self.assertEqual(len(checked), 1, checked)
-                self.assertEqual(checked, recorded)
-                self.assertEqual(checked[0], "proven-tree-" + workflow.removesuffix(".yml"))
+                self.output.unlink(missing_ok=True)
+                self.environment.update(GITHUB_EVENT_NAME="pull_request", GITHUB_REF="refs/pull/7/merge",
+                                        GITHUB_WORKFLOW_REF=f"{REPOSITORY}/.github/workflows/{workflow}@refs/pull/7/merge")
+                outputs, _ = self.check("record")
+                name = f"proven-tree-{workflow.removesuffix('.yml')}-{TREE}"
+                self.assertEqual(outputs, {"name": name})
+                self.assertEqual((self.directory / "tested-commit.txt").read_text(), COMMIT + "\n")
+                # The push after the merge queries exactly the recorded name.
+                self.output.unlink()
+                self.environment.update(GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                                        GITHUB_WORKFLOW_REF=f"{REPOSITORY}/.github/workflows/{workflow}@refs/heads/main")
+                self.artifact["name"] = name
+                self.run["path"] = f".github/workflows/{workflow}"
+                self.answers[f"repos/{REPOSITORY}/actions/artifacts?name={name}&per_page=100"] = {
+                    "total_count": 1, "artifacts": [self.artifact]}
+                self.assertEqual(self.check()[0]["proven"], "true")
+
+    def test_only_a_pull_request_that_learned_its_tree_records_it(self):
+        self.environment.update(GITHUB_EVENT_NAME="pull_request")
+        for answer in ({"exit": 1}, {"sha": COMMIT, "tree": {"sha": "not a tree"}}):
+            with self.subTest(answer=answer):
+                self.answers[f"repos/{REPOSITORY}/git/commits/{COMMIT}"] = answer
+                self.assertEqual(self.check("record")[0], {})
+        self.environment.update(GITHUB_EVENT_NAME="push")
+        self.assertEqual(self.check("record")[0], {})
+        self.assertFalse((self.directory / "tested-commit.txt").exists())
+
+
+CI_PULL_REQUEST = {"go-tests": "success", "tooling": "skipped", "fuzz": "skipped", "security": "skipped",
+                   "hub": "skipped", "hub-journeys": "skipped"}
+CI_DISPATCH = dict.fromkeys(CI_PULL_REQUEST, "success") | {"hub-journeys": "skipped"}
+DESKTOP_PULL_REQUEST = {"desktop-shell": "success", "desktop-package": "skipped", "desktop-install": "skipped"}
+DESKTOP_DISPATCH = dict.fromkeys(DESKTOP_PULL_REQUEST, "success")
+
+
+class Aggregate(unittest.TestCase):
+    def aggregate(self, workflow, results, full=False, journeys=False, proven=False, root=ROOT):
+        proof = {"result": "success", "outputs": {"proven": "true"}} if proven else {"result": "skipped", "outputs": {}}
+        environment = dict(
+            os.environ, GITHUB_REPOSITORY=REPOSITORY,
+            GITHUB_WORKFLOW_REF=f"{REPOSITORY}/.github/workflows/{workflow}@refs/heads/main",
+            FULL_GATES=str(full).lower(), RUN_JOURNEYS=str(journeys).lower(),
+            NEEDS=json.dumps({"proof": proof} | {job: {"result": result, "outputs": {}} for job, result in results.items()}),
+        )
+        return subprocess.run([sys.executable, str(TOOL), "aggregate"], env=environment, cwd=root,
+                              capture_output=True, text=True, timeout=30)
+
+    def assertAggregate(self, passes, *arguments, **options):
+        result = self.aggregate(*arguments, **options)
+        self.assertEqual(result.returncode, 0 if passes else 1, result.stdout + result.stderr)
+
+    def test_each_event_requires_exactly_the_jobs_it_runs(self):
+        for workflow, pull_request, dispatch in (("ci.yml", CI_PULL_REQUEST, CI_DISPATCH),
+                                                 ("desktop.yml", DESKTOP_PULL_REQUEST, DESKTOP_DISPATCH)):
+            with self.subTest(workflow=workflow):
+                self.assertAggregate(True, workflow, pull_request)
+                self.assertAggregate(True, workflow, dispatch, full=True)
+                self.assertAggregate(True, workflow, dict.fromkeys(pull_request, "skipped"), proven=True)
+                for job in pull_request:
+                    for results, full in ((pull_request, False), (dispatch, True)):
+                        for other in ("success", "skipped", "failure", "cancelled"):
+                            if other != results[job]:
+                                with self.subTest(job=job, full=full, result=other):
+                                    self.assertAggregate(False, workflow, results | {job: other}, full=full)
+                    with self.subTest(job=job, proven=True):
+                        self.assertAggregate(False, workflow, dict.fromkeys(pull_request, "skipped") | {job: "success"},
+                                             proven=True)
+
+    def test_opted_in_journeys_are_required_only_when_opted_in(self):
+        self.assertAggregate(True, "ci.yml", CI_DISPATCH | {"hub-journeys": "success"}, full=True, journeys=True)
+        self.assertAggregate(False, "ci.yml", CI_DISPATCH, full=True, journeys=True)
+        self.assertAggregate(False, "ci.yml", CI_DISPATCH | {"hub-journeys": "success"}, full=True)
+
+    def test_a_job_joins_the_aggregate_by_its_needs_entry_alone(self):
+        text = (WORKFLOWS / "ci.yml").read_text()
+        condition = re.search(r"^  security:\n(?:    .*\n)*?(    if: .*)$", text, re.M).group(1)
+        added = f"  lint:\n    needs: proof\n{condition}\n    runs-on: ubuntu-24.04\n\n"
+        text = text.replace("  quality:\n", added + "  quality:\n", 1)
+        text = text.replace("needs: [proof, go-tests,", "needs: [proof, lint, go-tests,", 1)
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "ci.yml").write_text(text)
+            self.assertAggregate(True, "ci.yml", CI_PULL_REQUEST | {"lint": "skipped"}, root=root)
+            self.assertAggregate(False, "ci.yml", CI_PULL_REQUEST | {"lint": "success"}, root=root)
+            self.assertAggregate(True, "ci.yml", CI_DISPATCH | {"lint": "success"}, full=True, root=root)
+            self.assertAggregate(False, "ci.yml", CI_DISPATCH | {"lint": "skipped"}, full=True, root=root)
+
+    def test_every_needed_job_is_a_job_of_the_workflow(self):
+        self.assertAggregate(False, "ci.yml", CI_PULL_REQUEST | {"renamed": "success"})
 
 
 if __name__ == "__main__":

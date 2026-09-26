@@ -2,22 +2,19 @@ package desktop
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/bharm16/readmit/internal/operationguard"
 )
 
+// operationSelectionSchema is the versioned contract of the document that
+// remembers the operation policy a person selected. Its one path member is
+// named "policy", and the document itself is written once, by the shell
+// document store's remembered selection.
 const operationSelectionSchema = "readmit-desktop-operation-selection/v1"
-
-type operationSelection struct {
-	Schema string `json:"schema"`
-	Policy string `json:"policy"`
-}
 
 // OperationResult exposes local clock state even after expiry. Reason is fixed
 // diagnostic text; it never renders signed identities or arbitrary paths.
@@ -35,33 +32,40 @@ type OperationResult struct {
 
 func (r *OperationResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// NewWithOperationSelection restores only an explicit prior policy selection.
-// A missing selection keeps reads available and paid work refused. An
-// unreadable selection is reported until the person explicitly chooses again.
-// The commercial destinations and customer hub selections live beside it and
-// restore the same way: a local read that contacts nothing.
-func NewWithOperationSelection(chooser FolderChooser, recent, filters, session, drafts, selection string) *App {
-	a := New(chooser, recent, filters, session, drafts)
-	a.operationSelectionPath = selection
-	if selection != "" {
-		if _, err := os.Lstat(selection); !errors.Is(err, fs.ErrNotExist) {
-			data, readErr := readOperationFile(selection)
-			var selected operationSelection
-			if readErr != nil || json.Unmarshal(data, &selected, json.RejectUnknownMembers(true)) != nil || selected.Schema != operationSelectionSchema || !filepath.IsAbs(selected.Policy) {
-				a.operationRestoreRefusal = "the remembered operation selection cannot be read; choose an activation folder again"
-			} else {
-				a.operationPolicy = selected.Policy
-				a.operationGuard = operationguard.New(selected.Policy)
-			}
-		}
-		a.restoreCommercialSelection(filepath.Join(filepath.Dir(selection), "commercial.json"))
-		a.restoreHubSelection(filepath.Join(filepath.Dir(selection), "hub.json"))
-	}
+// NewWithOperationSelection restores only an explicit prior policy selection,
+// remembered in the shell document store with the commercial destinations and
+// customer hub selections beside it. A missing selection keeps reads available
+// and paid work refused. An unreadable selection is reported until the person
+// explicitly chooses again. Restoring is a local read that contacts nothing.
+func NewWithOperationSelection(chooser FolderChooser, documents ShellDocuments) *App {
+	a := New(chooser, documents)
+	a.selections = documents.selections()
+	a.restoreSelections()
 	return a
 }
 
-// readOperationFile reads one local operation document the way the guard
-// reads its controls: bounded, regular and never through a link.
+// restoreSelections reads the three remembered selections, three local files
+// and nothing else. A selection that is not there was never made; one that is
+// there but cannot be read is reported, never replaced, and stays visible as
+// a refusal until the person chooses again.
+func (a *App) restoreSelections() {
+	path, err := a.selections.operation.recall()
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		a.operationRestoreRefusal = "the remembered operation selection cannot be read; choose an activation folder again"
+	default:
+		a.operationPolicy = path
+		a.operationGuard = operationguard.New(path)
+	}
+	a.restoreCommercialSelection()
+	a.restoreHubSelection()
+}
+
+// readOperationFile reads one operator-supplied document the way the guard
+// reads its controls: bounded, regular and never through a link. The policy a
+// person chose lives in their activation folder, not in the shell document
+// store; this is how it is read, never how it is remembered.
 func readOperationFile(path string) ([]byte, error) {
 	return operationguard.ReadDocument(path)
 }
@@ -154,14 +158,4 @@ func (a *App) ReleaseOperations() OperationResult {
 		}
 		return operationguard.Release(path)
 	})
-}
-
-// DefaultOperationSelectionPath identifies only viewer configuration. Policy,
-// clock and admission files remain where the operator explicitly selected them.
-func DefaultOperationSelectionPath() (string, error) {
-	root, err := os.UserConfigDir()
-	if err != nil {
-		return "", errors.New("cannot locate operation selection directory")
-	}
-	return filepath.Join(root, "readmit", "operations.json"), nil
 }

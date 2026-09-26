@@ -476,10 +476,10 @@ Documents are bounded to 4 MiB, 64 lifecycle steps, 128 streams, 128 occurrences
 per stream, 64 field checks per occurrence and 1024 bytes per field. Unknown,
 missing and null members are refused at every nested boundary, including omitted
 `duplicate: false`. Missing streams and occurrences cannot silently pass.
-The checker regenerates in an owner-only temporary directory, compares against
-literal expectations and removes the temporary output on success, failure or
-cancellation. A retry starts fresh; no evidence, input, case, test, profile pack
-or generation contract is rewritten. Command output reports counts only, never
+The checker regenerates in memory, writing nothing anywhere, and compares
+against literal expectations. A cancelled check retains nothing and a retry
+starts fresh; no evidence, input, case, test, profile pack or generation
+contract is rewritten. Command output reports counts only, never
 values or provenance. Treat authored inputs and hex bytes as sensitive.
 
 ### Shipped coverage and limits

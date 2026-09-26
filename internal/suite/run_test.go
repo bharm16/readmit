@@ -110,7 +110,7 @@ func TestFailedSetupSkipsDependentAndNeverPassesSuite(t *testing.T) {
 	doc.Tests[1].After = []string{"setup"}
 	write(t, filepath.Join(dir, "suite.json"), doc)
 	out := filepath.Join(dir, "failed")
-	report, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out)
+	report, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out})
 	if err != nil || report.ExitCode() != 2 || report.Executed != 1 || report.Skipped != 1 || report.Jobs[0].Run.State != durablerun.AssertionFailed {
 		t.Fatalf("%+v %v", report, err)
 	}
@@ -144,7 +144,7 @@ func TestSuiteCancellationPreservesUncertainDeliveryAndRefusesResume(t *testing.
 		}
 	}()
 	out := filepath.Join(dir, "cancelled")
-	report, err := suite.Run(ctx, filepath.Join(dir, "suite.json"), "east", out)
+	report, err := suite.Run(ctx, suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out})
 	if err != nil || report.Skipped != 1 || report.Jobs[0].Run == nil || report.Jobs[0].Run.State != durablerun.DeliveryUncertain || report.Jobs[0].Run.StopReason != durablerun.Cancelled {
 		t.Fatalf("%+v %v", report, err)
 	}
@@ -210,7 +210,7 @@ func TestSuiteUsesActualQueueStateIsolation(t *testing.T) {
 				doc.Tests[0].Isolation = runqueue.IsolatedState
 			}
 			write(t, filepath.Join(dir, "suite.json"), doc)
-			report, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out"))
+			report, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out")})
 			if err != nil || report.ExitCode() != 0 {
 				t.Fatalf("%+v %v", report, err)
 			}
@@ -235,7 +235,7 @@ func TestSuiteCancelledBeforeStartReportsEveryRowSkipped(t *testing.T) {
 	dir, _ := fixture(t, "127.0.0.1:1")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	report, err := suite.Run(ctx, filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "out"))
+	report, err := suite.Run(ctx, suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "out")})
 	if err != nil || report.Executed != 0 || report.Skipped != 1 || report.ExitCode() != 2 {
 		t.Fatalf("%+v %v", report, err)
 	}
@@ -282,7 +282,7 @@ func TestSuiteCrashHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	_, _ = suite.Run(context.Background(), filepath.Join(path, "suite.json"), "east", filepath.Join(path, "crashed"))
+	_, _ = suite.Run(context.Background(), suite.Request{Path: filepath.Join(path, "suite.json"), Environment: "east", Output: filepath.Join(path, "crashed")})
 }
 
 func TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent(t *testing.T) {
@@ -327,7 +327,7 @@ func TestSuiteProcessCrashRetainsUncertainJobWithoutStartingDependent(t *testing
 	if _, err = os.Stat(filepath.Join(out, "report.json")); !os.IsNotExist(err) {
 		t.Fatal("crash fabricated a final report")
 	}
-	if _, err = suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out); err == nil {
+	if _, err = suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out}); err == nil {
 		t.Fatal("crashed output restarted")
 	}
 }
@@ -346,7 +346,7 @@ func TestSuiteNetworkBlackholeRetainsUncertaintyAndRecovers(t *testing.T) {
 	}))
 	out := filepath.Join(dir, "blackhole")
 	started := time.Now()
-	report, err := suite.Run(t.Context(), filepath.Join(dir, "suite.json"), "east", out)
+	report, err := suite.Run(t.Context(), suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: out})
 	select {
 	case <-received:
 	default:

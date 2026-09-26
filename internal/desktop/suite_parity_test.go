@@ -32,7 +32,7 @@ func TestPrepareSuiteMatchesTheCommandLinePreparation(t *testing.T) {
 	other := t.TempDir()
 	other, _ = filepath.EvalSymlinks(other)
 	writeSuiteFixture(t, other)
-	if _, err := suite.Prepare(filepath.Join(other, "suite.json"), "east", filepath.Join(other, "engine")); err != nil {
+	if _, err := suite.Prepare(suite.Request{Path: filepath.Join(other, "suite.json"), Environment: "east", Output: filepath.Join(other, "engine")}); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"suite.json", "selection.json", "queue.json"} {

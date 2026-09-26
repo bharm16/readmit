@@ -1,112 +1,89 @@
 package receiver_test
 
 import (
+	"encoding/json/v2"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/fixturetrial"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
-	"github.com/bharm16/readmit/internal/report"
-	"github.com/bharm16/readmit/internal/synth"
-	"github.com/bharm16/readmit/internal/testauthor"
+	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
-// practiceWorkspace writes the guided sample's workspace and saves its
-// regression test into it, as the window does, and answers the workspace and
-// the saved spec's name.
-func practiceWorkspace(t *testing.T) (string, string) {
+// trialFixture writes the planted booking and reschedule case and reads the
+// fixture spec that sends them, returning the root, the spec and the case
+// reference the executed copy names from its session directory.
+func trialFixture(t *testing.T) (string, testrunner.Spec) {
 	t.Helper()
-	root := filepath.Join(t.TempDir(), "sample")
-	inputs := bundle.GeneratorInputs{Seed: 0, BaseTime: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), GeneratorVersion: synth.GeneratorVersion, ProfileVersion: synth.ProfileVersion}
-	if _, err := synth.Write(root, inputs); err != nil {
-		t.Fatal(err)
-	}
-	if err := guide.PrepareWorkspace(t.Context(), root); err != nil {
-		t.Fatal(err)
-	}
-	source, err := bundle.Open(filepath.Join(root, guide.CaseName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	draft, err := testauthor.NewDraft(guide.CaseName, source.Identity)
-	if err != nil {
-		t.Fatal(err)
-	}
-	one := 1
-	for _, answer := range []testauthor.Answer{
-		{Stage: testauthor.StageName, Name: "Rescheduling updates the original appointment"},
-		{Stage: testauthor.StageMessages, Messages: []string{"s0001-e000001", "s0001-e000002"}},
-		{Stage: testauthor.StageTarget, Target: guide.TargetName},
-		{Stage: testauthor.StageBoundary, Boundary: testrunner.LedgerBoundary},
-		{Stage: testauthor.StageObservation, Observation: "practice-observation.json"},
-		{Stage: testauthor.StageReset, Reset: "Start a fresh practice receiver with an empty ledger before each run."},
-		{Stage: testauthor.StageExpectations, Expectations: []testauthor.Expectation{{ID: "one-appointment", Operator: testauthor.LedgerCount, Count: &one}}},
-	} {
-		if draft, err = draft.Answer(answer); err != nil {
-			t.Fatalf("%s: %v", answer.Stage, err)
+	root := t.TempDir()
+	var inputs []bundle.Input
+	for _, name := range []string{"booking", "reschedule"} {
+		raw, err := os.ReadFile("../../testdata/fixtures/redact-" + name + ".mllp")
+		if err != nil {
+			t.Fatal(err)
 		}
+		inputs = append(inputs, bundle.Input{Path: filepath.Join(root, name+".mllp"), Data: raw, Options: hl7.Options{Format: hl7.MLLP}})
 	}
-	saved, err := testauthor.Save(root, source, draft, "reschedule-test.json")
+	imported := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	if _, err := bundle.Write(filepath.Join(root, "original.case"), inputs, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &imported}); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := testrunner.ReadSpec("../../testdata/fixtures/redact-spec.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return root, saved.Output
+	return root, spec
 }
 
-// A report trial and a practice run of the guided sample also send to this
-// fixture in their own process, each under a five-second message timeout that
-// the target it retains records (#350). A durable fixture flushes its ledger
-// twice per message before the ACK, so flushes stalled by three seconds alone
-// run out that window, as the durable control of
+// Every trial sends to this fixture in process, under the message timeout the
+// trial's target records (#350). A durable fixture flushes its ledger twice per
+// message before the ACK, so flushes stalled by three seconds alone run out
+// that window, as the durable control of
 // TestInProcessLedgerAnswersWithoutWaitingForTheDisk shows at a smaller scale.
-// Both fixtures install their ledger without flushing it, so both operations
-// still complete with the verdicts an unstalled disk gives them.
-func TestReportAndPracticeRunDoNotWaitForStalledLedgerFlushes(t *testing.T) {
+// A trial installs its ledger without flushing it, so it still completes with
+// the verdict an unstalled disk gives.
+func TestFixtureTrialsDoNotWaitForStalledLedgerFlushes(t *testing.T) {
 	restore := receiver.DelayLedgerSyncForTest(3 * time.Second)
 	defer restore()
-	t.Run("report", func(t *testing.T) {
-		dir := filepath.Join(t.TempDir(), "packet")
-		packet, err := report.Create(t.Context(), report.Scenario, dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Open re-derives the identity from every retained file and holds each
-		// retained target to the fixture's timeouts.
-		if opened, err := report.Open(dir); err != nil || opened.Identity != packet.Identity {
-			t.Fatalf("the packet did not reopen as written: %v", err)
-		}
-		baseline, err := testrunner.Open(filepath.Join(dir, "baseline"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		fixed, err := testrunner.Open(filepath.Join(dir, "post-fix"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if baseline.Result.Status != testrunner.AssertionFailure || len(baseline.FinalObservation.Records) != 2 || fixed.Result.Status != testrunner.Pass || len(fixed.FinalObservation.Records) != 1 {
-			t.Fatalf("stalled flushes changed the report's verdicts: %s, %s", baseline.Result.Status, fixed.Result.Status)
-		}
-	})
-	t.Run("practice-run", func(t *testing.T) {
-		root, spec := practiceWorkspace(t)
-		for _, trial := range []struct {
-			output    string
-			corrected bool
-			status    testrunner.Status
-		}{{"baseline-run", false, testrunner.AssertionFailure}, {"post-fix-run", true, testrunner.Pass}} {
-			artifact, err := guide.Run(t.Context(), root, spec, trial.output, trial.corrected)
+	root, spec := trialFixture(t)
+	if spec.Observation.Boundary != testrunner.LedgerBoundary {
+		t.Fatal("this control holds the trial to the fixture's ledger boundary")
+	}
+	spec.Input.Case = "../original.case"
+	spec.Target = "target.json"
+	spec.Observation.Path = "observation.json"
+	dir := filepath.Join(root, "trial")
+	os.MkdirAll(dir, 0o700)
+	outcome := fixturetrial.Run(t.Context(), fixturetrial.Trial{
+		Mode: observation.Defective, Dir: dir, Spec: spec,
+		CasePath:        filepath.Join(dir, "receiver.case"),
+		ObservationPath: filepath.Join(dir, "observation.json"),
+		Budget:          30 * time.Second,
+		Configure: func(session fixturetrial.Session) error {
+			target, err := json.Marshal(replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: session.Address(), Transport: "plain", ConnectTimeout: "2s", MessageTimeout: "5s", MaxACKBytes: 16384})
 			if err != nil {
-				t.Fatal(err)
+				return err
 			}
-			if artifact.Result.Status != trial.status {
-				t.Fatalf("stalled flushes changed the %s verdict to %s", trial.output, artifact.Result.Status)
+			if err := os.WriteFile(filepath.Join(dir, "target.json"), target, 0o600); err != nil {
+				return err
 			}
-			if reopened, err := testrunner.Open(filepath.Join(root, trial.output, "result")); err != nil || reopened.Identity != artifact.Identity {
-				t.Fatalf("the %s result did not reopen as written: %v", trial.output, err)
+			specBytes, err := json.Marshal(spec)
+			if err != nil {
+				return err
 			}
-		}
+			return os.WriteFile(session.SpecPath(), specBytes, 0o600)
+		},
 	})
+	if outcome.ConfigErr != nil || outcome.SenderErr != nil || outcome.ServeErr != nil {
+		t.Fatalf("the trial did not outlast its sender's stalled storage: config=%v send=%v serve=%v", outcome.ConfigErr, outcome.SenderErr, outcome.ServeErr)
+	}
+	if outcome.Artifact == nil || outcome.Artifact.Result.Status != testrunner.AssertionFailure {
+		t.Fatalf("stalled flushes changed the defective fixture's verdict: %+v", outcome.Artifact)
+	}
 }

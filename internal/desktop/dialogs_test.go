@@ -97,8 +97,7 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 	}
 	window := func(c *chooser) *desktop.App {
 		state := t.TempDir()
-		app := desktop.NewWithOperationSelection(c, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-			filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"), filepath.Join(state, "operations.json"))
+		app := desktop.NewWithOperationSelection(c, desktop.ShellDocuments{Folder: state})
 		if result := app.SelectOperationPolicy(policy); result.State != desktop.Completed {
 			t.Fatal(result)
 		}
@@ -285,7 +284,7 @@ func TestADismissedSaveDialogDoesNothing(t *testing.T) {
 		t.Fatal("a dismissed save dialog left the operation slot held")
 	}
 	state := t.TempDir()
-	folderOnly := activatedApp(t, &folderDialogOnly{folder: t.TempDir()}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	folderOnly := activatedApp(t, &folderDialogOnly{folder: t.TempDir()}, state)
 	if result := folderOnly.ChoosePacketExportPath(); result.State != desktop.Failed || result.Reason != "the save dialog is unavailable" || result.Path != "" {
 		t.Fatalf("a host without a save dialog answered %+v", result)
 	}

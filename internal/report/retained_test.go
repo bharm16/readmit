@@ -258,6 +258,170 @@ func TestRetainedRejectsResealedFalseSummary(t *testing.T) {
 	}
 }
 
+// The preview and the commit agree at the package's interface: the sections
+// the preview names are the sections the sealed manifest indexes, a preview
+// with no problems is exactly the input assembly seals, and every problem a
+// preview reports names an input assembly refuses.
+func TestPreviewRetainedAgreesWithAssemble(t *testing.T) {
+	t.Parallel()
+	source := filepath.Join(t.TempDir(), "source")
+	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	wrongCase := filepath.Join(t.TempDir(), "wrong")
+	if _, err := bundle.Write(wrongCase, []bundle.Input{{Path: "other.hl7", Data: []byte("MSH|^~\\&|OTHER|SITE|||20260101000000||ADT^A01|OTHER|P|2.5.1\r"), Options: hl7.Options{Format: hl7.Raw}}}, bundle.Provenance{Mode: bundle.Imported, ImportedAt: &now}); err != nil {
+		t.Fatal(err)
+	}
+	input := report.RetainedInput{Case: filepath.Join(source, "reproducer"), Spec: filepath.Join(source, "spec.json"), Current: filepath.Join(source, "post-fix"), Baseline: filepath.Join(source, "baseline")}
+
+	preview, err := report.PreviewRetained(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Problems) != 0 || !preview.BaselineSupplied {
+		t.Fatalf("the complete input previewed with problems: %+v", preview)
+	}
+	if preview.Case == nil || !preview.Case.Found || !preview.Case.CaseMatch || len(preview.Case.Problems) != 0 {
+		t.Fatalf("the case did not read as verified: %+v", preview.Case)
+	}
+	if preview.Spec == nil || !preview.Spec.Found || !preview.Spec.SpecMatch || len(preview.Spec.Problems) != 0 {
+		t.Fatalf("the specification did not read as verified: %+v", preview.Spec)
+	}
+	if preview.Current == nil || !preview.Current.Found || preview.Current.Status == "" || len(preview.Current.Problems) != 0 {
+		t.Fatalf("the current execution did not read as verified: %+v", preview.Current)
+	}
+	if preview.Baseline == nil || !preview.Baseline.Found || preview.Baseline.Status == "" || len(preview.Baseline.Problems) != 0 {
+		t.Fatalf("the baseline did not read as verified: %+v", preview.Baseline)
+	}
+	if preview.BaselineCase == nil || !preview.BaselineCase.Found || !preview.BaselineCase.CaseMatch || len(preview.BaselineCase.Problems) != 0 {
+		t.Fatalf("the baseline's own case did not read as verified: %+v", preview.BaselineCase)
+	}
+	if len(preview.Limitations) == 0 {
+		t.Fatal("a supplied baseline states what it establishes")
+	}
+	named := strings.Join(preview.Inventory, "\n")
+	for _, section := range []string{"case/", "spec.json", "current/", "baseline/", "baseline-case/", "SUMMARY.md"} {
+		if !strings.Contains(named, section) {
+			t.Fatalf("the inventory did not name %s: %q", section, preview.Inventory)
+		}
+	}
+	out := filepath.Join(t.TempDir(), "packet")
+	packet, err := report.Assemble(context.Background(), input, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.Manifest.ExportPolicy != preview.ExportPolicy || packet.Manifest.ContainsSourceValues != preview.ContainsSourceValues {
+		t.Fatalf("the preview and the manifest disagree about the packet's own statements: %+v vs %+v", preview, packet.Manifest)
+	}
+	for _, section := range []string{"case/", "spec.json", "current/", "baseline/", "baseline-case/"} {
+		present := false
+		for _, file := range packet.Manifest.Files {
+			present = present || strings.HasPrefix(file.Path, section)
+		}
+		if !present {
+			t.Fatalf("the sealed packet does not hold %s, which the preview named: %q", section, preview.Inventory)
+		}
+	}
+
+	// Each problem a preview reports is an input assembly refuses, and the
+	// refusal agrees across the two interfaces.
+	for _, test := range []struct {
+		what                     string
+		change                   func(*report.RetainedInput)
+		problemIn                func(*report.RetainedPreview) []string
+		says, orSays             string
+		completeWithoutSelection bool
+	}{
+		{
+			what:      "an unrelated case",
+			change:    func(in *report.RetainedInput) { in.Case = wrongCase },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Case.Problems },
+			says:      "not the case the current result retained",
+		},
+		{
+			what:      "a missing case",
+			change:    func(in *report.RetainedInput) { in.Case = filepath.Join(source, "absent") },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Case.Problems },
+			says:      "not a case bundle this release verifies",
+		},
+		{
+			what:      "a rewritten historical specification",
+			change:    func(in *report.RetainedInput) { in.Spec = writeSpecCopy(t, source, "\n") },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Spec.Problems },
+			says:      "never substitutes",
+		},
+		{
+			what:      "a specification this release does not assemble",
+			change:    func(in *report.RetainedInput) { in.Spec = writeRawSpec(t, "{}") },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Spec.Problems },
+			says:      "not one this release assembles",
+		},
+		{
+			what:      "a missing baseline",
+			change:    func(in *report.RetainedInput) { in.Baseline = filepath.Join(source, "absent-run") },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Baseline.Problems },
+			says:      "not a retained execution this release verifies",
+		},
+		{
+			what:      "the current result relabelled as the baseline",
+			change:    func(in *report.RetainedInput) { in.Baseline = in.Current },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Problems },
+			says:      "distinct retained execution",
+		},
+		{
+			what:      "an incomplete current execution",
+			change:    func(in *report.RetainedInput) { in.Current = incompleteCopy(t, source) },
+			problemIn: func(p *report.RetainedPreview) []string { return p.Current.Problems },
+		},
+	} {
+		t.Run(test.what, func(t *testing.T) {
+			changed := input
+			test.change(&changed)
+			preview, err := report.PreviewRetained(context.Background(), changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			problems := test.problemIn(preview)
+			if len(problems) == 0 {
+				t.Fatalf("the preview reported no problem: %+v", preview)
+			}
+			if test.says != "" && !strings.Contains(strings.Join(problems, " "), test.says) {
+				t.Fatalf("the preview did not name the problem: %+v", preview)
+			}
+			if len(preview.Problems) == 0 {
+				t.Fatal("the input's own problem did not surface in the preview's one problem list")
+			}
+			if _, err := report.Assemble(context.Background(), changed, filepath.Join(t.TempDir(), "refused")); err == nil {
+				t.Fatal("assembly accepted an input the preview refused")
+			}
+		})
+	}
+}
+
+// writeSpecCopy copies the source specification with its bytes changed but
+// still decodable, so its identity differs from the one the run retained.
+func writeSpecCopy(t *testing.T, source, suffix string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "spec.json")
+	write(t, path, append(read(t, filepath.Join(source, "spec.json")), []byte(suffix)...))
+	return path
+}
+
+func writeRawSpec(t *testing.T, raw string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "spec.json")
+	write(t, path, []byte(raw))
+	return path
+}
+
+func incompleteCopy(t *testing.T, source string) string {
+	t.Helper()
+	copied := clone(t, filepath.Join(source, "post-fix"))
+	os.Remove(filepath.Join(copied, "identity.sha256"))
+	return copied
+}
+
 func TestRetainedRefusesCaseMismatchAndIncompleteJob(t *testing.T) {
 	t.Parallel()
 	source := filepath.Join(t.TempDir(), "source")

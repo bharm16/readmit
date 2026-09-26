@@ -7,8 +7,6 @@ import (
 	"errors"
 	"path/filepath"
 	"time"
-
-	"github.com/bharm16/readmit/internal/runqueue"
 )
 
 const CISchema = "readmit-suite-ci/v1"
@@ -73,9 +71,16 @@ func CIError() CIReport {
 
 // RunCI executes once and keeps the unchanged durable suite evidence. Only the
 // new aggregate files are suitable for a CI log; neither is execution evidence.
+// It is a reporting wrapper: the run itself is the one Run over the one
+// Request, and nothing here chooses among execution variants.
 func RunCI(ctx context.Context, request CIRequest) CIReport {
 	result := CIError()
-	if request.Path == "" || request.Environment == "" || request.Output == "" || len(request.Previous) > 15 || (request.Requirements == "" && len(request.Previous) > 0) || (request.Promotion == "" && (request.PromotionIdentity != "" || request.Revision != "")) || (request.Promotion != "" && (request.PromotionIdentity == "" || request.Revision == "" || request.Releases == "")) {
+	if request.Path == "" || request.Environment == "" || request.Output == "" || len(request.Previous) > 15 || (request.Requirements == "" && len(request.Previous) > 0) {
+		return result
+	}
+	run := Request{Path: request.Path, Environment: request.Environment, Output: request.Output,
+		References: request.Releases, Promotion: request.Promotion, PromotionIdentity: request.PromotionIdentity, Revision: request.Revision}
+	if err := run.Validate(); err != nil {
 		return result
 	}
 	var coverageRaw []byte
@@ -90,18 +95,9 @@ func RunCI(ctx context.Context, request CIRequest) CIReport {
 			return result
 		}
 	}
-	var report runqueue.Report
-	var err error
-	switch {
-	case request.Promotion != "":
-		report, err = RunPromoted(ctx, request.Path, request.Environment, request.Output, request.Releases, request.Promotion, request.PromotionIdentity, request.Revision)
-	case request.Releases != "":
-		report, err = RunApproved(ctx, request.Path, request.Environment, request.Output, request.Releases)
-	default:
-		report, err = Run(ctx, request.Path, request.Environment, request.Output)
-	}
 	// A preparation failure can mean the directory belongs to another run. Never
 	// write into it. Storage failures also remain errors even if some jobs passed.
+	report, err := Run(ctx, run)
 	if err != nil {
 		return result
 	}

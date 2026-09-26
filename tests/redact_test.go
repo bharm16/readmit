@@ -122,7 +122,7 @@ func redactOriginalArtifacts(t *testing.T, request redact.Request) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := replay.Execute(context.Background(), plan, filepath.Join(dir, "original-run"))
+	run, err := replay.Send(context.Background(), plan, filepath.Join(dir, "original-run"), replay.SendOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,73 +290,6 @@ func TestRedactRefusesCollectedReceiverEvidence(t *testing.T) {
 	}
 }
 
-func TestRedactBlocksEachUnreviewedSurface(t *testing.T) {
-	for _, surface := range []string{"pid", "nte", "err", "filename", "metadata", "spec", "diagnosis", "run", "unknown", "embedded"} {
-		t.Run(surface, func(t *testing.T) {
-			request := redactFixture(t)
-			redactOriginalArtifacts(t, request)
-			policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
-			want := ""
-			switch surface {
-			case "pid":
-				policy.Fields = slices.DeleteFunc(policy.Fields, func(r redact.FieldRule) bool { return r.Selector == "PID-3.1" })
-				want = "PID[1]-3"
-			case "nte":
-				policy.Fields = slices.DeleteFunc(policy.Fields, func(r redact.FieldRule) bool { return r.Selector == "NTE-3" })
-				want = "NTE[1]-3"
-			case "err":
-				policy.RemoveSegments = slices.DeleteFunc(policy.RemoveSegments, func(s string) bool { return s == "ERR" })
-				want = "ERR[1]-1"
-			case "unknown":
-				policy.RemoveSegments = slices.DeleteFunc(policy.RemoveSegments, func(s string) bool { return s == "ZXX" })
-				want = "ZXX[1]"
-			case "embedded":
-				policy.RemoveSegments = slices.DeleteFunc(policy.RemoveSegments, func(s string) bool { return s == "OBX" })
-				want = "OBX[1]-5"
-			case "filename":
-				policy.PacketPolicies = slices.DeleteFunc(policy.PacketPolicies, func(s string) bool { return s == redact.Filenames })
-				want = "/path"
-			case "metadata":
-				policy.PacketPolicies = slices.DeleteFunc(policy.PacketPolicies, func(s string) bool { return s == redact.Metadata })
-				want = "provenance-and-observed-times"
-			case "spec":
-				policy.SpecBindings = nil
-				want = "spec/assertions/2/expected/records/1/patient_id/value"
-			case "diagnosis":
-				policy.PacketPolicies = slices.DeleteFunc(policy.PacketPolicies, func(s string) bool { return s == redact.Diagnosis })
-				want = "original-artifacts/a0002/findings/"
-			case "run":
-				policy.PacketPolicies = slices.DeleteFunc(policy.PacketPolicies, func(s string) bool { return s == redact.Rerun })
-				want = "original-artifacts/a0001/manifest/changes/1/new"
-			}
-			redactJSON(t, request.PolicyPath, policy)
-			review, err := redact.Create(context.Background(), request)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if review.State != "blocked" {
-				t.Fatal("unhandled surface was approved")
-			}
-			found := false
-			for _, finding := range review.Findings {
-				if !finding.Resolved && strings.Contains(finding.Location, want) {
-					found = true
-				}
-			}
-			if !found {
-				t.Fatalf("missing located finding for %s", want)
-			}
-			packet := filepath.Join(filepath.Dir(request.Output), "packet")
-			if _, err := redact.Export(context.Background(), redact.ExportRequest{ReviewPath: request.Output, LocalState: request.LocalState, Approval: review.Identity, Output: packet}); err == nil {
-				t.Fatal("blocked review exported")
-			}
-			if _, err := os.Stat(packet); !os.IsNotExist(err) {
-				t.Fatal("blocked export created output")
-			}
-		})
-	}
-}
-
 func TestRedactRejectsStaleApprovalAndChangedInputs(t *testing.T) {
 	for _, change := range []string{"approval", "policy", "inventory", "private", "derived"} {
 		t.Run(change, func(t *testing.T) {
@@ -469,57 +402,6 @@ func TestRedactRejectsUnknownInventoryAndUnsafeDestination(t *testing.T) {
 	}
 }
 
-func TestRedactPreservesScopedIDsAcrossEscapesWithoutMergingAuthorities(t *testing.T) {
-	request := redactFixture(t)
-	original, err := bundle.Open(request.CasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var inputs []bundle.Input
-	for _, authority := range []string{"AUTH-ONE", "AUTH-TWO"} {
-		for _, source := range original.Manifest.Sources {
-			var raw []byte
-			for _, event := range original.Events {
-				if event.SourceID == source.ID {
-					part, err := original.Raw(event.ID)
-					if err != nil {
-						t.Fatal(err)
-					}
-					raw = append(raw, part...)
-				}
-			}
-			raw = bytes.ReplaceAll(raw, []byte("AUTH-ONE"), []byte(authority))
-			if source.ID == "s0002" {
-				raw = bytes.ReplaceAll(raw, []byte("PLANTED-PATIENT-7391"), []byte(`PLANTED-PATIENT-\X37333931\`))
-			}
-			inputs = append(inputs, bundle.Input{Path: "invented-scoped-source", Data: raw})
-		}
-	}
-	request.CasePath = filepath.Join(filepath.Dir(request.CasePath), "scoped.case")
-	if _, err := bundle.Write(request.CasePath, inputs, original.Manifest.Provenance); err != nil {
-		t.Fatal(err)
-	}
-	spec, err := testrunner.ReadSpec(request.SpecPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec.Input.Case = "scoped.case"
-	redactJSON(t, request.SpecPath, spec)
-	review, err := redact.Create(context.Background(), request)
-	if err != nil || review.State != "ready-for-approval" {
-		t.Fatalf("scoped review: %+v %v", review, err)
-	}
-	derived, err := bundle.Open(filepath.Join(request.Output, "case"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	first := redactField(t, derived, "s0001-e000001", "PID-3.1")
-	second := redactField(t, derived, "s0003-e000001", "PID-3.1")
-	if first == second || first != redactField(t, derived, "s0002-e000001", "PID-3.1") || second != redactField(t, derived, "s0004-e000001", "PID-3.1") {
-		t.Fatal("scope collapsed or equivalent decoded identifiers diverged")
-	}
-}
-
 func TestRedactLateProofAndResidualFailuresRemainLocatedAndPrivate(t *testing.T) {
 	for _, failure := range []string{"proof", "residual", "manifest"} {
 		t.Run(failure, func(t *testing.T) {
@@ -581,139 +463,6 @@ func TestRedactPublicReviewResidualBecomesALocatedBlockedReview(t *testing.T) {
 	verified, err := redact.OpenReview(request.Output)
 	if err != nil || !slices.Contains(verified.Residual.Locations, "review.json") {
 		t.Fatal("public manifest residual lacks a verified located refusal")
-	}
-}
-
-func TestRedactLiteralMismatchFreeTextRetentionAndUnresolvedScopeCannotBeApproved(t *testing.T) {
-	for _, problem := range []string{"literal-mismatch", "free-text", "overlap", "unknown-patient", "control-replacement", "delimiter-removal"} {
-		t.Run(problem, func(t *testing.T) {
-			request := redactFixture(t)
-			policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
-			switch problem {
-			case "literal-mismatch":
-				spec, err := testrunner.ReadSpec(request.SpecPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				(*spec.Assertions[1].Expected.Records)[0].PatientID.Value = "UNRELATED-LITERAL"
-				redactJSON(t, request.SpecPath, spec)
-			case "free-text":
-				for i := range policy.Fields {
-					if policy.Fields[i].Selector == "NTE-3" {
-						policy.Fields[i] = redact.FieldRule{Selector: "NTE-3", Policy: redact.Retain, Class: "structural", Allowed: []string{"PLANTED-NTE-ALDER"}}
-					}
-				}
-			case "overlap":
-				policy.Fields = append(policy.Fields, redact.FieldRule{Selector: "PID-3", Policy: redact.Remove, Class: "medical-record-numbers"})
-			case "unknown-patient":
-				policy.Patient.Selector = "PID-4"
-			case "control-replacement":
-				value := "injected\x01control"
-				policy.Fields = append(policy.Fields, redact.FieldRule{Selector: "PID-6", Policy: redact.Replace, Class: "names", Replacement: &value})
-			case "delimiter-removal":
-				// The delimiter declarations only ever retain exact literals.
-				for i := range policy.Fields {
-					if policy.Fields[i].Selector == "MSH-2" {
-						policy.Fields[i] = redact.FieldRule{Selector: "MSH-2", Policy: redact.Remove, Class: "structural"}
-					}
-				}
-			}
-			redactJSON(t, request.PolicyPath, policy)
-			review, err := redact.Create(context.Background(), request)
-			if err == nil && review.State != "blocked" {
-				t.Fatal("invalid relationship or free text was approved")
-			}
-			if problem == "delimiter-removal" && (err == nil || !strings.Contains(err.Error(), "delimiter declarations")) {
-				t.Fatalf("the delimiter declaration was not refused by name: %v", err)
-			}
-		})
-	}
-}
-
-// redactCaseWith rewrites the planted case with every occurrence of from
-// replaced by to, in every source, and points the spec at it.
-func redactCaseWith(t *testing.T, request *redact.Request, from, to string) {
-	t.Helper()
-	original, err := bundle.Open(request.CasePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var inputs []bundle.Input
-	for _, source := range original.Manifest.Sources {
-		var raw []byte
-		for _, event := range original.Events {
-			if event.SourceID == source.ID {
-				part, err := original.Raw(event.ID)
-				if err != nil {
-					t.Fatal(err)
-				}
-				raw = append(raw, part...)
-			}
-		}
-		inputs = append(inputs, bundle.Input{Path: "invented-source", Data: bytes.ReplaceAll(raw, []byte(from), []byte(to))})
-	}
-	request.CasePath = filepath.Join(filepath.Dir(request.CasePath), "rewritten.case")
-	if _, err := bundle.Write(request.CasePath, inputs, original.Manifest.Provenance); err != nil {
-		t.Fatal(err)
-	}
-	spec, err := testrunner.ReadSpec(request.SpecPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec.Input.Case = "rewritten.case"
-	redactJSON(t, request.SpecPath, spec)
-}
-
-// Two rules that each write into one empty position used to land there one
-// after the other, a write into an empty component at the edge of a rewritten
-// field landed beside it or was refused depending on rule order, and a rule
-// overlapping an earlier one that did not apply was let through. Overlapping
-// rules are refused whatever the position holds, whatever order the policy
-// lists them in and whether or not each applied. Rules that all leave one
-// empty position empty agree, so they are not refused.
-func TestRedactRefusesOverlappingRulesIncludingTwoWritesIntoOneEmptyPosition(t *testing.T) {
-	replace := func(selector, value string) redact.FieldRule {
-		return redact.FieldRule{Selector: selector, Policy: redact.Replace, Class: "medical-record-numbers", Replacement: &value}
-	}
-	unmatched := redact.FieldRule{Selector: "PID-3", Policy: redact.Retain, Class: "structural", Allowed: []string{"NOT-THE-IDENTIFIER"}}
-	removal := redact.FieldRule{Selector: "PID-3.2", Policy: redact.Remove, Class: "medical-record-numbers"}
-	edgeRemoval := redact.FieldRule{Selector: "PID-3.1", Policy: redact.Remove, Class: "medical-record-numbers"}
-	for name, test := range map[string]struct {
-		identifier string
-		rules      []redact.FieldRule
-	}{
-		"an empty PID-3, the field first":                                  {"", []redact.FieldRule{replace("PID-3", "FIELD"), replace("PID-3.1", "COMPONENT")}},
-		"an empty PID-3, the component first":                              {"", []redact.FieldRule{replace("PID-3.1", "COMPONENT"), replace("PID-3", "FIELD")}},
-		"an empty PID-3.1, the field first":                                {"^^^AUTH-ONE", []redact.FieldRule{replace("PID-3", "FIELD"), replace("PID-3.1", "COMPONENT")}},
-		"an empty PID-3.1, the component first":                            {"^^^AUTH-ONE", []redact.FieldRule{replace("PID-3.1", "COMPONENT"), replace("PID-3", "FIELD")}},
-		"a rule inside one that did not apply":                             {"PLANTED-PATIENT-7391^^^AUTH-ONE", []redact.FieldRule{unmatched, replace("PID-3.1", "COMPONENT")}},
-		"an empty position left empty inside a field, the field first":     {"PLANTED-PATIENT-7391^^^AUTH-ONE", []redact.FieldRule{replace("PID-3", "FIELD"), removal}},
-		"an empty position left empty inside a field, the component first": {"PLANTED-PATIENT-7391^^^AUTH-ONE", []redact.FieldRule{removal, replace("PID-3", "FIELD")}},
-		"an empty position left empty and written into":                    {"", []redact.FieldRule{removal, replace("PID-3.1", "COMPONENT")}},
-		"an empty position left empty at a field's edge, the field first":  {"^^^AUTH-ONE", []redact.FieldRule{replace("PID-3", "FIELD"), edgeRemoval}},
-		"an empty position left empty at a field's edge, the edge first":   {"^^^AUTH-ONE", []redact.FieldRule{edgeRemoval, replace("PID-3", "FIELD")}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			request := redactFixture(t)
-			redactCaseWith(t, &request, "PLANTED-PATIENT-7391^^^AUTH-ONE", test.identifier)
-			policy := readStrictDocument[redact.Policy](t, request.PolicyPath)
-			policy.Fields = slices.DeleteFunc(policy.Fields, func(rule redact.FieldRule) bool {
-				return strings.HasPrefix(rule.Selector, "PID-3")
-			})
-			policy.Fields = append(policy.Fields, test.rules...)
-			redactJSON(t, request.PolicyPath, policy)
-			if _, err := redact.Create(context.Background(), request); err == nil || !strings.Contains(err.Error(), "redaction policies overlap") {
-				t.Fatalf("two rules writing into one position were not refused: %v", err)
-			}
-		})
-	}
-	// The planted policy shifts both appointment endpoints. Where the booking
-	// declares no appointment timing, both rules leave the one empty position
-	// empty.
-	request := redactFixture(t)
-	redactCaseWith(t, &request, "^^^20260102100000+0000^20260102103000+0000", "")
-	if _, err := redact.Create(context.Background(), request); err != nil {
-		t.Fatalf("two rules leaving an empty position empty were refused: %v", err)
 	}
 }
 

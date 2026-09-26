@@ -3,16 +3,9 @@ package desktop
 import (
 	"errors"
 	"io/fs"
-	"os"
 
 	"github.com/bharm16/readmit/internal/grid"
 )
-
-// filtersName is the fixed name of the saved-filter document, beside the recent
-// workspace list and the working session in the user configuration directory.
-// All three are local shell state: nothing derives from another, and none is
-// evidence.
-const filtersName = "filters.json"
 
 // maxFiltersBytes bounds the file this release reads. A larger one is refused
 // before it is decoded rather than read into memory first.
@@ -37,9 +30,6 @@ type FiltersResult struct {
 func (r refusal) filters() FiltersResult {
 	return FiltersResult{State: r.state, Reason: r.reason, Filters: []grid.Filter{}}
 }
-
-// DefaultFiltersPath is the owner-only file the shell keeps saved filters in.
-func DefaultFiltersPath() (string, error) { return configPath(filtersName) }
 
 // Filters reports the saved filters and the selected one. It reads one small
 // local file and deliberately does not claim the operation slot, so the window
@@ -113,12 +103,13 @@ func (a *App) SelectFilter(name string) FiltersResult {
 	return a.storeFilters(document)
 }
 
-// savedFilters reads the document this viewer's filters live in. A missing file
-// is a viewer who has saved nothing, which is a complete document rather than a
-// failure; every other refusal is reported so the caller can separate a folder
-// this account cannot read from a document this release cannot read.
+// savedFilters reads the document this viewer's filters live in, through the
+// shell document store. A missing file is a viewer who has saved nothing,
+// which is a complete document rather than a failure; every other refusal is
+// reported so the caller can separate a folder this account cannot read from
+// a document this release cannot read.
 func (a *App) savedFilters() (grid.Document, refusal) {
-	document, err := readFilters(a.filtersPath)
+	document, err := readFilters(a.documents)
 	switch {
 	case errors.Is(err, fs.ErrPermission):
 		return grid.Empty(), refusal{PermissionDenied, "this account cannot read the saved filters"}
@@ -136,7 +127,7 @@ func (a *App) storeFilters(document grid.Document) FiltersResult {
 	if err != nil {
 		return a.filtersFailure(refusal{Failed, "these filters no longer fit the bounded document this release writes; save a shorter one, or save over an existing one"})
 	}
-	if err := writeShellDocument(a.filtersPath, data); err != nil {
+	if err := a.documents.write(filtersName, data); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
 			return a.filtersFailure(refusal{PermissionDenied, "this account cannot write the saved filters"})
 		}
@@ -149,19 +140,13 @@ func (a *App) storeFilters(document grid.Document) FiltersResult {
 }
 
 // readFilters treats a missing document as a viewer who has saved nothing and
-// returns every other failure, so the caller can say which one it was.
-func readFilters(path string) (grid.Document, error) {
-	info, err := os.Stat(path)
+// returns every other failure, so the caller can say which one it was. The
+// reading is the store's one rule: a bounded regular file, never a link.
+func readFilters(documents ShellDocuments) (grid.Document, error) {
+	data, err := documents.read(filtersName, maxFiltersBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return grid.Empty(), nil
 	}
-	if err != nil {
-		return grid.Document{}, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxFiltersBytes {
-		return grid.Document{}, errors.New("saved filters must be a bounded regular file")
-	}
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return grid.Document{}, err
 	}

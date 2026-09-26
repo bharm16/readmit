@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/bharm16/readmit/internal/correlate"
+	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/profilepack"
 )
@@ -212,14 +213,14 @@ func (e *engine) preserved() []Relation {
 // version or family, including one nothing decoded, is reported as the empty
 // combination rather than left out: a sequence row is never silently omitted.
 func (e *engine) combinations(derived map[string][]byte, pack profilepack.Pack) []Combination {
-	declared := make(map[string]profilepack.Combination, len(derived))
+	declared := make(map[string]dictionary.Combination, len(derived))
 	for id, raw := range derived {
 		doc, err := hl7.Parse(raw, e.options(e.events[id]))
 		if err != nil {
-			declared[id] = profilepack.Combination{}
+			declared[id] = dictionary.Combination{}
 			continue
 		}
-		declared[id] = profilepack.Declared(doc, 0)
+		declared[id] = dictionary.Declared(doc, 0)
 	}
 	combinations := make([]Combination, 0, len(derived))
 	for _, entry := range e.sequence {

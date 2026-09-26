@@ -307,10 +307,7 @@ func newBridge(root string) (*bridge, error) {
 	if err != nil {
 		return nil, err
 	}
-	app := desktop.NewWithInstalledLicense(dialogs,
-		filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"),
-		filepath.Join(state, "operations.json"), license)
+	app := desktop.NewWithInstalledLicense(dialogs, desktop.ShellDocuments{Folder: state}, license)
 	methods := bind(app)
 	for name, method := range bind(new(hubadmin.Admin)) {
 		methods[name] = method

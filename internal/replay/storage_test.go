@@ -188,13 +188,13 @@ func TestOutputFailureAndSourceChangesNeverConnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replay.Execute(context.Background(), plan, t.TempDir()); err == nil {
+	if _, err := replay.Send(context.Background(), plan, t.TempDir(), replay.SendOptions{}); err == nil {
 		t.Fatal("existing output overwritten")
 	}
 	if err := os.WriteFile(filepath.Join(source, "payloads/s0001-e000001.bin"), request("CHANGED"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replay.Execute(context.Background(), plan, filepath.Join(t.TempDir(), "run")); err == nil {
+	if _, err := replay.Send(context.Background(), plan, filepath.Join(t.TempDir(), "run"), replay.SendOptions{}); err == nil {
 		t.Fatal("changed source silently used")
 	}
 	_ = l.SetDeadline(time.Now().Add(50 * time.Millisecond))
@@ -224,7 +224,7 @@ func TestReplacedSourceDirectoryCannotReceiveNestedRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	output := filepath.Join(source, "nested-run")
-	if _, err := replay.Execute(ctx, plan, output); err == nil {
+	if _, err := replay.Send(ctx, plan, output, replay.SendOptions{}); err == nil {
 		t.Fatal("copied replacement bypassed immutable source containment")
 	}
 	if _, err := os.Lstat(output); !os.IsNotExist(err) {

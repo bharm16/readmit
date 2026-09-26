@@ -301,10 +301,9 @@ platform's accessibility API with `tools/native_journey.py`, before removing
 it, and publish the receipt and the accessibility tree at each checkpoint as
 `native-journey-OS-ARCH`; a failing native journey fails that install job and
 so `desktop`. These journeys run on all five targets only when a manual
-workflow dispatch explicitly enables `run_journeys`. `NATIVE_JOURNEYS` in
-`desktop-package` and `desktop-install` must stay identical, so only an enabled
-run builds the provisioning bridge. Automatic installation jobs run without
-journeys. The journey steps and every expected outcome live once in that
+workflow dispatch explicitly enables `run_journeys`. `NATIVE_JOURNEYS` is
+computed once, in the desktop workflow's `env`, so only an enabled run builds
+the provisioning bridge. Automatic installation jobs run without journeys. The journey steps and every expected outcome live once in that
 tool; the per-platform backends in `tools/native/` only read the tree and act
 on it, so a new step is written once for every platform. `make test-tools`
 checks the driver against a fake backend. Run it locally only on a machine
@@ -334,7 +333,7 @@ the failing input as `fuzz-failure-N`: put it under the package's
 
 Every pull-request run's aggregate records the tree the run tested as an
 artifact, `proven-tree-ci-TREE` or `proven-tree-desktop-TREE`. A push to main
-first runs `proof` (`tools/proven_tree.py`). When the pushed commit is the
+first runs `proof` (`tools/proven_tree.py check`). When the pushed commit is the
 merge of exactly one pull request into main, and a successful pull-request run
 of the same workflow for that pull request's final head, from this repository,
 recorded exactly the pushed tree, every other job of the workflow is skipped
@@ -345,6 +344,16 @@ check: a merge on a stale base, a direct push, a record from a run that failed,
 is unfinished or has expired, and any error while looking. Tag and dispatched
 runs are always complete. A pull request may merge on a stale base,
 so the main run after it is the check that proves that merge.
+
+Both aggregates run `.github/actions/proven-tree`, which runs
+`tools/proven_tree.py aggregate` and then, on a pull request, `record`; the
+tool owns the record's name. The aggregate requires each job it needs to
+succeed exactly when every gate its `if:` repeats is true (`FULL_GATES`, and in
+`ci.yml` `RUN_JOURNEYS`, each computed once in the workflow's `env`), counting
+the gates of the jobs it needs in turn, and to be skipped otherwise; when the
+proof held, every one must be skipped. A new job therefore joins an aggregate
+by its `needs` entry alone, provided its condition repeats the gate expression
+exactly.
 
 Each job has its own Go cache scope, including each fuzz shard. Keys include the
 compiler, platform, dependency checksums and a deliberate cache epoch. A main

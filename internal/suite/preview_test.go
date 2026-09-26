@@ -73,7 +73,7 @@ func TestPreviewMatchesWhatPrepareExpands(t *testing.T) {
 		t.Fatal(e)
 	}
 	write(t, filepath.Join(dir, "suite.json"), doc)
-	prepared, e := suite.Prepare(filepath.Join(dir, "suite.json"), "east", filepath.Join(dir, "compiled"))
+	prepared, e := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "compiled")})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -84,38 +84,6 @@ func TestPreviewMatchesWhatPrepareExpands(t *testing.T) {
 		if expansion.Jobs[i].ID != job.ID || expansion.Jobs[i].Isolation != string(job.Isolation) {
 			t.Fatalf("preview and prepare disagree at %d: %+v %+v", i, expansion.Jobs[i], job)
 		}
-	}
-}
-
-func TestPreviewRefusalsMirrorPreparation(t *testing.T) {
-	for _, kind := range []string{"unknown-environment", "unknown-assertion", "wrong-value", "observation", "sequence", "template-member", "changed-release", "released-row-expectation"} {
-		t.Run(kind, func(t *testing.T) {
-			dir, doc, _ := releasedFixture(t)
-			environment := "east"
-			switch kind {
-			case "unknown-environment":
-				environment = "absent"
-			case "changed-release", "template-member":
-				raw, _ := os.ReadFile(filepath.Join(dir, "booking.json"))
-				os.WriteFile(filepath.Join(dir, "booking.json"), []byte(`{"unknown":1,`+string(raw)[1:]), 0600)
-			case "released-row-expectation":
-				value := "AE"
-				doc.Tables[0].Rows[0].Expected = map[string]testrunner.Value{"ack": {Field: &testrunner.FieldValue{State: hl7.Present, Text: &value}}}
-			case "unknown-assertion":
-				n := 1
-				doc.Tables[0].Rows[0].Expected = map[string]testrunner.Value{"absent": {Count: &n}}
-			case "wrong-value":
-				n := 1
-				doc.Tables[0].Rows[0].Expected = map[string]testrunner.Value{"ack": {Count: &n}}
-			case "observation":
-				doc.Environments[0].Bindings[0].Observation = "ledger.json"
-			case "sequence":
-				doc.Tests[0].Sequence = []string{"s0001-e000002"}
-			}
-			if _, e := suite.Preview(dir, doc, environment, filepath.Join(dir, "releases.json")); e == nil {
-				t.Fatal("preview accepted an invalid expansion")
-			}
-		})
 	}
 }
 

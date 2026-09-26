@@ -369,9 +369,9 @@ func TestGenerateSynthReadsEveryDeclaredInputAsTheCommandDoes(t *testing.T) {
 
 // wideLibrary is the shipped cancel-then-book template regenerated as the
 // widest plan a library holds, eight rows by sixteen variants, with
-// expectations that pin it and cover only its first stream. A check of it
-// writes 128 synced streams before it compares anything, so it is still
-// regenerating when a person cancels it, and it can never pass.
+// expectations that pin it and cover only its first stream. The check
+// regenerates all 128 streams in memory before it compares anything, so the
+// failure it answers is the coverage one, and it can never pass.
 func wideLibrary(t *testing.T) (library, expectations string) {
 	t.Helper()
 	var shipped scenariolibrary.Library
@@ -432,11 +432,12 @@ func wideLibrary(t *testing.T) (library, expectations string) {
 	return string(encoded), string(pinned)
 }
 
-// A check cancelled while it regenerates stops there: it answers cancelled,
-// never passed or failed, and removes the private regeneration, and the next
-// check starts afresh. Cancel names the check, so it stops that and nothing
-// else.
-func TestCheckScenarioLibraryCancelledWhileRegeneratingRemovesItsStreams(t *testing.T) {
+// A check regenerates in memory, so it writes nothing anywhere: the widest
+// plan a library holds is regenerated whole, answered in the reader's words
+// when the oracle does not cover every generated stream, and the temporary
+// folder the process shares stays empty through the failing check, a passing
+// one and a repeat of each.
+func TestCheckScenarioLibraryWritesNothingAndAnswersAsTheReaderDoes(t *testing.T) {
 	temporary := t.TempDir()
 	t.Setenv("TMPDIR", temporary)
 	app := workspaceApp(t)
@@ -444,37 +445,30 @@ func TestCheckScenarioLibraryCancelledWhileRegeneratingRemovesItsStreams(t *test
 	library, expectations := wideLibrary(t)
 	writeDocument(t, root, "wide-library.json", library)
 	writeDocument(t, root, "wide-expectations.json", expectations)
-
-	answered := make(chan desktop.ScenarioLibraryResult, 1)
-	go func() {
-		answered <- app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "wide-library.json", Expectations: "wide-expectations.json"})
-	}()
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		streams, _ := filepath.Glob(filepath.Join(temporary, "readmit-library-*", "generation", "stream-*.mllp"))
-		if len(streams) > 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the check never began regenerating")
-		}
-		time.Sleep(time.Millisecond)
+	check := func(libraryName, expectationsName string) desktop.ScenarioLibraryResult {
+		return app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: libraryName, Expectations: expectationsName})
 	}
-	app.Cancel("another-operation")
-	app.Cancel("scenario-check")
-	cancelled := <-answered
-	if cancelled.State != desktop.Cancelled || cancelled.Streams != 0 || cancelled.Fields != 0 || cancelled.Target != "" {
-		t.Fatalf("cancelled check: %+v", cancelled)
+	if got := check("wide-library.json", "wide-expectations.json"); got.State != desktop.Failed ||
+		got.Reason != "oracle must cover every generated stream" || got.Streams != 0 || got.Fields != 0 {
+		t.Fatalf("a check of the widest plan against an oracle of its first stream: %+v", got)
 	}
 	if left := entriesOf(t, temporary); len(left) != 0 {
-		t.Fatalf("a cancelled check kept its private regeneration: %v", left)
+		t.Fatalf("a failing check wrote %v", left)
 	}
-	if again := app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "wide-library.json", Expectations: "wide-expectations.json"}); again.State != desktop.Failed ||
-		again.Reason != "oracle must cover every generated stream" {
-		t.Fatalf("a check after the cancelled one: %+v", again)
-	}
-	if left := entriesOf(t, temporary); len(left) != 0 {
-		t.Fatalf("a failed check kept its private regeneration: %v", left)
+	writeDocument(t, root, "shipped-library.json", fixture(t, "scenario-library.json"))
+	writeDocument(t, root, "expectations.json", fixture(t, "scenario-expectations.json"))
+	for i := range 2 {
+		if got := check("shipped-library.json", "expectations.json"); got.State != desktop.Completed ||
+			got.Streams != 2 || got.Fields != 11 || got.Target != "unverified" {
+			t.Fatalf("passing check %d: %+v", i, got)
+		}
+		if got := check("wide-library.json", "wide-expectations.json"); got.State != desktop.Failed ||
+			got.Reason != "oracle must cover every generated stream" {
+			t.Fatalf("failing check %d: %+v", i, got)
+		}
+		if left := entriesOf(t, temporary); len(left) != 0 {
+			t.Fatalf("check %d wrote %v", i, left)
+		}
 	}
 }
 

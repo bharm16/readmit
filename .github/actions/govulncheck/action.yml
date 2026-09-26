@@ -1,0 +1,18 @@
+name: Pinned vulnerability check
+description: Run the pinned govulncheck over one Go module's packages.
+inputs:
+  working-directory:
+    description: The module to check.
+    default: .
+  tags:
+    description: Build tags the module is checked with, if any.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Vulnerability check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        TAGS: ${{ inputs.tags }}
+      run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ${TAGS:+-tags "$TAGS"} ./...

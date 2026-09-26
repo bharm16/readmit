@@ -145,7 +145,7 @@ func TestDisclosureStatusDistinguishesConfiguredFromUnconfigured(t *testing.T) {
 	if err := os.WriteFile(destinations, []byte(`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://portal.example.test"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	app := desktop.New(&chooser{files: []string{destinations}}, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"), filepath.Join(dir, "session.json"), filepath.Join(dir, "drafts.json"))
+	app := desktop.New(&chooser{files: []string{destinations}}, desktop.ShellDocuments{Folder: dir})
 	if result := app.SelectHubConfig(config); result.State != desktop.Completed {
 		t.Fatalf("hub configuration: %+v", result)
 	}

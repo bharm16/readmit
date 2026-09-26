@@ -5,9 +5,8 @@ import (
 	"errors"
 	"regexp"
 	"slices"
-	"strings"
-	"unicode"
-	"unicode/utf8"
+
+	"github.com/bharm16/readmit/internal/authority"
 )
 
 var configToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.+/-]{0,127}$`)
@@ -68,28 +67,28 @@ func (c Config) validate() error {
 		}
 		seenRules[rule] = true
 	}
-	if len(c.Namespaces) > 128 {
+	// The authority mappings are the same assertions a correlation rules
+	// document declares; what one is and when it is refused is decided once,
+	// in internal/authority, and only the wording is this contract's own.
+	switch defect := authority.Validate(mappingsOf(c.Namespaces)); defect {
+	case authority.OverBound:
 		return errors.New("diagnosis configuration exceeds 128 authority mappings")
-	}
-	seen := make(map[authority]bool)
-	for _, ns := range c.Namespaces {
-		if !configToken.MatchString(ns.Key) || !safeConfigValue(ns.Namespace) || !safeConfigValue(ns.UniversalID) || !safeConfigValue(ns.UniversalIDType) {
-			return errors.New("invalid diagnosis authority mapping")
-		}
-		if ns.Namespace == "" && ns.UniversalID == "" || (ns.UniversalID == "") != (ns.UniversalIDType == "") {
-			return errors.New("authority mapping requires a namespace or universal identifier and type")
-		}
-		a := authority{ns.Namespace, ns.UniversalID, ns.UniversalIDType}
-		if seen[a] {
-			return errors.New("duplicate diagnosis authority mapping")
-		}
-		seen[a] = true
+	case authority.Invalid:
+		return errors.New("invalid diagnosis authority mapping")
+	case authority.Incomplete:
+		return errors.New("authority mapping requires a namespace or universal identifier and type")
+	case authority.Duplicate:
+		return errors.New("duplicate diagnosis authority mapping")
 	}
 	return nil
 }
 
-func safeConfigValue(s string) bool {
-	return len(s) <= 256 && utf8.ValidString(s) && strings.IndexFunc(s, unicode.IsControl) < 0
+// mappingsOf states the configuration's own mapping type as the set
+// internal/authority validates and resolves.
+func mappingsOf(namespaces []Namespace) []authority.Mapping {
+	mappings := make([]authority.Mapping, len(namespaces))
+	for i, ns := range namespaces {
+		mappings[i] = authority.Mapping(ns)
+	}
+	return mappings
 }
-
-type authority struct{ namespace, universalID, universalType string }

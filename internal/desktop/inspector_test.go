@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/dictionary"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/operation"
 	"maps"
 	"os"
 	"path/filepath"
@@ -172,11 +175,11 @@ func TestInspectorUnparsedAndChangedEvidenceStayExplicit(t *testing.T) {
 }
 
 func TestInspectorSharesOperationSlotAndRecoversAfterCancellation(t *testing.T) {
-	app, root, filters := gridWorkspace(t)
+	app, root, _ := gridWorkspace(t)
 	grid := openGrid(t, app, root, "incident", 0, 50).Grid
 	request := desktop.InspectRequest{Workspace: root, Case: "incident", Identity: grid.Identity, Occurrence: grid.Rows[0].ID, ByteOffset: -1}
 	chooser := &chooser{folder: root}
-	second := desktop.New(chooser, filepath.Join(t.TempDir(), "recent.json"), filters, filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	second := desktop.New(chooser, desktop.ShellDocuments{Folder: t.TempDir()})
 	var concurrent desktop.InspectionResult
 	chooser.before = func() { concurrent = second.InspectOccurrence(request); second.Cancel("") }
 	second.SelectWorkspace()
@@ -252,6 +255,68 @@ func TestInspectorParentNavigationPreservesOmittedSegments(t *testing.T) {
 			message := app.InspectOccurrence(request)
 			if message.State != desktop.Completed || message.Inspection.Selected.Kind != "message" || message.Inspection.ChildCount != 2 {
 				t.Fatalf("could not navigate back to message: %+v", message)
+			}
+		})
+	}
+}
+
+// TestInspectorAndInspectCommandAgreeOnDeclaredLabels is the regression the
+// one declared-version reader owes: a componentised MSH-12 such as 2.5.1^USA
+// and a repeated MSH-12 are decided at the first component of the first
+// repetition, so the window's occurrence inspector and `readmit inspect` name
+// the same field with the same label — including where the command used to
+// read the whole field and the window read the selector, and they disagreed.
+func TestInspectorAndInspectCommandAgreeOnDeclaredLabels(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	for _, tc := range []struct{ name, version string }{
+		{"componentised", "2.5.1^USA"},
+		{"repeated-labels-first", "2.5.1~2.9"},
+		{"repeated-other-first", "2.9^ZZZ~2.5.1"},
+		{"unsupported", "2.6"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			message := strings.Replace(gridBooking, "2.5.1", tc.version, 1)
+			b := writeCase(t, root, tc.name, framed(message))
+			window := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: tc.name, Identity: b.Identity, Occurrence: b.Events[0].ID, Path: "PID[1]-3", ByteOffset: -1})
+			if window.State != desktop.Completed || window.Inspection == nil {
+				t.Fatalf("inspector: %+v", window)
+			}
+			metadata := window.Inspection.Metadata
+
+			path := filepath.Join(t.TempDir(), tc.name+".hl7")
+			if err := os.WriteFile(path, []byte(message), 0600); err != nil {
+				t.Fatal(err)
+			}
+			command, err := operation.InspectFile(path, hl7.Options{Terminator: hl7.CR}, "")
+			if err != nil {
+				t.Fatalf("inspect: %v", err)
+			}
+			var profile, label string
+			command.Rows(func(row operation.InspectionRow) bool {
+				switch {
+				case row.Kind == operation.InspectMessageRow && row.Message == 1:
+					profile = row.Profile
+				case row.Kind == operation.InspectFieldRow && row.Segment == "PID" && row.Field == 3:
+					label = row.Label
+					return false
+				}
+				return true
+			})
+
+			if label != metadata.Label {
+				t.Fatalf("the command named PID-3 %q but the window named it %q", label, metadata.Label)
+			}
+			switch {
+			case metadata.Status == dictionary.StatusLabeledField:
+				if label == "" || profile != operation.InspectLabelled {
+					t.Fatalf("the window labelled PID-3 but the command did not: %q %q", label, profile)
+				}
+			case metadata.Status == dictionary.StatusUnsupportedVersion:
+				if label != "" || profile != operation.InspectPositional {
+					t.Fatalf("the window refused the version but the command did not: %q %q", label, profile)
+				}
+			default:
+				t.Fatalf("unexpected metadata status %q", metadata.Status)
 			}
 		})
 	}

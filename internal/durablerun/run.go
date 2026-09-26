@@ -381,13 +381,11 @@ func start(ctx context.Context, plan *testrunner.Plan, output string) (summary S
 		}
 		w.summary.ResultIdentity = artifact.Identity
 		if artifact.Run != nil {
-			for _, event := range artifact.Run.Events {
-				if event.Outcome == replay.Cancelled {
-					stop = Cancelled
-				}
-				if event.Outcome == replay.Timeout {
-					stop = TimedOut
-				}
+			switch artifact.Run.Interruption() {
+			case replay.Cancelled:
+				stop = Cancelled
+			case replay.Timeout:
+				stop = TimedOut
 			}
 		}
 	}

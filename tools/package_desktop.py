@@ -29,12 +29,14 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
+from distribution import desktop_legal, source
+from release_candidate import ARCHITECTURES, OPERATING_SYSTEMS
+
 
 DECLARATION_SCHEMA = "readmit-desktop-packaging/v1"
 MANIFEST_SCHEMA = "readmit-desktop-package/v1"
 MANIFEST_NAME = "manifest.json"
 BUNDLE_NAME = "readmit-desktop.app"
-NOTICES = "THIRD_PARTY_NOTICES.md"
 ROOT = Path(__file__).resolve().parent.parent
 DECLARATION = ROOT / "desktop" / "packaging" / "packages.json"
 WIX_SOURCE = ROOT / "desktop" / "packaging" / "readmit-desktop.wxs"
@@ -204,11 +206,8 @@ def read_tar_gz(payload):
 
 
 def legal_material():
-    """Retain the existing notices, license texts and preferred dictionary source."""
-    names = [NOTICES, "dictionary/fields-v251.json", "docs/dictionary-provenance.md"]
-    names += [path.relative_to(ROOT).as_posix() for path in sorted((ROOT / "licenses").glob("*.txt"))]
-    return {name: (ROOT / ("internal/" + name if name.startswith("dictionary/") else name)).read_bytes()
-            for name in names}
+    """The notices, license texts and preferred dictionary source the manifest names."""
+    return {name: source(name).read_bytes() for name in desktop_legal()}
 
 
 def stage_legal_material(directory):
@@ -870,8 +869,8 @@ def main():
     packaging.add_argument("--binary", type=Path, required=True)
     packaging.add_argument("--version", required=True)
     packaging.add_argument("--output", type=Path, required=True)
-    packaging.add_argument("--os", choices=["linux", "darwin", "windows"], required=True)
-    packaging.add_argument("--arch", choices=["amd64", "arm64"], required=True)
+    packaging.add_argument("--os", choices=OPERATING_SYSTEMS, required=True)
+    packaging.add_argument("--arch", choices=ARCHITECTURES, required=True)
 
     checking = commands.add_parser("verify", help="verify built packages against their manifest")
     checking.add_argument("--packages", type=Path, required=True)

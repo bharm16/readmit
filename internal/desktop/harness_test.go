@@ -61,9 +61,9 @@ func (c *chooser) ChooseDestination(title string) (string, error) {
 
 // activatedApp wires an app over explicit state files and selects the test
 // operation policy, so the shell can admit authoring and execution.
-func activatedApp(t testing.TB, chooser desktop.FolderChooser, recent, filters, session string) *desktop.App {
+func activatedApp(t testing.TB, chooser desktop.FolderChooser, state string) *desktop.App {
 	t.Helper()
-	app := desktop.New(chooser, recent, filters, session, filepath.Join(filepath.Dir(session), "drafts.json"))
+	app := desktop.New(chooser, desktop.ShellDocuments{Folder: state})
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}
@@ -74,7 +74,7 @@ func activatedApp(t testing.TB, chooser desktop.FolderChooser, recent, filters, 
 // dialog to stand in for.
 func newApp(t *testing.T, c *chooser) *desktop.App {
 	t.Helper()
-	return activatedApp(t, c, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	return activatedApp(t, c, t.TempDir())
 }
 
 // workspaceApp is the shell a feature test reads and writes through: an
@@ -82,7 +82,7 @@ func newApp(t *testing.T, c *chooser) *desktop.App {
 func workspaceApp(t *testing.T) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	return activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	return activatedApp(t, &chooser{}, state)
 }
 
 // sample creates the sample workspace through the public facade and returns it.

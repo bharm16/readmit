@@ -132,7 +132,7 @@ func TestCanonicalOperationsRespectBusySlotAndReleaseIt(t *testing.T) {
 	root := t.TempDir()
 	state := t.TempDir()
 	chooser := &chooser{folder: root}
-	app := activatedApp(t, chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	app := activatedApp(t, chooser, state)
 	chooser.before = func() {
 		for _, got := range []desktop.CanonicalTestResult{app.ImportTest(root, "spec.json"), app.ValidateTest(canonicalSpec), app.ExportTest(desktop.CanonicalTestRequest{Workspace: root, Document: canonicalSpec, Output: "spec.json"})} {
 			if got.State != desktop.Busy {

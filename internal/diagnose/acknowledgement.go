@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/bharm16/readmit/internal/acklink"
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -41,10 +42,18 @@ var requested = []struct{ path, stage string }{
 //
 // Both passes run after every occurrence has been read, so capture order never
 // decides whether an acknowledgement is linked. The link itself is the control
-// identifier the acknowledgement echoes, compared inside this case only.
+// identifier the acknowledgement echoes, compared as decoded text across this
+// whole case — the pairing [acklink.NewDiagnosis] owns, which the finding
+// review that promotes these findings shares.
 func (e *evaluator) acknowledgements(requests *grouped[string, message], acks []message) {
 	if !e.linksAcknowledgements() {
 		return
+	}
+	linked := acklink.NewDiagnosis[message]()
+	for _, controlID := range requests.keys {
+		for _, m := range requests.values[controlID] {
+			linked.Add(m.event.SourceID, acklink.Value{Text: controlID, Decoded: true}, m)
+		}
 	}
 	observed := make(map[stageKey]bool)
 	for _, m := range acks {
@@ -52,17 +61,17 @@ func (e *evaluator) acknowledgements(requests *grouped[string, message], acks []
 		if !ok {
 			continue
 		}
-		acknowledged := requests.values[controlID]
+		answered := linked.Answer(m.event.SourceID, acklink.Value{Text: controlID, Decoded: true})
 		switch {
-		case len(acknowledged) > 1:
+		case len(answered) > 1:
 			e.unsupportedItem("ambiguous_acknowledged_occurrence", m.event.ID, "MSA-2", "More than one captured occurrence carries the acknowledged control identifier; the acknowledgement was not linked to any of them.")
 			continue
-		case len(acknowledged) == 0:
+		case len(answered) == 0:
 			e.unsupportedItem("acknowledged_occurrence_not_observed", m.event.ID, "MSA-2", "No interpreted occurrence in this case carries the acknowledged control identifier; the acknowledgement was not linked.")
 			continue
 		}
 		observed[stageKey{controlID, stage}] = true
-		e.errorLocations(m, acknowledged[0])
+		e.errorLocations(m, answered[0])
 	}
 	e.stagesNotObserved(requests, observed)
 }

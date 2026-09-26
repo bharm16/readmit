@@ -205,7 +205,7 @@ func TestSavingATestIsRefusedUntilEveryStageIsAnswered(t *testing.T) {
 func TestAuthoringOperationsRunOneAtATime(t *testing.T) {
 	app, root, identity := authoringWorkspace(t)
 	reentrant := &chooser{folder: root}
-	second := activatedApp(t, reentrant, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"))
+	second := activatedApp(t, reentrant, t.TempDir())
 	var answered, written desktop.TestResult
 	reentrant.before = func() {
 		start := desktop.TestRequest{Workspace: root, Case: "incident", Identity: identity, Output: "test.json"}

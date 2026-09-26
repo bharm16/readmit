@@ -20,24 +20,31 @@ import (
 
 var occurrencePattern = regexp.MustCompile(`^s[0-9]{4}-e[0-9]{6}$`)
 
-type transformer struct {
-	policy   Policy
-	local    localState
-	findings []exportreview.Finding
-	policies map[string]bool
-	original map[string]*hl7.Document
-	derived  map[string]*hl7.Document
+// findingLog collects the located findings of one derive or seal step and the
+// packet policies a resolved finding credits. Both steps record findings the
+// same bounded way, so neither can silently drop or unboundedly grow one.
+type findingLog struct {
+	Findings []exportreview.Finding
+	Policies map[string]bool
 }
 
-func (t *transformer) finding(location, class, reason, policy string, resolved bool) error {
-	if len(t.findings) >= maxFindings {
+func (f *findingLog) finding(location, class, reason, policy string, resolved bool) error {
+	if len(f.Findings) >= maxFindings {
 		return errors.New("redaction review exceeds finding limit")
 	}
-	t.findings = append(t.findings, exportreview.Finding{Location: location, Class: class, Reason: reason, Policy: policy, Resolved: resolved})
+	f.Findings = append(f.Findings, exportreview.Finding{Location: location, Class: class, Reason: reason, Policy: policy, Resolved: resolved})
 	if resolved && policy != "" {
-		t.policies[policy] = true
+		f.Policies[policy] = true
 	}
 	return nil
+}
+
+type transformer struct {
+	policy Policy
+	findingLog
+	local    localState
+	original map[string]*hl7.Document
+	derived  map[string]*hl7.Document
 }
 
 func (t *transformer) has(name string) bool { return slices.Contains(t.policy.PacketPolicies, name) }

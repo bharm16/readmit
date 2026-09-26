@@ -7,13 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/runqueue"
-	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // Prepared is a new private directory containing ordinary test specs and a
@@ -60,19 +58,54 @@ func retain(dir, name string, raw []byte) error {
 	return nil
 }
 
-// Prepare resolves every row before publishing queue.json. It never sends.
-// A failed preparation removes only its own new configuration directory; once
-// returned, the directory is retained and every run creates separate evidence.
-func Prepare(path, environment, output string) (prepared Prepared, err error) {
-	return prepare(path, environment, output, "", "")
+// Request is one suite operation: the document at Path expanded against the
+// declared Environment into the new directory Output, with optional approved
+// released-expectation references, an approved environment promotion, and the
+// document identity a preview fixed. The optional pins are the whole choice
+// among the former ordinary, approved, promoted and pinned variants: every
+// caller — the command line, CI and the desktop — states one request.
+type Request struct {
+	Path, Environment, Output string
+	// References names a readmit-suite-releases/v1 sidecar; when set, every
+	// template and expectation is verified against its exact released pins.
+	References string
+	// Promotion, with its exact identity and the revision assumption it was
+	// reviewed under, executes an approved promotion. All four promotion
+	// members stand or fall together and cannot be combined with Identity.
+	Promotion, PromotionIdentity, Revision string
+	// Identity pins the operation to the suite document a preview reported:
+	// a document that no longer has it is refused with ErrChanged before the
+	// output exists.
+	Identity string
 }
 
-// PrepareApproved verifies an explicit pin for every template before expanding rows.
-func PrepareApproved(path, environment, output, references string) (Prepared, error) {
-	if references == "" {
-		return Prepared{}, errors.New("released suite requires references")
+// Validate refuses a request whose optional pins are incomplete or mutually
+// exclusive, before any suite is read.
+func (r Request) Validate() error {
+	if r.Path == "" || r.Environment == "" || r.Output == "" {
+		return errors.New("a suite operation requires the suite path, environment and a new output directory")
 	}
-	return prepare(path, environment, output, references, "")
+	if (r.Promotion == "" && (r.PromotionIdentity != "" || r.Revision != "")) || (r.Promotion != "" && (r.PromotionIdentity == "" || r.Revision == "" || r.References == "")) {
+		return errors.New("a promoted suite requires its promotion, identity, revision assumption and released references together")
+	}
+	if r.Promotion != "" && r.Identity != "" {
+		return errors.New("a promoted suite is pinned by its promotion identity, not by a suite document identity")
+	}
+	return nil
+}
+
+// Prepare resolves every row of the request's suite before publishing
+// queue.json, writing the one expansion this package decides. It never sends.
+// A failed preparation removes only its own new configuration directory; once
+// returned, the directory is retained and every run creates separate evidence.
+func Prepare(request Request) (Prepared, error) {
+	if err := request.Validate(); err != nil {
+		return Prepared{}, err
+	}
+	if request.Promotion != "" {
+		return Prepared{}, errors.New("a promoted suite is executed through Run, never prepared")
+	}
+	return prepare(request.Path, request.Environment, request.Output, request.References, request.Identity)
 }
 
 // prepare compiles the suite at path. A non-empty identity pins it: the
@@ -126,20 +159,13 @@ func prepare(path, environment, output, references, identity string) (prepared P
 			_ = os.RemoveAll(out)
 		}
 	}()
-	queue, err := doc.queue()
+	_, queue, compiled, err := expand(root, doc, *selected, releases)
 	if err != nil {
 		return prepared, err
 	}
 	for _, test := range doc.Tests {
-		templateRaw, e := read(artifactpath.JoinReference(root, test.Spec), testrunner.MaxSpecBytes)
-		if e != nil {
-			return prepared, e
-		}
-		if r, approved := releases[test.ID]; approved {
-			if e := baselineSpec(templateRaw, r); e != nil {
-				return prepared, e
-			}
-			encoded, e := r.Encode()
+		if release, approved := releases[test.ID]; approved {
+			encoded, e := release.Encode()
 			if e != nil {
 				return prepared, e
 			}
@@ -147,74 +173,10 @@ func prepare(path, environment, output, references, identity string) (prepared P
 				return prepared, e
 			}
 		}
-		for _, table := range doc.Tables {
-			if table.ID != test.Table {
-				continue
-			}
-			for _, row := range table.Rows {
-				spec, e := testrunner.DecodeSpec(templateRaw)
-				if e != nil {
-					return prepared, e
-				}
-				if !slices.Equal(spec.Input.Messages, test.Sequence) {
-					return prepared, errors.New("suite sequence differs from its template")
-				}
-				spec.Input.Case = artifactpath.JoinReference(root, row.Case)
-				for _, binding := range selected.Bindings {
-					if binding.Parameter == test.Parameter {
-						spec.Target = artifactpath.JoinReference(root, binding.Target)
-						if spec.Observation.Boundary == testrunner.LedgerBoundary {
-							if binding.Observation == "" {
-								return prepared, errors.New("ledger template requires an environment observation path")
-							}
-							spec.Observation.Path = artifactpath.JoinReference(root, binding.Observation)
-						} else if binding.Observation != "" {
-							return prepared, errors.New("ACK template cannot consume an observation binding")
-						}
-					}
-				}
-				used := 0
-				for i := range spec.Assertions {
-					if expected, ok := row.Expected[spec.Assertions[i].ID]; ok {
-						if _, approved := releases[test.ID]; approved {
-							before, _ := json.Marshal(spec.Assertions[i].Expected, json.Deterministic(true))
-							after, _ := json.Marshal(expected, json.Deterministic(true))
-							if string(before) != string(after) {
-								return prepared, errors.New("suite row changes a released expectation; release a reviewed template for that row")
-							}
-						}
-						spec.Assertions[i].Expected = expected
-						used++
-					}
-				}
-				if used != len(row.Expected) {
-					return prepared, errors.New("suite row names an assertion its template does not declare")
-				}
-				encoded, e := json.Marshal(spec, json.Deterministic(true))
-				if e != nil {
-					return prepared, errors.New("cannot encode suite test")
-				}
-				if _, e = testrunner.DecodeSpec(encoded); e != nil {
-					return prepared, e
-				}
-				name := test.ID + "-" + row.ID + ".json"
-				if e = retain(out, name, encoded); e != nil {
-					return prepared, e
-				}
-				plan, e := testrunner.Prepare(filepath.Join(out, name))
-				if e != nil {
-					return prepared, e
-				}
-				mappings := plan.PinnedInputs().Mappings
-				if len(mappings) != len(test.Sequence) {
-					return prepared, errors.New("suite sequence does not match selected evidence")
-				}
-				for i, mapping := range mappings {
-					if mapping.SourceOccurrence != test.Sequence[i] {
-						return prepared, errors.New("suite sequence differs from evidence send order")
-					}
-				}
-			}
+	}
+	for _, job := range compiled {
+		if e := retain(out, job.Name, job.Raw); e != nil {
+			return prepared, e
 		}
 	}
 	if references != "" {
@@ -242,47 +204,36 @@ func prepare(path, environment, output, references, identity string) (prepared P
 	return Prepared{Directory: out, Queue: queue}, nil
 }
 
-// Run expands one selected environment and delegates every scheduling and send
-// decision to runqueue. Existing output is refused, never resumed or resent.
-func Run(ctx context.Context, path, environment, output string) (runqueue.Report, error) {
-	return run(ctx, path, environment, output, "", "")
-}
-
-func RunApproved(ctx context.Context, path, environment, output, references string) (runqueue.Report, error) {
-	if references == "" {
-		return runqueue.Report{}, errors.New("released suite requires references")
+// Run expands the request's suite once and delegates every scheduling and
+// send decision to runqueue. Existing output is refused, never resumed or
+// resent. A request carrying Identity executes only while the document at
+// Path still has it, checked on the bytes it then compiles, so there is no
+// gap between the check and the read and ErrChanged refuses before the output
+// is created or anything is sent; a request carrying the promotion members
+// executes an approved promotion (and requires References).
+func Run(ctx context.Context, request Request) (runqueue.Report, error) {
+	if err := request.Validate(); err != nil {
+		return runqueue.Report{}, err
 	}
-	return run(ctx, path, environment, output, references, "")
-}
-
-// Identity is the identity of one suite document: the SHA-256 of its exact
-// bytes, as a promotion review records the suite it reviewed. A preview reports
-// it, and RunPinned executes only a document that still has it.
-func Identity(raw []byte) string { return promotionHash(raw) }
-
-// ErrChanged refuses a pinned run whose suite document no longer has the
-// identity it was pinned to.
-var ErrChanged = errors.New("the suite differs from the identity it was pinned to")
-
-// RunPinned is Run — or RunApproved, when references are given — for a caller
-// that previewed the suite: it executes only while the document at path still
-// has identity, checked on the bytes it then compiles, so there is no gap
-// between the check and the read. An empty or different identity refuses with
-// ErrChanged before the output is created or anything is sent.
-func RunPinned(ctx context.Context, path, environment, output, references, identity string) (runqueue.Report, error) {
-	if identity == "" {
-		return runqueue.Report{}, ErrChanged
+	if request.Promotion != "" {
+		return runPromoted(ctx, request)
 	}
-	return run(ctx, path, environment, output, references, identity)
-}
-
-func run(ctx context.Context, path, environment, output, references, identity string) (runqueue.Report, error) {
-	prepared, err := prepare(path, environment, output, references, identity)
+	prepared, err := prepare(request.Path, request.Environment, request.Output, request.References, request.Identity)
 	if err != nil {
 		return runqueue.Report{}, err
 	}
 	return runPrepared(ctx, prepared, nil)
 }
+
+// Identity is the identity of one suite document: the SHA-256 of its exact
+// bytes, as a promotion review records the suite it reviewed. A preview
+// reports it, and a run pinned with it executes only a document that still
+// has it.
+func Identity(raw []byte) string { return promotionHash(raw) }
+
+// ErrChanged refuses a pinned run whose suite document no longer has the
+// identity it was pinned to.
+var ErrChanged = errors.New("the suite differs from the identity it was pinned to")
 
 func runPrepared(ctx context.Context, prepared Prepared, pins map[string]string) (runqueue.Report, error) {
 	raw, err := json.Marshal(prepared.Queue, json.Deterministic(true))

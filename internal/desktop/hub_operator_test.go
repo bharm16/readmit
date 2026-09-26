@@ -178,8 +178,7 @@ func TestChoosingAnOperatorOnlyHubConfigurationReachesNoHubAndIsNotRemembered(t 
 	dialog := &chooser{}
 	state := t.TempDir()
 	window := func() *desktop.App {
-		return desktop.New(dialog, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-			filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+		return desktop.New(dialog, desktop.ShellDocuments{Folder: state})
 	}
 	app := window()
 
@@ -427,8 +426,7 @@ func TestAnOperatorOnlyStoreIsAdmittedTwiceAndEachRefusalIsReportedOnce(t *testi
 
 	unlicensedDialog := &chooser{}
 	state := t.TempDir()
-	unlicensed := desktop.New(unlicensedDialog, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	unlicensed := desktop.New(unlicensedDialog, desktop.ShellDocuments{Folder: state})
 	connectOperator(t, unlicensed, unlicensedDialog, stub)
 	opened := len(unlicensedDialog.opened)
 	unlicensedDialog.files = []string{source}

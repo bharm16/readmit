@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/acklink"
+	"github.com/bharm16/readmit/internal/authority"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
 )
@@ -100,7 +102,7 @@ func (g *grouping) each(visit func(key string, items []*occurrence)) {
 type engine struct {
 	items       []*occurrence
 	sources     map[string]bool
-	authorities map[authority]string
+	authorities *authority.Table
 	report      Report
 	seen        map[string]bool
 }
@@ -124,7 +126,7 @@ func Run(path string, rules Rules) (Report, error) {
 	sum := sha256.Sum256(encoded)
 	e := &engine{
 		sources:     make(map[string]bool, len(b.Manifest.Sources)),
-		authorities: make(map[authority]string, len(rules.Authorities)),
+		authorities: authority.NewTable(mappingsOf(rules.Authorities)),
 		seen:        make(map[string]bool),
 		report: Report{
 			Schema: ReportSchema, CaseIdentity: b.Identity, RulesSHA256: hex.EncodeToString(sum[:]),
@@ -135,9 +137,6 @@ func Run(path string, rules Rules) (Report, error) {
 	}
 	for _, source := range b.Manifest.Sources {
 		e.sources[source.ID] = true
-	}
-	for _, mapping := range rules.Authorities {
-		e.authorities[authority{mapping.Namespace, mapping.UniversalID, mapping.UniversalIDType}] = mapping.Key
 	}
 	needsPayloads := slices.ContainsFunc(rules.Rules, func(rule Rule) bool { return rule.Operator == Identifier })
 	if err := e.load(b, needsPayloads); err != nil {
@@ -227,20 +226,25 @@ func (e *engine) evaluate(rule Rule) RuleReport {
 // acknowledges resolves what an acknowledgement itself declares. The match is
 // over exact field bytes, including literal escapes, with no trimming, case
 // folding or escape decoding, so a control ID means here exactly what it means
-// in the case bundle's own same-source correlation.
+// in the case bundle's own same-source correlation. The scope an operator
+// declared is passed to [acklink] explicitly: a source-scoped rule answers an
+// acknowledgement inside the source that captured it alone, and a session or
+// declared scope answers it across the case, narrowed to its listed sources.
 func (e *engine) acknowledges(rule Rule, report *RuleReport, linked map[string]bool) {
-	messages := make(map[string][]*occurrence)
+	scope := acklink.CaseWide
+	if rule.Scope == SourceScope {
+		scope = acklink.PerSource
+	}
+	index := acklink.New[*occurrence](scope, acklink.FieldBytes)
 	for _, item := range e.items {
-		key, ok := e.scopeKey(rule, item)
-		if !ok || item.event.Kind != bundle.Message || item.control == nil {
+		if !inside(rule, item) || item.event.Kind != bundle.Message || item.control == nil {
 			continue
 		}
-		messages[key+"\x00"+string(item.control)] = append(messages[key+"\x00"+string(item.control)], item)
+		index.Add(item.ref.SourceID, acklink.Value{Bytes: item.control}, item)
 		report.Considered++
 	}
 	for _, item := range e.items {
-		key, ok := e.scopeKey(rule, item)
-		if !ok || item.event.Kind != bundle.Acknowledgement {
+		if !inside(rule, item) || item.event.Kind != bundle.Acknowledgement {
 			continue
 		}
 		switch {
@@ -255,7 +259,7 @@ func (e *engine) acknowledges(rule Rule, report *RuleReport, linked map[string]b
 			continue
 		}
 		report.Considered++
-		candidates := messages[key+"\x00"+string(item.acknowledged[0].value)]
+		candidates := index.Answer(item.ref.SourceID, acklink.Value{Bytes: item.acknowledged[0].value})
 		switch len(candidates) {
 		case 0:
 		case 1:
@@ -264,6 +268,17 @@ func (e *engine) acknowledges(rule Rule, report *RuleReport, linked map[string]b
 			e.collide(rule, AmbiguousAcknowledgement, &item.ref, candidates)
 		}
 	}
+}
+
+// inside reports whether one occurrence is within the boundary this rule
+// compares across. Only a declared scope narrows the case to the sources it
+// lists; a source or session scope decides its reach through the scope
+// [acklink] applies.
+func inside(rule Rule, item *occurrence) bool {
+	if rule.Scope != DeclaredScope {
+		return true
+	}
+	return slices.Contains(rule.Sources, item.ref.SourceID)
 }
 
 // controlIDs groups equal message control IDs inside one declared scope. A
@@ -376,7 +391,10 @@ func (e *engine) scopeKey(rule Rule, item *occurrence) (string, bool) {
 
 // authorityOf preserves the complete assigning-authority tuple. A mapping is
 // an explicit customer assertion of equivalence; an identifier string never
-// establishes equivalence across different or unestablished authorities.
+// establishes equivalence across different or unestablished authorities. The
+// reading of the tuple, as decoded text without holding it to MSH-18, stays
+// here; what a complete tuple is and when it resolves is the one rule
+// internal/authority owns.
 func (e *engine) authorityOf(rule Rule, item *occurrence, parts [authorityParts]field) (string, bool) {
 	var tuple [authorityParts]string
 	for i, part := range parts {
@@ -386,18 +404,19 @@ func (e *engine) authorityOf(rule Rule, item *occurrence, parts [authorityParts]
 			return "", false
 		}
 		if state == hl7.Null {
-			e.unsupportedItem("unknown_assigning_authority", rule.ID, item.ref.Occurrence, part.declared, "An explicit-null assigning authority is not an authority; the identifier was not correlated.")
+			e.unsupportedItem(authority.UnknownCode, rule.ID, item.ref.Occurrence, part.declared, "An explicit-null assigning authority is not an authority; the identifier was not correlated.")
 			return "", false
 		}
 		tuple[i] = text
 	}
-	if tuple[0] == "" && tuple[1] == "" || (tuple[1] == "") != (tuple[2] == "") {
-		e.unsupportedItem("unknown_assigning_authority", rule.ID, item.ref.Occurrence, parts[0].declared, "The assigning authority is missing or incomplete; the identifier was not correlated.")
+	read := authority.Parts{Namespace: tuple[0], UniversalID: tuple[1], UniversalIDType: tuple[2]}
+	if !read.Complete() {
+		e.unsupportedItem(authority.UnknownCode, rule.ID, item.ref.Occurrence, parts[0].declared, "The assigning authority is missing or incomplete; the identifier was not correlated.")
 		return "", false
 	}
-	key, ok := e.authorities[authority{tuple[0], tuple[1], tuple[2]}]
+	key, ok := e.authorities.Resolve(read)
 	if !ok {
-		e.unsupportedItem("unconfigured_assigning_authority", rule.ID, item.ref.Occurrence, parts[0].declared, "The assigning authority has no configured mapping; the identifier was not correlated.")
+		e.unsupportedItem(authority.UnconfiguredCode, rule.ID, item.ref.Occurrence, parts[0].declared, "The assigning authority has no configured mapping; the identifier was not correlated.")
 		return "", false
 	}
 	return key, true

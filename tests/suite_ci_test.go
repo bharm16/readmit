@@ -114,7 +114,7 @@ func exerciseCustomerCI(t *testing.T, command func(*testing.T, string) *exec.Cmd
 			value := "AA"
 			put("test.json", testrunner.Spec{Schema: testrunner.SpecSchema, Name: "PRIVATE-PATIENT", Input: testrunner.Input{Case: "unbound", Messages: []string{"s0001-e000001"}}, Target: "unbound", Setup: testrunner.Setup{InitialState: "operator-declared", ResetInstructions: "operator resets fixture"}, Observation: testrunner.Observation{Boundary: testrunner.ACKBoundary}, Assertions: []testrunner.Assertion{{ID: "ack", Operator: "ack_field_equals", Message: "s0001-e000001", Selector: "MSA-1", Expected: testrunner.Value{Field: &testrunner.FieldValue{State: hl7.Present, Text: &value}}}}})
 			put("suite.json", suite.Document{Schema: suite.Schema, ID: "fixture", Owner: "PRIVATE-OWNER", Tags: []string{}, Parallelism: 1, Environments: []suite.Environment{{ID: "lab", Site: "PRIVATE-SITE", Bindings: []suite.Binding{{Parameter: "target", Target: "target.json"}}}}, Tables: []suite.Table{{ID: "rows", Rows: []suite.Row{{ID: "one", Case: "case"}}}}, Tests: []suite.Test{{ID: "booking", Spec: "test.json", Owner: "PRIVATE-OWNER", Tags: []string{}, Parameter: "target", Table: "rows", Isolation: "shared", Sequence: []string{"s0001-e000001"}}}})
-			preview, e := suite.Prepare(filepath.Join(root, "suite.json"), "lab", filepath.Join(root, "preview"))
+			preview, e := suite.Prepare(suite.Request{Path: filepath.Join(root, "suite.json"), Environment: "lab", Output: filepath.Join(root, "preview")})
 			if e != nil {
 				t.Fatal(e)
 			}

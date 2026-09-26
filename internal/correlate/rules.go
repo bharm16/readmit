@@ -4,10 +4,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"regexp"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/authority"
 	"github.com/bharm16/readmit/internal/hl7"
 )
 
@@ -18,7 +16,7 @@ const (
 	MaxRules = 64
 	// MaxAuthorities bounds the declared authority mappings, matching the
 	// diagnosis configuration an operator already maintains.
-	MaxAuthorities = 128
+	MaxAuthorities = authority.MaxMappings
 	// MaxRuleSources bounds a declared scope by the case reader's own source
 	// limit: a rule cannot name more sources than a case can hold.
 	MaxRuleSources = 128
@@ -53,21 +51,20 @@ func (r *Rule) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalJSON reads one authority mapping exactly as written.
+// UnmarshalJSON reads one authority mapping exactly as written, through the
+// one decoder every contract that declares a mapping shares, and answers this
+// contract's own wording for what it refuses.
 func (a *Authority) UnmarshalJSON(data []byte) error {
-	var required struct {
-		Key *string `json:"key"`
-	}
-	if err := json.Unmarshal(data, &required); err != nil || required.Key == nil {
+	mapping, defect := authority.Decode(data)
+	switch defect {
+	case authority.Valid:
+		*a = Authority(mapping)
+		return nil
+	case authority.Absent:
 		return errors.New("an authority mapping requires a key")
-	}
-	type authorityMapping Authority
-	var decoded authorityMapping
-	if err := json.Unmarshal(data, &decoded, json.RejectUnknownMembers(true)); err != nil {
+	default:
 		return errors.New("an authority mapping declares no member beyond key, namespace, universal_id and universal_id_type")
 	}
-	*a = Authority(decoded)
-	return nil
 }
 
 // ParseRules reads one correlation rules document exactly as written and
@@ -125,25 +122,33 @@ func (r Rules) validate() error {
 	return nil
 }
 
+// validateAuthorities checks the declared authority mappings the way every
+// contract that declares them checks them — the bound, the token grammar of
+// every key, the safety of every part, tuple completeness and distinctness
+// are internal/authority's one rule — and answers this document's own
+// wording for each refusal.
 func validateAuthorities(authorities []Authority) error {
-	if len(authorities) > MaxAuthorities {
+	switch defect := authority.Validate(mappingsOf(authorities)); defect {
+	case authority.OverBound:
 		return errors.New("correlation rules declare at most 128 authority mappings")
-	}
-	seen := make(map[authority]bool, len(authorities))
-	for _, mapping := range authorities {
-		if !ruleToken.MatchString(mapping.Key) || !safeValue(mapping.Namespace) || !safeValue(mapping.UniversalID) || !safeValue(mapping.UniversalIDType) {
-			return errors.New("invalid correlation authority mapping")
-		}
-		if mapping.Namespace == "" && mapping.UniversalID == "" || (mapping.UniversalID == "") != (mapping.UniversalIDType == "") {
-			return errors.New("an authority mapping requires a namespace or a universal identifier and type")
-		}
-		key := authority{mapping.Namespace, mapping.UniversalID, mapping.UniversalIDType}
-		if seen[key] {
-			return errors.New("duplicate correlation authority mapping")
-		}
-		seen[key] = true
+	case authority.Invalid:
+		return errors.New("invalid correlation authority mapping")
+	case authority.Incomplete:
+		return errors.New("an authority mapping requires a namespace or a universal identifier and type")
+	case authority.Duplicate:
+		return errors.New("duplicate correlation authority mapping")
 	}
 	return nil
+}
+
+// mappingsOf states the rules document's own mapping type as the set
+// internal/authority validates and resolves.
+func mappingsOf(authorities []Authority) []authority.Mapping {
+	mappings := make([]authority.Mapping, len(authorities))
+	for i, mapping := range authorities {
+		mappings[i] = authority.Mapping(mapping)
+	}
+	return mappings
 }
 
 func (r Rule) validate() error {
@@ -188,12 +193,3 @@ func (r Rule) validate() error {
 	}
 	return nil
 }
-
-// safeValue bounds what a mapping may say: valid UTF-8 with no control
-// character, because a document somebody imported must not be able to drive
-// the terminal a diagnostic is displayed on.
-func safeValue(value string) bool {
-	return len(value) <= 256 && utf8.ValidString(value) && strings.IndexFunc(value, unicode.IsControl) < 0
-}
-
-type authority struct{ namespace, universalID, universalType string }

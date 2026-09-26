@@ -309,7 +309,7 @@ test("a policy and inventory authored in the window derive a ready review and th
 
   await enter(user, panel.getByLabelText("Policy file"), "authored-policy.json");
   await press(user, panel.getByRole("button", { name: "Save policy" }));
-  expect(await panel.findByText("invalid redaction policy; only explicit named policies are supported")).toBeTruthy();
+  expect(await panel.findByText("invalid redaction policy: required_failures declares no assertion position")).toBeTruthy();
   await enter(user, panel.getByLabelText("Patient identifier selector"), policy.patient.selector);
   for (const [index, selector] of policy.patient.authority.entries()) {
     await press(user, panel.getByRole("button", { name: "Add patient authority" }));

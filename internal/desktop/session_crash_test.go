@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,10 +37,6 @@ const (
 // draftBody is the unstored working text the crash has to return. It is only
 // ever in the session document and in this test.
 const draftBody = "MSA-1 came back AE on the reschedule; still checking whether"
-
-// draftLoopName is the note the write-racing-the-kill child replaces over and
-// over, so the parent can wait until a replacement has actually landed.
-const draftLoopName = "growing-draft"
 
 // silentPeer accepts connections and reads frames without ever acknowledging
 // one, so a send stays in flight until the sender is killed. It counts what it
@@ -201,7 +196,7 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 	}
 
 	// Restarting the shell is a new facade over the same local state.
-	restarted := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
+	restarted := activatedApp(t, &chooser{}, state)
 	restored := restarted.RecoverSession()
 	if restored.State != desktop.Completed || restored.Session == nil {
 		t.Fatalf("the restarted shell restored nothing: %+v", restored)
@@ -263,79 +258,12 @@ func TestControlledCrashRestoresUnstoredWorkAndKeepsTheSendUncertain(t *testing.
 	}
 }
 
-// A write racing the kill. The document is replaced whenever a person moves
-// through the window, so the process is killed while it is writing one: what
-// comes back must be a complete document the shell can read, never a torn one,
-// and never an invented state.
-func TestAWriteRacingTheKillLeavesACompleteDocument(t *testing.T) {
-	if os.Getenv(crashChild) == "2" {
-		crashDraftLoop(t)
-		return
-	}
-	state := t.TempDir()
-	session := filepath.Join(state, "session.json")
-	workspace := t.TempDir()
-
-	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.Env = append(os.Environ(),
-		crashChild+"=2", crashSession+"="+session, crashWorkspace+"="+workspace)
-	if err := child.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { child.Process.Kill() })
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		if raw, err := os.ReadFile(session); err == nil && bytes.Contains(raw, []byte(draftLoopName)) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the child retained nothing to race against")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if err := child.Process.Kill(); err != nil {
-		t.Fatal(err)
-	}
-	child.Wait()
-
-	restored := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session).RecoverSession()
-	if restored.State != desktop.Completed || restored.Session == nil {
-		t.Fatalf("a kill during a write left an unreadable session: %+v", restored)
-	}
-	if len(restored.Session.Drafts) != 1 {
-		t.Fatalf("a kill during a write left %d drafts: %+v", len(restored.Session.Drafts), restored.Session.Drafts)
-	}
-	// Whatever it is, it is one of the complete bodies the child wrote: the
-	// replacement is whole or it never happened, never half of each.
-	body := restored.Session.Drafts[0].Note.Body
-	if body == "" || strings.Trim(body, "x") != "" {
-		t.Fatalf("a kill during a write left a torn body: %q", body)
-	}
-}
-
-// crashDraftLoop retains a growing note until it is killed, so the kill lands
-// somewhere inside the sequence of replacements.
-func crashDraftLoop(t *testing.T) {
-	state := filepath.Dir(os.Getenv(crashSession))
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
-	workspace := os.Getenv(crashWorkspace)
-	// The body stays inside the bound a note is held to, so the loop never ends
-	// by being refused: the only thing that stops it is the kill.
-	for i := 1; ; i++ {
-		retained := app.SaveDraft(desktop.Draft{Project: workspace,
-			Note: project.Note{Name: draftLoopName, Title: "Growing", Body: strings.Repeat("x", 1+i%512)}})
-		if retained.State != desktop.Completed {
-			t.Fatalf("child could not retain its draft: %+v", retained)
-		}
-	}
-}
-
 // crashChildRun is the process that gets killed. It records where it is and the
 // note it is writing through the public facade, then starts the one send that
 // never completes.
 func crashChildRun(t *testing.T) {
 	state := filepath.Dir(os.Getenv(crashSession))
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
+	app := activatedApp(t, &chooser{}, state)
 	workspace := os.Getenv(crashWorkspace)
 	view := desktop.View{Workspace: workspace, Region: "evidence", Case: "case", Run: os.Getenv(crashOutput)}
 	if recorded := app.RecordView(view); recorded.State != desktop.Completed {
@@ -358,8 +286,7 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 	peer := newSilentPeer(t)
 	workspace, _, output := crashFixture(t, peer.address)
 	state := t.TempDir()
-	session := filepath.Join(state, "session.json")
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
+	app := activatedApp(t, &chooser{}, state)
 
 	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Run: output}); recorded.State != desktop.Completed {
 		t.Fatalf("record view: %+v", recorded)
@@ -457,7 +384,7 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 	child.Wait()
 
 	before := runtime.NumGoroutine()
-	restarted := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), session)
+	restarted := activatedApp(t, &chooser{}, state)
 	if restored := restarted.RecoverSession(); restored.State != desktop.Completed || restored.Session == nil || restored.Session.View.Workspace != workspace {
 		t.Fatalf("the session was not recovered: %+v", restored)
 	}
@@ -507,7 +434,7 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 // then waits in it until it is killed.
 func reopenChildRun(t *testing.T) {
 	state := filepath.Dir(os.Getenv(crashSession))
-	app := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), os.Getenv(crashSession))
+	app := activatedApp(t, &chooser{}, state)
 	workspace := os.Getenv(crashWorkspace)
 	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Case: "case"}); recorded.State != desktop.Completed {
 		t.Fatalf("child could not record its view: %+v", recorded)

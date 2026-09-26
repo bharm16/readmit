@@ -77,7 +77,7 @@ func compare(left, right Input, options Options, applied *appliedPolicy) (Report
 		for _, item := range side.evidence.items {
 			if item.doc == nil {
 				report.Unsupported = append(report.Unsupported, Unsupported{Side: side.name, Occurrence: item.ref.Occurrence, Code: item.ref.PayloadState})
-			} else if !hasDictionary(item, labels) {
+			} else if !labels.Applies(dictionary.Declared(item.doc, item.index)) {
 				report.Unsupported = append(report.Unsupported, Unsupported{Side: side.name, Occurrence: item.ref.Occurrence, Selector: "MSH[1]-12[1].1", Code: "unknown_dictionary_version"})
 			}
 		}
@@ -149,7 +149,8 @@ func comparePair(pair alignedPair, fields []hl7.Selector, labels *dictionary.Dic
 			result.Status = "changed"
 		}
 	}
-	knownNames := hasDictionary(pair.left, labels) && hasDictionary(pair.right, labels)
+	knownNames := labels.Applies(dictionary.Declared(pair.left.doc, pair.left.index)) &&
+		labels.Applies(dictionary.Declared(pair.right.doc, pair.right.index))
 	for _, selector := range fields {
 		*comparisons++
 		if *comparisons > maxComparisons {
@@ -280,13 +281,10 @@ func segmentChanges(pair alignedPair) []SegmentChange {
 	return changes
 }
 
-func hasDictionary(item *occurrence, labels *dictionary.Dictionary) bool {
-	selector, _ := hl7.ParseSelector("MSH-12.1")
-	value, decoded := selectValue(item, selector, false)
-	return value.State == hl7.Present && value.Encoding == "decoded-utf8" && string(decoded) == labels.HL7Version
-}
-
+// fieldName is the name the labels declare for the position one selector
+// addresses, or "" where they name nothing: the applicability of the labels
+// to both sides is decided once by the caller from what each message declares.
 func fieldName(selector hl7.Selector, labels *dictionary.Dictionary) string {
 	position := selector.Parts()
-	return labels.Segments[position.Segment][position.Field]
+	return labels.Label(position.Segment, position.Field)
 }

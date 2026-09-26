@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/suite"
 	"github.com/spf13/cobra"
 )
@@ -29,36 +27,21 @@ func suiteCommand() *cobra.Command {
 			if environment == "" || output == "" || execute && !send {
 				return usage("suite requires --environment and --output; run additionally requires --send")
 			}
+			request := suite.Request{Path: args[0], Environment: environment, Output: output,
+				References: releases, Promotion: promotion, PromotionIdentity: promotionIdentity, Revision: revision}
 			if execute {
 				ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
 				if err != nil {
 					return err
 				}
 				defer cancel()
-				run := suite.Run
-				if releases != "" {
-					run = func(ctx context.Context, path, environment, output string) (runqueue.Report, error) {
-						return suite.RunApproved(ctx, path, environment, output, releases)
-					}
-				}
-				if promotion != "" {
-					run = func(ctx context.Context, path, environment, output string) (runqueue.Report, error) {
-						return suite.RunPromoted(ctx, path, environment, output, releases, promotion, promotionIdentity, revision)
-					}
-				}
-				report, err := run(ctx, args[0], environment, output)
+				report, err := suite.Run(ctx, request)
 				if err != nil {
 					return refusal(err)
 				}
 				return printQueue(cmd, report, asJSON)
 			}
-			prepare := suite.Prepare
-			if releases != "" {
-				prepare = func(path, environment, output string) (suite.Prepared, error) {
-					return suite.PrepareApproved(path, environment, output, releases)
-				}
-			}
-			prepared, err := prepare(args[0], environment, output)
+			prepared, err := suite.Prepare(request)
 			if err != nil {
 				return refusal(err)
 			}

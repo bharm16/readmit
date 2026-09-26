@@ -94,7 +94,15 @@ func projectArchive(deleteSource bool) *cobra.Command {
 			return usage("project delete requires --confirm-delete; recovery archive will be retained")
 		}
 		ctx := cmd.Context()
-		report, operationErr := lifecycle.Archive(ctx, args[0], output, deleteSource)
+		// The selection binds the operation to the bytes a retirement
+		// preview inventoried, so a project changed under the operation is
+		// refused before anything is written. The command line previews at
+		// the moment of the operation and prints nothing for it.
+		retirement, err := lifecycle.PreviewRetirement(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		report, operationErr := lifecycle.Archive(ctx, args[0], output, retirement.Selection, deleteSource)
 		if report.Root != "" {
 			if err := writeBackupReport(cmd.OutOrStdout(), report); err != nil {
 				return err

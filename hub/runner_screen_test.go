@@ -43,7 +43,7 @@ func (silentChooser) ChooseFiles(string, string, string) ([]string, error) {
 func screenApp(t *testing.T) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	app := desktop.New(silentChooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(silentChooser{}, desktop.ShellDocuments{Folder: state})
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}

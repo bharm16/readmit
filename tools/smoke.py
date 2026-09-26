@@ -11,18 +11,17 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import platform
 import queue
 import shutil
 import socket
 import subprocess
-import tarfile
 import tempfile
 import threading
-import zipfile
 
-from toolchain import pinned_version
+from distribution import members
 from operation_fixture import activate
+from release_candidate import (ARCHITECTURES, OPERATING_SYSTEMS, check_build_info, extract_binaries,
+                               member_bytes, native_candidate, verified_archives)
 
 
 FIXTURES = (
@@ -35,79 +34,14 @@ FIXTURES = (
     ("reduced-delimiters.hl7", "raw", "cr", 1),
 )
 
-# The distribution contract is declared once, beside the tools that verify it.
-# The checking logic here remains independent of every other tool; only the
-# member list is shared.
-def distribution_members():
-    manifest = json.loads(Path(__file__).with_name("distribution.json").read_text())
-    if manifest.get("schema") != "readmit-distribution/v1" or not isinstance(manifest.get("members"), list) or not manifest["members"]:
-        raise RuntimeError("distribution manifest is invalid")
-    return manifest["members"]
 
-
-REQUIRED_FILES = set(distribution_members())
+REQUIRED_FILES = set(members())
 
 # A fixture this file exercises is necessarily a member of the distribution: a
 # new fixture without a manifest entry fails here rather than going unverified.
 _missing = {"testdata/fixtures/" + filename for filename, _, _, _ in FIXTURES} - REQUIRED_FILES
 if _missing:
     raise RuntimeError(f"Fixtures exercised but not declared in the distribution manifest: {', '.join(sorted(_missing))}")
-
-
-def verify_distribution(archive):
-    if archive.suffix == ".zip":
-        binary = "readmit.exe"
-        with zipfile.ZipFile(archive) as contents:
-            available = {member.filename for member in contents.infolist() if not member.is_dir() and member.file_size > 0}
-    else:
-        binary = "readmit"
-        with tarfile.open(archive) as contents:
-            available = {member.name for member in contents.getmembers() if member.isfile() and member.size > 0}
-    missing = (REQUIRED_FILES | {binary}) - available
-    if missing:
-        raise RuntimeError(f"Missing distribution members in {archive.name}: {', '.join(sorted(missing))}")
-
-
-def verified_archives(directory):
-    checksums = {}
-    for line in (directory / "checksums.txt").read_text().splitlines():
-        digest, name = line.split()
-        checksums[name.lstrip("*")] = digest
-    archives = sorted(directory.glob("*.tar.gz")) + sorted(directory.glob("*.zip"))
-    if not archives:
-        raise RuntimeError("No archives found")
-    for archive in archives:
-        if hashlib.sha256(archive.read_bytes()).hexdigest() != checksums.get(archive.name):
-            raise RuntimeError(f"Checksum mismatch: {archive.name}")
-        verify_distribution(archive)
-    return archives
-
-
-def member_bytes(archive, name):
-    if archive.suffix == ".zip":
-        with zipfile.ZipFile(archive) as contents:
-            return contents.read(name)
-    with tarfile.open(archive) as contents:
-        return contents.extractfile(name).read()
-
-
-def check_build_info(archives):
-    """Read the packaged bytes with Go on the build runner; never execute them."""
-    expected = pinned_version()
-    with tempfile.TemporaryDirectory(prefix="readmit-build-info-") as directory:
-        for archive in archives:
-            name = "readmit.exe" if archive.suffix == ".zip" else "readmit"
-            binary = Path(directory) / name
-            binary.write_bytes(member_bytes(archive, name))
-            info = json.loads(subprocess.check_output(
-                ["go", "version", "-m", "-json", str(binary)], text=True, timeout=15,
-                env=dict(os.environ, GOTOOLCHAIN="local"),
-            ))
-            if info["GoVersion"] != expected:
-                raise RuntimeError(
-                    f"{archive.name}: compiler {info['GoVersion']} does not match the toolchain pin {expected}"
-                )
-    print(f"PASS: {len(archives)} archived compiler versions match {expected}")
 
 
 def work_root(target_os):
@@ -732,39 +666,19 @@ def smoke_report(binary, environment, work, run):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifacts", type=Path, required=True)
-    parser.add_argument("--os", choices=["linux", "darwin", "windows"])
-    parser.add_argument("--arch", choices=["amd64", "arm64"])
+    parser.add_argument("--os", choices=OPERATING_SYSTEMS)
+    parser.add_argument("--arch", choices=ARCHITECTURES)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--extract-binaries", type=Path)
     mode.add_argument("--check-build-info", action="store_true", help="Verify archived compiler identity on the build runner (requires Go)")
     parser.add_argument("--release-tag", default=os.environ.get("READMIT_RELEASE_TAG"))
     args = parser.parse_args()
-    archives = verified_archives(args.artifacts)
-    if args.release_tag:
-        prefix = f"readmit_{args.release_tag.removeprefix('v')}_"
-        if any(not archive.name.startswith(prefix) for archive in archives):
-            raise RuntimeError("Archive version does not match the release tag")
     if args.check_build_info:
-        check_build_info(archives)
-        return
-    if args.extract_binaries:
-        if len(archives) != 5:
-            raise RuntimeError("Expected exactly five release archives")
-        args.extract_binaries.mkdir(parents=True, exist_ok=False)
-        for archive in archives:
-            name = "readmit.exe" if archive.suffix == ".zip" else "readmit"
-            target = args.extract_binaries / (archive.name + "." + name)
-            target.write_bytes(member_bytes(archive, name))
-        return
-    actual_os = platform.system().lower()
-    actual_arch = {"x86_64": "amd64", "amd64": "amd64", "arm64": "arm64", "aarch64": "arm64"}.get(platform.machine().lower())
-    if (args.os, args.arch) != (actual_os, actual_arch):
-        raise RuntimeError(f"Expected native {args.os}/{args.arch}, got {actual_os}/{actual_arch}")
-    suffix = f"_{args.os}_{args.arch}." + ("zip" if args.os == "windows" else "tar.gz")
-    matches = [archive for archive in archives if archive.name.endswith(suffix)]
-    if len(matches) != 1:
-        raise RuntimeError("Expected exactly one archive for this target")
-    smoke(matches[0], args.os, args.release_tag)
+        check_build_info(verified_archives(args.artifacts, args.release_tag))
+    elif args.extract_binaries:
+        extract_binaries(verified_archives(args.artifacts, args.release_tag), args.extract_binaries)
+    else:
+        smoke(native_candidate(args.artifacts, args.os, args.arch, args.release_tag), args.os, args.release_tag)
 
 
 if __name__ == "__main__":

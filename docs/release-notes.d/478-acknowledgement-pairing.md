@@ -1,0 +1,1 @@
+- Diagnosis and findings review now use the same acknowledgement pairing when promoting a finding from a case with multiple sources. Case correlations retain their existing source scope and exact-byte comparison.

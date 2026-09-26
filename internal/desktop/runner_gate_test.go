@@ -151,8 +151,7 @@ func newRunnerGateFixture(t *testing.T, subject string, scopes []string) *runner
 		t.Fatal(err)
 	}
 
-	app := desktop.New(&chooser{folder: dir}, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"),
-		filepath.Join(dir, "session.json"), filepath.Join(dir, "drafts.json"))
+	app := desktop.New(&chooser{folder: dir}, desktop.ShellDocuments{Folder: dir})
 	if res := app.SelectOperationPolicy(testlicense.New(t)); res.State != desktop.Completed {
 		t.Fatalf("SelectOperationPolicy: %+v", res)
 	}

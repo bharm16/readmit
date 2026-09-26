@@ -4,15 +4,11 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/engine"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/report"
-	"github.com/bharm16/readmit/internal/runresult"
-	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // The investigation-packet panels. This file connects what the window selects
@@ -157,11 +153,13 @@ func resolvePacketInputs(root string, request PacketRequest) (packetInputs, stri
 }
 
 // PreviewPacket verifies the exact inputs one retained-packet assembly would
-// copy, through the same readers assembly verifies them with, and reports what
-// it found without writing anything. It sends nothing, resets nothing and
-// opens no network connection.
+// copy through report's own assembly preview — the same readers and the same
+// checks the assembly performs, and the packet layout the assembly writes —
+// and reports what it found without writing anything. The facade adds only
+// the entries the person selected and the destination it would create. It
+// sends nothing, resets nothing and opens no network connection.
 func (a *App) PreviewPacket(request PacketRequest) PacketPreviewResult {
-	return run(a, false, false, func(context.Context) PacketPreviewResult {
+	return run(a, false, false, func(ctx context.Context) PacketPreviewResult {
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return PacketPreviewResult{State: declined.state, Reason: declined.reason}
@@ -174,63 +172,80 @@ func (a *App) PreviewPacket(request PacketRequest) PacketPreviewResult {
 		if refused.state != "" {
 			return PacketPreviewResult{State: refused.state, Reason: refused.reason}
 		}
-		preview := &PacketPreview{
-			BaselineSupplied:     request.Baseline != "",
-			Destination:          destination,
-			ExportPolicy:         "customer-local-only",
-			ContainsSourceValues: true,
-			Problems:             []string{},
-			Limitations:          []string{},
-			Inventory:            []string{},
-		}
-		preview.Case = packetCaseView(inputs.casePath, request.Case)
-		current, currentView := packetRunView(inputs.currentPath, request.Current)
-		preview.Current = currentView
-		if current != nil && current.Artifact != nil && preview.Case.Found {
-			preview.Case.CaseMatch = preview.Case.Identity == current.Artifact.Result.InputBundleIdentity
-			if !preview.Case.CaseMatch {
-				preview.Case.Problems = append(preview.Case.Problems, "the case is not the case the current result retained")
+		preview, err := report.PreviewRetained(ctx, report.RetainedInput{
+			Case: inputs.casePath, Spec: inputs.specPath, Current: inputs.currentPath,
+			Baseline: inputs.baselinePath, BaselineCase: inputs.baselineCasePath,
+		})
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return PacketPreviewResult{State: Cancelled, Reason: cancelledRefusal.reason}
 			}
+			return PacketPreviewResult{State: Failed, Reason: err.Error()}
 		}
-		preview.Spec = packetSpecView(inputs.specPath, request.Spec, current)
-		preview.Inventory = packetInventory(preview, current)
-		if request.Baseline != "" {
-			baseline, baselineView := packetRunView(inputs.baselinePath, request.Baseline)
-			preview.Baseline = baselineView
-			baselineCaseName := request.BaselineCase
-			if baselineCaseName == "" {
-				baselineCaseName = request.Case
-			}
-			preview.BaselineCase = packetCaseView(inputs.baselineCasePath, baselineCaseName)
-			if baseline != nil && current != nil {
-				if baseline.Artifact != nil && current.Artifact != nil && baseline.Artifact.Identity == current.Artifact.Identity {
-					preview.Problems = append(preview.Problems, "the baseline and the current result are the same retained execution; a baseline must be a distinct retained execution")
-				}
-				if baseline.Artifact != nil && preview.BaselineCase.Found {
-					preview.BaselineCase.CaseMatch = preview.BaselineCase.Identity == baseline.Artifact.Result.InputBundleIdentity
-					if !preview.BaselineCase.CaseMatch {
-						preview.BaselineCase.Problems = append(preview.BaselineCase.Problems, "the baseline case is not the case the baseline execution retained")
-					}
-				}
-			}
-			preview.Inventory = append(preview.Inventory, packetBaselineInventory(preview, baseline)...)
-			preview.Limitations = append(preview.Limitations, packetBaselineBoundaries(baseline, current)...)
-		} else {
-			preview.Limitations = append(preview.Limitations,
-				"No observed baseline was supplied. This single-run report proves no before/after improvement or regression.")
-		}
-		preview.Problems = append(preview.Problems, packetInputProblems(preview.Case, preview.Spec, preview.Current)...)
-		if preview.Baseline != nil {
-			preview.Problems = append(preview.Problems, packetInputProblems(preview.Baseline)...)
-		}
-		if preview.BaselineCase != nil {
-			preview.Problems = append(preview.Problems, packetInputProblems(preview.BaselineCase)...)
-		}
-		preview.Limitations = append(preview.Limitations,
-			"Hashes establish integrity, not source authenticity, disclosure approval or a regression-equivalence claim.",
-			"Assembling, exporting and rendering a report never prove a passing run or an approved disclosure.")
-		return PacketPreviewResult{State: Completed, Preview: preview}
+		return PacketPreviewResult{State: Completed, Preview: packetPreview(request, destination, preview)}
 	})
+}
+
+// packetPreview projects report's assembly preview for the shell: the entry
+// name each verified input was selected by, the destination the shell would
+// write, and the two statements every packet panel carries. The verified
+// inputs, the problems, the planned inventory and the baseline statements are
+// the report package's own; the facade adds none.
+func packetPreview(request PacketRequest, destination RunDestination, preview *report.RetainedPreview) *PacketPreview {
+	view := &PacketPreview{
+		BaselineSupplied:     preview.BaselineSupplied,
+		Destination:          destination,
+		ExportPolicy:         preview.ExportPolicy,
+		ContainsSourceValues: preview.ContainsSourceValues,
+		Problems:             preview.Problems,
+		Limitations:          preview.Limitations,
+		Inventory:            preview.Inventory,
+	}
+	view.Case = packetInputView(request.Case, preview.Case)
+	view.Spec = packetInputView(request.Spec, preview.Spec)
+	view.Current = packetInputView(request.Current, preview.Current)
+	if preview.Baseline != nil {
+		view.Baseline = packetInputView(request.Baseline, preview.Baseline)
+	}
+	if preview.BaselineCase != nil {
+		name := request.BaselineCase
+		if name == "" {
+			name = request.Case
+		}
+		view.BaselineCase = packetInputView(name, preview.BaselineCase)
+	}
+	view.Limitations = append(view.Limitations,
+		"Hashes establish integrity, not source authenticity, disclosure approval or a regression-equivalence claim.",
+		"Assembling, exporting and rendering a report never prove a passing run or an approved disclosure.")
+	return view
+}
+
+// packetInputView names one verified input with the entry the person selected
+// it by.
+func packetInputView(entry string, from *report.RetainedInputView) *PacketInputView {
+	if from == nil {
+		return nil
+	}
+	return &PacketInputView{
+		Entry:             entry,
+		Found:             from.Found,
+		Identity:          from.Identity,
+		Provenance:        from.Provenance,
+		Status:            from.Status,
+		ErrorClass:        from.ErrorClass,
+		Boundary:          from.Boundary,
+		RunState:          from.RunState,
+		Durable:           from.Durable,
+		JournalIncomplete: from.JournalIncomplete,
+		DeliveryUncertain: from.DeliveryUncertain,
+		ResultIdentity:    from.ResultIdentity,
+		SpecIdentity:      from.SpecIdentity,
+		CaseIdentity:      from.CaseIdentity,
+		TargetIdentity:    from.TargetIdentity,
+		SpecMatch:         from.SpecMatch,
+		CaseMatch:         from.CaseMatch,
+		Problems:          from.Problems,
+	}
 }
 
 // PacketRunView is one retained execution of a verified packet, as its own
@@ -598,150 +613,4 @@ func (a *App) OpenPacketReview(request PacketReviewRequest) PacketReviewResult {
 		}
 		return PacketReviewResult{State: Completed, Review: view}
 	})
-}
-
-// packetCaseView verifies one case entry through the shared reader.
-func packetCaseView(path, entry string) *PacketInputView {
-	view := &PacketInputView{Entry: entry, Problems: []string{}}
-	opened, err := operation.OpenCase(path)
-	if err != nil {
-		view.Problems = append(view.Problems, "the case is not a case bundle this release verifies")
-		return view
-	}
-	view.Found = true
-	view.Identity = opened.Identity
-	view.Provenance = string(opened.Manifest.Provenance.Mode)
-	return view
-}
-
-// packetSpecView reads and decodes one specification entry and compares its
-// identity with the specification the current execution retained, so the exact
-// historical bytes are what assembly sees — never the current editable test.
-func packetSpecView(path, entry string, current *runresult.Result) *PacketInputView {
-	view := &PacketInputView{Entry: entry, Problems: []string{}}
-	raw, err := readBoundedEntry(path, testrunner.MaxSpecBytes)
-	if err != nil {
-		view.Problems = append(view.Problems, "the specification is not a bounded regular file")
-		return view
-	}
-	if _, err := testrunner.DecodeSpec(raw); err != nil {
-		view.Problems = append(view.Problems, "the specification is not one this release assembles")
-		return view
-	}
-	view.Found = true
-	view.Identity = digestOf(raw)
-	if current != nil && current.Artifact != nil {
-		view.SpecMatch = view.Identity == current.Artifact.Result.SpecIdentity
-		if !view.SpecMatch {
-			view.Problems = append(view.Problems, "the specification is not the exact one the current result retained; assembly never substitutes the current editable test for a historical one")
-		}
-	}
-	return view
-}
-
-// packetRunView opens one retained execution and reports its separate facts.
-func packetRunView(path, entry string) (*runresult.Result, *PacketInputView) {
-	view := &PacketInputView{Entry: entry, Problems: []string{}}
-	retained, err := runresult.Open(path)
-	if errors.Is(err, engine.ErrUnsupportedVersion) {
-		view.Problems = append(view.Problems, "the retained execution was evaluated by a version this release cannot read")
-		return nil, view
-	}
-	if err != nil {
-		view.Problems = append(view.Problems, "the entry is not a retained execution this release verifies")
-		return nil, view
-	}
-	view.Found = true
-	view.Durable = retained.Durable
-	if retained.Durable {
-		view.RunState = string(retained.Lifecycle.State)
-		view.JournalIncomplete = retained.Lifecycle.JournalIncomplete
-		view.DeliveryUncertain = retained.Lifecycle.DeliveryUncertain
-	}
-	if retained.Artifact == nil {
-		view.Problems = append(view.Problems, "the retained execution has no finalized result; assembly refuses an incomplete job")
-		return retained, view
-	}
-	if usable, _ := retained.Usable(); !usable {
-		view.Problems = append(view.Problems, "the retained execution is incomplete or its delivery is uncertain; assembly refuses it")
-	}
-	artifact := retained.Artifact
-	view.Status = string(artifact.Result.Status)
-	view.ErrorClass = artifact.Result.ErrorClass
-	view.Boundary = artifact.Result.ObservationBoundary
-	view.ResultIdentity = artifact.Identity
-	view.SpecIdentity = artifact.Result.SpecIdentity
-	view.CaseIdentity = artifact.Result.InputBundleIdentity
-	view.TargetIdentity = artifact.Result.TargetIdentity
-	return retained, view
-}
-
-// packetInputProblems collects the input views' own sentences into the
-// preview's one problem list.
-func packetInputProblems(views ...*PacketInputView) []string {
-	problems := []string{}
-	for _, view := range views {
-		if view == nil {
-			continue
-		}
-		problems = append(problems, view.Problems...)
-	}
-	return problems
-}
-
-// packetBaselineBoundaries states what a supplied baseline does and does not
-// establish, from the two runs' own verified facts.
-func packetBaselineBoundaries(baseline, current *runresult.Result) []string {
-	limitations := []string{}
-	if baseline == nil || baseline.Artifact == nil || current == nil || current.Artifact == nil {
-		return limitations
-	}
-	sameCase := baseline.Artifact.Result.InputBundleIdentity == current.Artifact.Result.InputBundleIdentity
-	sameTarget := baseline.Artifact.Result.TargetIdentity == current.Artifact.Result.TargetIdentity
-	if sameCase && sameTarget {
-		limitations = append(limitations, "Baseline and current share one input and one target configuration identity; their outcomes differ only as the retained evidence records.")
-	} else if sameCase {
-		limitations = append(limitations, "The baseline input identity matches the current one; the target configuration identity changed between the two executions.")
-	} else {
-		limitations = append(limitations, "The baseline was executed against a different case identity than the current result; the comparison spans changed inputs.")
-	}
-	return limitations
-}
-
-// packetInventory names the sections the packet will hold, with the counts the
-// verified evidence itself reports. Every evidence file is copied byte for
-// byte; the assembled packet's manifest is the complete index.
-func packetInventory(preview *PacketPreview, current *runresult.Result) []string {
-	inventory := []string{}
-	if preview.Case != nil && preview.Case.Found {
-		inventory = append(inventory, "case/ — the verified case bundle, copied byte for byte")
-	}
-	inventory = append(inventory, "spec.json — the exact historical specification bytes")
-	if current != nil && current.Artifact != nil && preview.Current != nil {
-		summary := "current/ — the retained execution, byte for byte"
-		summary += " (" + string(current.Artifact.Result.Status) + ", boundary " + current.Artifact.Result.ObservationBoundary
-		if current.Spec != nil {
-			summary += fmt.Sprintf(", %d selected messages", len(current.Spec.Input.Messages))
-		}
-		summary += ")"
-		inventory = append(inventory, summary)
-	}
-	inventory = append(inventory, "SUMMARY.md and RERUN.md — regenerated outcomes, limitations and rerun instructions")
-	return inventory
-}
-
-// packetBaselineInventory names the sections a supplied baseline adds.
-func packetBaselineInventory(preview *PacketPreview, baseline *runresult.Result) []string {
-	inventory := []string{}
-	if preview.Baseline != nil && preview.Baseline.Found {
-		summary := "baseline/ — the retained baseline execution, byte for byte"
-		if baseline != nil && baseline.Artifact != nil {
-			summary += " (" + string(baseline.Artifact.Result.Status) + ")"
-		}
-		inventory = append(inventory, summary)
-	}
-	if preview.BaselineCase != nil && preview.BaselineCase.Found {
-		inventory = append(inventory, "baseline-case/ — the baseline's own source case, byte for byte")
-	}
-	return inventory
 }

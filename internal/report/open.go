@@ -10,13 +10,12 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/diff"
-	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/fixturetrial"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/receiver"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -195,21 +194,11 @@ func canonicalACKs(artifact *testrunner.Artifact) error {
 		if err != nil {
 			return invalid
 		}
-		doc, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
-		if err != nil || len(doc.Messages) != 1 {
+		sent, err := artifact.Run.Raw(event.Sent)
+		if err != nil {
 			return invalid
 		}
-		stamp := string(doc.Bytes(doc.Messages[0].Segments[0].Field(7).Span))
-		parsed, err := time.Parse("20060102150405-0700", stamp)
-		if err != nil || parsed.UTC().Format("20060102150405-0700") != stamp {
-			return invalid
-		}
-		trigger := "S12"
-		if i == 1 {
-			trigger = "S13"
-		}
-		want := fmt.Sprintf("\x0bMSH|^~\\&|READMIT|FIXTURE|||%s||ACK^%s|READMITACK%06d|P|2.5.1\rMSA|AA|SYNTH-%06d\rZRT|readmit-receipt/v1|%s|s0001-e%06d\r\x1c\r", stamp, trigger, i+1, i+1, artifact.Result.ReceiverSessionID, 2*i+1)
-		if !bytes.Equal(raw, []byte(want)) {
+		if fixturetrial.VerifyACK(sent, raw, i+1, artifact.Result.ReceiverSessionID, fmt.Sprintf("s0001-e%06d", 2*i+1)) != nil {
 			return invalid
 		}
 	}

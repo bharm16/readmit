@@ -386,109 +386,54 @@ func readBackup(root *os.Root) (backupManifest, error) {
 	if len(reviews) > 0 && (team == nil || !*team) {
 		return m, ErrIntegrity
 	}
-	byProject := map[string][]ReviewEvent{}
+	// Every backed-up event is replayed, in order, through the project log's
+	// own rules over storage held in memory: a backup a live write would have
+	// refused is refused here, before a restore writes anything.
+	replay := projectLog{storage: newMemoryStorage(projects, func(d string) ([]byte, error) {
+		var entry backupEntry
+		for _, x := range m.Artifacts {
+			if x.Digest == d {
+				entry = x
+				break
+			}
+		}
+		reader := &Store{root: root}
+		if e := reader.verify(d, entry.Size); e != nil {
+			return nil, e
+		}
+		f, e := root.Open(d)
+		if e != nil {
+			return nil, e
+		}
+		defer f.Close()
+		data, e := io.ReadAll(io.LimitReader(f, MaxArtifactBytes+1))
+		if e != nil || int64(len(data)) != entry.Size || fmt.Sprintf("%x", sha256.Sum256(data)) != d {
+			return nil, ErrIntegrity
+		}
+		return data, nil
+	})}
+	ctx := context.Background()
 	lastProject := ""
 	for _, event := range reviews {
-		if !hubprotocol.ValidEventVersion(event, isV5) || !validProject(event.Project) || event.Project < lastProject || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) || event.Sequence != len(byProject[event.Project])+1 || event.Command.Expected != event.Sequence-1 {
+		if !hubprotocol.ValidEventVersion(event, isV5) || !validProject(event.Project) || event.Project < lastProject {
 			return m, ErrIntegrity
 		}
-		if _, e := time.Parse(time.RFC3339Nano, event.At); e != nil {
-			return m, ErrIntegrity
+		if e := replay.replayReview(ctx, event); e != nil {
+			return m, e
 		}
-		for _, prior := range byProject[event.Project] {
-			if prior.Command.ID == event.Command.ID {
-				return m, ErrIntegrity
-			}
-		}
-		load := func(d string) ([]byte, error) {
-			found := false
-			for _, link := range projects {
-				if link.Project == event.Project && link.Digest == d {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return nil, ErrMissing
-			}
-			var entry backupEntry
-			for _, x := range m.Artifacts {
-				if x.Digest == d {
-					entry = x
-					break
-				}
-			}
-			reader := &Store{root: root}
-			if e := reader.verify(d, entry.Size); e != nil {
-				return nil, e
-			}
-			f, e := root.Open(d)
-			if e != nil {
-				return nil, e
-			}
-			defer f.Close()
-			data, e := io.ReadAll(io.LimitReader(f, MaxArtifactBytes+1))
-			if e != nil || int64(len(data)) != entry.Size || fmt.Sprintf("%x", sha256.Sum256(data)) != d {
-				return nil, ErrIntegrity
-			}
-			return data, nil
-		}
-		if e := hubprotocol.DeriveReviews(byProject[event.Project]).Validate(event.Command, event.Actor, event.Issuer, load); e != nil {
-			return m, hubSentinel(e)
-		}
-		byProject[event.Project] = append(byProject[event.Project], event)
 		lastProject = event.Project
 	}
 	if len(lifecycle) > 0 && (team == nil || !*team) {
 		return m, ErrIntegrity
 	}
-	byLifecycleProject := map[string][]LifecycleEvent{}
 	lastProject = ""
 	for _, event := range lifecycle {
-		prior := byLifecycleProject[event.Project]
-		if event.ReviewHead < 0 || event.ReviewHead > len(byProject[event.Project]) || (event.Command.Kind != "audit-export" && event.ReviewHead != 0) {
+		if !validProject(event.Project) || event.Project < lastProject {
 			return m, ErrIntegrity
 		}
-		if event.Schema != hubprotocol.LifecycleEventSchema || !validProject(event.Project) || event.Project < lastProject || event.Sequence != len(prior)+1 || event.Command.Expected != event.Sequence-1 || event.Issuer == "" || !reviewText(event.Issuer, 2048) || event.Actor == "" || !reviewText(event.Actor, 256) {
-			return m, ErrIntegrity
+		if e := replay.replayLifecycle(ctx, event); e != nil {
+			return m, e
 		}
-		at, e := time.Parse(time.RFC3339Nano, event.At)
-		if e != nil {
-			return m, ErrIntegrity
-		}
-		for _, p := range prior {
-			if p.Command.ID == event.Command.ID || (p.Command.Kind == "remove-user" && p.Command.Subject == event.Actor && p.Issuer == event.Issuer) {
-				return m, ErrIntegrity
-			}
-		}
-		if event.Command.Kind == "remove-user" && event.Command.Subject == event.Actor {
-			return m, ErrIntegrity
-		}
-		load := func(d string) ([]byte, error) {
-			linked := false
-			for _, p := range projects {
-				if p.Project == event.Project && p.Digest == d {
-					linked = true
-				}
-			}
-			if !linked {
-				return nil, ErrMissing
-			}
-			for _, entry := range m.Artifacts {
-				if entry.Digest == d {
-					reader := &Store{root: root}
-					if e := reader.verify(d, entry.Size); e != nil {
-						return nil, e
-					}
-					return []byte{}, nil
-				}
-			}
-			return nil, ErrMissing
-		}
-		if e := hubprotocol.DeriveLifecycle(prior).Validate(event.Command, load, at); e != nil {
-			return m, hubSentinel(e)
-		}
-		byLifecycleProject[event.Project] = append(prior, event)
 		lastProject = event.Project
 	}
 	m.Lifecycle = lifecycle

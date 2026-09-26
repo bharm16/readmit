@@ -558,10 +558,10 @@ func listingKind(t *testing.T, app *desktop.App, root, name string) string {
 // preview, assemble, verify and review evidence, while a send stays refused.
 func TestPacketOperationsAcquireNoSendOrMutationAuthority(t *testing.T) {
 	state := t.TempDir()
-	author := activatedApp(t, &chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"))
+	author := activatedApp(t, &chooser{}, state)
 	root, spec, baseline, current := packetWorkspace(t, author)
 
-	viewer := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	viewer := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
 
 	if preview := viewer.PreviewPacket(packetRequest(root, spec, baseline, current)); preview.State != desktop.Completed {
 		t.Fatalf("a policy-less viewer could not preview: %+v", preview)

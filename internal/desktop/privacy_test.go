@@ -208,7 +208,7 @@ func privacyOriginalArtifacts(t *testing.T, root string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := replay.Execute(context.Background(), plan, filepath.Join(root, "original-run")); err != nil {
+	if _, err := replay.Send(context.Background(), plan, filepath.Join(root, "original-run"), replay.SendOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	report, err := diagnose.Run(filepath.Join(root, "original.case"), diagnose.DefaultConfig())
@@ -522,7 +522,7 @@ func TestPrivacyWritesAdmitTheAuthorAndReadsStayFree(t *testing.T) {
 		t.Fatalf("the sharing policy was not authored: %+v", saved)
 	}
 
-	viewer := desktop.New(&chooser{}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(t.TempDir(), "drafts.json"))
+	viewer := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: t.TempDir()})
 
 	request := privacyRequest(root, "policy.json")
 	request.Output = "review-viewer"

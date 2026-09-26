@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/backup"
@@ -144,11 +145,71 @@ func inventory(ctx context.Context, path string) (map[string]fingerprint, error)
 	return files, err
 }
 
+// selectionOf is the token that binds an archive or a delete to exactly the
+// bytes one preview inventoried: one hash over every file's name and content
+// digest, so an added, removed, replaced or rewritten file changes it.
+func selectionOf(files map[string]fingerprint) string {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	h := sha256.New()
+	for _, name := range names {
+		io.WriteString(h, name+"\n"+files[name].Digest+"\n")
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// Retirement is the preview one archive or delete consumes: the compatibility
+// plan, the source as the backup limits measure it, and the selection token
+// that binds a later Archive to exactly these bytes. It is answered to a
+// caller and persisted nowhere.
+type Retirement struct {
+	Selection  string
+	Compatible bool
+	Files      int
+	Bytes      int64
+	Documents  []Compatibility
+}
+
+// PreviewRetirement inventories what archive or delete would affect, under the
+// backup limits Archive is held to, and derives the selection token that binds
+// a later Archive to the previewed bytes. It changes nothing.
+func PreviewRetirement(ctx context.Context, path string) (Retirement, error) {
+	root, err := artifactpath.Directory(path)
+	if err != nil {
+		return Retirement{}, err
+	}
+	plan, err := Preview(ctx, root)
+	if err != nil {
+		return Retirement{}, err
+	}
+	files, err := inventory(ctx, root)
+	if err != nil {
+		return Retirement{}, err
+	}
+	var total int64
+	for _, held := range files {
+		total += held.Size
+	}
+	return Retirement{
+		Selection:  selectionOf(files),
+		Compatible: plan.Compatible,
+		Files:      len(files),
+		Bytes:      total,
+		Documents:  plan.Documents,
+	}, nil
+}
+
 // Archive writes a new verified recovery backup. Delete additionally retires
-// the source after proving its bytes still match the snapshot. Callers must
-// stop other writers for this whole operation (the project has one writer).
-// A cancellation before retirement retains the source and any partial backup.
-func Archive(ctx context.Context, path, destination string, deleteSource bool) (backup.Report, error) {
+// the source, but only when the selection still matches the bytes a
+// PreviewRetirement inventoried: a project changed after its preview is
+// refused before anything is written, and the source is retained. Callers
+// must stop other writers for this whole operation (the project has one
+// writer). A cancellation before retirement retains the source and any
+// partial backup.
+func Archive(ctx context.Context, path, destination, selection string, deleteSource bool) (backup.Report, error) {
 	var report backup.Report
 	if err := ctx.Err(); err != nil {
 		return report, err
@@ -157,16 +218,22 @@ func Archive(ctx context.Context, path, destination string, deleteSource bool) (
 	if err != nil {
 		return report, err
 	}
+	if selection == "" {
+		return report, errors.New("archive and delete require a current retirement preview selection")
+	}
+	before, err := inventory(ctx, root)
+	if err != nil {
+		return report, err
+	}
+	if selectionOf(before) != selection {
+		return report, errors.New("the project changed since the retirement preview; nothing was deleted")
+	}
 	plan, err := Preview(ctx, root)
 	if err != nil {
 		return report, err
 	}
 	if !plan.Compatible {
 		return report, errors.New("project migration preview is incompatible; no migration is supported")
-	}
-	before, err := inventory(ctx, root)
-	if err != nil {
-		return report, err
 	}
 	report, err = backup.Create(ctx, root, destination)
 	if err != nil {

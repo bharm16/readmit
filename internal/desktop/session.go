@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -28,12 +27,6 @@ import (
 // or readmit-job/v1, none of which this file touches. See
 // [ADR-0003](../../docs/adr/0003-specs-are-strict-json-with-typed-operators.md).
 const SessionSchema = "readmit-desktop-session/v1"
-
-// sessionName is the fixed name of the working-session document, beside the
-// recent workspace list and the saved filters in the user configuration
-// directory. Nothing derives from the others: each is named explicitly where
-// the application is wired up.
-const sessionName = "session.json"
 
 // MaxDrafts bounds the unstored note edits one viewer retains. Past the bound
 // the edit is refused rather than another one being dropped, because silently
@@ -114,9 +107,6 @@ type RecoveryResult struct {
 }
 
 func (r *RecoveryResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
-
-// DefaultSessionPath is the owner-only file the shell retains the session in.
-func DefaultSessionPath() (string, error) { return configPath(sessionName) }
 
 // emptySession is a viewer who has had nothing open and typed nothing: a
 // complete document rather than a missing one, so reading never writes.
@@ -251,12 +241,13 @@ func compareDrafts(a, b Draft) int {
 	return strings.Compare(a.Note.Name, b.Note.Name)
 }
 
-// retainedSession reads the document this viewer's session lives in. A missing
-// file is a viewer who has retained nothing, which is a complete document
-// rather than a failure; every other refusal is reported so the caller can
-// separate a file this account cannot read from one this release cannot read.
+// retainedSession reads the document this viewer's session lives in, through
+// the shell document store. A missing file is a viewer who has retained
+// nothing, which is a complete document rather than a failure; every other
+// refusal is reported so the caller can separate a file this account cannot
+// read from one this release cannot read.
 func (a *App) retainedSession() (Session, refusal) {
-	session, err := readSession(a.sessionPath)
+	session, err := readSession(a.documents)
 	switch {
 	case errors.Is(err, fs.ErrPermission):
 		return Session{}, refusal{PermissionDenied, "this account cannot read the retained working session"}
@@ -274,7 +265,7 @@ func (a *App) storeSession(session Session) SessionResult {
 	if err != nil {
 		return a.sessionFailure(refusal{Failed, "this working session no longer fits the bounded document this release retains; store or discard some of it"})
 	}
-	if err := writeShellDocument(a.sessionPath, data); err != nil {
+	if err := a.documents.write(sessionName, data); err != nil {
 		if errors.Is(err, fs.ErrPermission) {
 			return a.sessionFailure(refusal{PermissionDenied, "this account cannot write the retained working session"})
 		}
@@ -295,18 +286,12 @@ func (a *App) sessionFailure(failure refusal) SessionResult {
 
 // readSession treats a missing document as a viewer who has retained nothing
 // and returns every other failure, so the caller can say which one it was.
-func readSession(path string) (Session, error) {
-	info, err := os.Stat(path)
+// The reading is the store's one rule: a bounded regular file, never a link.
+func readSession(documents ShellDocuments) (Session, error) {
+	data, err := documents.read(sessionName, maxSessionBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return emptySession(), nil
 	}
-	if err != nil {
-		return Session{}, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > maxSessionBytes {
-		return Session{}, errors.New("a retained working session must be a bounded regular file")
-	}
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return Session{}, err
 	}

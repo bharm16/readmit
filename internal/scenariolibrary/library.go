@@ -11,8 +11,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 
 	"github.com/bharm16/readmit/internal/hl7"
@@ -315,9 +313,10 @@ func read(library, oracle []byte) (selection, Expectations, error) {
 	return selected, e, nil
 }
 
-// Check regenerates the selected plan in a private temporary directory and
-// compares it to independently supplied literal expectations. It neither reads
-// nor creates target evidence; target acceptance always remains unverified.
+// Check regenerates the selected plan in memory and compares it to
+// independently supplied literal expectations. It writes nothing anywhere —
+// there is no scratch generation and no target evidence is read or created —
+// so target acceptance always remains unverified.
 func Check(ctx context.Context, library, oracle []byte) (Result, error) {
 	var result Result
 	if err := ctx.Err(); err != nil {
@@ -341,24 +340,14 @@ func Check(ctx context.Context, library, oracle []byte) (Result, error) {
 			return result, fmt.Errorf("lifecycle expectation mismatch at step %d", i+1)
 		}
 	}
-	scratch, err := os.MkdirTemp("", "readmit-library-")
-	if err != nil {
-		return result, errors.New("cannot create private library verification workspace")
-	}
-	defer os.RemoveAll(scratch)
-	output := filepath.Join(scratch, "generation")
-	record, err := scenariogen.Write(ctx, output, t.Template.Plan)
+	family, err := scenariogen.Produce(ctx, t.Template.Plan)
 	if err != nil {
 		return result, err
 	}
-	var manifest scenariogen.Manifest
-	if err := json.Unmarshal(record, &manifest, json.RejectUnknownMembers(true)); err != nil {
-		return result, errors.New("cannot read generated record")
-	}
-	if len(manifest.Streams) != len(e.Streams) {
+	if len(family.Manifest.Streams) != len(e.Streams) {
 		return result, errors.New("oracle must cover every generated stream")
 	}
-	for i, actual := range manifest.Streams {
+	for i, actual := range family.Manifest.Streams {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
@@ -366,11 +355,7 @@ func Check(ctx context.Context, library, oracle []byte) (Result, error) {
 		if actual.Row != expected.Row || actual.Variant != expected.Variant || len(actual.IntendedArrivals) != len(expected.Messages) {
 			return Result{}, fmt.Errorf("stream coverage mismatch at stream %d", i+1)
 		}
-		data, err := os.ReadFile(filepath.Join(output, actual.File))
-		if err != nil {
-			return Result{}, errors.New("cannot read generated stream")
-		}
-		doc, err := hl7.Parse(data, hl7.Options{Format: hl7.MLLP})
+		doc, err := hl7.Parse(family.Stream(i), hl7.Options{Format: hl7.MLLP})
 		if err != nil || len(doc.Messages) != len(expected.Messages) {
 			return Result{}, errors.New("generated message count or syntax differs from oracle")
 		}

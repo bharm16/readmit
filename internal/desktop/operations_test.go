@@ -15,7 +15,7 @@ import (
 )
 
 func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
-	app := desktop.New(&chooser{folder: t.TempDir()}, filepath.Join(t.TempDir(), "recent.json"), filepath.Join(t.TempDir(), "filters.json"), filepath.Join(t.TempDir(), "session.json"), filepath.Join(filepath.Dir(filepath.Join(t.TempDir(), "session.json")), "drafts.json"))
+	app := desktop.New(&chooser{folder: t.TempDir()}, desktop.ShellDocuments{Folder: t.TempDir()})
 	sample := app.CreateSampleWorkspace()
 	if sample.State != desktop.Completed {
 		t.Fatal(sample)
@@ -45,12 +45,11 @@ func TestUnactivatedDesktopRetainsSampleReadsButRefusesAuthoring(t *testing.T) {
 
 func TestDesktopOperationSelectionSurvivesRestartWithoutReactivation(t *testing.T) {
 	dir := t.TempDir()
-	selection := filepath.Join(dir, "operations.json")
-	app := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(dir, "recent"), filepath.Join(dir, "filters"), filepath.Join(dir, "session"), filepath.Join(dir, "drafts"), selection)
+	app := desktop.NewWithOperationSelection(&chooser{}, desktop.ShellDocuments{Folder: dir})
 	if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 		t.Fatal(result)
 	}
-	next := desktop.NewWithOperationSelection(&chooser{}, filepath.Join(dir, "recent"), filepath.Join(dir, "filters"), filepath.Join(dir, "session"), filepath.Join(dir, "drafts"), selection)
+	next := desktop.NewWithOperationSelection(&chooser{}, desktop.ShellDocuments{Folder: dir})
 	if result := next.OperationStatus(); result.State != desktop.Completed || result.Clock == nil || result.Clock.Released {
 		t.Fatal(result)
 	}
@@ -66,7 +65,7 @@ func TestDesktopOperationSelectionSurvivesRestartWithoutReactivation(t *testing.
 }
 
 func TestCorrelationWritesRequireActivationButSequenceReadsDoNot(t *testing.T) {
-	app := desktop.New(&chooser{}, "", "", "", "")
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{})
 	if got := app.DecideCorrelation(desktop.CorrelationReviewRequest{}); got.State != desktop.PermissionDenied {
 		t.Fatal(got)
 	}
@@ -93,7 +92,7 @@ func TestCorrelationWritesRequireActivationButSequenceReadsDoNot(t *testing.T) {
 // reset and an observation collection used to answer permission denied.
 func TestACancellationDuringExecutionAdmissionIsCancelledNotDenied(t *testing.T) {
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	policy := testlicense.New(t)
 	if result := app.SelectOperationPolicy(policy); result.State != desktop.Completed {
 		t.Fatal(result)

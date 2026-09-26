@@ -106,7 +106,7 @@ func executeRun(t *testing.T, casePath, address, output string) (*replay.Run, er
 	if err != nil {
 		t.Fatal(err)
 	}
-	return replay.Execute(t.Context(), plan, output)
+	return replay.Send(t.Context(), plan, output, replay.SendOptions{})
 }
 
 var synthInputs = bundle.GeneratorInputs{Seed: 0, BaseTime: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1"}

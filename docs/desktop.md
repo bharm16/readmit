@@ -3969,8 +3969,9 @@ existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
   and the expectations up to the command's 4 MiB bound, reports the sentence
   the command prints when every declared check passes, and fails a mismatch in
   the checker's words. It is interruptible from its **Cancel check** control
-  or with `Escape`; a cancelled check removes its private regeneration, passes
-  nothing and says so, and the next check starts afresh.
+  or with `Escape`; a cancelled check passes nothing and says so, retains
+  nothing — the check regenerates in memory and writes nothing anywhere — and
+  the next check starts afresh.
 - The SIU fixture tab is `readmit synth`. The seed, base time, generator
   version and profile version are each declared, with nothing preselected. The
   seed crosses the facade as the text typed and is read as the command's flag

@@ -16,7 +16,6 @@ import (
 	"errors"
 	"io/fs"
 	"net/url"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -179,11 +178,6 @@ type commercialDestinations struct {
 	Portal      string `json:"portal"`
 }
 
-type commercialSelection struct {
-	Schema string `json:"schema"`
-	Config string `json:"config"`
-}
-
 func licenseTime(value time.Time) string { return value.Format(time.RFC3339) }
 
 // readSelectedPolicy reads and strict-decodes the selected operation policy.
@@ -210,11 +204,8 @@ func activationRefusal(folder string, err error) OperationResult {
 func (a *App) retainOperationPolicy(path string) error {
 	a.operationMu.Lock()
 	defer a.operationMu.Unlock()
-	if a.operationSelectionPath != "" {
-		encoded, err := json.Marshal(operationSelection{Schema: operationSelectionSchema, Policy: path})
-		if err != nil || writeShellDocument(a.operationSelectionPath, append(encoded, '\n')) != nil {
-			return errRetainedSelection
-		}
+	if a.selections != nil && a.selections.operation.Remember(path) != nil {
+		return errRetainedSelection
 	}
 	a.operationPolicy = path
 	a.operationGuard = operationguard.New(path)
@@ -535,11 +526,8 @@ func (a *App) ChooseCommercialDestinations() CommercialStatusResult {
 		}
 		a.commercialMu.Lock()
 		defer a.commercialMu.Unlock()
-		if a.commercialSelectionPath != "" {
-			encoded, err := json.Marshal(commercialSelection{Schema: commercialSelectionSchema, Config: path})
-			if err != nil || writeShellDocument(a.commercialSelectionPath, append(encoded, '\n')) != nil {
-				return CommercialStatusResult{State: Failed, Reason: "cannot retain the commercial destinations selection"}
-			}
+		if a.selections != nil && a.selections.commercial.Remember(path) != nil {
+			return CommercialStatusResult{State: Failed, Reason: "cannot retain the commercial destinations selection"}
 		}
 		a.commercialConfigPath = path
 		a.commercialRestoreRefusal = ""
@@ -613,20 +601,18 @@ func decodeCommercialDestinations(data []byte) (commercialDestinations, error) {
 }
 
 // restoreCommercialSelection retains only an explicit prior destinations
-// selection. Restoring reads one local file and makes no request. A document
-// that exists but cannot be read stays visible as a refusal until reselected.
-func (a *App) restoreCommercialSelection(selectionPath string) {
+// selection. Restoring reads one local file through the shell document store
+// and makes no request. A document that exists but cannot be read stays
+// visible as a refusal until reselected, and is never replaced.
+func (a *App) restoreCommercialSelection() {
 	a.commercialMu.Lock()
 	defer a.commercialMu.Unlock()
-	a.commercialSelectionPath = selectionPath
-	if _, err := os.Lstat(selectionPath); errors.Is(err, fs.ErrNotExist) {
-		return
-	}
-	data, err := readOperationFile(selectionPath)
-	var selection commercialSelection
-	if err != nil || json.Unmarshal(data, &selection, json.RejectUnknownMembers(true)) != nil || selection.Schema != commercialSelectionSchema || !filepath.IsAbs(selection.Config) {
+	path, err := a.selections.commercial.recall()
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
 		a.commercialRestoreRefusal = "the remembered commercial selection cannot be read; choose a destinations file again"
-		return
+	default:
+		a.commercialConfigPath = path
 	}
-	a.commercialConfigPath = selection.Config
 }

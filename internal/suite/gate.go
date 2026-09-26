@@ -260,6 +260,10 @@ func gateApproval(s coverageSuite, p GatePolicy) error {
 	if e != nil || len(refs.Tests) != len(s.document.Tests) {
 		return bad
 	}
+	declared, e := s.document.declare(s.selection.Environment)
+	if e != nil {
+		return bad
+	}
 	for _, test := range s.document.Tests {
 		pin := ""
 		for _, ref := range refs.Tests {
@@ -275,26 +279,24 @@ func gateApproval(s coverageSuite, p GatePolicy) error {
 		if e != nil || release.Identity() != pin {
 			return bad
 		}
-		for _, table := range s.document.Tables {
-			if table.ID != test.Table {
+		for _, declaration := range declared {
+			if declaration.Test != test.ID {
 				continue
 			}
-			for _, row := range table.Rows {
-				raw, e = read(filepath.Join(s.dir, test.ID+"-"+row.ID+".json"), testrunner.MaxSpecBytes)
-				if e != nil {
-					return bad
-				}
-				compiled, e := testrunner.DecodeSpec(raw)
-				if e != nil {
-					return bad
-				}
-				approved := release.Baseline.Spec
-				approved.Input.Case = compiled.Input.Case
-				approved.Target = compiled.Target
-				approved.Observation.Path = compiled.Observation.Path
-				if !sameCoverageJSON(approved, compiled) {
-					return bad
-				}
+			raw, e = read(filepath.Join(s.dir, specName(declaration.Job)), testrunner.MaxSpecBytes)
+			if e != nil {
+				return bad
+			}
+			compiled, e := testrunner.DecodeSpec(raw)
+			if e != nil {
+				return bad
+			}
+			approved := release.Baseline.Spec
+			approved.Input.Case = compiled.Input.Case
+			approved.Target = compiled.Target
+			approved.Observation.Path = compiled.Observation.Path
+			if !sameCoverageJSON(approved, compiled) {
+				return bad
 			}
 		}
 	}

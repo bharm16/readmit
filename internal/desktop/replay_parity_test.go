@@ -2,7 +2,7 @@ package desktop_test
 
 // `readmit replay` previews or explicitly sends selected messages of a case,
 // and the replay screen is that command in the window: both prepare through
-// operation.PrepareReplay and a send goes through replay.ExecuteWithPolicy.
+// replay.Preview and replay.PrepareSend, and a send goes through replay.Send.
 // The window's answers are held here to what the command prints and retains,
 // in process through cli.Execute, over the same case, target configuration and
 // send policy: the dry run line for line, the per-message summary of a send,

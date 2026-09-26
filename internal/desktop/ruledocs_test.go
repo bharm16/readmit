@@ -223,7 +223,7 @@ func TestSavingAnAuthoredDocumentRefusesToOverwriteAndRetainsWhatWasThere(t *tes
 func TestSavingAnAuthoredDocumentRequiresAdmission(t *testing.T) {
 	root := t.TempDir()
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	refused := app.SaveFindingDecisions(desktop.RuleDocumentSaveRequest{
 		Workspace: root, Document: docFindingDecisions, Output: "verdicts.json",
 	})

@@ -559,15 +559,18 @@ func replacesALinkedDocument(t *testing.T, saves []replacingSave) {
 	}
 }
 
-// The shell's own documents are written over the same way: the saved
-// filters, the working session, the editor drafts and the operation,
-// commercial and hub selections through the replacement a workspace save
-// uses, and the recent workspaces through their own rename. A link at each
-// file, to the same document another shell wrote outside, is replaced, and the
-// document it led to keeps its bytes.
-func TestTheShellsOwnDocumentsReplaceALinkAtTheirFile(t *testing.T) {
+// The shell's own documents are written through the one replacement the shell
+// document store uses — the same one a workspace save uses — and they are read
+// by one rule: a link at a document's name is never read. So a document the
+// shell reads before it writes — the saved filters, the working session, the
+// editor drafts and the recent workspaces — reports the link and is left as it
+// is, while a selection the person explicitly chooses is written whole,
+// replacing the link at its name. Either way the document a link led to keeps
+// its bytes.
+func TestTheShellsOwnDocumentsNeverFollowALinkAtTheirFile(t *testing.T) {
 	workspace, outside, ownState := t.TempDir(), t.TempDir(), t.TempDir()
-	documents := []string{"recent.json", "filters.json", "session.json", "drafts.json", "selection.json", "commercial.json", "hub.json"}
+	readFirst := []string{"recent.json", "filters.json", "session.json", "drafts.json"}
+	selections := []string{"operations.json", "commercial.json", "hub.json"}
 	configuration := t.TempDir()
 	writeDocument(t, configuration, "destinations.json",
 		`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://portal.example.test"}`)
@@ -579,12 +582,11 @@ func TestTheShellsOwnDocumentsReplaceALinkAtTheirFile(t *testing.T) {
 			t.Fatalf("%s: %s %s", call, got, reason)
 		}
 	}
-	// shell wires a window over the state files in folder and selects the
+	// shell wires a window over the documents in folder and selects the
 	// test operation policy, which retains the selection there.
 	shell := func(folder string) *desktop.App {
-		at := func(name string) string { return filepath.Join(folder, name) }
 		choose := &chooser{files: []string{filepath.Join(configuration, "destinations.json")}}
-		app := desktop.NewWithOperationSelection(choose, at("recent.json"), at("filters.json"), at("session.json"), at("drafts.json"), at("selection.json"))
+		app := desktop.NewWithOperationSelection(choose, desktop.ShellDocuments{Folder: folder})
 		selected := app.SelectOperationPolicy(testlicense.New(t))
 		completes("SelectOperationPolicy", selected.State, selected.Reason)
 		return app
@@ -605,7 +607,7 @@ func TestTheShellsOwnDocumentsReplaceALinkAtTheirFile(t *testing.T) {
 		completes("SelectHubConfig", hub.State, hub.Reason)
 	}
 	retain(shell(outside), "outside")
-	for _, name := range documents {
+	for _, name := range append(append([]string{}, readFirst...), selections...) {
 		if _, err := os.Lstat(filepath.Join(outside, name)); err != nil {
 			t.Fatalf("the shell outside wrote no %s: %v", name, err)
 		}
@@ -615,11 +617,37 @@ func TestTheShellsOwnDocumentsReplaceALinkAtTheirFile(t *testing.T) {
 	}
 	before := bytesUnder(t, outside)
 
-	retain(shell(ownState), "inside")
-	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
-		t.Error("a shell document written through a link changed the document it led to")
+	// The second shell refuses to read a document through the link at its
+	// name, so nothing replaces the four documents it reads before it writes,
+	// and each is reported rather than followed. The three selections are
+	// written whole on the person's explicit choice, replacing their links.
+	app := shell(ownState)
+	if listed := app.Filters(); listed.State != desktop.Failed || listed.Reason == "" {
+		t.Errorf("a linked saved-filter document was read: %+v", listed)
 	}
-	for _, name := range documents {
+	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Case: "inside"}); recorded.State != desktop.Failed || recorded.Reason == "" {
+		t.Errorf("a linked working session was read or replaced: %+v", recorded)
+	}
+	if drafted := app.SaveEditorDraft(editorDraft("note", desktop.NoteDraftSchema, unfinishedNote)); drafted.State != desktop.Failed || drafted.Reason == "" {
+		t.Errorf("a linked editor draft store was read or replaced: %+v", drafted)
+	}
+	if listed := app.RecentWorkspaces(); listed.State != desktop.Failed || listed.Reason == "" {
+		t.Errorf("a linked recent workspace list was read: %+v", listed)
+	}
+	chosen := app.ChooseCommercialDestinations()
+	completes("ChooseCommercialDestinations", chosen.State, chosen.Reason)
+	hub := app.SelectHubConfig(hubConfig)
+	completes("SelectHubConfig", hub.State, hub.Reason)
+
+	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
+		t.Error("a shell document read or written through a link changed the document it led to")
+	}
+	for _, name := range readFirst {
+		if entry, err := os.Lstat(filepath.Join(ownState, name)); err != nil || entry.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("%s is %v, want the link it was planted as: the document was replaced without being read", name, entry)
+		}
+	}
+	for _, name := range selections {
 		if entry, err := os.Lstat(filepath.Join(ownState, name)); err != nil || !entry.Mode().IsRegular() {
 			t.Errorf("%s is %v, want the shell's own regular file", name, entry)
 		}

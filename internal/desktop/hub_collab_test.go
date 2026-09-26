@@ -138,8 +138,7 @@ func newConnectedHubApp(t *testing.T, mux *http.ServeMux, subject string, scopes
 	_ = os.WriteFile(cfgPath, []byte(cfgJSON), 0600)
 
 	dialog := &chooser{folder: dir}
-	app := desktop.New(dialog, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"),
-		filepath.Join(dir, "session.json"), filepath.Join(dir, "drafts.json"))
+	app := desktop.New(dialog, desktop.ShellDocuments{Folder: dir})
 	if res := app.SelectOperationPolicy(testlicense.New(t)); res.State != desktop.Completed {
 		t.Fatalf("SelectOperationPolicy: %+v", res)
 	}
@@ -734,8 +733,7 @@ func TestDesktopHubReleaseReviewJourney(t *testing.T) {
 // session, whatever the window's buttons offered.
 func TestDesktopHubCollaborationRefusesWithoutSession(t *testing.T) {
 	dir := t.TempDir()
-	app := desktop.New(&chooser{folder: dir}, filepath.Join(dir, "recent.json"), filepath.Join(dir, "filters.json"),
-		filepath.Join(dir, "session.json"), filepath.Join(dir, "drafts.json"))
+	app := desktop.New(&chooser{folder: dir}, desktop.ShellDocuments{Folder: dir})
 	if res := app.SelectOperationPolicy(testlicense.New(t)); res.State != desktop.Completed {
 		t.Fatalf("SelectOperationPolicy: %+v", res)
 	}

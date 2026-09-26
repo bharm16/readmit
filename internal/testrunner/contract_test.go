@@ -73,7 +73,7 @@ func TestOpenRejectsSeparatelyValidTransformedRunSubstitution(t *testing.T) {
 			replacementPath := filepath.Join(dir, "transformed-run")
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if _, err := replay.Execute(ctx, plan, replacementPath); err != nil {
+			if _, err := replay.Send(ctx, plan, replacementPath, replay.SendOptions{}); err != nil {
 				t.Fatal(err)
 			}
 			if err := <-done; err != nil {

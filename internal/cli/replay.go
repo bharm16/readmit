@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/spf13/cobra"
@@ -27,10 +26,11 @@ func replayCommand() *cobra.Command {
 			if send && output == "" {
 				return usage("replay --send requires --output with a new run directory")
 			}
-			// Actual sends always retain their decision, including denials when
-			// no policy was selected. Previews need an explicit destination.
+			// Actual sends always retain their decision beside the run,
+			// including denials when no policy was selected; replay writes it
+			// before anything is opened. Previews need an explicit destination.
 			if send && decisionPath == "" {
-				decisionPath = output + ".decision.json"
+				decisionPath = output + replay.DecisionSuffix
 			}
 			if policyPath != "" && decisionPath == "" {
 				return usage("a policy preview requires --decision with a new file")
@@ -58,17 +58,21 @@ func replayCommand() *cobra.Command {
 			}
 			ctx := cmd.Context()
 			var decision sendpolicy.Decision
-			record := func(value sendpolicy.Decision) error {
-				decision = value
-				if decisionPath != "" {
-					return sendpolicy.WriteDecision(decisionPath, value)
-				}
-				return nil
+			execution := replay.SendOptions{
+				Policy: policy,
+				Record: func(value sendpolicy.Decision) error { decision = value; return nil },
+			}
+			if decisionPath != "" {
+				execution.DecisionPath = decisionPath
 			}
 			// Prepare also rejects production for every caller; the shared
-			// operation records that refusal before preparation so it survives
+			// prepare records that refusal before preparation so it survives
 			// as inspectable evidence, and a preview's decision with it.
-			plan, err := operation.PrepareReplay(ctx, args[0], target, options, policy, send, record, sendpolicy.SystemResolver)
+			prepare := replay.Preview
+			if send {
+				prepare = replay.PrepareSend
+			}
+			plan, err := prepare(ctx, args[0], target, options, execution)
 			if err != nil {
 				return err
 			}
@@ -97,7 +101,7 @@ func replayCommand() *cobra.Command {
 				}
 				return nil
 			}
-			result, err := replay.ExecuteWithPolicy(ctx, plan, output, policy, record)
+			result, err := replay.Send(ctx, plan, output, execution)
 			if err != nil {
 				if decision.Schema != "" && !decision.Allowed {
 					writeDecisionLines(writer, decision)
@@ -132,6 +136,6 @@ func replayCommand() *cobra.Command {
 	command.Flags().StringArrayVar(&transforms, "transform", nil, "Named transformation: rebase-control-ids or shift-timestamps (repeatable)")
 	command.Flags().StringVar(&shift, "shift", "", "Explicit whole-second duration for shift-timestamps, e.g. 24h or -2h")
 	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document naming the destinations approved for sending")
-	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the "+sendpolicy.DecisionSchema+" decision (send default: OUTPUT.decision.json)")
+	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the "+sendpolicy.DecisionSchema+" decision (send default: OUTPUT"+replay.DecisionSuffix+")")
 	return command
 }

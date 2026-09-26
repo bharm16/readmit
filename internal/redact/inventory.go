@@ -30,61 +30,82 @@ func DecodeInventory(raw []byte) (Inventory, error) {
 	return inventory, nil
 }
 
-func (t *transformer) reviewInventory(inventory Inventory, base, sourceIdentity string) error {
-	for _, value := range inventory.ResidualValues {
-		t.addTerm([]byte(value))
-	}
-	for i, artifact := range inventory.Artifacts {
+// verifyArtifacts is the disk-reading half of the inventory review: it
+// resolves and verifies each inventoried artifact against the reviewed case,
+// and reads back the in-memory facts derive locates findings about. It
+// writes nothing.
+func verifyArtifacts(inventory Inventory, base, sourceIdentity string) ([]artifactFact, error) {
+	facts := make([]artifactFact, 0, len(inventory.Artifacts))
+	for _, artifact := range inventory.Artifacts {
 		if artifact.Path == "" {
-			return errors.New("inventory artifact requires a path")
+			return nil, errors.New("inventory artifact requires a path")
 		}
 		// Resolve filesystem traversal before any lexical path cleaning. Seal
 		// the same location that is validated, reviewed, protected and reopened.
 		path, err := artifactpath.Resolve(artifactpath.JoinReference(base, artifact.Path))
 		if err != nil {
-			return err
+			return nil, err
 		}
 		identity, err := artifactIdentity(artifact.Kind, path, sourceIdentity)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		t.local.Sources = append(t.local.Sources, sourceReference{Kind: artifact.Kind, Path: path, Identity: identity})
-		location := fmt.Sprintf("original-artifacts/a%04d", i+1)
-		if err := t.finding(location+"/filename", "other-unique-identifiers", "source-filename", Filenames, t.has(Filenames)); err != nil {
-			return err
-		}
+		fact := artifactFact{reference: sourceReference{Kind: artifact.Kind, Path: path, Identity: identity}}
 		switch artifact.Kind {
 		case "run":
-			run, err := replay.Open(path)
-			if err != nil {
-				return err
-			}
-			if err := t.reviewRun(run, location); err != nil {
-				return err
+			if fact.run, err = replay.Open(path); err != nil {
+				return nil, err
 			}
 		case "result":
-			result, err := testrunner.Open(path)
-			if err != nil {
-				return err
-			}
-			if err := t.finding(location+"/result-spec-and-observations", "other-unique-identifiers", "original-result-excluded-and-rerun", Rerun, t.has(Rerun)); err != nil {
-				return err
-			}
-			if result.Run != nil {
-				if err := t.reviewRun(result.Run, location+"/run"); err != nil {
-					return err
-				}
+			if fact.result, err = testrunner.Open(path); err != nil {
+				return nil, err
 			}
 		case "diagnosis-json":
 			raw, err := readLocal(path, maxReviewBytes)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			var report diagnose.Report
 			if json.Unmarshal(raw, &report, json.RejectUnknownMembers(true)) != nil {
-				return errors.New("unsupported diagnosis artifact")
+				return nil, errors.New("unsupported diagnosis artifact")
 			}
-			for j := range report.Findings {
+			fact.report = &report
+		}
+		facts = append(facts, fact)
+	}
+	return facts, nil
+}
+
+// reviewFacts is the pure half of the inventory review: verified facts in,
+// located findings and residual terms out. It pairs each fact with its
+// private source linkage, so the state derive returns pins every original
+// artifact it located findings about.
+func (t *transformer) reviewFacts(inventory Inventory, facts []artifactFact) error {
+	for _, value := range inventory.ResidualValues {
+		t.addTerm([]byte(value))
+	}
+	for i, fact := range facts {
+		t.local.Sources = append(t.local.Sources, fact.reference)
+		location := fmt.Sprintf("original-artifacts/a%04d", i+1)
+		if err := t.finding(location+"/filename", "other-unique-identifiers", "source-filename", Filenames, t.has(Filenames)); err != nil {
+			return err
+		}
+		switch fact.reference.Kind {
+		case "run":
+			if err := t.reviewRun(fact.run, location); err != nil {
+				return err
+			}
+		case "result":
+			if err := t.finding(location+"/result-spec-and-observations", "other-unique-identifiers", "original-result-excluded-and-rerun", Rerun, t.has(Rerun)); err != nil {
+				return err
+			}
+			if fact.result.Run != nil {
+				if err := t.reviewRun(fact.result.Run, location+"/run"); err != nil {
+					return err
+				}
+			}
+		case "diagnosis-json":
+			for j := range fact.report.Findings {
 				if err := t.finding(fmt.Sprintf("%s/findings/%d/text", location, j+1), "other-unique-identifiers", "original-diagnosis-text-excluded-and-regenerated", Diagnosis, t.has(Diagnosis)); err != nil {
 					return err
 				}

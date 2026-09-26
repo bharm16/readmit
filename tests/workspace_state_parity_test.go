@@ -27,7 +27,7 @@ import (
 // stateApp is an unlicensed window whose local shell state lives in a known
 // folder, so a test can place a document there that a later release wrote.
 func stateApp(folder, state string) *desktop.App {
-	return desktop.New(chosenFolder(folder), filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	return desktop.New(chosenFolder(folder), desktop.ShellDocuments{Folder: state})
 }
 
 // A settings edit through the window writes the project document the command

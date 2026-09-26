@@ -278,7 +278,7 @@ func TestGateCancelledSuiteRetainsSkippedEvidence(t *testing.T) {
 	os.RemoveAll(current)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, e := suite.RunPromoted(ctx, filepath.Join(dir, "suite.json"), "east", current, filepath.Join(dir, "releases.json"), filepath.Join(dir, "promotion.json"), p.Promotion, p.Revision); e != nil {
+	if _, e := suite.Run(ctx, suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: current, References: filepath.Join(dir, "releases.json"), Promotion: filepath.Join(dir, "promotion.json"), PromotionIdentity: p.Promotion, Revision: p.Revision}); e != nil {
 		t.Fatal(e)
 	}
 	out := filepath.Join(t.TempDir(), "retained")

@@ -177,7 +177,7 @@ func (r *Receiver) apply(snapshot *observation.Snapshot, request *request) error
 	return nil
 }
 
-func acknowledgement(request *request, code, reason string, sequence int, sessionID, occurrenceID string) []byte {
+func acknowledgement(request *request, code, reason string, sequence int, sessionID, occurrenceID, stamp string) []byte {
 	trigger := request.trigger
 	if request.action == "" {
 		trigger = ""
@@ -192,8 +192,40 @@ func acknowledgement(request *request, code, reason string, sequence int, sessio
 	// The fixture receipt binds a ledger handoff to this connection's ACKs.
 	// Generic replay retains this segment without assigning workflow meaning.
 	return mllp.Frame(hl7.Encode([][]string{
-		{"MSH", "^~\\&", "READMIT", "FIXTURE", "", "", hl7.Time(time.Now()), "", "ACK^" + trigger, fmt.Sprintf("READMITACK%06d", sequence), "P", request.version},
+		{"MSH", "^~\\&", "READMIT", "FIXTURE", "", "", stamp, "", "ACK^" + trigger, fmt.Sprintf("READMITACK%06d", sequence), "P", request.version},
 		msa,
 		{"ZRT", "readmit-receipt/v1", sessionID, occurrenceID},
 	}))
+}
+
+// CanonicalACK builds the acknowledgement this fixture answers request with at
+// the sequence-th turn of a session: the request's own trigger and control ID,
+// an AA acceptance, and a receipt naming sessionID and occurrenceID. stamp is
+// the already validated UTC wire timestamp, the one part that varies between
+// two retained copies. It exists so the fixture acknowledgement's bytes are
+// spelled once, here where they are produced; the fixture-trial module
+// verifies a retained copy by rebuilding it.
+func CanonicalACK(approved []byte, stamp string, sequence int, sessionID, occurrenceID string) ([]byte, error) {
+	profile, err := decodeProfile(fixtureProfileJSON)
+	if err != nil {
+		return nil, err
+	}
+	payload := approved
+	if len(payload) == 0 || payload[0] != 0x0b {
+		payload = mllp.Frame(payload)
+	}
+	doc, err := hl7.Parse(payload, hl7.Options{Format: hl7.MLLP})
+	if err != nil || len(doc.Messages) != 1 {
+		return nil, errors.New("canonical acknowledgement needs one readable request header")
+	}
+	header := doc.Messages[0].Segments[0]
+	control := header.Field(10)
+	if control.State != hl7.Present {
+		return nil, errors.New("canonical acknowledgement needs a present request control ID")
+	}
+	trigger, err := selected(doc, "MSH-9.2", true, profile.MaxTextBytes)
+	if err != nil {
+		return nil, err
+	}
+	return acknowledgement(&request{controlID: string(doc.Bytes(control.Span)), trigger: trigger, action: profile.Triggers[trigger], version: profile.HL7Version}, "AA", "", sequence, sessionID, occurrenceID, stamp), nil
 }

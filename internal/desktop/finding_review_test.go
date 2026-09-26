@@ -188,7 +188,7 @@ func TestDecidingFindingsRequiresAdmissionAndReviewingDoesNot(t *testing.T) {
 	licensed, root, identity, reportSHA256 := reviewableWorkspace(t)
 	_ = licensed
 	state := t.TempDir()
-	app := desktop.New(&chooser{}, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+	app := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state})
 	request := findingReviewRequest(root, identity, reportSHA256)
 	if got := app.ReviewFindings(request); got.State != desktop.Completed {
 		t.Fatalf("an unadmitted shell could not review what is already there: %+v", got)

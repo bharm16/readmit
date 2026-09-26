@@ -2,6 +2,7 @@ package durablerun
 
 import (
 	"errors"
+	"github.com/bharm16/readmit/internal/replay"
 	"os"
 	"slices"
 )
@@ -21,7 +22,7 @@ type Cleanup struct {
 // bytes say what was meant, the sent prefixes and journal say what happened,
 // the engine pin says which build evaluated it, and the result holds the
 // replay's own record and the destination decision.
-var evidenceEntries = []string{"plan.json", "engine.json", "intended", "journal.jsonl", "sent", "result", "result.decision.json"}
+var evidenceEntries = []string{"plan.json", "engine.json", "intended", "journal.jsonl", "sent", "result", "result" + replay.DecisionSuffix}
 
 // Clean removes what a terminal run no longer needs, which is only a lease its
 // writer could not release. It verifies the job first and refuses to change

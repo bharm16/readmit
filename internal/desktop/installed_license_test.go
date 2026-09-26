@@ -25,8 +25,7 @@ import (
 func computerApp(t *testing.T, chooser desktop.FolderChooser, license string) *desktop.App {
 	t.Helper()
 	state := t.TempDir()
-	return desktop.NewWithInstalledLicense(chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-		filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"), filepath.Join(state, "operations.json"), license)
+	return desktop.NewWithInstalledLicense(chooser, desktop.ShellDocuments{Folder: state}, license)
 }
 
 func computerLicense(t *testing.T) string {

@@ -123,14 +123,14 @@ func TestOutcomesIsTheFourLevelsAnsweredAtOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	declared := map[profilepack.Combination]bool{}
+	declared := map[dictionary.Combination]bool{}
 	for _, coverage := range pack.Coverage {
-		declared[profilepack.Combination{Version: coverage.HL7Version, Family: coverage.Family}] = true
+		declared[dictionary.Combination{Version: coverage.HL7Version, Family: coverage.Family}] = true
 	}
-	combinations := []profilepack.Combination{{Version: "2.9", Family: "SIU"}, {Version: "2.5.1", Family: "siu"}, {}}
+	combinations := []dictionary.Combination{{Version: "2.9", Family: "SIU"}, {Version: "2.5.1", Family: "siu"}, {}}
 	for _, version := range profilepack.HL7Versions() {
 		for _, family := range profilepack.Families() {
-			combinations = append(combinations, profilepack.Combination{Version: version, Family: family})
+			combinations = append(combinations, dictionary.Combination{Version: version, Family: family})
 		}
 	}
 	for _, combination := range combinations {
@@ -219,8 +219,8 @@ func TestDeclaredReadsTheCombinationFromTheParsedMessage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %s: %v", tc.name, err)
 		}
-		declared := profilepack.Declared(doc, 0)
-		if declared != (profilepack.Combination{Version: tc.version, Family: tc.family}) {
+		declared := dictionary.Declared(doc, 0)
+		if declared != (dictionary.Combination{Version: tc.version, Family: tc.family}) {
 			t.Fatalf("%s declared %+v", tc.name, declared)
 		}
 		if got := pack.Support(declared.Version, declared.Family, profilepack.LevelLabels); got != tc.labels {
@@ -236,7 +236,7 @@ func TestDeclaredReadsTheCombinationFromTheParsedMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if got := profilepack.Declared(doc, 0); got != (profilepack.Combination{Version: "2.5.1", Family: "SIU"}) {
+	if got := dictionary.Declared(doc, 0); got != (dictionary.Combination{Version: "2.5.1", Family: "SIU"}) {
 		t.Fatalf("componentised declaration %+v", got)
 	}
 	// An omitted MSH-9 or MSH-12, or a message index outside the document,
@@ -245,10 +245,10 @@ func TestDeclaredReadsTheCombinationFromTheParsedMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if got := profilepack.Declared(doc, 0); got != (profilepack.Combination{}) {
+	if got := dictionary.Declared(doc, 0); got != (dictionary.Combination{}) {
 		t.Fatalf("omitted declaration %+v", got)
 	}
-	if got := profilepack.Declared(doc, 1); got != (profilepack.Combination{}) {
+	if got := dictionary.Declared(doc, 1); got != (dictionary.Combination{}) {
 		t.Fatalf("absent message %+v", got)
 	}
 	if got := pack.Support("", "", profilepack.LevelParse); got != profilepack.OutcomeUnknown {
@@ -274,6 +274,13 @@ func TestExistingLabelsAreDescribableWithoutChanging(t *testing.T) {
 		t.Fatalf("read dictionary source: %v", err)
 	}
 	digest := sha256.Sum256(source)
+	segments := map[string]map[int]string{}
+	labels.Positions(func(segment string, position int, name string) {
+		if segments[segment] == nil {
+			segments[segment] = map[int]string{}
+		}
+		segments[segment][position] = name
+	})
 	var coverage []map[string]string
 	for _, family := range profilepack.Families() {
 		coverage = append(coverage, map[string]string{
@@ -299,7 +306,7 @@ func TestExistingLabelsAreDescribableWithoutChanging(t *testing.T) {
 			"rights_review": map[string]string{"status": "approved", "reference": "docs/dictionary-provenance.md"},
 		},
 		"coverage": coverage,
-		"labels":   []map[string]any{{"hl7_version": "2.5.1", "segments": labels.Segments}},
+		"labels":   []map[string]any{{"hl7_version": "2.5.1", "segments": segments}},
 	})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -308,24 +315,23 @@ func TestExistingLabelsAreDescribableWithoutChanging(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a pack describing the bundled dictionary must decode: %v", err)
 	}
-	for segment, fields := range labels.Segments {
-		for position, name := range fields {
-			for _, family := range profilepack.Families() {
-				if got := pack.Label("2.5.1", family, segment, position); got.Name != name || got.Outcome != profilepack.OutcomeSupported {
-					t.Fatalf("%s-%d under %s: %+v, want %q", segment, position, family, got, name)
-				}
-			}
-			if got := pack.Label("2.4", "SIU", segment, position); got != (profilepack.FieldLabel{Outcome: profilepack.OutcomeUnknown}) {
-				t.Fatalf("%s-%d leaked into 2.4: %+v", segment, position, got)
+	labels.Positions(func(segment string, position int, name string) {
+		for _, family := range profilepack.Families() {
+			if got := pack.Label("2.5.1", family, segment, position); got.Name != name || got.Outcome != profilepack.OutcomeSupported {
+				t.Fatalf("%s-%d under %s: %+v, want %q", segment, position, family, got, name)
 			}
 		}
-	}
+		if got := pack.Label("2.4", "SIU", segment, position); got != (profilepack.FieldLabel{Outcome: profilepack.OutcomeUnknown}) {
+			t.Fatalf("%s-%d leaked into 2.4: %+v", segment, position, got)
+		}
+	})
 	if got := pack.Support("2.5.1", "SIU", profilepack.LevelStructural); got.Passing() {
 		t.Fatal("a label dictionary does not certify structure")
 	}
-	// The dictionary's own reader is unchanged by any of this.
+	// The dictionary's own reader is unchanged by any of this, and every
+	// caller is answered from the one parse.
 	again, err := dictionary.Load()
-	if err != nil || len(again.Segments) != len(labels.Segments) {
+	if err != nil || again != labels {
 		t.Fatalf("dictionary after describing it: %v", err)
 	}
 }

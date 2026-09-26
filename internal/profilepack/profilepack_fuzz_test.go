@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/profilepack"
 )
 
@@ -70,9 +71,9 @@ func FuzzProfilePackDocument(f *testing.F) {
 			}
 			labelled[labels.HL7Version] = true
 		}
-		seen := map[profilepack.Combination]bool{}
+		seen := map[dictionary.Combination]bool{}
 		for _, coverage := range pack.Coverage {
-			combination := profilepack.Combination{Version: coverage.HL7Version, Family: coverage.Family}
+			combination := dictionary.Combination{Version: coverage.HL7Version, Family: coverage.Family}
 			if !slices.Contains(versions, coverage.HL7Version) || !slices.Contains(families, coverage.Family) || seen[combination] {
 				t.Fatalf("accepted the coverage %+v", coverage)
 			}
@@ -105,7 +106,7 @@ func FuzzProfilePackDocument(f *testing.F) {
 		// Every combination the pack did not declare is unknown at every level.
 		for _, version := range versions {
 			for _, family := range families {
-				if seen[profilepack.Combination{Version: version, Family: family}] {
+				if seen[dictionary.Combination{Version: version, Family: family}] {
 					continue
 				}
 				for _, level := range levels {

@@ -168,7 +168,7 @@ func executedRun(t *testing.T, code string) string {
 	path := filepath.Join(directory, "run")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := replay.Execute(ctx, plan, path); err != nil {
+	if _, err := replay.Send(ctx, plan, path, replay.SendOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := replay.Open(path); err != nil {

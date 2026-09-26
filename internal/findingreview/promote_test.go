@@ -115,6 +115,39 @@ func TestADismissedOrSuppressedFindingPromotesNothing(t *testing.T) {
 	}
 }
 
+func TestAPromotionAgreesWithTheDiagnosisItPromotesAcrossSources(t *testing.T) {
+	// The booking is captured from one source and its acknowledgement from
+	// another. A diagnosis links the pair across the case, by decoded text;
+	// the promotion of its finding must read the very same linkage, though
+	// the case's own same-source correlations leave the acknowledgement
+	// unmatched.
+	path, source := openCase(t, frame(booking), frame(acknowledgement))
+	report, identity := diagnosed(t, path)
+	outcomes := findingsOf(report, diagnose.ACKOutcome)
+	if len(outcomes) != 1 {
+		t.Fatalf("the fixture produced %d acknowledgement outcomes, not one", len(outcomes))
+	}
+	record := review(t, report, identity, source,
+		findingreview.Decision{Finding: outcomes[0], Verdict: findingreview.Confirmed, Rationale: "the rejection must keep holding"})
+	confirmed := status(t, record, outcomes[0])
+	if confirmed.Promotion == nil {
+		t.Fatalf("a confirmed finding did not promote: %+v", confirmed)
+	}
+	for _, item := range confirmed.Promotion.Unsupported {
+		if item.Code == findingreview.AcknowledgementNotCorrelated {
+			t.Fatalf("the promotion disagreed with the diagnosis about the linkage: %+v", confirmed.Promotion)
+		}
+	}
+	if len(confirmed.Promotion.Expectations) != 1 {
+		t.Fatalf("the cross-source acknowledgement finding did not promote one assertion: %+v", confirmed.Promotion)
+	}
+	// The assertion is answered on the booking the other source captured,
+	// the occurrence the diagnosis linked the acknowledgement to.
+	if expectation := confirmed.Promotion.Expectations[0]; expectation.Message != "s0001-e000001" {
+		t.Fatalf("the promotion did not answer on the occurrence the diagnosis linked: %+v", expectation)
+	}
+}
+
 func TestAnOccurrenceScopedSuppressionReachesTheSameRuleOnThatOccurrence(t *testing.T) {
 	// Two ERR segments in one acknowledgement produce two findings of the same
 	// rule on the same occurrence.

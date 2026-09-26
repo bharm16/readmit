@@ -18,5 +18,5 @@ func ExecuteWithConnectionForTest(ctx context.Context, plan *Plan, output string
 // ExecuteWithResolverForTest substitutes DNS only; approval, recording, dialing,
 // TLS, payload exchange and evidence storage use the production implementation.
 func ExecuteWithResolverForTest(ctx context.Context, plan *Plan, output string, policy *sendpolicy.Policy, record func(sendpolicy.Decision) error, resolve sendpolicy.Resolver) (*Run, error) {
-	return executeWithPolicy(ctx, plan, output, policy, record, resolve)
+	return sendWithResolver(ctx, plan, output, policy, record, resolve, nil)
 }

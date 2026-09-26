@@ -1,18 +1,12 @@
 package hub
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/bharm16/readmit/internal/hubprotocol"
 )
-
-func (s *Store) lifecycleEvents(ctx context.Context, project string) ([]LifecycleEvent, error) {
-	return lifecycleLog.read(ctx, s.db, project)
-}
 
 // lifecycleAdmission is the lifecycle route's one declaration of how a
 // request maps into action vocabulary: a read reports history, a revision or
@@ -69,115 +63,90 @@ func (s *Store) lifecycleRequest(w http.ResponseWriter, r *http.Request, a *Acce
 	}
 	adm := lifecycleAdmission(r.Method, c.Kind)
 	adm.accept = lifecycleIdentity(r.Method)
+	adm.serialized = true
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, release, ok := s.authorizeWrite(a, r, w, project, adm)
+	p, proj, release, ok := s.authorizeWrite(a, r, w, project, adm)
 	if !ok {
 		return
 	}
 	if release != nil {
 		defer release()
 	}
-	events, e := s.lifecycleEvents(r.Context(), project)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
 	if r.Method == "GET" {
-		sendReview(w, 200, hubprotocol.LifecycleHistory{Schema: hubprotocol.LifecycleHistorySchema, Head: len(events), Events: events, Tips: hubprotocol.DeriveLifecycle(events).Tips(), Warning: hubprotocol.CustodyWarning})
+		sendReview(w, 200, proj.history())
 		return
 	}
-	total, e := lifecycleLog.total(r.Context(), s.db)
-	if e != nil {
-		http.Error(w, "metadata unavailable", 503)
-		return
-	}
-	existing, replay, e := lifecycleLog.admit(events, total, c, p.Subject, p.Issuer)
-	if errors.Is(e, errLogIDConflict) {
+	projects := s.projects()
+	event, events, replayed, e := projects.recordLifecycle(r.Context(), proj, p, c, a.roles(project))
+	switch {
+	case errors.Is(e, errLogIDConflict):
 		http.Error(w, "command id conflict", 409)
 		return
-	}
-	if errors.Is(e, errLogHead) {
+	case errors.Is(e, errLogHead):
 		http.Error(w, "head conflict or limit", 409)
 		return
-	}
-	if replay {
-		s.sendLifecycle(w, r, 200, existing, events)
+	case errors.Is(e, errRemoval):
+		http.Error(w, "removal refused", 403)
 		return
-	}
-	if c.Kind == "remove-user" {
-		policy, e := a.policy()
-		if e != nil || c.Subject == p.Subject || policy.role(c.Subject, project) == "" || policy.role(c.Subject, project) == "owner" {
-			http.Error(w, "removal refused", 403)
-			return
-		}
-	}
-	now := time.Now().UTC()
-	if e = hubprotocol.DeriveLifecycle(events).Validate(c, func(d string) ([]byte, error) {
-		if !s.linked(r.Context(), project, d) {
-			return nil, ErrMissing
-		}
-		return s.Get(r.Context(), d)
-	}, now); e != nil {
+	case errors.Is(e, errLifecycleConflict):
 		http.Error(w, "lifecycle conflict", 409)
 		return
-	}
-	event := LifecycleEvent{Schema: hubprotocol.LifecycleEventSchema, Project: project, Sequence: len(events) + 1, Issuer: p.Issuer, Actor: p.Subject, At: now.Format(time.RFC3339Nano), Command: c}
-	if c.Kind == "audit-export" {
-		reviews, e := s.reviewEvents(r.Context(), project)
-		if e != nil {
-			http.Error(w, "audit unavailable", 503)
-			return
-		}
-		event.ReviewHead = len(reviews)
-	}
-	if e := lifecycleLog.commit(r.Context(), s.db, project, event); e != nil {
+	case errors.Is(e, errAuditUnavailable):
+		http.Error(w, "audit unavailable", 503)
+		return
+	case errors.Is(e, errCommitUnavailable):
 		http.Error(w, "commit unavailable; retry same id", 503)
 		return
+	case e != nil:
+		http.Error(w, "metadata unavailable", 503)
+		return
 	}
-	s.sendLifecycle(w, r, 201, event, append(events, event))
-}
-
-// authorize combines the reloaded access policy with durable project removals.
-// Policy reinstallation cannot accidentally resurrect a removed principal.
-func (s *Store) authorize(a *Access, r *http.Request, project, action string) (Principal, error) {
-	p, e := a.Authorize(r, project, action)
-	if e != nil {
-		return p, e
+	status := 201
+	if replayed {
+		status = 200
 	}
-	events, e := s.lifecycleEvents(r.Context(), project)
-	if e != nil {
-		return Principal{}, errAccess
-	}
-	if hubprotocol.DeriveLifecycle(events).Removed(p.Issuer, p.Subject) {
-		return Principal{}, errAccess
-	}
-	return p, nil
-}
-func (s *Store) retired(ctx context.Context, project, digest string) (bool, error) {
-	events, e := s.lifecycleEvents(ctx, project)
-	if e != nil {
-		return false, e
-	}
-	return hubprotocol.DeriveLifecycle(events).Retired(digest), nil
-}
-func (s *Store) sendLifecycle(w http.ResponseWriter, r *http.Request, status int, event LifecycleEvent, events []LifecycleEvent) {
 	if event.Command.Kind != "audit-export" {
 		sendReview(w, status, event)
 		return
 	}
-	reviews, e := s.reviewEvents(r.Context(), event.Project)
-	if e != nil {
+	export, e := projects.auditExport(r.Context(), event, events)
+	if errors.Is(e, errAuditRetry) {
 		http.Error(w, "audit unavailable; retry same id", 503)
 		return
 	}
-	// Retry reproduces both committed history prefixes.
-	if event.ReviewHead > len(reviews) {
+	if e != nil {
 		http.Error(w, "audit unavailable", 503)
 		return
 	}
-	reviews = reviews[:event.ReviewHead]
-	prefix := events[:event.Sequence]
 	w.Header().Set("Content-Disposition", `attachment; filename="audit.json"`)
-	sendReview(w, status, hubprotocol.AuditExport{Schema: hubprotocol.DeriveReviews(reviews).AuditSchema(), Project: event.Project, Lifecycle: prefix, ReviewHead: len(reviews), Reviews: reviews, Warning: hubprotocol.CustodyWarning})
+	sendReview(w, status, export)
+}
+
+// authorizeProject authorizes a request against the access policy and only
+// then reads the project's lifecycle log, once, for the request's decisions.
+func (s *Store) authorizeProject(a *Access, r *http.Request, project, action string) (Principal, projectView, error) {
+	p, e := a.Authorize(r, project, action)
+	if e != nil {
+		return p, projectView{}, e
+	}
+	proj, e := s.projects().open(r.Context(), project)
+	if e != nil || proj.removed(p) {
+		return Principal{}, proj, errAccess
+	}
+	return p, proj, nil
+}
+
+// authorize combines the reloaded access policy with durable project removals,
+// read once for the request: policy reinstallation cannot resurrect a removed
+// principal.
+func (s *Store) authorize(a *Access, r *http.Request, proj projectView, action string) (Principal, error) {
+	p, e := a.Authorize(r, proj.name, action)
+	if e != nil {
+		return p, e
+	}
+	if proj.removed(p) {
+		return Principal{}, errAccess
+	}
+	return p, nil
 }

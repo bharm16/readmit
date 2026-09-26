@@ -12,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 const (
@@ -318,6 +319,54 @@ func (r *Run) Successful() bool {
 	return true
 }
 
+// Interruption is the outcome of the last message that was cancelled or timed
+// out, and no outcome at all when every delivery was settled on the network.
+// It is a run's own statement of how its send stopped, so a durable run never
+// has to scan retained events to name its stop reason.
+func (r *Run) Interruption() Outcome {
+	for i := len(r.Events) - 1; i >= 0; i-- {
+		if outcome := r.Events[i].Outcome; outcome == Cancelled || outcome == Timeout {
+			return outcome
+		}
+	}
+	return ""
+}
+
 // Configuration returns the actual sealed configuration, including references
 // (never secret values), for versioned durable execution records.
 func (p *Plan) Configuration() Target { return p.target }
+
+// Identity is the one plan identity a preview and its send share: the case the
+// plan was sealed from, the target configuration and the transport it records,
+// the send policy decided against, the transformations and every outbound
+// message with the bytes it would put on the wire. Any of them changing
+// changes the identity. It is compared only within one preview and the send
+// that follows it — it is never persisted, so a change to this recipe
+// invalidates no retained artifact.
+func (p *Plan) Identity(policy *sendpolicy.Policy) (string, error) {
+	type message struct {
+		Mapping Mapping `json:"mapping"`
+		Wire    string  `json:"wire_sha256"`
+	}
+	pinned := struct {
+		Source          string             `json:"source"`
+		Target          Target             `json:"target"`
+		Transport       TargetRecord       `json:"transport"`
+		Policy          *sendpolicy.Policy `json:"policy"`
+		Transformations []Transformation   `json:"transformations"`
+		Messages        []message          `json:"messages"`
+	}{Source: p.sourceIdentity, Target: p.target, Transport: p.Target(), Policy: policy,
+		Transformations: p.options.Transformations, Messages: []message{}}
+	for _, mapping := range p.Mappings() {
+		wire, err := p.Outbound(mapping.OutboundOccurrence)
+		if err != nil {
+			return "", err
+		}
+		pinned.Messages = append(pinned.Messages, message{Mapping: mapping, Wire: digest(wire)})
+	}
+	encoded, err := json.Marshal(pinned, json.Deterministic(true))
+	if err != nil {
+		return "", err
+	}
+	return digest(encoded), nil
+}

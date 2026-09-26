@@ -316,12 +316,7 @@ func TestDesktopHubJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recentPath := filepath.Join(dir, "recent.json")
-	filtersPath := filepath.Join(dir, "filters.json")
-	sessionPath := filepath.Join(dir, "session.json")
-	draftsPath := filepath.Join(dir, "drafts.json")
-
-	app := desktop.New(&chooser{folder: dir}, recentPath, filtersPath, sessionPath, draftsPath)
+	app := desktop.New(&chooser{folder: dir}, desktop.ShellDocuments{Folder: dir})
 
 	// 1. Initial status: offline/local
 	status0 := app.HubStatus()

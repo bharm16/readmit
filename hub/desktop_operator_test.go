@@ -123,8 +123,7 @@ func TestPostgresOperatorOnlyHubReadsAndStoresThroughTheApplication(t *testing.T
 		t.Helper()
 		dialogs := &operatorDialogs{files: []string{config}}
 		state := t.TempDir()
-		app := desktop.New(dialogs, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"),
-			filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"))
+		app := desktop.New(dialogs, desktop.ShellDocuments{Folder: state})
 		if licensed {
 			if result := app.SelectOperationPolicy(testlicense.New(t)); result.State != desktop.Completed {
 				t.Fatal(result)

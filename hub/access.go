@@ -191,6 +191,17 @@ func OpenAccess(path string) (*Access, error) {
 	_, e := a.policy()
 	return a, e
 }
+
+// roles reads the policy's grants in one project when a project-log rule asks.
+func (a *Access) roles(project string) accessPolicy {
+	return func() (func(string) string, error) {
+		policy, e := a.policy()
+		if e != nil {
+			return nil, e
+		}
+		return func(subject string) string { return policy.role(subject, project) }, nil
+	}
+}
 func (a *Access) policy() (AccessPolicy, error) {
 	b, e := readPrivatePolicy(a.path)
 	if e != nil {

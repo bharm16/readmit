@@ -1,0 +1,10 @@
+name: Pinned Node with the frontend's npm cache
+description: Install the Node release the frontend is built and tested with, caching npm by desktop/frontend's lock file.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version: '24'
+        cache: npm
+        cache-dependency-path: desktop/frontend/package-lock.json

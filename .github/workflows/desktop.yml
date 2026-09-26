@@ -33,6 +33,15 @@ concurrency:
 env:
   GOTOOLCHAIN: local
   GOTELEMETRY: 'off'
+  # The gate a job's condition can name, computed once. A job's `if:` cannot
+  # read env, so it repeats the expression; tools/proven_tree.py reads which
+  # jobs repeat it to know what desktop must require of each.
+  # ADR-0011: the native packages build and install only on a manual dispatch.
+  FULL_GATES: ${{ github.event_name == 'workflow_dispatch' }}
+  # The native journeys drive the installed application through its
+  # platform's accessibility API only on an explicitly opted-in manual run, and
+  # only then does desktop-package build the journey bridge they provision with.
+  NATIVE_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys && 'true' || 'false' }}
 
 jobs:
   # A push to main repeats a pull request's work only when the pull request's
@@ -57,7 +66,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/proven_tree.py --artifact proven-tree-desktop
+        run: python3 tools/proven_tree.py check
 
   desktop-shell:
     # macOS supplies a webview without extra system packages, so this job
@@ -79,11 +88,7 @@ jobs:
         with:
           cache-scope: desktop
           cache-dependency-path: '**/go.sum'
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: desktop/frontend/package-lock.json
+      - uses: ./.github/actions/setup-node
       # ADR-0011: type-check only; the frontend bundle is not built.
       - name: Type-check the frontend from its lock file
         working-directory: desktop/frontend
@@ -112,7 +117,7 @@ jobs:
           set -o pipefail
           npm run test:journeys -- --reporter=verbose 2>&1 | tee journeys-output.txt
       - name: Publish the frontend test output beside the build output
-        if: always() && github.event_name == 'workflow_dispatch'
+        if: always() && env.FULL_GATES == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: desktop-frontend-test-output
@@ -131,11 +136,11 @@ jobs:
           go vet -tags production ./...
           go test -tags production ./...
       - name: Vulnerability check for the desktop dependency graph
-        if: github.event_name == 'workflow_dispatch'
-        working-directory: desktop
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-          govulncheck -tags production ./...
+        if: env.FULL_GATES == 'true'
+        uses: ./.github/actions/govulncheck
+        with:
+          working-directory: desktop
+          tags: production
 
   # Native desktop packages for the finite target matrix. Each package is built
   # on the machine it targets, from that machine's own build of the shell, and
@@ -162,11 +167,6 @@ jobs:
           - {os: windows, arch: amd64, runner: windows-2025}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
-    # Keep this expression identical to NATIVE_JOURNEYS in desktop-install:
-    # only the targets whose install job drives the native journeys need the
-    # journey bridge.
-    env:
-      NATIVE_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -175,11 +175,7 @@ jobs:
         with:
           cache-scope: desktop-package-${{ matrix.os }}-${{ matrix.arch }}
           cache-dependency-path: '**/go.sum'
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: desktop/frontend/package-lock.json
+      - uses: ./.github/actions/setup-node
       - name: Install the WebKitGTK development packages the .deb declares
         if: matrix.os == 'linux'
         run: |
@@ -290,11 +286,8 @@ jobs:
           - {os: windows, arch: amd64, runner: windows-2025}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    # The native journeys drive the installed application through its
-    # platform's accessibility API only on an explicitly opted-in manual run.
-    # Automatic runs still install, check and remove every native package.
-    env:
-      NATIVE_JOURNEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_journeys && 'true' || 'false' }}
+    # Only an opted-in manual run drives the native journeys (NATIVE_JOURNEYS);
+    # every run that installs still checks and removes every native package.
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -465,37 +458,12 @@ jobs:
       # and then every one of them must have been skipped. Otherwise the shell
       # job must succeed, and the native packages (ADR-0011) must succeed on a
       # manual dispatch and be skipped on every other event.
-      - name: Require the shell build and every native package this event runs to succeed
-        env:
-          PROVEN: ${{ needs.proof.result == 'success' && needs.proof.outputs.proven == 'true' }}
-          FULL_GATES: ${{ github.event_name == 'workflow_dispatch' }}
-          SHELL_RESULT: ${{ needs.desktop-shell.result }}
-          PACKAGE_RESULT: ${{ needs.desktop-package.result }}
-          INSTALL_RESULT: ${{ needs.desktop-install.result }}
-        run: |
-          if [ "$PROVEN" = true ]; then expected=skipped; else expected=success; fi
-          if [ "$FULL_GATES" = true ]; then full=success; else full=skipped; fi
-          test "$SHELL_RESULT" = "$expected"
-          test "$PACKAGE_RESULT" = "$full"
-          test "$INSTALL_RESULT" = "$full"
-      # The record a later push to main looks for. Failing to write it only
-      # means that push runs in full, so it never fails this check.
-      - name: Record the tree this pull-request run tested
-        id: tested
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)
-          test -n "$tree"
-          printf '%s\n' "$GITHUB_SHA" > tested-commit.txt
-          echo "tree=$tree" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.event_name == 'pull_request' && steps.tested.outputs.tree != ''
-        continue-on-error: true
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          name: proven-tree-desktop-${{ steps.tested.outputs.tree }}
-          path: tested-commit.txt
-          if-no-files-found: error
-          overwrite: true
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            tools
+      - uses: ./.github/actions/proven-tree
+        with:
+          needs: ${{ toJSON(needs) }}

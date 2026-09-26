@@ -215,7 +215,7 @@ func freshApp(t *testing.T, chooser desktop.FolderChooser, selection string) *de
 	if selection != "" {
 		state = filepath.Dir(selection)
 	}
-	return desktop.NewWithOperationSelection(chooser, filepath.Join(state, "recent.json"), filepath.Join(state, "filters.json"), filepath.Join(state, "session.json"), filepath.Join(state, "drafts.json"), selection)
+	return desktop.NewWithOperationSelection(chooser, desktop.ShellDocuments{Folder: state})
 }
 
 func mustRead(t *testing.T, path string) []byte {

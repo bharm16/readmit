@@ -162,7 +162,7 @@ func Decode(data []byte) (Plan, error) {
 	if p.Schema != Schema || p.GeneratorVersion != Version {
 		return Plan{}, errors.New("unsupported generator contract or version")
 	}
-	d, err := readTemplate(p.Template)
+	d, _, err := readTemplate(p.Template)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -237,22 +237,20 @@ func Decode(data []byte) (Plan, error) {
 	return p, nil
 }
 
-func readTemplate(data []byte) (template, error) {
-	if _, err := scenario.PreviewDocument(data); err != nil {
-		return template{}, errors.New("generator requires a valid scenario with confirmed lifecycle outcomes")
+// readTemplate reads the plan's template through the one reader both
+// contracts are read by, which dispatches on the contract name the template
+// declares, and previews it: a plan whose lifecycle outcomes are not
+// confirmed is refused before any stream is produced.
+func readTemplate(data []byte) (template, scenario.Timeline, error) {
+	workflow, err := scenario.DecodeDocument(data)
+	if err != nil {
+		return template{}, scenario.Timeline{}, errors.New("generator requires a valid scenario with confirmed lifecycle outcomes")
 	}
-	var header struct {
-		Schema string `json:"schema"`
+	timeline, err := workflow.Preview()
+	if err != nil {
+		return template{}, scenario.Timeline{}, errors.New("generator requires a valid scenario with confirmed lifecycle outcomes")
 	}
-	if err := json.Unmarshal(data, &header); err != nil {
-		return template{}, err
-	}
-	if header.Schema == scenario.OrderSchema {
-		d, err := scenario.DecodeOrders(data)
-		return template{Scenario: scenario.Scenario{Schema: d.Schema, Scenario: d.Scenario, Profile: d.Profile, BaseTime: d.BaseTime, Subjects: d.Subjects, Steps: d.Steps}, Orders: d.Orders, Results: d.Results}, err
-	}
-	d, err := scenario.Decode(data)
-	return template{Scenario: d}, err
+	return template{Scenario: workflow.Scenario, Orders: workflow.Orders, Results: workflow.Results}, timeline, nil
 }
 
 var portable = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
