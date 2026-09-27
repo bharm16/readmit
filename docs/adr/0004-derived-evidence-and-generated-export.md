@@ -27,6 +27,13 @@ case version. The cost is accepted explicitly: a release that predates a name
 refuses a v3 bundle carrying it, which is the same refusal it already gives an
 unknown contract version.
 
+A derived case the desktop saves (#547) is one publication with its lineage
+and its project association: the reproducer builds it where the project
+cannot see it, it is read back as derived evidence, published as a new entry,
+registered as a revision of the case it was derived from, and only then
+listed. A derived case without its association is never an object of the
+project, and recovery completes the registration or withdraws the build.
+
 Derived cases retain transformed occurrence bytes, source ordering and captured
 correlations. Original paths, import/observation times, recorded observations,
 generator inputs, parent identities, source-to-surrogate mappings and date offsets

@@ -59,3 +59,23 @@ func TestAReviewIsBoundToItsReviewer(t *testing.T) {
 		t.Fatalf("the reviewer's own review: %+v", done)
 	}
 }
+
+// Enabling a schedule is recurring authority with a durable policy of its
+// own, which is the scheduler's: no review this facade prepares authorizes
+// one, and a schedule offers none of the reviewed actions, however much the
+// guard admits.
+func TestNoReviewTokenAuthorizesASchedule(t *testing.T) {
+	schedule := CatalogItem{Ref: ItemRef{Kind: ScheduleItem, ID: "0123456789abcdef01234567"}, Availability: ItemAvailable}
+	for _, action := range capabilitiesFor(schedule, admissions{author: true, execute: true}) {
+		if _, reviewed := actionPolicies[action]; reviewed {
+			t.Fatalf("a schedule offers the reviewed action %s", action)
+		}
+	}
+	app := New(nil, ShellDocuments{Folder: t.TempDir()})
+	for action := range actionPolicies {
+		review := app.PrepareAction(PrepareActionRequest{Action: action, Items: []ItemRef{schedule.Ref}})
+		if review.Review != nil && review.Review.Token != "" {
+			t.Fatalf("%s prepared a review of a schedule: %+v", action, review)
+		}
+	}
+}

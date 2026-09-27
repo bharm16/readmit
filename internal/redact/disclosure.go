@@ -34,3 +34,24 @@ func ValidateDisclosure(ctx context.Context, reviewPath, privatePath string) (*R
 	}
 	return review, nil
 }
+
+// OpenPrivateState reads one private local-state folder for what pairs it with
+// its review, without revalidating anything it binds: the commitment a review
+// records for it and the identity of the case it was derived from. Its values
+// stay where they are.
+func OpenPrivateState(privatePath string) (commitment, caseIdentity string, err error) {
+	raw, err := readLocal(filepath.Join(privatePath, "state.json"), maxReviewBytes)
+	if err != nil {
+		return "", "", errors.New("the private local state cannot be read")
+	}
+	var local localState
+	if json.Unmarshal(raw, &local, json.RejectUnknownMembers(true)) != nil || local.Schema != PrivateSchema {
+		return "", "", errors.New("invalid private disclosure binding")
+	}
+	for _, source := range local.Sources {
+		if source.Kind == "case" {
+			caseIdentity = source.Identity
+		}
+	}
+	return digest(raw), caseIdentity, nil
+}

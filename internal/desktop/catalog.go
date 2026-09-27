@@ -10,7 +10,6 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -243,13 +242,17 @@ type TestSummary struct {
 	Entry          string            `json:"entry,omitzero"`
 }
 
-// SuiteSummary is how many tests a suite includes and the environments it
-// binds. LatestRun is null: a suite run's queue report is not retained where
-// a reader can find it.
+// SuiteSummary is how many tests a suite includes, the environments it binds
+// and the latest retained execution of its current version: when it started
+// and its outcome, as RunSummary.Outcome says it. A suite whose current
+// version no execution ran has none; an execution of an earlier version is
+// not one of this version's.
 type SuiteSummary struct {
-	Tests        int      `json:"tests"`
-	Environments []string `json:"environments"`
-	LatestRun    *ItemRef `json:"latest_run"`
+	Tests         int      `json:"tests"`
+	Environments  []string `json:"environments"`
+	LatestRun     *ItemRef `json:"latest_run"`
+	LatestRunAt   *string  `json:"latest_run_at,omitzero"`
+	LatestOutcome string   `json:"latest_outcome,omitzero"`
 }
 
 // RunSummary is what one run actually did: the address it reached, when it
@@ -257,6 +260,14 @@ type SuiteSummary struct {
 // acknowledgement settled. A test run also names the boundary it was
 // observed at and the project's case whose evidence it replayed, when the
 // project holds it.
+//
+// A suite execution names its suite, when the project holds it, and how many
+// jobs its queue held; it reaches several targets, so Target is empty, and
+// Uncertain counts its jobs with a delivery no acknowledgement settled. Its
+// Outcome is executed (the queue executed every job, whatever each found),
+// stopped (the queue stopped before executing every job) or incomplete (the
+// execution retained no queue report: it was interrupted). Its start and
+// completion are the earliest and latest its jobs' runs record.
 type RunSummary struct {
 	Target            string   `json:"target,omitzero"`
 	StartedAt         *string  `json:"started_at"`
@@ -266,6 +277,8 @@ type RunSummary struct {
 	DeliveryUncertain bool     `json:"delivery_uncertain"`
 	Boundary          string   `json:"boundary,omitzero"`
 	SourceCase        *ItemRef `json:"source_case,omitzero"`
+	Suite             *ItemRef `json:"suite,omitzero"`
+	Jobs              int      `json:"jobs,omitzero"`
 }
 
 // EnvironmentSummary is an environment's declared classification, address
@@ -411,14 +424,25 @@ type IncompleteSave struct {
 // from; a cursor continues only that list. Recorded is false when the
 // project's catalog could not be written, so the identities listed are the
 // derived ones rather than recorded ones.
+//
+// A project folder with more entries than one discovery window reads is
+// listed window by window: while a later window is still to be read, Partial
+// is true, Reason says so and Total is null, never the count of what was read
+// so far. NextCursor continues into the next window once this one's pages
+// are listed, and the last window's pages carry the whole list's Total.
 type CatalogPage struct {
 	Items      []CatalogItem    `json:"items"`
 	NextCursor string           `json:"next_cursor,omitzero"`
-	Total      int              `json:"total"`
+	Total      *int             `json:"total"`
+	Partial    bool             `json:"partial,omitzero"`
+	Reason     string           `json:"reason,omitzero"`
 	Snapshot   string           `json:"snapshot"`
 	Recorded   bool             `json:"recorded"`
 	Incomplete []IncompleteSave `json:"incomplete"`
 }
+
+// windowReason is why a page of a project read window by window is partial.
+const windowReason = "the project holds more entries than this release lists at once; later entries are listed on the next pages"
 
 // CatalogResult carries one state and the context it answers.
 type CatalogResult struct {
@@ -455,56 +479,83 @@ func (a *App) ListCatalog(query CatalogQuery) CatalogResult {
 		var list *heldList
 		start := 0
 		if query.Cursor != "" {
-			snapshot, offset, ok := decodeCursor(query.Cursor)
-			held := a.snapshots.held(snapshot, queryKey(query))
-			if !ok || held == nil || offset > len(held.items) {
+			cursor, ok := decodeCursor(query.Cursor)
+			if ok && cursor.After != "" {
+				// The next discovery window of the list the cursor ended.
+				if cursor.Key != keyDigest(queryKey(query)) {
+					ok = false
+				} else {
+					read, declined := a.readList(ctx, query, cursor.After, cursor.Prior)
+					if read == nil {
+						result.refuse(declined.state, declined.reason)
+						return result
+					}
+					list = read
+				}
+			} else if ok {
+				held := a.snapshots.held(cursor.Snapshot, queryKey(query))
+				if held == nil || cursor.Offset > len(held.items) {
+					ok = false
+				}
+				list, start = held, cursor.Offset
+			}
+			if !ok {
 				result.refuse(Failed, "the list this page continues is no longer held; read it again from its first page")
 				return result
 			}
-			list, start = held, offset
 		} else {
-			read, declined := a.readList(ctx, query)
+			read, declined := a.readList(ctx, query, "", 0)
 			if read == nil {
 				result.refuse(declined.state, declined.reason)
 				return result
 			}
 			list = read
 		}
-		page := &CatalogPage{Snapshot: list.snapshot, Total: len(list.items), Recorded: list.recorded, Incomplete: list.incomplete}
+		page := &CatalogPage{Snapshot: list.snapshot, Recorded: list.recorded, Incomplete: list.incomplete}
+		if list.upper == "" {
+			total := list.prior + len(list.items)
+			page.Total = &total
+		} else {
+			page.Partial, page.Reason = true, windowReason
+		}
 		end := min(start+limit, len(list.items))
 		// The objects are the snapshot's; what may be done to them is what
 		// the guard admits now.
 		admitted := a.admitted(ctx)
 		page.Items = make([]CatalogItem, 0, end-start)
 		for _, item := range list.items[start:end] {
-			item.Capabilities = capabilitiesFor(item.Ref.Kind, item.Availability, admitted)
+			item.Capabilities = capabilitiesFor(item, admitted)
 			page.Items = append(page.Items, item)
 		}
-		if end < len(list.items) {
-			page.NextCursor = encodeCursor(list.snapshot, end)
+		switch {
+		case end < len(list.items):
+			page.NextCursor = encodeCursor(listCursor{Snapshot: list.snapshot, Offset: end})
+		case list.upper != "":
+			page.NextCursor = encodeCursor(listCursor{After: list.upper, Prior: list.prior + len(list.items), Key: keyDigest(list.key)})
 		}
 		result.State, result.Page = Completed, page
-		if len(list.items) == 0 {
+		if len(list.items) == 0 && list.prior == 0 && list.upper == "" {
 			result.State = Empty
 		}
 		return result
 	})
 }
 
-// readList reads, filters and orders one whole list and holds it as a
-// snapshot.
-func (a *App) readList(ctx context.Context, query CatalogQuery) (*heldList, refusal) {
-	list := &heldList{recorded: true, incomplete: []IncompleteSave{}, key: queryKey(query)}
+// readList reads, filters and orders one whole list — of the project's
+// discovery window after the entry name after, which prior objects of the
+// list preceded — and holds it as a snapshot.
+func (a *App) readList(ctx context.Context, query CatalogQuery, after string, prior int) (*heldList, refusal) {
+	list := &heldList{recorded: true, incomplete: []IncompleteSave{}, key: queryKey(query), prior: prior}
 	var items []CatalogItem
 	if query.Kind == ProjectItem {
 		items = a.knownProjects(ctx)
 	} else {
-		loaded, declined := a.loadCatalog(ctx, query.Context, false)
+		loaded, declined := a.loadWindow(ctx, query.Context, false, after)
 		if loaded == nil {
 			return nil, declined
 		}
 		items = loaded.list(query.Kind)
-		list.recorded, list.incomplete = loaded.recorded, loaded.incompleteSaves()
+		list.recorded, list.incomplete, list.upper = loaded.recorded, loaded.incompleteSaves(), loaded.upper
 	}
 	items = filtered(items, query)
 	sortItems(items, query.Sort)
@@ -520,13 +571,17 @@ const (
 	heldSnapshots    = 16
 )
 
-// heldList is one ordered list a first page was cut from.
+// heldList is one ordered list a first page was cut from: of one discovery
+// window, which prior objects of the list preceded, and which more entries
+// follow when upper, the last entry name it covers, is set.
 type heldList struct {
 	key        string
 	snapshot   string
 	items      []CatalogItem
 	recorded   bool
 	incomplete []IncompleteSave
+	prior      int
+	upper      string
 	at         time.Time
 }
 
@@ -588,10 +643,19 @@ func (r *ItemResult) refuse(state State, reason string) { r.State, r.Reason = st
 
 // OpenItem reads one object now, through its reader. An object that is
 // missing or unreadable is answered as that, with its reason; opening it
-// verifies nothing more than listing it did, and writes nothing.
+// verifies nothing more than listing it did, and writes nothing into the
+// project. It is the one explicit open: this viewer's record of when it last
+// opened the object (readmit-desktop-opened/v1) is written here, and the
+// catalog reads it back as the object's last_opened_at.
 func (a *App) OpenItem(request ItemRequest) ItemResult {
 	return run(a, false, false, func(ctx context.Context) ItemResult {
-		return a.reread(ctx, request.Context, request.Ref)
+		result := a.reread(ctx, request.Context, request.Ref)
+		if result.Item != nil && request.Ref.Kind != ProjectItem {
+			if stamp := a.recordOpened(result.Item.ProjectID, result.Item.Ref.ID); stamp != "" {
+				result.Item.LastOpenedAt = &stamp
+			}
+		}
+		return result
 	})
 }
 
@@ -800,12 +864,31 @@ func (a *App) catalogItem(ctx context.Context, request RequestContext, ref ItemR
 		return nil, nil, result
 	}
 	index := loaded.document.Find(ref.ID)
+	if loaded, index, declined = a.findAcross(ctx, request, loaded, ref.ID, record); loaded == nil {
+		result.refuse(declined.state, declined.reason)
+		return nil, nil, result
+	}
 	if index < 0 || loaded.document.Items[index].Kind != string(ref.Kind) || loaded.removed(loaded.document.Items[index]) {
 		result.refuse(Failed, "the project holds no such object")
 		return nil, nil, result
 	}
 	item := loaded.read(loaded.document.Items[index])
 	return loaded, &item, result
+}
+
+// findAcross finds the object id in the discovery window loaded covers or a
+// later one, recording each window it loads when record is set, and answers
+// the window that holds it and its index there, -1 when none does.
+func (a *App) findAcross(ctx context.Context, request RequestContext, loaded *loadedCatalog, id string, record bool) (*loadedCatalog, int, refusal) {
+	index := loaded.document.Find(id)
+	for index < 0 && loaded.upper != "" {
+		next, declined := a.loadWindow(ctx, request, record, loaded.upper)
+		if next == nil {
+			return nil, -1, declined
+		}
+		loaded, index = next, next.document.Find(id)
+	}
+	return loaded, index, refusal{}
 }
 
 // now is the facade's clock.
@@ -890,21 +973,36 @@ func snapshotOf(items []CatalogItem) string {
 	return hex.EncodeToString(digest.Sum(nil))[:16]
 }
 
-func encodeCursor(snapshot string, offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(snapshot + "." + strconv.Itoa(offset)))
+// listCursor is where a later page begins: at Offset of a held snapshot, or,
+// once a window's pages are listed, at the discovery window after the entry
+// name After, which Prior objects of the list preceded. Key names the list
+// such a cursor continues.
+type listCursor struct {
+	Snapshot string `json:"s,omitzero"`
+	Offset   int    `json:"o,omitzero"`
+	After    string `json:"a,omitzero"`
+	Prior    int    `json:"p,omitzero"`
+	Key      string `json:"k,omitzero"`
 }
 
-func decodeCursor(cursor string) (string, int, bool) {
-	raw, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil {
-		return "", 0, false
+func encodeCursor(cursor listCursor) string {
+	data, _ := json.Marshal(cursor, json.Deterministic(true))
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func decodeCursor(encoded string) (listCursor, bool) {
+	var cursor listCursor
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil || json.Unmarshal(raw, &cursor, json.RejectUnknownMembers(true)) != nil || cursor.Offset < 0 || cursor.Prior < 0 {
+		return listCursor{}, false
 	}
-	snapshot, offset, found := strings.Cut(string(raw), ".")
-	value, err := strconv.Atoi(offset)
-	if !found || err != nil || value < 0 {
-		return "", 0, false
-	}
-	return snapshot, value, true
+	return cursor, cursor.After != "" || cursor.Snapshot != ""
+}
+
+// keyDigest names a list's query in a cursor without carrying it.
+func keyDigest(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 var errForeignProject = errors.New("the folder holds a different project than the one the window opened")

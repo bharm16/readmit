@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   approveExpectations,
-  listCatalog,
+  listWholeCatalog,
   listReceiverSnapshots,
   newIntentId,
   saveItem,
@@ -1242,7 +1242,7 @@ function SuggestSheet({
 
   useEffect(() => {
     let live = true;
-    void listCatalog({ context: context(), kind: "run", filter: {} }).then((answer) => {
+    void listWholeCatalog({ context: context(), kind: "run", filter: {} }).then((answer) => {
       if (!live) return;
       const eligible = (answer.page?.items ?? []).filter((item) => {
         const summary = item.summary.run;

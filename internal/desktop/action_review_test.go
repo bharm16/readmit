@@ -225,7 +225,7 @@ func TestAnApprovalIsDurableAndStaysTiedToItsExactVersion(t *testing.T) {
 		t.Fatalf("the suite: %+v", nightly)
 	}
 	request := desktop.PrepareActionRequest{Context: context, Action: desktop.ApprovePromotionAction, Items: []desktop.ItemRef{nightly.Ref},
-		Promotion: &desktop.PromotionActionOptions{Environment: "east", Releases: "releases.json", Revision: "fixture-build-7"}}
+		Promotion: &desktop.PromotionActionOptions{Environment: "east", Revision: "fixture-build-7"}}
 	review := prepared(t, app, request)
 	if review.Consent != desktop.ApproveConsent || review.Promotion == nil || !slices.Equal(review.Requirements, []desktop.ReviewRequirement{desktop.RationaleRequirement}) {
 		t.Fatalf("the approval review: %+v", review)
@@ -257,7 +257,7 @@ func TestAnApprovalIsDurableAndStaysTiedToItsExactVersion(t *testing.T) {
 	// A later revision assumption is a different version: its review names a
 	// different identity, and the recorded approval is still exactly the old.
 	later := request
-	later.Promotion = &desktop.PromotionActionOptions{Environment: "east", Releases: "releases.json", Revision: "fixture-build-8"}
+	later.Promotion = &desktop.PromotionActionOptions{Environment: "east", Revision: "fixture-build-8"}
 	if next := prepared(t, app, later); next.Promotion.Identity() == record.Reviewed {
 		t.Fatal("a changed version reviewed as the approved one")
 	}
@@ -278,8 +278,14 @@ func TestAReviewedExportBindsItsReviewWithoutATypedIdentity(t *testing.T) {
 	if opened.State != desktop.Completed {
 		t.Fatalf("%+v", opened)
 	}
-	request := desktop.PrepareActionRequest{Context: opened.Context, Action: desktop.ExportPacketAction,
-		Export: &desktop.ExportActionOptions{Review: "review", LocalState: "review-private"}}
+	// The export review is a report of the project, offered for export; its
+	// private local state is the project's to resolve.
+	report := listed(t, app, root, desktop.ReportItem)["@review"]
+	if report.Summary.Report == nil || report.Summary.Report.Form != "export-review" || report.Summary.Report.Status != "ready-for-approval" ||
+		!slices.Contains(report.Capabilities, desktop.ExportPacketAction) {
+		t.Fatalf("the export review: %+v", report)
+	}
+	request := desktop.PrepareActionRequest{Context: opened.Context, Action: desktop.ExportPacketAction, Items: []desktop.ItemRef{report.Ref}}
 	review := prepared(t, app, request)
 	if review.Consent != desktop.ExportConsent || review.Export == nil || review.Export.Unresolved != 0 || review.Destination.Output == "" {
 		t.Fatalf("the export review: %+v", review)
@@ -343,4 +349,272 @@ func TestStopTargetsTheReviewedSendByItsOperation(t *testing.T) {
 	if len(receiver.received()) != 1 {
 		t.Fatalf("a stopped send sent %d messages", len(receiver.received()))
 	}
+}
+
+// An export review is a report of its project, paired with its private local
+// state by the commitment it records, never by a name: two reviews each find
+// their own, and a private state that is gone or held twice leaves the review
+// a named, unreadable row that offers no export.
+func TestAnExportReviewIsAReportWithItsPrivateStateResolved(t *testing.T) {
+	app := workspaceApp(t)
+	root := privacyFixture(t, "policy.json", "policy")
+	derived(t, app, privacyRequest(root, "policy.json"))
+	blocked, err := os.ReadFile("../../testdata/fixtures/redact-policy-blocked.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeDocument(t, root, "blocked.json", string(blocked))
+	second := privacyRequest(root, "blocked.json")
+	second.Output, second.LocalState = "second", "second-private"
+	derived(t, app, second)
+	writeProject(t, root, "")
+	if opened := app.OpenNamedProject(root); opened.State != desktop.Completed {
+		t.Fatalf("%+v", opened)
+	}
+	original := listed(t, app, root, desktop.CaseItem)["@original.case"]
+	reports := listed(t, app, root, desktop.ReportItem)
+	ready, held := reports["@review"], reports["@second"]
+	if ready.Summary.Report == nil || ready.Summary.Report.Form != "export-review" || ready.Summary.Report.Status != "ready-for-approval" ||
+		ready.Summary.Report.RelatedCase == nil || ready.Summary.Report.RelatedCase.ID != original.Ref.ID || !slices.Contains(ready.Capabilities, desktop.ExportPacketAction) {
+		t.Fatalf("the ready review: %+v", ready)
+	}
+	if held.Summary.Report == nil || held.Summary.Report.Status != "blocked" || held.Summary.Report.RelatedCase == nil || slices.Contains(held.Capabilities, desktop.ExportPacketAction) {
+		t.Fatalf("the blocked review: %+v", held)
+	}
+	// The ready review's private state replaced by the other's: one review
+	// has none and the other two, and neither is offered for export.
+	writeDocument(t, filepath.Join(root, "review-private"), "state.json", read(t, filepath.Join(root, "second-private", "state.json")))
+	reports = listed(t, app, root, desktop.ReportItem)
+	for _, name := range []string{"@review", "@second"} {
+		if row := reports[name]; row.Availability != desktop.ItemUnreadable || row.Reason == "" || slices.Contains(row.Capabilities, desktop.ExportPacketAction) {
+			t.Fatalf("%s without its one private state: %+v", name, row)
+		}
+	}
+}
+
+// deriveProject is the privacy fixture registered as a project, with the
+// review of a derivation of its case prepared.
+func deriveProject(t *testing.T) (*desktop.App, desktop.RequestContext, desktop.PrepareActionRequest) {
+	t.Helper()
+	app := workspaceApp(t)
+	root := privacyFixture(t, "policy.json", "policy")
+	writeProject(t, root, "")
+	opened := app.OpenNamedProject(root)
+	if opened.State != desktop.Completed {
+		t.Fatalf("%+v", opened)
+	}
+	original := listed(t, app, root, desktop.CaseItem)["@original.case"]
+	if !slices.Contains(original.Capabilities, desktop.DeriveReviewAction) {
+		t.Fatalf("a case does not offer its derivation: %+v", original)
+	}
+	return app, opened.Context, desktop.PrepareActionRequest{Context: opened.Context, Action: desktop.DeriveReviewAction, Items: []desktop.ItemRef{original.Ref},
+		DeriveReview: &desktop.DeriveReviewOptions{Spec: "spec.json", Policy: "policy.json", Inventory: "inventory.json"}}
+}
+
+// Deriving an export review needs its inventory declared complete in the
+// final click, for exactly the inventory the review showed: without the
+// declaration, or with one for other content, nothing is written, and an
+// inventory edited after the review was shown is a stale review.
+func TestAnExportReviewNeedsItsInventoryDeclaredInTheFinalAction(t *testing.T) {
+	app, context, request := deriveProject(t)
+	root := context.Project
+	before := entries(t, root)
+	review := prepared(t, app, request)
+	if review.Consent != desktop.DeriveConsent || !slices.Equal(review.Requirements, []desktop.ReviewRequirement{desktop.InventoryDeclarationRequirement}) ||
+		review.Derive == nil || review.Derive.Inventory.Digest == "" || review.Derive.Inventory.ResidualValues != 11 || review.Derive.Inventory.Entry != "inventory.json" ||
+		review.Destination.Output != review.Derive.Review || review.Derive.Private == "" {
+		t.Fatalf("the derivation's review: %+v", review)
+	}
+	for name, decisions := range map[string]desktop.ReviewDecisions{
+		"no declaration":        {},
+		"another inventory":     {DeclaredInventory: strings.Repeat("0", 64)},
+		"generic consent alone": {Rationale: "reviewed", Confirmed: []string{"inventory.json"}},
+	} {
+		refused := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: review.Token, IntentID: "derive-" + strings.ReplaceAll(name, " ", "-"), Decisions: decisions})
+		if refused.Outcome != desktop.ActionRefused || refused.Derived != nil {
+			t.Fatalf("%s: %+v", name, refused)
+		}
+		if after := entries(t, root); !slices.Equal(after, before) {
+			t.Fatalf("%s: a refused derivation wrote %v", name, after)
+		}
+	}
+	// The inventory edited after the review was shown: the declaration made
+	// for what it showed is for other content.
+	inventory := read(t, filepath.Join(root, "inventory.json"))
+	writeDocument(t, root, "inventory.json", strings.Replace(inventory, `"PLANTED-DIAG-MAPLE"`, `"PLANTED-DIAG-MAPLE", "PLANTED-LATER-OAK"`, 1))
+	stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: review.Token, IntentID: "derive-edited",
+		Decisions: desktop.ReviewDecisions{DeclaredInventory: review.Derive.Inventory.Digest}})
+	if stale.Outcome != desktop.ActionStale || stale.Refreshed == nil || stale.Refreshed.Derive == nil ||
+		stale.Refreshed.Derive.Inventory.Digest == review.Derive.Inventory.Digest || stale.Refreshed.Derive.Inventory.ResidualValues != 12 {
+		t.Fatalf("an edited inventory: %+v", stale)
+	}
+	if after := entries(t, root); !slices.Equal(after, before) {
+		t.Fatalf("a stale derivation wrote %v", after)
+	}
+	writeDocument(t, root, "inventory.json", inventory)
+	final := prepared(t, app, request)
+	derived := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: final.Token, IntentID: "derive-declared",
+		Decisions: desktop.ReviewDecisions{DeclaredInventory: final.Derive.Inventory.Digest}})
+	if derived.Outcome != desktop.ActionCompleted || derived.Derived == nil || derived.Derived.Review != final.Derive.Review || derived.Derived.Private != final.Derive.Private {
+		t.Fatalf("the declared derivation: %+v", derived)
+	}
+	if !slices.Contains(entries(t, root), final.Derive.Review) || !slices.Contains(entries(t, root), final.Derive.Private) {
+		t.Fatal("the derivation wrote no review")
+	}
+}
+
+// A declaration is not consent to anything else: an export's final click
+// requires none, and a declaration made for one derivation is not one made
+// for another inventory.
+func TestADeclarationIsNotGenericConsent(t *testing.T) {
+	app, context, request := deriveProject(t)
+	root := context.Project
+	first := prepared(t, app, request)
+	writeDocument(t, root, "other-inventory.json", strings.Replace(read(t, filepath.Join(root, "inventory.json")), `"PLANTED-DIAG-MAPLE"`, `"PLANTED-DIAG-MAPLE", "PLANTED-OTHER-FIR"`, 1))
+	other := request
+	other.DeriveReview = &desktop.DeriveReviewOptions{Spec: "spec.json", Policy: "policy.json", Inventory: "other-inventory.json"}
+	second := prepared(t, app, other)
+	if refused := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: second.Token, IntentID: "derive-borrowed",
+		Decisions: desktop.ReviewDecisions{DeclaredInventory: first.Derive.Inventory.Digest}}); refused.Outcome != desktop.ActionRefused {
+		t.Fatalf("a declaration for another inventory: %+v", refused)
+	}
+	derived := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: first.Token, IntentID: "derive-own",
+		Decisions: desktop.ReviewDecisions{DeclaredInventory: first.Derive.Inventory.Digest}})
+	if derived.Derived == nil || derived.Derived.State != "ready-for-approval" {
+		t.Fatalf("derive: %+v", derived)
+	}
+	report := listed(t, app, root, desktop.ReportItem)["@"+derived.Derived.Review]
+	export := prepared(t, app, desktop.PrepareActionRequest{Context: context, Action: desktop.ExportPacketAction, Items: []desktop.ItemRef{report.Ref}})
+	if len(export.Requirements) != 0 {
+		t.Fatalf("an export asks for more than its click: %+v", export.Requirements)
+	}
+	if exported := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: export.Token, IntentID: "export-click"}); exported.Outcome != desktop.ActionCompleted {
+		t.Fatalf("export: %+v", exported)
+	}
+}
+
+// bindingLane is one binding of a review changed after it was shown, and put
+// back afterwards.
+type bindingLane struct {
+	name         string
+	change, undo func()
+	refreshed    bool
+}
+
+// refusesEveryChangedBinding prepares a fresh review for each lane, changes
+// that binding and makes the final click: it is a stale review, with a
+// refreshed one to look at when the action can still be prepared, the old
+// review is spent, and wrote reports nothing was written.
+func refusesEveryChangedBinding(t *testing.T, app *desktop.App, request desktop.PrepareActionRequest, decisions desktop.ReviewDecisions, lanes []bindingLane, wrote func() bool) {
+	t.Helper()
+	for _, lane := range lanes {
+		review := prepared(t, app, request)
+		lane.change()
+		click := "click-" + strings.ReplaceAll(lane.name, " ", "-")
+		stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: request.Context, Token: review.Token, IntentID: click, Decisions: decisions})
+		if stale.Outcome != desktop.ActionStale || stale.Export != nil || stale.Approval != nil {
+			t.Fatalf("%s changed: %+v", lane.name, stale)
+		}
+		if lane.refreshed && (stale.Refreshed == nil || stale.Refreshed.Token == "" || stale.Refreshed.Token == review.Token) {
+			t.Fatalf("%s changed: no refreshed review to look at: %+v", lane.name, stale)
+		}
+		if again := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: request.Context, Token: review.Token, IntentID: click + "-again", Decisions: decisions}); again.Outcome != desktop.ActionRefused {
+			t.Fatalf("%s: a spent review executed: %+v", lane.name, again)
+		}
+		if wrote() {
+			t.Fatalf("%s changed and something was written", lane.name)
+		}
+		lane.undo()
+	}
+}
+
+// An export binds its review, the private local state it was derived with,
+// the operation policy and the packet it writes: each changed after the
+// review was shown exports nothing.
+func TestAReviewedExportRefusesEveryChangedBinding(t *testing.T) {
+	app := workspaceApp(t)
+	root := privacyFixture(t, "policy.json", "policy")
+	derived(t, app, privacyRequest(root, "policy.json"))
+	writeProject(t, root, "")
+	opened := app.OpenNamedProject(root)
+	if opened.State != desktop.Completed {
+		t.Fatalf("%+v", opened)
+	}
+	report := listed(t, app, root, desktop.ReportItem)["@review"]
+	request := desktop.PrepareActionRequest{Context: opened.Context, Action: desktop.ExportPacketAction, Items: []desktop.ItemRef{report.Ref}}
+	state := filepath.Join(root, "review-private", "state.json")
+	private := read(t, state)
+	destination := prepared(t, app, request).Destination.Output
+	lanes := []bindingLane{
+		{name: "private state", change: func() {
+			writeDocument(t, filepath.Dir(state), "state.json", strings.Replace(private, `"schema"`, ` "schema"`, 1))
+		},
+			undo: func() { writeDocument(t, filepath.Dir(state), "state.json", private) }},
+		{name: "destination", refreshed: true, change: func() {
+			if err := os.Mkdir(filepath.Join(root, destination), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, undo: func() { os.Remove(filepath.Join(root, destination)) }},
+		{name: "license", refreshed: true, change: func() {
+			if selected := app.SelectOperationPolicy(authorOnlyPolicy(t)); selected.State != desktop.Completed {
+				t.Fatal(selected)
+			}
+		}, undo: func() {
+			if selected := app.SelectOperationPolicy(testlicense.New(t)); selected.State != desktop.Completed {
+				t.Fatal(selected)
+			}
+		}},
+	}
+	before := entries(t, root)
+	refusesEveryChangedBinding(t, app, request, desktop.ReviewDecisions{}, lanes, func() bool {
+		return slices.ContainsFunc(entries(t, root), func(entry string) bool { return !slices.Contains(before, entry) && entry != destination })
+	})
+	// The same click again after an export answers the one packet.
+	final := prepared(t, app, request)
+	exported := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: opened.Context, Token: final.Token, IntentID: "export-once"})
+	repeated := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: opened.Context, Token: final.Token, IntentID: "export-once"})
+	if exported.Export == nil || !repeated.Replayed || repeated.Export == nil || repeated.Export.Packet != exported.Export.Packet {
+		t.Fatalf("a repeated export click: %+v %+v", exported, repeated)
+	}
+}
+
+// An approval binds the suite, the environment it is approved for, the
+// release pins, the operation policy and the record it writes: each changed
+// after the review was shown records nothing.
+func TestAReviewedApprovalRefusesEveryChangedBinding(t *testing.T) {
+	app, root := releaseWorkspace(t)
+	writeProject(t, root, "")
+	opened := app.OpenNamedProject(root)
+	if opened.State != desktop.Completed {
+		t.Fatalf("%+v", opened)
+	}
+	nightly := listed(t, app, root, desktop.SuiteItem)["nightly"]
+	request := desktop.PrepareActionRequest{Context: opened.Context, Action: desktop.ApprovePromotionAction, Items: []desktop.ItemRef{nightly.Ref},
+		Promotion: &desktop.PromotionActionOptions{Environment: "east", Revision: "fixture-build-7"}}
+	suiteDocument, target := read(t, filepath.Join(root, "suite.json")), read(t, filepath.Join(root, "east.json"))
+	destination := prepared(t, app, request).Destination.Output
+	lanes := []bindingLane{
+		{name: "suite", refreshed: true, change: func() {
+			writeDocument(t, root, "suite.json", strings.Replace(suiteDocument, `"owner":"interop"`, `"owner":"interfaces"`, 1))
+		}, undo: func() { writeDocument(t, root, "suite.json", suiteDocument) }},
+		{name: "environment", refreshed: true, change: func() {
+			writeDocument(t, root, "east.json", strings.Replace(target, `"127.0.0.1:1"`, `"127.0.0.1:2"`, 1))
+		}, undo: func() { writeDocument(t, root, "east.json", target) }},
+		{name: "destination", refreshed: true, change: func() { writeDocument(t, root, destination, "{}") },
+			undo: func() { os.Remove(filepath.Join(root, destination)) }},
+		{name: "license", refreshed: true, change: func() {
+			if selected := app.SelectOperationPolicy(authorOnlyPolicy(t)); selected.State != desktop.Completed {
+				t.Fatal(selected)
+			}
+		}, undo: func() {
+			if selected := app.SelectOperationPolicy(testlicense.New(t)); selected.State != desktop.Completed {
+				t.Fatal(selected)
+			}
+		}},
+	}
+	refusesEveryChangedBinding(t, app, request, desktop.ReviewDecisions{Rationale: "Reviewed the east mapping"}, lanes, func() bool {
+		return slices.ContainsFunc(entries(t, root), func(entry string) bool {
+			return strings.HasPrefix(entry, "promotion-approval-") && entry != destination
+		})
+	})
 }

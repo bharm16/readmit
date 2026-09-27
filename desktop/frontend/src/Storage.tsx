@@ -15,7 +15,7 @@ import {
   inspectProjectQuota,
   setProjectQuota,
   listBackups,
-  listCatalog,
+  listWholeCatalog,
   listProjectRecoveryCopies,
   newIntentId,
   prepareAction,
@@ -704,7 +704,7 @@ function RepairSearchSheet({ open, context, onClose }: { open: boolean; context:
   const [chosen, setChosen] = useState("");
   useEffect(() => {
     if (!open) return;
-    void listCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => {
+    void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => {
       const items = answer.page?.items ?? [];
       setCases(items);
       setChosen(items[0]?.ref.id ?? "");

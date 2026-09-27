@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   exportTestItem,
   importTestDraft,
-  listCatalog,
+  listWholeCatalog,
   listReceiverSnapshots,
   newIntentId,
   openItemDraft,
@@ -135,9 +135,9 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const refresh = useCallback(async () => {
     if (!root) return;
     const [tests, caseList, environmentList] = await Promise.all([
-      listCatalog({ context: context(), kind: "test", filter: {} }),
-      listCatalog({ context: context(), kind: "case", filter: {} }),
-      listCatalog({ context: context(), kind: "environment", filter: {} }),
+      listWholeCatalog({ context: context(), kind: "test", filter: {} }),
+      listWholeCatalog({ context: context(), kind: "case", filter: {} }),
+      listWholeCatalog({ context: context(), kind: "environment", filter: {} }),
     ]);
     if (tests.state === "completed" || tests.state === "empty") {
       setItems(tests.page?.items ?? []);

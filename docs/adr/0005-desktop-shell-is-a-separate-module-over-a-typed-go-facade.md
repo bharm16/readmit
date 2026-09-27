@@ -56,7 +56,7 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps nine bounded, versioned local documents (the recent folder
+- The shell keeps ten bounded, versioned local documents (the recent folder
   paths of `readmit-desktop-recent/v1` were retired by #548 and are no longer
   read or written): saved filters with the active selection and each project's saved views
   (`readmit-filters/v2`, which also reads `/v1`), the working session a viewer has not stored
@@ -66,6 +66,8 @@ static build stand unchanged. Nothing here is added to the release archives.
   (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
   edits) holding every editor's unstored work under internal identities, the
   remembered projects (`readmit-desktop-projects/v1`, amended 2026-09-26),
+  when this viewer last opened each object of a project
+  (`readmit-desktop-opened/v1`, amended 2026-09-27 by #547),
   the remembered backup folder and the backups this viewer wrote
   (`readmit-desktop-storage/v1`, amended 2026-09-26 by #565),
   the theme, text size and local reviewer name a person saved
@@ -75,7 +77,7 @@ static build stand unchanged. Nothing here is added to the release archives.
   (`readmit-desktop-operation-selection/v1`), the commercial destinations
   (`readmit-desktop-commercial-selection/v1`) and the customer hub
   configuration (`readmit-desktop-hub-selection/v1`). Saved field terms and a
-  retained draft can contain patient data typed by the operator. All nine files
+  retained draft can contain patient data typed by the operator. All ten files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is
@@ -197,6 +199,19 @@ environment's, its tags and the case, finding or variant it was created from.
 The spec stays an ordinary `readmit-test/v1` document and names the target
 file of the environment revision it was saved against, as every spec names a
 file; the links name no file and grant nothing.
+
+#547's follow-up extends the pending record once more, before any release
+carried it: a save that publishes a new project entry — a variant's derived
+case — records the application-named `entry` it publishes and the
+association it `owes`, builds the entry under `.readmit/staging`, and names
+the object only after the entry is published by one rename and its
+association (the project's revision registration) is recorded; until then
+the entry is not an object of the project. A tenth shell document,
+`readmit-desktop-opened/v1`, records when this viewer last opened each object
+of a project, by project and object identity, so opening an object writes
+nothing into the project. A reviewed derivation of an export review requires
+a specific decision in its final click: the inventory it showed, declared
+complete by its digest.
 
 #565 adds one more shell document, `readmit-desktop-storage/v1`: the folder
 backups are kept in, and each backup, archive copy and rollback copy the

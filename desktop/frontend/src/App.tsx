@@ -31,7 +31,7 @@ import {
   createNamedProject,
   RequestScope,
   openNamedProject,
-  listCatalog,
+  listWholeCatalog,
   locateItem,
   projectLocation,
   chooseProjectLocation,
@@ -447,7 +447,7 @@ export default function App() {
   }, []);
 
   const refreshRecent = useCallback(async () => {
-    const listed = await listCatalog({ context: { project: "", generation: 0 }, kind: "project", filter: {} });
+    const listed = await listWholeCatalog({ context: { project: "", generation: 0 }, kind: "project", filter: {} });
     if (listed.page) setProjects(listed.page.items);
   }, []);
 
@@ -1038,7 +1038,7 @@ export default function App() {
       return;
     }
     const context = projectContext();
-    const listed = await listCatalog({ context, kind: "case", filter: {} });
+    const listed = await listWholeCatalog({ context, kind: "case", filter: {} });
     if (!projectScope.current.current(listed)) return;
     setCases(listed.page?.items ?? []);
     listedCases.current = listed.page?.items ?? [];

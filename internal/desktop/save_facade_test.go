@@ -6,7 +6,9 @@ package desktop_test
 // refused, an invalid draft writes nothing, and a copy is a new object.
 
 import (
+	"bytes"
 	"encoding/json/v2"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,9 +16,12 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
+	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -235,5 +240,114 @@ func TestADoubleClickPublishesOneRevision(t *testing.T) {
 		if ref != listing.Page.Items[0].Ref {
 			t.Fatalf("two answers named different revisions: %v", saved)
 		}
+	}
+}
+
+// variantProject is a named project registering one incident, and a plan
+// that keeps its reschedule.
+func variantProject(t *testing.T) (*desktop.App, desktop.RequestContext, desktop.ItemRef, reproducer.Plan) {
+	t.Helper()
+	app, context := namedProject(t)
+	root := context.Project
+	incident := writeCase(t, root, "incident", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
+	registerCase(t, root, "incident", "Original incident")
+	plan, err := reproducer.NewPlan(incident.Identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Steps = append(plan.Steps, reproducer.Step{Operator: reproducer.SelectOccurrence, Occurrence: repRescheduleID})
+	return app, context, listed(t, app, root, desktop.CaseItem)["Original incident"].Ref, plan
+}
+
+// A variant is saved as one new case with its lineage: a new entry of the
+// project, registered as a revision of the case it was derived from, listed
+// once by name. The case it came from is not touched, the same click saves
+// it once, and a variant is never saved over.
+func TestAVariantSaveIsOneCaseWithItsLineage(t *testing.T) {
+	app, context, incident, plan := variantProject(t)
+	root := context.Project
+	before := bytesUnder(t, filepath.Join(root, "incident"))
+	draft := desktop.ItemDraft{Name: "Reschedule only", Variant: &desktop.VariantDraft{Source: incident, Plan: plan}}
+	saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.VariantItem, Draft: draft, IntentID: "variant-click"})
+	if saved.Outcome != desktop.SavedOutcome || saved.Saved == nil || saved.Saved.Kind != desktop.VariantItem || saved.Saved.Revision != "1" {
+		t.Fatalf("save: %+v", saved)
+	}
+	variant := listed(t, app, root, desktop.VariantItem)["Reschedule only"]
+	if variant.Ref.ID != saved.Saved.ID || variant.Availability != desktop.ItemAvailable || variant.Summary.Variant == nil ||
+		variant.Summary.Variant.Form != "revision" || variant.Summary.Variant.Parent == nil || variant.Summary.Variant.Parent.ID != incident.ID ||
+		variant.Summary.Variant.Operation != reproducer.Derivation || slices.Contains(variant.Capabilities, desktop.SaveAction) {
+		t.Fatalf("the saved variant: %+v", variant)
+	}
+	revisions, err := project.ReadRevisions(root)
+	if err != nil || len(revisions.Revisions) != 1 || revisions.Revisions[0].Name != "variant-001" || revisions.Revisions[0].Operation.Parent != "incident" ||
+		revisions.Revisions[0].Operation.ParentIdentity != plan.Case {
+		t.Fatalf("the registered revision: %+v %v", revisions, err)
+	}
+	if opened := app.OpenCase(root, "variant-001"); opened.Case == nil {
+		t.Fatalf("the variant's case: %+v", opened)
+	}
+	if after := bytesUnder(t, filepath.Join(root, "incident")); !maps.EqualFunc(after, before, bytes.Equal) {
+		t.Fatal("saving a variant changed the case it came from")
+	}
+	writeCase(t, root, "loose", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
+	loose := listed(t, app, root, desktop.CaseItem)["@loose"].Ref
+	held := entries(t, root)
+	again := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.VariantItem, Draft: draft, IntentID: "variant-click"})
+	if !again.Replayed || again.Saved == nil || again.Saved.ID != saved.Saved.ID || !slices.Equal(entries(t, root), held) {
+		t.Fatalf("the same click saved again: %+v", again)
+	}
+	if staging, _ := os.ReadDir(filepath.Join(root, ".readmit", "staging")); len(staging) != 0 {
+		t.Fatalf("a published variant left staging behind: %v", staging)
+	}
+	for name, request := range map[string]desktop.SaveItemRequest{
+		"saved over":           {Context: context, Kind: desktop.VariantItem, Item: saved.Saved.ID, BaseRevision: "1", Draft: draft, IntentID: "over"},
+		"another evidence":     {Context: context, Kind: desktop.VariantItem, Draft: desktop.ItemDraft{Variant: &desktop.VariantDraft{Source: incident, Plan: reproducer.Plan{Schema: plan.Schema, Case: strings.Repeat("0", 64), Steps: plan.Steps}}}, IntentID: "other"},
+		"an unregistered case": {Context: context, Kind: desktop.VariantItem, Draft: desktop.ItemDraft{Variant: &desktop.VariantDraft{Source: loose, Plan: plan}}, IntentID: "loose"},
+	} {
+		if refused := app.SaveItem(request); refused.Outcome != desktop.InvalidOutcome || len(refused.Problems) == 0 || !slices.Equal(entries(t, root), held) {
+			t.Fatalf("%s: %+v", name, refused)
+		}
+	}
+}
+
+// A profile is saved with the seal of its version, and a version once sealed
+// is never published again with other content, by the same object or a copy.
+func TestAProfileVersionCannotBeRepublished(t *testing.T) {
+	app, context := namedProject(t)
+	root := context.Project
+	profile, err := localprofile.Decode([]byte(fixture(t, "local-profile.json")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := func(profile localprofile.Profile) desktop.ItemDraft {
+		return desktop.ItemDraft{Name: "Scheduling profile", Profile: &desktop.ProfileDraft{Profile: profile}}
+	}
+	first := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ProfileItem, Draft: draft(profile), IntentID: "profile-1"})
+	if first.Outcome != desktop.SavedOutcome || first.Saved.Revision != "1" {
+		t.Fatalf("save: %+v", first)
+	}
+	if listed := listed(t, app, root, desktop.ProfileItem)["Scheduling profile"]; listed.Summary.Profile == nil || listed.Summary.Profile.PublishedVersion != profile.Identity.Version ||
+		!slices.Contains(listed.Capabilities, desktop.SaveAction) {
+		t.Fatalf("the saved profile: %+v", listed)
+	}
+	if again := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ProfileItem, Draft: draft(profile), IntentID: "profile-1"}); !again.Replayed {
+		t.Fatalf("a repeated click: %+v", again)
+	}
+	before := entries(t, root)
+	changed := profile
+	changed.Segments = slices.Clone(changed.Segments)
+	changed.Segments[0].Description = "Changed under the same version"
+	for _, edited := range []localprofile.Profile{changed, profile} {
+		refused := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ProfileItem, Item: first.Saved.ID, BaseRevision: "1", Draft: draft(edited), IntentID: "profile-2"})
+		if refused.Outcome != desktop.InvalidOutcome || !slices.ContainsFunc(refused.Problems, func(problem desktop.FieldProblem) bool { return problem.Field == "profile.profile.version" }) {
+			t.Fatalf("a republished version: %+v", refused)
+		}
+	}
+	copied := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.ProfileItem, Draft: draft(changed), IntentID: "copy-1"})
+	if copied.Outcome != desktop.InvalidOutcome || copied.Problems[0].Field != "profile.profile.version" {
+		t.Fatalf("a copy under a sealed version: %+v", copied)
+	}
+	if now := entries(t, root); !slices.Equal(now, before) {
+		t.Fatalf("a refused save wrote %v", now)
 	}
 }
