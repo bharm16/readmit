@@ -1,0 +1,1 @@
+- The existing test workflow now executes prepared v2 connected plans through one shared engine service, with before/after typed observations, bounded final-state horizons, independent application checks, retained results and no automatic resend after uncertainty.

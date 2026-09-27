@@ -128,9 +128,13 @@ Old occurrence-ID and key-only assertion contracts retain their own meaning.
 
 ## Remaining integration
 
-The engine acquisition/evaluation/retention handoff is exercised by an end-to-end
-contract test. The full IG06 runtime still owns send/collect scheduling, bounded
-horizons, setup/cleanup and cancellation across protocols. Native Observation and
+The IG06 `internal/connectedrun` service consumes these datasets in the existing
+`readmit test` workflow: pre-send source checks, actual v2 delivery, declared
+final-state horizons, typed evaluation and one retained result. See
+[connected runtime](connected-runtime.md). Its independent-target test proves
+defect/fix/reintroduction, late duplicates, failed startup and uncertainty.
+Broader IG06 setup/cleanup, intermediate barriers and cross-protocol scheduling
+remain separate work; the dataset integration is executable now. Native Observation and
 Tests flows remain with their desktop owners. This delivery adds no frontend,
 facade, page redesign or separate manual dataset workflow. Database tests exercise
 the actual PostgreSQL driver against an independent TLS protocol fixture; they
