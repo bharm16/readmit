@@ -18,7 +18,7 @@ import {
   type RunProgressResult,
   type SuiteRunReport,
 } from "./bindings";
-import { EnvironmentBanner } from "./EnvironmentPanel";
+import { EnvironmentBanner } from "./EnvironmentBanner";
 import { useLifecycle } from "./lifecycle";
 
 // The backend owns entry validation. This narrower check keeps a malformed
@@ -247,9 +247,6 @@ export function RunPanel({
       <EnvironmentBanner
         name={plan.target.name}
         classification={plan.target.classification}
-        {...(plan.target.classification === "nonproduction"
-          ? { disclaimer: "Nonproduction environment: Synthetic test execution only. Execution occurs strictly into a fresh local output directory." }
-          : {})}
       />
     ) : (
       <p className="environment-unselected">

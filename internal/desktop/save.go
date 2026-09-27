@@ -11,10 +11,12 @@ import (
 	"slices"
 
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -41,13 +43,20 @@ var documentKinds = []ItemKind{CaseItem, ProjectItem}
 //
 // Case and Project are the details of a case and the settings of a project,
 // which the project document holds; each carries its own name.
+//
+// An environment may also carry the send policy its destinations are decided
+// under, its reset plan and its links; every member it carries is published
+// in the same revision as its target, or none is.
 type ItemDraft struct {
-	Name        string            `json:"name,omitzero"`
-	Environment *replay.Target    `json:"environment,omitzero"`
-	Test        *testauthor.Draft `json:"test,omitzero"`
-	Observation *ObservationDraft `json:"observation,omitzero"`
-	Case        *CaseDraft        `json:"case,omitzero"`
-	Project     *ProjectDraft     `json:"project,omitzero"`
+	Name        string             `json:"name,omitzero"`
+	Environment *replay.Target     `json:"environment,omitzero"`
+	SendPolicy  *sendpolicy.Policy `json:"policy,omitzero"`
+	ResetPlan   *fixturereset.Plan `json:"reset,omitzero"`
+	Links       *EnvironmentLinks  `json:"links,omitzero"`
+	Test        *testauthor.Draft  `json:"test,omitzero"`
+	Observation *ObservationDraft  `json:"observation,omitzero"`
+	Case        *CaseDraft         `json:"case,omitzero"`
+	Project     *ProjectDraft      `json:"project,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -73,10 +82,13 @@ type Referrer struct {
 	Name string  `json:"name"`
 }
 
-// DraftRequest is one draft to validate.
+// DraftRequest is one draft to validate. Item names the object an edit
+// began from, empty for a new object, so an environment's name is decided as
+// its save would decide it.
 type DraftRequest struct {
 	Context RequestContext `json:"context"`
 	Kind    ItemKind       `json:"kind"`
+	Item    string         `json:"item,omitzero"`
 	Draft   ItemDraft      `json:"draft"`
 }
 
@@ -101,12 +113,23 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 		if slices.Contains(documentKinds, request.Kind) {
 			return a.validateDocumentDraft(ctx, request)
 		}
-		root, declined := a.projectRoot(ctx, request.Context)
-		if root == "" {
-			result.refuse(declined.state, declined.reason)
-			return result
+		scope := draftScope{item: request.Item}
+		if request.Kind == EnvironmentItem {
+			loaded, declined := a.loadCatalog(ctx, request.Context, false)
+			if loaded == nil {
+				result.refuse(declined.state, declined.reason)
+				return result
+			}
+			scope.root, scope.loaded = loaded.root, loaded
+		} else {
+			root, declined := a.projectRoot(ctx, request.Context)
+			if root == "" {
+				result.refuse(declined.state, declined.reason)
+				return result
+			}
+			scope.root = root
 		}
-		staged, projection, problems := validateItemDraft(root, request.Kind, request.Draft)
+		staged, projection, problems := validateItemDraft(scope, request.Kind, request.Draft)
 		result.State, result.Problems = Completed, problems
 		if staged != nil {
 			result.Projection = projection
@@ -187,7 +210,7 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 			return result
 		}
 		root, store := loaded.root, loaded.store
-		staged, projection, problems := validateItemDraft(root, request.Kind, request.Draft)
+		staged, projection, problems := validateItemDraft(draftScope{root: root, loaded: loaded, item: request.Item, intent: request.IntentID}, request.Kind, request.Draft)
 		if staged == nil {
 			result.State, result.Outcome, result.Problems = Failed, InvalidOutcome, problems
 			result.Reason = "the draft has problems to fix; nothing was saved"
@@ -292,12 +315,26 @@ func submissionDigest(request SaveItemRequest, staged []catalog.Staged) string {
 	return hex.EncodeToString(digest.Sum(nil))
 }
 
+// draftScope is what validating a draft is decided against: the project
+// folder, its catalog when the kind needs it, the object an edit began from
+// and the click that submits it.
+type draftScope struct {
+	root   string
+	loaded *loadedCatalog
+	item   string
+	intent string
+}
+
 // validateItemDraft validates a whole draft of kind and answers the files a save
 // stages and the normalized draft, or every problem found.
-func validateItemDraft(root string, kind ItemKind, draft ItemDraft) ([]catalog.Staged, *ItemDraft, []FieldProblem) {
+func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]catalog.Staged, *ItemDraft, []FieldProblem) {
+	root := scope.root
 	problems := []FieldProblem{}
 	if draft.Name != "" && !catalog.ValidName(draft.Name) {
 		problems = append(problems, FieldProblem{Field: "name", Problem: nameRule})
+	}
+	if kind != EnvironmentItem && (draft.SendPolicy != nil || draft.ResetPlan != nil || draft.Links != nil) {
+		problems = append(problems, FieldProblem{Field: "kind", Problem: "only an environment carries a send policy, a reset plan or links"})
 	}
 	var staged []catalog.Staged
 	normalized := ItemDraft{Name: draft.Name}
@@ -306,13 +343,11 @@ func validateItemDraft(root string, kind ItemKind, draft ItemDraft) ([]catalog.S
 		if draft.Environment == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "environment", Problem: "an environment is a target configuration"})
 		}
-		target, data, err := declaredTarget(*draft.Environment)
-		if err != nil {
-			problems = append(problems, FieldProblem{Field: "environment", Problem: err.Error()})
-			break
+		members, environment, found := validateEnvironmentDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized = members, environment
 		}
-		normalized.Environment = &target
-		staged = []catalog.Staged{{Role: "target", File: "target.json", Data: data}}
 	case TestItem:
 		if draft.Test == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "test", Problem: "a test is answered from its source case"})
@@ -411,8 +446,7 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 	return func(files map[string]string) error {
 		switch kind {
 		case EnvironmentItem:
-			_, err := operation.ReadTarget(files["target"])
-			return err
+			return verifyEnvironment(files)
 		case TestItem:
 			_, err := testrunner.ReadSpec(files["test"])
 			return err

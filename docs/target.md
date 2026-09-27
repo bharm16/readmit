@@ -444,3 +444,11 @@ though that version had always allowed it.
 Unknown and duplicate members are rejected. See
 [explicit replay](replay.md) for what a target means to a run and for the
 transport contract the two commands share.
+
+The desktop application saves a named environment as one revision of its
+project's catalog: this target together with, when it has them, its send
+policy, its reset plan and a `readmit-environment-links/v1` document naming
+its observation and labelling its reset, and it retains an environment's
+latest explicit check as `readmit-environment-check/v1`. Both contracts are
+new and not yet in a released version; see
+[named environments and observations](desktop.md#named-environments-and-observations).

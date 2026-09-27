@@ -306,7 +306,7 @@ var destinationActivities = map[string]string{
 	"DeriveExportReview": "run", "ExportDerivedPacket": "run", "GenerateSyntheticPacket": "run", "SendReplay": "run", "ReexecuteReviewedEvidence": "run",
 	"EnrollRunner": "runner", "ExecuteRunnerJob": "runner",
 	"DiagnoseSource": "capture", "CollectSource": "capture", "StartCapture": "capture",
-	"CheckTarget": "environment", "ResetTarget": "environment", "EvaluateSendPolicy": "environment", "StartReduction": "environment", "PreviewReplay": "environment",
+	"CheckTarget": "environment", "CheckEnvironment": "environment", "CheckEnvironmentDestination": "environment", "ResetTarget": "environment", "EvaluateSendPolicy": "environment", "StartReduction": "environment", "PreviewReplay": "environment",
 	"CollectObservation": "observe",
 	"DiagnoseHub":        "hub", "ConnectHub": "hub", "StartHubAuth": "hub", "CompleteHubAuth": "hub", "HubStatus": "hub",
 	"ListHubProjectArtifacts": "hub", "DownloadHubArtifact": "hub", "UploadHubArtifact": "hub",

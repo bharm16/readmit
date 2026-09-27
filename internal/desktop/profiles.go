@@ -39,12 +39,14 @@ var profiles = map[string]operationguard.Profile{
 	"StartCapture":   {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
 
 	// The environment and observation.
-	"CheckTarget":        {Name: targetCheckOperation, Interruptible: true, Execution: operationguard.Execute},
-	"ResetTarget":        {Name: targetResetOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
-	"EvaluateSendPolicy": {Name: sendPolicyOperation},
-	"PreviewReplay":      {Name: replayPreviewOperation, Interruptible: true},
-	"StartReduction":     {Name: reductionOperation, Interruptible: true, Execution: operationguard.Execute},
-	"CollectObservation": {Name: "observation", Interruptible: true, Author: true, Execution: operationguard.Execute},
+	"CheckTarget":                 {Name: targetCheckOperation, Interruptible: true, Execution: operationguard.Execute},
+	"CheckEnvironment":            {Name: targetCheckOperation, Interruptible: true, Execution: operationguard.Execute},
+	"ResetTarget":                 {Name: targetResetOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
+	"EvaluateSendPolicy":          {Name: sendPolicyOperation},
+	"CheckEnvironmentDestination": {Name: sendPolicyOperation},
+	"PreviewReplay":               {Name: replayPreviewOperation, Interruptible: true},
+	"StartReduction":              {Name: reductionOperation, Interruptible: true, Execution: operationguard.Execute},
+	"CollectObservation":          {Name: "observation", Interruptible: true, Author: true, Execution: operationguard.Execute},
 
 	// The customer hub. A lifecycle command that only exports takes no
 	// author admission, posted or reconciled (postHubLifecycle).
@@ -72,12 +74,14 @@ var profiles = map[string]operationguard.Profile{
 	"StoreOperatorHubArtifact": {Name: hubRequestOperation, Author: true},
 
 	// Credential references and protection, which run declared programs.
-	"TestSecretReference":     {Name: secretTestOperation, Interruptible: true},
-	"RotateSecretReference":   {Name: secretRotationOperation, Interruptible: true, Author: true},
-	"ScanSecrets":             {Name: secretScanOperation, Interruptible: true},
-	"RotateProtectionControl": {Name: protectOperation, Interruptible: true, Author: true},
-	"PackProtectedPackage":    {Name: protectOperation, Interruptible: true},
-	"OpenProtectedPackage":    {Name: protectOperation, Interruptible: true},
+	"TestSecretReference":      {Name: secretTestOperation, Interruptible: true},
+	"CheckCredential":          {Name: secretTestOperation, Interruptible: true},
+	"RecordCredentialRotation": {Name: secretRotationOperation, Interruptible: true, Author: true},
+	"RotateSecretReference":    {Name: secretRotationOperation, Interruptible: true, Author: true},
+	"ScanSecrets":              {Name: secretScanOperation, Interruptible: true},
+	"RotateProtectionControl":  {Name: protectOperation, Interruptible: true, Author: true},
+	"PackProtectedPackage":     {Name: protectOperation, Interruptible: true},
+	"OpenProtectedPackage":     {Name: protectOperation, Interruptible: true},
 
 	// Local work a panel names so its own cancel control stops it.
 	"FinalizeCaptureImport": {Name: importOperation, Interruptible: true, Author: true},

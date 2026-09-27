@@ -161,6 +161,17 @@ func TestTheCatalogListsEveryKindThroughItsOwnReader(t *testing.T) {
 	if lab := environments["lab-replay"]; lab.Availability != desktop.ItemAvailable || lab.Summary.Environment.Classification != "nonproduction" || lab.Summary.Environment.LastCheckedAt != nil {
 		t.Fatalf("the laboratory: %+v", environments)
 	}
+	// An explicit check is retained as the environment's latest one and read
+	// back with its date, its outcome and the revision it checked.
+	lab := environments["lab-replay"]
+	checked := app.CheckEnvironment(desktop.ItemRequest{Context: desktop.RequestContext{Project: root}, Ref: lab.Ref})
+	if checked.CheckedAt == "" || checked.Report == nil {
+		t.Fatalf("a check of the laboratory: %+v", checked)
+	}
+	if again := listed(t, app, root, desktop.EnvironmentItem)["lab-replay"].Summary.Environment; again.LastCheckedAt == nil || *again.LastCheckedAt != checked.CheckedAt ||
+		again.LastCheckOutcome != checked.Report.Outcome || again.LastCheckRevision != lab.Ref.Revision {
+		t.Fatalf("the laboratory's latest check: %+v", again)
+	}
 	if future := environments["@future-target.json"]; future.Availability != desktop.ItemUnsupported || future.Reason == "" {
 		t.Fatalf("a target of a later version: %+v", future)
 	}

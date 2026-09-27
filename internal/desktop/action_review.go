@@ -15,6 +15,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
@@ -50,6 +51,15 @@ const (
 	// ApproveConsent: a durable approval of the displayed version is
 	// recorded; nothing is sent or exported.
 	ApproveConsent Consent = "approve"
+	// CollectConsent: the displayed source is read once; nothing in it is
+	// changed.
+	CollectConsent Consent = "collect"
+	// ResetConsent: the displayed reset actions run against the displayed
+	// environment.
+	ResetConsent Consent = "reset"
+	// ScanConsent: the displayed files are scanned for the project's
+	// registered credentials; nothing is written.
+	ScanConsent Consent = "scan"
 )
 
 // ReviewRequirement is one explicit decision an action needs beyond its
@@ -59,6 +69,9 @@ type ReviewRequirement string
 const (
 	// RationaleRequirement: an approval records why it was given.
 	RationaleRequirement ReviewRequirement = "rationale"
+	// ConfirmationsRequirement: every manual step of a reset is confirmed,
+	// by its action identity, in the final click.
+	ConfirmationsRequirement ReviewRequirement = "confirmations"
 )
 
 // ReplayActionOptions are what a send sends: the selected messages (none is
@@ -85,10 +98,19 @@ type PromotionActionOptions struct {
 	Revision    string `json:"revision"`
 }
 
+// ScanActionOptions narrow a credential scan to one registered reference;
+// empty scans for every one.
+type ScanActionOptions struct {
+	Reference string `json:"reference,omitzero"`
+}
+
 // PrepareActionRequest asks for the review of one action: the objects it is
 // scoped to, the destination it goes to, and its typed options. A send is
 // scoped to one case and goes to one environment; a promotion approval is
-// scoped to one suite; an export names its review in its options.
+// scoped to one suite; an export names its review in its options. A
+// collection is scoped to one observation and, when its source is reached
+// under an environment's send policy, goes to that environment; a reset is
+// scoped to one environment; a credential scan to the project.
 type PrepareActionRequest struct {
 	Context     RequestContext          `json:"context"`
 	Action      ActionID                `json:"action"`
@@ -97,6 +119,7 @@ type PrepareActionRequest struct {
 	Replay      *ReplayActionOptions    `json:"replay,omitzero"`
 	Export      *ExportActionOptions    `json:"export,omitzero"`
 	Promotion   *PromotionActionOptions `json:"promotion,omitzero"`
+	Scan        *ScanActionOptions      `json:"scan,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -115,18 +138,21 @@ type ReviewDestination struct {
 // internal: a window passes it back unchanged and never shows it. A review
 // that cannot proceed carries no token and says why.
 type ActionReview struct {
-	Token        string                 `json:"token,omitzero"`
-	Action       ActionID               `json:"action"`
-	Consent      Consent                `json:"consent"`
-	Items        []CatalogItem          `json:"items"`
-	Destination  ReviewDestination      `json:"destination"`
-	ExpiresAt    string                 `json:"expires_at,omitzero"`
-	Requirements []ReviewRequirement    `json:"requirements"`
-	Ready        bool                   `json:"ready"`
-	Refusal      string                 `json:"refusal,omitzero"`
-	Replay       *ReplayPreview         `json:"replay,omitzero"`
-	Export       *ExportReviewView      `json:"export,omitzero"`
-	Promotion    *suite.PromotionReview `json:"promotion,omitzero"`
+	Token        string                  `json:"token,omitzero"`
+	Action       ActionID                `json:"action"`
+	Consent      Consent                 `json:"consent"`
+	Items        []CatalogItem           `json:"items"`
+	Destination  ReviewDestination       `json:"destination"`
+	ExpiresAt    string                  `json:"expires_at,omitzero"`
+	Requirements []ReviewRequirement     `json:"requirements"`
+	Ready        bool                    `json:"ready"`
+	Refusal      string                  `json:"refusal,omitzero"`
+	Replay       *ReplayPreview          `json:"replay,omitzero"`
+	Export       *ExportReviewView       `json:"export,omitzero"`
+	Promotion    *suite.PromotionReview  `json:"promotion,omitzero"`
+	Collect      *CollectReview          `json:"collect,omitzero"`
+	Reset        *EnvironmentResetReview `json:"reset,omitzero"`
+	Scan         *ScanReview             `json:"scan,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -151,7 +177,8 @@ func (r *ActionReviewResult) refuse(state State, reason string) { r.State, r.Rea
 // ReviewDecisions are the explicit decisions an action's requirements ask
 // for, made with the final click.
 type ReviewDecisions struct {
-	Rationale string `json:"rationale,omitzero"`
+	Rationale string   `json:"rationale,omitzero"`
+	Confirmed []string `json:"confirmed,omitzero"`
 }
 
 // ExecuteActionRequest is the final explicit action of one review. IntentID
@@ -210,6 +237,9 @@ type ReviewedActionResult struct {
 	Replay    *ReplayRun            `json:"replay,omitzero"`
 	Export    *PrivacyExportOutcome `json:"export,omitzero"`
 	Approval  *PromotionApproval    `json:"approval,omitzero"`
+	Collected *CollectionRow        `json:"collected,omitzero"`
+	Reset     *EnvironmentReset     `json:"reset,omitzero"`
+	Scan      *ScanOutcome          `json:"scan,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -230,6 +260,9 @@ type boundAction struct {
 	replay  ReplayRequest
 	export  PrivacyExportRequest
 	suite   SuitePromotionApproveRequest
+	collect *collectBinding
+	reset   *resetBinding
+	scan    *scanBinding
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -259,6 +292,12 @@ var actionPolicies = map[ActionID]actionPolicy{
 		bind: bindExport, execute: executeExport},
 	ApprovePromotionAction: {consent: ApproveConsent, requirements: []ReviewRequirement{RationaleRequirement},
 		review: slot{}, perform: slot{writes: true}, bind: bindPromotion, execute: executePromotion},
+	CollectObservationAction: {consent: CollectConsent, review: slot{}, perform: slot{profile: "CollectObservation"},
+		bind: bindCollect, execute: executeCollect},
+	ResetEnvironmentAction: {consent: ResetConsent, review: slot{}, perform: slot{profile: "ResetTarget"},
+		bind: bindReset, execute: executeReset},
+	ScanSecretsAction: {consent: ScanConsent, review: slot{}, perform: slot{profile: "ScanSecrets"},
+		bind: bindScan, execute: executeScan},
 }
 
 // hold runs work holding one slot.
@@ -384,7 +423,7 @@ func (a *App) PrepareAction(request PrepareActionRequest) ActionReviewResult {
 func (a *App) issue(bound *boundAction, policy actionPolicy) (*ActionReview, error) {
 	review := bound.review
 	review.Action, review.Consent = bound.action, policy.consent
-	review.Requirements = slices.Clone(policy.requirements)
+	review.Requirements = append(slices.Clone(policy.requirements), bound.review.Requirements...)
 	if review.Requirements == nil {
 		review.Requirements = []ReviewRequirement{}
 	}
@@ -458,7 +497,7 @@ func (a *App) ExecuteReviewedAction(request ExecuteActionRequest) ReviewedAction
 	policy := actionPolicies[review.bound.action]
 	outcome := ReviewedActionResult{}
 	retryable := false
-	if missing := unmet(policy.requirements, request.Decisions); missing != "" {
+	if missing := unmet(append(slices.Clone(policy.requirements), review.bound.review.Requirements...), review.bound, request.Decisions); missing != "" {
 		outcome.refuse(Failed, missing)
 		retryable = true
 	} else {
@@ -481,9 +520,23 @@ func (a *App) ExecuteReviewedAction(request ExecuteActionRequest) ReviewedAction
 	return outcome
 }
 
-func unmet(requirements []ReviewRequirement, decisions ReviewDecisions) string {
+func unmet(requirements []ReviewRequirement, bound *boundAction, decisions ReviewDecisions) string {
 	if slices.Contains(requirements, RationaleRequirement) && strings.TrimSpace(decisions.Rationale) == "" {
 		return "an approval records why it is given; nothing was recorded"
+	}
+	if slices.Contains(requirements, ConfirmationsRequirement) && bound.review.Reset != nil {
+		manual := []string{}
+		for _, action := range bound.review.Reset.Actions {
+			if action.Type == fixturereset.OperatorConfirms {
+				manual = append(manual, action.ID)
+			}
+		}
+		confirmed := slices.Clone(decisions.Confirmed)
+		slices.Sort(confirmed)
+		slices.Sort(manual)
+		if !slices.Equal(slices.Compact(confirmed), manual) {
+			return "every manual step is confirmed, and nothing else, before a reset; nothing was reset"
+		}
 	}
 	return ""
 }
@@ -682,8 +735,18 @@ func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, h
 			identity = facts.Identity
 		}
 	}
+	// An environment saved with a send policy is decided under it unless the
+	// send names another.
+	policy := options.Policy
+	if current := records[1].Current(); policy == "" && current != nil {
+		for _, member := range current.Members {
+			if member.Role == "policy" {
+				policy = member.Path
+			}
+		}
+	}
 	replayRequest := ReplayRequest{Workspace: loaded.root, Case: entry, Identity: identity, Target: backingEntry(records[1]),
-		Policy: options.Policy, Messages: slices.Clone(options.Messages), Transformations: slices.Clone(options.Transformations)}
+		Policy: policy, Messages: slices.Clone(options.Messages), Transformations: slices.Clone(options.Transformations)}
 	previewed := a.previewReplay(ctx, replayRequest, held)
 	if previewed.Preview == nil {
 		return nil, refusal{previewed.State, previewed.Reason}

@@ -1,0 +1,127 @@
+/* ---------- Environments and observations ----------
+   A read-only object: value groups one under another, each with its own
+   Edit, in a reading column. */
+.object-page {
+  max-width: var(--report-column);
+}
+
+.object-problem {
+  margin: 0 0 var(--s4);
+}
+
+.value-group {
+  margin-bottom: var(--s8);
+}
+
+.value-group-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+  min-height: var(--toolbar);
+}
+
+.value-group-header > h2 {
+  flex: 1;
+  margin: 0;
+}
+
+.object-link {
+  align-items: center;
+  background: transparent;
+  border-color: transparent;
+  display: flex;
+  justify-content: space-between;
+  text-align: start;
+  width: 100%;
+}
+
+.object-link:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.value-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  gap: var(--s3);
+  justify-content: space-between;
+}
+
+.plain-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.plain-table th,
+.plain-table td {
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+}
+
+.plain-table thead th {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.plain-table tbody th {
+  font-weight: 400;
+}
+
+.review-actions {
+  display: grid;
+  gap: var(--s3);
+  margin: var(--s3) 0;
+  padding-left: var(--s4);
+}
+
+.review-actions p {
+  margin: var(--s1) 0 0;
+}
+
+.field-pair {
+  display: flex;
+  gap: var(--s3);
+}
+
+.field-pair > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--label-gap);
+}
+
+.field-pair > .field-narrow {
+  flex: 0 0 7rem;
+}
+
+.file-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--label-gap);
+}
+
+/* A list whose last column is a value, not a row action. */
+.page-body > .values-table th:last-child,
+.page-body > .values-table td:last-child {
+  text-align: start;
+}
+
+/* A file picker and a pair of fields sit in a sheet like any other labelled
+   field, and their label reads as one. */
+.dialog-fields > .file-picker:not(:first-child),
+.dialog-fields > .field-pair:not(:first-child),
+.dialog-fields > .filter-rule:not(:first-child) {
+  margin-top: var(--s2);
+}
+
+.file-picker > .field-label {
+  font: inherit;
+}
+
+.review-running {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--s2);
+}

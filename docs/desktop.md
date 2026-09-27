@@ -151,8 +151,7 @@ focus to the control it still offers, its cancel, and once it answers focus
 returns to the control that started it unless the person has moved it since; a
 read a panel starts on its own moves focus nowhere. Its `Outcome` draws an
 answer through the status the window uses everywhere, with its state's
-word and shape and its reason; the environment panel shows every answer that
-did not complete that way and the runner panel every one that is neither a
+word and shape and its reason; the runner panel shows every answer that is neither a
 failure nor a refused admission, which it words as refusals, while the other
 panels keep their own sentence for each state. The window's own operations, and
 the raw inspection and performance corpus screens, hold the window's one slot:
@@ -957,7 +956,7 @@ time never stands in for one, and an unknown date is null.
 | Test | source case, current version, latest run whose retained test is exactly this one |
 | Suite | included tests, environments it binds |
 | Run | address actually reached, start and completion, outcome, uncertain deliveries |
-| Environment | declared classification, address and transport |
+| Environment | declared classification, address and transport, the latest explicit check (when, its outcome and the revision it checked), the linked observation, whether it has a send policy, and its reset's name and number of actions |
 | Observation | source type, latest completed collection among the project's completion records |
 | Report | form, related case, state |
 | Profile | family, protocol version, published version |
@@ -1010,8 +1009,9 @@ and a folder that now holds a different project is refused.
 
 ### One Save per editor
 
-`SaveItem` publishes a whole draft of an Environment, a Test or an
-Observation (a source and its window together) as one revision, or nothing.
+`SaveItem` publishes a whole draft of an Environment (its target and, when it
+has them, its send policy, reset plan and links), a Test or an Observation (a
+source and its window together) as one revision, or nothing.
 The draft is validated first through the readers a save stages it through
 (`ValidateDraft` runs the same step alone and writes nothing). Every member
 is then written as a new file of the project, named by the application,
@@ -1047,7 +1047,9 @@ a reset or an approval.
 ### Reviewed actions
 
 `PrepareAction` prepares the review of a send (`replay.send`), an export
-(`export.derived-packet`) or a version approval (`suite.approve-promotion`).
+(`export.derived-packet`), a version approval (`suite.approve-promotion`), an
+observation's collection (`observation.collect`), an environment's reset
+(`environment.reset`) or a credential scan (`secret.scan`).
 It reads the objects, resolves the destination and a fresh output entry,
 decides whether the action could proceed, and binds the project, the
 reviewer (the local account, and the customer-hub subject when one is signed
@@ -4413,20 +4415,89 @@ existing `readmit-scenario/v1`, `readmit-order-scenario/v1`,
 
 ## Environments, Credential References, Send Policies, and Fixture Reset
 
-The desktop application provides first-party visual authoring and inspection for named
-test environments, credential references, approved send policies, and fixture reset plans.
-These capabilities share the Go engine with the CLI, maintaining strict parity with
-`readmit target`, `readmit secret`, and the policy and plan readers of `readmit target check`
-and `readmit target reset`.
+Environments lists the project's named environments by name, address,
+classification and last explicit check; an environment with no recorded
+classification reads Not classified. A row opens one environment as values
+grouped under Connection, Observation and Reset, each with its own Edit sheet
+and one Save of one revision; the page itself holds no inputs and connects to
+nothing. Test connection checks the saved version and shows its dated result;
+Credentials, Allowed destinations, Check destination, Duplicate, Details and
+Remove are in the environment's menu. Reset, Collect and Scan configured files
+are reviewed actions: the review names exactly what will run, a manual reset
+step is confirmed in the review, and the final button runs only that. These
+share the Go engine with the CLI, keeping parity with `readmit target`,
+`readmit secret`, and the policy and plan readers of `readmit target check`
+and `readmit target reset`. The file-level observation setup stays a started
+task reached from Security and from a capture's binding.
 
-Registering or editing a credential reference and saving a send policy or a reset plan
-replaces the document atomically and then shows `Written to FILE · identity SHA256`: the
-SHA-256 of the exact bytes the save wrote, the name the file has on disk once it is written. A save the reader
-refuses shows the reader's own refusal, writes nothing and claims no identity, and keeps what
-was typed to be corrected; a rotation or removal clears the line, because the document it
-named has changed. Every control is disabled while an action runs; once it answers, focus
-returns to the control that started it. An action that did not complete shows the state it
-answered — busy, cancelled, permission denied or failed — beside its reason.
+### Named environments and observations
+
+An Environment is a named object of the project, saved whole by `SaveItem`:
+its `readmit-target/v3` target and, when it has them, the
+`readmit-send-policy/v1` policy its destinations are decided under
+(`policy`), its `readmit-reset-plan/v1` reset (`reset`) and its links
+(`links`, `readmit-environment-links/v1`), every member in one revision or
+none. `OpenItemDraft` answers what an editor starts from: for a reference with
+no identity, a new environment unclassified and with its transport unchosen,
+or a new observation from the default source and window; otherwise the
+members the current revision declares, exactly as saved. A duplicate is that
+draft saved with no `Item`. A draft whose transport is empty is refused at
+`transport` ("Choose a transport"); choosing TLS or plain TCP/MLLP in the
+editor is the approval the target records as `approved_transport`. The
+target's `name` is drawn from the display name when the environment is
+created — letters, digits, `-`, `_` and `.`, made distinct from the
+project's other environments — and never changes afterwards; a reset plan
+resets that name, and an action given no identity gets one drawn from the name
+a person gave it. A credential names a reference of the project's
+`secrets.json`, which is where `ListCredentials`, `SaveCredential`,
+`CheckCredential`, `RecordCredentialRotation` and `RemoveCredential` keep the
+project's references. A credential row counts its locator arguments and never
+carries them; an edit replaces them only when `replace_arguments` is set, and
+a removal is refused, naming them, while an environment presents the
+reference. The credential in its store is never touched.
+
+`readmit-environment-links/v1` is new and not yet in a released version. It
+holds what an environment names beside its target: the catalog identity of its
+observation, the name its reset was given and the names of its actions, in the
+plan's order. Unknown members are refused.
+
+```json
+{"schema": "readmit-environment-links/v1", "observation": "0f3c2a8e6b1d4f7a9c5e2b10",
+ "reset_name": "Empty appointment store", "action_names": ["Stop listener", "Ledger is empty"]}
+```
+
+`CheckEnvironment` connects to the environment at the revision the window
+shows — a later save refuses it — without sending a message, decides the
+address under the environment's own policy, and saves nothing of the
+environment. The latest check is retained in the project's application area
+as `.readmit/checks/ID.json`, a `readmit-environment-check/v1` document (new,
+not yet in a released version) holding the environment's identity, the
+revision checked, when, the outcome with its TLS details and the send
+decision; the next check replaces it, and the environment's summary shows it as
+the last check, never as a live connection. `CheckEnvironmentDestination`
+decides one proposed send, an address and a classification, under the saved
+policy; it may resolve a name and opens no connection.
+
+A collection (`observation.collect`) reviews the observation's source by its
+identity, kind and scope, the window's identity and completion bounds, and
+where it is read from, and writes its completion and snapshot to fresh
+project entries the application names; saving the observation again withdraws
+the review. A collection that did not complete reports its status and reason
+and no record count. `ObservationHistory` lists the collections the project
+retained for the source, and `InspectCompletion` reads one again against the
+current window; neither collects. A reset (`environment.reset`) reviews the
+target and each saved action with its type, instructions and effect, is not
+ready for a production or unclassified environment, and requires every manual
+action's identity, and nothing else, in `decisions.confirmed`; its result is
+the outcome of each action and the entry its `readmit-reset-outcome/v1` was
+retained in. `ListReceiverSnapshots` names the project's `readmit-observation/v1`
+receiver snapshots a check-empty action chooses from. A credential scan
+(`secret.scan`) lists exactly the files it reads — `secrets.json` and every
+file the project's environments and observations were saved as — and scans
+those. `RemoveItem` removes an environment or observation from the project,
+refused while a test or a suite binds a file of any of its revisions or an
+environment links the observation; its files, and every run, check and
+collection made with it, stay readable.
 
 ### Persistent environment banner
 

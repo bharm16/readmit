@@ -345,7 +345,11 @@ entries of the project the application named — with their SHA-256, and a
 `readmit-catalog-pending/v1` record under `.readmit/pending` holds a save
 until it is published or discarded. An object a person removed from the
 project keeps its item with `removed_at`, when it was removed, so its entry
-is not discovered again as a new object; nothing behind it is touched.
+is not discovered again as a new object; nothing behind it is touched. The
+latest explicit check of each environment is kept beside the catalog in
+`.readmit/checks/ID.json`, a strict-JSON `readmit-environment-check/v1`
+document (new, not yet in a released version) naming the environment, the
+revision checked, when, and what the check found; the next check replaces it.
 Deleting the catalog loses the names
 and dates the application recorded and the association of saved revisions,
 never evidence; the objects are discovered again under derived identities.

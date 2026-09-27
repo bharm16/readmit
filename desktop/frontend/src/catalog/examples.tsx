@@ -13,7 +13,7 @@ import { StateHelp, HelpTopics } from "../ContextHelp";
 import { ControlledDetails } from "../ControlledDetails";
 import { CorrelationReview } from "../CorrelationReview";
 import { Diagnosis } from "../Diagnosis";
-import { EnvironmentBanner, EnvironmentPanel } from "../EnvironmentPanel";
+import { EnvironmentBanner } from "../EnvironmentBanner";
 import { GuidedSample } from "../GuidedSample";
 import { HubAdministration } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
@@ -195,12 +195,6 @@ export const examples: Example[] = [
     />
   )),
   e("EnvironmentBanner", () => <EnvironmentBanner />),
-  e("EnvironmentPanel", () => <EnvironmentPanel {...common} />, "ready", [
-    "Target",
-    "Credential References",
-    "Send policy",
-    "Reset plan",
-  ]),
   e("GuidedSample", () => (
     <GuidedSample
       {...common}

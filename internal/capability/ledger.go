@@ -226,7 +226,10 @@ const RawHL7 = "hl7"
 //     admission; execute-if-send and author-if-quota-change are the command
 //     line's conditional forms of the same admissions, and author-if-approve
 //     the desktop's reviewed-action form, where the final action is an
-//     approval rather than a send or an export; hub-operation is the
+//     approval rather than a send or an export; execute-if-reach and
+//     author-if-reach are the desktop's reviewed-action forms where the final
+//     action reaches a configured destination to collect an observation or
+//     reset an environment, which admits the author as well; hub-operation is the
 //     guard's hub admission a licensed hub service takes for runner leases
 //     and local schedule authoring.
 //   - hub-certificate: the customer hub's verified mutual-TLS client
@@ -237,7 +240,7 @@ const RawHL7 = "hl7"
 //   - vendor: the vendor's issuing authority; portal-account the customer's
 //     account in the merchant of record's hosted portal.
 var prerequisites = []string{
-	"author", "execute", "execute-if-send", "author-if-quota-change", "author-if-approve", "hub-operation",
+	"author", "execute", "execute-if-send", "author-if-quota-change", "author-if-approve", "execute-if-reach", "author-if-reach", "hub-operation",
 	"hub-certificate",
 	"hub:evidence.read", "hub:evidence.write", "hub:execution", "hub:approval",
 	"hub:export", "hub:enrollment", "hub:admin", "hub:ownership",

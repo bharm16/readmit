@@ -1,292 +1,31 @@
+/* The environment a run, replay or test addresses: one row of its name,
+   classification and address. */
 .environment-banner {
-  background: color-mix(in srgb, var(--surface) 90%, CanvasText 10%);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
+  border-radius: var(--radius-control);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--s1);
+  margin: var(--s3) 0;
+  padding: var(--s2) var(--s3);
 }
 
 .environment-banner-header {
+  align-items: baseline;
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
   flex-wrap: wrap;
+  gap: var(--s3);
 }
 
 .environment-banner-title {
-  font-weight: bold;
-  font-size: 1.05rem;
+  font-weight: 600;
 }
 
-.environment-classification-badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 3px;
-  font-size: 0.85rem;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.environment-classification-badge.nonproduction {
-  background: transparent;
-  border: 1px solid currentColor;
-  color: var(--success);
-}
-
-.environment-classification-badge.production {
-  background: transparent;
-  border: 1px solid currentColor;
-  color: var(--danger);
-}
-
-.environment-classification-badge.unclassified {
-  background: transparent;
-  border: 1px solid currentColor;
-  color: var(--warning);
-}
-
-.environment-disclaimer {
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin: 0;
-}
-
-.environment-disclaimer.warning {
-  color: var(--danger);
-  font-weight: 500;
-}
-
+.environment-classification,
 .environment-peer {
-  font-family: monospace;
-  font-size: 0.85rem;
   color: var(--muted);
 }
 
-.environment-panel {
-  border-top: 1px solid var(--line);
-  padding-top: 1rem;
-  margin-top: 1.5rem;
-}
-
-.environment-tabs {
-  display: flex;
-  gap: 0.5rem;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 1rem;
-  overflow-x: auto;
-}
-
-.environment-tab {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  padding: 0.5rem 0.85rem;
-  cursor: pointer;
-  font-size: 0.95rem;
-  color: var(--muted);
-}
-
-.environment-tab:hover {
-  color: var(--text);
-}
-
-.environment-tab.active {
-  border-bottom-color: var(--accent);
-  color: var(--accent);
-  font-weight: bold;
-}
-
-.environment-section {
-  background: color-mix(in srgb, var(--surface) 95%, CanvasText 5%);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 1rem;
-  margin: 1rem 0;
-}
-
-.environment-form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem 1rem;
-  margin-bottom: 1rem;
-}
-
-.environment-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.environment-field.full-width {
-  grid-column: 1 / -1;
-}
-
-.environment-field label {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.environment-field input,
-.environment-field select,
-.environment-field textarea {
-  border: 1px solid var(--line);
-  font-family: inherit;
-  background: Canvas;
-  color: CanvasText;
-}
-
-.environment-field input:focus,
-.environment-field select:focus,
-.environment-field textarea:focus {
-  outline: 2px solid var(--accent);
-}
-
-.environment-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
-}
-
-.environment-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.75rem 0;
-  font-size: 0.88rem;
-}
-
-.environment-table th,
-.environment-table td {
-  border: 1px solid var(--line);
-  text-align: left;
-}
-
-.environment-table th {
-  background: color-mix(in srgb, var(--surface) 85%, CanvasText 15%);
-  font-weight: 600;
-}
-
-.rotation-badge {
-  display: inline-block;
-  padding: 0.1rem 0.4rem;
-  border-radius: 2px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.rotation-badge.current {
-  border: 1px solid currentColor;
-  color: var(--success);
-}
-
-.rotation-badge.overdue {
-  border: 1px solid currentColor;
-  color: var(--danger);
-}
-
-.rotation-badge.not-declared {
-  border: 1px solid currentColor;
-  color: var(--text-muted);
-}
-
-.authority-badge {
-  font-family: monospace;
-  font-size: 0.8rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--surface) 80%, CanvasText 20%);
-}
-
-.provisioning-box {
-  background: var(--panel);
-  border-left: 3px solid var(--accent);
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
-  font-size: 0.88rem;
-}
-
-.provisioning-box h5 {
-  margin: 0 0 0.4rem 0;
-  font-size: 0.92rem;
-  color: var(--text);
-}
-
-.provisioning-box ol {
-  margin: 0.3rem 0;
-  padding-left: 1.25rem;
-}
-
-.provisioning-box li {
-  margin-bottom: 0.25rem;
-}
-
-.report-box {
-  background: color-mix(in srgb, var(--surface) 92%, CanvasText 8%);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
-}
-
-.report-box h5 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.95rem;
-}
-
-.report-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.35rem 0.75rem;
-  font-size: 0.85rem;
-}
-
-.report-label {
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.report-value {
-  font-family: monospace;
-}
-
-.outcome-card {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.75rem;
-  margin: 0.75rem 0;
-}
-
-.outcome-card.passed {
-  border-left: 3px solid var(--success);
-}
-
-.outcome-card.failed {
-  border-left: 3px solid var(--danger);
-}
-
-.action-item {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.6rem 0.8rem;
-  margin-bottom: 0.5rem;
-  background: Canvas;
-}
-
-.action-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  margin-bottom: 0.35rem;
-}
-
-.action-instructions {
-  font-size: 0.85rem;
-  color: var(--muted);
-  margin: 0.25rem 0;
+.environment-banner > .consequence {
+  margin: 0;
 }

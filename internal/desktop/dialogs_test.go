@@ -73,6 +73,7 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "CreateSampleWorkspace", call: func(a *desktop.App) any { return a.CreateSampleWorkspace() }, opens: "folder", folder: fresh(), title: "Choose sample location"},
 		{name: "ChooseProjectLocation", call: func(a *desktop.App) any { return a.ChooseProjectLocation() }, opens: "folder", folder: fresh(), title: "Choose where projects are kept"},
 		{name: "ChooseCapturePath", call: func(a *desktop.App) any { return a.ChooseCapturePath("source-root") }, opens: "folder", folder: fresh()},
+		{name: "ChooseEnvironmentFile", call: func(a *desktop.App) any { return a.ChooseEnvironmentFile("ca-certificate") }, opens: "files", files: []string{destinations}, title: "Choose a CA certificate"},
 		{name: "ChooseImportSources", call: func(a *desktop.App) any { return a.ChooseImportSources("folder") }, opens: "folder", folder: fresh()},
 		{name: "ChooseHubConfig", call: func(a *desktop.App) any { return a.ChooseHubConfig() }, opens: "folder", folder: hubFolder},
 		{name: "ChooseCommercialDestinations", call: func(a *desktop.App) any { return a.ChooseCommercialDestinations() }, opens: "files", files: []string{destinations}},

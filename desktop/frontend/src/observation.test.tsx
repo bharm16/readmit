@@ -1,4 +1,4 @@
-import { goTo } from "./testkit/navigation";
+import { goTo, goToView, page } from "./testkit/navigation";
 import { expect, test, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -10,8 +10,13 @@ import {
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { expectTabPattern } from "./testkit/tabs";
+import { Parked, type FacadeHandlers } from "./testkit/wails";
 import type {
+  CatalogItem,
+  CollectionRow,
+  ItemDraft,
   ObservationCollectFacadeRequest,
+  ReviewedActionResult,
   ObservationCompletionResult,
   ObservationSource,
   ObservationSourceRequest,
@@ -140,9 +145,7 @@ test("opening observation editor never queries and shows qualification state", a
     },
   });
 
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await goTo(user, "Environments");
-  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await startObservationSetup(user);
   expect(await screen.findByRole("heading", { name: "Observations", level: 3 })).toBeTruthy();
   expect(screen.getByText(/Editor opened locally/)).toBeTruthy();
   expect(screen.getByText(/postgresql/)).toBeTruthy();
@@ -186,9 +189,7 @@ test("local validation and unauthorized collect stay separate", async () => {
     },
   });
 
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await goTo(user, "Environments");
-  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await startObservationSetup(user);
   await screen.findByRole("heading", { name: "Observations", level: 3 });
 
   await waitFor(() => expect(screen.getByText(byContent(/^Saved window ID/)).textContent).toBe("Saved window ID: window-identity (observation-window.json)"));
@@ -237,9 +238,7 @@ test("denied and stale completion summaries stay distinct from absence", async (
         },
       }),
   });
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await goTo(user, "Environments");
-  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await startObservationSetup(user);
   await screen.findByRole("heading", { name: "Observations", level: 3 });
   await user.click(screen.getByRole("tab", { name: "Collect and results" }));
   await user.click(screen.getByRole("button", { name: "Explain completion" }));
@@ -263,9 +262,7 @@ test("a source the facade answered is saved again as the person's choices, never
     SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
       Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
   });
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await goTo(user, "Environments");
-  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await startObservationSetup(user);
   await screen.findByRole("heading", { name: "Observations", level: 3 });
   await user.click(screen.getByRole("button", { name: "Save observation" }));
   expect(await screen.findByText(/^Saved through shared Go writers/)).toBeTruthy();
@@ -343,10 +340,15 @@ async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLEleme
   expect(document.activeElement).toBe(target);
 }
 
+/** The file-level observation setup is a started task, reached from the
+ * Security page; the Environments page lists named observations instead. */
+async function startObservationSetup(user: ReturnType<typeof userEvent.setup>) {
+  await goToView(user, "Settings", "Security");
+  await user.click(screen.getByRole("button", { name: "Observations" }));
+}
+
 async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await goTo(user, "Environments");
-  await user.click(within(evidence).getByRole("button", { name: "Observations" }));
+  await startObservationSetup(user);
   return within(await screen.findByRole("region", { name: "Observation setup" }));
 }
 
@@ -1133,4 +1135,192 @@ test("a validation answered after another file was opened commits nothing into t
   expect(await panel.findByText("Source document other-source.json refused: current source answer")).toBeTruthy();
   expect(panel.queryByText(/late (source|window|pair) answer/)).toBeNull();
   expect(screen.queryByText(/late (source|window|pair) answer/)).toBeNull();
+});
+
+// ---------- Named observations, reached from their environment ----------
+
+const OBSERVATION_REF = { kind: "observation" as const, id: "obs-appointments", revision: "rev-1" };
+
+const NAMED_OBSERVATION: CatalogItem = {
+  ref: OBSERVATION_REF,
+  name: "Appointments",
+  created_at: null,
+  updated_at: null,
+  last_opened_at: null,
+  availability: "available",
+  capabilities: [],
+  summary: { observation: { source_type: "file-export", enabled: true, latest_collection: null } },
+};
+
+const LINKED_ENVIRONMENT: CatalogItem = {
+  ref: { kind: "environment", id: "env-qa", revision: "rev-1" },
+  name: "Scheduling QA",
+  created_at: null,
+  updated_at: null,
+  last_opened_at: null,
+  availability: "available",
+  capabilities: [],
+  summary: {
+    environment: {
+      classification: "nonproduction",
+      address: "peer-under-test:2575",
+      transport: "plain",
+      last_checked_at: null,
+      observation: OBSERVATION_REF,
+      observation_name: "Appointments",
+      has_policy: false,
+      reset_actions: 0,
+    },
+  },
+};
+
+const OBSERVATION_DRAFT: ItemDraft = {
+  name: "Appointments",
+  observation: {
+    source: {
+      schema: "readmit-observation-source/v1",
+      source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+      enabled: true,
+      freshness: { max_age: "1h" },
+      extraction: { envelope: "csv", encoding: "utf-8", record_key: ["appointment"] },
+      file: { path: "exports/appointments.csv", max_bytes: 65536 },
+      http: null,
+      capture: null,
+    },
+    window: {
+      schema: "readmit-observation-window/v1",
+      source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+      watermark: { kind: "none", position: "" },
+      pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
+      completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
+    },
+  },
+};
+
+const COLLECTIONS: CollectionRow[] = [
+  { entry: "observation-completion-002.json", closed_at: "2026-01-01T12:14:00Z", status: "complete", trustworthy: true, records: 0 },
+  { entry: "observation-completion-001.json", closed_at: "2026-01-01T12:10:00Z", status: "timed_out", trustworthy: false, records: null, reason: "the deadline passed before the records held still" },
+];
+
+async function openNamedObservation(user: ReturnType<typeof userEvent.setup>, extra: FacadeHandlers = {}) {
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, []),
+    ListCatalog: (query) => {
+      const items = query.kind === "environment" ? [LINKED_ENVIRONMENT] : query.kind === "observation" ? [NAMED_OBSERVATION] : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+    },
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, ref: request.ref, draft: request.ref.kind === "observation" ? OBSERVATION_DRAFT : { name: "Scheduling QA" } }),
+    ObservationHistory: (request) => ({ state: "completed", context: request.context, collections: COLLECTIONS }),
+    ...extra,
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await goTo(user, "Environments");
+  const table = await page().findByRole("table", { name: "Environments" });
+  await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
+  await user.click(await page().findByRole("button", { name: "Appointments" }));
+  await page().findByRole("heading", { name: "Appointments" });
+  return facade;
+}
+
+test("History lists actual collections and an incomplete one shows its reason instead of zero records", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user);
+  const table = await page().findByRole("table", { name: "Collections" });
+  await waitFor(() => expect(table.querySelectorAll("tbody tr[data-row-id]")).toHaveLength(2));
+  const results = Array.from(table.querySelectorAll("tbody tr[data-row-id]")).map((row) => row.querySelectorAll("td,th")[1]!.textContent);
+  // An observed zero is a result; a timed-out collection is not zero records.
+  expect(results).toEqual(["0 records · Complete", "Timed out · the deadline passed before the records held still"]);
+  expect(page().getByText("File export")).toBeTruthy();
+  expect(page().getByText("appointments.csv")).toBeTruthy();
+  // Opening the observation collected nothing.
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("Inspect completion reads the selected collection without collecting again", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, {
+    InspectCompletion: (request) => ({
+      state: "completed",
+      context: request.context,
+      completion: { ...COLLECTIONS[1]!, opened_at: "2026-01-01T12:09:30Z", samples: 4, stable_samples: 1, quiet_period: "2s", supported: true },
+    }),
+  });
+  const table = await page().findByRole("table", { name: "Collections" });
+  await waitFor(() => expect(table.querySelector('[data-row-id="observation-completion-001.json"]')).toBeTruthy());
+  await user.click(table.querySelector<HTMLElement>('[data-row-id="observation-completion-001.json"]')!);
+  expect(facade.oneCall("InspectCompletion")[0]).toMatchObject({ ref: OBSERVATION_REF, entry: "observation-completion-001.json" });
+  const sheet = await screen.findByRole("dialog", { name: "Collection" });
+  expect(within(sheet).getByText("4")).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("Collect reviews the exact source and bounds with its consequence, and a changed source is reviewed again", async () => {
+  const user = userEvent.setup();
+  let stale = true;
+  const facade = await openNamedObservation(user, {
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: {
+        token: "collect-token",
+        action: "observation.collect",
+        consent: "collect",
+        items: [NAMED_OBSERVATION],
+        destination: {},
+        requirements: [],
+        ready: true,
+        collect: { source: "Appointments", source_type: "file-export", scope: "appointments", window: "rev-1", bounds: OBSERVATION_DRAFT.observation!.window.completion, destination: "Scheduling QA" },
+      },
+    }),
+    ExecuteReviewedAction: (request) => {
+      if (stale) {
+        stale = false;
+        return { state: "failed", context: request.context, outcome: "stale", replayed: false };
+      }
+      return { state: "completed", context: request.context, outcome: "completed", replayed: false, collected: COLLECTIONS[0]! };
+    },
+  });
+  await user.click(page().getByRole("button", { name: "Collect" }));
+  const sheet = await screen.findByRole("dialog", { name: "Collect" });
+  expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "observation.collect", items: [OBSERVATION_REF], destination: LINKED_ENVIRONMENT.ref });
+  expect(await within(sheet).findByText("Reads Appointments once; source records are not changed.")).toBeTruthy();
+  expect(within(sheet).getByText("30s")).toBeTruthy();
+  await user.click(within(sheet).getByRole("button", { name: "Collect" }));
+  expect((await within(sheet).findByRole("alert")).textContent).toBe("What this review covered changed. Review it again.");
+  expect(facade.callsTo("PrepareAction")).toHaveLength(2);
+  await user.click(within(sheet).getByRole("button", { name: "Collect" }));
+  expect((await screen.findByRole("status")).textContent).toBe("0 records · Complete");
+});
+
+test("an active collection shows Stop, which stops exactly the click that started it", async () => {
+  const user = userEvent.setup();
+  const running = new Parked();
+  const facade = await openNamedObservation(user, {
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: {
+        token: "collect-token",
+        action: "observation.collect",
+        consent: "collect",
+        items: [NAMED_OBSERVATION],
+        destination: {},
+        requirements: [],
+        ready: true,
+        collect: { source: "Appointments", source_type: "file-export", scope: "appointments", window: "rev-1", bounds: OBSERVATION_DRAFT.observation!.window.completion, destination: "" },
+      },
+    }),
+    ExecuteReviewedAction: () => running.arrive() as Promise<ReviewedActionResult>,
+    CancelOperation: () => undefined,
+  });
+  await user.click(page().getByRole("button", { name: "Collect" }));
+  const sheet = await screen.findByRole("dialog", { name: "Collect" });
+  await user.click(await within(sheet).findByRole("button", { name: "Collect" }));
+  await user.click(await within(sheet).findByRole("button", { name: "Stop" }));
+  const intent = (facade.oneCall("ExecuteReviewedAction")[0] as { intent_id: string }).intent_id;
+  expect(facade.oneCall("CancelOperation")).toEqual([intent]);
+  running.resolve({ state: "cancelled", context: facade.oneCall("ExecuteReviewedAction")[0]!.context, outcome: "cancelled", replayed: false });
+  expect((await screen.findByRole("alert")).textContent).toBeTruthy();
 });

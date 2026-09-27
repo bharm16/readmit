@@ -1,884 +1,465 @@
+// Environments: named test systems read as values, changed in one Edit sheet
+// with one Save, and checked, reset or removed only when a person asks. The
+// fixtures name peers by synthetic tokens, never a network address, and
+// credentials by reference, never a value.
 import { expect, test } from "vitest";
-import type { ReactElement } from "react";
-import { render as renderAlone, screen, waitFor, within } from "@testing-library/react";
-import { vocabularyWrapper } from "./testkit/app";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { EnvironmentPanel, EnvironmentBanner } from "./EnvironmentPanel";
-import { IndicatorsContext } from "./lifecycle";
-import { installFacade, uninstallFacade } from "./testkit/wails";
-import type { ResetActionRequest, ResetActionResult, SecretChange, SecretSaveRequest, SendPolicySaveRequest, State } from "./bindings";
-import {
-  WORKSPACE_ROOT,
-  indicatorTable,
-  defaultTargetResult,
-  defaultTargetCheckResult,
-  defaultSecretsResult,
-  defaultSecretTestResult,
-  defaultSecretScanResult,
-  defaultSendPolicyResult,
-  defaultSendPolicyEvalResult,
-  defaultResetPlanResult,
-  defaultTargetResetResult,
-  vocabularyFixture,
-} from "./testkit/fixtures";
+import type { CatalogItem, CredentialRow, ItemDraft, ItemRequest, SaveItemRequest } from "./bindings";
+import { renderApp } from "./testkit/app";
+import { catalogOfListing, folderWithCase, WORKSPACE_ROOT } from "./testkit/fixtures";
+import { goTo, page } from "./testkit/navigation";
+import type { FacadeHandlers, FacadeStub } from "./testkit/wails";
 
-/** A panel on its own, inside the vocabulary the window provides it. */
-const render = (ui: ReactElement) => renderAlone(ui, { wrapper: vocabularyWrapper() });
+type User = ReturnType<typeof userEvent.setup>;
 
-test("EnvironmentPanel displays target configuration and runs deliberate diagnostics", async () => {
-  const user = userEvent.setup();
-  const targetData = defaultTargetResult();
-  const checkData = defaultTargetCheckResult();
-
-  const facade = installFacade({
-    ReadTarget: async () => targetData,
-    SaveTarget: async () => targetData,
-    CheckTarget: async () => checkData,
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => defaultSecretsResult(),
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="target"
-    />,
-  );
-
-  // Initial read calls
-  expect(facade.callsTo("ReadTarget").length).toBe(1);
-  expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
-  expect(screen.getByDisplayValue("peer-under-test")).toBeTruthy();
-
-  // Run deliberate diagnostics
-  const diagBtn = screen.getByRole("button", { name: /Test connection/i });
-  await user.click(diagBtn);
-
-  expect(facade.callsTo("CheckTarget").length).toBe(1);
-  expect(await screen.findByText(/Diagnostic Report/i)).toBeTruthy();
-  expect(screen.getByText(/established/i)).toBeTruthy();
-
-  uninstallFacade();
-});
-
-test("EnvironmentPanel manages credential references, tests, rotates and scans", async () => {
-  const user = userEvent.setup();
-  const secretsData = defaultSecretsResult();
-  const testData = defaultSecretTestResult();
-  const scanData = defaultSecretScanResult();
-
-  const facade = installFacade({
-    ReadTarget: async () => defaultTargetResult(),
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => secretsData,
-    TestSecretReference: async () => testData,
-    RotateSecretReference: async () => secretsData,
-    RemoveSecretReference: async () => secretsData,
-    ScanSecrets: async () => scanData,
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="secrets"
-    />,
-  );
-
-  expect(facade.callsTo("ReadSecrets").length).toBe(1);
-  expect(await screen.findByText("mllp-basic-auth")).toBeTruthy();
-  // Masking of secret reference details
-  expect(screen.getByText("••••••••")).toBeTruthy();
-
-  // Test secret resolution
-  const testBtn = screen.getByRole("button", { name: /^Test$/i });
-  await user.click(testBtn);
-  expect(facade.callsTo("TestSecretReference").length).toBe(1);
-  expect(await screen.findByText(/Success \(Resolved in memory\)/i)).toBeTruthy();
-
-  // Rotate secret reference
-  const rotateBtn = screen.getByRole("button", { name: /^Rotate$/i });
-  await user.click(rotateBtn);
-  expect(facade.callsTo("RotateSecretReference").length).toBe(1);
-
-  // Scan workspace for residual secrets
-  const scanBtn = screen.getByRole("button", { name: /Scan for leaks/i });
-  await user.click(scanBtn);
-  expect(facade.callsTo("ScanSecrets").length).toBe(1);
-  expect(await screen.findByText(/Files Checked: 5/i)).toBeTruthy();
-
-  // Remove secret reference
-  const removeBtn = screen.getByRole("button", { name: /^Remove$/i });
-  await user.click(removeBtn);
-  expect(facade.callsTo("RemoveSecretReference").length).toBe(1);
-
-  uninstallFacade();
-});
-
-test("EnvironmentPanel authors send policy and evaluates local destinations", async () => {
-  const user = userEvent.setup();
-  const policyData = defaultSendPolicyResult();
-  const evalData = defaultSendPolicyEvalResult();
-
-  const facade = installFacade({
-    ReadTarget: async () => defaultTargetResult(),
-    ReadSendPolicy: async () => policyData,
-    SaveSendPolicy: async () => policyData,
-    EvaluateSendPolicy: async () => evalData,
-    ReadSecrets: async () => defaultSecretsResult(),
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="policy"
-    />,
-  );
-
-  expect(facade.callsTo("ReadSendPolicy").length).toBe(1);
-  expect(await screen.findByText("approved-peer")).toBeTruthy();
-  expect(screen.getByText("second-peer")).toBeTruthy();
-
-  // Evaluate destination locally
-  const evalBtn = screen.getByRole("button", { name: /Check destination/i });
-  await user.click(evalBtn);
-
-  expect(facade.callsTo("EvaluateSendPolicy").length).toBe(1);
-  expect(await screen.findByText(/Local Policy Decision/i)).toBeTruthy();
-  expect(screen.getByText("ALLOWED")).toBeTruthy();
-
-  uninstallFacade();
-});
-
-test("EnvironmentPanel authors fixture reset plan and executes with deliberate confirmation", async () => {
-  const user = userEvent.setup();
-  const planData = defaultResetPlanResult();
-  const resetData = defaultTargetResetResult();
-
-  const facade = installFacade({
-    ReadTarget: async () => defaultTargetResult(),
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => defaultSecretsResult(),
-    ReadResetPlan: async () => planData,
-    SaveResetPlan: async () => planData,
-    ResetTarget: async () => resetData,
-  });
-
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="reset"
-    />,
-  );
-
-  expect(facade.callsTo("ReadResetPlan").length).toBe(1);
-  expect(await screen.findByText("Confirm patient database is wiped.")).toBeTruthy();
-
-  // Confirm step 1 checkbox
-  const confirmBox = screen.getByRole("checkbox");
-  await user.click(confirmBox);
-
-  // Click deliberate reset execution
-  const executeBtn = screen.getByRole("button", { name: /Reset fixture/i });
-  await user.click(executeBtn);
-
-  expect(facade.callsTo("ResetTarget").length).toBe(1);
-  expect(await screen.findByText(/Reset Outcome: confirmed/i)).toBeTruthy();
-  expect(screen.getByText(/every_action_confirmed/i)).toBeTruthy();
-  // A reset that passed reads as passed: its state is a run state, never an
-  // operation state.
-  expect(screen.getByLabelText("Fixture reset execution outcome").classList.contains("passed")).toBe(true);
-
-  uninstallFacade();
-});
-
-test("EnvironmentBanner displays target details and warns on dangerous classification", () => {
-  const { rerender } = render(
-    <EnvironmentBanner
-      name="staging-mllp"
-      classification="nonproduction"
-      address="peer-under-test"
-      transport="mllp"
-    />,
-  );
-
-  expect(screen.getByText(/Environment: staging-mllp/i)).toBeTruthy();
-  expect(screen.getAllByText(/nonproduction/i).length).toBeGreaterThan(0);
-  expect(screen.getByText(/peer-under-test/i)).toBeTruthy();
-
-  // Rerender with production classification to verify warning alert
-  rerender(
-    <EnvironmentBanner
-      name="prod-endpoint"
-      classification="production"
-      address="production-peer"
-      transport="mllp"
-    />,
-  );
-
-  expect(screen.getByText(/Environment: prod-endpoint/i)).toBeTruthy();
-  expect(screen.getAllByText(/production/i).length).toBeGreaterThan(0);
-  expect(screen.getByText(/Refusal: Production targets reject all sends and resets/i)).toBeTruthy();
-});
-
-test("an unfinished target draft is kept and transport approval stays off until chosen", async () => {
-  const user = userEvent.setup();
-  const base = defaultTargetResult().target;
-  if (!base) throw new Error("fixture target missing");
-  const saved = defaultTargetResult({
-    target: { ...base, name: "from-file", approved_transport: true },
-  });
-  let savedRequest: unknown;
-  installFacade({
-    ReadTarget: async () => saved,
-    SaveTarget: async (request) => {
-      savedRequest = request;
-      return saved;
-    },
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => defaultSecretsResult(),
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-
-  const draftTarget = { ...base, name: "from-draft", approved_transport: false, connect_timeout: "3s" };
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      drafts={[
-        {
-          id: "draft-target",
-          kind: "environment/target",
-          workspace: WORKSPACE_ROOT,
-          case: "",
-          identity: "",
-          content_schema: "readmit-target-draft/v1",
-          content: draftTarget,
-        },
-      ]}
-    />,
-  );
-
-  expect(await screen.findByDisplayValue("from-draft")).toBeTruthy();
-  expect(screen.queryByDisplayValue("from-file")).toBeNull();
-  const approval = screen.getByLabelText("Approved transport") as HTMLInputElement;
-  expect(approval.checked).toBe(false);
-  expect(screen.getByDisplayValue("3s")).toBeTruthy();
-
-  await user.click(approval);
-  await user.click(screen.getByRole("button", { name: "Save target" }));
-  expect(savedRequest).toMatchObject({ target: { approved_transport: true, name: "from-draft" } });
-  uninstallFacade();
-});
-
-// The rotation state is Go's: the window shows what the facade decided for
-// each reference and never reads an interval itself. A compound interval such
-// as 1h30m is one Go reads, and a zero interval declares no rotation at all.
-test.each([
-  { max_age: "1s", rotated_at: "2020-01-01T00:00:00Z", rotation: "overdue", shown: "Overdue — rotate before use" },
-  { max_age: "1h30m", rotated_at: "2026-09-21T12:00:00Z", rotation: "current", shown: "Current (generation 1)" },
-  { max_age: "0s", rotated_at: "2020-01-01T00:00:00Z", rotation: "not-declared", shown: "Rotation age not declared" },
-] as const)("a reference declaring $max_age shows the $rotation state the facade decided", async ({ max_age, rotated_at, rotation, shown }) => {
-  const secrets = defaultSecretsResult({ rotations: [{ name: "mllp-basic-auth", rotation }] });
-  const document = secrets.document;
-  const reference = document?.references[0];
-  if (!document || !reference) throw new Error("fixture secret missing");
-  document.references[0] = { ...reference, max_age, rotated_at };
-  installFacade({
-    ReadTarget: async () => defaultTargetResult(),
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => secrets,
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="secrets"
-    />,
-  );
-  const badge = await screen.findByText(shown);
-  expect(badge.className).toBe(`rotation-badge ${rotation}`);
-  expect(screen.queryByText(/unreadable/)).toBeNull();
-  uninstallFacade();
-});
-
-test("the forms stay closed until every document read has answered, so a late read never replaces what was typed", async () => {
-  const facade = installFacade({
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => defaultSecretsResult(),
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-  // The target read is still in flight after the other three answered.
-  const reading = facade.park("ReadTarget");
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="target"
-    />,
-  );
-  await waitFor(() => expect(facade.callsTo("ReadResetPlan").length).toBe(1));
-  await waitFor(() => expect(facade.callsTo("ReadSendPolicy").length).toBe(1));
-  const name = screen.getByLabelText("Environment Name") as HTMLInputElement;
-  // Nothing can be typed while the document it would replace is being read.
-  expect(name.disabled).toBe(true);
-  reading.resolve(defaultTargetResult());
-  expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
-  expect(name.disabled).toBe(false);
-});
-
-test("a target file name is typed in full while documents are read, and naming it re-reads only the target", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade({
-    ReadTarget: async () => defaultTargetResult(),
-    ReadSendPolicy: async () => defaultSendPolicyResult(),
-    ReadSecrets: async () => defaultSecretsResult(),
-    ReadResetPlan: async () => defaultResetPlanResult(),
-  });
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab="target"
-    />,
-  );
-  await screen.findByDisplayValue("staging-mllp");
-  const file = screen.getByLabelText("Target Config File");
-  await user.clear(file);
-  await user.type(file, "downstream-target.json");
-  // Every keystroke landed: the field is not closed by the read it starts.
-  expect((file as HTMLInputElement).value).toBe("downstream-target.json");
-  await waitFor(() => expect(facade.callsTo("ReadTarget").at(-1)?.args).toEqual([WORKSPACE_ROOT, "downstream-target.json"]));
-  // Naming a target does not read the other three documents again.
-  expect(facade.callsTo("ReadSecrets")).toHaveLength(1);
-  expect(facade.callsTo("ReadSendPolicy")).toHaveLength(1);
-  expect(facade.callsTo("ReadResetPlan")).toHaveLength(1);
-});
-
-// The identity a save reports: the SHA-256 of the bytes it wrote. The stub
-// answers with a stand-in of the same shape.
-const WRITTEN = "0123456789abcdef".repeat(4);
-
-function renderPanel(initialTab: "target" | "secrets" | "policy" | "reset") {
-  render(
-    <EnvironmentPanel
-      workspace={WORKSPACE_ROOT}
-      targetFile="targets/default.json"
-      secretsFile="secrets.json"
-      policyFile="send-policy.json"
-      planFile="reset-plan.json"
-      initialTab={initialTab}
-    />,
-  );
-}
-
-const readsAnswered = {
-  ReadTarget: async () => defaultTargetResult(),
-  ReadSendPolicy: async () => defaultSendPolicyResult(),
-  ReadSecrets: async () => defaultSecretsResult(),
-  ReadResetPlan: async () => defaultResetPlanResult(),
+const QA: CatalogItem = {
+  ref: { kind: "environment", id: "env-qa", revision: "rev-1" },
+  name: "Scheduling QA",
+  created_at: null,
+  updated_at: null,
+  last_opened_at: null,
+  availability: "available",
+  capabilities: [],
+  summary: {
+    environment: { classification: "nonproduction", address: "peer-under-test:2575", transport: "tls", last_checked_at: null, observation: null, has_policy: true, reset_actions: 1, reset_name: "Empty appointments" },
+  },
 };
 
-test("a registered reference is edited through the shared update, and its locator arguments are counted, never shown", async () => {
-  const user = userEvent.setup();
-  const registered = defaultSecretsResult().document?.references[0];
-  if (!registered) throw new Error("fixture secret missing");
-  const facade = installFacade({
-    ...readsAnswered,
-    SaveSecretReference: async (request) => ({
-      state: "completed",
-      secrets_file: request.secrets_file,
-      document: { schema: "readmit-secrets/v1", references: [{ ...request.reference, ...request.change }] },
-      identity: WRITTEN,
-    }),
-  });
-  renderPanel("secrets");
+const UNCLASSIFIED: CatalogItem = {
+  ...QA,
+  ref: { kind: "environment", id: "env-local", revision: "rev-1" },
+  name: "Local fixture",
+  summary: { environment: { classification: "unclassified", address: "second-peer:2576", transport: "plain", last_checked_at: null, observation: null, has_policy: false, reset_actions: 0 } },
+};
 
-  const row = within((await screen.findByText("mllp-basic-auth")).closest("tr") as HTMLElement);
-  // The locator arguments are counted, as `readmit secret show` counts them.
-  expect(row.getByText(/\(1 locator arguments\)/)).toBeTruthy();
-  expect(screen.queryByText(/named-reference/)).toBeNull();
+const QA_DRAFT: ItemDraft = {
+  name: "Scheduling QA",
+  environment: {
+    schema: "readmit-target/v3",
+    name: "Scheduling-QA",
+    test_endpoint: true,
+    address: "peer-under-test:2575",
+    transport: "tls",
+    approved_transport: true,
+    classification: "nonproduction",
+    server_name: "peer-under-test",
+    connect_timeout: "2s",
+    message_timeout: "5s",
+    max_ack_bytes: 65536,
+    credential: { secrets_file: "secrets.json", reference: "qa-endpoint" },
+  },
+  policy: { schema: "readmit-send-policy/v1", approved_destinations: ["peer-range-a"] },
+  reset: {
+    schema: "readmit-reset-plan/v1",
+    environment: "Scheduling-QA",
+    actions: [{ id: "clear-ledger", operator: "operator_confirms", authority: "none", instructions: "Empty the appointment ledger" }],
+  },
+  links: { schema: "readmit-environment-links/v1", reset_name: "Empty appointments", action_names: ["Clear ledger"] },
+};
 
-  await user.click(row.getByRole("button", { name: "Edit mllp-basic-auth" }));
-  const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
-  // One form at a time: the registration's fields are not beside the edit's.
-  expect(screen.queryByRole("button", { name: "Add credential reference" })).toBeNull();
-  expect(screen.getAllByLabelText("Target Address Constraint")).toHaveLength(1);
-  // Focus moves into the edit, and the registered arguments are not shown there either.
-  expect(document.activeElement).toBe(form.getByLabelText("Store"));
-  expect(screen.queryByText(/named-reference/)).toBeNull();
-  expect(form.getByText(/Purpose: mllp-endpoint\./)).toBeTruthy();
+const CREDENTIAL: CredentialRow = {
+  name: "qa-endpoint",
+  purpose: "mllp-endpoint",
+  store: "os-keychain",
+  address: "peer-under-test:2575",
+  command: "/opt/locator",
+  argument_count: 2,
+  generation: 1,
+  rotated_at: "",
+  rotation: "not-declared",
+  bindable: true,
+};
 
-  await user.selectOptions(form.getByLabelText("Store"), "customer-managed");
-  await user.clear(form.getByLabelText("Target Address Constraint"));
-  await user.type(form.getByLabelText("Target Address Constraint"), "second-peer");
-  await user.clear(form.getByLabelText("Locator Command (Path)"));
-  await user.type(form.getByLabelText("Locator Command (Path)"), "second-locator");
-  await user.clear(form.getByLabelText("Maximum Rotation Age"));
-  await user.click(form.getByLabelText("Replace the 1 registered locator arguments"));
-  await user.type(form.getByLabelText(/Replacement Locator Arguments/), " first reference {Enter}{Enter}second");
-  await user.click(form.getByRole("button", { name: "Save changes" }));
-
-  await waitFor(() => expect(facade.callsTo("SaveSecretReference")).toHaveLength(1));
-  const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
-  expect(request.is_update).toBe(true);
-  // The update names the reference it was opened on and changes what the
-  // person changed: each argument line trimmed, and a blank line no argument.
-  expect(request.reference).toEqual(registered);
-  const expected: SecretChange = {
-    store: "customer-managed",
-    address: "second-peer",
-    command: "second-locator",
-    max_age: "",
-    arguments: ["first reference", "second"],
-  };
-  expect(request.change).toEqual(expected);
-  expect(await screen.findByText("Credential reference mllp-basic-auth updated.")).toBeTruthy();
-  expect(screen.getByText(`${WRITTEN}`, { selector: "code" })).toBeTruthy();
-  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
-  // Focus returns to the control that opened the edit.
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit mllp-basic-auth" })));
-  uninstallFacade();
-});
-
-test("an edit keeps its registered arguments unless they are replaced, stays open with what was typed when refused, and a cancelled edit writes nothing", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade({
-    ...readsAnswered,
-    SaveSecretReference: async () => ({ state: "failed", reason: "reference address: must be an explicit host and numeric port" }),
-  });
-  renderPanel("secrets");
-  await user.click(await screen.findByRole("button", { name: "Edit mllp-basic-auth" }));
-  const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
-  await user.clear(form.getByLabelText("Target Address Constraint"));
-  await user.type(form.getByLabelText("Target Address Constraint"), "no-port");
-  await user.click(form.getByRole("button", { name: "Save changes" }));
-
-  expect(await screen.findByText("reference address: must be an explicit host and numeric port")).toBeTruthy();
-  // Only the member the person changed is sent: the registered arguments and
-  // maximum age are kept as recorded, whatever else changed them meanwhile.
-  const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
-  expect(request.change).toEqual({ address: "no-port" });
-  // The refusal is recoverable: the edit is still open with what was typed,
-  // and no identity is claimed for a write that did not happen.
-  expect((form.getByLabelText("Target Address Constraint") as HTMLInputElement).value).toBe("no-port");
-  expect(screen.queryByText(/^Written to /)).toBeNull();
-
-  await user.click(form.getByRole("button", { name: "Cancel Editing" }));
-  expect(screen.getByText("Edit of mllp-basic-auth cancelled; nothing was written.")).toBeTruthy();
-  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
-  expect(facade.callsTo("SaveSecretReference")).toHaveLength(1);
-  uninstallFacade();
-});
-
-test("an edit is opened, cancelled with Escape and saved with Enter from the keyboard alone", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade({
-    ...readsAnswered,
-    SaveSecretReference: async (request) => ({
-      state: "completed",
-      document: { schema: "readmit-secrets/v1", references: [request.reference] },
-      identity: WRITTEN,
-    }),
-  });
-  renderPanel("secrets");
-  const edit = await screen.findByRole("button", { name: "Edit mllp-basic-auth" });
-  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false));
-  // Tab reaches the control; Enter opens the edit with focus inside it.
-  for (let step = 0; step < 60 && document.activeElement !== edit; step++) await user.tab();
-  expect(document.activeElement).toBe(edit);
-  await user.keyboard("{Enter}");
-  expect(document.activeElement).toBe(screen.getByLabelText("Store", { selector: "#edit-secret-store" }));
-  // The window's own Escape cancels a running operation; the Escape that
-  // cancels an edit never reaches it.
-  const reachedWindow: string[] = [];
-  const listener = (event: KeyboardEvent) => reachedWindow.push(event.key);
-  window.addEventListener("keydown", listener);
-  await user.keyboard("{Escape}");
-  window.removeEventListener("keydown", listener);
-  expect(reachedWindow).toEqual([]);
-  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
-  await waitFor(() => expect(document.activeElement).toBe(edit));
-  expect(facade.callsTo("SaveSecretReference")).toHaveLength(0);
-
-  await user.keyboard("{Enter}");
-  await user.tab();
-  expect(document.activeElement).toBe(screen.getByLabelText("Target Address Constraint", { selector: "#edit-secret-address" }));
-  await user.keyboard("{Control>}a{/Control}second-peer{Enter}");
-  await waitFor(() => expect(facade.callsTo("SaveSecretReference")).toHaveLength(1));
-  expect((facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest).change).toEqual({ address: "second-peer" });
-  expect(await screen.findByText("Credential reference mllp-basic-auth updated.")).toBeTruthy();
-  uninstallFacade();
-});
-
-test("a registration sends one locator argument per line and its maximum age, and a duplicate is refused with what was typed kept", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade({
-    ...readsAnswered,
-    SaveSecretReference: async () => ({ state: "failed", reason: "that name is already registered in this store" }),
-  });
-  renderPanel("secrets");
-  await screen.findByText("mllp-basic-auth");
-  await user.type(screen.getByLabelText("Reference Name"), "mllp-basic-auth");
-  await user.type(screen.getByLabelText("Target Address Constraint", { selector: "#secret-address" }), "peer-under-test");
-  await user.type(screen.getByLabelText("Locator Command (Path)", { selector: "#secret-command" }), "locator");
-  await user.type(screen.getByLabelText("Locator Arguments (one per line)"), "named reference{Enter}-w");
-  await user.type(screen.getByLabelText("Maximum Rotation Age", { selector: "#secret-max-age" }), "720h");
-  await user.click(screen.getByRole("button", { name: "Add credential reference" }));
-
-  expect(await screen.findByText("that name is already registered in this store")).toBeTruthy();
-  const request = facade.callsTo("SaveSecretReference")[0]?.args[0] as SecretSaveRequest;
-  expect(request.is_update).toBe(false);
-  expect(request.reference.arguments).toEqual(["named reference", "-w"]);
-  expect(request.reference.max_age).toBe("720h");
-  expect((screen.getByLabelText("Reference Name") as HTMLInputElement).value).toBe("mllp-basic-auth");
-  expect(screen.queryByText(/^Written to /)).toBeNull();
-  uninstallFacade();
-});
-
-test("a destination prefix is added with Enter, a refused policy claims no identity, and a saved one shows the identity it was written under", async () => {
-  const user = userEvent.setup();
-  let answer: "refuse" | "save" = "refuse";
-  const facade = installFacade({
-    ...readsAnswered,
-    SaveSendPolicy: async (request) =>
-      answer === "refuse"
-        ? { state: "failed", reason: "every approved destination is one CIDR prefix in canonical masked form, such as 127.0.0.0/8 or 10.1.0.0/16" }
-        : { state: "completed", policy: request.policy, policy_file: request.policy_file, identity: WRITTEN },
-  });
-  renderPanel("policy");
-  await screen.findByText("approved-peer");
-  await user.type(screen.getByLabelText("Approved destination prefix"), "third-peer{Enter}");
-  expect(await screen.findByText("third-peer")).toBeTruthy();
-  expect((screen.getByLabelText("Approved destination prefix") as HTMLInputElement).value).toBe("");
-
-  await user.click(screen.getByRole("button", { name: "Save policy" }));
-  expect(await screen.findByText(/canonical masked form/)).toBeTruthy();
-  expect(screen.queryByText(/^Written to /)).toBeNull();
-  // The refused draft is kept for the person to correct.
-  expect(screen.getByText("third-peer")).toBeTruthy();
-
-  answer = "save";
-  await user.click(screen.getByRole("button", { name: "Save policy" }));
-  expect(await screen.findByText("Approved-destination policy saved.")).toBeTruthy();
-  expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
-  const saved = facade.callsTo("SaveSendPolicy")[1]?.args[0] as SendPolicySaveRequest;
-  expect(saved.policy.approved_destinations).toEqual(["approved-peer", "second-peer", "third-peer"]);
-  uninstallFacade();
-});
-
-/** The action the facade records for one a person chose: the authority the
- * review requires of its operator, which the test states from the reviewed
- * table the facade publishes. */
-function reviewedAction(request: ResetActionRequest): ResetActionResult {
-  const authority = vocabularyFixture().reset_operators.find((reviewed) => reviewed.operator === request.operator)?.authority;
-  if (!authority) return { state: "failed", reason: "a reset action names an operator this release did not review" };
+function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
   return {
-    state: "completed",
-    action: {
-      id: request.id,
-      operator: request.operator,
-      authority,
-      instructions: request.instructions,
-      ...(request.operator === "observation_empty" && request.observation ? { observation: request.observation } : {}),
-    },
+    SelectWorkspace: () => folderWithCase(),
+    OpenItemDraft: (request: ItemRequest) =>
+      request.ref.id === ""
+        ? {
+            state: "completed",
+            context: request.context,
+            new: true,
+            draft: { environment: { ...QA_DRAFT.environment!, name: "", address: "", transport: "", classification: "unclassified", server_name: "" } },
+          }
+        : { state: "completed", context: request.context, new: false, ref: request.ref, draft: QA_DRAFT },
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [CREDENTIAL], referring: [] }),
+    ...extra,
   };
 }
 
-// The window offers the reviewed operators the facade publishes and sends the
-// one chosen; the authority recorded beside it is the one the facade decides,
-// never one the window picks.
-test("a reset action records the authority the facade decides for its operator", async () => {
+async function openEnvironments(user: User, facade: FacadeStub, items: CatalogItem[] = [QA, UNCLASSIFIED]) {
+  facade.reply({
+    ListCatalog: (query) =>
+      query.kind === "environment"
+        ? { state: items.length ? "completed" : "empty", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } }
+        : catalogOfListing(query, facade),
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await goTo(user, "Environments");
+}
+
+async function openQA(user: User, facade: FacadeStub) {
+  await openEnvironments(user, facade);
+  const table = await page().findByRole("table", { name: "Environments" });
+  await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
+  await page().findByRole("heading", { name: "Scheduling QA" });
+  await page().findByText("peer-under-test:2575");
+}
+
+test("the environments list shows saved values sorted by name, and an unknown classification stays Not classified", async () => {
   const user = userEvent.setup();
-  const facade = installFacade({
-    ...readsAnswered,
-    ReviewResetAction: async () => ({
-      state: "completed",
-      action: { id: "step-3", operator: "endpoint_quiet", authority: "connect_approved_target", instructions: "Confirm the receiver is quiet." },
+  const { facade } = await renderApp(handlers());
+  await openEnvironments(user, facade);
+  const table = await page().findByRole("table", { name: "Environments" });
+  const rows = Array.from(table.querySelectorAll("tbody tr[data-row-id]")).map((row) => Array.from(row.querySelectorAll("td,th")).map((cell) => cell.textContent));
+  expect(rows).toEqual([
+    ["Local fixture", "second-peer:2576", "Not classified", "—"],
+    ["Scheduling QA", "peer-under-test:2575", "Nonproduction", "—"],
+  ]);
+  // Opening the page connects to nothing and has no inputs.
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(page().queryAllByRole("textbox")).toHaveLength(0);
+});
+
+test("with no environments the page offers Add environment", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(handlers());
+  await openEnvironments(user, facade, []);
+  expect(await page().findByText("No environments")).toBeTruthy();
+  expect(page().getByRole("button", { name: "Add environment" })).toBeTruthy();
+});
+
+test("Add environment opens with Not classified and no transport chosen, and Edit starts from the saved values", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({
+      SaveItem: (request: SaveItemRequest) =>
+        request.draft.environment?.transport
+          ? { state: "completed", context: request.context, outcome: "saved", saved: { kind: "environment", id: "env-new", revision: "rev-1" }, replayed: false, problems: [] }
+          : { state: "failed", context: request.context, outcome: "invalid", replayed: false, problems: [{ field: "transport", problem: "Choose a transport" }] },
     }),
-    SaveResetPlan: async (request) => ({ state: "completed", plan: request.plan, plan_file: request.plan_file, identity: WRITTEN }),
-  });
-  renderPanel("reset");
-  await screen.findByText("Confirm patient database is wiped.");
-  const operator = screen.getByLabelText("Reviewed Operator") as HTMLSelectElement;
-  expect(Array.from(operator.options).map((option) => option.value)).toEqual(
-    vocabularyFixture().reset_operators.map((reviewed) => reviewed.operator),
   );
-  await user.selectOptions(operator, "endpoint_quiet");
-  await user.type(screen.getByLabelText("Action ID"), "step-3");
-  await user.type(screen.getByLabelText("Reset instructions"), "Confirm the receiver is quiet.");
-  await user.click(screen.getByRole("button", { name: "Add action" }));
-  const [chosen] = facade.oneCall("ReviewResetAction");
-  expect(chosen).toEqual({ id: "step-3", operator: "endpoint_quiet", instructions: "Confirm the receiver is quiet.", observation: "" });
-  expect(await screen.findByText("Authority: connect_approved_target")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Save plan" }));
-  await waitFor(() => expect(facade.callsTo("SaveResetPlan")).toHaveLength(1));
-  const [request] = facade.oneCall("SaveResetPlan");
-  expect(request.plan.actions.at(-1)).toEqual({
-    id: "step-3",
-    operator: "endpoint_quiet",
-    authority: "connect_approved_target",
-    instructions: "Confirm the receiver is quiet.",
-  });
+  await openEnvironments(user, facade);
+  await user.click(await page().findByRole("button", { name: "Add environment" }));
+  const sheet = await screen.findByRole("dialog", { name: "Add environment" });
+  await waitFor(() => expect((within(sheet).getByRole("combobox", { name: "Classification" }) as HTMLSelectElement).value).toBe("unclassified"));
+  expect(within(sheet).getAllByRole("radio").every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+  // A new environment asks for no TLS files or connection settings.
+  expect(within(sheet).queryByText("CA certificate")).toBeNull();
+  await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Nightly");
+  await user.type(within(sheet).getByRole("textbox", { name: "Host" }), "third-peer");
+  await user.type(within(sheet).getByRole("textbox", { name: "Port" }), "2577");
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  expect(await within(sheet).findByRole("alert")).toHaveProperty("textContent", "Choose a transport");
+  expect((within(sheet).getByRole("textbox", { name: "Host" }) as HTMLInputElement).value).toBe("third-peer");
+  await user.click(within(sheet).getByRole("radio", { name: "TCP/MLLP" }));
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  const saved = facade.callsTo("SaveItem")[1]!.args[0] as SaveItemRequest;
+  expect(saved.item).toBeUndefined();
+  expect(saved.draft.name).toBe("Nightly");
+  expect(saved.draft.environment).toMatchObject({ address: "third-peer:2577", transport: "plain", classification: "unclassified" });
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
 
-  // An operator the facade refuses adds nothing and says why.
-  const listed = screen.getAllByText(/^Authority: /).length;
-  facade.reply({ ReviewResetAction: async () => ({ state: "failed", reason: "a reset action names an operator this release did not review" }) });
-  await user.type(screen.getByLabelText("Action ID"), "step-4");
-  await user.type(screen.getByLabelText("Reset instructions"), "Wipe it.");
-  await user.click(screen.getByRole("button", { name: "Add action" }));
-  expect(await screen.findByText("a reset action names an operator this release did not review")).toBeTruthy();
-  expect(screen.getAllByText(/^Authority: /)).toHaveLength(listed);
-  uninstallFacade();
+  // Edit starts from what is saved, and shows TLS values only for TLS.
+  facade.reply({ ListCatalog: (query) => (query.kind === "environment" ? { state: "completed", context: query.context, page: { items: [QA], total: 1, snapshot: "s", recorded: true, incomplete: [] } } : catalogOfListing(query, facade)) });
+  await goTo(user, "Environments");
+  const table = await page().findByRole("table", { name: "Environments" });
+  await user.click(table.querySelector<HTMLElement>('[data-row-id="env-qa"]')!);
+  await page().findByText("peer-under-test:2575");
+  await user.click(within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  const edit = await screen.findByRole("dialog", { name: "Edit connection" });
+  expect((within(edit).getByRole("textbox", { name: "Host" }) as HTMLInputElement).value).toBe("peer-under-test");
+  expect((within(edit).getByRole("radio", { name: "TLS" }) as HTMLInputElement).checked).toBe(true);
+  expect((within(edit).getByRole("textbox", { name: "Server name" }) as HTMLInputElement).value).toBe("peer-under-test");
+  await user.click(within(edit).getByRole("radio", { name: "TCP/MLLP" }));
+  expect(within(edit).queryByRole("textbox", { name: "Server name" })).toBeNull();
 });
 
-test("a saved reset plan shows the identity it was written under", async () => {
+test("Test connection checks the saved version and shows a dated result, not a live connection", async () => {
   const user = userEvent.setup();
-  const facade = installFacade({
-    ...readsAnswered,
-    ReviewResetAction: async (request) => reviewedAction(request),
-    SaveResetPlan: async (request) => ({ state: "completed", plan: request.plan, plan_file: request.plan_file, identity: WRITTEN }),
-  });
-  renderPanel("reset");
-  await screen.findByText("Confirm patient database is wiped.");
-  await user.type(screen.getByLabelText("Action ID"), "step-3");
-  await user.type(screen.getByLabelText("Reset instructions"), "Confirm the receiver is stopped.");
-  await user.click(screen.getByRole("button", { name: "Add action" }));
-  await user.click(screen.getByRole("button", { name: "Save plan" }));
-  expect(await screen.findByText("Fixture reset plan saved.")).toBeTruthy();
-  expect(screen.getByText(WRITTEN, { selector: "code" })).toBeTruthy();
-  expect(screen.getByText("reset-plan.json", { selector: "code" })).toBeTruthy();
-  expect(facade.callsTo("SaveResetPlan")).toHaveLength(1);
-  uninstallFacade();
-});
-
-// An action the facade did not complete says which of the six states it
-// answered, with its word and shape, and not only its reason: a busy window, a
-// cancelled check and an account without permission are not failures.
-test("an action that did not complete says which state it answered as well as why", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade(readsAnswered);
-  const indicators = indicatorTable();
-  render(
-    <IndicatorsContext.Provider value={indicators}>
-      <EnvironmentPanel
-        workspace={WORKSPACE_ROOT}
-        targetFile="targets/default.json"
-        secretsFile="secrets.json"
-        policyFile="send-policy.json"
-        planFile="reset-plan.json"
-        initialTab="target"
-      />
-    </IndicatorsContext.Provider>,
+  const { facade } = await renderApp(
+    handlers({
+      CheckEnvironment: (request) => ({
+        state: "completed",
+        context: request.context,
+        ref: request.ref,
+        checked_at: "2026-01-01T12:14:00Z",
+        report: { name: "Scheduling-QA", classification: "nonproduction", peer: "peer-under-test:2575", outcome: "reachable", phase: "complete", tls_version: "TLS 1.3", unsolicited: 0 },
+      }),
+    }),
   );
-  const check = await screen.findByRole("button", { name: /Test connection/i });
-  await waitFor(() => expect((check as HTMLButtonElement).disabled).toBe(false));
-  const states: State[] = ["empty", "busy", "cancelled", "permission_denied", "failed"];
-  for (const state of states) {
-    facade.reply({ CheckTarget: async () => ({ state, reason: `the check answered ${state}` }) });
-    await user.click(check);
-    const status = (await screen.findByText(`the check answered ${state}`)).closest("p");
-    expect(status?.className).toBe(`status status-${state}`);
-    expect(within(status as HTMLElement).getByText(indicators.get(state)?.label ?? "")).toBeTruthy();
-  }
-  uninstallFacade();
+  await openQA(user, facade);
+  expect(page().getByText("Not checked")).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Test connection" }));
+  const sheet = await screen.findByRole("dialog", { name: "Test connection" });
+  expect(within(sheet).getByText("Connects to peer-under-test:2575; no messages are sent.")).toBeTruthy();
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  await user.click(within(sheet).getByRole("button", { name: "Test connection" }));
+  expect(facade.oneCall("CheckEnvironment")[0]).toMatchObject({ ref: { kind: "environment", id: "env-qa", revision: "rev-1" } });
+  const shown = await page().findByRole("status");
+  expect(shown.textContent).toMatch(/^Reachable · TLS 1\.3 · /);
+  expect(page().queryByText(/Connected/)).toBeNull();
 });
 
-test("focus returns to the control that started a save once its refusal answers, after the disabled form took it", async () => {
+test("Check destination evaluates the saved allowed ranges and shows the actual allow or refuse reason", async () => {
   const user = userEvent.setup();
-  const facade = installFacade(readsAnswered);
-  const saving = facade.park("SaveSecretReference");
-  renderPanel("secrets");
-  await user.click(await screen.findByRole("button", { name: "Edit mllp-basic-auth" }));
-  const form = within(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" }));
-  const address = form.getByLabelText("Target Address Constraint") as HTMLInputElement;
-  await user.click(address);
-  await user.keyboard("{Control>}a{/Control}no-port{Enter}");
-  await waitFor(() => expect(address.disabled).toBe(true));
-  // A browser moves focus off a control it disables; jsdom neither does that
-  // nor blurs a disabled control, so the test does what the browser does.
-  address.disabled = false;
-  address.blur();
-  address.disabled = true;
-  expect(document.activeElement).toBe(document.body);
-  saving.resolve({ state: "failed", reason: "reference address: must be an explicit host and numeric port" });
-  expect(await screen.findByText("reference address: must be an explicit host and numeric port")).toBeTruthy();
-  await waitFor(() => expect(document.activeElement).toBe(address));
-  // The person keeps typing where they were.
-  await user.keyboard("{Control>}a{/Control}peer-under-test");
-  expect(address.value).toBe("peer-under-test");
-  uninstallFacade();
+  const { facade } = await renderApp(
+    handlers({
+      CheckEnvironmentDestination: () => ({
+        state: "completed",
+        decision: {
+          schema: "readmit-send-decision/v1",
+          allowed: false,
+          reason: "unapproved_destination",
+          address: "fourth-peer",
+          classification: "nonproduction",
+          explicit_send: true,
+          policy_selected: true,
+          approved_destinations: ["peer-range-a"],
+          resolved_addresses: [],
+          decided_at: "2026-01-01T12:00:00Z",
+        },
+      }),
+    }),
+  );
+  await openQA(user, facade);
+  await user.click(page().getByRole("button", { name: "More environment actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Check destination…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Check destination" });
+  await user.type(within(sheet).getByRole("textbox", { name: "Address" }), "fourth-peer");
+  await user.click(within(sheet).getByRole("button", { name: "Check" }));
+  expect(facade.oneCall("CheckEnvironmentDestination")[0]).toMatchObject({ ref: { id: "env-qa" }, address: "fourth-peer", classification: "nonproduction" });
+  expect((await within(sheet).findByRole("status")).textContent).toBe("Refused · Outside every allowed range");
+  // Checking a destination is not a connection check and saves nothing.
+  expect(facade.callsTo("CheckEnvironment")).toHaveLength(0);
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
-test("naming another secrets document while an edit is open closes the edit where the person is typing, and every keystroke lands", async () => {
+async function openCredentials(user: User, facade: FacadeStub) {
+  await openQA(user, facade);
+  await user.click(page().getByRole("button", { name: "More environment actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Credentials" }));
+  return page().findByRole("table", { name: "Credentials" });
+}
+
+test("Credentials lists name, purpose, store and rotation without any secret value or argument", async () => {
   const user = userEvent.setup();
-  const facade = installFacade(readsAnswered);
-  renderPanel("secrets");
-  await user.click(await screen.findByRole("button", { name: "Edit mllp-basic-auth" }));
-  expect(screen.getByRole("form", { name: "Edit credential reference mllp-basic-auth" })).toBeTruthy();
-  const file = screen.getByLabelText("Secrets Document File") as HTMLInputElement;
-  await user.click(file);
-  await user.type(file, ".bak");
-  expect(file.value).toBe("secrets.json.bak");
-  expect(document.activeElement).toBe(file);
-  expect(screen.queryByRole("form", { name: /Edit credential reference/ })).toBeNull();
-  await waitFor(() => expect(facade.callsTo("ReadSecrets").at(-1)?.args).toEqual([WORKSPACE_ROOT, "secrets.json.bak"]));
-  uninstallFacade();
+  const { facade } = await renderApp(handlers());
+  const table = await openCredentials(user, facade);
+  const row = table.querySelector('[data-row-id="qa-endpoint"]')!;
+  expect(Array.from(row.querySelectorAll("td,th")).map((cell) => cell.textContent).slice(0, 4)).toEqual(["qa-endpoint", "MLLP endpoint", "OS keychain", "Not declared"]);
+  expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["Name", "Purpose", "Store", "Rotation", ""]);
+  expect(page().queryByText(/•|\*\*\*/)).toBeNull();
 });
 
-test("a secrets document that cannot be read says why instead of showing the references of the one read before it", async () => {
+test("Edit credential keeps its arguments unless Replace arguments is turned on", async () => {
   const user = userEvent.setup();
-  installFacade({
-    ...readsAnswered,
-    ReadSecrets: async (_workspace, file) =>
-      file === "secrets.json" ? defaultSecretsResult() : { state: "failed", reason: "invalid secret reference document" },
-  });
-  renderPanel("secrets");
-  expect(await screen.findByText("mllp-basic-auth")).toBeTruthy();
-  const file = screen.getByLabelText("Secrets Document File");
-  await user.clear(file);
-  await user.type(file, "notes.json");
-  expect(await screen.findByText("invalid secret reference document")).toBeTruthy();
-  expect(screen.queryByText("mllp-basic-auth")).toBeNull();
-  expect(screen.queryByRole("button", { name: "Edit mllp-basic-auth" })).toBeNull();
-  uninstallFacade();
+  const { facade } = await renderApp(handlers({ SaveCredential: (request) => ({ state: "completed", context: request.context, credentials: [CREDENTIAL], referring: [] }) }));
+  const table = await openCredentials(user, facade);
+  await user.click(within(table).getByRole("button", { name: "More actions for qa-endpoint" }));
+  await user.click(screen.getByRole("menuitem", { name: "Edit…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Edit credential" });
+  expect((within(sheet).getByRole("textbox", { name: "Name" }) as HTMLInputElement).disabled).toBe(true);
+  const replace = within(sheet).getByRole("checkbox", { name: "Replace arguments (2 stored)" }) as HTMLInputElement;
+  expect(replace.checked).toBe(false);
+  expect(within(sheet).queryByRole("textbox", { name: "Argument 1" })).toBeNull();
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  const kept = facade.oneCall("SaveCredential")[0];
+  expect(kept).toMatchObject({ name: "qa-endpoint", update: true, replace_arguments: false });
+  expect(kept).not.toHaveProperty("arguments");
+
+  await user.click(within(table).getByRole("button", { name: "More actions for qa-endpoint" }));
+  await user.click(screen.getByRole("menuitem", { name: "Edit…" }));
+  const again = await screen.findByRole("dialog", { name: "Edit credential" });
+  await user.click(within(again).getByRole("checkbox", { name: /Replace arguments/ }));
+  await user.type(within(again).getByRole("textbox", { name: "Argument 1" }), "--profile");
+  await user.click(within(again).getByRole("button", { name: "Save" }));
+  expect(facade.callsTo("SaveCredential")[1]!.args[0]).toMatchObject({ replace_arguments: true, arguments: ["--profile"] });
 });
 
-test("a reference that declares no locator arguments is shown and edited, and a bound reference the document does not list stays visible", async () => {
+test("Check reference resolves the locator and shows only whether it resolved", async () => {
   const user = userEvent.setup();
-  const secrets = defaultSecretsResult();
-  const reference = secrets.document?.references[0];
-  if (!secrets.document || !reference) throw new Error("fixture secret missing");
-  // A document may omit the member; the facade then carries no list at all.
-  secrets.document.references[0] = { ...reference, arguments: null as unknown as string[] };
-  const target = defaultTargetResult();
-  if (!target.target) throw new Error("fixture target missing");
-  target.target.credential = { secrets_file: `${WORKSPACE_ROOT}/secrets.json`, reference: "unlisted-reference" };
-  installFacade({ ...readsAnswered, ReadSecrets: async () => secrets, ReadTarget: async () => target });
-  renderPanel("target");
-  const bound = (await screen.findByLabelText("Credential Reference")) as HTMLSelectElement;
-  await waitFor(() => expect(bound.selectedOptions[0]?.textContent).toBe("unlisted-reference (not listed in secrets.json)"));
-
-  await user.click(screen.getByRole("button", { name: "Credential References" }));
-  const row = within((await screen.findByText("mllp-basic-auth")).closest("tr") as HTMLElement);
-  expect(row.getByText(/\(0 locator arguments\)/)).toBeTruthy();
-  await user.click(row.getByRole("button", { name: "Edit mllp-basic-auth" }));
-  expect(screen.getByLabelText("Replace the 0 registered locator arguments")).toBeTruthy();
-  uninstallFacade();
+  const { facade } = await renderApp(handlers({ CheckCredential: (request) => ({ state: "completed", context: request.context, name: request.name, resolved: true }) }));
+  const table = await openCredentials(user, facade);
+  await user.click(within(table).getByRole("button", { name: "More actions for qa-endpoint" }));
+  await user.click(screen.getByRole("menuitem", { name: "Check reference" }));
+  expect(facade.oneCall("CheckCredential")[0]).toMatchObject({ name: "qa-endpoint" });
+  expect(await within(table).findByText("Resolved")).toBeTruthy();
 });
 
-test("a target bound to a reference in another secrets document says so rather than showing the loaded document's reference of that name", async () => {
-  const target = defaultTargetResult();
-  if (!target.target) throw new Error("fixture target missing");
-  target.target.credential = { secrets_file: "other-secrets.json", reference: "mllp-basic-auth" };
+test("Record rotation records the new generation after the reference resolves", async () => {
   const user = userEvent.setup();
-  let saved: unknown;
-  installFacade({ ...readsAnswered, ReadTarget: async () => target, SaveTarget: async (request) => ((saved = request), target) });
-  renderPanel("target");
-  const bound = (await screen.findByLabelText("Credential Reference")) as HTMLSelectElement;
-  await waitFor(() => expect(bound.selectedOptions[0]?.textContent).toBe("mllp-basic-auth (bound in other-secrets.json)"));
-  // The loaded document's reference of the same name is still a choice of its own.
-  await user.selectOptions(bound, "mllp-basic-auth (mllp-endpoint · os-keychain)");
-  await user.click(screen.getByRole("button", { name: "Save target" }));
-  expect(saved).toMatchObject({ target: { credential: { secrets_file: `${WORKSPACE_ROOT}/secrets.json`, reference: "mllp-basic-auth" } } });
-  uninstallFacade();
+  const { facade } = await renderApp(
+    handlers({ RecordCredentialRotation: (request) => ({ state: "completed", context: request.context, credentials: [{ ...CREDENTIAL, generation: 2, rotation: "current" }], referring: [] }) }),
+  );
+  const table = await openCredentials(user, facade);
+  await user.click(within(table).getByRole("button", { name: "More actions for qa-endpoint" }));
+  await user.click(screen.getByRole("menuitem", { name: "Record rotation" }));
+  expect(facade.oneCall("RecordCredentialRotation")[0]).toMatchObject({ name: "qa-endpoint" });
+  await waitFor(() => expect(table.querySelector('[data-row-id="qa-endpoint"]')!.textContent).toContain("Current"));
 });
 
-test.each([
-  {
-    tab: "policy" as const,
-    fileLabel: "Policy File",
-    oldContent: "approved-peer",
-    refusal: "invalid send policy document",
-    save: "Save policy",
-    method: "SaveSendPolicy" as const,
-    fresh: "New send policy",
-  },
-  {
-    tab: "reset" as const,
-    fileLabel: "Plan File",
-    oldContent: "Confirm patient database is wiped.",
-    refusal: "invalid fixture reset plan",
-    save: "Save plan",
-    method: "SaveResetPlan" as const,
-    fresh: "New reset plan",
-  },
-])("a failed $tab read clears the prior document and cannot save it to the new file", async ({ tab, fileLabel, oldContent, refusal, save, method, fresh }) => {
+test("Remove reference names the environments that present it and removes nothing", async () => {
   const user = userEvent.setup();
-  const facade = installFacade({
-    ...readsAnswered,
-    ReadSendPolicy: async (_workspace, file) => file === "send-policy.json" ? defaultSendPolicyResult() : { state: "failed", reason: "invalid send policy document" },
-    ReadResetPlan: async (_workspace, file) => file === "reset-plan.json" ? defaultResetPlanResult() : { state: "failed", reason: "invalid fixture reset plan" },
-  });
-  renderPanel(tab);
-  expect(await screen.findByText(oldContent)).toBeTruthy();
-  await user.clear(screen.getByLabelText(fileLabel));
-  await user.type(screen.getByLabelText(fileLabel), "unreadable.json");
-  expect(await screen.findByText(refusal)).toBeTruthy();
-  expect(screen.queryByText(oldContent)).toBeNull();
-  expect((screen.getByRole("button", { name: save }) as HTMLButtonElement).disabled).toBe(true);
-  expect(facade.callsTo(method)).toHaveLength(0);
-  expect(screen.getByRole("button", { name: fresh })).toBeTruthy();
-  uninstallFacade();
+  const { facade } = await renderApp(
+    handlers({
+      RemoveCredential: (request) => ({ state: "failed", context: request.context, reason: "in use", credentials: [CREDENTIAL], referring: [{ ref: QA.ref, name: "Scheduling QA" }] }),
+    }),
+  );
+  const table = await openCredentials(user, facade);
+  await user.click(within(table).getByRole("button", { name: "More actions for qa-endpoint" }));
+  await user.click(screen.getByRole("menuitem", { name: "Remove reference…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Remove reference" });
+  expect(within(sheet).getByText("Removes the reference only; the secret stays in its store.")).toBeTruthy();
+  await user.click(within(sheet).getByRole("button", { name: "Remove" }));
+  expect((await within(sheet).findByRole("alert")).textContent).toBe("Used by Scheduling QA.");
+  expect(table.querySelector('[data-row-id="qa-endpoint"]')).toBeTruthy();
 });
 
-test.each(["policy", "reset"] as const)("a retained %s draft cannot bypass a failed read of the named file", async (tab) => {
-  const policy = defaultSendPolicyResult().policy;
-  const plan = defaultResetPlanResult().plan;
-  if (!policy || !plan) throw new Error("fixture document missing");
-  const facade = installFacade({
-    ...readsAnswered,
-    ReadSendPolicy: async () => ({ state: "failed", reason: "policy file is unreadable" }),
-    ReadResetPlan: async () => ({ state: "failed", reason: "plan file is unreadable" }),
-  });
-  render(<EnvironmentPanel
-    workspace={WORKSPACE_ROOT}
-    initialTab={tab}
-    drafts={[{
-      id: "retained-draft",
-      kind: tab === "policy" ? "environment/policy" : "environment/reset",
-      workspace: WORKSPACE_ROOT,
-      case: "",
-      identity: "",
-      content_schema: tab === "policy" ? "readmit-send-policy-draft/v1" : "readmit-reset-plan-draft/v1",
-      content: tab === "policy" ? policy : plan,
-    }]}
-  />);
-  expect(await screen.findByText(tab === "policy" ? "policy file is unreadable" : "plan file is unreadable")).toBeTruthy();
-  expect(screen.queryByText(tab === "policy" ? "approved-peer" : "Confirm patient database is wiped.")).toBeNull();
-  const save = screen.getByRole("button", { name: tab === "policy" ? "Save policy" : "Save plan" }) as HTMLButtonElement;
-  expect(save.disabled).toBe(true);
-  expect(facade.callsTo(tab === "policy" ? "SaveSendPolicy" : "SaveResetPlan")).toHaveLength(0);
-  uninstallFacade();
+test("Remove environment names the tests and suites that still use it and removes nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({ RemoveItem: (request) => ({ state: "failed", context: request.context, reason: "in use", referring: [{ ref: { kind: "test", id: "t1" }, name: "Reschedule keeps one appointment" }] }) }),
+  );
+  await openQA(user, facade);
+  await user.click(page().getByRole("button", { name: "More environment actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Remove…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Remove environment" });
+  await user.click(within(sheet).getByRole("button", { name: "Remove" }));
+  expect(facade.oneCall("RemoveItem")[0]).toMatchObject({ ref: QA.ref });
+  expect((await within(sheet).findByRole("alert")).textContent).toBe("Used by Reschedule keeps one appointment. Choose another environment there first.");
+  expect(page().getByRole("heading", { name: "Scheduling QA" })).toBeTruthy();
+});
+
+test("A Check empty observation action chooses one of the project's receiver snapshots", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({
+      ListReceiverSnapshots: (request) => ({ state: "completed", context: request.context, snapshots: [{ entry: "receiver-ledger.json" }] }),
+      SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: QA.ref, replayed: false, problems: [] }),
+    }),
+  );
+  await openQA(user, facade);
+  await user.click(within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Edit" }));
+  const sheet = await screen.findByRole("dialog", { name: "Edit reset" });
+  expect((within(sheet).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value).toBe("Empty appointments");
+  await user.click(within(sheet).getByRole("button", { name: "Add action" }));
+  await user.type(within(sheet).getByRole("textbox", { name: "Name of action 2" }), "Ledger is empty");
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Type of action 2" }), "Check empty observation");
+  await user.selectOptions(await within(sheet).findByRole("combobox", { name: "Observation of action 2" }), "receiver-ledger.json");
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  const saved = facade.oneCall("SaveItem")[0] as SaveItemRequest;
+  expect(saved.item).toBe("env-qa");
+  expect(saved.draft.reset?.actions).toEqual([
+    { id: "clear-ledger", operator: "operator_confirms", authority: "none", instructions: "Empty the appointment ledger" },
+    { id: "", operator: "observation_empty", authority: "read_declared_file", instructions: "", observation: "receiver-ledger.json" },
+  ]);
+  expect(saved.draft.links?.action_names).toEqual(["Clear ledger", "Ledger is empty"]);
+  // Editing the plan ran nothing.
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+});
+
+test("Reset reviews the exact saved actions, needs each manual step confirmed and reports what ran", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({
+      PrepareAction: (request) => ({
+        state: "completed",
+        context: request.context,
+        review: {
+          token: "review-token",
+          action: "environment.reset",
+          consent: "reset",
+          items: [QA],
+          destination: { name: "Scheduling QA", classification: "nonproduction" },
+          requirements: ["confirmations"],
+          ready: true,
+          reset: { target: "Scheduling QA", name: "Empty appointments", actions: [{ id: "clear-ledger", name: "Clear ledger", type: "operator_confirms", instructions: "Empty the appointment ledger", effect: "" }] },
+        },
+      }),
+      ExecuteReviewedAction: (request) => ({
+        state: "completed",
+        context: request.context,
+        outcome: "completed",
+        replayed: false,
+        reset: {
+          output: "reset-outcome-001.json",
+          result: {
+            schema: "readmit-reset-outcome/v1",
+            state: "passed",
+            outcome: "confirmed",
+            reason: "every_action_confirmed",
+            environment: "Scheduling-QA",
+            classification: "nonproduction",
+            plan_sha256: "0",
+            actions: [{ id: "clear-ledger", operator: "operator_confirms", authority: "none", outcome: "confirmed", reason: "operator_confirmed" }],
+            attempted_at: "2026-01-01T12:00:00Z",
+          },
+        },
+      }),
+    }),
+  );
+  await openQA(user, facade);
+  await user.click(within(page().getByRole("region", { name: "Reset" })).getByRole("button", { name: "Reset" }));
+  const sheet = await screen.findByRole("dialog", { name: "Reset" });
+  expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "environment.reset", items: [QA.ref] });
+  const final = await within(sheet).findByRole("button", { name: "Reset" });
+  expect((final as HTMLButtonElement).disabled).toBe(true);
+  await user.click(within(sheet).getByRole("checkbox", { name: "Done" }));
+  expect((final as HTMLButtonElement).disabled).toBe(false);
+  await user.click(final);
+  expect(facade.oneCall("ExecuteReviewedAction")[0]).toMatchObject({ token: "review-token", decisions: { confirmed: ["clear-ledger"] } });
+  const done = await screen.findByRole("list", { name: "Reset results" });
+  expect(done.textContent).toBe("Clear ledger · Done");
+  expect(WORKSPACE_ROOT).toBeTruthy();
+});
+
+test("Scan configured files lists the exact files before it scans", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({
+      PrepareAction: (request) => ({
+        state: "completed",
+        context: request.context,
+        review: { token: "scan-token", action: "secret.scan", consent: "scan", items: [QA], destination: {}, requirements: [], ready: true, scan: { files: ["secrets.json", "environment-target.json"] } },
+      }),
+      ExecuteReviewedAction: (request) => ({
+        state: "completed",
+        context: request.context,
+        outcome: "completed",
+        replayed: false,
+        scan: { scan: { status: "complete", files_checked: 2, known_values_checked: 0, unresolved_locations: [], limitations: "" }, skipped: 0, files: ["secrets.json", "environment-target.json"] },
+      }),
+    }),
+  );
+  await openCredentials(user, facade);
+  await user.click(page().getByRole("button", { name: "More credential actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Scan configured files…" }));
+  const sheet = await screen.findByRole("dialog", { name: "Scan configured files" });
+  const files = await within(sheet).findByRole("list", { name: "Files to scan" });
+  expect(within(files).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["secrets.json", "environment-target.json"]);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+  await user.click(within(sheet).getByRole("button", { name: "Scan" }));
+  expect(facade.oneCall("ExecuteReviewedAction")[0]).toMatchObject({ token: "scan-token" });
+  expect((await screen.findByRole("status")).textContent).toBe("2 files checked");
+});
+
+test("Edit connection chooses its CA certificate with the native file picker", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({
+      ChooseEnvironmentFile: (kind) => ({ state: "completed", kind, paths: [`${WORKSPACE_ROOT}/certs/qa-ca.pem`] }),
+      SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: QA.ref, replayed: false, problems: [] }),
+    }),
+  );
+  await openQA(user, facade);
+  await user.click(within(page().getByRole("region", { name: "Connection" })).getByRole("button", { name: "Edit" }));
+  const sheet = await screen.findByRole("dialog", { name: "Edit connection" });
+  await user.click(within(sheet).getByRole("button", { name: "Choose ca certificate" }));
+  expect(facade.oneCall("ChooseEnvironmentFile")).toEqual(["ca-certificate"]);
+  expect(await within(sheet).findByText("qa-ca.pem")).toBeTruthy();
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  expect((facade.oneCall("SaveItem")[0] as SaveItemRequest).draft.environment).toMatchObject({ ca_file: `${WORKSPACE_ROOT}/certs/qa-ca.pem`, transport: "tls" });
 });

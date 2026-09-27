@@ -125,6 +125,7 @@ var facadeNames = names{
 	},
 	vocabularies: map[string][]string{
 		"CorpusPathKind":       {"internal/desktop.corpusFolderPath"},
+		"EnvironmentFileKind":  {"internal/desktop.caCertificateFile"},
 		"ExplanationInputKind": {"internal/desktop.runInput"},
 		"GuideStepId":          {"internal/guide.StepSample"},
 		"GuideTrialId":         {"internal/guide.StepBaseline", "internal/guide.StepPostFix"},

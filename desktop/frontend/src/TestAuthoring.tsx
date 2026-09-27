@@ -20,7 +20,7 @@ import type {
   TestSuggestions,
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
-import { EnvironmentBanner } from "./EnvironmentPanel";
+import { EnvironmentBanner } from "./EnvironmentBanner";
 import "./authoring.css";
 
 /** What each stage asks, in the window's words. The engine names the stage and
@@ -317,11 +317,6 @@ export function TestAuthoring({
             <EnvironmentBanner
               name={chosen?.environment || draft.target}
               classification={chosen?.classification}
-              disclaimer={
-                chosen?.classification === "production" || chosen?.classification === "unclassified"
-                  ? `Refusal: ${chosen.classification} targets reject all sends and resets.`
-                  : "Nonproduction environment: Synthetic test execution only."
-              }
             />
           );
         })()

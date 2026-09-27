@@ -85,6 +85,16 @@ const (
 	ReplaySendAction       ActionID = "replay.send"
 	ExportPacketAction     ActionID = "export.derived-packet"
 	ApprovePromotionAction ActionID = "suite.approve-promotion"
+	// CollectObservationAction reads an observation's source once.
+	CollectObservationAction ActionID = "observation.collect"
+	// ResetEnvironmentAction runs an environment's reset plan.
+	ResetEnvironmentAction ActionID = "environment.reset"
+	// ScanSecretsAction scans the project's configuration files for its
+	// registered credentials.
+	ScanSecretsAction ActionID = "secret.scan"
+	// RemoveAction removes a named environment or observation from its
+	// project.
+	RemoveAction ActionID = "item.remove"
 )
 
 // ItemRef names one object: its kind, its stable application identity, and,
@@ -233,14 +243,25 @@ type RunSummary struct {
 	DeliveryUncertain bool    `json:"delivery_uncertain"`
 }
 
-// EnvironmentSummary is an environment's declared classification and
-// address. LastCheckedAt is null: an explicit check retains no record a
-// reader can find.
+// EnvironmentSummary is an environment's declared classification, address
+// and transport, and the latest explicit check the application retained for
+// it: when it ran, the outcome it reported, and the revision it checked,
+// which is older than the current one after a later save. An environment
+// never checked has no check. Observation is the observation its links
+// name, with that observation's name, and ResetName the name its reset was
+// given.
 type EnvironmentSummary struct {
-	Classification string  `json:"classification"`
-	Address        string  `json:"address"`
-	Transport      string  `json:"transport"`
-	LastCheckedAt  *string `json:"last_checked_at"`
+	Classification    string   `json:"classification"`
+	Address           string   `json:"address"`
+	Transport         string   `json:"transport"`
+	LastCheckedAt     *string  `json:"last_checked_at"`
+	LastCheckOutcome  string   `json:"last_check_outcome,omitzero"`
+	LastCheckRevision string   `json:"last_check_revision,omitzero"`
+	Observation       *ItemRef `json:"observation"`
+	ObservationName   string   `json:"observation_name,omitzero"`
+	HasPolicy         bool     `json:"has_policy"`
+	ResetName         string   `json:"reset_name,omitzero"`
+	ResetActions      int      `json:"reset_actions"`
 }
 
 // ObservationSummary is an observation source's type and its latest completed

@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { FieldState, ResetOperator, TargetClassification, TestBoundary, TestRunnerStatus } from "./bindings";
+import type { FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestRunnerStatus } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -26,6 +26,43 @@ export const RESET_OPERATORS: DisplayMap<ResetOperator> = {
   operator_confirms: "Manual confirmation",
   observation_empty: "Observation empty",
   endpoint_quiet: "Endpoint quiet",
+};
+
+/** Why a proposed send was allowed or refused. */
+export const SEND_POLICY_REASONS: DisplayMap<SendPolicyReason> = {
+  approved: "Inside an allowed range",
+  loopback_destination: "This computer",
+  invalid_policy: "The allowed ranges cannot be read",
+  production_classification: "Production environments never receive sends",
+  unrecorded_classification: "The environment is not classified",
+  policy_required: "No allowed ranges are saved",
+  unresolvable_destination: "The address does not resolve",
+  ambiguous_destination: "The address resolves to more than one destination",
+  unapproved_destination: "Outside every allowed range",
+  send_not_explicit: "Not a send",
+};
+
+/** Why one reset action ended as it did. */
+export const RESET_REASONS: DisplayMap<ResetReason> = {
+  operator_confirmed: "Confirmed",
+  ledger_empty: "Empty",
+  endpoint_reachable: "Endpoint reachable",
+  every_action_confirmed: "Every action confirmed",
+  awaiting_operator_confirmation: "Not confirmed",
+  observation_unreadable: "The observation cannot be read",
+  ledger_not_empty: "Not empty",
+  endpoint_refused_connection: "The endpoint refused the connection",
+  endpoint_not_quiet: "The endpoint is not quiet",
+  endpoint_not_confirmed: "The endpoint was not confirmed",
+  endpoint_configuration_unusable: "The environment's connection cannot be used",
+  plan_refused: "The reset cannot be read",
+  plan_environment_mismatch: "The reset names another environment",
+  production_environment: "Production environments are never reset",
+  environment_not_recorded_nonproduction: "The environment is not recorded as nonproduction",
+  destination_refused: "The destination was refused",
+  operator_approval_names_a_machine_action: "A manual confirmation names an automatic action",
+  earlier_action_stopped_the_reset: "An earlier action stopped the reset",
+  interrupted: "Interrupted",
 };
 
 export const TEST_BOUNDARIES: DisplayMap<TestBoundary> = {
