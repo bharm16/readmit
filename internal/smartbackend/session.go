@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/fhirr4"
+	"github.com/bharm16/readmit/internal/fhirrequest"
 	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -218,6 +219,9 @@ func (c *Client) requestPermission(t networkaction.RuntimeTarget) error {
 	if t.Binding.Plan != c.config.Token.Plan || t.Binding.Project != c.config.Token.Project || t.Binding.Environment != c.config.Token.Environment || t.Binding.Revision != c.config.Token.Revision {
 		return failure(AuthorityChanged)
 	}
+	if t.Contract == networkaction.RuntimeHTTPSchemaV2 {
+		return c.requestPermissionV2(t)
+	}
 	base, _ := url.Parse(c.config.FHIRBase)
 	u, err := url.Parse(t.URL)
 	if err != nil || u.Scheme != base.Scheme || u.Host != base.Host || u.User != nil || u.Fragment != "" || u.RawPath != "" || !strings.HasPrefix(u.Path, base.Path+"/") || strings.Contains(u.Path, "//") || strings.Contains(u.Path, "/../") || strings.Contains(u.Path, "/./") {
@@ -295,4 +299,37 @@ func (s *Session) Execute(ctx context.Context, plan *networkaction.RuntimeHTTPPl
 		s.mu.Unlock()
 	}
 	return networkaction.HTTPResponse{}, receipts, failure(AuthUnavailable)
+}
+
+// ForgetToken permits an explicitly bounded protocol-level retry after a known
+// unauthorized response. It never changes declarations or revives a session.
+func (s *Session) ForgetToken() { s.mu.Lock(); defer s.mu.Unlock(); s.cached = token{} }
+func (c *Client) requestPermissionV2(t networkaction.RuntimeTarget) error {
+	h := t.Headers
+	r, e := fhirrequest.Parse(c.config.FHIRBase, t.Method, t.URL, t.ContentType, t.Body, fhirrequest.Headers{IfMatch: h.IfMatch, IfNoneMatch: h.IfNoneMatch, IfModifiedSince: h.IfModifiedSince, IfNoneExist: h.IfNoneExist, Prefer: h.Prefer})
+	if t.Page != nil {
+		if t.Method != "GET" || len(t.Body) > 0 || !networkaction.ValidDigest(t.Page.FromResponseSHA256) {
+			return failure(ServerUnsupported)
+		}
+		r, e = fhirrequest.Page(c.config.FHIRBase, t.Page.Resource, t.URL)
+	}
+	if e != nil {
+		return failure(ServerUnsupported)
+	}
+	if t.Method == "GET" {
+		if t.Operation != sendpolicy.FHIRSearch && t.Operation != sendpolicy.FHIRMetadata && t.Operation != sendpolicy.ObservationRead {
+			return failure(GrantInsufficient)
+		}
+	} else if t.Operation != sendpolicy.FHIRAction && t.Operation != sendpolicy.SetupAction {
+		return failure(GrantInsufficient)
+	}
+	for _, p := range r.Permissions {
+		if p.Interaction != "r" && p.Interaction != "s" && c.config.Role != "setup" {
+			return failure(GrantInsufficient)
+		}
+		if !strings.Contains(c.permissions[p.Resource]+c.permissions["*"], p.Interaction) {
+			return failure(GrantInsufficient)
+		}
+	}
+	return nil
 }
