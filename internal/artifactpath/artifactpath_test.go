@@ -187,6 +187,7 @@ func TestEvidenceFamilyNamesOneFamilyOrNone(t *testing.T) {
 		{"readmit-case/v1", artifactpath.FamilyCase},
 		{"readmit-case/v5", artifactpath.FamilyCase},
 		{"readmit-run/v2", artifactpath.FamilyRun},
+		{"readmit-sequence-run/v1", artifactpath.FamilySequenceRun},
 		{"readmit-result/v1", artifactpath.FamilyResult},
 		{"readmit-synth/v1", ""},
 		{"readmit-case", ""},
@@ -200,5 +201,31 @@ func TestEvidenceFamilyNamesOneFamilyOrNone(t *testing.T) {
 		if want := c.family != ""; artifactpath.IsEvidenceSchema(c.schema) != want {
 			t.Errorf("IsEvidenceSchema(%q) = %v, want %v", c.schema, !want, want)
 		}
+	}
+}
+
+func TestSequenceEvidenceProtectsUnsealedPayloadsAndAliases(t *testing.T) {
+	root := t.TempDir()
+	sequence := filepath.Join(root, "sequence")
+	if err := os.MkdirAll(filepath.Join(sequence, "payloads"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sequence, "manifest.json"), []byte(`{"schema":"readmit-sequence-run/v1"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(sequence, "new.json"), filepath.Join(sequence, "payloads", "new.bin")} {
+		if _, err := artifactpath.Destination(path); err == nil {
+			t.Fatal("unsealed sequence evidence became writable")
+		}
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(sequence, alias); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := artifactpath.Destination(filepath.Join(alias, "payloads", "new.bin")); err == nil {
+		t.Fatal("sequence alias escaped immutable protection")
+	}
+	if _, err := artifactpath.Destination(filepath.Join(root, "independent")); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -57,6 +57,7 @@
     "docs/connected-transports.md",
     "docs/typed-datasets.md",
     "docs/connected-runtime.md",
+    "docs/connected-lifecycle.md",
     "docs/observation-intervals.md",
     "docs/test-isolation.md",
     "docs/fhir-r4.md",

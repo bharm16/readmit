@@ -25,7 +25,7 @@ func OpenPlan(directory string) (*Plan, error) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}
-	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 && declared.Schema != PlanSchemaV3 {
+	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 && declared.Schema != PlanSchemaV3 && declared.Schema != PhasePlanSchema {
 		return nil, invalid
 	}
 	if !sealed(declared.Schema, files) {
@@ -39,7 +39,7 @@ func sealed(schema string, files map[string][]byte) bool {
 }
 func readPlan(files map[string][]byte) (*Plan, error) {
 	var d PlanDocument
-	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 && d.Schema != PlanSchemaV3 {
+	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 && d.Schema != PlanSchemaV3 && d.Schema != PhasePlanSchema {
 		return nil, invalid
 	}
 	supplied := map[string][]byte{}
@@ -53,7 +53,7 @@ func readPlan(files map[string][]byte) (*Plan, error) {
 		}
 		supplied[receipt.Source.File] = files["dependencies/"+receipt.Source.SHA256]
 	}
-	p, err := Compile(files["test.json"], supplied, d.Generation)
+	p, err := compile(files["test.json"], supplied, d.Generation, d.Schema == PhasePlanSchema)
 	if err != nil {
 		return nil, err
 	}

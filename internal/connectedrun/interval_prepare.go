@@ -24,8 +24,15 @@ type ConfigV2 struct {
 }
 
 func prepareInterval(planPath, configPath string, plan *connectedtest.Plan, raw []byte) (*Prepared, error) {
+	return prepareIntervalMode(planPath, configPath, plan, raw, false)
+}
+func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, raw []byte, sequence bool) (*Prepared, error) {
 	var c ConfigV2
-	if plan.Document().Schema != connectedtest.PlanSchemaV3 || json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil || c.Schema != ConfigSchemaV2 || c.Definition.Schema != ConfigSchema {
+	schema := connectedtest.PlanSchemaV3
+	if sequence {
+		schema = connectedtest.PhasePlanSchema
+	}
+	if plan.Document().Schema != schema || json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil || c.Schema != ConfigSchemaV2 || c.Definition.Schema != ConfigSchema {
 		return nil, invalid
 	}
 	config := c.Definition
@@ -40,7 +47,13 @@ func prepareInterval(planPath, configPath string, plan *connectedtest.Plan, raw 
 		return artifactpath.JoinReference(root, s)
 	}
 	config.Send.Path = anchor(config.Send.Path)
-	transport, err := connectedtransport.Prepare(plan, connectedtransport.Selection{Case: anchor(config.Case), Target: anchor(config.Target), Policy: anchor(config.Policy), Credential: anchor(config.Credential)})
+	selection := connectedtransport.Selection{Case: anchor(config.Case), Target: anchor(config.Target), Policy: anchor(config.Policy), Credential: anchor(config.Credential)}
+	var transport *connectedtransport.Prepared
+	if sequence {
+		transport, err = connectedtransport.PrepareSequence(plan, selection)
+	} else {
+		transport, err = connectedtransport.Prepare(plan, selection)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +61,7 @@ func prepareInterval(planPath, configPath string, plan *connectedtest.Plan, raw 
 	if err != nil {
 		return nil, err
 	}
-	p := &Prepared{intervals: true, plan: plan, transport: transport, send: config.Send, planPath: planPath, configPath: configPath, configRaw: bytes.Clone(raw)}
+	p := &Prepared{sequence: sequence, intervals: true, plan: plan, transport: transport, send: config.Send, planPath: planPath, configPath: configPath, configRaw: bytes.Clone(raw)}
 	doc := plan.Document()
 	files := plan.Files()
 	barriers := 0

@@ -36,13 +36,11 @@ func OpenEvidence(directory string) (Evidence, error) {
 	if err != nil {
 		return Evidence{}, refused
 	}
-	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(ReceiptSchema, files) {
-		return Evidence{}, refused
-	}
 	var r, start Receipt
-	if json.Unmarshal(files["receipt.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || r.Schema != ReceiptSchema || r.ApplicationVerdict != "not-evaluated" {
+	if json.Unmarshal(files["receipt.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (r.Schema != ReceiptSchema && r.Schema != ReceiptSchemaV2) || r.ApplicationVerdict != "not-evaluated" || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(r.Schema, files) {
 		return Evidence{}, refused
 	}
+
 	want := r
 	want.State = "incomplete"
 	want.RunIdentity = ""
@@ -75,7 +73,14 @@ func OpenEvidence(directory string) (Evidence, error) {
 		return Evidence{}, refused
 	}
 	run, err := replay.Open(filepath.Join(directory, "run"))
-	if err != nil || !artifactdir.MatchesSubtree(files, "run", replay.Schema, run.Identity) || run.Identity != r.RunIdentity || run.Manifest.SourceBundleIdentity != r.Binding.Source || run.Manifest.Target.Identity() != env.TargetIdentity || len(run.Events) != len(plan.Document().Order) || transportState(run) != r.State {
+	if err != nil || !artifactdir.MatchesSubtree(files, "run", run.Manifest.Schema, run.Identity) || run.Identity != r.RunIdentity || run.Manifest.SourceBundleIdentity != r.Binding.Source || run.Manifest.Target.Identity() != env.TargetIdentity || len(run.Events) != len(plan.Document().Order) || transportState(run) != r.State {
+		return Evidence{}, refused
+	}
+	expectedRunSchema := replay.Schema
+	if r.Schema == ReceiptSchemaV2 {
+		expectedRunSchema = replay.SequenceSchema
+	}
+	if run.Manifest.Schema != expectedRunSchema {
 		return Evidence{}, refused
 	}
 	target, decodeErr := replay.DecodeTarget(config["target.json"], "")
@@ -83,6 +88,23 @@ func OpenEvidence(directory string) (Evidence, error) {
 		return Evidence{}, refused
 	}
 	expectedNames := []string{"target.json", "policy.json"}
+	if r.Schema == ReceiptSchemaV2 {
+		expectedNames = append(expectedNames, "sequence.json")
+		var sequence struct {
+			Schema      string   `json:"schema"`
+			Order       []string `json:"order"`
+			Occurrences []string `json:"occurrences"`
+		}
+		if json.Unmarshal(config["sequence.json"], &sequence, json.RejectUnknownMembers(true)) != nil || sequence.Schema != ReceiptSchemaV2 || !slices.Equal(sequence.Order, plan.Document().Order) || len(sequence.Occurrences) != len(run.Events) {
+			return Evidence{}, refused
+		}
+		for i, event := range run.Events {
+			if sequence.Occurrences[i] != event.SourceOccurrence {
+				return Evidence{}, refused
+			}
+		}
+	}
+
 	if target.CAFile != "" {
 		expectedNames = append(expectedNames, "authorities.pem")
 	}

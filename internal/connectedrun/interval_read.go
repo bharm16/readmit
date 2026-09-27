@@ -19,28 +19,54 @@ import (
 	"time"
 )
 
-func openIntervals(ctx context.Context, directory string) (Result, error) {
+type Evidence struct {
+	Schema   string
+	Result   Result
+	Identity string
+}
+
+// OpenEvidence couples a verified interval result to exactly the retained bytes
+// that were validated. Ordinary Result serialization carries no hidden seal.
+func OpenEvidence(ctx context.Context, directory string) (Evidence, error) {
 	files, err := artifactdir.Read(directory, intervalFamily.Layout)
 	if err != nil {
-		return Result{}, err
+		return Evidence{}, err
 	}
-	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(SchemaV2, files) {
-		return Result{}, invalid
+	result, err := openIntervalFiles(ctx, directory, files)
+	if err != nil {
+		return Evidence{}, err
 	}
+	return Evidence{Schema: result.Schema, Result: result, Identity: artifactdir.Identity(result.Schema, files)}, nil
+}
+func openIntervals(ctx context.Context, directory string) (Result, error) {
+	e, err := OpenEvidence(ctx, directory)
+	return e.Result, err
+}
+func openIntervalFiles(ctx context.Context, directory string, files map[string][]byte) (Result, error) {
+	var err error
 	var record IntervalRun
 	var start Result
-	if json.Unmarshal(files["manifest.json"], &record, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || record.Schema != SchemaV2 {
+	if json.Unmarshal(files["manifest.json"], &record, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (record.Schema != SchemaV2 && record.Schema != PhaseSchema) || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(record.Schema, files) {
 		return Result{}, invalid
 	}
+	planSchema := connectedtest.PlanSchemaV3
+	transportSchema := connectedtransport.ReceiptSchema
+	runSchema := replay.Schema
+	if record.Schema == PhaseSchema {
+		planSchema = connectedtest.PhasePlanSchema
+		transportSchema = connectedtransport.ReceiptSchemaV2
+		runSchema = replay.SequenceSchema
+	}
+
 	r := record.Summary
-	if r.Schema != SchemaV2 || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {
+	if r.Schema != record.Schema || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {
 		return Result{}, invalid
 	}
 	plan, err := connectedtest.OpenPlan(filepath.Join(directory, "plan"))
-	if err != nil || plan.Identity() != r.Plan || plan.Document().Schema != connectedtest.PlanSchemaV3 || !artifactdir.MatchesSubtree(files, "plan", connectedtest.PlanSchemaV3, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
+	if err != nil || plan.Identity() != r.Plan || plan.Document().Schema != planSchema || !artifactdir.MatchesSubtree(files, "plan", planSchema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return Result{}, invalid
 	}
-	expected := Result{Schema: SchemaV2, Plan: r.Plan, Instance: r.Instance, State: "incomplete", Verdict: assertion.VerdictUndecided, Phase: "arming", StartedAt: r.StartedAt, Observations: map[string]string{}, Armed: map[string]string{}}
+	expected := Result{Schema: record.Schema, Plan: r.Plan, Instance: r.Instance, State: "incomplete", Verdict: assertion.VerdictUndecided, Phase: "arming", StartedAt: r.StartedAt, Observations: map[string]string{}, Armed: map[string]string{}}
 	a, _ := json.Marshal(expected, json.Deterministic(true))
 	b, _ := json.Marshal(start, json.Deterministic(true))
 	if !bytes.Equal(a, b) {
@@ -247,11 +273,11 @@ func openIntervals(ctx context.Context, directory string) (Result, error) {
 		transportEvidence, e := connectedtransport.OpenEvidence(filepath.Join(directory, "transport"))
 		transport := transportEvidence.Receipt
 		encoded, _ := json.Marshal(transport, json.Deterministic(true))
-		if e != nil || !artifactdir.MatchesSubtree(files, "transport", connectedtransport.ReceiptSchema, transportEvidence.Identity) || !bytes.Equal(encoded, files["transport/receipt.json"]) || transport.Binding.Configuration != artifactdir.Identity("readmit-connected-configuration/v1", artifactdir.Subtree(files, "transport/configuration")) || !artifactdir.MatchesSubtree(files, "transport/plan", connectedtest.PlanSchemaV3, artifactdir.Identity(plan.Document().Schema, plan.Files())) || !artifactdir.MatchesSubtree(files, "transport/run", replay.Schema, transport.RunIdentity) || transport.Instance != r.Instance || transport.Binding != intent || transport.RunIdentity != r.Transport || transport.State == "uncertain" && r.State != "uncertain" || finish.State != transport.State {
+		if e != nil || transport.Schema != transportSchema || !artifactdir.MatchesSubtree(files, "transport", transportSchema, transportEvidence.Identity) || !bytes.Equal(encoded, files["transport/receipt.json"]) || transport.Binding.Configuration != artifactdir.Identity("readmit-connected-configuration/v1", artifactdir.Subtree(files, "transport/configuration")) || !artifactdir.MatchesSubtree(files, "transport/plan", planSchema, artifactdir.Identity(plan.Document().Schema, plan.Files())) || !artifactdir.MatchesSubtree(files, "transport/run", runSchema, transport.RunIdentity) || transport.Instance != r.Instance || transport.Binding != intent || transport.RunIdentity != r.Transport || transport.State == "uncertain" && r.State != "uncertain" || finish.State != transport.State {
 			return Result{}, invalid
 		}
 		run, e := replay.Open(filepath.Join(directory, "transport", "run"))
-		if e != nil || !artifactdir.MatchesSubtree(files, "transport/run", replay.Schema, run.Identity) || !withinRunIO(r, run.Manifest.StartedAt, run.Manifest.CompletedAt) || r.SentAt.Before(run.Manifest.CompletedAt) || r.SentAt.After(r.CompletedAt) {
+		if e != nil || !artifactdir.MatchesSubtree(files, "transport/run", runSchema, run.Identity) || !withinRunIO(r, run.Manifest.StartedAt, run.Manifest.CompletedAt) || r.SentAt.Before(run.Manifest.CompletedAt) || r.SentAt.After(r.CompletedAt) {
 			return Result{}, invalid
 		}
 		for _, d := range plan.Document().Test.Datasets {
@@ -326,7 +352,7 @@ func openIntervals(ctx context.Context, directory string) (Result, error) {
 		return Result{}, e
 	}
 	encoded, _ := json.Marshal(evaluated, json.Deterministic(true))
-	if !bytes.Equal(encoded, files["evaluation/result.json"]) || !artifactdir.MatchesSubtree(files, "evaluation/plan", connectedtest.PlanSchemaV3, artifactdir.Identity(plan.Document().Schema, plan.Files())) || dataset.Digest(encoded) != r.Evaluation || evaluated.PlanIdentity != plan.Identity() || evaluated.Execution.Instance != r.Instance || evaluated.Execution.State != r.State || evaluated.Verdict != r.Verdict {
+	if !bytes.Equal(encoded, files["evaluation/result.json"]) || !artifactdir.MatchesSubtree(files, "evaluation/plan", planSchema, artifactdir.Identity(plan.Document().Schema, plan.Files())) || dataset.Digest(encoded) != r.Evaluation || evaluated.PlanIdentity != plan.Identity() || evaluated.Execution.Instance != r.Instance || evaluated.Execution.State != r.State || evaluated.Verdict != r.Verdict {
 		return Result{}, invalid
 	}
 	for id, snapshot := range evidence {

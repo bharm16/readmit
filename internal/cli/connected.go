@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/assertion"
@@ -18,6 +19,21 @@ func connectedCommand() *cobra.Command {
 	prepare := &cobra.Command{Use: "prepare INPUT_DIRECTORY OUTPUT", Short: "Compile local inputs into an immutable plan without connecting", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(2), RunE: func(c *cobra.Command, a []string) error {
 		if !c.Flags().Changed("seed") || !c.Flags().Changed("base-time") {
 			return usage("connected prepare requires explicit --seed and --base-time")
+		}
+		raw, readErr := (artifactdir.Document{MaxBytes: connectedtest.MaxBytes}).Read(filepath.Join(a[0], "test.json"))
+		var head struct {
+			Schema string `json:"schema"`
+		}
+		if readErr == nil && json.Unmarshal(raw, &head) == nil && head.Schema == connectedtest.FlowTestSchema {
+			p, err := connectedtest.PrepareFlowDirectory(a[0], connectedtest.Generation{Seed: seed, BaseTime: base})
+			if err != nil {
+				return refusal(err)
+			}
+			if err = p.Write(c.Context(), a[1]); err != nil {
+				return refusal(err)
+			}
+			_, err = fmt.Fprintln(c.OutOrStdout(), p.Identity())
+			return err
 		}
 		p, err := connectedtest.PrepareDirectory(a[0], connectedtest.Generation{Seed: seed, BaseTime: base})
 		if err != nil {

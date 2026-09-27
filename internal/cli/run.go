@@ -2,8 +2,12 @@ package cli
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/connectedrun"
+	"github.com/bharm16/readmit/internal/testisolation"
 	"path/filepath"
 	"strings"
 	"time"
@@ -17,11 +21,20 @@ import (
 
 func runCommand() *cobra.Command {
 	command := &cobra.Command{Use: "run", Short: "Execute or recover a durable local test run"}
-	var output, deadline string
+	var output, deadline, connectedConfig, connectedInstance string
 	var send, asJSON bool
 	start := &cobra.Command{Use: "start SPEC", Short: "Execute once into a new durable run directory", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
 		if !send || output == "" {
 			return usage("run start requires --send and --output; existing jobs are never resumed")
+		}
+		if connectedConfig != "" {
+			ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
+			if err != nil {
+				return err
+			}
+			defer cancel()
+			cmd.SetContext(ctx)
+			return runConnectedTest(cmd, args[0], connectedConfig, connectedInstance, output, true)
 		}
 		ctx, cancel, err := deadlineContext(cmd.Context(), deadline)
 		if err != nil {
@@ -34,12 +47,56 @@ func runCommand() *cobra.Command {
 		}
 		return printRun(cmd, result, asJSON, err)
 	}}
+	start.Flags().StringVar(&connectedConfig, "connected-config", "", "Explicit connected execution configuration")
+	start.Flags().StringVar(&connectedInstance, "instance", "", "Connected lifecycle instance identifier")
+	start.Flags().StringArray("confirm-setup-step", nil, "Confirm each named manual prerequisite for this execution only")
 	start.Flags().StringVar(&output, "output", "", "New customer-local durable run directory")
 	start.Flags().BoolVar(&send, "send", false, "Explicitly authorize one execution against the test target")
 	start.Flags().StringVar(&deadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")
 	start.Flags().BoolVar(&asJSON, "json", false, "Write one versioned machine-readable summary")
-	var statusJSON, recovery, pinned bool
+	var statusJSON, recovery, pinned, reanalysis bool
 	status := &cobra.Command{Use: "status JOB", Short: "Recover retained evidence read-only; never resend", Annotations: declare(capabilityFree), RunE: func(cmd *cobra.Command, args []string) error {
+		raw, err := (artifactdir.Document{MaxBytes: 4 << 20}).Read(filepath.Join(args[0], "manifest.json"))
+		var head struct {
+			Schema string `json:"schema"`
+		}
+		if err != nil {
+			raw, err = (artifactdir.Document{MaxBytes: 4 << 20}).Read(filepath.Join(args[0], "started.json"))
+		}
+		if err == nil && json.Unmarshal(raw, &head) == nil && head.Schema == connectedrun.FlowSchema {
+			if reanalysis {
+				analysis, err := connectedrun.ReanalyzeFlow(cmd.Context(), args[0])
+				if err != nil {
+					return refusal(err)
+				}
+				if err := writeConnected(cmd, struct {
+					Schema           string                   `json:"schema"`
+					OriginalIdentity string                   `json:"original_identity"`
+					Original         connectedrun.FlowVerdict `json:"original"`
+					Reanalysis       connectedrun.FlowVerdict `json:"reanalysis"`
+				}{analysis.Schema, analysis.OriginalIdentity, analysis.Original, analysis.Reanalysis}); err != nil {
+					return err
+				}
+				return connectedFlowExit(analysis.Result)
+			}
+			if pinned {
+				return usage("connected lifecycle engine and recovery facts are included in its versioned summary")
+			}
+			var result connectedrun.FlowResult
+			var err error
+			if recovery {
+				result, err = connectedrun.InspectFlow(cmd.Context(), args[0])
+			} else {
+				result, err = connectedrun.OpenFlow(cmd.Context(), args[0])
+			}
+			if err != nil {
+				return refusal(err)
+			}
+			return printConnectedFlow(cmd, result)
+		}
+		if reanalysis {
+			return usage("--reanalysis requires a v3 connected lifecycle result")
+		}
 		if pinned {
 			return printEngine(cmd, args[0], statusJSON)
 		}
@@ -58,11 +115,48 @@ func runCommand() *cobra.Command {
 	}}
 	status.Flags().BoolVar(&statusJSON, "json", false, "Write one versioned machine-readable summary")
 	status.Flags().BoolVar(&recovery, "recovery", false, "Report what is known about every occurrence, the lease, and whether a resume would repeat only never-attempted work")
+	status.Flags().BoolVar(&reanalysis, "reanalysis", false, "Re-evaluate retained connected lifecycle evidence with separate original and current verdict provenance")
 	status.Flags().BoolVar(&pinned, "engine", false, "Report the engine build, spec contract and profile the run retained, and whether this build reads them")
-	status.MarkFlagsMutuallyExclusive("engine", "recovery")
-	var resumeOutput, resumeDeadline string
+	status.MarkFlagsMutuallyExclusive("engine", "recovery", "reanalysis")
+	var resumeOutput, resumeDeadline, resumeConfig, resumeInstance string
 	var resumeSend, resumeJSON bool
 	resume := &cobra.Command{Use: "resume JOB SPEC", Short: "Repeat never-attempted work into a new run directory; refuses after any send", Annotations: declareInterruptible(capabilityExecute), RunE: func(cmd *cobra.Command, args []string) error {
+		if resumeConfig != "" {
+			ctx, cancel, err := deadlineContext(cmd.Context(), resumeDeadline)
+			if err != nil {
+				return err
+			}
+			defer cancel()
+			cmd.SetContext(ctx)
+			p, err := connectedrun.PrepareFlow(args[1], resumeConfig, resumeInstance)
+			if err != nil {
+				return refusal(err)
+			}
+			continuation, err := connectedrun.PrepareFlowResume(p, args[0])
+			if err != nil {
+				return refusal(err)
+			}
+			if !resumeSend {
+				if resumeOutput != "" {
+					return usage("resume output requires --send")
+				}
+				return writeConnected(cmd, struct {
+					Prepared  bool   `json:"prepared"`
+					Verdict   string `json:"verdict"`
+					Bindings  any    `json:"bindings"`
+					Isolation any    `json:"isolation"`
+				}{true, "not-evaluated", p.Bindings(), continuation.IsolationReviews()})
+			}
+			if resumeOutput == "" {
+				return usage("connected resume requires a new --output")
+			}
+			steps, _ := cmd.Flags().GetStringArray("confirm-setup-step")
+			result, err := connectedrun.ResumeFlow(cmd.Context(), continuation, resumeOutput, testisolation.Confirmation{Plan: continuation.ConfirmationIdentity(), Instance: resumeInstance, Steps: steps})
+			if err != nil {
+				return refusal(err)
+			}
+			return printConnectedFlow(cmd, result)
+		}
 		if !resumeSend || resumeOutput == "" {
 			return usage("run resume requires --send and a new --output; the existing job is never written")
 		}
@@ -77,6 +171,9 @@ func runCommand() *cobra.Command {
 		}
 		return printResume(cmd, result, resumeJSON, err)
 	}}
+	resume.Flags().StringVar(&resumeConfig, "connected-config", "", "Fresh configuration for a connected lifecycle continuation")
+	resume.Flags().StringVar(&resumeInstance, "instance", "", "Original connected lifecycle instance identifier")
+	resume.Flags().StringArray("confirm-setup-step", nil, "Confirm each named prerequisite anew for this continuation")
 	resume.Flags().StringVar(&resumeOutput, "output", "", "New customer-local durable run directory")
 	resume.Flags().BoolVar(&resumeSend, "send", false, "Explicitly authorize one execution against the test target")
 	resume.Flags().StringVar(&resumeDeadline, "deadline", "", "Stop new sends after this duration; an in-flight delivery is reported uncertain")

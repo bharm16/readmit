@@ -31,6 +31,7 @@ type Credential struct {
 }
 type Selection struct{ Case, Target, Policy, Credential string }
 type Prepared struct {
+	sequence   bool
 	key        secret.Locator
 	plan       *connectedtest.Plan
 	replay     *replay.Plan
@@ -47,10 +48,18 @@ func (p *Prepared) Binding() Binding { return p.binding }
 // network dependency is accepted. A source case must contain the exact compiled
 // stimuli in order; transport does not quietly regenerate or transform them.
 func Prepare(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
-	if plan == nil {
+	return prepare(plan, s, false)
+}
+
+// PrepareSequence is selected only by the v4 lifecycle, never old standalone plans.
+func PrepareSequence(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
+	return prepare(plan, s, true)
+}
+func prepare(plan *connectedtest.Plan, s Selection, sequence bool) (*Prepared, error) {
+	if plan == nil || sequence && plan.Document().Schema != connectedtest.PhasePlanSchema || !sequence && plan.Document().Schema == connectedtest.PhasePlanSchema {
 		return nil, refused
 	}
-	p := &Prepared{plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}
+	p := &Prepared{sequence: sequence, plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}
 	read := func(name, path string) ([]byte, error) {
 		absolute, err := filepath.Abs(path)
 		if err != nil {
@@ -101,7 +110,11 @@ func Prepare(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
 		}
 		ids = append(ids, step.V2.Occurrence)
 	}
-	p.replay, err = replay.PrepareScoped(s.Case, target, replay.Options{Occurrences: ids})
+	if sequence {
+		p.replay, err = replay.PrepareScopedSequence(s.Case, target, replay.Options{Occurrences: ids})
+	} else {
+		p.replay, err = replay.PrepareScoped(s.Case, target, replay.Options{Occurrences: ids})
+	}
 	if err != nil || p.replay.Target().Identity() != env.TargetIdentity || p.replay.Count() != len(ids) {
 		return nil, refused
 	}
@@ -142,6 +155,13 @@ func Prepare(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
 		return nil, refused
 	}
 	// Bind exact configuration, CA/certificate and purpose-specific locator bytes.
+	if sequence {
+		p.retained["sequence.json"], _ = json.Marshal(struct {
+			Schema      string   `json:"schema"`
+			Order       []string `json:"order"`
+			Occurrences []string `json:"occurrences"`
+		}{ReceiptSchemaV2, d.Order, ids}, json.Deterministic(true))
+	}
 	config := artifactdir.Identity("readmit-connected-configuration/v1", p.retained)
 	p.binding = Binding{Plan: plan.Identity(), Configuration: config, Policy: connectedtest.Digest(policyRaw), Credentials: connectedtest.Digest(p.retained["credential.json"]), Source: p.replay.SourceIdentity(), Project: env.Project, Environment: env.ID, Revision: env.Revision, Endpoint: env.Endpoint, Operation: sendpolicy.V2Stimulus}
 	// Also verify the independently loaded authority bytes used by replay.

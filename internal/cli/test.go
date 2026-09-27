@@ -23,7 +23,7 @@ func testCommand() *cobra.Command {
 			if send && output == "" || !send && output != "" {
 				return usage("test requires --send and --output together; omit both for local validation")
 			}
-			if instance != "" && connectedConfig == "" {
+			if (instance != "" || cmd.Flags().Changed("confirm-setup-step")) && connectedConfig == "" {
 				return usage("--instance requires --connected-config")
 			}
 			if connectedConfig != "" {
@@ -76,6 +76,7 @@ func testCommand() *cobra.Command {
 			return nil
 		},
 	}
+	command.Flags().StringArray("confirm-setup-step", nil, "Confirm each named manual prerequisite for this execution only")
 	command.Flags().StringVar(&connectedConfig, "connected-config", "", "Explicit local execution configuration for a versioned connected plan")
 	command.Flags().StringVar(&instance, "instance", "", "New connected execution instance identifier")
 	command.Flags().BoolVar(&send, "send", false, "Explicitly connect and execute; default performs local-only validation")

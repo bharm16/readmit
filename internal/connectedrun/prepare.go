@@ -59,6 +59,9 @@ type sourcePlan struct {
 	grant      Grant
 }
 type Prepared struct {
+	sequence             bool
+	store                *RecoveryStore
+	verify               func() error
 	intervals            bool
 	plan                 *connectedtest.Plan
 	transport            *connectedtransport.Prepared
@@ -214,6 +217,9 @@ func (p *Prepared) Bindings() map[string]networkaction.Binding {
 	return out
 }
 func (p *Prepared) unchanged() error {
+	if p.verify != nil {
+		return p.verify()
+	}
 	raw, err := (artifactdir.Document{MaxBytes: 64 << 10}).Read(p.configPath)
 	if err != nil || !bytes.Equal(raw, p.configRaw) {
 		return invalid

@@ -8,9 +8,10 @@ import "strings"
 // result contract its own — so a family is what protection and dispatch agree
 // on, never a version.
 const (
-	FamilyCase   = "readmit-case/"
-	FamilyRun    = "readmit-run/"
-	FamilyResult = "readmit-result/"
+	FamilyCase        = "readmit-case/"
+	FamilyRun         = "readmit-run/"
+	FamilySequenceRun = "readmit-sequence-run/"
+	FamilyResult      = "readmit-result/"
 )
 
 // EvidenceFamily reports which retained evidence family a manifest schema
@@ -20,7 +21,7 @@ const (
 // re-spelling the list, so adding a family changes protection and dispatch
 // together.
 func EvidenceFamily(schema string) string {
-	for _, prefix := range []string{FamilyCase, FamilyRun, FamilyResult} {
+	for _, prefix := range []string{FamilyCase, FamilyRun, FamilySequenceRun, FamilyResult} {
 		if strings.HasPrefix(schema, prefix) {
 			return prefix
 		}
