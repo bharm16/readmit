@@ -256,3 +256,18 @@ func targetRecord(t Target, ca []byte) TargetRecord {
 }
 
 func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
+
+// DecodeTarget validates a supplied local configuration snapshot and anchors its
+// references without rereading that configuration or resolving a secret. The
+// caller must bind any credential reference before use. Historical file readers
+// keep their existing admission semantics.
+func DecodeTarget(raw []byte, directory string) (Target, error) {
+	var target Target
+	if len(raw) > MaxTargetBytes || json.Unmarshal(raw, &target, json.RejectUnknownMembers(true)) != nil {
+		return Target{}, errors.New("invalid target configuration JSON")
+	}
+	if err := validateTarget(target); err != nil {
+		return Target{}, err
+	}
+	return anchor(target, directory), nil
+}

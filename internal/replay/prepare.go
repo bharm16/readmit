@@ -20,6 +20,15 @@ import (
 // sockets, TLS handshakes, output writes, or mutation of source evidence. Empty
 // selection means all message events; ACKs/unparsed evidence are never sent.
 func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
+	return prepareLocal(sourcePath, target, options, false)
+}
+
+// PrepareScoped validates an explicitly selected connected target offline.
+// Only SendScoped can present its separately authorized client identity.
+func PrepareScoped(sourcePath string, target Target, options Options) (*Plan, error) {
+	return prepareLocal(sourcePath, target, options, true)
+}
+func prepareLocal(sourcePath string, target Target, options Options, scoped bool) (*Plan, error) {
 	resolved, err := filepath.EvalSymlinks(sourcePath)
 	if err != nil {
 		return nil, errors.New("cannot resolve source bundle directory")
@@ -57,7 +66,7 @@ func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
 	// here rather than sent without it: an unsupported member is not a passing
 	// one, and silently ignoring it would make a successful diagnosis predict
 	// a handshake this transport cannot complete.
-	if target.ClientCertificate != "" {
+	if target.ClientCertificate != "" && !scoped {
 		return nil, errors.New("this release's replay transport presents no client certificate, so a configuration declaring one cannot be replayed; readmit target check diagnoses it against the same endpoint")
 	}
 	ca, err := destination.ReadAuthorities(target.CAFile)
@@ -71,7 +80,7 @@ func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
 		}
 		selected[id] = true
 	}
-	p := &Plan{sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), Durability: options.Durability}, changes: []Change{}}
+	p := &Plan{scoped: scoped, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), Durability: options.Durability}, changes: []Change{}}
 	rebases := make(map[string][]byte)
 	total := 0
 	for _, event := range source.Events {

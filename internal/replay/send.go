@@ -102,6 +102,9 @@ func prepare(ctx context.Context, sourcePath string, target Target, selection Op
 // reconnect/retry. The send policy is decided at the point of the send and the
 // decision is retained before anything is opened, including a denial.
 func Send(ctx context.Context, plan *Plan, output string, execution SendOptions) (*Run, error) {
+	if plan != nil && plan.scoped {
+		return nil, errors.New("connected plan requires scoped transport authority")
+	}
 	record, err := execution.recorder()
 	if err != nil {
 		return nil, err

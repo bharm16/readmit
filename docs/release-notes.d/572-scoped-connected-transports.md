@@ -1,0 +1,1 @@
+- Added CLI review and one-shot execution of exact connected v2 stimuli against explicitly approved test endpoints, with scoped runner authority, pinned DNS, verified TLS/mTLS, private transport evidence and no automatic resend of uncertain writes. Desktop integration and downstream application evaluation remain separate.

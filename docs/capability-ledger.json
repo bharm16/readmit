@@ -69,6 +69,48 @@
       "disposition": {"kind": "developer-tooling", "reason": "offline pinned metadata extraction; never approves source rights or publishes a pack"}
     },
     {
+      "id": "cli.connected.transport.review",
+      "source": "readmit connected transport review",
+      "kind": "cli",
+      "capability": "Review scoped connected transport",
+      "owner": "bharm16/readmit#572",
+      "screen": "existing connected action review and run detail",
+      "action": "review scoped transport through the shared engine",
+      "backend": {"package": "internal/connectedtransport", "name": "Prepare"},
+      "inputs": ["readmit-execution-plan/v1", "readmit-target/v3", "readmit-network-policy/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false
+    },
+    {
+      "id": "cli.connected.transport.run",
+      "source": "readmit connected transport run",
+      "kind": "cli",
+      "capability": "Run scoped connected transport",
+      "owner": "bharm16/readmit#572",
+      "screen": "existing connected action review and run detail",
+      "action": "run scoped transport through the shared engine",
+      "backend": {"package": "internal/connectedtransport", "name": "Execute"},
+      "inputs": ["readmit-execution-plan/v1", "readmit-connected-runner-grant/v1"],
+      "outputs": ["readmit-connected-transport/v1"],
+      "prerequisites": ["execute-if-send"],
+      "implemented": false
+    },
+    {
+      "id": "cli.connected.transport.show",
+      "source": "readmit connected transport show",
+      "kind": "cli",
+      "capability": "Show scoped connected transport",
+      "owner": "bharm16/readmit#572",
+      "screen": "existing connected action review and run detail",
+      "action": "show scoped transport through the shared engine",
+      "backend": {"package": "internal/connectedtransport", "name": "Open"},
+      "inputs": ["readmit-connected-transport/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false
+    },
+    {
       "id": "cli.connected.prepare",
       "source": "readmit connected prepare",
       "kind": "cli",
