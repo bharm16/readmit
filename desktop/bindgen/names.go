@@ -122,6 +122,7 @@ var facadeNames = names{
 		"internal/suite.Exclusion":                     "SuiteExclusionDeclaration",
 		"internal/suite.GateReport":                    "CIGateReport",
 		"internal/testauthor.Draft":                    "TestDraftDocument",
+		"internal/testauthor.Origin":                   "TestSuggestionOrigin",
 	},
 	vocabularies: map[string][]string{
 		"CorpusPathKind":       {"internal/desktop.corpusFolderPath"},

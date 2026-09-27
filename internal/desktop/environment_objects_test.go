@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/fixturereset"
@@ -390,6 +391,28 @@ func TestAReviewedCollectRefusesAChangedSourceAndNeverReportsZeroForIncomplete(t
 	}
 	if other := app.InspectCompletion(desktop.CompletionRequest{Context: context, Ref: *absent.Saved, Entry: collected.Collected.Entry}); other.State != desktop.Failed {
 		t.Fatalf("another observation's collection was inspected as this one's: %+v", other)
+	}
+}
+
+func TestReceiverSnapshotsListNewestFirstWithWhenEachWasWritten(t *testing.T) {
+	app, context := namedProject(t)
+	root := context.Project
+	older, newer := time.Date(2026, 9, 20, 8, 0, 0, 0, time.UTC), time.Date(2026, 9, 25, 17, 30, 0, 0, time.UTC)
+	for name, at := range map[string]time.Time{"a-ledger.json": older, "b-ledger.json": newer} {
+		writeDocument(t, root, name, emptyReceiverSnapshot)
+		if err := os.Chtimes(filepath.Join(root, name), at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeDocument(t, root, "notes.json", `{"schema":"readmit-observation/v1"}`)
+	listed := app.ListReceiverSnapshots(desktop.ItemRequest{Context: context})
+	if listed.State != desktop.Completed || len(listed.Snapshots) != 2 {
+		t.Fatalf("the project's receiver snapshots: %+v", listed)
+	}
+	for i, want := range []struct{ entry, at string }{{"b-ledger.json", "2026-09-25T17:30:00Z"}, {"a-ledger.json", "2026-09-20T08:00:00Z"}} {
+		if got := listed.Snapshots[i]; got.Entry != want.entry || got.CollectedAt == nil || *got.CollectedAt != want.at {
+			t.Fatalf("snapshot %d: %+v, want %s at %s", i, got, want.entry, want.at)
+		}
 	}
 }
 

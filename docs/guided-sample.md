@@ -36,8 +36,8 @@ decision about a separate endpoint.
 
 The order is the order the steps are listed, and the next step is the first one
 that is not complete. The first step is offered as the sample creation action;
-the second opens the sample case so the authoring panel can be answered beside
-it; the last two are run from the guided panel itself.
+the second opens the sample case so its test can be created from it in the
+test editor; the last two are run from the guided panel itself.
 
 A step is completed by the outcome it names and by nothing else. A test that
 expects the defect rather than the corrected behaviour is a real test, and

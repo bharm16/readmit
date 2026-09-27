@@ -43,6 +43,17 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://portal.example.test/checkouts"}`)
 	policy := testlicense.New(t)
 	writeDocument(t, workspace, "protection.json", `{"schema":"readmit-protection/v1","controls":[{"name":"lab-evidence","storage":"none-declared","state":"active","command":"/usr/bin/true","arguments":["lab-key"],"generation":1,"rotated_at":"2026-09-18T09:00:00Z"}]}`+"\n")
+	// A project holding one saved test, which Export writes and Import reads
+	// back from a file outside the project.
+	project, context, identity, environment := testsProject(t)
+	test := saveTest(t, project, desktop.SaveItemRequest{Context: context, IntentID: "test-1",
+		Draft: desktop.ItemDraft{Test: ackTest(t, identity, "Exported"), TestLinks: &desktop.TestLinks{Environment: environment.ID}}})
+	opened := project.OpenItemDraft(desktop.ItemRequest{Context: context, Ref: test})
+	if opened.Test == nil || opened.Test.Document == "" {
+		t.Fatalf("the saved test: %+v", opened)
+	}
+	testFile := filepath.Join(t.TempDir(), "test.json")
+	writeDocument(t, filepath.Dir(testFile), filepath.Base(testFile), opened.Test.Document)
 
 	type dialog struct {
 		name string
@@ -59,6 +70,9 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		// one is recorded: it names the object and direction the caller's
 		// visible label names.
 		title string
+		// writes is set for an operation that writes a new file at the
+		// destination named, rather than handing the name on to a writer.
+		writes bool
 	}
 	fresh := func() string { return t.TempDir() }
 	// A new folder is named in a folder that exists, and is not there yet.
@@ -108,6 +122,8 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 			return a.ExportProtectionControl(workspace, "protection.json", "lab-evidence")
 		}, opens: "save", title: "Export encryption control"},
 		{name: "ChooseScenarioLibraryImport", call: func(a *desktop.App) any { return a.ChooseScenarioLibraryImport() }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
+		{name: "ImportTestDraft", call: func(a *desktop.App) any { return a.ImportTestDraft(context) }, opens: "files", files: []string{testFile}, title: "Import test"},
+		{name: "ExportTestItem", call: func(a *desktop.App) any { return a.ExportTestItem(desktop.ItemRequest{Context: context, Ref: test}) }, opens: "save", destination: unnamed(), title: "Export test", writes: true},
 	}
 	window := func(c *chooser) *desktop.App {
 		state := t.TempDir()
@@ -143,7 +159,20 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		if state, reason := stateOf(result); state != desktop.Completed {
 			t.Errorf("%s: a chosen entry is %s %q, want it answered", d.name, state, reason)
 		}
-		if d.destination != "" {
+		if d.writes {
+			// The new file is written where it was named, and nothing else
+			// was asked of the person.
+			path := reflect.ValueOf(result).FieldByName("Path").String()
+			if filepath.Base(path) != filepath.Base(d.destination) || resolved(t, filepath.Dir(path)) != resolved(t, filepath.Dir(d.destination)) {
+				t.Errorf("%s answered %q, want the named %q", d.name, path, d.destination)
+			}
+			if _, err := os.Lstat(d.destination); err != nil {
+				t.Errorf("%s wrote nothing where it was named: %v", d.name, err)
+			}
+			if !slices.Equal(answered.opened, []string{"save"}) {
+				t.Errorf("%s presented the %v dialogs to name its file, want the save dialog alone", d.name, answered.opened)
+			}
+		} else if d.destination != "" {
 			// The named folder is handed on exactly as the dialog returned it,
 			// and naming it created nothing: its writer creates it.
 			if path := reflect.ValueOf(result).FieldByName("Path").String(); path != d.destination {

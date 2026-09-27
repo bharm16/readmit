@@ -156,7 +156,8 @@ type Staged struct {
 // object with no published revision. Intent is the submission identity the
 // window allocated once on a deliberate submit, and Digest the digest of the
 // whole submission, so the same submission repeated is recognized and a
-// different submission under the same identity is refused.
+// different submission under the same identity is refused. Author names the
+// person saving, recorded on the revision; it is not part of the submission.
 type Draft struct {
 	Kind    string
 	ItemID  string
@@ -164,6 +165,7 @@ type Draft struct {
 	Base    string
 	Intent  string
 	Digest  string
+	Author  string
 	Members []Staged
 }
 
@@ -242,6 +244,7 @@ type pending struct {
 	Create    bool     `json:"create"`
 	Name      string   `json:"name,omitzero"`
 	Base      string   `json:"base,omitzero"`
+	Author    string   `json:"author,omitzero"`
 	Members   []Member `json:"members"`
 	CreatedAt string   `json:"created_at"`
 }
@@ -378,8 +381,11 @@ func (s *Store) plan(document Document, draft Draft, now time.Time) (pending, er
 	if draft.Name != "" && !ValidName(draft.Name) {
 		return pending{}, errors.New("an object name is bounded printable text")
 	}
+	if draft.Author != "" && !ValidName(draft.Author) {
+		return pending{}, errors.New("an author is bounded printable text")
+	}
 	record := pending{Schema: PendingSchema, Intent: draft.Intent, Digest: draft.Digest, Kind: draft.Kind,
-		Name: draft.Name, Base: draft.Base, CreatedAt: Stamp(now)}
+		Name: draft.Name, Base: draft.Base, Author: draft.Author, CreatedAt: Stamp(now)}
 	if draft.ItemID == "" {
 		id, err := NewID()
 		if err != nil {
@@ -513,7 +519,7 @@ func (s *Store) publish(record pending, now time.Time) (Saved, error) {
 	if current := item.Current(); current != nil {
 		number = current.Number + 1
 	}
-	item.Revisions = append(slices.Clip(item.Revisions), Revision{Number: number, Members: record.Members, PublishedAt: stamp, Intent: record.Intent})
+	item.Revisions = append(slices.Clip(item.Revisions), Revision{Number: number, Members: record.Members, PublishedAt: stamp, Intent: record.Intent, Author: record.Author})
 	item.UpdatedAt = stamp
 	if record.Name != "" {
 		item.Name = record.Name

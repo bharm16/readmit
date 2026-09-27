@@ -1986,6 +1986,14 @@ export interface ExportReviewView {
   unresolved: number;
 }
 
+/** internal/desktop.ExportTestResult */
+export interface ExportTestResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  path?: string;
+}
+
 /** internal/localprofile.Field */
 export interface Field {
   position: number;
@@ -3131,6 +3139,8 @@ export interface ItemDraft {
   reset?: ResetPlan;
   links?: EnvironmentLinks;
   test?: TestDraftDocument;
+  test_links?: TestLinks;
+  test_document?: string;
   observation?: ObservationDraft;
   case?: CaseDraft;
   project?: ProjectDraft;
@@ -3144,6 +3154,16 @@ export interface ItemDraftResult {
   ref?: ItemRef;
   draft?: ItemDraft;
   new: boolean;
+  test?: TestContext;
+  problems?: FieldProblem[];
+}
+
+/** internal/desktop.ItemHistoryResult */
+export interface ItemHistoryResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  revisions: ItemRevision[];
 }
 
 /** internal/desktop.ItemKind */
@@ -3177,6 +3197,7 @@ export interface ItemRef {
 export interface ItemRequest {
   context: RequestContext;
   ref: ItemRef;
+  from?: TestOrigin;
 }
 
 /** internal/desktop.ItemResult */
@@ -3185,6 +3206,15 @@ export interface ItemResult {
   reason?: string;
   context: RequestContext;
   item?: CatalogItem;
+}
+
+/** internal/desktop.ItemRevision */
+export interface ItemRevision {
+  ref: ItemRef;
+  number: number;
+  published_at: string | null;
+  author?: string;
+  current: boolean;
 }
 
 /** internal/desktop.ItemSummary */
@@ -5320,6 +5350,7 @@ export interface ReceiverPolicyResult {
 /** internal/desktop.ReceiverSnapshot */
 export interface ReceiverSnapshot {
   entry: string;
+  collected_at: string | null;
 }
 
 /** internal/desktop.ReceiverSnapshotsResult */
@@ -6633,6 +6664,8 @@ export interface RunSummary {
   outcome?: string;
   uncertain: number;
   delivery_uncertain: boolean;
+  boundary?: string;
+  source_case?: ItemRef;
 }
 
 /** internal/desktop.RunTargetView */
@@ -8373,6 +8406,35 @@ export interface TestApproval {
 /** internal/testrunner.LedgerBoundary, internal/testrunner.ACKBoundary */
 export type TestBoundary = "appointment-ledger" | "ack-contract";
 
+/** internal/desktop.TestChange */
+export type TestChange =
+  | "name"
+  | "case"
+  | "messages"
+  | "environment"
+  | "boundary"
+  | "observation"
+  | "reset"
+  | "checks"
+  | "tags";
+
+/** internal/desktop.TestClause */
+export interface TestClause {
+  clause: string;
+  reason: string;
+}
+
+/** internal/desktop.TestContext */
+export interface TestContext {
+  case: ItemRef | null;
+  case_name: string;
+  messages: TestMessage[];
+  unsupported: TestClause[];
+  proposals: TestProposal[];
+  document?: string;
+  read_only: boolean;
+}
+
 /** internal/testauthor.Coverage */
 export interface TestCoverage {
   ledger: TestLedgerCoverage;
@@ -8398,6 +8460,7 @@ export interface TestDraft {
   identity?: string;
   suggestions?: TestSuggestions;
   approval?: TestApproval;
+  proposals?: TestProposal[];
 }
 
 /** internal/testauthor.Draft */
@@ -8433,6 +8496,15 @@ export interface TestExpectation {
 /** internal/testauthor.LedgerCount and the constants declared with it */
 export type TestExpectationOperator = "ledger_count" | "ledger_equals" | "ack_field_equals";
 
+/** internal/desktop.TestHistoryResult */
+export interface TestHistoryResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  versions: TestVersion[];
+  runs: TestRunRow[];
+}
+
 /** internal/testauthor.LedgerCoverage */
 export interface TestLedgerCoverage {
   applies: boolean;
@@ -8449,23 +8521,49 @@ export interface TestLink {
   digest?: string;
 }
 
+/** internal/desktop.TestLinks */
+export interface TestLinks {
+  schema?: string;
+  environment?: string;
+  reset?: TestReset;
+  tags?: string[];
+  source?: TestSource;
+}
+
+/** internal/desktop.TestMessage */
+export interface TestMessage {
+  id: string;
+  kind: OccurrenceKind;
+  message_code: string;
+  trigger_event: string;
+  sendable: boolean;
+}
+
 /** internal/testauthor.MessageCoverage */
 export interface TestMessageCoverage {
   message: string;
   positions: string[];
 }
 
-/** internal/testauthor.Origin */
+/** internal/desktop.TestOrigin */
 export interface TestOrigin {
-  result: string;
-  identity: string;
-  status: string;
-  boundary: string;
-  spec_identity: string;
-  input_identity: string;
-  run_identity: string;
-  target_identity: string;
+  case: ItemRef;
+  messages: string[];
+  title?: string;
+  source?: TestSource;
+  proposals?: TestProposal[];
 }
+
+/** internal/desktop.TestProposal */
+export interface TestProposal {
+  id: string;
+  source: TestProposalSource;
+  check: TestExpectation;
+  reason?: string;
+}
+
+/** internal/desktop.TestProposalSource */
+export type TestProposalSource = "run" | "finding";
 
 /** internal/desktop.TestRequest */
 export interface TestRequest {
@@ -8477,7 +8575,12 @@ export interface TestRequest {
   output?: string;
   suggest?: TestSuggestionRequest;
   review?: TestReview;
+  context?: RequestContext;
+  run?: ItemRef;
 }
+
+/** internal/desktop.TestReset */
+export type TestReset = "environment" | "manual";
 
 /** internal/testauthor.Resolution */
 export interface TestResolution {
@@ -8510,6 +8613,14 @@ export interface TestReviewed {
   expectation?: string;
 }
 
+/** internal/desktop.TestRunRow */
+export interface TestRunRow {
+  run: ItemRef;
+  revision?: string;
+  started_at: string | null;
+  outcome?: TestRunnerStatus;
+}
+
 /** internal/testrunner.FieldValue */
 export interface TestRunnerFieldValue {
   state: FieldState;
@@ -8525,6 +8636,18 @@ export interface TestRunnerValue {
   records?: ObservationRecord[];
   field?: TestRunnerFieldValue;
 }
+
+/** internal/desktop.TestSource */
+export interface TestSource {
+  kind: TestSourceKind;
+  finding?: string;
+  review?: string;
+  report_sha256?: string;
+  variant?: ItemRef;
+}
+
+/** internal/desktop.TestSourceKind */
+export type TestSourceKind = "case" | "finding" | "variant";
 
 /** internal/testauthor.StageName and the constants declared with it */
 export type TestStage =
@@ -8550,6 +8673,18 @@ export interface TestSuggestion {
   evidence: TestLink;
 }
 
+/** internal/testauthor.Origin */
+export interface TestSuggestionOrigin {
+  result: string;
+  identity: string;
+  status: string;
+  boundary: string;
+  spec_identity: string;
+  input_identity: string;
+  run_identity: string;
+  target_identity: string;
+}
+
 /** internal/testauthor.SuggestionRequest */
 export interface TestSuggestionRequest {
   result: string;
@@ -8560,7 +8695,7 @@ export interface TestSuggestionRequest {
 
 /** internal/testauthor.Suggestions */
 export interface TestSuggestions {
-  origin: TestOrigin;
+  origin: TestSuggestionOrigin;
   suggestions: TestSuggestion[];
   supported: number;
   unsupported: number;
@@ -8571,7 +8706,12 @@ export interface TestSummary {
   source_case: ItemRef | null;
   current_version?: string;
   latest_run: ItemRef | null;
+  latest_result?: TestRunnerStatus;
+  latest_run_at?: string;
   assertions: number;
+  boundary?: string;
+  tags?: string[];
+  entry?: string;
 }
 
 /** internal/testauthor.Target */
@@ -8581,6 +8721,15 @@ export interface TestTarget {
   environment?: string;
   classification?: string;
   reason?: string;
+}
+
+/** internal/desktop.TestVersion */
+export interface TestVersion {
+  revision: string;
+  published_at: string | null;
+  author?: string;
+  changes: TestChange[];
+  current: boolean;
 }
 
 /** internal/desktop.Theme */
@@ -8840,6 +8989,7 @@ export interface Vocabulary {
   reset_operators: ResetReview[];
   receiver_faults: ReceiverFaultVocabulary;
   bounds: WindowBounds;
+  ack_positions: string[];
 }
 
 /** internal/desktop.WindowBounds */
@@ -8969,6 +9119,7 @@ export interface Facade {
   ExportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult>;
   ExportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
+  ExportTestItem(request: ItemRequest): Promise<ExportTestResult>;
   Filters(): Promise<FiltersResult>;
   FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
   ForgetProject(id: string): Promise<ProjectForgetResult>;
@@ -8983,6 +9134,7 @@ export interface Facade {
   ImportProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult>;
   ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
+  ImportTestDraft(request: RequestContext): Promise<ItemDraftResult>;
   InspectBackup(id: string): Promise<BackupResult>;
   InspectCIResults(directory: string): Promise<CIInspectResult>;
   InspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult>;
@@ -8994,6 +9146,7 @@ export interface Facade {
   InspectProjectQuota(path: string): Promise<ProjectQuotaResult>;
   InspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
+  ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListBackups(): Promise<StorageBackupsResult>;
@@ -9193,6 +9346,7 @@ export interface Facade {
   StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
   StoreOperatorHubArtifact(): Promise<HubTransferResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
+  TestHistory(request: ItemRequest): Promise<TestHistoryResult>;
   TestSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretTestResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   UpdateProtectionControl(request: ProtectionControlUpdate): Promise<ProtectionUpdateResult>;

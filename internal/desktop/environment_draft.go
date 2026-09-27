@@ -418,30 +418,39 @@ func (c *loadedCatalog) environmentOf(item catalog.Item) (*environmentMembers, e
 
 // ItemDraftResult is one editor's starting draft: the saved members of an
 // object at its current revision, or, for a new object, the validated
-// defaults a new one starts from. New says which.
+// defaults a new one starts from. New says which. A test's draft carries
+// what its editor shows beside it, and the problems a draft opened from
+// elsewhere starts with.
 type ItemDraftResult struct {
-	State   State          `json:"state"`
-	Reason  string         `json:"reason,omitzero"`
-	Context RequestContext `json:"context"`
-	Ref     *ItemRef       `json:"ref,omitzero"`
-	Draft   *ItemDraft     `json:"draft,omitzero"`
-	New     bool           `json:"new"`
+	State    State          `json:"state"`
+	Reason   string         `json:"reason,omitzero"`
+	Context  RequestContext `json:"context"`
+	Ref      *ItemRef       `json:"ref,omitzero"`
+	Draft    *ItemDraft     `json:"draft,omitzero"`
+	New      bool           `json:"new"`
+	Test     *TestContext   `json:"test,omitzero"`
+	Problems []FieldProblem `json:"problems,omitzero"`
 }
 
 func (r *ItemDraftResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // OpenItemDraft answers the draft an editor starts from. A reference with no
-// identity is a new environment or observation: a new environment starts
-// unclassified with its transport unchosen, so the person chooses its
-// security mode, and a new observation from the default source and window.
-// An existing object answers the members its current revision declares,
-// exactly as saved, and a copy is this draft saved under no identity. It is
-// a read: nothing is connected, collected or written.
+// identity is a new environment, observation or test: a new environment
+// starts unclassified with its transport unchosen, so the person chooses its
+// security mode, a new observation from the default source and window, and a
+// new test over the case and messages its origin names. An existing object
+// answers the members its current revision declares, exactly as saved — a
+// test also any earlier revision its reference names, read-only — and a copy
+// is this draft saved under no identity. It is a read: nothing is connected,
+// collected or written.
 func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 	return run(a, false, false, func(ctx context.Context) ItemDraftResult {
 		result := ItemDraftResult{Context: request.Context}
+		if request.Ref.Kind == TestItem {
+			return a.openTestDraft(ctx, request)
+		}
 		if request.Ref.Kind != EnvironmentItem && request.Ref.Kind != ObservationItem {
-			result.refuse(Failed, "this release opens environment and observation drafts")
+			result.refuse(Failed, "this release opens environment, observation and test drafts")
 			return result
 		}
 		if request.Ref.ID == "" {

@@ -11,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/testauthor"
+	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // TestRequest is one answer in a guided authoring session over one verified
@@ -28,6 +29,13 @@ import (
 // value is ever carried back across this boundary: approving derives the
 // proposals from the run again and applies the decisions to them, so what an
 // approval records is what that run produced plus the edits the review made.
+//
+// A test editor over a project names the run by reference instead: Context
+// is the open project and Run the saved run, and the case is the one the
+// draft is bound to. Without Suggest, a run proposes what the draft's
+// boundary decides — the ledger's record count and exact records at the
+// appointment-ledger boundary — and the acknowledgement code of every
+// message the draft sends.
 type TestRequest struct {
 	Workspace string                        `json:"workspace"`
 	Case      string                        `json:"case"`
@@ -37,6 +45,8 @@ type TestRequest struct {
 	Output    string                        `json:"output,omitzero"`
 	Suggest   *testauthor.SuggestionRequest `json:"suggest,omitzero"`
 	Review    *testauthor.Review            `json:"review,omitzero"`
+	Context   *RequestContext               `json:"context,omitzero"`
+	Run       *ItemRef                      `json:"run,omitzero"`
 }
 
 // TestDraft is the draft and what it means over the evidence and the open
@@ -55,6 +65,8 @@ type TestDraft struct {
 	// anywhere: both are what the call that produced them answered.
 	Suggestions *testauthor.Suggestions `json:"suggestions,omitzero"`
 	Approval    *testauthor.Approval    `json:"approval,omitzero"`
+	// Proposals are the suggestions as checks an editor previews, undecided.
+	Proposals []TestProposal `json:"proposals,omitzero"`
 }
 
 // TestResult carries one state. Test is present whenever the draft resolved,
@@ -160,12 +172,12 @@ func (a *App) saveTest(request TestRequest) TestResult {
 // dropped from the set. Nothing here approves anything, and no proposal reaches
 // the draft until ApproveExpectations is given a decision naming it.
 func (a *App) SuggestExpectations(request TestRequest) TestResult {
-	return run(a, false, false, func(context.Context) TestResult {
-		root, source, draft, suggestions, declined := a.proposing(request)
+	return run(a, false, false, func(ctx context.Context) TestResult {
+		root, source, draft, suggestions, declined := a.proposing(ctx, request)
 		if source == nil {
 			return declined.test()
 		}
-		return authored(root, source, draft, TestDraft{Suggestions: &suggestions})
+		return authored(root, source, draft, TestDraft{Suggestions: &suggestions, Proposals: proposalsOf(suggestions)})
 	})
 }
 
@@ -179,16 +191,24 @@ func (a *App) SuggestExpectations(request TestRequest) TestResult {
 // refused by identity, an unsupported proposal cannot be approved at all, and a
 // proposal no decision names is reported as not reviewed and recorded nowhere.
 func (a *App) ApproveExpectations(request TestRequest) TestResult {
-	return run(a, false, true, func(context.Context) TestResult {
-		return a.approveExpectations(request)
+	return run(a, false, true, func(ctx context.Context) TestResult {
+		return a.approveExpectations(ctx, request)
 	})
 }
 
-func (a *App) approveExpectations(request TestRequest) TestResult {
+func (a *App) approveExpectations(ctx context.Context, request TestRequest) TestResult {
 	if request.Review == nil {
 		return TestResult{State: Failed, Reason: "an approval states what was decided about the proposals it applies to"}
 	}
-	root, source, draft, suggestions, declined := a.proposing(request)
+	if request.Context != nil {
+		named, declined := a.namedRun(ctx, request)
+		if declined.state != "" {
+			return declined.test()
+		}
+		request = named
+		request.Context = nil
+	}
+	root, source, draft, suggestions, declined := a.proposing(ctx, request)
 	if source == nil {
 		return declined.test()
 	}
@@ -196,14 +216,21 @@ func (a *App) approveExpectations(request TestRequest) TestResult {
 	if err != nil {
 		return TestResult{State: Failed, Reason: err.Error()}
 	}
-	return authored(root, source, approved, TestDraft{Suggestions: &suggestions, Approval: &approval})
+	return authored(root, source, approved, TestDraft{Suggestions: &suggestions, Approval: &approval, Proposals: proposalsOf(suggestions)})
 }
 
 // proposing verifies the case and derives the proposals the request asks for.
 // Both calls read the run the same way, because approving is proposing and then
 // applying the decisions: the set a review is applied to is read out of the run
 // rather than carried back from the window.
-func (a *App) proposing(request TestRequest) (string, *bundle.Bundle, testauthor.Draft, testauthor.Suggestions, refusal) {
+func (a *App) proposing(ctx context.Context, request TestRequest) (string, *bundle.Bundle, testauthor.Draft, testauthor.Suggestions, refusal) {
+	if request.Context != nil {
+		named, declined := a.namedRun(ctx, request)
+		if declined.state != "" {
+			return "", nil, request.Draft, testauthor.Suggestions{}, declined
+		}
+		request = named
+	}
 	root, source, draft, declined := a.authoring(request)
 	if source == nil {
 		return "", nil, draft, testauthor.Suggestions{}, declined
@@ -216,6 +243,56 @@ func (a *App) proposing(request TestRequest) (string, *bundle.Bundle, testauthor
 		return "", nil, draft, testauthor.Suggestions{}, refusal{Failed, err.Error()}
 	}
 	return root, source, draft, suggestions, refusal{}
+}
+
+// namedRun resolves a request that names its project and run by reference
+// to the workspace, case and run entry the suggestion reads, deciding what is
+// proposed when the request does not say.
+func (a *App) namedRun(ctx context.Context, request TestRequest) (TestRequest, refusal) {
+	loaded, declined := a.loadCatalog(ctx, *request.Context, false)
+	if loaded == nil {
+		return request, declined
+	}
+	request.Workspace = loaded.root
+	if request.Case == "" {
+		request.Case, request.Identity = request.Draft.Case.Entry, request.Draft.Case.Identity
+	}
+	if request.Run == nil {
+		return request, refusal{Failed, "a suggestion names the saved run to propose checks from"}
+	}
+	index := loaded.document.Find(request.Run.ID)
+	if index < 0 || request.Run.Kind != RunItem || loaded.document.Items[index].Kind != string(RunItem) || loaded.removed(loaded.document.Items[index]) {
+		return request, refusal{Failed, "the project holds no such run"}
+	}
+	entry := backingEntry(loaded.document.Items[index])
+	suggest := testauthor.SuggestionRequest{Positions: []string{"MSA-1"}}
+	if request.Draft.Boundary == testrunner.LedgerBoundary {
+		suggest.Ledger, suggest.ExactLedger = true, true
+	}
+	if request.Suggest != nil {
+		suggest = *request.Suggest
+	}
+	suggest.Result = entry
+	request.Suggest = &suggest
+	if request.Review != nil && request.Review.Result == "" {
+		review := *request.Review
+		review.Result = entry
+		request.Review = &review
+	}
+	return request, refusal{}
+}
+
+// proposalsOf are suggestions as the checks an editor previews: each with the
+// expectation it would add, or, for one the run does not justify, the reason
+// and no expected value. None is decided.
+func proposalsOf(suggestions testauthor.Suggestions) []TestProposal {
+	proposals := make([]TestProposal, 0, len(suggestions.Suggestions))
+	for _, suggestion := range suggestions.Suggestions {
+		proposals = append(proposals, TestProposal{ID: suggestion.ID, Source: ProposalFromRun, Reason: suggestion.Reason,
+			Check: testauthor.Expectation{ID: suggestion.ID, Operator: suggestion.Operator, Count: suggestion.Count, Records: suggestion.Records,
+				Message: suggestion.Message, Selector: suggestion.Selector, Field: suggestion.Field}})
+	}
+	return proposals
 }
 
 // authoring verifies the case a request names and returns the draft to work

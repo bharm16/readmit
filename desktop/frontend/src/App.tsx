@@ -22,7 +22,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactElement } from "react";
 import { useLayoutEffect } from "react";
 import {
-  authorTest,
   buildReproducer,
   compareReproducers,
   cancel,
@@ -54,15 +53,7 @@ import {
   type CatalogItem,
   discardEditorDraft,
   editReproducer,
-  saveTest,
-  suggestExpectations,
-  approveExpectations,
   undoReproducer,
-  type TestAnswer,
-  type TestDraftDocument,
-  type TestResult,
-  type TestReview,
-  type TestSuggestionRequest,
   type ReproducerPlan,
   type ReproducerComparisonResult,
   type ReproducerResult,
@@ -151,10 +142,9 @@ import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed 
 import { Reproducer, type ReproducerView } from "./Reproducer";
 import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
 import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
-import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
-import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAuthoring";
+import { useTests, type TestsPlace } from "./Tests";
 import { Diagnosis } from "./Diagnosis";
 import { Report, Separator, Status } from "./shell";
 import { CommandPalette, shortcut, type PaletteEntry } from "./CommandPalette";
@@ -215,7 +205,6 @@ type Running =
   | "search"
   | "inspect"
   | "reproducer"
-  | "authoring"
   | "comparison"
   | "revisions"
   | "practice"
@@ -240,9 +229,8 @@ type Running =
  * one survives looking at another. */
 type CaseView = "messages" | "timeline" | "findings";
 /** What a person does to a case, each on its own page with a way back. */
-type CaseFlow = "test" | "replay" | "compare" | "reproduce" | "reduce";
+type CaseFlow = "replay" | "compare" | "reproduce" | "reduce";
 const CASE_FLOW_TITLES: Record<CaseFlow, string> = {
-  test: "New test",
   replay: "Replay",
   compare: "Compare",
   reproduce: "Reproducer",
@@ -288,7 +276,6 @@ const PROGRESS: Record<Running, string> = {
   search: "Searching this project…",
   inspect: "Reading the message…",
   reproducer: "Updating the reproducer…",
-  authoring: "Updating the test…",
   comparison: "Comparing…",
   revisions: "Comparing revisions…",
   practice: "Running the demo test…",
@@ -351,7 +338,6 @@ export default function App() {
   const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
   const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
   const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
-  const [testResult, setTestResult] = useState<TestView | null>(null);
   const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
   const [runEnvironment, setRunEnvironment] = useState<string | undefined>(undefined);
   // The suite handoff the run view was last seeded from, with the folder it
@@ -375,7 +361,6 @@ export default function App() {
   const [diagnosisGroupsResult, setDiagnosisGroupsResult] = useState<DiagnosisGroupsResult | null>(null);
   const [findingReviewResult, setFindingReviewResult] = useState<FindingReviewResult | null>(null);
   const [normalizeResult, setNormalizeResult] = useState<NormalizeResult | null>(null);
-  const [promotionProvenance, setPromotionProvenance] = useState<PromotionProvenance | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -655,7 +640,6 @@ export default function App() {
     setFilterSeed(null);
     setInspectionResult(null);
     setReproducerResult(null);
-    setTestResult(null);
     setComparisonResult(null);
     setSequenceResult(null);
     setRevisionResult(null);
@@ -668,7 +652,6 @@ export default function App() {
     setDiagnosisGroupsResult(null);
     setFindingReviewResult(null);
     setNormalizeResult(null);
-    setPromotionProvenance(null);
     setSelectedOccurrence(null);
   }, []);
 
@@ -1534,8 +1517,6 @@ export default function App() {
   // internal identity, so the editing survives an interruption; a build writes
   // the real manifest beside the evidence and drops the draft.
   const reproducerDraftId = useRef("");
-  const testDraftId = useRef("");
-  const promotedDraftId = useRef("");
 
   const keepReproducerDraft = useCallback(
     async (plan: ReproducerPlan, open: { case: string; identity: string }) => {
@@ -1589,185 +1570,6 @@ export default function App() {
     [dropReproducerDraft, messages, keepReproducerDraft, reproducerResult, root, run],
   );
 
-  // A test draft is bound to the case the grid verified, so every answer
-  // carries the draft back to the engine, which decides what it now means. The
-  // window keeps no second copy of the answers and holds the draft nowhere
-  // else: it is unstored work, and it is never placed in browser storage. A
-  // draft the engine accepted is retained under an internal identity, so the
-  // authoring survives an interruption; saving the spec writes the real
-  // document beside the evidence and drops the draft.
-  const author = useCallback(
-    async (work: (draft: TestDraftDocument, open: { case: string; identity: string }) => Promise<TestResult>) => {
-      const open = messages;
-      if (!root || !open) return;
-      const draft =
-        testResult?.test?.draft ??
-        ({
-          schema: "",
-          case: { entry: "", identity: "" },
-          name: "",
-          messages: [],
-          target: "",
-          boundary: "",
-          observation: "",
-          reset: "",
-          expectations: [],
-        } as TestDraftDocument);
-      await run("authoring", async () => {
-        const result = await work(draft, open);
-        // A refused answer leaves the draft exactly as it was, so the refusal is
-        // shown without replacing the test a person is working on.
-        const kept = testResult?.test;
-        setTestResult(result.test || !kept ? result : { ...result, test: kept });
-        if (result.test) {
-          if (result.test.output) {
-            if (testDraftId.current !== "") {
-              await discardEditorDraft(testDraftId.current);
-            }
-            testDraftId.current = "";
-            if (promotedDraftId.current !== "") {
-              await discardEditorDraft(promotedDraftId.current);
-            }
-            promotedDraftId.current = "";
-            setPromotionProvenance(null);
-          } else {
-            const retained = await saveEditorDraft({
-              id: testDraftId.current,
-              kind: "test-draft",
-              workspace: root,
-              case: open.case,
-              identity: open.identity,
-              content_schema: "readmit-test-draft/v1",
-              content: result.test.draft,
-            });
-            if ((retained.state === "completed" || retained.state === "empty") && testDraftId.current === "") {
-              testDraftId.current = savedId(retained, "test-draft", root);
-            }
-          }
-        }
-        // A saved spec is a step of the guided sample, and an entry the run
-        // panel offers, so what the folder now holds is read again rather than
-        // inferred from this call succeeding.
-        if (result.test?.output) {
-          setRunSpecPath(result.test.output);
-          setRunEnvironment(undefined);
-          setSuiteHandoff(null);
-          await refreshGuide(root);
-          await refreshListing();
-        }
-      });
-    },
-    [messages, refreshGuide, refreshListing, root, run, testResult],
-  );
-
-  // Promoting one explicitly confirmed finding answers the existing authoring
-  // flow with exactly what the review engine derived from the verified case:
-  // the fixed acknowledgement boundary, the messages and the expectations. The
-  // engine re-validates every answer, so re-answering them cannot silently
-  // weaken anything, and where it came from rides beside the draft as
-  // provenance — in the editor-draft envelope, never inside the spec.
-  const promoteFinding = useCallback(
-    async (status: FindingStatus, reviewEntry: string, reportSHA256: string) => {
-      const promotion = status.promotion;
-      const open = evidence?.case;
-      if (!promotion || !root || !open) return;
-      await run("authoring", async () => {
-        const base = { workspace: root, case: open.name, identity: open.identity };
-        const emptyDraft: TestDraftDocument = {
-          schema: "",
-          case: { entry: "", identity: "" },
-          name: "",
-          messages: [],
-          target: "",
-          boundary: "",
-          observation: "",
-          reset: "",
-          expectations: [],
-        };
-        // A diagnosis promotion is drafted at the ack-contract boundary only;
-        // the review states that boundary and the authoring flow accepts no other.
-        let result = await authorTest({
-          ...base,
-          draft: emptyDraft,
-          answer: { stage: "boundary", boundary: "ack-contract" },
-        });
-        if (result.state !== "completed" || !result.test) {
-          setTestResult(result);
-          return;
-        }
-        result = await authorTest({
-          ...base,
-          draft: result.test.draft,
-          answer: { stage: "messages", messages: promotion.messages },
-        });
-        if (result.state !== "completed" || !result.test) {
-          setTestResult(result);
-          return;
-        }
-        result = await authorTest({
-          ...base,
-          draft: result.test.draft,
-          answer: { stage: "expectations", expectations: promotion.expectations },
-        });
-        setTestResult(result);
-        if (result.state !== "completed" || !result.test) {
-          return;
-        }
-        const provenance: PromotionProvenance = {
-          finding: status.finding,
-          report_sha256: reportSHA256,
-          review: reviewEntry,
-          decision_rationale: status.rationale ?? "",
-        };
-        setPromotionProvenance(provenance);
-        const retained = await saveEditorDraft({
-          id: promotedDraftId.current,
-          kind: "promoted-test-draft",
-          workspace: root,
-          case: open.name,
-          identity: open.identity,
-          content_schema: "readmit-promoted-test-draft/v1",
-          content: { schema: "readmit-promoted-test-draft/v1", draft: result.test.draft, provenance },
-        });
-        if (
-          (retained.state === "completed" || retained.state === "empty") &&
-          promotedDraftId.current === ""
-        ) {
-          promotedDraftId.current = savedId(retained, "promoted-test-draft", root);
-        }
-      });
-      setCaseFlow("test");
-      focusRegion("evidence");
-    },
-    [evidence, findingReviewResult, focusRegion, root, run],
-  );
-
-  // A test draft this viewer had not stored comes back only when it names the
-  // case the window has verified now, identity and all: a draft authored
-  // against evidence that has changed or moved is offered as what it is —
-  // stale work this window does not silently rebind.
-  useEffect(() => {
-    const grid = messages;
-    if (!grid || !root || testResult !== null) {
-      return;
-    }
-    const held = drafts?.find(
-      (entry) =>
-        entry.kind === "test-draft" &&
-        entry.workspace === root &&
-        entry.case === grid.case &&
-        entry.identity === grid.identity,
-    );
-    if (!held) {
-      return;
-    }
-    testDraftId.current = held.id;
-    setTestResult({
-      state: "completed",
-      test: { draft: held.content as TestDraftDocument },
-    });
-  }, [drafts, messages, root, testResult]);
-
   // The reproducer plan comes back the same way, and under the same rule.
   useEffect(() => {
     const grid = messages;
@@ -1791,29 +1593,6 @@ export default function App() {
     });
   }, [drafts, messages, reproducerResult, root]);
 
-  // A promoted test draft comes back the same way, provenance and all, so a
-  // draft that came from a confirmed finding never loses where it came from.
-  useEffect(() => {
-    const grid = messages;
-    if (!grid || !root || testResult !== null) {
-      return;
-    }
-    const held = drafts?.find(
-      (entry) =>
-        entry.kind === "promoted-test-draft" &&
-        entry.workspace === root &&
-        entry.case === grid.case &&
-        entry.identity === grid.identity,
-    );
-    if (!held) {
-      return;
-    }
-    promotedDraftId.current = held.id;
-    const content = held.content as { draft: TestDraftDocument; provenance: PromotionProvenance };
-    setTestResult({ state: "completed", test: { draft: content.draft } });
-    setPromotionProvenance(content.provenance);
-  }, [drafts, messages, root, testResult]);
-
   // Drops one retained editor draft and takes it out of the local list at the
   // same moment, so a panel cannot offer the same draft back again while the
   // facade's answer is still in flight.
@@ -1821,19 +1600,6 @@ export default function App() {
     setDrafts((current) => current?.filter((draft) => draft.id !== id) ?? null);
     void discardEditorDraft(id);
   }, []);
-
-  const discardTestDraft = useCallback(() => {
-    if (testDraftId.current !== "") {
-      dropDraft(testDraftId.current);
-    }
-    testDraftId.current = "";
-    if (promotedDraftId.current !== "") {
-      dropDraft(promotedDraftId.current);
-    }
-    promotedDraftId.current = "";
-    setPromotionProvenance(null);
-    setTestResult(null);
-  }, [dropDraft]);
 
   const discardReproducerDraft = useCallback(() => {
     if (reproducerDraftId.current !== "") {
@@ -1895,6 +1661,75 @@ export default function App() {
   // another list's answer look stale.
   const environmentScope = useRef(new RequestScope());
   const environmentContext = useCallback(() => environmentScope.current.enter(root ?? ""), [root]);
+  // Tests reads under its own request scope. A saved test, a new test and an
+  // edit are each their own place, with Back to where they were opened.
+  const testsPlace: TestsPlace =
+    place === "new-test"
+      ? { kind: "new" }
+      : place === "edit-test" && route.objectId
+        ? { kind: "edit", id: route.objectId }
+        : place === "tests" && route.objectId
+          ? { kind: "test", id: route.objectId, view: route.view === "checks" || route.view === "history" ? route.view : "setup" }
+          : { kind: "list" };
+  const tests = useTests({
+    root,
+    shown: sidebarOf(place) === "tests" && place !== "library" && place !== "baselines",
+    place: testsPlace,
+    go: (to) => {
+      switch (to.kind) {
+        case "list":
+          open({ destination: "tests" });
+          return;
+        case "new":
+          open({ destination: "new-test" });
+          return;
+        case "edit":
+          open({ destination: "edit-test", objectId: to.id });
+          return;
+        case "test":
+          if (place === "new-test") routeTo({ type: "replace", to: { destination: "tests", objectId: to.id, view: to.view } });
+          else if (place === "tests" && route.objectId === to.id) routeTo({ type: "view", view: to.view });
+          else open({ destination: "tests", objectId: to.id, view: to.view });
+      }
+    },
+    back,
+    busy,
+    onRun: (entry) => {
+      setRunSpecPath(entry);
+      setRunEnvironment(undefined);
+      setSuiteHandoff(null);
+      open({ destination: "run-test" });
+    },
+    onLibrary: () => open({ destination: "library" }),
+  });
+
+  /** Create test: the case open now and its chosen messages (all of them
+   * when none is chosen) go to the one test editor. */
+  const createTest = () => {
+    const caseRef = verified ? listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref : undefined;
+    if (!caseRef) {
+      void tests.startNew();
+      return;
+    }
+    // With nothing chosen, the facade selects every message of the case a test can send.
+    const chosen = messages ? messages.rows.filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id) : [];
+    void tests.startNew({ case: caseRef, messages: chosen });
+  };
+
+  // A confirmed finding opens the same editor with the review's messages and
+  // its expectations as proposals, each undecided until the person decides.
+  const promoteFinding = (status: FindingStatus, reviewEntry: string, reportSHA256: string) => {
+    const promotion = status.promotion;
+    const caseRef = verified ? listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref : undefined;
+    if (!promotion || !caseRef) return;
+    void tests.startNew({
+      case: caseRef,
+      messages: promotion.messages,
+      source: { kind: "finding", finding: status.finding, report_sha256: reportSHA256, ...(reviewEntry ? { review: reviewEntry } : {}) },
+      proposals: promotion.expectations.map((check, index) => ({ id: `finding-${index + 1}`, source: "finding", check })),
+    });
+  };
+
   const environments = useEnvironments({
     root,
     context: environmentContext,
@@ -1962,10 +1797,7 @@ export default function App() {
     "open-workspace": () => void openFolder(selectWorkspace),
     "create-sample-workspace": () => void openFolder(createSampleWorkspace),
     "open-project": () => setEditingProject(true),
-    "create-test": () => {
-      go("cases");
-      setCaseFlow("test");
-    },
+    "create-test": () => createTest(),
     "create-report": () => go("reports"),
     "manage-profiles": () => open({ destination: "library", view: "profiles" }),
     "maintain-workspace": () => openStorage(),
@@ -2247,7 +2079,7 @@ export default function App() {
                 <Menu
                   label="More case actions"
                   items={[
-                    { label: "Create test", onSelect: () => setCaseFlow("test") },
+                    { label: "Create test", onSelect: () => createTest() },
                     { label: "Replay", onSelect: () => setCaseFlow("replay") },
                     { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
                     { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
@@ -2403,7 +2235,7 @@ export default function App() {
                     onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
                     checked={checkedMessages}
                     onCheck={setCheckedMessages}
-                    onCreateTest={() => setCaseFlow("test")}
+                    onCreateTest={() => createTest()}
                     onSendSelected={() => setCaseFlow("replay")}
                     onCreateVariant={() => setCaseFlow("reproduce")}
                     onLoadMore={() => {
@@ -2499,9 +2331,7 @@ export default function App() {
                     onOpenGroups={(entry, offset) => void openGroupsReport(entry, offset)}
                     onReview={(request, write) => void reviewDiagnosisFindings(request, write)}
                     onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-                    onPromote={(status, reviewEntry, reportSHA256) =>
-                      void promoteFinding(status, reviewEntry, reportSHA256)
-                    }
+                    onPromote={(status, reviewEntry, reportSHA256) => promoteFinding(status, reviewEntry, reportSHA256)}
                     onManageProfiles={() => perform("manage-profiles")}
                     onSaved={() => void refreshListing()}
                   />
@@ -2613,75 +2443,6 @@ export default function App() {
                     />
                   )}
                 </div>
-                <div className="view-panel case-flow" hidden={caseFlow !== "test"}>
-                  {messages ? (
-                    <TestAuthoring
-                      rows={chosenRows}
-                      result={testResult}
-                      restoredDraft={Boolean(testResult?.test && !testResult.test.resolution)}
-                      provenance={promotionProvenance}
-                      onDiscardDraft={discardTestDraft}
-                      inspected={inspected}
-                      busy={busy}
-                      progress={running === "authoring" ? "Resolving this test against the case." : null}
-                      indicators={indicators}
-                      onAnswer={(answer: TestAnswer) =>
-                        void author((draft, open) =>
-                          authorTest({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            draft,
-                            answer,
-                          }),
-                        )
-                      }
-                      onSave={(output: string) =>
-                        void author((draft, open) =>
-                          saveTest({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            draft,
-                            output,
-                          }),
-                        )
-                      }
-                      onSuggest={(suggest: TestSuggestionRequest) =>
-                        void author((draft, open) =>
-                          suggestExpectations({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            draft,
-                            suggest,
-                          }),
-                        )
-                      }
-                      onApprove={(suggest: TestSuggestionRequest, review: TestReview) =>
-                        void author((draft, open) =>
-                          approveExpectations({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            draft,
-                            suggest,
-                            review,
-                          }),
-                        )
-                      }
-                    />
-                  ) : (
-                    <EmptyState
-                      title="Messages are not loaded yet"
-                      action={
-                        <button type="button" onClick={() => { setCaseFlow(null); setView("messages"); }}>
-                          Open messages
-                        </button>
-                      }
-                    />
-                  )}
-                </div>
                 <div className="view-panel case-flow" hidden={caseFlow !== "reduce"}>
                   <Reduction
                     ruleEntries={named("rules")}
@@ -2726,22 +2487,34 @@ export default function App() {
         <Page
           id="tests"
           shown={place === "tests"}
-          title="Tests"
+          title={tests.title}
+          back={tests.back}
           actions={
             root ? (
               <>
-                <button type="button" onClick={() => open({ destination: "library" })}>
-                  Library
-                </button>
-                <Menu label="More test actions" items={[{ label: "Baselines", onSelect: () => open({ destination: "baselines" }) }]} />
+                {tests.actions}
+                {testsPlace.kind === "list" ? (
+                  <Menu
+                    label="Test page actions"
+                    items={[
+                      { label: "Import test", onSelect: () => void tests.importTest() },
+                      { label: "Baselines", onSelect: () => open({ destination: "baselines" }) },
+                    ]}
+                  />
+                ) : null}
               </>
             ) : null
           }
         >
-          {root ? (
+          {!root ? (
+            noProject("tests")
+          ) : testsPlace.kind === "test" ? (
+            tests.body
+          ) : (
             <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setView} keepMounted>
               <TaskPanel tabs="tests-views" tab="tests" className="task-panel view-panel" shown={testsView === "tests"}>
-                <CanonicalTestEditor key={"editor-" + root} workspace={root} drafts={drafts} busy={busy} />
+                <div className="toolbar list-toolbar">{tests.toolbar}</div>
+                {testsPlace.kind === "list" ? tests.body : null}
               </TaskPanel>
               <TaskPanel tabs="tests-views" tab="suites" className="task-panel view-panel" shown={testsView === "suites"}>
                 <SuitePanel
@@ -2755,9 +2528,15 @@ export default function App() {
                 />
               </TaskPanel>
             </TaskTabs>
-          ) : (
-            noProject("tests")
           )}
+        </Page>
+
+        <Page id="new-test" shown={place === "new-test"} title={tests.title} back={tests.back} actions={tests.actions}>
+          {root && place === "new-test" ? tests.body : null}
+        </Page>
+
+        <Page id="edit-test" shown={place === "edit-test"} title={tests.title} back={tests.back} actions={tests.actions}>
+          {root && place === "edit-test" ? tests.body : null}
         </Page>
 
         <Page id="library" shown={place === "library"} title="Library" back={<BackLink label="Tests" onBack={back} />}>
@@ -2867,19 +2646,6 @@ export default function App() {
               indicators={indicators}
               drafts={drafts ?? []}
               captureBinding={captureBinding}
-              onBindToTest={(observationFile) => {
-                setObserving(false);
-                setCaptureBinding(null);
-                void author((draft, open) =>
-                  authorTest({
-                    workspace: root ?? "",
-                    case: open.case,
-                    identity: open.identity,
-                    draft,
-                    answer: { stage: "observation", observation: observationFile },
-                  }),
-                );
-              }}
               onClose={() => {
                 setObserving(false);
                 setCaptureBinding(null);
@@ -3633,7 +3399,7 @@ const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: tr
   "redact-policy": { route: { destination: "share-report" } },
   "redact-inventory": { route: { destination: "share-report" } },
   target: { route: { destination: "environments" } },
-  "test-draft": { case: "test" },
+  "test-draft": { route: { destination: "tests", view: "tests" } },
   "reproducer-plan": { case: "reproduce" },
   import: { import: true },
   "observation-source": { observe: true },

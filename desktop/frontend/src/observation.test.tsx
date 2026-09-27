@@ -953,22 +953,6 @@ test("a recorded baseline and both collection limits are editable and saved with
   });
 });
 
-test("the saved window binds into a test only while the editor shows it unchanged", async () => {
-  const user = userEvent.setup();
-  await openProject(user);
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  const bind = () => panel.getByRole("button", { name: "Use saved window in test" }) as HTMLButtonElement;
-  await waitFor(() => expect(bind().disabled).toBe(false));
-  expect(panel.getByText("Binds the saved window observation-window.json into the test draft. No test is run.")).toBeTruthy();
-  await user.click(panel.getByRole("tab", { name: "Completion rules" }));
-  await user.clear(panel.getByLabelText("Quiet period"));
-  await user.type(panel.getByLabelText("Quiet period"), "5s");
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  expect(bind().disabled).toBe(true);
-  expect(panel.getByText(/^Save the window first/)).toBeTruthy();
-});
-
 test("a result stays tied to the saved pair and output that produced it", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);

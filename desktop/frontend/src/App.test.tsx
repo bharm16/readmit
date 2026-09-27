@@ -39,8 +39,6 @@ import {
   findingPromotion,
   REPORT_ENTRY,
   REPORT_SHA256,
-  testResult,
-  NO_STAGES_MISSING,
   durableRunResult,
   folderChosen,
   runEvidenceResult,
@@ -331,107 +329,6 @@ test("an inspector that never answered is reported and leaves the prior result a
   expect(facade.callsTo("InspectOccurrence").length).toBeGreaterThanOrEqual(1);
 });
 
-test("saving the authored test hands the draft to the engine and reads the guided sample back", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp();
-  await openWorkspaceWithVerifiedCase(facade, user);
-  // The engine's answer to the one answer this journey gives: a draft bound to
-  // the case it was answered over. Which stages a real draft still needs is
-  // the engine's decision, not this fixture's.
-  const answered = {
-    schema: "readmit-test-draft/v1",
-    case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
-    name: "booking-regression",
-    messages: [GRID_OCCURRENCE],
-    target: "practice-target",
-    boundary: "appointment-ledger" as const,
-    observation: "test-observation.json",
-    reset: "per the target's reset plan",
-    expectations: [{ id: "ledger-has-booking", operator: "ledger_count" as const, count: 1 }],
-  };
-  facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: true, covered: true, expectation: "ledger-has-booking" }, messages: [], uncovered: [] } } } }) });
-  await user.click(screen.getByRole("button", { name: "More case actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Create test" }));
-  await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
-  await user.click(screen.getByRole("button", { name: "Save name" }));
-  expect(await screen.findByText("Chosen: Appointment records")).toBeTruthy();
-  const authorRequest = facade.oneCall("AuthorTest")[0];
-  expect(authorRequest).toMatchObject({
-    workspace: WORKSPACE_ROOT,
-    case: CASE_ENTRY,
-    identity: CASE_IDENTITY,
-    answer: { stage: "name", name: "booking-regression" },
-  });
-  facade.reply({
-    SaveTest: (request) => ({
-      state: "completed" as const,
-      test: {
-        draft: request.draft,
-        resolution: { stage: "" as const, missing: [], messages: [], targets: [], coverage: { ledger: { applies: true, covered: true }, messages: [], uncovered: [] } },
-        output: request.output ?? "reschedule-test.json",
-        identity: "spec-identity-fixed-for-tests",
-      },
-    }),
-  });
-  const before = facade.callsTo("Guide").length;
-  await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Save test" }));
-  const saveRequest = facade.oneCall("SaveTest")[0];
-  expect(saveRequest).toMatchObject({
-    workspace: WORKSPACE_ROOT,
-    case: CASE_ENTRY,
-    identity: CASE_IDENTITY,
-    output: "reschedule-test.json",
-  });
-  expect(saveRequest.draft).toEqual(answered);
-  expect(await screen.findByText(/spec identity/)).toBeTruthy();
-  // A saved spec is a step of the guided sample, so the folder is read again.
-  expect(facade.callsTo("Guide").length).toBeGreaterThan(before);
-});
-
-test("a saved test is at once an entry the run panel offers, read back from the folder", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp();
-  await openWorkspaceWithVerifiedCase(facade, user);
-  const answered = {
-    schema: "readmit-test-draft/v1",
-    case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
-    name: "booking-regression",
-    messages: [GRID_OCCURRENCE],
-    target: "practice-target",
-    boundary: "ack-contract" as const,
-    observation: "",
-    reset: "per the target's reset plan",
-    expectations: [],
-  };
-  facade.reply({
-    AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } } } }),
-    SaveTest: (request) => ({
-      state: "completed" as const,
-      test: { draft: request.draft, resolution: { stage: "" as const, missing: [], messages: [], targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } }, output: "reschedule-test.json", identity: "spec-identity-fixed-for-tests" },
-    }),
-    OpenWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-        { name: INDEX_ENTRY, kind: "index" },
-        { name: "reschedule-test.json", kind: "spec" },
-      ]),
-  });
-  await user.click(screen.getByRole("button", { name: "More case actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Create test" }));
-  await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
-  await user.click(screen.getByRole("button", { name: "Save name" }));
-  await screen.findByText("Chosen: Acknowledgements");
-  await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Save test" }));
-  // The folder is read again after the save, and the run panel offers what it
-  // now holds, selected for the run that comes next.
-  await goToView(user, "Runs", "Run test");
-  const saved = await screen.findByRole("option", { name: "reschedule-test.json (test)" });
-  expect((saved as HTMLOptionElement).selected).toBe(true);
-  expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
-});
-
 test("a saved suite is at once an entry the run panel offers, and a refused save reads nothing again", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
@@ -463,40 +360,6 @@ test("a saved suite is at once an entry the run panel offers, and a refused save
   const runPanel = within(screen.getByRole("region", { name: "Runs" }));
   expect(await runPanel.findByRole("option", { name: "nightly.json (suite)" })).toBeTruthy();
   expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
-});
-
-test("a refused save reports the refusal and keeps the draft a person is working on", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp();
-  await openWorkspaceWithVerifiedCase(facade, user);
-  const answered = {
-    schema: "readmit-test-draft/v1",
-    case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
-    name: "booking-regression",
-    messages: [GRID_OCCURRENCE],
-    target: "practice-target",
-    boundary: "ack-contract" as const,
-    observation: "",
-    reset: "per the target's reset plan",
-    expectations: [],
-  };
-  facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } } } }) });
-  await user.click(screen.getByRole("button", { name: "More case actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Create test" }));
-  await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
-  await user.click(screen.getByRole("button", { name: "Save name" }));
-  await screen.findByText("Chosen: Acknowledgements");
-  facade.reply({ SaveTest: () => refused("The workspace already holds that entry.") });
-  await user.type(screen.getByLabelText("New entry in this workspace"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Save test" }));
-  expect(
-    await screen.findByText("The workspace already holds that entry."),
-  ).toBeTruthy();
-  // The draft the refusal left is exactly the one being worked on.
-  expect(screen.getByText("Chosen: Acknowledgements")).toBeTruthy();
-  expect(
-    (screen.getByLabelText("New entry in this workspace") as HTMLInputElement).value,
-  ).toBe("reschedule-test.json");
 });
 
 test("the guided sample runs the saved spec against the practice receiver and reads the folder back", async () => {
@@ -921,20 +784,14 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
         {},
         { output: "review-1", decisions_output: "decisions-1.json" },
       ),
-    AuthorTest: (request) => {
-      const draft = {
-        schema: "readmit-test-draft/v1" as const,
-        case: { entry: CASE_ENTRY, identity: CASE_IDENTITY },
-        name: "",
-        messages: request.answer?.messages ?? request.draft.messages,
-        target: "",
-        boundary: ((request.answer?.boundary ?? request.draft.boundary) || "") as "" | "ack-contract" | "appointment-ledger",
-        observation: "",
-        reset: "",
-        expectations: request.answer?.expectations ?? request.draft.expectations,
-      };
-      return testResult(draft, NO_STAGES_MISSING);
-    },
+    OpenItemDraft: (request) => ({
+      state: "completed",
+      context: request.context,
+      new: true,
+      ref: { kind: "test", id: "" },
+      draft: { name: "f000001", test: { schema: "readmit-test-draft/v1", case: { entry: CASE_ENTRY, identity: CASE_IDENTITY }, name: "f000001", messages: request.from?.messages ?? [], target: "", boundary: "", observation: "", reset: "", expectations: [] } },
+      test: { case: request.from?.case ?? null, case_name: CASE_ENTRY, messages: [], unsupported: [], proposals: request.from?.proposals ?? [], read_only: false },
+    }),
     SaveEditorDraft: () => ({ state: "completed" as const, drafts: [] }),
   });
   await openWorkspaceWithVerifiedCase(facade, user);
@@ -985,25 +842,18 @@ test("case through rules, diagnosis, inspection, review and draft handoff", asyn
     output: "review-1",
   });
 
-  await user.click(screen.getByRole("button", { name: "Draft a test from f000001" }));
-  await waitFor(() => expect(facade.callsTo("AuthorTest").length).toBeGreaterThanOrEqual(3));
-  const stages = facade.callsTo("AuthorTest").map((call) => (call.args[0] as { answer?: { stage?: string } }).answer?.stage);
-  expect(stages).toEqual(["boundary", "messages", "expectations"]);
-  await waitFor(() => {
-    const retained = facade.callsTo("SaveEditorDraft").map((call) => call.args[0] as {
-      kind: string;
-      content_schema: string;
-      content: { provenance?: { finding?: string; report_sha256?: string; review?: string } };
-    });
-    const promoted = retained.find((entry) => entry.kind === "promoted-test-draft");
-    expect(promoted?.content_schema).toBe("readmit-promoted-test-draft/v1");
-    expect(promoted?.content.provenance).toMatchObject({
-      finding: "f000001",
-      report_sha256: REPORT_SHA256,
-      review: "review-1",
-    });
-  });
   expect(screen.getByText("Only a confirmed finding promotes anything.")).toBeTruthy();
+  // A confirmed finding opens the one test editor with its messages, its
+  // provenance, and its expectations as proposals nobody has accepted yet.
+  await user.click(screen.getByRole("button", { name: "Draft a test from f000001" }));
+  await waitFor(() => expect(facade.callsTo("OpenItemDraft").length).toBe(1));
+  const origin = (facade.oneCall("OpenItemDraft")[0] as { from?: { messages: string[]; source?: object; proposals?: { source: string }[] } }).from;
+  expect(origin?.messages).toEqual([GRID_OCCURRENCE]);
+  expect(origin?.source).toMatchObject({ kind: "finding", finding: "f000001", report_sha256: REPORT_SHA256, review: "review-1" });
+  expect(origin?.proposals?.length).toBeGreaterThan(0);
+  expect(origin?.proposals?.every((proposal) => proposal.source === "finding")).toBe(true);
+  expect(await screen.findByRole("heading", { level: 1, name: "New test" })).toBeTruthy();
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
 // Go to runs seeds the run view with the suite entry and environment, and
