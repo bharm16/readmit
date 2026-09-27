@@ -24,10 +24,10 @@ import {
   type TestSummary,
 } from "./bindings";
 import { DataTable, type Column, type SortState } from "./DataTable";
-import { TEST_BOUNDARIES, TEST_CHANGES, TEST_RESULTS } from "./display";
+import { DisplayTerm, TEST_BOUNDARIES, TEST_CHANGES, TEST_RESULTS, term } from "./display";
 import { fileName } from "./Environments";
 import { IconButton } from "./IconButton";
-import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, humanize, type SubmitFailure } from "./layout";
+import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
 import { listDate } from "./Projects";
 import { CheckDetails, CheckRows, messageLabel, observationLabel, useTestEditor, type EditorStart, type TestWork } from "./TestEditor";
 import { TaskTabs } from "./TaskTabs";
@@ -287,7 +287,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
         </span>
       ),
     },
-    { key: "case", header: "Case", priority: 2, minWidth: 11.25, render: (item) => caseName(summaryOf(item).source_case) },
+    { key: "case", header: "Case", priority: 2, minWidth: 11.25, flex: true, render: (item) => caseName(summaryOf(item).source_case) },
     { key: "result", header: "Result", priority: 1, minWidth: 7.5, render: (item) => resultLabel(summaryOf(item).latest_result) },
     { key: "updated", header: "Updated", priority: 4, minWidth: 8, sortable: true, render: (item) => listDate(item.updated_at) },
   ];
@@ -562,6 +562,9 @@ function useTestDetail({
   const messages = opened?.test?.messages ?? [];
   const environment = environments.find((entry) => entry.ref.id === links.environment) ?? null;
   const ledger = test?.boundary === "appointment-ledger";
+  // A test whose outcome boundary this window has no meaning for is shown,
+  // never run.
+  const runnable = !!summary.entry && (!test?.boundary || term(TEST_BOUNDARIES, test.boundary).supported);
   const version = history?.versions.find((entry) => entry.current)?.revision ?? ref.revision;
 
   const setup = (
@@ -571,7 +574,7 @@ function useTestDetail({
         { label: "Case", value: opened?.test?.case_name || "—" },
         { label: "Messages", value: (test?.messages ?? []).map((id) => messageLabel(messages.find((m) => m.id === id), id)).join(", ") || "—" },
         { label: "Environment", value: environment?.name ?? (links.environment ? "Removed environment" : "—") },
-        { label: "Outcome", value: test?.boundary ? (TEST_BOUNDARIES[test.boundary as keyof typeof TEST_BOUNDARIES] ?? humanize(test.boundary)) : "—" },
+        { label: "Outcome", value: test?.boundary ? <DisplayTerm map={TEST_BOUNDARIES} code={test.boundary} /> : "—" },
         ...(ledger ? [{ label: "Observation", value: observationLabel(test?.observation ?? "", snapshots) }] : []),
         {
           label: "Reset",
@@ -608,7 +611,7 @@ function useTestDetail({
         <EmptyState
           title="No runs yet"
           action={
-            summary.entry ? (
+            runnable ? (
               <button type="button" disabled={busy} onClick={() => onRun(summary.entry!)}>
                 Run
               </button>
@@ -723,40 +726,53 @@ function useTestDetail({
     </div>
   );
 
+  const menu: MenuItem[] = [
+    { label: "Duplicate", onSelect: () => setSheet("duplicate"), disabled: busy || !opened?.draft?.test },
+    {
+      label: "Export test",
+      onSelect: () =>
+        void exportTestItem({ context: context(), ref: { kind: "test", id: ref.id } }).then((answer) => {
+          if (answer.state === "completed" && answer.path) setNotice({ text: `Exported ${fileName(answer.path)}` });
+          else if (answer.state !== "cancelled") setNotice({ text: answer.reason ?? "Not exported.", problem: true });
+        }),
+      disabled: busy,
+    },
+    {
+      label: "Import test",
+      onSelect: () =>
+        void importTestDraft(context()).then((answer) => {
+          if (answer.state === "completed") onImported(answer);
+          else if (answer.state !== "cancelled") setNotice({ text: answer.reason ?? "Not imported.", problem: true });
+        }),
+      disabled: busy,
+    },
+    { label: "Edit JSON", onSelect: () => setSheet("json"), disabled: busy || !opened?.test?.document },
+    { label: "Details", onSelect: () => setSheet("details"), separated: true },
+  ];
+
   return {
     title: version ? `${item.name} · v${version}` : item.name,
+    details: { name: item.name, open: () => setSheet("details") },
+    // What the palette lists for this test: Run opens its run review, never
+    // a send.
+    palette: {
+      object: item.name,
+      items: [
+        { label: "Run", onSelect: () => onRun(summary.entry!), disabled: busy || !runnable },
+        { label: "Edit", onSelect: () => go({ kind: "edit", id: ref.id }), disabled: busy || !opened?.draft?.test || !!opened?.test?.read_only },
+        ...menu,
+      ],
+    },
     actions: (
       <>
         <Menu
           label="More test actions"
-          items={[
-            { label: "Duplicate", onSelect: () => setSheet("duplicate"), disabled: busy || !opened?.draft?.test },
-            {
-              label: "Export test",
-              onSelect: () =>
-                void exportTestItem({ context: context(), ref: { kind: "test", id: ref.id } }).then((answer) => {
-                  if (answer.state === "completed" && answer.path) setNotice({ text: `Exported ${fileName(answer.path)}` });
-                  else if (answer.state !== "cancelled") setNotice({ text: answer.reason ?? "Not exported.", problem: true });
-                }),
-              disabled: busy,
-            },
-            {
-              label: "Import test",
-              onSelect: () =>
-                void importTestDraft(context()).then((answer) => {
-                  if (answer.state === "completed") onImported(answer);
-                  else if (answer.state !== "cancelled") setNotice({ text: answer.reason ?? "Not imported.", problem: true });
-                }),
-              disabled: busy,
-            },
-            { label: "Edit JSON", onSelect: () => setSheet("json"), disabled: busy || !opened?.test?.document },
-            { label: "Details", onSelect: () => setSheet("details"), separated: true },
-          ]}
+          items={menu}
         />
         <button type="button" disabled={busy || !opened?.draft?.test || opened?.test?.read_only} onClick={() => go({ kind: "edit", id: ref.id })}>
           Edit
         </button>
-        <button type="button" className="primary" disabled={busy || !summary.entry} onClick={() => onRun(summary.entry!)}>
+        <button type="button" className="primary" disabled={busy || !runnable} onClick={() => onRun(summary.entry!)}>
           Run
         </button>
       </>

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import type { ReproducerComparisonResult } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
+import { useViewChange, useViewState } from "./viewstate";
 
 /** How the two revisions are related. The engine reads this from the identities
  * the two manifests name; this maps each one to a sentence and decides none. */
@@ -76,21 +77,21 @@ export function RevisionComparison({
   indicators: Indicators;
   onCompare: (left: string, right: string, leftResult: string, rightResult: string) => void;
 }) {
-  const [left, setLeft] = useState("");
-  const [right, setRight] = useState("");
-  const [leftResult, setLeftResult] = useState("");
-  const [rightResult, setRightResult] = useState("");
+  const [left, setLeft] = useViewState("RevisionComparison.left", "");
+  const [right, setRight] = useViewState("RevisionComparison.right", "");
+  const [leftResult, setLeftResult] = useViewState("RevisionComparison.leftResult", "");
+  const [rightResult, setRightResult] = useViewState("RevisionComparison.rightResult", "");
   const earlier = useRef<HTMLInputElement>(null);
 
   // A handed-over build becomes the later revision. The run named for the
   // later revision before was a run of something else, so it is cleared, and
   // focus moves to the earlier revision, which only the person can name.
-  useEffect(() => {
+  useViewChange("RevisionComparison.seed", seed, () => {
     if (!seed) return;
     setRight(seed.later);
     setRightResult("");
     earlier.current?.focus();
-  }, [seed]);
+  });
 
   const comparison = result?.comparison;
 

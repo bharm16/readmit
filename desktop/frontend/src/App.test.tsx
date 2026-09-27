@@ -7,7 +7,7 @@ import { findMessageRow } from "./testkit/navigation";
 // domain decisions stay with the Go readers, which the shared-operation tests
 // exercise directly.
 import { afterEach, expect, test, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import {
@@ -46,7 +46,8 @@ import {
 
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
-import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
+import { windowWidth } from "./testkit/window";
+import { findCaseRow, goTo, goToView, openView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
 import type { CommercialStatusResult, HubResult, RequestContext, ScenarioCatalogResult } from "./bindings";
 
 /** Opens a folder the way a person does from anywhere: the projects page's
@@ -607,9 +608,13 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
       },
   });
   await openFolder(user);
-  // Each panel draws the facade's answer, not the busy refusal.
+  // Each panel, opened, draws the facade's answer, not the busy refusal.
+  await goToView(user, "Settings", "Team");
   expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
+  await goToView(user, "Settings", "License");
   expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
+  await goToView(user, "Tests", "Library");
+  await openView(user, "Scenarios");
   await goToView(user, "Settings", "Security");
   const table = await screen.findByRole("table", { name: "Connections" });
   expect(await within(table).findByText("Team hub")).toBeTruthy();
@@ -717,7 +722,7 @@ test("searching workspace with content hit badges match and navigates to inspect
           kind: "content",
           name: CASE_ENTRY,
           label: "MRN-1001",
-          field: "PID-3",
+          field: "content",
           region: "inspector",
           occurrence: GRID_OCCURRENCE,
           selector: "PID-3",
@@ -773,13 +778,101 @@ test("the suite handoff names the prepared folder and release pins beside the ru
 });
 
 /** The window's own width, which a real layout gives it and jsdom does not. */
-function windowWidth(width: number) {
-  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
-    return this.classList.contains("app") ? width : 0;
-  });
-  act(() => window.dispatchEvent(new Event("resize")));
-}
 afterEach(() => vi.restoreAllMocks());
+
+test("on macOS ⌘K opens the palette and Ctrl+K does not; elsewhere Ctrl+K does and the Windows key does not", async () => {
+  const user = userEvent.setup();
+  const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  await renderApp();
+  await user.keyboard("{Control>}k{/Control}");
+  expect(screen.queryByRole("dialog", { name: "Commands" })).toBeNull();
+  await user.keyboard("{Meta>}k{/Meta}");
+  expect(screen.getByRole("dialog", { name: "Commands" })).toBeTruthy();
+  await user.keyboard("{Escape}");
+  platform.mockReturnValue("Win32");
+  await user.keyboard("{Meta>}k{/Meta}");
+  expect(screen.queryByRole("dialog", { name: "Commands" })).toBeNull();
+  await user.keyboard("{Control>}k{/Control}");
+  expect(screen.getByRole("dialog", { name: "Commands" })).toBeTruthy();
+});
+
+test("a page not on screen is not mounted, and going back to it shows what was typed", async () => {
+  const user = userEvent.setup();
+  await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await openFolder(user);
+  await sidebar().findByRole("button", { name: /^Project: / });
+  await goToView(user, "Runs", "Run test");
+  await user.type(page().getByLabelText("Run folder"), "tuesday-run");
+  await goTo(user, "Cases");
+  // The run page's form is gone from the window, not hidden in it.
+  expect(document.getElementById("run-output")).toBeNull();
+  await goToView(user, "Runs", "Run test");
+  expect((page().getByLabelText("Run folder") as HTMLInputElement).value).toBe("tuesday-run");
+});
+
+test("opening another project starts every page afresh: nothing typed, selected or revealed for the last one stays", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await openFolder(user);
+  await sidebar().findByRole("button", { name: /^Project: / });
+  await goToView(user, "Runs", "Run test");
+  await user.type(page().getByLabelText("Run folder"), "tuesday-run");
+  facade.reply({ SelectWorkspace: () => folderChosen("/work/other-project", [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]) });
+  await openFolder(user);
+  await waitFor(() => expect(facade.callsTo("SelectWorkspace")).toHaveLength(2));
+  await goToView(user, "Runs", "Run test");
+  expect((page().getByLabelText("Run folder") as HTMLInputElement).value).toBe("");
+});
+
+test("in a compact window a long case title opens the case's details from the keyboard", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE) });
+  await openWorkspaceWithVerifiedCase(facade, user);
+  windowWidth(1100);
+  expect(page().queryByRole("button", { name: /^Details for / })).toBeNull();
+  windowWidth(820);
+  const title = page().getByRole("button", { name: /^Details for / });
+  title.focus();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByRole("dialog", { name: "File details" })).toBeTruthy();
+});
+
+test("a window under 40rem wide, counted at its text size, keeps sheets closer to its edge", async () => {
+  await renderApp();
+  windowWidth(1100);
+  expect(document.documentElement.classList.contains("narrow-window")).toBe(false);
+  windowWidth(620);
+  expect(document.documentElement.classList.contains("narrow-window")).toBe(true);
+  // At twice the text size an 1100px window is 34.4rem wide.
+  document.documentElement.style.fontSize = "32px";
+  windowWidth(1100);
+  expect(document.documentElement.classList.contains("narrow-window")).toBe(true);
+  document.documentElement.style.fontSize = "";
+});
+
+test("at 1100px details open 22.5rem wide beside a 33.2rem list; a wider choice narrowed by the window comes back when it widens", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE) });
+  await openWorkspaceWithVerifiedCase(facade, user);
+  windowWidth(1100);
+  await user.click(await findMessageRow(GRID_OCCURRENCE));
+  await screen.findByRole("region", { name: "Details" });
+  const width = () => (document.querySelector(".workarea") as HTMLElement).style.getPropertyValue("--inspector-width");
+  // 1100 − 208 sidebar − 360 details − 1 divider leaves the list 531px.
+  expect(width()).toBe("22.5rem");
+  const separator = screen.getByRole("separator", { name: "Resize details" });
+  separator.focus();
+  await user.keyboard("{Home}");
+  // The widest choice is clamped so the list keeps its 30rem.
+  expect(width()).toBe(`${1100 / 16 - 13 - 30 - 1 / 16}rem`);
+  // Wider, the choice itself shows; narrower again, it is clamped, not overwritten.
+  windowWidth(1300);
+  expect(width()).toBe("27.5rem");
+  windowWidth(1100);
+  expect(Number.parseFloat(width())).toBeLessThan(27.5);
+  windowWidth(1300);
+  expect(width()).toBe("27.5rem");
+});
 
 test("a narrow window keeps the project switcher, in the page header beside an icon rail", async () => {
   const user = userEvent.setup();
@@ -809,6 +902,8 @@ test("details sit beside a list that fits and are shown alone, with the way back
   windowWidth(820);
   expect(document.querySelector(".workarea")?.classList.contains("detail-only")).toBe(true);
   expect(screen.queryByRole("region", { name: "Main content" })).toBeNull();
+  // The page header is not shown, so the details carry the project switcher.
+  expect(within(screen.getByRole("region", { name: "Details" })).getByRole("button", { name: /^Project: / })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Back to messages" }));
   expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
   expect(screen.getByRole("region", { name: "Main content" })).toBeTruthy();

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import {
   previewReplay,
   sendReplay,
@@ -12,6 +12,8 @@ import {
 } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentBanner";
 import { useLifecycle } from "./lifecycle";
+import { Reveal } from "./layout";
+import { useViewState } from "./viewstate";
 
 /** The replay screen: `readmit replay` beside the verified case. It previews
  * which of the case's messages would be sent to one target configuration and
@@ -45,16 +47,16 @@ export function ReplayPanel({
   const policies = entries.filter((artifact) => artifact.kind === "policy").map((artifact) => artifact.name);
   const messages = rows.filter((row) => row.kind === "message");
 
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [target, setTarget] = useState("");
-  const [policy, setPolicy] = useState("");
-  const [rebase, setRebase] = useState(false);
-  const [shifting, setShifting] = useState(false);
-  const [shift, setShift] = useState("");
-  const [output, setOutput] = useState("");
-  const [result, setResult] = useState<ReplayResult | null>(null);
-  const [sent, setSent] = useState<ReplayResult | null>(null);
-  const [approved, setApproved] = useState(false);
+  const [chosen, setChosen] = useViewState<string[]>("ReplayPanel.chosen", []);
+  const [target, setTarget] = useViewState("ReplayPanel.target", "");
+  const [policy, setPolicy] = useViewState("ReplayPanel.policy", "");
+  const [rebase, setRebase] = useViewState("ReplayPanel.rebase", false);
+  const [shifting, setShifting] = useViewState("ReplayPanel.shifting", false);
+  const [shift, setShift] = useViewState("ReplayPanel.shift", "");
+  const [output, setOutput] = useViewState("ReplayPanel.output", "");
+  const [result, setResult] = useViewState<ReplayResult | null>("ReplayPanel.result", null);
+  const [sent, setSent] = useViewState<ReplayResult | null>("ReplayPanel.sent", null);
+  const [approved, setApproved] = useViewState("ReplayPanel.approved", false);
   const stopPreview = useRef<HTMLButtonElement>(null);
   const stopSend = useRef<HTMLButtonElement>(null);
   // While the replay works every other control is disabled, so the keyboard's
@@ -330,18 +332,7 @@ export function ReplayPanel({
                   ))}
                 </tbody>
               </table>
-              <button
-                type="button"
-                disabled={disabled}
-                aria-describedby="replay-values-warning"
-                onClick={() => void preview(!plan.revealed)}
-              >
-                {plan.revealed ? "Hide values" : "Show values"}
-              </button>
-              <p className="hint" id="replay-values-warning">
-                Values may contain patient data: the exact field values of this preview, shown on this computer only. Showing them
-                sends nothing.
-              </p>
+              <Reveal revealed={plan.revealed} disabled={disabled} onToggle={(next) => void preview(next)} />
             </>
           ) : null}
           <p>

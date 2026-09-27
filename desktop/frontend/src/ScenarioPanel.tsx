@@ -392,7 +392,7 @@ export function ScenarioPanel({
             >
               Use local profile
             </button>
-            <Report
+            <Report outcome
               indicators={indicators}
               progress={running === "bind" ? PROGRESS.bind : null}
               result={bindResult && bindResult.state !== "completed" ? bindResult : null}
@@ -523,7 +523,7 @@ export function ScenarioPanel({
               </div>
             </div>
           ) : null}
-          <Report
+          <Report outcome
             indicators={indicators}
             progress={running === "save" || running === "open" ? PROGRESS[running] : null}
             result={documentOutcome && documentOutcome.result.state !== "completed" ? documentOutcome.result : null}
@@ -934,7 +934,7 @@ export function ScenarioPanel({
             >
               Browse…
             </button>
-            <Report
+            <Report outcome
               indicators={indicators}
               progress={null}
               result={importChoice && importChoice.state !== "completed" && importChoice.state !== "cancelled" ? importChoice : null}
@@ -969,7 +969,7 @@ export function ScenarioPanel({
             </button>
           </fieldset>
 
-          <Report
+          <Report outcome
             indicators={indicators}
             progress={runningLibraryAction ? PROGRESS[runningLibraryAction] : null}
             result={libraryOutcome && libraryOutcome.result.state !== "completed" ? libraryOutcome.result : null}
@@ -1071,7 +1071,7 @@ export function ScenarioPanel({
               Generate fixtures
             </button>
           </fieldset>
-          <Report
+          <Report outcome
             indicators={indicators}
             progress={running === "synth" ? PROGRESS.synth : null}
             result={synthResult && synthResult.state !== "completed" ? synthResult : null}

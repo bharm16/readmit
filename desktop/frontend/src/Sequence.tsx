@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import type {
   BundleDirection,
   CorrelationLinkage,
@@ -16,6 +16,7 @@ import "./sequence.css";
 import { CorrelationReview } from "./CorrelationReview";
 import { CorrelationRulesEditor, SequenceAnalysisEditor } from "./RulesEditor";
 import type { CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
+import { useViewChange, useViewState } from "./viewstate";
 
 /** Each gap the facade names, as the status a row shows. */
 const GAPS: Record<Gap, string> = {
@@ -157,24 +158,26 @@ export function Sequence({
   /** Whether the timeline is on screen: it loads itself the first time it is. */
   active?: boolean;
 }) {
-  const [rules, setRules] = useState("");
-  const [analysis, setAnalysis] = useState("");
-  const [opened, setOpened] = useState<string | null>(null);
+  const [rules, setRules] = useViewState("Sequence.rules", "");
+  const [analysis, setAnalysis] = useViewState("Sequence.analysis", "");
+  const [opened, setOpened] = useViewState<string | null>("Sequence.opened", null);
 
   const sequence: SequenceView | null = result?.sequence ?? null;
 
   // A new sequence is a new event list, so the event whose relations were open
   // is not left open over a window that does not hold it.
   const eventsAreNew = [sequence?.case, sequence?.rules, sequence?.offset].join("\u0000");
-  useEffect(() => {
-    setOpened(null);
-  }, [eventsAreNew]);
+  useViewChange("Sequence.events", eventsAreNew, () => setOpened(null));
 
   // The timeline is what this view is for, so it loads as soon as it is shown
   // and nothing else holds the window, rather than behind a button.
   const unloaded = result === null && progress === null;
+  // Asked once per showing: an effect run twice for one mount asks once.
+  const asked = useRef(false);
   useEffect(() => {
-    if (active && !busy && unloaded) {
+    if (!unloaded) asked.current = false;
+    if (active && !busy && unloaded && !asked.current) {
+      asked.current = true;
       onOpen(rules, 0, analysis);
     }
     // Only showing the view, or the window coming free, loads it: a change of

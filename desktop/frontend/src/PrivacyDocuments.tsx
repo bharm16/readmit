@@ -92,7 +92,7 @@ function shownRetention(retention: Retention, waiting: boolean, dropping: boolea
 /** Contract members are authored as controls. Only the Go readers decide
  * whether a policy or inventory is valid or whether a value is sensitive. */
 export function PrivacyDocuments({ task, workspace, policyName, inventoryName, drafts, onSaved }: {
-  /** The one document task on screen; the other stays mounted, with its edit, but hidden. */
+  /** The one document task on screen; the other keeps its edit while hidden. */
   task: "policy" | "inventory" | null;
   workspace: string | null;
   policyName: string;

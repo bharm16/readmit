@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { GridRow, Reproducer as ReproducerDraft, ReproducerResolution, ReproducerResult, ReproducerStep, State } from "./bindings";
 import { IconButton } from "./IconButton";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
+import { useViewState } from "./viewstate";
 
 /** What the project answered when one build was registered. It belongs to that
  * build alone, so a later build never shows it. */
@@ -89,13 +90,13 @@ export function Reproducer({
   onCompareRevision?: (built: string) => void;
   onCreateTest?: (name: string) => void;
 }) {
-  const [identity, setIdentity] = useState("SCH-2.1 SCH-2.2");
-  const [occurrence, setOccurrence] = useState("");
-  const [selector, setSelector] = useState("");
-  const [value, setValue] = useState("");
-  const [output, setOutput] = useState("");
-  const [revisionName, setRevisionName] = useState("");
-  const [registration, setRegistration] = useState<Registration | null>(null);
+  const [identity, setIdentity] = useViewState("Reproducer.identity", "SCH-2.1 SCH-2.2");
+  const [occurrence, setOccurrence] = useViewState("Reproducer.occurrence", "");
+  const [selector, setSelector] = useViewState("Reproducer.selector", "");
+  const [value, setValue] = useViewState("Reproducer.value", "");
+  const [output, setOutput] = useViewState("Reproducer.output", "");
+  const [revisionName, setRevisionName] = useViewState("Reproducer.revisionName", "");
+  const [registration, setRegistration] = useViewState<Registration | null>("Reproducer.registration", null);
   const selection = useRef<HTMLUListElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const answered = useRef(false);
@@ -140,7 +141,7 @@ export function Reproducer({
         Select the occurrences that matter, keep the setup dependencies they need, edit supported
         fields, and write a separate revision. The case you are reading is never changed.
       </p>
-      <Report indicators={indicators} progress={progress} result={result} />
+      <Report outcome indicators={indicators} progress={progress} result={result} />
       {restoredDraft ? (
         <div role="status" className="restored-draft">
           <p>
@@ -419,7 +420,7 @@ export function Reproducer({
               </button>
               {/* The project's own sentence for a refused registration, beside
                   the name that was typed, which stays for the next attempt. */}
-              <Report indicators={indicators} progress={null} result={registered} />
+              <Report outcome indicators={indicators} progress={null} result={registered} />
             </form>
           )}
         </div>

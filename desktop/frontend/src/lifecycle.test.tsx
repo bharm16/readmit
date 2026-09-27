@@ -9,6 +9,8 @@ import { explainRun, type RunExplanationRequest, type RunExplanationResult, type
 import { IndicatorsContext, Outcome, useLifecycle, useWindowBusy, type Answer, type LifecyclePolicy } from "./lifecycle";
 import { installFacade } from "./testkit/wails";
 import { WORKSPACE_ROOT, indicatorTable } from "./testkit/fixtures";
+import { Page } from "./layout";
+import { useViewState } from "./viewstate";
 
 const request: RunExplanationRequest = { workspace: WORKSPACE_ROOT, run: "run-1", assertions: "set.json", reveal: false };
 const answered = (reason: string): RunExplanationResult => ({ state: "failed", reason });
@@ -384,9 +386,10 @@ test("every one of the six states is drawn through Status, with its word, its sh
   const states: State[] = ["empty", "busy", "cancelled", "failed", "permission_denied", "completed"];
   for (const state of states) {
     const result: Answer = { state, reason: `the ${state} reason` };
+    // A completed or empty answer is drawn only as the outcome of a write.
     const { container, unmount } = render(
       <IndicatorsContext.Provider value={indicators}>
-        <Outcome result={result} />
+        <Outcome result={result} outcome />
       </IndicatorsContext.Provider>,
     );
     const status = within(container).getByRole("status");
@@ -407,4 +410,59 @@ test("every one of the six states is drawn through Status, with its word, its sh
   expect(within(status).getByText("busy")).toBeTruthy();
   expect(within(status).getByText("Reading the file.")).toBeTruthy();
   expect(within(container).queryByText("an earlier refusal")).toBeNull();
+});
+
+test("a read that completed or found nothing draws no status; one that did not complete says why", () => {
+  const indicators = indicatorTable();
+  for (const state of ["completed", "empty"] as State[]) {
+    const { container, unmount } = render(
+      <IndicatorsContext.Provider value={indicators}>
+        <Outcome result={{ state, reason: "read" }} />
+      </IndicatorsContext.Provider>,
+    );
+    expect(within(container).queryByRole("status")).toBeNull();
+    unmount();
+  }
+  const { container } = render(
+    <IndicatorsContext.Provider value={indicators}>
+      <Outcome result={{ state: "failed", reason: "the file is not a case" }} />
+    </IndicatorsContext.Provider>,
+  );
+  expect(within(within(container).getByRole("status")).getByText("the file is not a case")).toBeTruthy();
+  expect(within(container).queryByText(/^Help:/)).toBeNull();
+});
+
+test("a page left while a person's operation runs stays mounted until it answers, and keeps what was typed after", async () => {
+  const user = userEvent.setup();
+  let finish: (answer: Answer) => void = () => undefined;
+  function Sender() {
+    const lifecycle = useLifecycle<"sending">();
+    const [folder, setFolder] = useViewState("Sender.folder", "");
+    const [answer, setAnswer] = useState<Answer | null>(null);
+    return (
+      <>
+        <label htmlFor="folder">Folder</label>
+        <input id="folder" value={folder} onChange={(event) => setFolder(event.target.value)} />
+        <button type="button" onClick={() => void lifecycle.run("sending", () => new Promise<Answer>((resolve) => (finish = resolve))).then((got) => got && setAnswer(got))}>
+          Send
+        </button>
+        <p>{lifecycle.running ? "Sending" : (answer?.state ?? "")}</p>
+      </>
+    );
+  }
+  const page = (shown: boolean) => (
+    <Page id="run" shown={shown} title="Run">
+      <Sender />
+    </Page>
+  );
+  const view = render(page(true));
+  await user.type(screen.getByLabelText("Folder"), "tuesday");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  view.rerender(page(false));
+  // Still running: the page is hidden but its panel, and its answer, are there.
+  expect(document.getElementById("folder")).not.toBeNull();
+  finish({ state: "completed" });
+  await waitFor(() => expect(document.getElementById("folder")).toBeNull());
+  view.rerender(page(true));
+  expect((screen.getByLabelText("Folder") as HTMLInputElement).value).toBe("tuesday");
 });

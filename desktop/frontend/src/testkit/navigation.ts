@@ -1,7 +1,6 @@
 // Moving around the window the way a person does: the sidebar's destinations
-// and the views inside a page. Every page stays mounted while another is
-// shown, but only the shown one is in the accessibility tree, so a test goes
-// to the page that holds a control before asking for it by role.
+// and the views inside a page. Only the shown page is mounted, so a test goes
+// to the page that holds a control before asking for it.
 import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 

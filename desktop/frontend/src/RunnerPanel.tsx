@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef } from "react";
 import { TaskTabs } from "./TaskTabs";
 import "./runner.css";
 import {
@@ -43,6 +43,7 @@ import {
   type State,
 } from "./bindings";
 import { Outcome, useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 const emptyReference = { command: "", arguments: "" };
 
@@ -102,7 +103,7 @@ function Refusal(props: {
   const { result, refused = "Refused: ", denied, unexplained } = props;
   const prefix = result.state === "failed" ? refused : result.state === "permission_denied" ? denied : undefined;
   if (prefix === undefined) {
-    return <Outcome result={result} />;
+    return <Outcome result={result} outcome />;
   }
   return (
     <p className="runner-refused" role="alert">
@@ -129,8 +130,8 @@ function ResultLine(props: { result: { state: State; reason?: string | undefined
 type RunnerView = "status" | "configuration" | "grant" | "recovery" | "update";
 
 function RunnerSection() {
-  const [view, setView] = useState<RunnerView>("status");
-  const [config, setConfig] = useState<RunnerConfigRequest>({
+  const [view, setView] = useViewState<RunnerView>("RunnerSection.view", "status");
+  const [config, setConfig] = useViewState<RunnerConfigRequest>("RunnerSection.config", {
     hub: "",
     project: "",
     environment: "",
@@ -143,10 +144,10 @@ function RunnerSection() {
     update_engine: "",
     output: "",
   });
-  const [keyArguments, setKeyArguments] = useState(emptyReference);
-  const [tokenArguments, setTokenArguments] = useState(emptyReference);
-  const [document, setDocument] = useState<RunnerDocumentResult | null>(null);
-  const [grant, setGrant] = useState<RunnerGrantRequest>({
+  const [keyArguments, setKeyArguments] = useViewState("RunnerSection.keyArguments", emptyReference);
+  const [tokenArguments, setTokenArguments] = useViewState("RunnerSection.tokenArguments", emptyReference);
+  const [document, setDocument] = useViewState<RunnerDocumentResult | null>("RunnerSection.document", null);
+  const [grant, setGrant] = useViewState<RunnerGrantRequest>("RunnerSection.grant", {
     policy: "",
     project: "",
     subject: "",
@@ -158,19 +159,19 @@ function RunnerSection() {
     max_jobs: 100,
     output: "",
   });
-  const [grantResult, setGrantResult] = useState<RunnerDocumentResult | null>(null);
-  const [configPath, setConfigPath] = useState("");
-  const [inspection, setInspection] = useState<RunnerInspectResult | null>(null);
-  const [enrollment, setEnrollment] = useState<RunnerEnrollmentResult | null>(null);
-  const [job, setJob] = useState({ id: "", spec: "", output: "" });
-  const [jobResult, setJobResult] = useState<RunnerDocumentResult | null>(null);
-  const [jobPath, setJobPath] = useState("");
+  const [grantResult, setGrantResult] = useViewState<RunnerDocumentResult | null>("RunnerSection.grantResult", null);
+  const [configPath, setConfigPath] = useViewState("RunnerSection.configPath", "");
+  const [inspection, setInspection] = useViewState<RunnerInspectResult | null>("RunnerSection.inspection", null);
+  const [enrollment, setEnrollment] = useViewState<RunnerEnrollmentResult | null>("RunnerSection.enrollment", null);
+  const [job, setJob] = useViewState("RunnerSection.job", { id: "", spec: "", output: "" });
+  const [jobResult, setJobResult] = useViewState<RunnerDocumentResult | null>("RunnerSection.jobResult", null);
+  const [jobPath, setJobPath] = useViewState("RunnerSection.jobPath", "");
   // A preview names the configuration and job file it was asked for. Its
   // prepared input ID is the only identity a send carries, and only while
   // both still name what the preview read: changing either withdraws it, and
   // an answer that arrives after they changed is discarded.
-  const [preview, setPreview] = useState<{ result: RunnerJobPreviewResult; config: string; job: string } | null>(null);
-  const [execution, setExecution] = useState<RunnerExecutionResult | null>(null);
+  const [preview, setPreview] = useViewState<{ result: RunnerJobPreviewResult; config: string; job: string } | null>("RunnerSection.preview", null);
+  const [execution, setExecution] = useViewState<RunnerExecutionResult | null>("RunnerSection.execution", null);
   const inputs = useRef({ config: "", job: "" });
   inputs.current = { config: configPath, job: jobPath };
   // Send is disabled while its job runs, so the focus moves to Cancel job,
@@ -184,10 +185,10 @@ function RunnerSection() {
     stops: { executing: cancelControl },
   });
   const busy = lifecycle.running !== null;
-  const [recoveryJob, setRecoveryJob] = useState("");
-  const [recovery, setRecovery] = useState<RunnerRecoveryResult | null>(null);
-  const [update, setUpdate] = useState({ manifest: "", candidate: "" });
-  const [updateCheck, setUpdateCheck] = useState<RunnerUpdateResult | null>(null);
+  const [recoveryJob, setRecoveryJob] = useViewState("RunnerSection.recoveryJob", "");
+  const [recovery, setRecovery] = useViewState<RunnerRecoveryResult | null>("RunnerSection.recovery", null);
+  const [update, setUpdate] = useViewState("RunnerSection.update", { manifest: "", candidate: "" });
+  const [updateCheck, setUpdateCheck] = useViewState<RunnerUpdateResult | null>("RunnerSection.updateCheck", null);
 
   async function handlePreview() {
     await lifecycle.run("working", async () => {
@@ -736,19 +737,19 @@ function emptyScheduleEntry(): ScheduleEntryInput {
 }
 
 function SchedulesSection() {
-  const [output, setOutput] = useState("");
-  const [anchor, setAnchor] = useState("");
-  const [entries, setEntries] = useState<ScheduleEntryInput[]>([]);
+  const [output, setOutput] = useViewState("SchedulesSection.output", "");
+  const [anchor, setAnchor] = useViewState("SchedulesSection.anchor", "");
+  const [entries, setEntries] = useViewState<ScheduleEntryInput[]>("SchedulesSection.entries", []);
   // Whether the rows were edited since they were last opened, so opening a
   // policy asks before it replaces them.
-  const [dirty, setDirty] = useState(false);
-  const [installedPath, setInstalledPath] = useState("");
+  const [dirty, setDirty] = useViewState("SchedulesSection.dirty", false);
+  const [installedPath, setInstalledPath] = useViewState("SchedulesSection.installedPath", "");
   // The read, the preview and the save each keep their own answer. A preview
   // describes the rows it was asked for and is withdrawn when they change.
-  const [opened, setOpened] = useState<SchedulePreviewResult | null>(null);
-  const [replacing, setReplacing] = useState<SchedulePreviewResult | null>(null);
-  const [preview, setPreview] = useState<SchedulePreviewResult | null>(null);
-  const [saved, setSaved] = useState<SchedulePreviewResult | null>(null);
+  const [opened, setOpened] = useViewState<SchedulePreviewResult | null>("SchedulesSection.opened", null);
+  const [replacing, setReplacing] = useViewState<SchedulePreviewResult | null>("SchedulesSection.replacing", null);
+  const [preview, setPreview] = useViewState<SchedulePreviewResult | null>("SchedulesSection.preview", null);
+  const [saved, setSaved] = useViewState<SchedulePreviewResult | null>("SchedulesSection.saved", null);
   const lifecycle = useLifecycle<"working">();
   const busy = lifecycle.running !== null;
 
@@ -1020,8 +1021,8 @@ function GateVerification(props: { result: CIGateVerifyResult }) {
 type CITask = "generate" | "inspect" | "verify";
 
 function CISection() {
-  const [task, setTask] = useState<CITask>("generate");
-  const [request, setRequest] = useState<CIHandoffRequest>({
+  const [task, setTask] = useViewState<CITask>("CISection.task", "generate");
+  const [request, setRequest] = useViewState<CIHandoffRequest>("CISection.request", {
     integration: "posix",
     binary: "",
     operation_policy: "",
@@ -1031,15 +1032,15 @@ function CISection() {
     coverage_file: "",
     output: "",
   });
-  const [gated, setGated] = useState(false);
-  const [gate, setGate] = useState<CIGateStep>(emptyGateStep);
-  const [handoff, setHandoff] = useState<CIHandoffResult | null>(null);
-  const [resultsDirectory, setResultsDirectory] = useState("");
-  const [results, setResults] = useState<CIInspectResult | null>(null);
-  const [policyPath, setPolicyPath] = useState("");
-  const [policy, setPolicy] = useState<GatePolicyResult | null>(null);
-  const [snapshot, setSnapshot] = useState({ directory: "", identity: "" });
-  const [verification, setVerification] = useState<CIGateVerifyResult | null>(null);
+  const [gated, setGated] = useViewState("CISection.gated", false);
+  const [gate, setGate] = useViewState<CIGateStep>("CISection.gate", emptyGateStep);
+  const [handoff, setHandoff] = useViewState<CIHandoffResult | null>("CISection.handoff", null);
+  const [resultsDirectory, setResultsDirectory] = useViewState("CISection.resultsDirectory", "");
+  const [results, setResults] = useViewState<CIInspectResult | null>("CISection.results", null);
+  const [policyPath, setPolicyPath] = useViewState("CISection.policyPath", "");
+  const [policy, setPolicy] = useViewState<GatePolicyResult | null>("CISection.policy", null);
+  const [snapshot, setSnapshot] = useViewState("CISection.snapshot", { directory: "", identity: "" });
+  const [verification, setVerification] = useViewState<CIGateVerifyResult | null>("CISection.verification", null);
   // Verify is disabled while it reads, so the focus moves to the one action
   // the running verification offers rather than being left on nothing. The
   // verification runs under the facade's ci-gate-verify operation, so that
@@ -1329,7 +1330,7 @@ function CISection() {
  * or reconcile. It lives with the runner work it governs, not on the License
  * page; the actions keep their selected authority and explicit semantics. */
 function RunnerCapacity() {
-  const [runners, setRunners] = useState<RunnerStatusResult | null>(null);
+  const [runners, setRunners] = useViewState<RunnerStatusResult | null>("RunnerCapacity.runners", null);
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
 
@@ -1369,7 +1370,7 @@ function RunnerCapacity() {
 }
 
 export function RunnerPanel() {
-  const [tab, setTab] = useState<"runner" | "schedules" | "ci">("runner");
+  const [tab, setTab] = useViewState<"runner" | "schedules" | "ci">("RunnerPanel.tab", "runner");
   return (
     <section className="runner-panel" aria-labelledby="runner-panel-title">
       <h3 id="runner-panel-title">Runners, schedules and CI</h3>

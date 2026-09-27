@@ -2,6 +2,8 @@ import { expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessageReader } from "./Inspector";
+import { EmptyState, Modal, Page } from "./layout";
+import { Status } from "./shell";
 import { renderApp } from "./testkit/app";
 import {
   inspectionResult,
@@ -61,3 +63,23 @@ for (const state of ["too_large", "unparsed"] as const) {
     expect(screen.getByText(notice)).toBeTruthy();
   });
 }
+
+test("the shared compositions carry their title, reason and one action, and no paragraph explaining them", () => {
+  const { container } = render(
+    <>
+      <Page id="cases" shown title="Cases" actions={<button type="button">Import</button>}>
+        <EmptyState title="No cases yet" action={<button type="button">Import</button>} />
+      </Page>
+      <Status indicator={undefined} state="failed" reason="the case is not readable" />
+      <Modal open title="Details" onClose={() => undefined}>
+        <span>Case</span>
+      </Modal>
+    </>,
+  );
+  // Only the empty state's title and a status line are paragraphs; nothing
+  // offers generic help, a code or an explanation of what the page is for.
+  const paragraphs = [...container.ownerDocument.querySelectorAll("p")].map((p) => p.textContent);
+  expect(paragraphs).toEqual(["No cases yet", "failedthe case is not readable"]);
+  expect(screen.queryByText(/^Help:/)).toBeNull();
+  expect(container.ownerDocument.querySelector("details")).toBeNull();
+});

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CorrelationDecision, CorrelationReviewRequest, CorrelationReviewResult } from "./bindings";
 import { IconButton } from "./IconButton";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 const emptyDecision: CorrelationDecision = { action: "add", link: "", from: "", to: "", actor: "", reason: "" };
 
@@ -25,10 +26,10 @@ export function CorrelationReview({ busy, reviews, context, onReview, onSelect }
    * read at its original bytes. */
   onSelect?: (occurrence: string) => void;
 }) {
-  const [previous, setPrevious] = useState("");
-  const [result, setResult] = useState<CorrelationReviewResult | null>(null);
-  const [decision, setDecision] = useState<CorrelationDecision>(emptyDecision);
-  const [output, setOutput] = useState("");
+  const [previous, setPrevious] = useViewState("CorrelationReview.previous", "");
+  const [result, setResult] = useViewState<CorrelationReviewResult | null>("CorrelationReview.result", null);
+  const [decision, setDecision] = useViewState<CorrelationDecision>("CorrelationReview.decision", emptyDecision);
+  const [output, setOutput] = useViewState("CorrelationReview.output", "");
   const [showValues, setShowValues] = useState(false);
   // What this panel is waiting on the application for, said while it runs.
   const lifecycle = useLifecycle<string>();

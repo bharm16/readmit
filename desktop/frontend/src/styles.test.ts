@@ -110,3 +110,42 @@ test("the shared tokens hold the specified geometry", () => {
   expect(token("--line")).toBe("color-mix(in srgb, CanvasText 16%, Canvas)");
   expect(token("--selection")).toBe("color-mix(in srgb, var(--accent) 12%, Canvas)");
 });
+
+test("outside the shared tokens, lengths are rem and radii are the shared radii", () => {
+  // A physical pixel is kept only for lines: borders, outlines, hairlines and
+  // their offsets. Everything else scales with the text through rem.
+  const physical = /^(border(-(top|right|bottom|left))?(-width)?|outline(-width|-offset)?|box-shadow|column-rule)$/;
+  const offending = rules().filter((rule) => {
+    if (rule.sheet === "styles.css" || rule.property.startsWith("--")) return false;
+    if (rule.property === "border-radius") return !/^(0|var\(--radius-(control|sheet)\)|50%)$/.test(rule.value);
+    if (physical.test(rule.property)) return false;
+    // A one-pixel hairline drawn as a box is a line too.
+    if (/^(width|height|min-width|min-height)$/.test(rule.property) && rule.value === "1px") return false;
+    return /(^|[\s(,])-?\d*\.?\d+px\b/.test(rule.value);
+  });
+  expect(offending.map((rule) => `${rule.sheet}: ${rule.selector} { ${rule.property}: ${rule.value} }`)).toEqual([]);
+});
+
+test("no stylesheet decides a layout by the window's width", () => {
+  // A width media query compares against the default text size, so it would
+  // ignore a 200% text scale; the code measures the window in rem instead.
+  for (const { name, css } of sheets) {
+    expect(css, name).not.toMatch(/@media[^{]*\b(min|max)-width/i);
+  }
+});
+
+test("a control that hides its focus ring shows focus another way", () => {
+  const all = rules();
+  const hidden = all.filter((rule) => rule.selector.split(",").some((part) => part.trim().endsWith(":focus-visible")) && rule.property === "outline" && /^(none|0)$/.test(rule.value));
+  for (const rule of hidden) {
+    // Either the same rule fills it, as a menu item or the separator is, or
+    // its container draws the ring around it.
+    const container = rule.selector.match(/^\.[\w-]+/)?.[0];
+    const filled = all.some((other) => other.sheet === rule.sheet && other.selector === rule.selector && /^(background|box-shadow)$/.test(other.property));
+    // A landmark region takes focus only to move a person into it; the
+    // control there shows focus, the whole pane never does.
+    if (/^\.region:focus/.test(rule.selector)) continue;
+    const ringed = all.some((other) => other.selector === `${container}:focus-within` && other.property === "outline" && !/^(none|0)$/.test(other.value));
+    expect(filled || ringed, rule.selector).toBe(true);
+  }
+});

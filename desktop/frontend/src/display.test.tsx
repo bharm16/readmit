@@ -7,7 +7,9 @@ import {
   DisplayTerm,
   FIELD_STATES,
   HIDDEN_VALUE,
+  PROVENANCES,
   RESET_OPERATORS,
+  THEMES,
   TARGET_CLASSIFICATIONS,
   TEST_BOUNDARIES,
   TEST_RESULTS,
@@ -36,4 +38,12 @@ test("an unknown member is Unsupported and keeps its exact code, never a guess",
   render(<DisplayTerm map={TEST_RESULTS} code="flaky_pass" />);
   expect(screen.getByText("Unsupported")).toBeTruthy();
   expect(screen.getByText("flaky_pass").tagName).toBe("CODE");
+});
+
+test("generated evidence reads Synthetic, and a theme reads its name", () => {
+  expect(term(PROVENANCES, "generated").text).toBe("Synthetic");
+  expect(term(PROVENANCES, "derived").text).toBe("Variant");
+  expect(term(PROVENANCES, "recorded").text).toBe("Captured");
+  expect(term(THEMES, "dark").text).toBe("Dark");
+  expect(term(THEMES, "sepia").supported).toBe(false);
 });

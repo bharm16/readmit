@@ -4,10 +4,10 @@ import "./task-tabs.css";
 /** A set of task views: a real tablist with one tab stop, whose arrow keys,
  * Home and End move the selection, and the tabpanel each tab controls.
  *
- * By default only the selected task is rendered, in one tabpanel the
- * selected tab names. With `keepMounted` every task stays mounted, the
- * inactive ones hidden, so an unfinished edit survives looking at another
- * task; the children are then one `TaskPanel` per tab. */
+ * By default the children are the selected task, in one tabpanel the
+ * selected tab names. With `panels` the children are one `TaskPanel` per
+ * tab, each its own tabpanel; only the selected one is mounted, so what an
+ * unfinished task holds lives in the view state, not in a hidden form. */
 export function TaskTabs<K extends string>(props: {
   label: string;
   id: string;
@@ -15,12 +15,12 @@ export function TaskTabs<K extends string>(props: {
   selected: K;
   onSelect: (key: K) => void;
   children: ReactNode;
-  keepMounted?: boolean;
+  panels?: boolean;
   /** The classes of the tablist and of the tabpanel, for the panel's styles. */
   tablistClass?: string;
   panelClass?: string;
 }) {
-  const { label, id, tabs, selected, onSelect, keepMounted = false, tablistClass = "task-tabs", panelClass = "task-panel" } = props;
+  const { label, id, tabs, selected, onSelect, panels = false, tablistClass = "task-tabs", panelClass = "task-panel" } = props;
   return (
     <>
       <div className={tablistClass} role="tablist" aria-label={label}>
@@ -31,7 +31,7 @@ export function TaskTabs<K extends string>(props: {
             role="tab"
             id={tabId(id, tab.key)}
             aria-selected={selected === tab.key}
-            aria-controls={keepMounted ? panelId(id, tab.key) : `${id}-panel`}
+            aria-controls={panels ? panelId(id, tab.key) : `${id}-panel`}
             tabIndex={selected === tab.key ? 0 : -1}
             onClick={() => onSelect(tab.key)}
             onKeyDown={(event) => {
@@ -51,7 +51,7 @@ export function TaskTabs<K extends string>(props: {
           </button>
         ))}
       </div>
-      {keepMounted ? (
+      {panels ? (
         props.children
       ) : (
         <div role="tabpanel" id={`${id}-panel`} aria-labelledby={tabId(id, selected)} className={panelClass}>
@@ -62,13 +62,14 @@ export function TaskTabs<K extends string>(props: {
   );
 }
 
-/** One task of a `keepMounted` TaskTabs: always mounted, hidden while another
- * task is shown. `tabs` is that TaskTabs' id and `tab` this task's key. */
+/** One task of a `panels` TaskTabs: its tabpanel is always there, and its
+ * content is mounted only while it is shown. `tabs` is that TaskTabs' id and
+ * `tab` this task's key. */
 export function TaskPanel(props: { tabs: string; tab: string; shown: boolean; className?: string; children: ReactNode }) {
   const { tabs, tab, shown, className = "task-panel" } = props;
   return (
     <div role="tabpanel" id={panelId(tabs, tab)} aria-labelledby={tabId(tabs, tab)} hidden={!shown} className={className}>
-      {props.children}
+      {shown ? props.children : null}
     </div>
   );
 }

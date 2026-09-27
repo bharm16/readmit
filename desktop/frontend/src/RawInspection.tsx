@@ -13,10 +13,11 @@ import {
   type RoundTripResult,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
-import { EmptyState, FormDialog, Menu, Modal, ValueRows } from "./layout";
+import { EmptyState, FormDialog, Menu, Modal, Reveal, ValueRows } from "./layout";
 import { HexTable, MessageReader } from "./Inspector";
 import { typeLabel } from "./Messages";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 type Framing = "auto" | "raw" | "mllp";
 type Terminator = "auto" | "cr" | "lf" | "crlf";
@@ -226,20 +227,14 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
           />
         ) : null}
         {bytes && bytes.state === "completed" ? (
-          <div className="reveal">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                const next = !bytesShown;
-                setBytesShown(next);
-                void readFileBytes({ file, expect: listing.sha256, offset: bytes.offset, reveal: next }).then(setBytes);
-              }}
-            >
-              {bytesShown ? "Hide values" : "Show values"}
-            </button>
-            {bytesShown ? null : <span className="consequence">May contain patient data.</span>}
-          </div>
+          <Reveal
+            revealed={bytesShown}
+            disabled={disabled}
+            onToggle={(next) => {
+              setBytesShown(next);
+              void readFileBytes({ file, expect: listing.sha256, offset: bytes.offset, reveal: next }).then(setBytes);
+            }}
+          />
         ) : null}
       </div>
     );
@@ -346,8 +341,8 @@ function FormatSheet({
   onApply: (framing: Framing, terminator: Terminator) => void;
   onClose: () => void;
 }) {
-  const [nextFraming, setNextFraming] = useState(framing);
-  const [nextTerminator, setNextTerminator] = useState(terminator);
+  const [nextFraming, setNextFraming] = useViewState("FormatSheet.nextFraming", framing);
+  const [nextTerminator, setNextTerminator] = useViewState("FormatSheet.nextTerminator", terminator);
   useEffect(() => {
     if (open) {
       setNextFraming(framing);

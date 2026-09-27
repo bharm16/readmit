@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { DataTable, fittingColumns, OVERSCAN, Pager, virtualWindow, type Column, type SortState } from "./DataTable";
+import { DataTable, fittingColumns, OVERSCAN, Pager, ReturnAnchor, virtualWindow, type Column, type SortState } from "./DataTable";
 
 type Row = { id: string; name: string; status: string; owner: string };
 const ROWS: Row[] = Array.from({ length: 10_000 }, (_, i) => ({
@@ -203,4 +203,26 @@ test("a single page has no pager; a paged window shows its range", () => {
   rerender(<Pager first={200} count={200} total={1000} noun="messages" onPrevious={() => undefined} onNext={() => undefined} />);
   expect(screen.getByText("201–400 of 1000")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Previous messages" })).toBeTruthy();
+});
+
+test("returned to by Back, the list scrolls by row to the one that was first on screen, once", () => {
+  const returned = { anchor: "case-4200", at: {} };
+  const view = render(
+    <ReturnAnchor.Provider value={returned}>
+      <Harness />
+    </ReturnAnchor.Provider>,
+  );
+  const scroller = document.querySelector(".table-view") as HTMLElement;
+  // The anchor is 4200 rows of 44px down, whatever pixels it was left at.
+  expect(scroller.scrollTop).toBe(4200 * 44);
+  expect(drawn().some((row) => row.getAttribute("data-row-id") === "case-4200")).toBe(true);
+  // Scrolled on, the same return is not applied again.
+  scroller.scrollTop = 0;
+  act(() => scroller.dispatchEvent(new Event("scroll")));
+  view.rerender(
+    <ReturnAnchor.Provider value={returned}>
+      <Harness />
+    </ReturnAnchor.Provider>,
+  );
+  expect(scroller.scrollTop).toBe(0);
 });

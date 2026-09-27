@@ -45,7 +45,7 @@ func TestSearchNavigatesDeclaredEntriesAndRegisteredCases(t *testing.T) {
 	}
 
 	// Project metadata a person maintains, found by the words they gave it.
-	for query, field := range map[string]string{
+	for query, field := range map[string]desktop.SearchField{
 		"duplicate appointment": "title",
 		"scheduling-team":       "owner",
 		"INC-4821":              "incident",

@@ -10,6 +10,7 @@ import {
   type RunExplanationResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { Reveal } from "./layout";
 
 /** The run-explanation panel, beside the durable-run panels: one retained run
  * and one assertion set, chosen through the host's dialogs or named as entries
@@ -139,10 +140,7 @@ export function RunExplanation({ workspace, entries, busy }: { workspace: string
       </div>
       {explanation ? (
         <>
-          <button type="button" disabled={disabled} aria-describedby="explain-values-warning" onClick={() => void explain(!explanation.revealed)}>
-            {explanation.revealed ? "Hide values" : "Show values"}
-          </button>
-          <p id="explain-values-warning" className="hint">Values may contain patient data.</p>
+          <Reveal revealed={explanation.revealed} disabled={disabled} onToggle={(next) => void explain(next)} />
           <ExplanationView explanation={explanation} />
         </>
       ) : null}

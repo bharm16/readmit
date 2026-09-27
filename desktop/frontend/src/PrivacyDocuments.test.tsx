@@ -121,9 +121,9 @@ test("a refused open keeps the valid disclosure document already on screen", asy
     <PrivacyDocuments task={task} workspace={workspace} policyName="policy.json" inventoryName="inventory.json" onSaved={() => {}} />;
   const view = render(documents("policy"));
   await user.click(screen.getByRole("button", { name: "Edit policy" }));
+  expect((screen.getByLabelText("Patient ID selector") as HTMLInputElement).value).toBe("PID-3.1");
   view.rerender(documents("inventory"));
   await user.click(screen.getByRole("button", { name: "Edit inventory" }));
-  expect((screen.getByLabelText("Patient ID selector") as HTMLInputElement).value).toBe("PID-3.1");
   expect((screen.getByLabelText("Artifact path 1") as HTMLInputElement).value).toBe("original-run");
   facadeStub().reply({
     ReadRedactPolicy: () => ({ state: "failed", reason: "unsupported disclosure policy contract" }),
@@ -134,10 +134,11 @@ test("a refused open keeps the valid disclosure document already on screen", asy
   expect(await screen.findByText(/The selected policy was not opened: unsupported disclosure policy contract/)).toBeTruthy();
   view.rerender(documents("inventory"));
   await user.click(screen.getByRole("button", { name: "Edit inventory" }));
-  expect(await screen.findByText(/The selected policy was not opened: unsupported disclosure policy contract/)).toBeTruthy();
   expect(await screen.findByText(/The selected inventory was not opened: inventory requires explicit complete scope/)).toBeTruthy();
-  expect((screen.getByLabelText("Patient ID selector") as HTMLInputElement).value).toBe("PID-3.1");
   expect((screen.getByLabelText("Artifact path 1") as HTMLInputElement).value).toBe("original-run");
+  view.rerender(documents("policy"));
+  expect(screen.getByText(/The selected policy was not opened: unsupported disclosure policy contract/)).toBeTruthy();
+  expect((screen.getByLabelText("Patient ID selector") as HTMLInputElement).value).toBe("PID-3.1");
 });
 
 const editors = [

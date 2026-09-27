@@ -116,7 +116,7 @@ func TestDesktopCaseVerificationAgreesWithTheCommandLine(t *testing.T) {
 		for _, want := range []string{
 			"Bundle: " + opened.Case.Identity,
 			"Schema: " + opened.Case.Schema,
-			"Provenance: " + opened.Case.Provenance,
+			"Provenance: " + string(opened.Case.Provenance),
 			fmt.Sprintf("Sources: %d", opened.Case.Sources),
 			fmt.Sprintf("Occurrences: %d", opened.Case.Occurrences),
 			fmt.Sprintf("Messages: %d", opened.Case.Messages),

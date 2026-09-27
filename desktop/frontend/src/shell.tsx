@@ -1,4 +1,3 @@
-import { StateHelp } from "./ContextHelp";
 // The window furniture that renders the facade's description of the shell:
 // how a status reads, a region's outcome and the pane separator. None of it
 // decides anything about evidence; it draws what internal/desktop answered.
@@ -23,7 +22,6 @@ export function Status({
   reason?: string | undefined;
 }) {
   return (
-    <>
     <p className={`status status-${state}`} role="status">
       <span className="symbol" aria-hidden="true">
         {indicator?.symbol}
@@ -31,9 +29,6 @@ export function Status({
       <span className="state">{indicator?.label ?? state}</span>
       {reason ? <span className="reason">{reason}</span> : null}
     </p>
-    {/* What to do next matters only when something did not complete. */}
-    {state === "failed" || state === "permission_denied" || state === "cancelled" ? <StateHelp state={state} /> : null}
-    </>
   );
 }
 
@@ -55,20 +50,24 @@ export function Badge({
 }
 
 /** One region's outcome. While an operation is running that is the whole story,
- * so the previous outcome is not left on screen beside it. */
+ * so the previous outcome is not left on screen beside it. A read that
+ * completed says so by showing what it read, so a completed or empty answer
+ * draws nothing unless the caller marks it as the outcome of a write. */
 export function Report({
   indicators,
   progress,
   result,
+  outcome = false,
 }: {
   indicators: Indicators;
   progress: string | null;
   result: { state: State; reason?: string | undefined } | null;
+  outcome?: boolean;
 }) {
   if (progress !== null) {
     return <Status indicator={indicators.get("busy")} state="busy" reason={progress} />;
   }
-  if (!result) {
+  if (!result || (!outcome && (result.state === "completed" || result.state === "empty"))) {
     return null;
   }
   return (

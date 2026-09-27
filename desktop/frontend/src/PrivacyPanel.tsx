@@ -29,6 +29,7 @@ import { Reexecution } from "./Reexecution";
 import { PrivacyDocuments } from "./PrivacyDocuments";
 import { useLifecycle } from "./lifecycle";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
+import { useViewState } from "./viewstate";
 
 type Task = "policy" | "inventory" | "review" | "export" | "reexecute" | "support";
 const tasks: [Task, string][] = [
@@ -90,11 +91,11 @@ export function PrivacyPanel({
   sealedPackets.forEach((name) => supportSources.set(name, "retained-packet"));
   portables.forEach((name) => supportSources.set(name, "portable-review"));
 
-  const [task, setTask] = useState<Task>("policy");
-  const [caseName, setCaseName] = useState("");
-  const [specName, setSpecName] = useState("");
-  const [policyName, setPolicyName] = useState("");
-  const [inventoryName, setInventoryName] = useState("");
+  const [task, setTask] = useViewState<Task>("PrivacyPanel.task", "policy");
+  const [caseName, setCaseName] = useViewState("PrivacyPanel.caseName", "");
+  const [specName, setSpecName] = useViewState("PrivacyPanel.specName", "");
+  const [policyName, setPolicyName] = useViewState("PrivacyPanel.policyName", "");
+  const [inventoryName, setInventoryName] = useViewState("PrivacyPanel.inventoryName", "");
   const [derived, setDerived] = useState<Bound<PrivacyReviewResult> | null>(null);
   const lifecycle = useLifecycle<"deriving" | "exporting" | "reading-review" | "reading-policy" | "authoring" | "previewing" | "publishing" | "choosing" | "verifying">({
     names: { deriving: "privacy", exporting: "privacy" },
@@ -110,28 +111,28 @@ export function PrivacyPanel({
   // the one action that uses it, is cleared when the selection changes, and is
   // spent by the export it was typed for.
   const [exportReview, setExportReview] = useState("");
-  const [exportPrivate, setExportPrivate] = useState("");
-  const [approval, setApproval] = useState("");
-  const [exportOutput, setExportOutput] = useState("");
-  const [exported, setExported] = useState<PrivacyExportResult | null>(null);
+  const [exportPrivate, setExportPrivate] = useViewState("PrivacyPanel.exportPrivate", "");
+  const [approval, setApproval] = useViewState("PrivacyPanel.approval", "");
+  const [exportOutput, setExportOutput] = useViewState("PrivacyPanel.exportOutput", "");
+  const [exported, setExported] = useViewState<PrivacyExportResult | null>("PrivacyPanel.exported", null);
   const [reviewRead, setReviewRead] = useState<Bound<ReviewResult> | null>(null);
 
   // Support selections.
-  const [policySupport, setPolicySupport] = useState(true);
-  const [policyHub, setPolicyHub] = useState(false);
-  const [policyBytes, setPolicyBytes] = useState("4096");
-  const [policyOutput, setPolicyOutput] = useState("");
-  const [authoredPolicy, setAuthoredPolicy] = useState<SupportPolicyResult | null>(null);
-  const [selectedPolicy, setSelectedPolicy] = useState("");
-  const [policyView, setPolicyView] = useState<Bound<SupportPolicyResult> | null>(null);
-  const [supportSource, setSupportSource] = useState("");
-  const [supportPrivate, setSupportPrivate] = useState("");
+  const [policySupport, setPolicySupport] = useViewState("PrivacyPanel.policySupport", true);
+  const [policyHub, setPolicyHub] = useViewState("PrivacyPanel.policyHub", false);
+  const [policyBytes, setPolicyBytes] = useViewState("PrivacyPanel.policyBytes", "4096");
+  const [policyOutput, setPolicyOutput] = useViewState("PrivacyPanel.policyOutput", "");
+  const [authoredPolicy, setAuthoredPolicy] = useViewState<SupportPolicyResult | null>("PrivacyPanel.authoredPolicy", null);
+  const [selectedPolicy, setSelectedPolicy] = useViewState("PrivacyPanel.selectedPolicy", "");
+  const [policyView, setPolicyView] = useViewState<Bound<SupportPolicyResult> | null>("PrivacyPanel.policyView", null);
+  const [supportSource, setSupportSource] = useViewState("PrivacyPanel.supportSource", "");
+  const [supportPrivate, setSupportPrivate] = useViewState("PrivacyPanel.supportPrivate", "");
   const [supportPreview, setSupportPreview] = useState<Bound<SupportPreviewResult> | null>(null);
-  const [supportApproval, setSupportApproval] = useState("");
-  const [supportOutput, setSupportOutput] = useState("");
-  const [destinationChoice, setDestinationChoice] = useState<PacketPathResult | null>(null);
-  const [published, setPublished] = useState<SupportPublishResult | null>(null);
-  const [verifyEntry, setVerifyEntry] = useState("");
+  const [supportApproval, setSupportApproval] = useViewState("PrivacyPanel.supportApproval", "");
+  const [supportOutput, setSupportOutput] = useViewState("PrivacyPanel.supportOutput", "");
+  const [destinationChoice, setDestinationChoice] = useViewState<PacketPathResult | null>("PrivacyPanel.destinationChoice", null);
+  const [published, setPublished] = useViewState<SupportPublishResult | null>("PrivacyPanel.published", null);
+  const [verifyEntry, setVerifyEntry] = useViewState("PrivacyPanel.verifyEntry", "");
   const [verified, setVerified] = useState<SupportPreviewResult | null>(null);
 
   const derivationInputs = inputsOf(caseName, specName, policyName, inventoryName);
@@ -339,9 +340,9 @@ export function PrivacyPanel({
       regression-equivalence claim is made: every result declines one explicitly.
     </p>
 
-    {/* One task on screen at a time. Every task stays mounted, so an
-     * unfinished edit, preview or approval is not lost by looking at another. */}
-    <TaskTabs label="Privacy tasks" id="privacy" keepMounted selected={task} onSelect={setTask}
+    {/* One task on screen at a time; what its fields hold is kept while
+     * another is shown. */}
+    <TaskTabs label="Privacy tasks" id="privacy" panels selected={task} onSelect={setTask}
       tabs={tasks.map(([key, label]) => ({ key, label }))}>
     <PrivacyDocuments task={task === "policy" || task === "inventory" ? task : null}
       workspace={workspace} policyName={policyName} inventoryName={inventoryName} drafts={drafts}

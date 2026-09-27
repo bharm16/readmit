@@ -5,7 +5,7 @@ import { expect, test, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { FormDialog, Modal, Menu, type SubmitFailure } from "./layout";
+import { Categories, FormDialog, Modal, Menu, StepDialog, type SubmitFailure } from "./layout";
 
 function Editor({
   save,
@@ -178,4 +178,88 @@ test("a menu moves with the arrow keys and Escape closes only the menu, back to 
   expect(document.activeElement).toBe(trigger);
   expect(behind).not.toHaveBeenCalled();
   window.removeEventListener("keydown", behind);
+});
+
+test("Enter in a destructive sheet's field does not take the action; pressing it does", async () => {
+  const user = userEvent.setup();
+  const removed = vi.fn();
+  render(
+    <FormDialog open title="Remove reference" submitLabel="Remove" tone="danger" onClose={() => undefined} onSubmit={removed}>
+      <label htmlFor="reason">Reason</label>
+      <input id="reason" />
+    </FormDialog>,
+  );
+  await user.type(screen.getByLabelText("Reason"), "rotated{Enter}");
+  expect(removed).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Remove" }));
+  expect(removed).toHaveBeenCalledTimes(1);
+});
+
+function Flow({ done }: { done: (values: { name: string; format: string }) => void }) {
+  const [step, setStep] = useState("source");
+  const [name, setName] = useState("");
+  const [format, setFormat] = useState("");
+  return (
+    <StepDialog
+      open
+      title="Import"
+      step={step}
+      onStep={setStep}
+      onClose={() => undefined}
+      submitLabel="Import"
+      onSubmit={() => done({ name, format })}
+      steps={[
+        { key: "source", label: "Source", valid: name !== "", render: () => (<><label htmlFor="source">Source name</label><input id="source" value={name} onChange={(event) => setName(event.target.value)} /></>) },
+        { key: "format", label: "Format", valid: format !== "", render: () => (<><label htmlFor="format">Format</label><input id="format" value={format} onChange={(event) => setFormat(event.target.value)} /></>) },
+      ]}
+    />
+  );
+}
+
+test("a started flow shows one step, Back keeps what was entered, and only the last step takes the action", async () => {
+  const user = userEvent.setup();
+  const done = vi.fn();
+  render(<Flow done={done} />);
+  const sheet = within(screen.getByRole("dialog", { name: "Import" }));
+  expect(sheet.getByRole("list", { name: "Steps" }).querySelector('[aria-current="step"]')?.textContent).toBe("Source");
+  expect((sheet.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(sheet.queryByRole("button", { name: "Back" })).toBeNull();
+  await user.type(sheet.getByLabelText("Source name"), "Scheduler export");
+  await user.click(sheet.getByRole("button", { name: "Next" }));
+  expect(sheet.queryByLabelText("Source name")).toBeNull();
+  await user.type(sheet.getByLabelText("Format"), "MLLP");
+  await user.click(sheet.getByRole("button", { name: "Back" }));
+  expect((sheet.getByLabelText("Source name") as HTMLInputElement).value).toBe("Scheduler export");
+  await user.click(sheet.getByRole("button", { name: "Next" }));
+  expect((sheet.getByLabelText("Format") as HTMLInputElement).value).toBe("MLLP");
+  await user.click(sheet.getByRole("button", { name: "Import" }));
+  expect(done).toHaveBeenCalledWith({ name: "Scheduler export", format: "MLLP" });
+});
+
+function Settings() {
+  const [category, setCategory] = useState<"general" | "storage">("general");
+  return (
+    <Categories label="Settings" categories={[{ key: "general", label: "General" }, { key: "storage", label: "Storage" }]} selected={category} onSelect={setCategory}>
+      <p>Showing {category}</p>
+    </Categories>
+  );
+}
+
+test("categories sit in a rail where there is 45rem, and below that a named picker reaches every one", async () => {
+  const user = userEvent.setup();
+  let width = 800;
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("categories") ? width : 0;
+  });
+  const view = render(<Settings />);
+  expect(screen.getByRole("button", { name: "Storage" })).toBeTruthy();
+  width = 640;
+  act(() => window.dispatchEvent(new Event("resize")));
+  view.rerender(<Settings />);
+  expect(screen.queryByRole("button", { name: "Storage" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Settings: General" }));
+  await user.click(within(screen.getByRole("dialog", { name: "Settings" })).getByRole("button", { name: "Storage" }));
+  expect(screen.getByText("Showing storage")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Settings: Storage" })).toBeTruthy();
+  vi.restoreAllMocks();
 });

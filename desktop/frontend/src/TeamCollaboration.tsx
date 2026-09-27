@@ -23,6 +23,7 @@ import {
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
 import { TaskTabs } from "./TaskTabs";
+import { useViewState } from "./viewstate";
 
 type Props = {
   project: string;
@@ -120,60 +121,60 @@ function eventHead(result: HubLifecycleResult): number | undefined {
 }
 
 export function TeamCollaboration({ project, workspace = "", entries = [], capabilities = [], onRevisionContext }: Props) {
-  const [task, setTask] = useState<Task>("reviews");
-  const [reviews, setReviews] = useState<HubReviewsResult | null>(null);
-  const [notifications, setNotifications] = useState<HubReviewsResult | null>(null);
-  const [lifecycle, setLifecycle] = useState<HubLifecycleResult | null>(null);
-  const [custody, setCustody] = useState<HubResult | null>(null);
+  const [task, setTask] = useViewState<Task>("TeamCollaboration.task", "reviews");
+  const [reviews, setReviews] = useViewState<HubReviewsResult | null>("TeamCollaboration.reviews", null);
+  const [notifications, setNotifications] = useViewState<HubReviewsResult | null>("TeamCollaboration.notifications", null);
+  const [lifecycle, setLifecycle] = useViewState<HubLifecycleResult | null>("TeamCollaboration.lifecycle", null);
+  const [custody, setCustody] = useViewState<HubResult | null>("TeamCollaboration.custody", null);
   const actions = useLifecycle<"working">();
   const busy = actions.running !== null;
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useViewState<string | null>("TeamCollaboration.message", null);
 
   // A search of the history or of this person's notifications: what to look
   // for, as the hub's query contract carries it, and what the hub found.
-  const [queryText, setQueryText] = useState("");
-  const [queryEvidence, setQueryEvidence] = useState("");
-  const [queryAfter, setQueryAfter] = useState("");
-  const [queryProblem, setQueryProblem] = useState<string | null>(null);
-  const [found, setFound] = useState<{ scope: "history" | "notifications"; result: HubReviewsResult } | null>(null);
+  const [queryText, setQueryText] = useViewState("TeamCollaboration.queryText", "");
+  const [queryEvidence, setQueryEvidence] = useViewState("TeamCollaboration.queryEvidence", "");
+  const [queryAfter, setQueryAfter] = useViewState("TeamCollaboration.queryAfter", "");
+  const [queryProblem, setQueryProblem] = useViewState<string | null>("TeamCollaboration.queryProblem", null);
+  const [found, setFound] = useViewState<{ scope: "history" | "notifications"; result: HubReviewsResult } | null>("TeamCollaboration.found", null);
 
   // The review decision: each kind shows and sends only its own members.
-  const [reviewKind, setReviewKind] = useState("comment");
-  const [evidence, setEvidence] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [release, setRelease] = useState("");
-  const [parent, setParent] = useState("");
-  const [texts, setTexts] = useState<Record<string, string>>({ comment: "Evidence-linked comment" });
+  const [reviewKind, setReviewKind] = useViewState("TeamCollaboration.reviewKind", "comment");
+  const [evidence, setEvidence] = useViewState("TeamCollaboration.evidence", "");
+  const [recipient, setRecipient] = useViewState("TeamCollaboration.recipient", "");
+  const [release, setRelease] = useViewState("TeamCollaboration.release", "");
+  const [parent, setParent] = useViewState("TeamCollaboration.parent", "");
+  const [texts, setTexts] = useViewState<Record<string, string>>("TeamCollaboration.texts", { comment: "Evidence-linked comment" });
   const reviewIntent = useIntent("review");
 
   // Revisions: a new revision or a resolve of every current tip.
-  const [revisionKind, setRevisionKind] = useState<"revision" | "resolve">("revision");
-  const [resource, setResource] = useState("");
-  const [revisionArtifact, setRevisionArtifact] = useState("");
-  const [parents, setParents] = useState("");
-  const [revisionReason, setRevisionReason] = useState("");
+  const [revisionKind, setRevisionKind] = useViewState<"revision" | "resolve">("TeamCollaboration.revisionKind", "revision");
+  const [resource, setResource] = useViewState("TeamCollaboration.resource", "");
+  const [revisionArtifact, setRevisionArtifact] = useViewState("TeamCollaboration.revisionArtifact", "");
+  const [parents, setParents] = useViewState("TeamCollaboration.parents", "");
+  const [revisionReason, setRevisionReason] = useViewState("TeamCollaboration.revisionReason", "");
   const revisionIntent = useIntent("revision");
-  const [revisionWrite, setRevisionWrite] = useState<HubLifecycleResult | null>(null);
+  const [revisionWrite, setRevisionWrite] = useViewState<HubLifecycleResult | null>("TeamCollaboration.revisionWrite", null);
 
   // Administration: access, retention and audit export, each its own command.
-  const [removeSubject, setRemoveSubject] = useState("");
-  const [removeReason, setRemoveReason] = useState("");
-  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [removeSubject, setRemoveSubject] = useViewState("TeamCollaboration.removeSubject", "");
+  const [removeReason, setRemoveReason] = useViewState("TeamCollaboration.removeReason", "");
+  const [confirmingRemoval, setConfirmingRemoval] = useViewState("TeamCollaboration.confirmingRemoval", false);
   const accessIntent = useIntent("access");
-  const [accessWrite, setAccessWrite] = useState<HubLifecycleResult | null>(null);
-  const [retentionKind, setRetentionKind] = useState<"retention" | "retire">("retention");
-  const [retentionArtifact, setRetentionArtifact] = useState("");
-  const [until, setUntil] = useState("");
-  const [retentionReason, setRetentionReason] = useState("");
-  const [confirmingRetire, setConfirmingRetire] = useState(false);
+  const [accessWrite, setAccessWrite] = useViewState<HubLifecycleResult | null>("TeamCollaboration.accessWrite", null);
+  const [retentionKind, setRetentionKind] = useViewState<"retention" | "retire">("TeamCollaboration.retentionKind", "retention");
+  const [retentionArtifact, setRetentionArtifact] = useViewState("TeamCollaboration.retentionArtifact", "");
+  const [until, setUntil] = useViewState("TeamCollaboration.until", "");
+  const [retentionReason, setRetentionReason] = useViewState("TeamCollaboration.retentionReason", "");
+  const [confirmingRetire, setConfirmingRetire] = useViewState("TeamCollaboration.confirmingRetire", false);
   const retentionIntent = useIntent("retention");
-  const [retentionWrite, setRetentionWrite] = useState<HubLifecycleResult | null>(null);
-  const [auditReason, setAuditReason] = useState("");
+  const [retentionWrite, setRetentionWrite] = useViewState<HubLifecycleResult | null>("TeamCollaboration.retentionWrite", null);
+  const [auditReason, setAuditReason] = useViewState("TeamCollaboration.auditReason", "");
   const auditIntent = useIntent("audit");
-  const [audit, setAudit] = useState<HubLifecycleResult | null>(null);
-  const [auditSaved, setAuditSaved] = useState<HubTransferResult | null>(null);
+  const [audit, setAudit] = useViewState<HubLifecycleResult | null>("TeamCollaboration.audit", null);
+  const [auditSaved, setAuditSaved] = useViewState<HubTransferResult | null>("TeamCollaboration.auditSaved", null);
   // A history read after a recorded write that failed: the write stands.
-  const [refreshProblem, setRefreshProblem] = useState<string | null>(null);
+  const [refreshProblem, setRefreshProblem] = useViewState<string | null>("TeamCollaboration.refreshProblem", null);
 
   // The sharing journey: the policy and bundle entries of the open workspace,
   // the reviewer asked to approve, and the summary digest a request or an
@@ -182,14 +183,14 @@ export function TeamCollaboration({ project, workspace = "", entries = [], capab
   // acts and are never filled from here.
   const sharingPolicies = entries.filter((entry) => entry.kind === "sharing-policy").map((entry) => entry.name);
   const supportBundles = entries.filter((entry) => entry.kind === "support").map((entry) => entry.name);
-  const [policyEntry, setPolicyEntry] = useState("");
-  const [bundleEntry, setBundleEntry] = useState("");
-  const [supportRecipient, setSupportRecipient] = useState("");
+  const [policyEntry, setPolicyEntry] = useViewState("TeamCollaboration.policyEntry", "");
+  const [bundleEntry, setBundleEntry] = useViewState("TeamCollaboration.bundleEntry", "");
+  const [supportRecipient, setSupportRecipient] = useViewState("TeamCollaboration.supportRecipient", "");
   const supportIntent = useIntent("support");
-  const [supportReview, setSupportReview] = useState<HubReviewsResult | null>(null);
-  const [exportDigest, setExportDigest] = useState("");
-  const [exportDestination, setExportDestination] = useState("");
-  const [exportResult, setExportResult] = useState<HubTransferResult | null>(null);
+  const [supportReview, setSupportReview] = useViewState<HubReviewsResult | null>("TeamCollaboration.supportReview", null);
+  const [exportDigest, setExportDigest] = useViewState("TeamCollaboration.exportDigest", "");
+  const [exportDestination, setExportDestination] = useViewState("TeamCollaboration.exportDestination", "");
+  const [exportResult, setExportResult] = useViewState<HubTransferResult | null>("TeamCollaboration.exportResult", null);
 
   // The hub panel keeps the last known project, resource and revision state
   // for an offline draft after sign-out; telling it asks nothing of the hub.
@@ -969,8 +970,8 @@ function LifecycleWrite({ result }: { result: HubLifecycleResult | null }) {
  * with; reconnecting uploads nothing, and no grant, token or approval is kept
  * in the draft. */
 export function OfflineRevisionDraft({ workspace, context }: { workspace: string; context: RevisionContext }) {
-  const [localPath, setLocalPath] = useState("");
-  const [drafts, setDrafts] = useState<EditorDraftsResult | null>(null);
+  const [localPath, setLocalPath] = useViewState("OfflineRevisionDraft.localPath", "");
+  const [drafts, setDrafts] = useViewState<EditorDraftsResult | null>("OfflineRevisionDraft.drafts", null);
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
   return (

@@ -18,3 +18,5 @@ export const INSPECTOR_MAX_REM = 27.5;
 export const LIST_MIN_REM = 30;
 /** Categories sit in a rail beside their page only where the page is this wide. */
 export const CATEGORY_RAIL_MIN_REM = 45;
+/** Below this window width, in rem, sheets keep a smaller clearance. */
+export const NARROW_WINDOW_REM = 40;

@@ -180,15 +180,15 @@ func (r *WorkspaceResult) refuse(state State, reason string) { r.State, r.Reason
 // reader checked completion, identity, payload hashes and every record. It
 // carries no message bytes, field values, or original source paths.
 type Case struct {
-	Name             string `json:"name"`
-	Identity         string `json:"identity"`
-	Schema           string `json:"schema"`
-	Provenance       string `json:"provenance"`
-	Sources          int    `json:"sources"`
-	Occurrences      int    `json:"occurrences"`
-	Messages         int    `json:"messages"`
-	Acknowledgements int    `json:"acknowledgements"`
-	Unparsed         int    `json:"unparsed"`
+	Name             string      `json:"name"`
+	Identity         string      `json:"identity"`
+	Schema           string      `json:"schema"`
+	Provenance       bundle.Mode `json:"provenance"`
+	Sources          int         `json:"sources"`
+	Occurrences      int         `json:"occurrences"`
+	Messages         int         `json:"messages"`
+	Acknowledgements int         `json:"acknowledgements"`
+	Unparsed         int         `json:"unparsed"`
 }
 
 // CaseResult carries one state. Case is present only when the shared reader
@@ -597,7 +597,7 @@ func caseView(name string, b *bundle.Bundle) *Case {
 		Name:             name,
 		Identity:         b.Identity,
 		Schema:           b.Manifest.Schema,
-		Provenance:       string(b.Manifest.Provenance.Mode),
+		Provenance:       b.Manifest.Provenance.Mode,
 		Sources:          len(b.Manifest.Sources),
 		Occurrences:      len(b.Events),
 		Messages:         counts[bundle.Message],

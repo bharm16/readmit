@@ -427,6 +427,11 @@ body {
   border-color: var(--line);
 }
 
+/* Above details shown alone, where the page header is not. */
+.detail-switcher {
+  padding-top: var(--s3);
+}
+
 /* The one operation running now. */
 .operation {
   align-items: center;
@@ -519,6 +524,44 @@ body {
   -webkit-line-clamp: 2;
 }
 
+/* ---------- Steps ----------
+   A started flow names its steps once, the current one marked by weight as
+   well as colour. */
+.flow-steps {
+  display: flex;
+  gap: var(--s4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flow-steps > li {
+  color: var(--muted);
+}
+
+.flow-steps > li[aria-current="step"] {
+  color: CanvasText;
+  font-weight: 600;
+}
+
+/* An object's title that opens its Details reads as the title, not as a
+   button; only its focus ring says it can be pressed. */
+.page-header h1 .title-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: default;
+  display: -webkit-box;
+  font: inherit;
+  min-height: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  padding: 0;
+  text-align: start;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .page-actions {
   align-items: center;
   display: flex;
@@ -543,7 +586,8 @@ body {
 /* A page's one row of local views runs edge to edge under its header and
    stays in view while the body scrolls. */
 .page-body > .task-tabs,
-.page-body > .view-tabs {
+.page-body > .view-tabs,
+.page-body > .case-view > .case-views > .task-tabs {
   background: var(--canvas);
   margin: calc(-1 * var(--inset)) calc(-1 * var(--inset)) var(--inset);
   padding: 0 var(--inset);
@@ -915,6 +959,14 @@ details > summary {
   color: var(--text);
 }
 
+/* An icon is drawn 1rem square, so it scales with the text like its target. */
+.icon-button svg,
+.back-link svg,
+.menu-trigger svg {
+  height: 1rem;
+  width: 1rem;
+}
+
 .icon-button svg path,
 .icon-button svg circle {
   stroke-width: 1.5;
@@ -1124,7 +1176,10 @@ table {
 th,
 td {
   border-bottom: 1px solid var(--line);
-  height: var(--row);
+  /* The collapsed rule below a cell adds its width to the row, so the cell
+     is that much shorter and every row is exactly the 2.75rem the table's
+     virtual window counts. */
+  height: calc(var(--row) - 1px);
   padding: 0 var(--s3);
   text-align: start;
   vertical-align: middle;
@@ -1291,10 +1346,11 @@ dialog.palette::backdrop {
   background: var(--dim);
 }
 
-@media (max-width: 40rem) {
-  :root {
-    --sheet-clearance: 0.75rem;
-  }
+/* A 640px window keeps sheets 0.75rem from its edge. The class is set from
+   the measured width in rem, so it follows the text size, which a width
+   media query does not. */
+:root.narrow-window {
+  --sheet-clearance: 0.75rem;
 }
 
 .modal-header {
@@ -1353,8 +1409,23 @@ dialog.palette {
   padding: 0;
 }
 
+/* The field fills the bar, so the bar carries its focus ring, drawn inside
+   the palette's edge where the offset outline would be clipped. */
 .palette-search input[type="text"]:focus-visible {
   outline: none;
+}
+
+.palette-search:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+.palette-object {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .palette-results {

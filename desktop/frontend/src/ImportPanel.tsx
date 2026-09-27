@@ -26,6 +26,7 @@ import { Status } from "./shell";
 import "./import.css";
 import { useLifecycle } from "./lifecycle";
 import { useVocabulary } from "./vocabulary";
+import { Reveal } from "./layout";
 
 /** How each import-plan value reads. Which values a plan may declare is the
  * facade's vocabulary; these only name them. */
@@ -1745,16 +1746,7 @@ export function ImportPanel({
             </div>
 
             {/* Deliberate reveal toggle for sensitive payload values */}
-            <div className="import-reveal-banner">
-              <span>Message payload values are hidden by default to protect sensitive clinical evidence. Revealed values may contain patient data.</span>
-              <button
-                type="button"
-                className="import-reveal-toggle"
-                onClick={() => setRevealSensitive(!revealSensitive)}
-              >
-                {revealSensitive ? "Hide payload values" : "Show values"}
-              </button>
-            </div>
+            <Reveal revealed={revealSensitive} onToggle={setRevealSensitive} />
 
             {/* Preview table */}
             <div className="import-preview-table-container">

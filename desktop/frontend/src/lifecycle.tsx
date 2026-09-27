@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { cancel as cancelOperation, type InterruptibleOperation, type State } from "./bindings";
 import { Report, type Indicators } from "./shell";
+import { PageRetain } from "./layout";
 
 /** The operation lifecycle every panel of this window shares.
  *
@@ -106,6 +107,11 @@ function focused(): HTMLElement | null {
 
 export function useLifecycle<K extends string>(policy: LifecyclePolicy<K> = {}): Lifecycle<K> {
   const [running, setRunning] = useState<K | null>(null);
+  // The page this panel is on stays mounted while a person's operation runs,
+  // so its answer and its Stop are still there to come back to.
+  const retain = useContext(PageRetain);
+  const retainHeld = useRef(retain);
+  retainHeld.current = retain;
   const latest = useRef(policy);
   useEffect(() => {
     latest.current = policy;
@@ -143,10 +149,13 @@ export function useLifecycle<K extends string>(policy: LifecyclePolicy<K> = {}):
     }
     setRunning(kind);
     const current = () => withdrawals.current === since && turns.current.get(kind) === turn;
+    const kept = latest.current.background ? null : retainHeld.current;
+    kept?.(1);
     try {
       const answer = await work(current);
       return current() ? answer : undefined;
     } finally {
+      kept?.(-1);
       inFlight.current = inFlight.current.filter((entry) => entry.slot !== slot);
       release(slot);
       setRunning(inFlight.current[inFlight.current.length - 1]?.kind ?? null);
@@ -227,7 +236,7 @@ export const IndicatorsContext = createContext<Indicators>(new Map());
 /** One operation's answer, drawn the way every state is drawn: through
  * Status, with its word, its shape and its reason, whichever of the six
  * states it is. While the operation runs, that is the whole story. */
-export function Outcome({ result, progress = null }: { result: Answer | null; progress?: string | null }) {
+export function Outcome({ result, progress = null, outcome = false }: { result: Answer | null; progress?: string | null; outcome?: boolean }) {
   const indicators = useContext(IndicatorsContext);
-  return <Report indicators={indicators} progress={progress} result={result} />;
+  return <Report indicators={indicators} progress={progress} result={result} outcome={outcome} />;
 }

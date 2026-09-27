@@ -197,12 +197,10 @@ test("plan authoring, extraction preview with deliberate reveal toggle, and inva
   expect(screen.getByText("Occurrences")).toBeTruthy();
 
   // Check sensitivity reveal toggle
-  expect(
-    screen.getByText(/Message payload values are hidden by default to protect sensitive clinical evidence/),
-  ).toBeTruthy();
+  expect(within(evidence).getByText("May contain patient data.")).toBeTruthy();
   const revealButton = within(evidence).getByRole("button", { name: "Show values" });
   await user.click(revealButton);
-  expect(screen.getByRole("button", { name: "Hide payload values" })).toBeTruthy();
+  expect(within(evidence).getByRole("button", { name: "Hide values" })).toBeTruthy();
 
   // Test invalidation on input change: changing direction should clear the preview
   await user.selectOptions(screen.getByLabelText("Direction"), "inbound");

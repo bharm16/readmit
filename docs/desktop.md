@@ -2479,20 +2479,34 @@ project…*, *New project…* and *Project settings*.
 
 Where the window is, is one route: a destination (or a place reached from
 inside one, such as Library or Run test), the project, the object open in it
-and its local view. Going forward keeps the place left with its selection and
-scroll position, and **Back** returns exactly there; each sidebar destination
+and its local view. Going forward keeps the place left with its selection,
+its applied search, filter and sort and the row first on screen in its list,
+and **Back** returns exactly there, scrolled by row so a text size changed
+meanwhile does not move it; each sidebar destination
 keeps its own way back and returns to where it was left, so Back never jumps
 to another destination. Opening another project starts a new history: nothing
 selected, typed or revealed in one project is carried into another. One
-destination is shown at a time; the others stay mounted with what a person had
-typed, so moving away never discards an edit.
+destination is shown at a time, and only the page on screen is mounted. What a
+page holds unsaved — what a person typed or chose in its panels and the
+answers it is showing — is kept in memory for the open project, outside the
+components (an editor that keeps a draft restores its draft), so returning to
+a page shows it as it was left; previews, reviews and revealed values are not
+kept, so they are prepared again and values are hidden again on return; nothing of it is
+written to disk, and opening another project or relaunching forgets it. A page
+left while an operation a person started on it is still running stays mounted
+until that operation answers, so its answer and its Stop are there to come
+back to. A panel that shows one of several objects keeps what it holds per
+object: another case's replay starts empty, and the first case's is still there
+on return.
 
 Below an effective width of 56.25rem the sidebar is a 3.25rem icon rail, each
 icon named for assistive technology and by a tooltip on hover and focus, and
 the project switcher moves into the page header, so it is never out of reach.
 Selection details open beside a list at the width chosen for that project
 (22.5rem to start, 20–27.5rem); when the list beside them would fall below
-30rem they are shown on their own, with **Back to messages**. Settings
+30rem they are shown on their own, with **Back to messages** or **Back to
+findings**. In a compact window a long object title wraps to two lines and is
+itself a button that opens the object's Details, where the full name is. Settings
 categories are a 10rem rail where the page is at least 45rem wide and
 otherwise one button that opens a picker. Every breakpoint is measured in the
 window's effective rem, so twice the text size means half the room.
@@ -2565,9 +2579,13 @@ sidebar, 3.5rem headers, 2.25rem tabs, 2.75rem toolbars and rows, 2rem buttons,
 (Canvas and CanvasText, Field and FieldText, ButtonFace and ButtonText, the
 accent and the text drawn on it), with rules, hover and selection mixed from
 them. A test of the stylesheets refuses colour literals, gradients, remote
-resources, a forced-colours opt-out and any panel stylesheet that sizes
-controls or table cells itself, and checks that the lengths the code decides
-layout with are the stylesheet's own tokens.
+resources, a forced-colours opt-out, any panel stylesheet that sizes
+controls or table cells itself, pixel lengths outside the shared tokens (only
+lines — borders, outlines and hairlines — stay in physical pixels), radii other
+than the two shared ones, width media queries (which would ignore the text
+size) and a control that hides its focus ring without showing focus another
+way, and checks that the lengths the code decides layout with are the
+stylesheet's own tokens.
 
 **Vocabulary.** Closed vocabularies read through explicit captions keyed by
 their generated types, and a member without one reads *Unsupported* with its
@@ -2578,7 +2596,22 @@ classified*, and the test boundaries *Appointment records* and
 *Acknowledgements*; a permission refusal reads *Access denied*. The captions
 for an assertion failure (*Failed*), an execution error (*Error*) and a
 manual-confirmation reset (*Manual confirmation*) are defined for the screens
-that show those codes.
+that show those codes. Generated evidence reads *Synthetic*, and a derived
+case *Variant*.
+
+**Reveal.** Values are shown and hidden by one control everywhere they can
+be: *Show values* with *May contain patient data.* beside it while they are
+hidden, and *Hide values* once shown.
+
+**Outcomes.** A read that completes shows what it read and nothing more: no
+*Completed* line after it and no empty-result line. An operation that did not
+complete shows its state and its reason, and a write shows its outcome. No
+status carries a generic help code or offline-reference paragraph.
+
+**Started flows.** A multi-step sheet shows its steps once, the current one
+marked, and only that step's fields; *Back* returns to the one before with
+everything entered kept, and only the last step takes the flow's action. A
+destructive sheet is never submitted by `Enter` in one of its fields.
 
 ### Status without colour
 
@@ -2601,8 +2634,14 @@ back never leaves a panel beside evidence it was not read from.
 
 The command palette is one search field over the actions of where the person
 is and then the destinations, with the platform's shortcut beside the ones
-that have one (`⌘` on a Mac, `Ctrl` elsewhere). `Ctrl+K` opens it and `Ctrl+F`
-opens project search. Results rank a label that starts with the query, then a
+that have one (`⌘` on a Mac, `Ctrl` elsewhere). `⌘K` on a Mac and `Ctrl+K`
+elsewhere opens it (the other modifier does not), and `⌘F` / `Ctrl+F` opens
+project search. Its first entries are the shown object's own actions — the
+selected case's row menu, an open case's menu, a saved test's Run, Edit and
+menu, an environment's Test connection, Reset and menu, and Storage's menu —
+each named with the object it acts on and read from the same items that menu
+draws, so the palette and the menu cannot disagree. An action the window also
+offers as a command is listed once, as the object's. Results rank a label that starts with the query, then a
 later word that does, then one that contains it; arrow keys, `Home` and `End`
 choose and `Enter` runs the chosen one, which opens that action's own flow — a
 send or a delete is never done from `Enter`. It never lists itself, a project
@@ -2645,8 +2684,8 @@ workspace and its project declare, and the grid finds the occurrences inside one
 case. It reads exactly what the listing reads —
 the contract each immediate entry declares — and, when the folder holds a project
 document, the cases that document registers: their name, title, owner, tags,
-linked incidents, status, interface version, contract, provenance and recorded
-identity. It verifies no evidence, opens nothing, remembers no project and
+linked incidents, status and interface version — what a person declared, never
+a contract name, an evidence identity or a provenance code. It verifies no evidence, opens nothing, remembers no project and
 builds no index; it lists the folder again each time under the same bound.
 
 A result names the thing it found the way the window already names it — the

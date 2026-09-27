@@ -638,3 +638,34 @@ test("Remove check can be undone, and a saved check opens its full details read-
   await user.click(page().getByRole("button", { name: "Undo" }));
   await waitFor(() => expect(rowsOf(page().getByRole("table", { name: "Checks" })).map((row) => row[0])).toEqual(["Record count", "ACK MSA-1 · SIU · S13"]));
 });
+
+test("Run from the command palette opens the saved test's run review and sends nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openTests(user, [RESCHEDULE], { OpenItemDraft: (request) => savedAnswer(request), TestHistory: (request) => ({ state: "completed", context: request.context, versions: [], runs: [] }) });
+  await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
+  await page().findByRole("button", { name: "Run" });
+  await user.keyboard("{Control>}k{/Control}");
+  const palette = within(await screen.findByRole("listbox", { name: "Commands" }));
+  // The test's own actions come first, named for the test.
+  expect(palette.getAllByRole("option")[0]?.textContent).toBe("RunReschedule keeps one appointment");
+  await user.keyboard("{Enter}");
+  expect(await page().findByRole("heading", { level: 1, name: "Run test" })).toBeTruthy();
+  expect(page().getByRole("button", { name: "Preview run" })).toBeTruthy();
+  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("a test whose outcome this window does not know reads Unsupported and cannot be run", async () => {
+  const user = userEvent.setup();
+  await openTests(user, [RESCHEDULE], {
+    OpenItemDraft: (request) => {
+      const answer = savedAnswer(request);
+      return { ...answer, draft: { ...answer.draft!, test: { ...answer.draft!.test!, boundary: "future-boundary" } } };
+    },
+    TestHistory: (request) => ({ state: "completed", context: request.context, versions: [], runs: [] }),
+  });
+  await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
+  const outcome = await page().findByText("Unsupported");
+  expect(outcome.closest("details")?.querySelector("code")?.textContent).toBe("future-boundary");
+  expect((page().getByRole("button", { name: "Run" }) as HTMLButtonElement).disabled).toBe(true);
+});

@@ -14,6 +14,7 @@ import {
 import { ControlledDetails } from "./ControlledDetails";
 import { IconButton } from "./IconButton";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** The calendar date an instant falls on, in UTC as the license states it. */
 function day(instant: string | undefined): string {
@@ -61,24 +62,24 @@ function describeTerm(license: InstalledLicenseView): string {
  * the account address an operator configured, opened only by a click;
  * onChanged lets the region re-read what the activation changed. */
 export function ComputerLicense({ portal, onChanged }: { portal: string | undefined; onChanged: () => void }) {
-  const [status, setStatus] = useState<InstalledLicenseResult | null>(null);
+  const [status, setStatus] = useViewState<InstalledLicenseResult | null>("ComputerLicense.status", null);
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useViewState<string | null>("ComputerLicense.notice", null);
   // The activation/renewal flow's method choice, opened by the primary
   // action: the file the person received, or its pasted contents.
-  const [choosing, setChoosing] = useState(false);
-  const [pasting, setPasting] = useState(false);
-  const [pasted, setPasted] = useState("");
+  const [choosing, setChoosing] = useViewState("ComputerLicense.choosing", false);
+  const [pasting, setPasting] = useViewState("ComputerLicense.pasting", false);
+  const [pasted, setPasted] = useViewState("ComputerLicense.pasted", "");
   const [review, setReview] = useState<LicenseReviewResult | null>(null);
   // The pasted text the review checked, which activation sends again; empty
   // when the license came from a file.
-  const [reviewed, setReviewed] = useState("");
-  const [author, setAuthor] = useState("");
-  const [device, setDevice] = useState("");
-  const [pool, setPool] = useState("");
-  const [confirming, setConfirming] = useState(false);
-  const [exported, setExported] = useState<LicenseExportResult | null>(null);
+  const [reviewed, setReviewed] = useViewState("ComputerLicense.reviewed", "");
+  const [author, setAuthor] = useViewState("ComputerLicense.author", "");
+  const [device, setDevice] = useViewState("ComputerLicense.device", "");
+  const [pool, setPool] = useViewState("ComputerLicense.pool", "");
+  const [confirming, setConfirming] = useViewState("ComputerLicense.confirming", false);
+  const [exported, setExported] = useViewState<LicenseExportResult | null>("ComputerLicense.exported", null);
   const keep = useRef<HTMLButtonElement | null>(null);
   const deactivateControl = useRef<HTMLButtonElement | null>(null);
 

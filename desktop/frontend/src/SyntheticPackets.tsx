@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import {
   chooseSyntheticPacketPath,
   generateSyntheticPacket,
@@ -12,6 +12,7 @@ import {
   type SyntheticRerunView,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** The one committed scenario `readmit report --scenario` accepts. */
 const SCENARIO = "siu-reschedule-v1";
@@ -48,13 +49,13 @@ export function SyntheticPackets({ onRefresh }: { onRefresh: () => void }) {
   });
   const operation = lifecycle.running;
   const busy = operation !== null;
-  const [destination, setDestination] = useState("");
-  const [packetPath, setPacketPath] = useState("");
-  const [packet, setPacket] = useState<SyntheticPacketResult | null>(null);
-  const [address, setAddress] = useState(DEFAULT_ADDRESS);
-  const [rerunDestination, setRerunDestination] = useState("");
-  const [rerun, setRerun] = useState<SyntheticRerunResult | null>(null);
-  const [choice, setChoice] = useState<{ kind: SyntheticPacketPathKind; answer: PacketPathResult } | null>(null);
+  const [destination, setDestination] = useViewState("SyntheticPackets.destination", "");
+  const [packetPath, setPacketPath] = useViewState("SyntheticPackets.packetPath", "");
+  const [packet, setPacket] = useViewState<SyntheticPacketResult | null>("SyntheticPackets.packet", null);
+  const [address, setAddress] = useViewState("SyntheticPackets.address", DEFAULT_ADDRESS);
+  const [rerunDestination, setRerunDestination] = useViewState("SyntheticPackets.rerunDestination", "");
+  const [rerun, setRerun] = useViewState<SyntheticRerunResult | null>("SyntheticPackets.rerun", null);
+  const [choice, setChoice] = useViewState<{ kind: SyntheticPacketPathKind; answer: PacketPathResult } | null>("SyntheticPackets.choice", null);
   const verified = packet?.packet ?? null;
 
   async function choose(kind: SyntheticPacketPathKind, apply: (path: string) => void) {

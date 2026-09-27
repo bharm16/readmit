@@ -289,7 +289,7 @@ func TestTheWindowsSampleCaptureIsTheCommandLinesCase(t *testing.T) {
 		t.Fatalf("the window's sample capture: %+v", captured)
 	}
 	for _, want := range []string{
-		"Schema: " + captured.Case.Schema, "Provenance: " + captured.Case.Provenance,
+		"Schema: " + captured.Case.Schema, "Provenance: " + string(captured.Case.Provenance),
 		fmt.Sprintf("Sources: %d", captured.Case.Sources), fmt.Sprintf("Occurrences: %d", captured.Case.Occurrences),
 		fmt.Sprintf("Messages: %d", captured.Case.Messages), fmt.Sprintf("ACKs: %d", captured.Case.Acknowledgements),
 	} {

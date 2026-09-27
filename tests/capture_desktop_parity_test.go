@@ -139,7 +139,7 @@ func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 			for _, line := range []string{
 				"Bundle: " + result.Case.Identity,
 				"Schema: " + result.Case.Schema,
-				"Provenance: " + result.Case.Provenance,
+				"Provenance: " + string(result.Case.Provenance),
 				fmt.Sprintf("Sources: %d", result.Case.Sources),
 				fmt.Sprintf("Messages: %d", result.Case.Messages),
 				fmt.Sprintf("ACKs: %d", result.Case.Acknowledgements),

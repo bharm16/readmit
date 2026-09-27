@@ -472,6 +472,9 @@ export interface BuildIndexResult {
 /** internal/bundle.Direction */
 export type BundleDirection = "unknown" | "inbound" | "outbound";
 
+/** internal/bundle.Mode */
+export type BundleMode = "imported" | "generated" | "recorded" | "derived" | "collected";
+
 /** internal/suite.GateReport */
 export interface CIGateReport {
   schema: string;
@@ -697,7 +700,7 @@ export interface CaseEvidence {
   name: string;
   identity: string;
   schema: string;
-  provenance: string;
+  provenance: BundleMode;
   sources: number;
   occurrences: number;
   messages: number;
@@ -3782,7 +3785,7 @@ export interface Match {
   kind: MatchKind;
   name: string;
   label: string;
-  field: string;
+  field: SearchField;
   region: RegionId;
   occurrence?: string;
   selector?: string;
@@ -7368,6 +7371,17 @@ export interface SchedulePreviewResult {
 export interface ScheduleSummary {
   schedules: number;
 }
+
+/** internal/desktop.SearchField */
+export type SearchField =
+  | "name"
+  | "title"
+  | "owner"
+  | "tag"
+  | "incident"
+  | "status"
+  | "interface version"
+  | "content";
 
 /** internal/desktop.SearchResult */
 export interface SearchResult {

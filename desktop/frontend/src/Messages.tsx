@@ -375,7 +375,7 @@ export function MessageList({
     { key: "time", header: "Time", priority: 1, minWidth: 7.5, sortable: true, render: (row) => timeOfDay(row.observed_at) },
     { key: "type", header: "Type", priority: 1, minWidth: 7, render: rowType },
     ...(showKind ? [{ key: "kind", header: "Kind", priority: 4, minWidth: 6.5, render: (row: MessageRow) => KINDS[row.kind] }] : []),
-    { key: "source", header: "Source", priority: 2, minWidth: 10, render: (row) => row.source_id },
+    { key: "source", header: "Source", priority: 2, minWidth: 10, flex: true, render: (row) => row.source_id },
     {
       key: "direction",
       header: "Direction",

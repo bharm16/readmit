@@ -2,10 +2,11 @@
 // title with the page's own actions beside it, at most one row of local views,
 // and a body that scrolls on its own. Nothing here decides anything about
 // evidence; it only keeps every page laid out the same way.
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { IconButton } from "./IconButton";
 import { CATEGORY_RAIL_MIN_REM } from "./geometry";
 import { useMeasured } from "./measure";
+import { ViewScope } from "./viewstate";
 import type { Destination } from "./routes";
 
 export type { Destination } from "./routes";
@@ -24,19 +25,54 @@ export const GLOBAL_DESTINATIONS: { id: Destination; label: string }[] = [
   { id: "help", label: "Help" },
 ];
 
+/** Whether the page drawing a component is the one on screen. */
+const PageShown = createContext(true);
+
+/** Keeps the page an operation was started from mounted until it answers:
+ * called with 1 as one starts and -1 as it ends. */
+export const PageRetain = createContext<(change: 1 | -1) => void>(() => undefined);
+
+/** An object's actions as the palette lists them: the same items its menu
+ * shows, read when the palette opens so they are never out of date. */
+export type ObjectActions = { object: string; items: () => MenuItem[] };
+
+/** Where a shown page's selected object offers its actions to the palette. */
+export const PaletteActionsContext = createContext<(owner: symbol, actions: ObjectActions | null) => void>(() => undefined);
+
+/** Offers `items` (an object's own menu) to the command palette while the
+ * page holding them is on screen and `object` names what they act on. */
+export function usePaletteActions(object: string | null, items: MenuItem[]) {
+  const shown = useContext(PageShown);
+  useOfferedActions(useContext(PaletteActionsContext), object !== null && shown ? { object, items } : null);
+}
+
+/** Offers an object's actions through `register` while `offer` is set; the
+ * window itself, above the pages, offers its own objects this way. */
+export function useOfferedActions(register: (owner: symbol, actions: ObjectActions | null) => void, offer: { object: string; items: MenuItem[] } | null) {
+  const [owner] = useState(() => Symbol("palette actions"));
+  const latest = useRef<MenuItem[]>([]);
+  latest.current = offer?.items ?? [];
+  const object = offer?.object ?? null;
+  useEffect(() => {
+    register(owner, object === null ? null : { object, items: () => latest.current });
+  }, [register, owner, object]);
+  useEffect(() => () => register(owner, null), [register, owner]);
+}
+
 /** What every page needs from the window around it: whether the sidebar is a
  * rail, and the project switcher a rail leaves for the page header to hold. */
 export const FrameContext = createContext<{ compact: boolean; switcher: ReactNode }>({ compact: false, switcher: null });
 
-/** One page. It stays mounted while another is shown, so an unfinished edit
- * survives looking elsewhere; only the shown page is in the accessibility
- * tree. */
+/** One page. Only the shown page is mounted; what its panels hold unsaved
+ * is in the view state, and it stays mounted while an operation started on it
+ * runs. */
 export function Page({
   id,
   shown,
   title,
   back,
   actions,
+  details,
   children,
 }: {
   id: string;
@@ -45,18 +81,41 @@ export function Page({
   /** The way back to where this page was opened from. */
   back?: ReactNode;
   actions?: ReactNode;
+  /** An object page's Details: in a compact window its title, which may be
+   * cut to two lines, opens them, so the full name is a keypress away. */
+  details?: { name: string; open: () => void } | undefined;
   children: ReactNode;
 }) {
   const { compact, switcher } = useContext(FrameContext);
+  // A page not on screen is not mounted: what it holds unsaved is kept in
+  // the view state, not in hidden components. One whose operation is still
+  // running stays until that answers.
+  const [running, setRunning] = useState(0);
+  const retain = useCallback((change: 1 | -1) => setRunning((count) => Math.max(0, count + change)), []);
+  const mounted = shown || running > 0;
   return (
     <div className="page" data-page={id} hidden={!shown}>
       <header className="page-header">
         {compact && switcher ? <div className="header-switcher">{switcher}</div> : null}
         {back}
-        <h1>{title}</h1>
+        <h1>
+          {compact && details ? (
+            <button type="button" className="title-button" aria-label={`Details for ${details.name}`} onClick={details.open}>
+              {title}
+            </button>
+          ) : (
+            title
+          )}
+        </h1>
         {actions ? <div className="page-actions">{actions}</div> : null}
       </header>
-      <div className="page-body">{children}</div>
+      <div className="page-body">
+        <ViewScope.Provider value={id}>
+          <PageRetain.Provider value={retain}>
+            <PageShown.Provider value={shown}>{mounted ? children : null}</PageShown.Provider>
+          </PageRetain.Provider>
+        </ViewScope.Provider>
+      </div>
     </div>
   );
 }
@@ -81,6 +140,19 @@ export function EmptyState({ title, action }: { title: string; action?: ReactNod
     <div className="empty-state">
       <p className="empty-title">{title}</p>
       {action ? <div className="empty-action">{action}</div> : null}
+    </div>
+  );
+}
+
+/** The one control that shows or hides sensitive values, with the one
+ * consequence line beside it while they are hidden. */
+export function Reveal({ revealed, onToggle, disabled = false }: { revealed: boolean; onToggle: (next: boolean) => void; disabled?: boolean }) {
+  return (
+    <div className="reveal">
+      <button type="button" disabled={disabled} onClick={() => onToggle(!revealed)}>
+        {revealed ? "Hide values" : "Show values"}
+      </button>
+      {revealed ? null : <span className="consequence">May contain patient data.</span>}
     </div>
   );
 }
@@ -452,13 +524,6 @@ export function folderName(path: string): string {
   return parts[parts.length - 1] || trimmed;
 }
 
-/** A code as a person reads it: words instead of separators, capitalised.
- * For display only; the code itself is what is sent anywhere. */
-export function humanize(code: string): string {
-  const words = code.replaceAll("_", " ").replaceAll("-", " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
 /** What a failed submission answers: the facade's own reason and, when it
  * names one, the field to correct. */
 export type SubmitFailure = { reason: string; field?: string };
@@ -487,6 +552,7 @@ export function FormDialog({
   size = "normal",
   tone = "primary",
   status,
+  secondary,
   children,
 }: {
   open: boolean;
@@ -505,6 +571,8 @@ export function FormDialog({
   tone?: "primary" | "danger";
   /** An answer to show beside the actions: a refusal or a validation message. */
   status?: ReactNode;
+  /** A step back in a started flow, drawn before the primary action. */
+  secondary?: ReactNode;
   children: ReactNode;
 }) {
   const [pending, setPending] = useState(false);
@@ -574,6 +642,7 @@ export function FormDialog({
               <button type="button" onClick={requestClose} disabled={pending}>
                 Cancel
               </button>
+              {secondary}
               <button
                 type="submit"
                 form={formId}
@@ -590,6 +659,11 @@ export function FormDialog({
           id={formId}
           ref={form}
           className="dialog-form"
+          onKeyDown={(event) => {
+            // A destructive action is taken by pressing it, never by Enter in
+            // one of its fields.
+            if (tone === "danger" && event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault();
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             void submit();
@@ -631,6 +705,66 @@ export function FormDialog({
         <p>{title} has unsaved changes.</p>
       </Modal>
     </>
+  );
+}
+
+/** One step of a started flow: what it is called, whether its entries allow
+ * going on, and its fields. */
+export type FlowStep = { key: string; label: string; valid: boolean; render: () => ReactNode };
+
+/** A started flow in one sheet: only the current step's fields, Back to the
+ * one before with everything entered kept (the caller owns the values), and
+ * the flow's own action on the last step. */
+export function StepDialog({
+  steps,
+  step,
+  onStep,
+  onSubmit,
+  submitLabel,
+  submitDisabled = false,
+  ...sheet
+}: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  steps: FlowStep[];
+  step: string;
+  onStep: (key: string) => void;
+  onSubmit: () => void | SubmitFailure | null | Promise<void | SubmitFailure | null>;
+  submitLabel: string;
+  submitDisabled?: boolean;
+  busy?: boolean;
+  dirty?: boolean;
+  onDiscard?: () => void;
+  size?: SheetSize;
+  status?: ReactNode;
+}) {
+  const at = Math.max(0, steps.findIndex((entry) => entry.key === step));
+  const current = steps[at]!;
+  const last = at === steps.length - 1;
+  return (
+    <FormDialog
+      {...sheet}
+      submitLabel={last ? submitLabel : "Next"}
+      submitDisabled={!current.valid || (last && submitDisabled)}
+      onSubmit={last ? onSubmit : () => onStep(steps[at + 1]!.key)}
+      secondary={
+        at > 0 ? (
+          <button type="button" onClick={() => onStep(steps[at - 1]!.key)}>
+            Back
+          </button>
+        ) : null
+      }
+    >
+      <ol className="flow-steps" aria-label="Steps">
+        {steps.map((entry) => (
+          <li key={entry.key} aria-current={entry.key === current.key ? "step" : undefined}>
+            {entry.label}
+          </li>
+        ))}
+      </ol>
+      {current.render()}
+    </FormDialog>
   );
 }
 

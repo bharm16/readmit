@@ -136,8 +136,9 @@ import { ScenarioPanel } from "./ScenarioPanel";
 import { useTests, type TestsPlace } from "./Tests";
 import { useFindings, useSimilarFindings } from "./Findings";
 import { Report, Separator, Status } from "./shell";
-import { CommandPalette, shortcut, type PaletteEntry } from "./CommandPalette";
-import type { SortState } from "./DataTable";
+import { CommandPalette, isMac, shortcut, type PaletteEntry } from "./CommandPalette";
+import { ReturnAnchor, firstShownRow, type SortState } from "./DataTable";
+import { ViewKey, forgetViewState } from "./viewstate";
 import { sidebarOf, useRoutes, viewOf, type ReturnContext, type Route } from "./routes";
 import { rootFontSize, useMeasured } from "./measure";
 import {
@@ -146,6 +147,7 @@ import {
   INSPECTOR_MIN_REM,
   INSPECTOR_REM,
   LIST_MIN_REM,
+  NARROW_WINDOW_REM,
   RAIL_BREAKPOINT_REM,
   SIDEBAR_REM,
 } from "./geometry";
@@ -175,11 +177,15 @@ import {
   OperationIndicator,
   PROJECT_DESTINATIONS,
   Page,
+  PaletteActionsContext,
+  useOfferedActions,
+  type MenuItem,
+  type ObjectActions,
   ProjectSwitcher,
   folderName,
-  humanize,
   type Destination,
 } from "./layout";
+import { DisplayTerm, PROVENANCES, SEARCH_FIELDS, term } from "./display";
 
 /** How far one arrow key moves the details' edge, in rem. */
 const INSPECTOR_STEP = 1;
@@ -361,6 +367,17 @@ export default function App() {
 
   const [focused, setFocused] = useState<RegionId>("navigation");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The actions the shown pages' selected objects offer the palette.
+  const [objectActions, setObjectActions] = useState<ReadonlyMap<symbol, ObjectActions>>(new Map());
+  const registerActions = useCallback((owner: symbol, actions: ObjectActions | null) => {
+    setObjectActions((held) => {
+      if (!actions && !held.has(owner)) return held;
+      const next = new Map(held);
+      if (actions) next.set(owner, actions);
+      else next.delete(owner);
+      return next;
+    });
+  }, []);
   const preferences = usePreferences();
   const [startUpdate, setStartUpdate] = useState(false);
   // Observation setup opened from Security's Add connection returns there.
@@ -371,8 +388,8 @@ export default function App() {
   const [inspectorWidths, setInspectorWidths] = useState<Record<string, number>>({});
 
   // Where the window is: one route, with the way back kept per destination.
-  // Every destination stays mounted, so an unfinished edit survives looking at
-  // another; only the shown one is drawn and announced.
+  // Only the shown destination is mounted; what a page holds unsaved is kept
+  // in the view state for this project.
   const { route, dispatch: routeTo } = useRoutes({ destination: "home" });
   const place = route.destination;
   const destination = sidebarOf(place);
@@ -387,8 +404,11 @@ export default function App() {
   // and how far its page had been scrolled.
   const leaving = useCallback((selection?: string): ReturnContext => {
     const body = document.querySelector<HTMLElement>(`.page[data-page="${currentRoute.current.destination}"] .page-body`);
-    return { ...(selection !== undefined ? { selection } : {}), ...(body ? { scrollTop: body.scrollTop } : {}) };
+    const list = body?.querySelector<HTMLElement>(".table-view");
+    const anchor = list ? firstShownRow(list) : undefined;
+    return { ...(selection !== undefined ? { selection } : {}), ...(body ? { scrollTop: body.scrollTop } : {}), ...(anchor !== undefined ? { anchor } : {}) };
   }, []);
+  const returnAnchor = useMemo(() => ({ anchor: route.returnContext?.anchor, at: route.returnContext ? route : undefined }), [route]);
   // A route arrived at with a return context is where Back returned to: its
   // selection and scroll position come back with it.
   useLayoutEffect(() => {
@@ -571,6 +591,12 @@ export default function App() {
   const busy = useWindowBusy();
   const fileReader = useFileReader({ busy, request: rawRequest });
   const root = workspace?.workspace?.root ?? null;
+  // Another project, or none, starts with nothing any page held for the last.
+  const viewRoot = useRef(root);
+  if (viewRoot.current !== root) {
+    viewRoot.current = root;
+    forgetViewState();
+  }
   const opened = workspace?.workspace;
   const overview = investigation?.overview ?? null;
   const verified = evidence?.case ?? null;
@@ -1659,6 +1685,10 @@ export default function App() {
 
   const encryption = useEncryption({ root: place === "encryption" ? root : null, busy });
 
+  // The shown test's or environment's own actions, for the palette.
+  useOfferedActions(registerActions, place === "tests" && "palette" in tests ? tests.palette : null);
+  useOfferedActions(registerActions, place === "environments" && "palette" in environments ? environments.palette : null);
+
   // Storage reads under its own request scope, so its reads never make
   // another list's answer look stale.
   const storageScope = useRef(new RequestScope());
@@ -1773,7 +1803,10 @@ export default function App() {
         if (event.key === "F6") {
           return event.shiftKey ? "previous-region" : "next-region";
         }
-        if (!(event.ctrlKey || event.metaKey)) {
+        // ⌘ on macOS and Ctrl elsewhere, never the other: Ctrl+K on a Mac
+        // and the Windows key elsewhere belong to the system.
+        const mac = isMac();
+        if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) {
           return null;
         }
         switch (event.key.toLowerCase()) {
@@ -1810,6 +1843,18 @@ export default function App() {
   const projectName = overview?.title || (root ? folderName(root) : "");
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
   const subpage = importing && root ? "import" : capturing && root ? "capture" : null;
+  // The open case's own menu, which the palette also lists while the case is
+  // on screen.
+  const caseMenu: MenuItem[] = [
+    { label: "Create test", onSelect: () => createTest() },
+    { label: "Replay", onSelect: () => setCaseFlow("replay") },
+    { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
+    { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
+    { label: "Reduce", onSelect: () => setCaseFlow("reduce") },
+    { label: "File details", onSelect: () => setFileDetails(true) },
+    { label: "Close case", onSelect: backToProject },
+  ];
+  useOfferedActions(registerActions, place === "cases" && verified !== null && subpage === null && caseFlow === null ? { object: caseTitle, items: caseMenu } : null);
   const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
   // The rows chosen for Create test and Send selected: only message rows, so an
   // ACK or unparsed row is never counted as outbound; none chosen is all rows.
@@ -1861,6 +1906,10 @@ export default function App() {
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
   const { width: frameWidth, rem } = useMeasured(frame);
   const compact = frameWidth > 0 && frameWidth / rem < RAIL_BREAKPOINT_REM;
+  const narrow = frameWidth > 0 && frameWidth / rem < NARROW_WINDOW_REM;
+  useEffect(() => {
+    document.documentElement.classList.toggle("narrow-window", narrow);
+  }, [narrow]);
   const switcher = root ? (
     <ProjectSwitcher
       name={projectName}
@@ -1962,6 +2011,7 @@ export default function App() {
         <Page
           id="cases"
           shown={place === "cases"}
+          details={verified && subpage === null && caseFlow === null ? { name: caseTitle, open: () => setFileDetails(true) } : undefined}
           back={
             subpage !== null ? (
               <BackLink label="Cases" onBack={leaveSubpage} />
@@ -1996,15 +2046,7 @@ export default function App() {
               <>
                 <Menu
                   label="More case actions"
-                  items={[
-                    { label: "Create test", onSelect: () => createTest() },
-                    { label: "Replay", onSelect: () => setCaseFlow("replay") },
-                    { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
-                    { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
-                    { label: "Reduce", onSelect: () => setCaseFlow("reduce") },
-                    { label: "File details", onSelect: () => setFileDetails(true) },
-                    { label: "Close case", onSelect: backToProject },
-                  ]}
+                  items={caseMenu}
                 />
               </>
             ) : null
@@ -2088,6 +2130,7 @@ export default function App() {
           ) : null}
 
           {verified && root ? (
+            <ViewKey id={verified.identity}>
             <div className="case-view" hidden={subpage !== null}>
               {caseNotice ? (
                 <div className="notice danger">
@@ -2097,8 +2140,8 @@ export default function App() {
                   </button>
                 </div>
               ) : null}
-              <div hidden={caseFlow !== null}>
-              <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setView} keepMounted>
+              <div className="case-views" hidden={caseFlow !== null}>
+              <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setView} panels>
                 <TaskPanel tabs="case-views" tab="messages" className="task-panel view-panel" shown={caseView === "messages"}>
                   <Report indicators={indicators} progress={running === "case" ? "Verifying the case." : null} result={null} />
                   {evidenceFocus ? (
@@ -2237,149 +2280,158 @@ export default function App() {
                 </TaskPanel>
               </TaskTabs>
               </div>
-                <div className="view-panel case-flow" hidden={caseFlow !== "compare"}>
-                  <Comparison
-                    entries={named("case")}
-                    result={comparisonResult}
-                    busy={busy}
-                    progress={
-                      running === "comparison"
-                        ? "Comparing these collections."
-                        : running === "normalize"
-                          ? "Reading this comparison under the declared policy."
-                          : null
-                    }
-                    indicators={indicators}
-                    onCompare={(right, keys, fields, offset) =>
-                      void compareCollections(right, keys, fields, offset)
-                    }
-                    workspace={root}
-                    policyEntries={named("normalization-policy")}
-                    normalizeResult={normalizeResult}
-                    onNormalize={(right, policy, keys, fields, offset) =>
-                      void normalizeCollections(right, policy, keys, fields, offset)
-                    }
-                    onSaved={() => void refreshListing()}
-                  />
-                  <RevisionComparison
-                    entries={artifacts.map((artifact) => artifact.name)}
-                    seed={comparisonSeed}
-                    result={revisionResult}
-                    busy={busy}
-                    progress={running === "revisions" ? "Comparing these revisions." : null}
-                    indicators={indicators}
-                    onCompare={(left, right, leftResult, rightResult) =>
-                      void compareRevisions(left, right, leftResult, rightResult)
-                    }
-                  />
-                </div>
-                <div className="view-panel case-flow" hidden={caseFlow !== "reproduce"}>
-                  {messages ? (
-                    <Reproducer
-                      rows={messages.rows}
-                      result={reproducerResult}
-                      restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
-                      onDiscardDraft={discardReproducerDraft}
-                      inspected={inspected}
+                {caseFlow === "compare" ? (
+                  <div className="view-panel case-flow">
+                    <Comparison
+                      entries={named("case")}
+                      result={comparisonResult}
                       busy={busy}
-                      progress={running === "reproducer" ? "Resolving this reproducer against the case." : null}
+                      progress={
+                        running === "comparison"
+                          ? "Comparing these collections."
+                          : running === "normalize"
+                            ? "Reading this comparison under the declared policy."
+                            : null
+                      }
                       indicators={indicators}
-                      onStep={(step: ReproducerStep) =>
-                        void reproduce((plan, open) =>
-                          editReproducer({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            plan,
-                            step,
-                          }),
-                        )
+                      onCompare={(right, keys, fields, offset) =>
+                        void compareCollections(right, keys, fields, offset)
                       }
-                      onUndo={() =>
-                        void reproduce((plan, open) =>
-                          undoReproducer({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            plan,
-                          }),
-                        )
+                      workspace={root}
+                      policyEntries={named("normalization-policy")}
+                      normalizeResult={normalizeResult}
+                      onNormalize={(right, policy, keys, fields, offset) =>
+                        void normalizeCollections(right, policy, keys, fields, offset)
                       }
-                      parentCase={messages.case}
-                      onBuild={(output: string) =>
-                        void reproduce((plan, open) =>
-                          buildReproducer({
-                            workspace: root ?? "",
-                            case: open.case,
-                            identity: open.identity,
-                            plan,
-                            output,
-                          }),
-                        )
-                      }
-                      onRegister={registerBuiltRevision}
-                      onOpenRevision={(name) => {
-                        if (root) void verifyCase(root, name);
-                      }}
-                      onCompareRevision={(built) => {
-                        compareBuild(built);
-                        setCaseFlow("compare");
-                      }}
-                      onCreateTest={(name) => {
-                        // Open the revision as its own case. An existing test draft stays
-                        // bound to the original case identity and is not retargeted.
-                        if (root) void verifyCase(root, name);
-                      }}
+                      onSaved={() => void refreshListing()}
                     />
-                  ) : (
-                    <EmptyState
-                      title="Messages are not loaded yet"
-                      action={
-                        <button type="button" onClick={() => { setCaseFlow(null); setView("messages"); }}>
-                          Open messages
-                        </button>
+                    <RevisionComparison
+                      entries={artifacts.map((artifact) => artifact.name)}
+                      seed={comparisonSeed}
+                      result={revisionResult}
+                      busy={busy}
+                      progress={running === "revisions" ? "Comparing these revisions." : null}
+                      indicators={indicators}
+                      onCompare={(left, right, leftResult, rightResult) =>
+                        void compareRevisions(left, right, leftResult, rightResult)
                       }
                     />
-                  )}
-                </div>
-                <div className="view-panel case-flow" hidden={caseFlow !== "reduce"}>
-                  <Reduction
-                    ruleEntries={named("rules")}
-                    specEntries={named("spec")}
-                    targetEntries={named("target")}
-                    resetEntries={named("reset")}
-                    policyEntries={named("policy")}
-                    result={reductionResult}
-                    busy={busy}
-                    progress={
-                      running === "reduction-preview"
-                        ? "Previewing how this reduction would take the sequence apart. Nothing is reset or sent."
-                        : running === "reduction"
-                          ? "Running this reduction: every trial resets the environment, then sends."
-                          : null
-                    }
-                    reducing={running === "reduction"}
-                    indicators={indicators}
-                    caseOpen={verified !== null}
-                    onPreview={(config) => void runReductionPreview(config)}
-                    onStart={(config) => void runReduction(config)}
-                    onCancel={cancelRunning}
-                  />
-                </div>
-                <div className="view-panel case-flow" hidden={caseFlow !== "replay"}>
-                  <ReplayPanel
-                    key={"replay-" + root + verified.identity}
-                    workspace={root}
-                    caseName={verified.name}
-                    identity={verified.identity}
-                    rows={messages?.case === verified.name && messages.identity === verified.identity ? chosenRows : []}
-                    entries={artifacts}
-                    busy={busy}
-                    onSent={() => void refreshListing()}
-                  />
-                </div>
+                  </div>
+                ) : null}
+                {caseFlow === "reproduce" ? (
+                  <div className="view-panel case-flow">
+                    {messages ? (
+                      <Reproducer
+                        rows={messages.rows}
+                        result={reproducerResult}
+                        restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
+                        onDiscardDraft={discardReproducerDraft}
+                        inspected={inspected}
+                        busy={busy}
+                        progress={running === "reproducer" ? "Resolving this reproducer against the case." : null}
+                        indicators={indicators}
+                        onStep={(step: ReproducerStep) =>
+                          void reproduce((plan, open) =>
+                            editReproducer({
+                              workspace: root ?? "",
+                              case: open.case,
+                              identity: open.identity,
+                              plan,
+                              step,
+                            }),
+                          )
+                        }
+                        onUndo={() =>
+                          void reproduce((plan, open) =>
+                            undoReproducer({
+                              workspace: root ?? "",
+                              case: open.case,
+                              identity: open.identity,
+                              plan,
+                            }),
+                          )
+                        }
+                        parentCase={messages.case}
+                        onBuild={(output: string) =>
+                          void reproduce((plan, open) =>
+                            buildReproducer({
+                              workspace: root ?? "",
+                              case: open.case,
+                              identity: open.identity,
+                              plan,
+                              output,
+                            }),
+                          )
+                        }
+                        onRegister={registerBuiltRevision}
+                        onOpenRevision={(name) => {
+                          if (root) void verifyCase(root, name);
+                        }}
+                        onCompareRevision={(built) => {
+                          compareBuild(built);
+                          setCaseFlow("compare");
+                        }}
+                        onCreateTest={(name) => {
+                          // Open the revision as its own case. An existing test draft stays
+                          // bound to the original case identity and is not retargeted.
+                          if (root) void verifyCase(root, name);
+                        }}
+                      />
+                    ) : (
+                      <EmptyState
+                        title="Messages are not loaded yet"
+                        action={
+                          <button type="button" onClick={() => { setCaseFlow(null); setView("messages"); }}>
+                            Open messages
+                          </button>
+                        }
+                      />
+                    )}
+                  </div>
+                ) : null}
+                {caseFlow === "reduce" ? (
+                  <div className="view-panel case-flow">
+                    <Reduction
+                      ruleEntries={named("rules")}
+                      specEntries={named("spec")}
+                      targetEntries={named("target")}
+                      resetEntries={named("reset")}
+                      policyEntries={named("policy")}
+                      result={reductionResult}
+                      busy={busy}
+                      progress={
+                        running === "reduction-preview"
+                          ? "Previewing how this reduction would take the sequence apart. Nothing is reset or sent."
+                          : running === "reduction"
+                            ? "Running this reduction: every trial resets the environment, then sends."
+                            : null
+                      }
+                      reducing={running === "reduction"}
+                      indicators={indicators}
+                      caseOpen={verified !== null}
+                      onPreview={(config) => void runReductionPreview(config)}
+                      onStart={(config) => void runReduction(config)}
+                      onCancel={cancelRunning}
+                    />
+                  </div>
+                ) : null}
+                {caseFlow === "replay" ? (
+                  <div className="view-panel case-flow">
+                    <ReplayPanel
+                      key={"replay-" + root + verified.identity}
+                      workspace={root}
+                      caseName={verified.name}
+                      identity={verified.identity}
+                      rows={messages?.case === verified.name && messages.identity === verified.identity ? chosenRows : []}
+                      entries={artifacts}
+                      busy={busy}
+                      onSent={() => void refreshListing()}
+                    />
+                  </div>
+                ) : null}
 
             </div>
+            </ViewKey>
           ) : null}
         </Page>
 
@@ -2391,6 +2443,7 @@ export default function App() {
           id="tests"
           shown={place === "tests"}
           title={tests.title}
+          details={"details" in tests ? tests.details : undefined}
           back={tests.back}
           actions={
             root ? (
@@ -2414,7 +2467,7 @@ export default function App() {
           ) : testsPlace.kind === "test" ? (
             tests.body
           ) : (
-            <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setView} keepMounted>
+            <TaskTabs label="Test views" id="tests-views" tabs={TESTS_VIEWS} selected={testsView} onSelect={setView} panels>
               <TaskPanel tabs="tests-views" tab="tests" className="task-panel view-panel" shown={testsView === "tests"}>
                 <div className="toolbar list-toolbar">{tests.toolbar}</div>
                 {testsPlace.kind === "list" ? tests.body : null}
@@ -2444,7 +2497,7 @@ export default function App() {
 
         <Page id="library" shown={place === "library"} title="Library" back={<BackLink label="Tests" onBack={back} />}>
           {root ? (
-            <TaskTabs label="Library views" id="library-views" tabs={LIBRARY_VIEWS} selected={libraryView} onSelect={setView} keepMounted>
+            <TaskTabs label="Library views" id="library-views" tabs={LIBRARY_VIEWS} selected={libraryView} onSelect={setView} panels>
               <TaskPanel tabs="library-views" tab="checks" className="task-panel view-panel" shown={libraryView === "checks"}>
                 <AssertionSetAuthoring key={"assertions-" + root} workspace={root} drafts={drafts} busy={busy} inspected={inspected} />
               </TaskPanel>
@@ -2860,12 +2913,21 @@ export default function App() {
         </Page>
       </>
     ),
-    inspector: fileSelection ? (
+    inspector: (
+      <>
+        {/* Shown alone in a compact window, the details carry the project
+            switcher the hidden page header holds, so it is never out of reach. */}
+        {detailOnly && compact && switcher ? <div className="header-switcher detail-switcher">{switcher}</div> : null}
+        {fileSelection ? (
       <>
         {fileReader.details}
       </>
     ) : findingShown ? (
-      <>{findings.details}</>
+      <>
+        {/* Shown alone, the finding offers the way back to its list. */}
+        {detailOnly ? <BackLink label="Findings" onBack={findings.close} /> : null}
+        {findings.details}
+      </>
     ) : (
       <>
         {verified ? (
@@ -2888,6 +2950,8 @@ export default function App() {
             {...(detailOnly ? { backLabel: "Messages", onBack: closeDetails } : {})}
           />
         ) : null}
+      </>
+    )}
       </>
     ),
   };
@@ -2925,6 +2989,13 @@ export default function App() {
   }
   const contextual: CommandId[] = ["cancel-operation", "create-test", "create-report", "search-workspace"];
   const paletteEntries: PaletteEntry[] = [
+    // The shown object's own menu first. Each runs exactly what its menu item
+    // does, so Delete, Remove, Reset or Send opens its review and nothing more.
+    ...[...objectActions.values()].flatMap(({ object, items }) =>
+      items()
+        .filter((item) => !item.disabled)
+        .map((item) => ({ id: `object-${object}-${item.label}`, label: item.label.replace(/…$/, ""), object, run: item.onSelect })),
+    ),
     ...(described?.commands ?? [])
       // The palette never lists itself.
       .filter((command) => command.id !== "command-palette" && available(command.id))
@@ -2944,6 +3015,9 @@ export default function App() {
       run: () => go(item.id),
     })),
   ];
+
+  // An action the open object offers is listed once, as the object's.
+  const paletteShown = paletteEntries.filter((entry, at) => paletteEntries.findIndex((other) => other.label === entry.label) === at);
 
   if (!described) {
     return (
@@ -2983,28 +3057,32 @@ export default function App() {
     <IndicatorsContext.Provider value={indicators}>
       <VocabularyContext.Provider value={described.vocabulary}>
         <FrameContext.Provider value={{ compact, switcher }}>
-          <div className={compact ? "app compact" : "app"} ref={setFrame}>
-            <nav className="sidebar" aria-label="Main">
-              {region("navigation")}
-            </nav>
-            <div className={`workarea${detailsShown ? (detailOnly ? " detail-only" : " with-details") : ""}`} style={panes}>
-              {region("evidence", detailOnly)}
-              {detailsShown && !detailOnly ? (
-                <Separator
-                  value={inspectorRem}
-                  min={INSPECTOR_MIN_REM}
-                  max={INSPECTOR_MAX_REM}
-                  step={INSPECTOR_STEP}
-                  onChange={(width) => {
-                    if (root !== null) setInspectorWidths((held) => ({ ...held, [root]: width }));
-                  }}
-                  edge={() => regionElements.current.inspector?.getBoundingClientRect().right ?? null}
-                  rem={rootFontSize}
-                />
-              ) : null}
-              {region("inspector", !detailsShown)}
-            </div>
-          </div>
+          <ReturnAnchor.Provider value={returnAnchor}>
+          <PaletteActionsContext.Provider value={registerActions}>
+              <div className={compact ? "app compact" : "app"} ref={setFrame}>
+                <nav className="sidebar" aria-label="Main">
+                  {region("navigation")}
+                </nav>
+                <div className={`workarea${detailsShown ? (detailOnly ? " detail-only" : " with-details") : ""}`} style={panes}>
+                  {region("evidence", detailOnly)}
+                  {detailsShown && !detailOnly ? (
+                    <Separator
+                      value={inspectorRem}
+                      min={INSPECTOR_MIN_REM}
+                      max={INSPECTOR_MAX_REM}
+                      step={INSPECTOR_STEP}
+                      onChange={(width) => {
+                        if (root !== null) setInspectorWidths((held) => ({ ...held, [root]: width }));
+                      }}
+                      edge={() => regionElements.current.inspector?.getBoundingClientRect().right ?? null}
+                      rem={rootFontSize}
+                    />
+                  ) : null}
+                  {region("inspector", !detailsShown)}
+                </div>
+              </div>
+          </PaletteActionsContext.Provider>
+          </ReturnAnchor.Provider>
         </FrameContext.Provider>
 
         <Modal open={fileDetails && verified !== null} title="File details" onClose={() => setFileDetails(false)}>
@@ -3016,7 +3094,9 @@ export default function App() {
               </div>
               <div className="fact">
                 <dt>Origin</dt>
-                <dd>{humanize(verified.provenance)}</dd>
+                <dd>
+                  <DisplayTerm map={PROVENANCES} code={verified.provenance} />
+                </dd>
               </div>
               <div className="fact">
                 <dt>Messages</dt>
@@ -3088,7 +3168,7 @@ export default function App() {
                   >
                     <span className="name">{match.label}</span>
                     <span className="badge">{match.kind === "content" ? "Message" : "Details"}</span>
-                    <span className="reason">{humanize(match.field)}</span>
+                    <span className="reason">{match.field === "content" ? match.selector : term(SEARCH_FIELDS, match.field).text}</span>
                   </button>
                 </li>
               ))}
@@ -3253,7 +3333,7 @@ export default function App() {
           }}
         />
 
-        <CommandPalette open={paletteOpen} entries={paletteEntries} onClose={() => setPaletteOpen(false)} />
+        <CommandPalette open={paletteOpen} entries={paletteShown} onClose={() => setPaletteOpen(false)} />
       </VocabularyContext.Provider>
     </IndicatorsContext.Provider>
   );

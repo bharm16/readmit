@@ -6,9 +6,11 @@ import { cleanup } from "@testing-library/react";
 import * as React from "react";
 import { holdOwnerStackBudgetSpent } from "./src/testkit/owner-stacks";
 import { uninstallFacade } from "./src/testkit/wails";
+import { forgetViewState } from "./src/viewstate";
 
 afterEach(() => {
   cleanup();
+  forgetViewState();
   uninstallFacade();
 });
 

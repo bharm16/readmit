@@ -8,7 +8,7 @@ import { Baseline } from "../Baseline";
 import { CapturePanel } from "../CapturePanel";
 import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
-import { StateHelp, HelpTopics } from "../ContextHelp";
+import { HelpTopics } from "../ContextHelp";
 import { ControlledDetails } from "../ControlledDetails";
 import { CorrelationReview } from "../CorrelationReview";
 import { EnvironmentBanner } from "../EnvironmentBanner";
@@ -146,7 +146,6 @@ export const examples: Example[] = [
   e("ComputerLicense", () => (
     <ComputerLicense portal={undefined} onChanged={noop} />
   )),
-  e("StateHelp", () => <StateHelp state="failed" />, "error"),
   e("HelpTopics", () => <HelpTopics />),
   e("ControlledDetails", () => (
     <ControlledDetails summary="Details">{content}</ControlledDetails>
