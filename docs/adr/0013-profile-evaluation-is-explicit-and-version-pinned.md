@@ -29,3 +29,16 @@ and successful reader validation do not approve rights or qualify every cell.
 No new upstream pack is bundled until the exact content review and independent
 qualification are complete. #577 stays open for those gates and unsupported
 required rule families, as detailed in docs/profile-evaluation.md.
+
+
+## 2026-09-27: explicit component metadata and group bindings
+
+The separate v3 profile and pack envelopes carry composite/component rules and
+explicit outer-to-inner workflow parent bindings. They select evaluator v2;
+existing v1/v2 document pairs retain evaluator v1. Component selection uses the
+lossless parser, including custom delimiters, rather than splitting decoded
+text. Unknown component usage, table content and deeper-than-wire composite
+metadata remain unsupported. No source table is fetched during evaluation.
+The owned 28-cell fixture matrix qualifies finite local interfaces only.
+Extractor v2 keeps the new upstream output outside distribution pending the
+exact-content owner review recorded in docs/profile-redistribution-review.md.

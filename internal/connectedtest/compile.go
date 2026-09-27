@@ -191,9 +191,9 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			return nil, err
 		}
 		switch ref.Schema {
-		case profileeval.ProfileSchema:
+		case profileeval.ProfileSchema, profileeval.ProfileSchemaV3:
 			_, err = profileeval.DecodeProfile(b)
-		case profileeval.PackSchema:
+		case profileeval.PackSchema, profileeval.PackSchemaV3:
 			_, err = profileeval.DecodePack(b)
 		case localprofile.Schema:
 			_, err = localprofile.Decode(b)

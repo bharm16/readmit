@@ -17,3 +17,8 @@ testdata/verification/endpoint/*.hl7 binary
 testdata/acceptance/native-109/** -text
 testdata/engineexport/** -text
 testdata/lab-evidence/** -text
+
+# Profile/lab qualification matrices bind these files by their exact bytes.
+testdata/profile-evaluation/** -text
+testdata/profile-evaluation/**/*.hl7 binary
+testdata/integration-lab/qualification/** -text

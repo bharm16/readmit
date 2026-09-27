@@ -1,0 +1,55 @@
+[
+  {
+    "name": "declared-lifecycle",
+    "files": [
+      "step-1.hl7",
+      "step-2.hl7",
+      "step-3.hl7"
+    ],
+    "complete_capture": true,
+    "verdict": "pass"
+  },
+  {
+    "name": "missing-transition",
+    "files": [
+      "step-1.hl7",
+      "step-3.hl7"
+    ],
+    "complete_capture": true,
+    "verdict": "fail"
+  },
+  {
+    "name": "capture-gap",
+    "files": [
+      "step-1.hl7",
+      "step-3.hl7"
+    ],
+    "complete_capture": false,
+    "verdict": "undecided"
+  },
+  {
+    "name": "changed-namespace",
+    "files": [
+      "step-1.hl7",
+      "changed-namespace.hl7"
+    ],
+    "complete_capture": true,
+    "verdict": "fail"
+  },
+  {
+    "name": "malformed-group",
+    "files": [
+      "invalid-group.hl7"
+    ],
+    "complete_capture": true,
+    "verdict": "fail"
+  },
+  {
+    "name": "invalid-time",
+    "files": [
+      "invalid-time.hl7"
+    ],
+    "complete_capture": true,
+    "verdict": "fail"
+  }
+]
