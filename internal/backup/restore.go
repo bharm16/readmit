@@ -37,29 +37,7 @@ func Verify(backupPath string) (Document, error) {
 		return Document{}, errors.New("cannot open the backup directory")
 	}
 	defer opened.Close()
-	// One byte past the marker's own length, so a marker with anything
-	// appended to it is refused rather than truncated into a match.
-	marker, err := bounded(opened, MarkerName, digestLength+2)
-	if errors.Is(err, fs.ErrNotExist) {
-		return Document{}, ErrIncomplete
-	}
-	if err != nil {
-		return Document{}, errors.New("cannot read the backup completion marker")
-	}
-	data, err := bounded(opened, DocumentName, maxDocumentBytes+1)
-	if errors.Is(err, fs.ErrNotExist) {
-		return Document{}, ErrIncomplete
-	}
-	if err != nil {
-		return Document{}, errors.New("cannot read the backup document")
-	}
-	// The seal is checked before the manifest is decoded, so a backup whose
-	// bytes were altered reports that rather than whichever member the
-	// alteration happened to break.
-	if string(marker) != identityFor(data)+"\n" {
-		return Document{}, ErrDamaged
-	}
-	document, err := Decode(data)
+	document, _, err := sealed(opened)
 	if err != nil {
 		return Document{}, err
 	}
@@ -67,6 +45,40 @@ func Verify(backupPath string) (Document, error) {
 		return Document{}, err
 	}
 	return document, nil
+}
+
+// sealed reads the completion marker and the manifest it seals, and decodes
+// the manifest, answering it with the identity the marker records. It reads
+// none of the files the backup stores; held is what checks those.
+func sealed(opened *os.Root) (Document, string, error) {
+	// One byte past the marker's own length, so a marker with anything
+	// appended to it is refused rather than truncated into a match.
+	marker, err := bounded(opened, MarkerName, digestLength+2)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Document{}, "", ErrIncomplete
+	}
+	if err != nil {
+		return Document{}, "", errors.New("cannot read the backup completion marker")
+	}
+	data, err := bounded(opened, DocumentName, maxDocumentBytes+1)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Document{}, "", ErrIncomplete
+	}
+	if err != nil {
+		return Document{}, "", errors.New("cannot read the backup document")
+	}
+	// The seal is checked before the manifest is decoded, so a backup whose
+	// bytes were altered reports that rather than whichever member the
+	// alteration happened to break.
+	identity := identityFor(data)
+	if string(marker) != identity+"\n" {
+		return Document{}, "", ErrDamaged
+	}
+	document, err := Decode(data)
+	if err != nil {
+		return Document{}, "", err
+	}
+	return document, identity, nil
 }
 
 // held checks that the backup holds exactly the files its manifest records,

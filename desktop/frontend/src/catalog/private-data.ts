@@ -51,14 +51,6 @@ const scheduleEntry = {
   route: "https://alerts.example/",
   approved: true,
 };
-const evidence = [
-  {
-    path: "sample-case",
-    class: "canonical-evidence",
-    state: "verified",
-    explanation: "Canonical registered synthetic evidence.",
-  },
-];
 export const privateData = {
   suiteHandoff: {
     handoff: {
@@ -109,43 +101,6 @@ export const privateData = {
       arguments: ["--path", "appointments"],
       secrets_file: "synthetic-reference-document",
       credential: "synthetic-reference",
-    },
-  },
-  inventoryList: { title: "Evidence", entries: evidence },
-  backupReport: {
-    result: {
-      state: "completed",
-      report: {
-        root: "/synthetic-workspace/backup",
-        complete: true,
-        files: 2,
-        bytes: 40,
-        evidence,
-        mutable: [
-          {
-            path: "project.json",
-            class: "mutable-project-document",
-            explanation: "Mutable project document.",
-          },
-        ],
-        exclusions: [
-          {
-            path: "search.index.json",
-            class: "declared-exclusion",
-            retention: "states",
-            explanation: "Derived index declarations only.",
-          },
-        ],
-        credentials: [
-          {
-            path: "secrets.json",
-            class: "credential-reference",
-            explanation: "Credential reference document.",
-          },
-        ],
-        protection: [],
-        other: [],
-      },
     },
   },
   progressLine: {

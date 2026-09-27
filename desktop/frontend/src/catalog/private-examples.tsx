@@ -36,8 +36,6 @@ export const privateExamples: Example[] = [
     busy: false,
     onSelect: noop,
   }),
-  p("MaintenancePanel", "InventoryList", privateData.inventoryList),
-  p("MaintenancePanel", "BackupReport", privateData.backupReport),
   p("PacketPanel", "PacketInputRow", {
     label: "Source case",
     view: f.packetPreviewResult().preview?.case,

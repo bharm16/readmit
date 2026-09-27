@@ -18,8 +18,6 @@ import type {
   AssertionSetResult,
   AttachmentRemoveRequest,
   AttachmentsResult,
-  BackupCreateRequest,
-  BackupRestoreRequest,
   BackupResult,
   BaselineRequest,
   BaselineResult,
@@ -105,7 +103,6 @@ import type {
   ImportRequest,
   ImportSourcesResult,
   IncompleteSaveRequest,
-  IndexResult,
   InspectRequest,
   InspectionPathResult,
   InspectionResult,
@@ -174,7 +171,6 @@ import type {
   ProfileUpgradePinRequest,
   ProfileUpgradePinResult,
   ProfileValidateRequest,
-  ProjectArchiveRequest,
   ProjectFilesResult,
   ProjectForgetResult,
   ProjectLocationResult,
@@ -182,8 +178,6 @@ import type {
   ProjectOverviewResult,
   ProjectQuotaChange,
   ProjectQuotaResult,
-  ProjectRecoverRequest,
-  ProjectRecoverResult,
   ProjectRecoveryCopiesResult,
   ProjectResult,
   ProtectionControlRequest,
@@ -216,7 +210,6 @@ import type {
   RequestContext,
   ResumeRunRequest,
   ResumeRunResult,
-  RetirementPreviewResult,
   RevealResult,
   ReviewRequest,
   ReviewResult,
@@ -312,9 +305,6 @@ import type {
   TransformPlanResult,
   TransformRequest,
   TransformResult,
-  UpgradeCheckRequest,
-  UpgradePrepareRequest,
-  UpgradeResult,
   View,
   WorkspaceResult,
   MessagesRequest,
@@ -341,6 +331,10 @@ import type {
   CompletionInspectionResult,
   ReceiverSnapshotsResult,
   RemoveItemResult,
+  StorageBackupsResult,
+  StorageBackupRequest,
+  StorageBackupResult,
+  RepairSearchRequest,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -446,18 +440,6 @@ export function chooseMaintenancePath(kind: string): Promise<MaintenancePathResu
   return guard(() => facade().ChooseMaintenancePath(kind), { state: "failed" });
 }
 
-export function createProjectBackup(request: BackupCreateRequest): Promise<BackupResult> {
-  return guard(() => facade().CreateProjectBackup(request), { state: "failed" });
-}
-
-export function verifyProjectBackup(path: string): Promise<BackupResult> {
-  return guard(() => facade().VerifyProjectBackup(path), { state: "failed" });
-}
-
-export function restoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult> {
-  return guard(() => facade().RestoreProjectBackup(request), { state: "failed" });
-}
-
 export function inspectProjectQuota(path: string): Promise<ProjectQuotaResult> {
   return guard(() => facade().InspectProjectQuota(path), { state: "failed" });
 }
@@ -470,29 +452,9 @@ export function previewProjectMigration(path: string): Promise<MigrationPreviewR
   return guard(() => facade().PreviewProjectMigration(path), { state: "failed" });
 }
 
-export function previewProjectRetirement(path: string): Promise<RetirementPreviewResult> {
-  return guard(() => facade().PreviewProjectRetirement(path), { state: "failed" });
-}
-
-export function archiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult> {
-  return guard(() => facade().ArchiveOrDeleteProject(request), { state: "failed" });
-}
-
-/** The recovery copies the maintenance screen reads as its section opens. */
+/** The recovery copies Storage reads as its section opens. */
 export function listProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult> {
   return retryingRead(() => facade().ListProjectRecoveryCopies(path), { state: "failed" });
-}
-
-export function recoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult> {
-  return guard(() => facade().RecoverProjectDocument(request), { state: "failed" });
-}
-
-export function checkStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult> {
-  return guard(() => facade().CheckStagedUpgrade(request), { state: "failed" });
-}
-
-export function prepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult> {
-  return guard(() => facade().PrepareStagedUpgrade(request), { state: "failed" });
 }
 
 export function openProjectOverview(path: string): Promise<ProjectOverviewResult> {
@@ -525,15 +487,6 @@ export function openGrid(
 /** Builds or rebuilds one index for a case with the declared retention and fields. */
 export function buildIndex(request: BuildIndexRequest): Promise<BuildIndexResult> {
   return guard(() => facade().BuildIndex(request), { state: "failed" });
-}
-
-/** Inspects the applicable index for a case or one named index artifact. */
-export function describeIndex(
-  workspace: string,
-  caseName: string,
-  indexName: string = "",
-): Promise<IndexResult> {
-  return retryingRead(() => facade().DescribeIndex(workspace, caseName, indexName), { state: "failed" });
 }
 
 const NO_MESSAGES = { rows: [], total: 0, matched: 0, undecided: 0, undecodable: 0, complete: true, scanned: 0, facets: { types: [], sources: [], ack_codes: [] } };
@@ -1414,7 +1367,6 @@ export function inspectProfilePackage(workspace: string, entry: string): Promise
   return guard(() => facade().InspectProfilePackage(workspace, entry), { state: "failed" });
 }
 
-
 export function observationSupport(): Promise<ObservationSupportResult> {
   return guard(() => facade().ObservationSupport(), { state: "failed" });
 }
@@ -1963,4 +1915,47 @@ export function removeItem(request: ItemRequest): Promise<RemoveItemResult> {
 /** The host's file dialog for one file an environment editor names. */
 export function chooseEnvironmentFile(kind: EnvironmentFileKind): Promise<PathChoiceResult> {
   return guard(() => facade().ChooseEnvironmentFile(kind), { state: "failed" });
+}
+
+// Storage: backups under the remembered backup location. Reads come back as
+// they are; a backup is written only by Create backup, and restore, delete,
+// archive and moving are reviewed actions.
+
+/** Where backups are kept, or empty when no folder was chosen. */
+export function backupLocation(): Promise<ProjectLocationResult> {
+  return retryingRead(() => facade().BackupLocation(), { state: "failed" });
+}
+
+/** The host's folder dialog for where backups are kept. */
+export function chooseBackupLocation(): Promise<ProjectLocationResult> {
+  return guard(() => facade().ChooseBackupLocation(), { state: "failed" });
+}
+
+/** Every backup under the location and those this computer recorded. */
+export function listBackups(): Promise<StorageBackupsResult> {
+  return retryingRead(() => facade().ListBackups(), { state: "failed", backups: [] });
+}
+
+/** Checks one backup whole, again. */
+export function inspectBackup(id: string): Promise<BackupResult> {
+  return guard(() => facade().InspectBackup(id), { state: "failed" });
+}
+
+/** The host's folder dialog for a backup somewhere else. */
+export function chooseBackup(): Promise<StorageBackupResult> {
+  return guard(() => facade().ChooseBackup(), { state: "failed" });
+}
+
+export function revealBackup(id: string): Promise<RevealResult> {
+  return guard(() => facade().RevealBackup(id), { state: "failed", context: { project: "", generation: 0 } });
+}
+
+/** Writes a new verified backup of the open project to a new folder. */
+export function backupProject(request: StorageBackupRequest): Promise<StorageBackupResult> {
+  return guard(() => facade().BackupProject(request), { state: "failed" });
+}
+
+/** Rebuilds one case's own search data under its unchanged retention. */
+export function repairSearch(request: RepairSearchRequest): Promise<BuildIndexResult> {
+  return guard(() => facade().RepairSearch(request), { state: "failed" });
 }

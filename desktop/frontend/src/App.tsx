@@ -173,7 +173,7 @@ import { VocabularyContext } from "./vocabulary";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
-import { MaintenancePanel } from "./MaintenancePanel";
+import { StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
 import type { CaptureObservationBinding } from "./bindings";
@@ -386,7 +386,6 @@ export default function App() {
   const [importing, setImporting] = useState(false);
   const [observing, setObserving] = useState(false);
   const [captureBinding, setCaptureBinding] = useState<CaptureObservationBinding | null>(null);
-  const [maintenanceTab, setMaintenanceTab] = useState<"backup" | "restore" | "storage" | "lifecycle" | "upgrade">("backup");
 
   // Refusals of navigation the window has not committed: the workspace and
   // case a person had stay on screen beside the reason, instead of the old
@@ -463,10 +462,6 @@ export default function App() {
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [noteEditing, setNoteEditing] = useState<{ note: NoteItem | null } | null>(null);
   const [searching, setSearching] = useState(false);
-  // Counts requests to open storage on a named section, so the section asked
-  // for is the one shown even when storage is already open.
-  const [maintenanceRequest, setMaintenanceRequest] = useState(0);
-
   const regionElements = useRef<Partial<Record<RegionId, HTMLElement | null>>>({});
   const searchField = useRef<HTMLInputElement | null>(null);
 
@@ -1923,16 +1918,14 @@ export default function App() {
     busy,
   });
 
+  // Storage reads under its own request scope, so its reads never make
+  // another list's answer look stale.
+  const storageScope = useRef(new RequestScope());
+  const storageContext = useCallback(() => storageScope.current.enter(root ?? ""), [root]);
+
   const openSettings = useCallback((view: SettingsView) => open({ destination: "settings", view }), [open]);
 
-  const openStorage = useCallback(
-    (tab: "backup" | "restore" | "storage" | "lifecycle" | "upgrade") => {
-      setMaintenanceTab(tab);
-      setMaintenanceRequest((count) => count + 1);
-      openSettings("storage");
-    },
-    [openSettings],
-  );
+  const openStorage = useCallback(() => openSettings("storage"), [openSettings]);
 
   // Every command the facade declares has an action here. The record is keyed by
   // the declared identifiers, so a command the window forgot is a type error
@@ -1958,8 +1951,8 @@ export default function App() {
     },
     "create-report": () => go("reports"),
     "manage-profiles": () => open({ destination: "library", view: "profiles" }),
-    "maintain-workspace": () => openStorage("backup"),
-    "check-staged-upgrade": () => openStorage("upgrade"),
+    "maintain-workspace": () => openStorage(),
+    "check-staged-upgrade": () => openStorage(),
     "manage-scenarios": () => open({ destination: "library", view: "scenarios" }),
     "manage-assertions": () => open({ destination: "library", view: "checks" }),
     "inspect-raw-file": () => {
@@ -3137,33 +3130,15 @@ export default function App() {
               ) : null}
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="storage" className="task-panel view-panel" shown={settingsView === "storage"}>
-              {root ? (
-                <MaintenancePanel
-                  key={`maintenance-${root}-${maintenanceRequest}`}
-                  workspace={root}
-                  project={investigation?.overview?.root ?? null}
+              {root && place === "settings" && settingsView === "storage" ? (
+                <StorageView
+                  root={root}
+                  projectName={projectName}
+                  context={storageContext}
                   busy={busy}
-                  indicators={indicators}
-                  initialTab={maintenanceTab}
-                  onReopen={(path) => {
-                    void openFolder(() => openWorkspace(path)).then(() => {
-                      void openProjectOverview(path).then((result) => setInvestigation(result));
-                    });
-                  }}
-                  onProjectChanged={(path) => {
-                    // Only the project still open takes the answer: a person who
-                    // moved on before it arrived keeps what they moved to.
-                    void openProjectOverview(path).then((answer) =>
-                      setInvestigation((held) =>
-                        held?.overview?.root !== path ? held : answer.overview ? answer : { ...answer, overview: held.overview },
-                      ),
-                    );
-                  }}
-                  onClose={() => {
-                    go("cases");
-                  }}
+                  onOpenProject={(folder) => void openFolder(() => openWorkspace(folder))}
                 />
-              ) : (
+              ) : root ? null : (
                 noProject("storage and backups")
               )}
             </TaskPanel>

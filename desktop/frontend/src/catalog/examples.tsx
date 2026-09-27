@@ -20,7 +20,6 @@ import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
 import { ImportPanel } from "../ImportPanel";
 import { MessageReader } from "../Inspector";
-import { MaintenancePanel } from "../MaintenancePanel";
 import { ObservationPanel } from "../ObservationPanel";
 import { OperationAccess } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
@@ -76,8 +75,6 @@ import {
   Badge,
   Report,
   Separator,
-  IndexSetup,
-  newIndexDraft,
 } from "../shell";
 import {
   Lead,
@@ -213,9 +210,6 @@ export const examples: Example[] = [
   e("ImportPanel", () => <ImportPanel {...common} />),
   e("MessageReader", () => (
     <MessageReader result={f.inspectionResult()} loading={false} busy={false} onInspect={async () => null} onReveal={noop} />
-  )),
-  e("MaintenancePanel", () => (
-    <MaintenancePanel {...common} onReopen={noop} onProjectChanged={noop} />
   )),
   e("ObservationPanel", () => <ObservationPanel {...common} />),
   e("OperationAccess", () => <OperationAccess />),
@@ -573,20 +567,6 @@ export const examples: Example[] = [
     </Categories>
   )),
   e("DisplayTerm", () => <DisplayTerm map={TEST_RESULTS} code="flaky_pass" />, "error"),
-  e("IndexSetup", () => (
-    <IndexSetup
-      mode="build"
-      draft={newIndexDraft(f.INDEX_ENTRY)}
-      onDraft={noop}
-      caseName={f.CASE_ENTRY}
-      identity={f.CASE_IDENTITY}
-      replaceTarget={null}
-      busy={false}
-      now={0}
-      onBuild={noop}
-      onClose={noop}
-    />
-  )),
   e("Lead", () => <Lead>{content}</Lead>),
   e("Group", () => <Group title="Group title">{content}</Group>),
   e("Fields", () => (
