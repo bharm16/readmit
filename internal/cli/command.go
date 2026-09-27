@@ -102,6 +102,7 @@ func rootCommand(version string) (*cobra.Command, *bool) {
 	root.AddCommand(profileCommand())
 	root.AddCommand(replayCommand())
 	root.AddCommand(testCommand())
+	root.AddCommand(connectedCommand())
 	root.AddCommand(runCommand())
 	root.AddCommand(suiteCommand())
 	root.AddCommand(runnerCommand())
