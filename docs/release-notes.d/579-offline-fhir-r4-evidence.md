@@ -1,0 +1,1 @@
+- Added offline FHIR R4 4.0.1 evidence with exact JSON/decimal preservation, typed resource projections, scoped references and capability-claim checks. FHIR primitive metadata and partial dates retain their meaning; existing v2 and dataset readers are unchanged. No endpoint discovery or network lookup occurs during inspection.

@@ -68,6 +68,7 @@ archives:
       - docs/connected-runtime.md
       - docs/observation-intervals.md
       - docs/test-isolation.md
+      - docs/fhir-r4.md
       - docs/durable-runs.md
       - docs/customer-runner.md
       - docs/customer-ci.md
