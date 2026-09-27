@@ -107,7 +107,6 @@ import type {
   IncompleteSaveRequest,
   IndexResult,
   InspectRequest,
-  InspectionPathKind,
   InspectionPathResult,
   InspectionResult,
   InstalledLicenseResult,
@@ -193,8 +192,6 @@ import type {
   ProtectionPackRequest,
   ProtectionPackageResult,
   ProtectionResult,
-  RawInspectionRequest,
-  RawInspectionResult,
   ReceiverPolicyRequest,
   ReceiverPolicyResult,
   RedactInventoryRequest,
@@ -228,7 +225,6 @@ import type {
   ReviewResult,
   ReviewedActionResult,
   RevisionRegistration,
-  RoundTripRequest,
   RoundTripResult,
   RuleDocumentSaveRequest,
   RunComparisonRequest,
@@ -338,6 +334,18 @@ import type {
   UpgradeResult,
   View,
   WorkspaceResult,
+  MessagesRequest,
+  MessagesResult,
+  GridQuery,
+  ViewsResult,
+  FileMessagesRequest,
+  FileMessagesResult,
+  FileInspectRequest,
+  FileBytesRequest,
+  FileBytesResult,
+  SaveCopyRequest,
+  SearchSettingsRequest,
+  SearchSettingsResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -531,6 +539,42 @@ export function describeIndex(
   indexName: string = "",
 ): Promise<IndexResult> {
   return retryingRead(() => facade().DescribeIndex(workspace, caseName, indexName), { state: "failed" });
+}
+
+const NO_MESSAGES = { rows: [], total: 0, matched: 0, undecided: 0, undecodable: 0, complete: true, scanned: 0, facets: { types: [], sources: [], ack_codes: [] } };
+
+/** One window of a case's messages under a transient query. Nothing is saved:
+ * the facade reuses the case's own index or reads the case directly. */
+export function readMessages(request: MessagesRequest): Promise<MessagesResult> {
+  return retryingRead(() => facade().ReadMessages(request), { state: "failed", ...NO_MESSAGES });
+}
+
+/** The saved views of one project. */
+export function listViews(workspace: string): Promise<ViewsResult> {
+  return retryingRead(() => facade().ListViews(workspace), { state: "failed", views: [] });
+}
+
+/** Saves the applied query under a name, for this project only. */
+export function saveView(workspace: string, name: string, query: GridQuery): Promise<ViewsResult> {
+  return guard(() => facade().SaveView(workspace, name, query), { state: "failed", views: [] });
+}
+
+export function renameView(workspace: string, from: string, to: string): Promise<ViewsResult> {
+  return guard(() => facade().RenameView(workspace, from, to), { state: "failed", views: [] });
+}
+
+export function removeView(workspace: string, name: string): Promise<ViewsResult> {
+  return guard(() => facade().RemoveView(workspace, name), { state: "failed", views: [] });
+}
+
+/** What the case's own search index keeps, when it has one. */
+export function describeSearchSettings(workspace: string, caseName: string, identity: string): Promise<SearchSettingsResult> {
+  return retryingRead(() => facade().DescribeSearchSettings(workspace, caseName, identity), { state: "failed" });
+}
+
+/** Builds the case's search index under the chosen retention; Go names the file. */
+export function saveSearchSettings(request: SearchSettingsRequest): Promise<BuildIndexResult> {
+  return guard(() => facade().SaveSearchSettings(request), { state: "failed" });
 }
 
 /** Stores one named filter and selects it. */
@@ -1703,16 +1747,32 @@ export function saveFindingDecisions(request: RuleDocumentSaveRequest): Promise<
 // line runs; these shapes carry positions, states, counts and declarations,
 // and a value only when a person asked to see values, escaped by Go.
 
-export function chooseInspectionPath(kind: InspectionPathKind): Promise<InspectionPathResult> {
-  return guard(() => facade().ChooseInspectionPath(kind), { state: "failed" });
+/** Asks the host for the file to read, or where a copy of it is saved; a copy
+ * offers the source's own name. */
+export function chooseInspectionPath(kind: "file" | "copy-destination", source = ""): Promise<InspectionPathResult> {
+  return guard(() => facade().ChooseInspectionPath(kind, source), { state: "failed" });
 }
 
-export function inspectRawFile(request: RawInspectionRequest): Promise<RawInspectionResult> {
-  return guard(() => facade().InspectRawFile(request), { state: "failed" });
+const NO_FILE = { name: "", bytes: 0, sha256: "", format: "", terminator: "", format_selection: "", terminator_selection: "", total: 0, offset: 0, rows: [] };
+
+/** The messages one file holds, read with the chosen framing. */
+export function listFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult> {
+  return guard(() => facade().ListFileMessages(request), { state: "failed", ...NO_FILE });
 }
 
-export function writeRoundTrip(request: RoundTripRequest): Promise<RoundTripResult> {
-  return guard(() => facade().WriteRoundTrip(request), { state: "failed" });
+/** One message of a file in the shared reader, refused if the file changed. */
+export function inspectFileMessage(request: FileInspectRequest): Promise<InspectionResult> {
+  return guard(() => facade().InspectFileMessage(request), { state: "failed" });
+}
+
+/** A window of a file's original bytes, for a file that did not parse. */
+export function readFileBytes(request: FileBytesRequest): Promise<FileBytesResult> {
+  return guard(() => facade().ReadFileBytes(request), { state: "failed", bytes: 0, offset: 0, rows: [] });
+}
+
+/** Writes a byte-identical copy of the file to a new destination. */
+export function saveFileCopy(request: SaveCopyRequest): Promise<RoundTripResult> {
+  return guard(() => facade().SaveFileCopy(request), { state: "failed" });
 }
 
 export function chooseCorpusPath(kind: CorpusPathKind): Promise<CorpusPathResult> {

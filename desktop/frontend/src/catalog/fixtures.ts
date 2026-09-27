@@ -7,7 +7,12 @@ import {
 } from "../testkit/wails";
 
 export const catalogRows = Array.from({ length: 8 }, (_, i) =>
-  f.gridRow(`occ-${String(i + 1).padStart(6, "0")}`),
+  f.messageRow(`occ-${String(i + 1).padStart(6, "0")}`, i % 2 === 1 ? "ack" : "message", {
+    observed_at: `2026-01-01T12:00:${String(i * 10).padStart(2, "0")}Z`,
+    trigger_event: i % 4 === 0 ? "S12" : "S13",
+    source_id: i % 2 === 1 ? "s0002" : "s0001",
+    direction: i % 2 === 1 ? "inbound" : "outbound",
+  }),
 );
 export const artifacts: Artifact[] = [
   { name: "project.json", kind: "project" },
@@ -44,8 +49,8 @@ export function installCatalogFixtures() {
     OpenWorkspace: () => f.folderChosen(f.WORKSPACE_ROOT, artifacts),
     OpenProjectOverview: () => f.projectOverviewResult([f.registeredCase()]),
     OpenCase: () => f.caseResult(),
-    DescribeIndex: () => f.indexResultFixture(),
-    OpenGrid: () => f.gridResult(catalogRows),
+    ReadMessages: () => f.messagesResult(catalogRows),
+    ListViews: () => ({ state: "empty", views: [] }),
     InspectOccurrence: () => f.inspectionResult(),
     ReadTarget: () => f.defaultTargetResult(),
     ReadSecrets: () => f.defaultSecretsResult(),

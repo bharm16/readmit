@@ -191,7 +191,7 @@ export class Journey {
         <App />
       </StrictMode>,
     );
-    await screen.findByRole("region", { name: "Evidence" });
+    await screen.findByRole("region", { name: "Main content" });
   }
 
   /** Closes the window and ends the application the way a person closing it

@@ -3,6 +3,7 @@ package desktop
 import (
 	"errors"
 	"io/fs"
+	"slices"
 
 	"github.com/bharm16/readmit/internal/grid"
 )
@@ -158,4 +159,149 @@ func (a *App) filtersFailure(failure refusal) FiltersResult {
 	result := a.Filters()
 	result.State, result.Reason = failure.state, failure.reason
 	return result
+}
+
+// ViewsResult carries one state and the views saved for one project, in the
+// order they were saved. A view holds what a person chose to filter by,
+// values included, and crosses this boundary for the reason a saved filter
+// does: it is their own choice, stored on this machine only because they
+// saved it.
+type ViewsResult struct {
+	State  State       `json:"state"`
+	Reason string      `json:"reason,omitzero"`
+	Views  []grid.View `json:"views"`
+}
+
+func (r refusal) views() ViewsResult {
+	return ViewsResult{State: r.state, Reason: r.reason, Views: []grid.View{}}
+}
+
+// ListViews reports the views saved for the project open at workspace. Like
+// Filters it reads one small local file and does not claim the operation slot.
+func (a *App) ListViews(workspace string) ViewsResult {
+	root, declined := resolveFolder(workspace)
+	if root == "" {
+		return declined.views()
+	}
+	document, declined := a.savedFilters()
+	if declined.state != "" {
+		return declined.views()
+	}
+	return listedViews(document.ProjectViews(root))
+}
+
+// SaveView stores one named query as a view of the project open at
+// workspace. A view saved under a name that project already uses replaces
+// exactly that view. Saving is the only way a query's values are stored:
+// applying one writes nothing. Nothing is written beside the evidence.
+func (a *App) SaveView(workspace, name string, query grid.Query) ViewsResult {
+	return a.changeViews(workspace, func(views []grid.View) ([]grid.View, refusal) {
+		if !grid.ValidViewName(name) {
+			return nil, refusal{Failed, "a view is named with 1 to 200 printable characters"}
+		}
+		if err := grid.ValidateQuery(query); err != nil {
+			return nil, refusal{Failed, "the view was not saved: " + err.Error()}
+		}
+		for i := range views {
+			if views[i].Name == name {
+				views[i].Query = query
+				return views, refusal{}
+			}
+		}
+		if len(views) == grid.MaxViews {
+			return nil, refusal{Failed, "this project already holds as many views as this release stores; save over one of them instead"}
+		}
+		return append(views, grid.View{Name: name, Query: query}), refusal{}
+	})
+}
+
+// RenameView renames one view of the project open at workspace. A name
+// another view of that project already uses is refused rather than merged.
+func (a *App) RenameView(workspace, from, to string) ViewsResult {
+	return a.changeViews(workspace, func(views []grid.View) ([]grid.View, refusal) {
+		if !grid.ValidViewName(to) {
+			return nil, refusal{Failed, "a view is named with 1 to 200 printable characters"}
+		}
+		found := -1
+		for i, view := range views {
+			switch view.Name {
+			case from:
+				found = i
+			case to:
+				return nil, refusal{Failed, "another view of this project already has that name"}
+			}
+		}
+		if found < 0 {
+			return nil, refusal{Failed, "that view is not one this project has saved"}
+		}
+		views[found].Name = to
+		return views, refusal{}
+	})
+}
+
+// RemoveView removes one view of the project open at workspace. It removes the
+// saved query only; no evidence is read, changed or removed.
+func (a *App) RemoveView(workspace, name string) ViewsResult {
+	return a.changeViews(workspace, func(views []grid.View) ([]grid.View, refusal) {
+		for i, view := range views {
+			if view.Name == name {
+				return append(views[:i:i], views[i+1:]...), refusal{}
+			}
+		}
+		return nil, refusal{Failed, "that view is not one this project has saved"}
+	})
+}
+
+// changeViews applies one change to one project's views under the operation
+// slot and stores the whole document. A refused change stores nothing and
+// reports the views as they were.
+func (a *App) changeViews(workspace string, change func([]grid.View) ([]grid.View, refusal)) ViewsResult {
+	release, claimed := a.claim("")
+	if !claimed {
+		return busyRefusal.views()
+	}
+	defer release()
+	root, declined := resolveFolder(workspace)
+	if root == "" {
+		return declined.views()
+	}
+	document, declined := a.savedFilters()
+	if declined.state != "" {
+		return declined.views()
+	}
+	current := document.ProjectViews(root)
+	changed, declined := change(slices.Clone(current))
+	if declined.state != "" {
+		result := listedViews(current)
+		result.State, result.Reason = declined.state, declined.reason
+		return result
+	}
+	document = document.WithProjectViews(root, changed)
+	if len(document.Views) > grid.MaxViewProjects {
+		result := listedViews(current)
+		result.State, result.Reason = Failed, "views are already saved for as many projects as this release stores"
+		return result
+	}
+	data, err := grid.Encode(document)
+	if err != nil {
+		result := listedViews(current)
+		result.State, result.Reason = Failed, "these views no longer fit the bounded document this release writes; save a shorter one, or remove one"
+		return result
+	}
+	if err := a.documents.write(filtersName, data); err != nil {
+		result := listedViews(current)
+		result.State, result.Reason = Failed, "the view could not be stored; an interrupted write may be retained beside the saved filters"
+		if errors.Is(err, fs.ErrPermission) {
+			result.State, result.Reason = PermissionDenied, "this account cannot write the saved views"
+		}
+		return result
+	}
+	return listedViews(changed)
+}
+
+func listedViews(views []grid.View) ViewsResult {
+	if len(views) == 0 {
+		return ViewsResult{State: Empty, Reason: "no view has been saved for this project", Views: []grid.View{}}
+	}
+	return ViewsResult{State: Completed, Views: views}
 }

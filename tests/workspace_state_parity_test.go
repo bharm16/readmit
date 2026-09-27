@@ -246,7 +246,7 @@ func TestSavedFiltersSelectExactlyWhatTheCommandLineIndexSearchFinds(t *testing.
 		t.Fatalf("selecting a filter nobody saved: %+v", absent)
 	}
 
-	later := []byte(`{"schema":"readmit-filters/v2","filters":[],"selected":""}` + "\n")
+	later := []byte(`{"schema":"readmit-filters/v3","filters":[],"selected":""}` + "\n")
 	if err := os.WriteFile(filepath.Join(state, "filters.json"), later, 0o600); err != nil {
 		t.Fatal(err)
 	}

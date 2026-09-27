@@ -98,7 +98,6 @@ export const privateExamples: Example[] = [
     view: f.protectionPackageResult().package,
     limitations: f.protectionPackageResult().limitations ?? [],
   }),
-  p("RawInspection", "RowLine", privateData.rawRow),
   p("ReplayPanel", "Decision", { decision: privateData.decision }),
   p("ReplayPanel", "NotPreviewed", {
     result: {

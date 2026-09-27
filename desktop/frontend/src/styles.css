@@ -242,19 +242,18 @@ body {
   padding: 0 var(--inset) var(--inset);
 }
 
-.details-header {
-  align-items: center;
-  background: var(--canvas);
-  display: flex;
-  gap: var(--s2);
-  min-height: var(--header);
-  position: sticky;
-  top: 0;
-  z-index: 2;
+/* One consequence line beside a sensitive or outbound choice, and a field's
+   own error under it. */
+.consequence {
+  color: var(--muted);
+  font-size: var(--text-support);
+  line-height: var(--line-support);
+  margin: var(--s1) 0 0;
 }
 
-.details-header > .icon-button {
-  margin-left: auto;
+.field-error {
+  font-size: var(--text-support);
+  margin: var(--s1) 0 0;
 }
 
 .starting {

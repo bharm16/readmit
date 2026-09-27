@@ -2,6 +2,7 @@ package grid_test
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -119,11 +120,11 @@ func TestASavedFilterDocumentRefusesUnknownMembersAndOmittedDeclarations(t *test
 // an invalid document: there is no migration and no repair, and the two
 // refusals have different remedies.
 func TestAnUnreadableVersionIsNamedRatherThanCalledInvalid(t *testing.T) {
-	later := strings.Replace(saved, grid.Schema, "readmit-filters/v2", 1)
+	later := strings.Replace(saved, grid.SchemaV1, "readmit-filters/v3", 1)
 	if _, err := grid.Decode([]byte(later)); !errors.Is(err, grid.ErrUnsupportedVersion) {
 		t.Fatalf("a later contract version was reported as %v", err)
 	}
-	if _, err := grid.Decode([]byte(strings.Replace(saved, grid.Schema, "readmit-index/v1", 1))); !errors.Is(err, grid.ErrUnsupportedVersion) {
+	if _, err := grid.Decode([]byte(strings.Replace(saved, grid.SchemaV1, "readmit-index/v1", 1))); !errors.Is(err, grid.ErrUnsupportedVersion) {
 		t.Fatal("another readmit contract was read as saved filters")
 	}
 }
@@ -156,6 +157,7 @@ func FuzzFilterDocument(f *testing.F) {
 	f.Add([]byte(saved))
 	f.Add([]byte(`{"schema":"readmit-filters/v1","filters":[],"selected":""}`))
 	f.Add([]byte(`{"schema":"readmit-filters/v2"}`))
+	f.Add([]byte(`{"schema":"readmit-filters/v2","filters":[],"selected":"","views":[{"project":"/p","views":[{"name":"v","query":{"kinds":null}}]}]}`))
 	f.Add([]byte(`{"schema":"readmit-filters/v1","filters":[{"name":"n","kinds":[],"sources":[],` +
 		`"observed_from":null,"observed_until":null,"ack_codes":[],"fields":[]}],"selected":"n"}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
@@ -197,4 +199,58 @@ func FuzzFilterDocument(f *testing.F) {
 			}
 		}
 	})
+}
+
+// A v1 document is read as the v2 document that saves the same filters and no
+// view, and is written back as v2; a v2 document keeps each project's views
+// apart, with every query member it saved.
+func TestAVersionOneDocumentIsReadAsVersionTwoAndViewsStayWithTheirProject(t *testing.T) {
+	migrated := decoded(t, saved)
+	if migrated.Schema != grid.Schema || len(migrated.Filters) != 2 || len(migrated.Views) != 0 {
+		t.Fatalf("a v1 document was not read as v2: %+v", migrated)
+	}
+	until := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	view := grid.View{Name: "Rejected · last day", Query: grid.Query{
+		Types:         []grid.MessageType{{Kind: bundle.Message, Code: "SIU", Trigger: "S12"}},
+		NotSources:    []string{"s0001"},
+		Directions:    []bundle.Direction{bundle.Inbound},
+		ObservedUntil: &until,
+		Fields:        []grid.FieldPredicate{{Selector: patient, Match: index.State, State: hl7.Omitted}},
+		Search:        &grid.TextSearch{Scope: grid.SearchContent, Text: "MRN"},
+	}}
+	document := migrated.WithProjectViews("/projects/a", []grid.View{view})
+	if len(document.ProjectViews("/projects/b")) != 0 || len(document.ProjectViews("/projects/a")) != 1 {
+		t.Fatalf("views were not kept per project: %+v", document.Views)
+	}
+	encoded, err := grid.Encode(document)
+	if err != nil || !strings.HasPrefix(string(encoded), `{"schema":"readmit-filters/v2"`) {
+		t.Fatalf("encode: %v %s", err, encoded)
+	}
+	again := decoded(t, string(encoded))
+	reencoded, _ := grid.Encode(again)
+	read := again.ProjectViews("/projects/a")
+	if string(reencoded) != string(encoded) || len(read) != 1 || read[0].Name != view.Name || *read[0].Query.Search != *view.Query.Search ||
+		!reflect.DeepEqual(read[0].Query.Types, view.Query.Types) || !read[0].Query.ObservedUntil.Equal(until) || len(again.Filters) != 2 {
+		t.Fatalf("a saved view did not read back exactly: %+v", again.Views)
+	}
+	if emptied := again.WithProjectViews("/projects/a", nil); len(emptied.Views) != 0 {
+		t.Fatalf("a project with no view was kept: %+v", emptied.Views)
+	}
+	for name, views := range map[string][]grid.View{
+		"a blank name":      {{Name: ""}},
+		"a long name":       {{Name: strings.Repeat("é", grid.MaxViewNameRunes+1)}},
+		"a control in name": {{Name: "a\tb"}},
+		"a repeated name":   {{Name: "v"}, {Name: "v"}},
+		"an invalid query":  {{Name: "v", Query: grid.Query{Directions: []bundle.Direction{"up"}}}},
+	} {
+		if err := grid.Validate(migrated.WithProjectViews("/p", views)); err == nil {
+			t.Fatalf("%s was accepted", name)
+		}
+	}
+	if err := grid.Validate(migrated.WithProjectViews("/p", []grid.View{{Name: strings.Repeat("é", grid.MaxViewNameRunes)}})); err != nil {
+		t.Fatalf("a 200-character name was refused: %v", err)
+	}
+	if _, err := grid.Decode([]byte(`{"schema":"readmit-filters/v2","filters":[],"selected":""}`)); err == nil {
+		t.Fatal("a v2 document that does not state its views was read")
+	}
 }

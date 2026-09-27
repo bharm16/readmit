@@ -10616,8 +10616,8 @@
    "current": "Choose the folder for the byte-identical copy",
    "proposed": "Choose the folder for the byte-identical copy",
    "decision": "rename",
-   "final": "Choose copy destination",
-   "reason": "ChooseInspectionPath(round-trip-folder): existing parent folder in the folder dialog; the separate Copy filename field names a new file. Do not overwrite the source or an existing destination. [#525; test: internal/desktop/dialogs_test.go TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice]",
+   "final": "Save copy",
+   "reason": "ChooseInspectionPath(copy-destination): the native save dialog names one new file, offering the source's own name. Do not overwrite the source or an existing destination. [#525, #549; test: internal/desktop/dialogs_test.go TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice]",
    "status": "implemented"
   },
   {

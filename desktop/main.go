@@ -119,6 +119,18 @@ func (d *dialog) ChooseDestination(title string) (string, error) {
 	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{Title: title, CanCreateDirectories: true})
 }
 
+// ChooseNamedDestination is ChooseDestination offering a file name, which the
+// person may keep or change. It creates nothing.
+func (d *dialog) ChooseNamedDestination(title, name string) (string, error) {
+	d.mu.Lock()
+	ctx := d.ctx
+	d.mu.Unlock()
+	if ctx == nil {
+		return "", errors.New("the application window is not ready")
+	}
+	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{Title: title, DefaultFilename: name, CanCreateDirectories: true})
+}
+
 // reportsVersion reports whether this invocation asks for the build identity
 // the shell was stamped with instead of a window. An installed application is
 // checked on a machine that has no terminal open and, in a packaging check, no

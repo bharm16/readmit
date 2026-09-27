@@ -19,7 +19,7 @@ import { HubAdministration } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
 import { ImportPanel } from "../ImportPanel";
-import { Inspector } from "../Inspector";
+import { MessageReader } from "../Inspector";
 import { MaintenancePanel } from "../MaintenancePanel";
 import { ObservationPanel } from "../ObservationPanel";
 import { OperationAccess } from "../OperationAccess";
@@ -31,7 +31,6 @@ import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
 import { ProfileEditor } from "../ProfileEditor";
 import { ProtectionPanel } from "../ProtectionPanel";
-import { RawInspection } from "../RawInspection";
 import { Reduction } from "../Reduction";
 import { Reexecution } from "../Reexecution";
 import { ReplayPanel } from "../ReplayPanel";
@@ -78,7 +77,6 @@ import {
   Report,
   Separator,
   IndexSetup,
-  MessageGrid,
   newIndexDraft,
 } from "../shell";
 import {
@@ -219,8 +217,8 @@ export const examples: Example[] = [
     <IconButton label="Refresh" icon="refresh" onClick={noop} />
   )),
   e("ImportPanel", () => <ImportPanel {...common} />),
-  e("Inspector", () => (
-    <Inspector {...common} result={f.inspectionResult()} onInspect={noop} />
+  e("MessageReader", () => (
+    <MessageReader result={f.inspectionResult()} loading={false} busy={false} onInspect={async () => null} onReveal={noop} />
   )),
   e("MaintenancePanel", () => (
     <MaintenancePanel {...common} onReopen={noop} onProjectChanged={noop} />
@@ -254,7 +252,6 @@ export const examples: Example[] = [
   e("PrivacyPanel", () => <PrivacyPanel {...common} />),
   e("ProfileEditor", () => <ProfileEditor {...common} />),
   e("ProtectionPanel", () => <ProtectionPanel {...common} />),
-  e("RawInspection", () => <RawInspection {...common} request={1} />),
   e("Reduction", () => (
     <Reduction
       {...resultProps}
@@ -596,19 +593,6 @@ export const examples: Example[] = [
       onClose={noop}
     />
   )),
-  e("MessageGrid", () => (
-    <MessageGrid
-      {...common}
-      result={f.gridResult(catalogRows)}
-      filters={f.filtersResult()}
-      entries={[f.INDEX_ENTRY]}
-      onOpen={noop}
-      onSelect={noop}
-      onSave={noop}
-      selectedOccurrence={null}
-      onInspect={noop}
-    />
-  )),
   e("Lead", () => <Lead>{content}</Lead>),
   e("Group", () => <Group title="Group title">{content}</Group>),
   e("Fields", () => (
@@ -666,59 +650,6 @@ export const examples: Example[] = [
       () => <Status state={state} indicator={f.indicatorTable().get(state)} />,
       state,
     ),
-  ),
-  e(
-    "MessageGrid",
-    () => (
-      <MessageGrid
-        {...common}
-        result={f.gridResult([])}
-        filters={f.filtersResult()}
-        entries={[]}
-        onOpen={noop}
-        onSelect={noop}
-        onSave={noop}
-        selectedOccurrence={null}
-        onInspect={noop}
-      />
-    ),
-    "empty",
-  ),
-  e(
-    "MessageGrid",
-    () => (
-      <MessageGrid
-        {...common}
-        result={{ state: "failed", reason: "Synthetic index unavailable" }}
-        filters={f.filtersResult()}
-        entries={[]}
-        onOpen={noop}
-        onSelect={noop}
-        onSave={noop}
-        selectedOccurrence={null}
-        onInspect={noop}
-      />
-    ),
-    "error",
-  ),
-  e(
-    "MessageGrid",
-    () => (
-      <MessageGrid
-        {...common}
-        busy
-        progress="Reading messages…"
-        result={null}
-        filters={f.filtersResult()}
-        entries={[]}
-        onOpen={noop}
-        onSelect={noop}
-        onSave={noop}
-        selectedOccurrence={null}
-        onInspect={noop}
-      />
-    ),
-    "busy",
   ),
 ];
 

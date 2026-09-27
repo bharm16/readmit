@@ -33,6 +33,7 @@ type chooser struct {
 	before      func()
 	titles      []string
 	opened      []string
+	named       []string
 }
 
 func (c *chooser) ChooseFolder(title string) (string, error) {
@@ -57,6 +58,11 @@ func (c *chooser) ChooseDestination(title string) (string, error) {
 		c.before()
 	}
 	return c.destination, c.err
+}
+
+func (c *chooser) ChooseNamedDestination(title, name string) (string, error) {
+	c.named = append(c.named, name)
+	return c.ChooseDestination(title)
 }
 
 // activatedApp wires an app over explicit state files and selects the test

@@ -23,7 +23,7 @@ import (
 // (readmit-desktop-drafts), and notes are stored in the project.
 //
 // A new member means a new version string and a reader for both. Nothing is
-// added to readmit-filters/v1, readmit-revisions/v1
+// added to readmit-filters/v2, readmit-revisions/v1
 // or readmit-job/v1, none of which this file touches. See
 // [ADR-0003](../../docs/adr/0003-specs-are-strict-json-with-typed-operators.md).
 const SessionSchema = "readmit-desktop-session/v1"

@@ -1,313 +1,378 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import "./raw.css";
 import {
   chooseInspectionPath,
-  inspectRawFile,
-  writeRoundTrip,
-  type InspectFormat,
-  type InspectTerminator,
-  type InspectionRow,
-  type RawInspectionResult,
+  inspectFileMessage,
+  listFileMessages,
+  readFileBytes,
+  saveFileCopy,
+  type FileBytesResult,
+  type FileMessage,
+  type FileMessagesResult,
+  type InspectionResult,
   type RoundTripResult,
 } from "./bindings";
-import { Report, type Indicators } from "./shell";
+import { DataTable, type Column } from "./DataTable";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows } from "./layout";
+import { HexTable, MessageReader } from "./Inspector";
+import { typeLabel } from "./Messages";
 import { useLifecycle } from "./lifecycle";
 
+type Framing = "auto" | "raw" | "mllp";
+type Terminator = "auto" | "cr" | "lf" | "crlf";
 
-/** One row as a line: the same facts `readmit inspect` prints, in its order. */
-function RowLine({ row, selection }: { row: InspectionRow; selection: string }) {
-  switch (row.kind) {
-    case "message":
-      return (
-        <>
-          Message {row.message} · terminator {row.terminator} ({selection}) · bytes [{row.start},{row.end}) ·{" "}
-          {row.profile}
-        </>
-      );
-    case "segment":
-      return (
-        <>
-          {row.segment} · bytes [{row.start},{row.end})
-        </>
-      );
-    case "field":
-      return (
-        <>
-          {row.segment}-{row.field}
-          {row.label ? ` ${row.label}` : ""} · {row.state}
-          {row.state !== "omitted" ? ` · ${row.end - row.start} bytes` : ""}
-          {row.value !== undefined ? (
-            <>
-              {" "}
-              · <code className="raw-value">{row.value}</code>
-              {row.value_truncated ? ` · shown in part: the first ${row.value_shown_bytes} of ${row.end - row.start} bytes` : ""}
-            </>
-          ) : null}
-        </>
-      );
-    case "repetition":
-      return (
-        <>
-          repetition {row.repetition} · {row.state} · {row.end - row.start} bytes
-        </>
-      );
-  }
+const FRAMINGS: { value: Framing; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "raw", label: "Raw HL7" },
+  { value: "mllp", label: "MLLP" },
+];
+
+const TERMINATORS: { value: Terminator; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "cr", label: "CR" },
+  { value: "lf", label: "LF" },
+  { value: "crlf", label: "CRLF" },
+];
+
+function fileName(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
 }
 
-/** Raw inspection: `readmit inspect` in the window. A person chooses one file
- * through the host's dialog, declares its framing and terminator, and sees
- * every message, segment and field the command reports, a bounded window of
- * rows at a time. The file is read, never imported or changed; values are
- * shown only on request and arrive escaped by Go. A byte-identical copy is
- * written only to a new file in a folder the person chose. */
-export function RawInspection({
-  busy,
-  indicators,
-  request,
-}: {
-  busy: boolean;
-  indicators: Indicators;
-  /** Counts the palette's requests to open this screen. */
-  request: number;
-}) {
-  const [open, setOpen] = useState(false);
-  const toggle = useRef<HTMLButtonElement>(null);
+/** A framing or terminator as the Format sheet names it, and whether it was detected. */
+function formatLabel(choices: { value: string; label: string }[], value: string, selection: string): string {
+  if (!value) return "—";
+  const label = choices.find((choice) => choice.value === value)?.label ?? value.toUpperCase();
+  return selection === "detected" ? `${label} (detected)` : label;
+}
+
+const messageType = (row: FileMessage) => typeLabel({ kind: "message", code: row.message_code, trigger: row.trigger_event });
+
+/** Tools → Inspect file: a standalone message file read through the same
+ * reader as a case's messages, with no project. The file is read, never
+ * imported or changed. The page's header, body and details pane are owned by
+ * the window; this hook supplies each. */
+export function useFileReader({ busy, request }: { busy: boolean; request: number }) {
   const [file, setFile] = useState("");
-  const [format, setFormat] = useState<InspectFormat>("auto");
-  const [terminator, setTerminator] = useState<InspectTerminator>("auto");
-  const [showValues, setShowValues] = useState(false);
-  const [result, setResult] = useState<RawInspectionResult | null>(null);
-  // A dialog that chose nothing is answered beside the control that opened it.
-  const [chosen, setChosen] = useState<{ state: RawInspectionResult["state"]; reason?: string | undefined } | null>(null);
-  const [copyChosen, setCopyChosen] = useState<{ state: RawInspectionResult["state"]; reason?: string | undefined } | null>(
-    null,
-  );
-  const [folder, setFolder] = useState("");
-  const [name, setName] = useState("");
+  const [framing, setFraming] = useState<Framing>("auto");
+  const [terminator, setTerminator] = useState<Terminator>("auto");
+  const [listing, setListing] = useState<FileMessagesResult | null>(null);
+  const [bytes, setBytes] = useState<FileBytesResult | null>(null);
+  const [bytesShown, setBytesShown] = useState(false);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [inspection, setInspection] = useState<InspectionResult | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [formatting, setFormatting] = useState(false);
+  const [info, setInfo] = useState(false);
   const [copied, setCopied] = useState<RoundTripResult | null>(null);
-  // This screen's calls hold the window's one slot, so the rest of the window
-  // is unavailable meanwhile rather than answered busy.
-  const { running: working, run } = useLifecycle<"choosing" | "inspecting" | "copying">({ window: true });
-  const disabled = busy || working !== null;
+  const [chosen, setChosen] = useState<string | null>(null);
+  const { running, run } = useLifecycle<"choosing" | "reading" | "inspecting" | "copying">({ window: true });
+  const disabled = busy || running !== null;
+  const where = useRef({ path: "", nodeOffset: 0, byteOffset: -1 });
 
-  useEffect(() => {
-    if (request > 0) {
-      setOpen(true);
-      toggle.current?.focus();
-    }
-  }, [request]);
-
-  // Whatever was shown belongs to the file and declarations it was read under.
-  const invalidate = () => {
-    setResult(null);
-    setCopied(null);
-  };
-
-  async function choose(kind: "file" | "round-trip-folder") {
-    const report = kind === "file" ? setChosen : setCopyChosen;
-    await run("choosing", async () => {
-      report(null);
-      const answer = await chooseInspectionPath(kind);
-      if (answer.state === "completed" && answer.path) {
-        if (kind === "file") {
-          setFile(answer.path);
-          invalidate();
-        } else {
-          setFolder(answer.path);
-          setCopied(null);
+  const list = useCallback(
+    async (path: string, format: Framing, ending: Terminator) => {
+      await run("reading", async () => {
+        setSelected(null);
+        setInspection(null);
+        setBytes(null);
+        setCopied(null);
+        const answer = await listFileMessages({ file: path, format, terminator: ending, offset: 0, limit: 0 });
+        setListing(answer);
+        setBytesShown(false);
+        if (answer.state !== "completed" && answer.sha256) {
+          setBytes(await readFileBytes({ file: path, expect: answer.sha256, offset: 0, reveal: false }));
         }
-      } else {
-        report({ state: answer.state, reason: answer.reason });
+      });
+    },
+    [run],
+  );
+
+  const inspect = useCallback(
+    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean): Promise<InspectionResult | null> => {
+      if (!listing?.sha256) return null;
+      let answer: InspectionResult | null = null;
+      await run("inspecting", async (current) => {
+        const result = await inspectFileMessage({
+          file,
+          format: framing,
+          terminator,
+          expect: listing.sha256,
+          message,
+          path,
+          node_offset: nodeOffset,
+          byte_offset: byteOffset,
+          reveal,
+        });
+        answer = result;
+        if (!current()) return;
+        // A field that is not there leaves the message as it was.
+        if (result.state === "completed" || path === "") {
+          setInspection(result);
+          where.current = { path, nodeOffset, byteOffset };
+        }
+      });
+      return answer;
+    },
+    [file, framing, listing, run, terminator],
+  );
+
+  const open = useCallback(async () => {
+    await run("choosing", async () => {
+      setChosen(null);
+      const answer = await chooseInspectionPath("file");
+      if (answer.state === "completed" && answer.path) {
+        setFile(answer.path);
+        setFraming("auto");
+        setTerminator("auto");
+        setRevealed(false);
+      } else if (answer.state !== "cancelled") {
+        setChosen(answer.reason ?? "The file could not be opened.");
       }
     });
-  }
+  }, [run]);
 
-  /** Reads one page. A later page names the digest the shown rows were read
-   * from, so a file that changed between pages is refused, not mixed. */
-  async function inspect(offset: number, expect?: string) {
-    await run("inspecting", async () => {
-      setChosen(null);
-      setResult(
-        await inspectRawFile({
-          file,
-          format,
-          terminator,
-          show_values: showValues,
-          offset,
-          // Zero asks for the facade's own window bound, which the answer names.
-          limit: 0,
-          ...(expect ? { expect } : {}),
-        }),
-      );
-    });
-  }
+  // A new file is read as soon as it is chosen.
+  useEffect(() => {
+    if (file) void list(file, framing, terminator);
+    // Only a new file starts a read; a format change applies from its sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
 
-  async function copy() {
+  // Tools → Inspect file goes straight to the host's Open dialog.
+  const asked = useRef(0);
+  useEffect(() => {
+    if (request > asked.current) {
+      asked.current = request;
+      void open();
+    }
+  }, [open, request]);
+
+  // A single message opens straight into the reader.
+  const single = listing?.state === "completed" && listing.total === 1;
+  useEffect(() => {
+    if (single && selected === null) {
+      setSelected(0);
+      void inspect(0, "", 0, -1, revealed);
+    }
+  }, [inspect, revealed, selected, single]);
+
+  const copy = async () => {
+    if (!listing?.sha256) return;
     await run("copying", async () => {
-      setCopyChosen(null);
-      setCopied(await writeRoundTrip({ file, format, terminator, folder, name: name.trim() }));
+      setCopied(null);
+      const destination = await chooseInspectionPath("copy-destination", file);
+      if (destination.state !== "completed" || !destination.path) {
+        if (destination.state !== "cancelled") setCopied({ state: destination.state, reason: destination.reason ?? "No destination was chosen." });
+        return;
+      }
+      setCopied(await saveFileCopy({ file, format: framing, terminator, expect: listing.sha256, destination: destination.path }));
     });
+  };
+
+  const reveal = (next: boolean) => {
+    setRevealed(next);
+    if (selected !== null) void inspect(selected, where.current.path, where.current.nodeOffset, where.current.byteOffset, next);
+  };
+
+  const reader = (
+    <MessageReader
+      result={inspection}
+      loading={running === "inspecting"}
+      busy={disabled}
+      onInspect={(path, nodeOffset, byteOffset) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed))}
+      onReveal={reveal}
+      {...(single ? {} : { onClose: () => { setSelected(null); setInspection(null); } })}
+    />
+  );
+
+  const columns: Column<FileMessage>[] = [
+    { key: "message", header: "Message", priority: 1, minWidth: 6, render: (row) => String(row.index + 1) },
+    { key: "type", header: "Type", priority: 1, minWidth: 8, render: messageType },
+    { key: "bytes", header: "Bytes", priority: 2, minWidth: 6, render: (row) => String(row.end - row.start) },
+  ];
+
+  let body: ReactNode;
+  if (!file) {
+    body = (
+      <EmptyState
+        title="No file open"
+        action={
+          <button type="button" className="primary" disabled={disabled} onClick={() => void open()}>
+            Open file
+          </button>
+        }
+      />
+    );
+  } else if (!listing) {
+    body = <p aria-live="polite">Reading…</p>;
+  } else if (listing.state !== "completed") {
+    body = (
+      <div className="file-refused">
+        <p role="alert">{listing.reason ?? "This file could not be read."}</p>
+        <div>
+          <button type="button" disabled={disabled} onClick={() => setFormatting(true)}>
+            Change format
+          </button>
+        </div>
+        {bytes && bytes.state === "completed" && bytesShown ? (
+          <HexTable
+            rows={bytes.rows}
+            selection={null}
+            total={bytes.bytes}
+            offset={bytes.offset}
+            busy={disabled}
+            onPage={(offset) => void readFileBytes({ file, expect: listing.sha256, offset, reveal: true }).then(setBytes)}
+          />
+        ) : null}
+        {bytes && bytes.state === "completed" ? (
+          <div className="reveal">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                const next = !bytesShown;
+                setBytesShown(next);
+                void readFileBytes({ file, expect: listing.sha256, offset: bytes.offset, reveal: next }).then(setBytes);
+              }}
+            >
+              {bytesShown ? "Hide values" : "Show values"}
+            </button>
+            {bytesShown ? null : <span className="consequence">May contain patient data.</span>}
+          </div>
+        ) : null}
+      </div>
+    );
+  } else if (single) {
+    body = reader;
+  } else {
+    body = (
+      <DataTable
+        label="Messages in this file"
+        className="page-table"
+        rows={listing.rows}
+        rowId={(row) => String(row.index)}
+        rowLabel={(row) => `Message ${row.index + 1} · ${messageType(row)}`}
+        columns={columns}
+        selected={selected === null ? null : String(selected)}
+        onSelect={(id) => {
+          const index = Number(id);
+          if (index === selected) return;
+          setSelected(index);
+          void inspect(index, "", 0, -1, revealed);
+        }}
+        onOpen={() => undefined}
+      />
+    );
   }
 
-  const view = result?.inspection;
-  const last = view ? view.offset + view.rows.length : 0;
-  return (
-    <section className="raw-panel" aria-labelledby="raw-inspection-title">
-      <h3 id="raw-inspection-title">
-        <button
-          ref={toggle}
-          type="button"
-          aria-expanded={open}
-          aria-controls="raw-inspection-body"
-          onClick={() => setOpen(!open)}
-        >
-          Inspect HL7 file
+  // A saved copy is silent; only a refusal is said.
+  const status = chosen ?? (copied && copied.state !== "completed" ? copied.reason ?? "The copy was not saved." : null);
+
+  return {
+    title: file ? (listing?.name || fileName(file)) : "Inspect file",
+    actions: (
+      <>
+        <button type="button" disabled={disabled} onClick={() => void open()}>
+          Open file
         </button>
-      </h3>
-      {open ? (
-        <div id="raw-inspection-body">
-          <p className="hint">
-            Reads one file the way <code>readmit inspect</code> does and shows its syntax. Nothing is imported,
-            no case is written, and the file is never changed.
-          </p>
-          <div className="raw-choice">
-            <button type="button" disabled={disabled} onClick={() => void choose("file")}>
-              Browse…
-            </button>
-            <span className="raw-path">{file || "No file chosen."}</span>
-          </div>
-          <fieldset disabled={disabled}>
-            <legend>Input format</legend>
-            <label>
-              Framing
-              <select
-                value={format}
-                onChange={(event) => {
-                  setFormat(event.target.value as InspectFormat);
-                  invalidate();
-                }}
-              >
-                <option value="auto">Detect automatically</option>
-                <option value="raw">Raw HL7</option>
-                <option value="mllp">MLLP frames</option>
-              </select>
-            </label>
-            <label>
-              Segment terminator
-              <select
-                value={terminator}
-                onChange={(event) => {
-                  setTerminator(event.target.value as InspectTerminator);
-                  invalidate();
-                }}
-              >
-                <option value="auto">Detect automatically</option>
-                <option value="cr">CR</option>
-                <option value="lf">LF</option>
-                <option value="crlf">CRLF</option>
-              </select>
-            </label>
-          </fieldset>
-          {/* Showing values is a choice about what is displayed, not about how
-              the file is framed, so it sits beside its warning outside the
-              input format. */}
-          <div className="raw-values">
-            <label className="raw-check">
-              <input
-                type="checkbox"
-                disabled={disabled}
-                aria-describedby="raw-values-warning"
-                checked={showValues}
-                onChange={(event) => {
-                  setShowValues(event.target.checked);
-                  invalidate();
-                }}
-              />
-              Show values
-            </label>
-            <p className="hint" id="raw-values-warning">
-              Values may contain patient data and are shown as escaped byte strings.
-            </p>
-          </div>
-          <button type="button" disabled={disabled || !file} onClick={() => void inspect(0)}>
-            Inspect
-          </button>
-          <Report
-            indicators={indicators}
-            progress={working === "inspecting" ? "Reading and parsing the file." : null}
-            result={chosen ?? (result && result.state !== "completed" ? result : null)}
+        {file && listing ? (
+          <Menu
+            label="More file actions"
+            items={[
+              { label: "Format…", onSelect: () => setFormatting(true), disabled },
+              { label: "Save copy…", onSelect: () => void copy(), disabled: disabled || listing.state !== "completed" },
+              { label: "Info", onSelect: () => setInfo(true) },
+            ]}
           />
-          {!result && !chosen && working !== "inspecting" ? (
-            <p className="hint">Nothing has been read yet.</p>
-          ) : null}
-          {view ? (
-            <>
-              <p className="raw-summary" role="status">
-                Format: {view.format} ({view.format_selection}) · Messages: {view.messages} · {view.bytes} bytes ·
-                SHA-256 {view.sha256}
-              </p>
-              {!view.show_values ? (
-                <p className="hint">Values are hidden. Show them and inspect again to see each field's bytes.</p>
-              ) : null}
-              <ol className="raw-rows" aria-label="Inspection rows" start={view.offset + 1}>
-                {view.rows.map((row, index) => (
-                  <li key={view.offset + index} className={`raw-row raw-row-${row.kind}`}>
-                    <RowLine row={row} selection={view.terminator_selection} />
-                  </li>
-                ))}
-              </ol>
-              <div className="raw-paging">
-                <button type="button" disabled={disabled || view.offset === 0} onClick={() => void inspect(Math.max(0, view.offset - view.limit), view.sha256)}>
-                  Previous page
-                </button>
-                <span>
-                  Rows {view.rows.length === 0 ? 0 : view.offset + 1}–{last} of {view.total}
-                </span>
-                <button type="button" disabled={disabled || last >= view.total} onClick={() => void inspect(last, view.sha256)}>
-                  Next page
-                </button>
-              </div>
-            </>
-          ) : null}
-          <fieldset disabled={disabled} className="raw-roundtrip">
-            <legend>Byte-identical copy</legend>
-            <p className="hint">
-              Writes the file's exact bytes to a new file, as <code>readmit inspect --roundtrip</code> does, once
-              it parses under the input format above. An existing file is never overwritten.
-            </p>
-            <div className="raw-choice">
-              <button type="button" onClick={() => void choose("round-trip-folder")}>
-                Choose destination…
-              </button>
-              <span className="raw-path">{folder || "No folder chosen."}</span>
-            </div>
-            <label>
-              Copy filename
-              <input
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setCopied(null);
-                }}
-              />
-            </label>
-            <button type="button" disabled={!file || !folder || !name.trim()} onClick={() => void copy()}>
-              Save copy
-            </button>
-            <Report
-              indicators={indicators}
-              progress={working === "copying" ? "Writing the copy." : null}
-              result={copyChosen ?? (copied && copied.state !== "completed" ? copied : null)}
+        ) : null}
+      </>
+    ),
+    body: (
+      <>
+        {status ? (
+          <p className="file-status" role="alert">
+            {status}
+          </p>
+        ) : null}
+        {body}
+        <FormatSheet
+          open={formatting}
+          framing={framing}
+          terminator={terminator}
+          onApply={(nextFraming, nextTerminator) => {
+            setFraming(nextFraming);
+            setTerminator(nextTerminator);
+            setFormatting(false);
+            void list(file, nextFraming, nextTerminator);
+          }}
+          onClose={() => setFormatting(false)}
+        />
+        <Modal open={info && listing !== null} title="Info" onClose={() => setInfo(false)}>
+          {listing ? (
+            <ValueRows
+              rows={[
+                { label: "File", value: listing.name || fileName(file) },
+                { label: "Bytes", value: String(listing.bytes) },
+                { label: "Messages", value: listing.state === "completed" ? String(listing.total) : "—" },
+                { label: "Framing", value: formatLabel(FRAMINGS, listing.format, listing.format_selection) },
+                { label: "Segment terminator", value: formatLabel(TERMINATORS, listing.terminator, listing.terminator_selection) },
+                { label: "SHA-256", value: <code>{listing.sha256}</code> },
+              ]}
             />
-            {copied?.state === "completed" ? (
-              <p className="raw-summary" role="status">
-                Wrote {copied.bytes} bytes to {copied.path} · SHA-256 {copied.sha256}
-                {view && view.sha256 === copied.sha256 ? " · the same bytes the inspection read" : ""}
-              </p>
-            ) : null}
-          </fieldset>
-        </div>
-      ) : null}
-    </section>
+          ) : null}
+        </Modal>
+      </>
+    ),
+    /** The reader beside a list of several messages. */
+    details: !single && selected !== null ? reader : null,
+    closeDetails: () => {
+      setSelected(null);
+      setInspection(null);
+    },
+  };
+}
+
+function FormatSheet({
+  open,
+  framing,
+  terminator,
+  onApply,
+  onClose,
+}: {
+  open: boolean;
+  framing: Framing;
+  terminator: Terminator;
+  onApply: (framing: Framing, terminator: Terminator) => void;
+  onClose: () => void;
+}) {
+  const [nextFraming, setNextFraming] = useState(framing);
+  const [nextTerminator, setNextTerminator] = useState(terminator);
+  useEffect(() => {
+    if (open) {
+      setNextFraming(framing);
+      setNextTerminator(terminator);
+    }
+  }, [open, framing, terminator]);
+  return (
+    <FormDialog open={open} title="Format" size="small" submitLabel="Apply" onClose={onClose} onSubmit={() => onApply(nextFraming, nextTerminator)}>
+      <label htmlFor="file-framing">Framing</label>
+      <select id="file-framing" value={nextFraming} onChange={(event) => setNextFraming(event.target.value as Framing)}>
+        {FRAMINGS.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+      <label htmlFor="file-terminator">Segment terminator</label>
+      <select id="file-terminator" value={nextTerminator} onChange={(event) => setNextTerminator(event.target.value as Terminator)}>
+        {TERMINATORS.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </FormDialog>
   );
 }
+

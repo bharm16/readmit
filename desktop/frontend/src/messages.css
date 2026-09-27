@@ -1,0 +1,106 @@
+/* ---------- Messages ----------
+   The list fills the case view below its tabs; the toolbar and any applied
+   chips sit above it and the table scrolls inside itself. */
+.page-body:has(.messages:not([hidden])) {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.case-view:not([hidden]),
+.case-view > div:not([hidden]),
+.case-view .task-panel:not([hidden]):has(> .messages) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  margin: 0 calc(-1 * var(--inset));
+  min-height: 0;
+}
+
+.messages > .list-toolbar {
+  flex: none;
+  margin: 0;
+  min-height: var(--toolbar);
+  padding: 0 var(--inset);
+}
+
+.messages > .chips {
+  flex: none;
+  padding: 0 var(--inset) var(--s2);
+}
+
+.messages > .table-view {
+  flex: 1;
+  min-height: 0;
+}
+
+.messages > .empty-state {
+  flex: 1;
+}
+
+.messages .chip-status {
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 0 var(--s2);
+}
+
+.selection-actions {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+}
+
+.view-menu .menu-trigger {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* Row checkboxes appear on a hovered or focused row, and stay while a
+   selection exists; keyboard focus always shows them. */
+.messages-table:not(.has-checked) .check-column input {
+  opacity: 0;
+}
+
+.messages-table:not(.has-checked) tr:hover .check-column input,
+.messages-table:not(.has-checked) tr:focus-within .check-column input,
+.messages-table:not(.has-checked) .check-column input:focus-visible {
+  opacity: 1;
+}
+
+/* ---------- Filter sheet ---------- */
+.filter-rule {
+  border: 0;
+  display: grid;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  padding: 0;
+}
+
+.filter-rule-row {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+}
+
+.filter-rule-row > select,
+.filter-rule-row > input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The last column is Direction, a value like the others, not a row action. */
+.messages > .messages-table th:last-child,
+.messages > .messages-table td:last-child {
+  text-align: start;
+}
+
+.messages-table .check-column {
+  text-overflow: clip;
+}

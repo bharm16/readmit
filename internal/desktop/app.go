@@ -257,6 +257,13 @@ type DestinationChooser interface {
 	ChooseDestination(title string) (string, error)
 }
 
+// NamedDestinationChooser is a save dialog that can offer a file name, as the
+// standalone reader's Save copy offers the source's own. A host that cannot
+// offer one presents ChooseDestination instead.
+type NamedDestinationChooser interface {
+	ChooseNamedDestination(title, name string) (string, error)
+}
+
 // App runs exactly one operation at a time: a second request reports Busy
 // rather than racing the first, and a finished operation always releases the
 // slot, including after a failure or a cancellation.
@@ -681,6 +688,25 @@ func (a *App) chooseDestination(ctx context.Context, title string) (string, refu
 		return "", refusal{Failed, "the save dialog is unavailable"}
 	case path == "":
 		return "", refusal{Cancelled, "no new folder was named"}
+	}
+	return path, refusal{}
+}
+
+// chooseNamedDestination is chooseDestination offering a file name.
+func (a *App) chooseNamedDestination(ctx context.Context, title, name string) (string, refusal) {
+	named, ok := a.chooser.(NamedDestinationChooser)
+	if !ok {
+		return a.chooseDestination(ctx, title)
+	}
+	if ctx.Err() != nil {
+		return "", cancelledRefusal
+	}
+	path, err := named.ChooseNamedDestination(title, name)
+	switch {
+	case err != nil:
+		return "", refusal{Failed, "the save dialog is unavailable"}
+	case path == "":
+		return "", refusal{Cancelled, "no destination was named"}
 	}
 	return path, refusal{}
 }

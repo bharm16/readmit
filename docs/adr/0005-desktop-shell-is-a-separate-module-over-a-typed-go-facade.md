@@ -58,8 +58,8 @@ static build stand unchanged. Nothing here is added to the release archives.
   frontend.
 - The shell keeps seven bounded, versioned local documents (the recent folder
   paths of `readmit-desktop-recent/v1` were retired by #548 and are no longer
-  read or written): saved filters with the active selection
-  (`readmit-filters/v1`), the working session a viewer has not stored
+  read or written): saved filters with the active selection and each project's saved views
+  (`readmit-filters/v2`, which also reads `/v1`), the working session a viewer has not stored
   (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
   open (a session written before #548 may also carry note drafts, which are
   read past and not kept) — the editor draft store
