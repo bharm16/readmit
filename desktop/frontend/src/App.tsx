@@ -12,7 +12,7 @@ import { PacketPanel } from "./PacketPanel";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
 import { SuitePanel, type SuiteRunHandoff } from "./SuitePanel";
-import { EnvironmentPanel } from "./EnvironmentPanel";
+import { environmentPlace, useEnvironments } from "./Environments";
 import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
 import { IndicatorsContext, useLifecycle, useWindowBusy } from "./lifecycle";
@@ -1910,6 +1910,19 @@ export default function App() {
     focusRegion("evidence");
   }, [focusRegion, routeTo]);
 
+  // Environments reads under its own request scope, so its reads never make
+  // another list's answer look stale.
+  const environmentScope = useRef(new RequestScope());
+  const environmentContext = useCallback(() => environmentScope.current.enter(root ?? ""), [root]);
+  const environments = useEnvironments({
+    root,
+    context: environmentContext,
+    place: environmentPlace(place === "environments" ? route.objectId : undefined, route.view),
+    go: (objectId, view) => open({ destination: "environments", objectId, ...(view ? { view } : {}) }),
+    back,
+    busy,
+  });
+
   const openSettings = useCallback((view: SettingsView) => open({ destination: "settings", view }), [open]);
 
   const openStorage = useCallback(
@@ -2814,7 +2827,7 @@ export default function App() {
         <Page
           id="environments"
           shown={place === "environments"}
-          title={observing && root ? "Observations" : "Environments"}
+          title={observing && root ? "Observations" : environments.title}
           back={
             observing && root ? (
               <BackLink
@@ -2824,15 +2837,11 @@ export default function App() {
                   setCaptureBinding(null);
                 }}
               />
-            ) : null
+            ) : (
+              environments.back
+            )
           }
-          actions={
-            root && !observing ? (
-              <button type="button" disabled={busy} onClick={() => setObserving(true)}>
-                Observations
-              </button>
-            ) : null
-          }
+          actions={root && !observing ? environments.actions : null}
         >
           {observing && root ? (
             <ObservationPanel
@@ -2860,16 +2869,7 @@ export default function App() {
               }}
             />
           ) : opened ? (
-            <EnvironmentPanel
-              workspace={root ?? ""}
-              targetFile="targets/default.json"
-              secretsFile="secrets.json"
-              policyFile="send-policy.json"
-              planFile="reset-plan.json"
-              initialTab="target"
-              drafts={drafts}
-              onPlanSaved={() => void refreshListing()}
-            />
+            environments.body
           ) : (
             noProject("environments")
           )}

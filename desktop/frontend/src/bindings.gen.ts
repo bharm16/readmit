@@ -32,7 +32,11 @@ export type ActionID =
   | "item.save"
   | "replay.send"
   | "export.derived-packet"
-  | "suite.approve-promotion";
+  | "suite.approve-promotion"
+  | "observation.collect"
+  | "environment.reset"
+  | "secret.scan"
+  | "item.remove";
 
 /** internal/desktop.ActionReview */
 export interface ActionReview {
@@ -48,6 +52,9 @@ export interface ActionReview {
   replay?: ReplayPreview;
   export?: ExportReviewView;
   promotion?: SuitePromotionReview;
+  collect?: CollectReview;
+  reset?: EnvironmentResetReview;
+  scan?: ScanReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -723,6 +730,16 @@ export interface CleanRunResult {
   cleanup?: DurableRunCleanup;
 }
 
+/** internal/desktop.CollectReview */
+export interface CollectReview {
+  source: string;
+  source_type: string;
+  scope: string;
+  window: string;
+  bounds: ObservationWindowRule;
+  destination: string;
+}
+
 /** internal/collection.AckRule */
 export interface CollectionAckRule {
   operator: string;
@@ -764,6 +781,16 @@ export interface CollectionFaultStep {
 export interface CollectionMessageTypeRule {
   operator: string;
   values: string[];
+}
+
+/** internal/desktop.CollectionRow */
+export interface CollectionRow {
+  entry: string;
+  closed_at: string | null;
+  status: string;
+  trustworthy: boolean;
+  records: number | null;
+  reason?: string;
 }
 
 /** internal/desktop.Command */
@@ -875,6 +902,37 @@ export interface ComparisonSummary {
   unaligned: number;
 }
 
+/** internal/desktop.CompletionInspection */
+export interface CompletionInspection {
+  entry: string;
+  closed_at: string | null;
+  status: string;
+  trustworthy: boolean;
+  records: number | null;
+  reason?: string;
+  opened_at: string | null;
+  samples: number;
+  stable_samples: number;
+  quiet_period: string;
+  supported: boolean;
+  unsupported?: string;
+}
+
+/** internal/desktop.CompletionInspectionResult */
+export interface CompletionInspectionResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  completion?: CompletionInspection;
+}
+
+/** internal/desktop.CompletionRequest */
+export interface CompletionRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  entry: string;
+}
+
 /** internal/localprofile.Condition */
 export interface Condition {
   segment: string;
@@ -884,7 +942,7 @@ export interface Condition {
 }
 
 /** internal/desktop.Consent */
-export type Consent = "send" | "export" | "approve";
+export type Consent = "send" | "export" | "approve" | "collect" | "reset" | "scan";
 
 /** internal/corpus.Bounds */
 export interface CorpusBounds {
@@ -1143,11 +1201,72 @@ export interface CorrelationUnsupported {
   detail: string;
 }
 
+/** internal/desktop.CredentialCheckResult */
+export interface CredentialCheckResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  name: string;
+  resolved: boolean;
+}
+
+/** internal/desktop.CredentialRequest */
+export interface CredentialRequest {
+  context: RequestContext;
+  name: string;
+}
+
+/** internal/desktop.CredentialRow */
+export interface CredentialRow {
+  name: string;
+  purpose: SecretPurpose;
+  store: SecretStore;
+  address: string;
+  command: string;
+  argument_count: number;
+  max_age?: string;
+  generation: number;
+  rotated_at: string;
+  rotation: SecretRotationState;
+  bindable: boolean;
+}
+
+/** internal/desktop.CredentialSaveRequest */
+export interface CredentialSaveRequest {
+  context: RequestContext;
+  name: string;
+  update: boolean;
+  purpose?: SecretPurpose;
+  store: SecretStore;
+  address: string;
+  command: string;
+  arguments?: string[];
+  replace_arguments: boolean;
+  max_age?: string;
+}
+
+/** internal/desktop.CredentialsResult */
+export interface CredentialsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  credentials: CredentialRow[];
+  referring: Referrer[];
+}
+
 /** internal/customerrunner.Status */
 export interface CustomerRunnerStatus {
   schema: string;
   state: string;
   jobs: number;
+}
+
+/** internal/desktop.DestinationCheckRequest */
+export interface DestinationCheckRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  address: string;
+  classification: string;
 }
 
 /** internal/diagnose.Config */
@@ -1346,6 +1465,7 @@ export interface DraftItem {
 export interface DraftRequest {
   context: RequestContext;
   kind: ItemKind;
+  item?: string;
   draft: ItemDraft;
 }
 
@@ -1506,6 +1626,32 @@ export interface EnginePlan {
   terminator: string;
 }
 
+/** internal/desktop.EnvironmentCheckResult */
+export interface EnvironmentCheckResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  ref?: ItemRef;
+  report?: EnvironmentReport;
+  decision?: SendPolicyDecision;
+  checked_at?: string;
+}
+
+/** internal/desktop.caCertificateFile and the constants declared with it */
+export type EnvironmentFileKind =
+  | "ca-certificate"
+  | "client-certificate"
+  | "locator-program"
+  | "observation-input";
+
+/** internal/desktop.EnvironmentLinks */
+export interface EnvironmentLinks {
+  schema?: string;
+  observation?: string;
+  reset_name?: string;
+  action_names?: string[];
+}
+
 /** internal/environment.Outcome */
 export type EnvironmentOutcome =
   | "reachable"
@@ -1536,12 +1682,32 @@ export interface EnvironmentReport {
   unsolicited: number;
 }
 
+/** internal/desktop.EnvironmentReset */
+export interface EnvironmentReset {
+  result: ResetResult | null;
+  output: string;
+}
+
+/** internal/desktop.EnvironmentResetReview */
+export interface EnvironmentResetReview {
+  target: string;
+  name?: string;
+  actions: ResetReviewAction[];
+}
+
 /** internal/desktop.EnvironmentSummary */
 export interface EnvironmentSummary {
   classification: string;
   address: string;
   transport: string;
   last_checked_at: string | null;
+  last_check_outcome?: string;
+  last_check_revision?: string;
+  observation: ItemRef | null;
+  observation_name?: string;
+  has_policy: boolean;
+  reset_name?: string;
+  reset_actions: number;
 }
 
 /** internal/desktop.EvidenceReference */
@@ -2855,10 +3021,23 @@ export type InterruptibleOperation =
 export interface ItemDraft {
   name?: string;
   environment?: Target;
+  policy?: SendPolicy;
+  reset?: ResetPlan;
+  links?: EnvironmentLinks;
   test?: TestDraftDocument;
   observation?: ObservationDraft;
   case?: CaseDraft;
   project?: ProjectDraft;
+}
+
+/** internal/desktop.ItemDraftResult */
+export interface ItemDraftResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  ref?: ItemRef;
+  draft?: ItemDraft;
+  new: boolean;
 }
 
 /** internal/desktop.ItemKind */
@@ -3617,6 +3796,14 @@ export interface ObservationExplainRequest {
   window_file?: string;
 }
 
+/** internal/desktop.ObservationHistoryResult */
+export interface ObservationHistoryResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  collections: CollectionRow[];
+}
+
 /** internal/observation.Identifier */
 export interface ObservationIdentifier {
   value: string;
@@ -4219,6 +4406,7 @@ export interface PrepareActionRequest {
   replay?: ReplayActionOptions;
   export?: ExportActionOptions;
   promotion?: PromotionActionOptions;
+  scan?: ScanActionOptions;
 }
 
 /** internal/desktop.Privacy */
@@ -4928,6 +5116,19 @@ export interface ReceiverPolicyResult {
   choices?: ReceiverPolicyChoices;
 }
 
+/** internal/desktop.ReceiverSnapshot */
+export interface ReceiverSnapshot {
+  entry: string;
+}
+
+/** internal/desktop.ReceiverSnapshotsResult */
+export interface ReceiverSnapshotsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  snapshots: ReceiverSnapshot[];
+}
+
 /** internal/redact.FieldRule */
 export interface RedactFieldRule {
   selector: string;
@@ -5284,6 +5485,14 @@ export interface RegisteredRevision {
   operation: string;
   parent: string;
   evidence: string;
+}
+
+/** internal/desktop.RemoveItemResult */
+export interface RemoveItemResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  referring: Referrer[];
 }
 
 /** internal/desktop.RenameRequest */
@@ -5712,6 +5921,15 @@ export interface ResetReview {
   authority: ResetAuthority;
 }
 
+/** internal/desktop.ResetReviewAction */
+export interface ResetReviewAction {
+  id: string;
+  name: string;
+  type: ResetOperator;
+  instructions: string;
+  effect: string;
+}
+
 /** internal/desktop.ResumeRunRequest */
 export interface ResumeRunRequest {
   workspace: string;
@@ -5789,6 +6007,7 @@ export type ReviewDecision = "not-decided" | "incomplete-review" | "stale-approv
 /** internal/desktop.ReviewDecisions */
 export interface ReviewDecisions {
   rationale?: string;
+  confirmed?: string[];
 }
 
 /** internal/desktop.ReviewDestination */
@@ -5819,7 +6038,7 @@ export interface ReviewRequest {
 }
 
 /** internal/desktop.ReviewRequirement */
-export type ReviewRequirement = "rationale";
+export type ReviewRequirement = "rationale" | "confirmations";
 
 /** internal/desktop.ReviewResult */
 export interface ReviewResult {
@@ -5848,6 +6067,9 @@ export interface ReviewedActionResult {
   replay?: ReplayRun;
   export?: PrivacyExportOutcome;
   approval?: PromotionApproval;
+  collected?: CollectionRow;
+  reset?: EnvironmentReset;
+  scan?: ScanOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -6432,6 +6654,24 @@ export interface SaveItemResult {
 
 /** internal/desktop.SaveOutcome */
 export type SaveOutcome = "saved" | "invalid" | "conflict" | "failed";
+
+/** internal/desktop.ScanActionOptions */
+export interface ScanActionOptions {
+  reference?: string;
+}
+
+/** internal/desktop.ScanOutcome */
+export interface ScanOutcome {
+  scan: ExportReviewScan;
+  skipped: number;
+  files: string[];
+}
+
+/** internal/desktop.ScanReview */
+export interface ScanReview {
+  files: string[];
+  reference?: string;
+}
 
 /** internal/scenario.Catalog */
 export interface ScenarioCatalog {
@@ -8359,12 +8599,16 @@ export interface Facade {
   CancelOperation(operation: string): Promise<void>;
   CaptureProgress(): Promise<CaptureProgressResult>;
   CaptureSample(request: SampleCaptureRequest): Promise<CaseResult>;
+  CheckCredential(request: CredentialRequest): Promise<CredentialCheckResult>;
+  CheckEnvironment(request: ItemRequest): Promise<EnvironmentCheckResult>;
+  CheckEnvironmentDestination(request: DestinationCheckRequest): Promise<SendPolicyEvalResult>;
   CheckScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
   ChooseCapturePath(kind: string): Promise<PathChoiceResult>;
   ChooseCommercialDestinations(): Promise<CommercialStatusResult>;
   ChooseCorpusPath(kind: string): Promise<CorpusPathResult>;
+  ChooseEnvironmentFile(kind: string): Promise<PathChoiceResult>;
   ChooseExplanationInput(workspace: string, kind: string): Promise<ExplanationChoiceResult>;
   ChooseHubConfig(): Promise<HubResult>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
@@ -8447,6 +8691,7 @@ export interface Facade {
   ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
   InspectCIResults(directory: string): Promise<CIInspectResult>;
+  InspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult>;
   InspectFileMessage(request: FileInspectRequest): Promise<InspectionResult>;
   InspectGatePolicy(path: string): Promise<GatePolicyResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
@@ -8458,6 +8703,7 @@ export interface Facade {
   LicenseStatus(): Promise<InstalledLicenseResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
+  ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
   ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
   ListHubNotifications(project: string): Promise<HubReviewsResult>;
@@ -8465,10 +8711,12 @@ export interface Facade {
   ListHubReviews(project: string): Promise<HubReviewsResult>;
   ListNotes(request: NotesRequest): Promise<NotesResult>;
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
+  ListReceiverSnapshots(request: ItemRequest): Promise<ReceiverSnapshotsResult>;
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
   NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
+  ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
   ObservationSupport(): Promise<ObservationSupportResult>;
   OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
   OpenCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult>;
@@ -8482,6 +8730,7 @@ export interface Facade {
   OpenFindingDecisions(workspace: string, entry: string): Promise<FindingDecisionsResult>;
   OpenGrid(workspace: string, name: string, indexName: string, offset: number, limit: number): Promise<GridResult>;
   OpenItem(request: ItemRequest): Promise<ItemResult>;
+  OpenItemDraft(request: ItemRequest): Promise<ItemDraftResult>;
   OpenNamedProject(path: string): Promise<ProjectOpenResult>;
   OpenNormalizationPolicy(workspace: string, entry: string): Promise<NormalizationPolicyResult>;
   OpenObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult>;
@@ -8548,6 +8797,7 @@ export interface Facade {
   ReadSourceRegistration(workspace: string, sourceFile: string): Promise<SourceRegistrationResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
+  RecordCredentialRotation(request: CredentialRequest): Promise<CredentialsResult>;
   RecordView(view: View): Promise<SessionResult>;
   RecoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult>;
   ReexecuteReviewedEvidence(request: ReexecutionSendRequest): Promise<ReexecutionResult>;
@@ -8555,6 +8805,8 @@ export interface Facade {
   ReleaseOperations(): Promise<OperationResult>;
   RemoveAttachment(request: AttachmentRemoveRequest): Promise<AttachmentsResult>;
   RemoveCaseFromProject(request: ItemRequest): Promise<ItemResult>;
+  RemoveCredential(request: CredentialRequest): Promise<CredentialsResult>;
+  RemoveItem(request: ItemRequest): Promise<RemoveItemResult>;
   RemoveSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
   RemoveView(workspace: string, name: string): Promise<ViewsResult>;
   RenameItem(request: RenameRequest): Promise<ItemResult>;
@@ -8578,6 +8830,7 @@ export interface Facade {
   SaveAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult>;
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
   SaveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult>;
+  SaveCredential(request: CredentialSaveRequest): Promise<CredentialsResult>;
   SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
   SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;
   SaveFileCopy(request: SaveCopyRequest): Promise<RoundTripResult>;

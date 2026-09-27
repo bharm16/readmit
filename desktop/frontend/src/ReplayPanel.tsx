@@ -10,7 +10,7 @@ import {
   type ReplayRun,
   type SendPolicyDecision,
 } from "./bindings";
-import { EnvironmentBanner } from "./EnvironmentPanel";
+import { EnvironmentBanner } from "./EnvironmentBanner";
 import { useLifecycle } from "./lifecycle";
 
 /** The replay screen: `readmit replay` beside the verified case. It previews
@@ -272,8 +272,6 @@ export function ReplayPanel({
             name={plan.target.name}
             classification={plan.target.classification}
             address={plan.target.address}
-            transport={plan.target.transport}
-            disclaimer="A class is what a person recorded; it never grants a send. The send policy below decides what a send may reach."
           />
           <p>Dry run: no connection opened.</p>
           <p>

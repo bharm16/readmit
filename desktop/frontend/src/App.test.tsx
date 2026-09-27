@@ -41,10 +41,6 @@ import {
   REPORT_SHA256,
   testResult,
   NO_STAGES_MISSING,
-  defaultResetPlanResult,
-  defaultSecretsResult,
-  defaultSendPolicyResult,
-  defaultTargetResult,
   disclosureStatusResult,
   durableRunResult,
   folderChosen,
@@ -720,7 +716,7 @@ test("a navigation read whose slot stays held is reported busy after a bounded n
 });
 
 test("the panels' opening reads that meet a held slot are asked again and draw what the facade holds", async () => {
-  // The environment, scenario, hub, commercial and disclosure panels each read
+  // The scenario, hub, commercial and disclosure panels each read
   // as they open, together, and the facade answers every read that arrives
   // while another holds its one slot busy. Each of these answers busy twice —
   // once for each mount StrictMode makes — before it answers.
@@ -732,10 +728,6 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
   const user = userEvent.setup();
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
-    ReadTarget: busyFirst(() => defaultTargetResult(), { state: "busy", reason: BUSY }),
-    ReadSecrets: busyFirst(() => defaultSecretsResult(), { state: "busy", reason: BUSY }),
-    ReadSendPolicy: busyFirst(() => defaultSendPolicyResult(), { state: "busy", reason: BUSY }),
-    ReadResetPlan: busyFirst(() => defaultResetPlanResult(), { state: "busy", reason: BUSY }),
     ScenarioCatalog: busyFirst<ScenarioCatalogResult>(() => scenarioCatalogFixture(), { state: "busy", reason: BUSY }),
     HubStatus: busyFirst<HubResult>(() => ({ state: "empty", connected: false, authenticated: false }), {
       state: "busy",
@@ -754,17 +746,12 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
   });
   await openFolder(user);
   // Each panel draws the facade's answer, not the busy refusal.
-  expect(await screen.findByDisplayValue("staging-mllp")).toBeTruthy();
   expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
   expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
   await goToView(user, "Settings", "Security");
   const table = screen.getByRole("table", { name: /deliberately configured activities/i });
   expect(await within(table).findAllByText(/Idle/i)).toBeTruthy();
   for (const method of [
-    "ReadTarget",
-    "ReadSecrets",
-    "ReadSendPolicy",
-    "ReadResetPlan",
     "ScenarioCatalog",
     "HubStatus",
     "CommercialStatus",

@@ -36,13 +36,6 @@ export const privateExamples: Example[] = [
     busy: false,
     onSelect: noop,
   }),
-  p("EnvironmentPanel", "WrittenIdentity", {
-    written: {
-      kind: "Target",
-      file: "synthetic-target.json",
-      identity: "synthetic-digest",
-    },
-  }),
   p("MaintenancePanel", "InventoryList", privateData.inventoryList),
   p("MaintenancePanel", "BackupReport", privateData.backupReport),
   p("PacketPanel", "PacketInputRow", {

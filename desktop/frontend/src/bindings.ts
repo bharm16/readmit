@@ -155,6 +155,7 @@ import type {
   PastedSourceRequest,
   PastedSourceResult,
   PathChoiceResult,
+  EnvironmentFileKind,
   PracticeRequest,
   PracticeResult,
   PrepareActionRequest,
@@ -213,10 +214,6 @@ import type {
   ReproducerRequest,
   ReproducerResult,
   RequestContext,
-  ResetActionRequest,
-  ResetActionResult,
-  ResetPlanResult,
-  ResetPlanSaveRequest,
   ResumeRunRequest,
   ResumeRunResult,
   RetirementPreviewResult,
@@ -268,15 +265,7 @@ import type {
   SchedulePolicyRequest,
   SchedulePreviewResult,
   SearchResult,
-  SecretSaveRequest,
-  SecretScanRequest,
-  SecretScanResult,
-  SecretTestResult,
-  SecretsResult,
-  SendPolicyEvalRequest,
   SendPolicyEvalResult,
-  SendPolicyResult,
-  SendPolicySaveRequest,
   SequenceAnalysisResult,
   SequenceRequest,
   SequenceResult,
@@ -317,12 +306,6 @@ import type {
   SyntheticPacketResult,
   SyntheticRerunRequest,
   SyntheticRerunResult,
-  TargetCheckRequest,
-  TargetCheckResult,
-  TargetResetRequest,
-  TargetResetResult,
-  TargetResult,
-  TargetSaveRequest,
   TestRequest,
   TestResult,
   TransformPlanRequest,
@@ -346,6 +329,18 @@ import type {
   SaveCopyRequest,
   SearchSettingsRequest,
   SearchSettingsResult,
+  ItemDraftResult,
+  EnvironmentCheckResult,
+  DestinationCheckRequest,
+  CredentialsResult,
+  CredentialSaveRequest,
+  CredentialRequest,
+  CredentialCheckResult,
+  ObservationHistoryResult,
+  CompletionRequest,
+  CompletionInspectionResult,
+  ReceiverSnapshotsResult,
+  RemoveItemResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -1419,81 +1414,6 @@ export function inspectProfilePackage(workspace: string, entry: string): Promise
   return guard(() => facade().InspectProfilePackage(workspace, entry), { state: "failed" });
 }
 
-export function saveTarget(request: TargetSaveRequest): Promise<TargetResult> {
-  return guard(() => facade().SaveTarget(request), { state: "failed" });
-}
-
-export function readTarget(workspace: string, targetFile: string): Promise<TargetResult> {
-  return retryingRead(() => facade().ReadTarget(workspace, targetFile), { state: "failed" });
-}
-
-export function checkTarget(request: TargetCheckRequest): Promise<TargetCheckResult> {
-  return guard(() => facade().CheckTarget(request), { state: "failed" });
-}
-
-export function resetTarget(request: TargetResetRequest): Promise<TargetResetResult> {
-  return guard(() => facade().ResetTarget(request), { state: "failed" });
-}
-
-export function readSecrets(workspace: string, secretsFile: string): Promise<SecretsResult> {
-  return retryingRead(() => facade().ReadSecrets(workspace, secretsFile), { state: "failed" });
-}
-
-export function saveSecretReference(request: SecretSaveRequest): Promise<SecretsResult> {
-  return guard(() => facade().SaveSecretReference(request), { state: "failed" });
-}
-
-export function removeSecretReference(
-  workspace: string,
-  secretsFile: string,
-  name: string,
-): Promise<SecretsResult> {
-  return guard(() => facade().RemoveSecretReference(workspace, secretsFile, name), { state: "failed" });
-}
-
-export function testSecretReference(
-  workspace: string,
-  secretsFile: string,
-  name: string,
-): Promise<SecretTestResult> {
-  return guard(() => facade().TestSecretReference(workspace, secretsFile, name), { state: "failed", success: false });
-}
-
-export function rotateSecretReference(
-  workspace: string,
-  secretsFile: string,
-  name: string,
-): Promise<SecretsResult> {
-  return guard(() => facade().RotateSecretReference(workspace, secretsFile, name), { state: "failed" });
-}
-
-export function scanSecrets(request: SecretScanRequest): Promise<SecretScanResult> {
-  return guard(() => facade().ScanSecrets(request), { state: "failed", skipped: 0 });
-}
-
-export function readSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult> {
-  return retryingRead(() => facade().ReadSendPolicy(workspace, policyFile), { state: "failed" });
-}
-
-export function saveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult> {
-  return guard(() => facade().SaveSendPolicy(request), { state: "failed" });
-}
-
-export function evaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult> {
-  return guard(() => facade().EvaluateSendPolicy(request), { state: "failed" });
-}
-
-export function readResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult> {
-  return retryingRead(() => facade().ReadResetPlan(workspace, planFile), { state: "failed" });
-}
-
-export function saveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult> {
-  return guard(() => facade().SaveResetPlan(request), { state: "failed" });
-}
-
-export function reviewResetAction(request: ResetActionRequest): Promise<ResetActionResult> {
-  return guard(() => facade().ReviewResetAction(request), { state: "failed" });
-}
 
 export function observationSupport(): Promise<ObservationSupportResult> {
   return guard(() => facade().ObservationSupport(), { state: "failed" });
@@ -1980,4 +1900,67 @@ export function removeAttachment(request: AttachmentRemoveRequest): Promise<Atta
 
 export function projectFiles(request: ItemRequest): Promise<ProjectFilesResult> {
   return retryingRead(() => facade().ProjectFiles(request), { state: "failed", context: request.context, files: [] });
+}
+
+// Named environments and their observations: the saved draft an editor starts
+// from, explicit checks, credential references and removal. None of these
+// connects, sends or collects except CheckEnvironment, which a person presses.
+
+/** The saved values of one environment or observation, or a new one's defaults. */
+export function openItemDraft(request: ItemRequest): Promise<ItemDraftResult> {
+  return retryingRead(() => facade().OpenItemDraft(request), { state: "failed", context: request.context, new: false });
+}
+
+/** Checks the saved version's connection; no message is sent. */
+export function checkEnvironment(request: ItemRequest): Promise<EnvironmentCheckResult> {
+  return guard(() => facade().CheckEnvironment(request), { state: "failed", context: request.context });
+}
+
+/** Decides a proposed send against the environment's saved allowed ranges. */
+export function checkEnvironmentDestination(request: DestinationCheckRequest): Promise<SendPolicyEvalResult> {
+  return guard(() => facade().CheckEnvironmentDestination(request), { state: "failed" });
+}
+
+const NO_CREDENTIALS = { credentials: [], referring: [] };
+
+export function listCredentials(request: ItemRequest): Promise<CredentialsResult> {
+  return retryingRead(() => facade().ListCredentials(request), { state: "failed", context: request.context, ...NO_CREDENTIALS });
+}
+
+export function saveCredential(request: CredentialSaveRequest): Promise<CredentialsResult> {
+  return guard(() => facade().SaveCredential(request), { state: "failed", context: request.context, ...NO_CREDENTIALS });
+}
+
+export function checkCredential(request: CredentialRequest): Promise<CredentialCheckResult> {
+  return guard(() => facade().CheckCredential(request), { state: "failed", context: request.context, name: request.name, resolved: false });
+}
+
+export function recordCredentialRotation(request: CredentialRequest): Promise<CredentialsResult> {
+  return guard(() => facade().RecordCredentialRotation(request), { state: "failed", context: request.context, ...NO_CREDENTIALS });
+}
+
+export function removeCredential(request: CredentialRequest): Promise<CredentialsResult> {
+  return guard(() => facade().RemoveCredential(request), { state: "failed", context: request.context, ...NO_CREDENTIALS });
+}
+
+export function observationHistory(request: ItemRequest): Promise<ObservationHistoryResult> {
+  return retryingRead(() => facade().ObservationHistory(request), { state: "failed", context: request.context, collections: [] });
+}
+
+export function inspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult> {
+  return guard(() => facade().InspectCompletion(request), { state: "failed", context: request.context });
+}
+
+export function listReceiverSnapshots(request: ItemRequest): Promise<ReceiverSnapshotsResult> {
+  return retryingRead(() => facade().ListReceiverSnapshots(request), { state: "failed", context: request.context, snapshots: [] });
+}
+
+/** Removes a named environment or observation from the project; its files stay. */
+export function removeItem(request: ItemRequest): Promise<RemoveItemResult> {
+  return guard(() => facade().RemoveItem(request), { state: "failed", context: request.context, referring: [] });
+}
+
+/** The host's file dialog for one file an environment editor names. */
+export function chooseEnvironmentFile(kind: EnvironmentFileKind): Promise<PathChoiceResult> {
+  return guard(() => facade().ChooseEnvironmentFile(kind), { state: "failed" });
 }

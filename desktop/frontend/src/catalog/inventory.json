@@ -138,24 +138,6 @@
     "line": 106
   },
   {
-    "name": "WrittenIdentity",
-    "source": "desktop/frontend/src/EnvironmentPanel.tsx",
-    "exported": false,
-    "line": 78
-  },
-  {
-    "name": "EnvironmentBanner",
-    "source": "desktop/frontend/src/EnvironmentPanel.tsx",
-    "exported": true,
-    "line": 144
-  },
-  {
-    "name": "EnvironmentPanel",
-    "source": "desktop/frontend/src/EnvironmentPanel.tsx",
-    "exported": true,
-    "line": 191
-  },
-  {
     "name": "GuidedSample",
     "source": "desktop/frontend/src/GuidedSample.tsx",
     "exported": true,
