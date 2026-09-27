@@ -2285,3 +2285,22 @@ export function caseCatalogItem(entry: string, provenance = "", status?: import(
     summary: { case: { registered: status !== undefined, entry, tags: [], incidents: [], ...(status ? { status } : {}), evidence: "verified", ...(provenance ? { provenance } : {}) } },
   };
 }
+
+/** What a backup of one project would hold, as Create backup shows it. */
+export function storageScopeFixture(
+  overrides: Partial<import("../bindings").StorageScopeResult> = {},
+): import("../bindings").StorageScopeResult {
+  return { state: "completed", project: "Scheduling investigation", project_id: "p1", files: 12, bytes: 44_040_192, evidence: 2, indexes: 1, ...overrides };
+}
+
+/** One readable recovery copy of the project document, opened read-only. */
+export function recoveryCopyFixture(
+  overrides: Partial<import("../bindings").RecoveryCopyResult> = {},
+): import("../bindings").RecoveryCopyResult {
+  return {
+    state: "completed",
+    copy: { document: "project.json", digest: "a".repeat(64), size: 553, state: "readable", kept_at: "2026-01-02T09:00:00Z", reason: "saved" },
+    contents: { schema: "readmit-project/v2", title: "Scheduling investigation", cases: 2, interface_versions: ["v1"] },
+    ...overrides,
+  };
+}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -143,7 +144,7 @@ func TestBackupsListNamesEveryBackupWithItsProblem(t *testing.T) {
 	}
 	for _, row := range made {
 		if row.Project != "Scheduling investigation" || row.ProjectID != opened.Context.ProjectID || row.Size <= 0 ||
-			row.CreatedAt == nil || row.Reason != desktop.BackupReasonBackup {
+			row.Files <= 0 || row.Evidence <= 0 || row.CreatedAt == nil || row.Reason != desktop.BackupReasonBackup {
 			t.Fatalf("row: %+v", row)
 		}
 	}
@@ -271,5 +272,45 @@ func TestABackupNeverOverwritesAndACancelledOneIsIncomplete(t *testing.T) {
 	}
 	if refused := app.RevealBackup("unknown"); refused.State != desktop.Failed {
 		t.Fatalf("reveal unknown: %+v", refused)
+	}
+}
+
+// The scope Create backup shows is what the backup then holds, for a project
+// named by its folder whether or not a window has it open.
+func TestBackupScopeMatchesWhatTheBackupHolds(t *testing.T) {
+	app, _, _ := storageApp(t)
+	opened := storageProject(t, app, "Scheduling investigation")
+	root := opened.Context.Project
+	if built := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "regression", Output: "regression.index.json",
+		Fields: []string{"MSH-9"}, Retention: index.RetainDigests, RetainUntil: "indefinite"}); built.State != desktop.Completed {
+		t.Fatalf("build: %+v", built)
+	}
+	// Another window, with no project open, backs up the project a person
+	// picked by name.
+	other, _, _ := storageApp(t)
+	picked := desktop.RequestContext{Project: root, ProjectID: opened.Context.ProjectID}
+	scope := other.BackupScope(desktop.StorageBackupRequest{Context: picked})
+	if scope.State != desktop.Completed || scope.Project != "Scheduling investigation" || scope.ProjectID != opened.Context.ProjectID ||
+		scope.Files == 0 || scope.Bytes == 0 || scope.Evidence == 0 || scope.Indexes != 1 {
+		t.Fatalf("scope: %+v", scope)
+	}
+	before := projectTree(t, root)
+	made := other.BackupProject(desktop.StorageBackupRequest{Context: picked})
+	if made.State != desktop.Completed || made.Backup == nil {
+		t.Fatalf("backup: %+v", made)
+	}
+	document, _, err := backup.Inspect(made.Backup.Folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scope.Files != len(document.Files) || scope.Bytes != made.Backup.Size || scope.Evidence != len(document.Evidence) ||
+		scope.Indexes != len(document.Indexes) || made.Backup.Files != scope.Files || made.Backup.Evidence != scope.Evidence {
+		t.Fatalf("the scope %+v is not what the backup holds: %+v %+v", scope, made.Backup, document)
+	}
+	if !sameFiles(before, projectTree(t, root)) {
+		t.Fatal("reading the scope or backing up changed the project")
+	}
+	if foreign := other.BackupScope(desktop.StorageBackupRequest{Context: desktop.RequestContext{Project: root, ProjectID: "000000000000000000000000"}}); foreign.State == desktop.Completed {
+		t.Fatalf("the scope of a project under another identity: %+v", foreign)
 	}
 }

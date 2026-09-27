@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/operation"
 )
@@ -32,7 +33,8 @@ type RepairSearchRequest struct {
 // is over, and rebuilding would extend it. An index that cannot be read at
 // all is not rebuilt either, because the fields and retention it was built
 // under cannot be known from it; building one is the ordinary index path,
-// under choices a person makes.
+// under choices a person makes. Search that works is not rebuilt either:
+// there is nothing to repair.
 func (a *App) RepairSearch(request RepairSearchRequest) BuildIndexResult {
 	return run(a, true, true, func(ctx context.Context) BuildIndexResult {
 		return a.repairSearch(ctx, request)
@@ -56,26 +58,9 @@ func (a *App) repairSearch(ctx context.Context, request RepairSearchRequest) Bui
 	if err != nil {
 		return BuildIndexResult{State: Failed, Reason: err.Error()}
 	}
-	found := a.describeIndex(loaded.root, entry, "")
-	if found.Index == nil {
-		// An index that cannot be read names no case, so only the name the
-		// case's index is built under tells it is this case's.
-		if standard := describeSpecificIndex(loaded.root, entry+".index.json", opened, a.now().UTC()); standard.Index != nil {
-			found = standard
-		}
-	}
-	details := found.Index
-	switch {
-	case found.State == Empty || details == nil:
-		return BuildIndexResult{State: Empty, Reason: "this case has no search data to repair"}
-	case details.Damaged || details.Unsupported:
-		return BuildIndexResult{State: Failed, Index: details,
-			Reason: "this case's index cannot be read, so the fields and retention it was built under are not known; nothing was rebuilt"}
-	case details.Identity != opened.Identity:
-		return BuildIndexResult{State: Failed, Reason: "no index of this case's exact evidence was found; nothing was rebuilt"}
-	case details.Expired:
-		return BuildIndexResult{State: Failed, Index: details,
-			Reason: "the retention declared for this case's index has ended; it is not rebuilt, because rebuilding would extend it"}
+	details, refused := a.searchRepair(loaded.root, entry, opened)
+	if details == nil {
+		return refused
 	}
 	policy := index.Policy{Fields: slices.Clone(details.Fields), Retention: details.Retention}
 	if details.RetainUntil != nil {
@@ -111,4 +96,42 @@ func (a *App) repairSearch(ctx context.Context, request RepairSearchRequest) Bui
 	}
 	repaired := indexDetails(details.IndexName, document, opened, at)
 	return BuildIndexResult{State: Completed, Index: &repaired}
+}
+
+// searchRepair is the index Repair search rebuilds for one case: the index
+// discovery finds for it, or, when none can be read, the one under the name
+// the case's index is built under. Only a repairable index is answered;
+// otherwise the refusal says why nothing would be rebuilt — search that works
+// included, so repair is offered only for a real index failure.
+func (a *App) searchRepair(root, entry string, opened *bundle.Bundle) (*IndexDetails, BuildIndexResult) {
+	found := a.describeIndex(root, entry, "")
+	if found.Index == nil {
+		// An index that cannot be read names no case, so only the name the
+		// case's index is built under tells it is this case's.
+		if standard := describeSpecificIndex(root, entry+".index.json", opened, a.now().UTC()); standard.Index != nil {
+			found = standard
+		}
+	}
+	details := found.Index
+	switch {
+	case found.State == Empty || details == nil:
+		return nil, BuildIndexResult{State: Empty, Reason: "this case has no search data to repair"}
+	case details.Damaged || details.Unsupported:
+		return nil, BuildIndexResult{State: Failed, Index: details,
+			Reason: "this case's index cannot be read, so the fields and retention it was built under are not known; nothing was rebuilt"}
+	case details.Identity != opened.Identity:
+		return nil, BuildIndexResult{State: Failed, Reason: "no index of this case's exact evidence was found; nothing was rebuilt"}
+	case details.Expired:
+		return nil, BuildIndexResult{State: Failed, Index: details,
+			Reason: "the retention declared for this case's index has ended; it is not rebuilt, because rebuilding would extend it"}
+	case !details.Repairable:
+		return nil, BuildIndexResult{State: Failed, Index: details, Reason: "this case's search is working; there is nothing to repair"}
+	}
+	return details, BuildIndexResult{}
+}
+
+// repairable reports whether Repair search would rebuild the case's index.
+func (a *App) repairable(root, entry string, opened *bundle.Bundle) bool {
+	details, _ := a.searchRepair(root, entry, opened)
+	return details != nil
 }

@@ -393,3 +393,113 @@ test("Edit details names the case's sources, and a cleared name reads by its ID 
     { id: "s0002", name: "Lab feed" },
   ]);
 });
+// ——— Delete from this computer, from a project's or a case's own menu ———
+
+const ARCHIVE = { id: "a1", project: "Scheduling investigation", project_id: "p1", created_at: "2026-01-02T09:00:00Z", size: 44_040_192, availability: "available" as const, folder: `${WORKSPACE_ROOT}-backups/Scheduling investigation archive`, reason: "archive" as const };
+const DELETE_CONSEQUENCE = "Archives the selected source, then deletes it from this computer; this is not secure erasure.";
+
+function deleteReview(storage: Partial<NonNullable<import("./bindings").ActionReview["storage"]>>, ready = true, items: CatalogItem[] = [], refusal?: string): import("./bindings").ActionReview {
+  return { token: "storage.delete-source-token", action: "storage.delete-source", consent: "restore", items, destination: {}, requirements: [], ready, ...(refusal ? { refusal } : {}), storage: { consequence: DELETE_CONSEQUENCE, ...storage } };
+}
+
+async function projectRowMenu(user: User, action: string) {
+  const table = within(await page().findByRole("table", { name: "Projects" }));
+  await user.click(await table.findByRole("button", { name: "More actions for Scheduling investigation" }));
+  await user.click(screen.getByRole("menuitem", { name: action }));
+}
+
+test("Delete from this computer on a project row names its related work and retention, deletes only against the verified archive and reports a partial deletion", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    ListCatalog: catalog([]),
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: deleteReview({
+        project: "Scheduling investigation",
+        backup: ARCHIVE,
+        related: [{ kind: "case", count: 2 }, { kind: "report", count: 1 }],
+        retention: [{ kind: "search-index", entry: "sample-case.index.json", case: CASE_ENTRY, state: "within-retention", until: "2027-01-01T00:00:00Z" }],
+      }),
+    }),
+    ExecuteReviewedAction: (request) => ({ state: "failed", reason: "not every file was removed", context: request.context, outcome: "completed", replayed: false, storage: { source: "removal-incomplete", remainder: `${WORKSPACE_ROOT}.retiring` } }),
+  });
+  await projectRowMenu(user, "Delete from this computer…");
+  const sheet = await screen.findByRole("dialog", { name: "Delete from this computer" });
+  // Reviewed under that project, which need not be open.
+  expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "storage.delete-source", items: [], context: { project: WORKSPACE_ROOT, project_id: "p1" } });
+  expect(await within(sheet).findByText(DELETE_CONSEQUENCE)).toBeTruthy();
+  expect(within(sheet).getByText(/^Scheduling investigation · /)).toBeTruthy();
+  expect(within(sheet).getByText("2 cases, 1 report")).toBeTruthy();
+  expect(within(within(sheet).getByRole("list", { name: "Retention" })).getByRole("listitem").textContent).toMatch(/^Search index sample-case\.index\.json · retained until /);
+  await user.click(within(sheet).getByRole("button", { name: "Delete" }));
+  expect(facade.oneCall("ExecuteReviewedAction")[0]).toMatchObject({ token: "storage.delete-source-token" });
+  const done = await screen.findByRole("dialog", { name: "Delete from this computer" });
+  expect(within(done).getAllByRole("alert").map((alert) => alert.textContent)).toEqual([
+    "not every file was removed",
+    `Archived, but not every file was deleted. What remains is in ${WORKSPACE_ROOT}.retiring.`,
+  ]);
+});
+
+test("Delete from this computer is refused while a protected package is within its retention", async () => {
+  const user = userEvent.setup();
+  const refusal = "handoff.pkg is declared retained until 2027-01-01T00:00:00Z; nothing is deleted";
+  const { facade } = await renderApp({
+    ListCatalog: catalog([]),
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: deleteReview(
+        { project: "Scheduling investigation", backup: ARCHIVE, retention: [{ kind: "transfer-package", entry: "handoff.pkg", state: "within-retention", until: "2027-01-01T00:00:00Z", blocks: true }] },
+        false,
+        [],
+        refusal,
+      ),
+    }),
+  });
+  await projectRowMenu(user, "Delete from this computer…");
+  const sheet = await screen.findByRole("dialog", { name: "Delete from this computer" });
+  expect(await within(sheet).findByText(refusal)).toBeTruthy();
+  expect(within(within(sheet).getByRole("list", { name: "Retention" })).getByRole("listitem").textContent).toMatch(/^Protected package handoff\.pkg · retained until /);
+  expect((within(sheet).getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("Enter in the Delete from this computer review deletes nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    ListCatalog: catalog([]),
+    PrepareAction: (request) => ({ state: "completed", context: request.context, review: deleteReview({ project: "Scheduling investigation", backup: ARCHIVE }) }),
+  });
+  await projectRowMenu(user, "Delete from this computer…");
+  const sheet = await screen.findByRole("dialog", { name: "Delete from this computer" });
+  await within(sheet).findByText(DELETE_CONSEQUENCE);
+  expect(document.activeElement).not.toBe(within(sheet).getByRole("button", { name: "Delete" }));
+  await user.keyboard("{Enter}");
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("Delete from this computer on a case row reviews that case against its archive and takes it off Cases", async () => {
+  const user = userEvent.setup();
+  const kase = registered(CASE_ENTRY);
+  const { facade } = await openProject(user, {
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: deleteReview({ project: "Scheduling investigation", backup: { ...ARCHIVE, project: kase.name, case: kase.ref.id }, related: [{ kind: "analysis", count: 1 }] }, true, [kase]),
+    }),
+    ExecuteReviewedAction: (request) => ({ state: "completed", context: request.context, outcome: "completed", replayed: false, storage: { source: "deleted" } }),
+  });
+  await caseMenu(user, "Duplicate appointment after reschedule", "Delete from this computer…");
+  const sheet = await screen.findByRole("dialog", { name: "Delete from this computer" });
+  expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "storage.delete-source", items: [{ kind: "case", id: `case-${CASE_ENTRY}` }], context: { project: WORKSPACE_ROOT } });
+  expect(await within(sheet).findByText(DELETE_CONSEQUENCE)).toBeTruthy();
+  const rows = Array.from(sheet.querySelectorAll(".value-row")).map((row) => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]);
+  expect(rows).toContainEqual(["Case", "Duplicate appointment after reschedule"]);
+  expect(rows).toContainEqual(["Related work", "1 analysis"]);
+  const before = facade.callsTo("ListCatalog").length;
+  await user.click(within(sheet).getByRole("button", { name: "Delete" }));
+  expect((await within(await screen.findByRole("dialog", { name: "Delete from this computer" })).findByRole("status")).textContent).toBe("Deleted from this computer. The archive remains.");
+  // Cases is read again, so the deleted case leaves the list.
+  await waitFor(() => expect(facade.callsTo("ListCatalog").length).toBeGreaterThan(before));
+});

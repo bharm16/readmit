@@ -255,8 +255,12 @@ func TestRecoveryCopiesAreListedAndRecoveredThroughTheFacade(t *testing.T) {
 	}
 	listed := app.ListProjectRecoveryCopies(root)
 	sum := sha256.Sum256(original)
-	want := desktop.ProjectRecoveryCopy{Document: project.DocumentName, Digest: hex.EncodeToString(sum[:]), Size: int64(len(original)), State: "readable"}
-	if listed.State != desktop.Completed || len(listed.Copies) != 1 || listed.Copies[0] != want {
+	want := desktop.ProjectRecoveryCopy{Document: project.DocumentName, Digest: hex.EncodeToString(sum[:]), Size: int64(len(original)), State: "readable",
+		Reason: project.RecoverySaved}
+	if len(listed.Copies) == 1 {
+		want.KeptAt = listed.Copies[0].KeptAt
+	}
+	if listed.State != desktop.Completed || len(listed.Copies) != 1 || listed.Copies[0] != want || want.KeptAt == "" {
 		t.Fatalf("listed %+v, want %+v", listed, want)
 	}
 

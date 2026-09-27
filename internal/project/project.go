@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -861,21 +862,36 @@ func (d Document) Declares(version string) bool {
 // refuses the whole location if the project has since been moved inside
 // retained evidence.
 func install(root, name string, data []byte) error {
-	return installWithQuota(root, name, data, true)
+	return installWithQuota(root, name, data, true, RecoverySaved)
 }
 
-func installWithQuota(root, name string, data []byte, check bool) error {
+// installWithQuota installs a document, first held to the project's quota
+// when check is set, and records the recovery copy the replacement kept, if
+// it kept a new one, as kept for reason. A record that cannot be written
+// leaves the copy listed without a time or reason; the replacement itself
+// has already succeeded, so it is not reported as failed.
+func installWithQuota(root, name string, data []byte, check bool, reason RecoveryReason) error {
 	physical, err := artifactpath.Directory(root)
 	if err != nil {
 		return err
 	}
 	root = physical
 	if check {
-		if err := enforceQuota(root, name, data); err != nil {
+		if err := enforceQuota(root, name, data, reason); err != nil {
 			return err
 		}
 	}
-	return canonicalFile.Replace(filepath.Join(root, name), data)
+	record, err := recordedCopy(root, name, data, reason, time.Now())
+	if err != nil {
+		return err
+	}
+	if err := canonicalFile.Replace(filepath.Join(root, name), data); err != nil {
+		return err
+	}
+	if record != nil {
+		recordFile.Replace(filepath.Join(root, RecoveryRecordName), record)
+	}
+	return nil
 }
 
 // canonicalFile is how every canonical document of a project directory is

@@ -41,11 +41,15 @@ type SearchSettings struct {
 }
 
 // SearchSettingsResult is completed with the settings of this case's own
-// index, or empty when the case has none.
+// index, or empty when the case has none. Repairable says an index of this
+// case has the one failure Repair search rebuilds — it is stale against the
+// case, so it is not the case's own index until it is rebuilt — and repair is
+// offered for the case only while it has.
 type SearchSettingsResult struct {
-	State    State           `json:"state"`
-	Reason   string          `json:"reason,omitzero"`
-	Settings *SearchSettings `json:"settings,omitzero"`
+	State      State           `json:"state"`
+	Reason     string          `json:"reason,omitzero"`
+	Settings   *SearchSettings `json:"settings,omitzero"`
+	Repairable bool            `json:"repairable,omitzero"`
 }
 
 func (r *SearchSettingsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -83,11 +87,11 @@ func (a *App) DescribeSearchSettings(workspace, caseName, identity string) Searc
 		}
 		name, replace := ownIndex(root, opened, caseName)
 		if !replace {
-			return SearchSettingsResult{State: Empty, Reason: "this case has no search index; messages are read directly"}
+			return SearchSettingsResult{State: Empty, Reason: "this case has no search index; messages are read directly", Repairable: a.repairable(root, caseName, opened)}
 		}
 		document, err := index.Open(artifactpath.JoinReference(root, name))
 		if err != nil {
-			return SearchSettingsResult{State: Empty, Reason: "this case has no search index; messages are read directly"}
+			return SearchSettingsResult{State: Empty, Reason: "this case has no search index; messages are read directly", Repairable: a.repairable(root, caseName, opened)}
 		}
 		return SearchSettingsResult{State: Completed, Settings: &SearchSettings{
 			Fields: document.Policy.Fields, Retention: document.Policy.Retention, RetainUntil: document.Policy.RetainUntil,
@@ -137,12 +141,14 @@ func ownIndex(root string, opened *bundle.Bundle, caseName string) (string, bool
 
 // CaseSearchSettings is one case of the open project and the settings of its
 // own persistent search index, or nil when it has none and its messages are
-// read directly. Reason says why a case could not be read.
+// read directly. Reason says why a case could not be read. Repairable is
+// SearchSettingsResult's: repair is offered for this case, and no other.
 type CaseSearchSettings struct {
-	Case     string          `json:"case"`
-	Identity string          `json:"identity,omitzero"`
-	Settings *SearchSettings `json:"settings"`
-	Reason   string          `json:"reason,omitzero"`
+	Case       string          `json:"case"`
+	Identity   string          `json:"identity,omitzero"`
+	Settings   *SearchSettings `json:"settings"`
+	Reason     string          `json:"reason,omitzero"`
+	Repairable bool            `json:"repairable,omitzero"`
 }
 
 // SearchSettingsListResult lists every case of the open project with its
@@ -211,6 +217,7 @@ func (a *App) ListSearchSettings(workspace string) SearchSettingsListResult {
 					}
 				}
 			}
+			row.Repairable = a.repairable(root, name, opened)
 			result.Cases = append(result.Cases, row)
 		}
 		result.State = Completed

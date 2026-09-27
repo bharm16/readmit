@@ -108,6 +108,11 @@ type IndexDetails struct {
 	Damaged        bool            `json:"damaged,omitzero"`
 	Expired        bool            `json:"expired,omitzero"`
 	Unsupported    bool            `json:"unsupported,omitzero"`
+	// Repairable is the one failure Repair search rebuilds: an index of this
+	// case's exact evidence, stale against it, whose declared retention has
+	// not ended. A damaged, unreadable or expired index, and one of other
+	// evidence, is not.
+	Repairable bool `json:"repairable,omitzero"`
 }
 
 // IndexResult carries one state and the described index when available.
@@ -493,6 +498,7 @@ func indexDetails(name string, doc index.Document, opened *bundle.Bundle, at tim
 		Applicable:     !expired && !stale,
 		Stale:          stale,
 		Expired:        expired,
+		Repairable:     stale && !expired && doc.Case.Identity == opened.Identity,
 	}
 }
 

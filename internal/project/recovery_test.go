@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/project"
 )
@@ -124,9 +125,18 @@ func TestRecoveryCopiesListsWhatRecoverRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Each copy is listed with when and why it was kept, as the project
+	// recorded it then.
+	for _, retained := range copies {
+		if _, err := time.Parse(time.RFC3339, retained.KeptAt); err != nil {
+			t.Fatalf("a copy kept without its time: %+v", retained)
+		}
+	}
 	want := []project.RecoveryCopy{
-		{Document: project.DocumentName, Digest: digestOf(original), Size: int64(len(original)), State: project.RecoveryReadable},
-		{Document: project.QuotaDocumentName, Digest: digestOf(quota), Size: int64(len(quota)), State: project.RecoveryReadable},
+		{Document: project.DocumentName, Digest: digestOf(original), Size: int64(len(original)), State: project.RecoveryReadable,
+			KeptAt: copies[0].KeptAt, Reason: project.RecoverySaved},
+		{Document: project.QuotaDocumentName, Digest: digestOf(quota), Size: int64(len(quota)), State: project.RecoveryReadable,
+			KeptAt: copies[len(copies)-1].KeptAt, Reason: project.RecoverySaved},
 	}
 	if !reflect.DeepEqual(copies, want) {
 		t.Fatalf("listed %+v, want %+v", copies, want)
@@ -156,7 +166,8 @@ func TestRecoveryCopiesListsWhatRecoverRestores(t *testing.T) {
 		}
 	}
 	if len(projectCopies) != 2 || !projectCopies[digestOf(original)].Current || projectCopies[digestOf(current)].Current ||
-		projectCopies[digestOf(current)].State != project.RecoveryReadable {
+		projectCopies[digestOf(current)].State != project.RecoveryReadable || projectCopies[digestOf(current)].Reason != project.RecoveryRecovered ||
+		projectCopies[digestOf(original)].Reason != project.RecoverySaved {
 		t.Fatalf("after recovery the copies listed %+v", copies)
 	}
 }
@@ -261,4 +272,102 @@ func treeOf(t *testing.T, root string) map[string]string {
 		t.Fatal(err)
 	}
 	return files
+}
+
+// The project records when and why each recovery copy was kept, once, when it
+// is kept: a copy kept again is not recorded again, a copy it has no record
+// of is listed without either, and a record this release cannot read is left
+// exactly as written.
+func TestRecoveryCopiesRecordWhenAndWhyEachWasKept(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "workspace")
+	p, err := project.Create(root, document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now().UTC().Truncate(time.Second)
+	first := p.Document
+	first.Settings.Title = "First"
+	second := p.Document
+	second.Settings.Title = "Second"
+	for _, next := range []project.Document{first, second, first, second} {
+		if err := p.Save(next); err != nil {
+			t.Fatal(err)
+		}
+	}
+	copies, err := project.RecoveryCopies(root)
+	if err != nil || len(copies) != 3 {
+		t.Fatalf("copies: %+v %v", copies, err)
+	}
+	for _, retained := range copies {
+		kept, err := time.Parse(time.RFC3339, retained.KeptAt)
+		if err != nil || kept.Before(start) || retained.Reason != project.RecoverySaved {
+			t.Fatalf("a copy is not recorded as kept by a save now: %+v", retained)
+		}
+	}
+	record := mustReadFile(t, filepath.Join(root, project.RecoveryRecordName))
+	if strings.Count(string(record), `"digest"`) != 3 || !strings.Contains(string(record), `"schema":"`+project.RecoveryRecordSchema+`"`) {
+		t.Fatalf("the record: %s", record)
+	}
+	// Recovering an earlier copy records the document it replaced as kept by
+	// the recovery.
+	other := filepath.Join(t.TempDir(), "other")
+	q, err := project.Create(other, document())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Save(first); err != nil {
+		t.Fatal(err)
+	}
+	original, err := project.RecoveryCopies(other)
+	if err != nil || len(original) != 1 {
+		t.Fatalf("copies: %+v %v", original, err)
+	}
+	if err := project.Recover(other, project.DocumentName, original[0].Digest); err != nil {
+		t.Fatal(err)
+	}
+	after, err := project.RecoveryCopies(other)
+	if err != nil || len(after) != 2 {
+		t.Fatalf("after recovery: %+v %v", after, err)
+	}
+	for _, retained := range after {
+		want := project.RecoverySaved
+		if retained.Digest != original[0].Digest {
+			want = project.RecoveryRecovered
+		}
+		if retained.Reason != want || retained.KeptAt == "" {
+			t.Fatalf("after recovery: %+v", after)
+		}
+	}
+	// A record this release cannot read is left as written, and the copies
+	// are listed without a time or reason.
+	unreadable := []byte(`{"schema":"readmit-recovery-copies/v2"}` + "\n")
+	if err := os.WriteFile(filepath.Join(root, project.RecoveryRecordName), unreadable, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	third := p.Document
+	third.Settings.Title = "Third"
+	if err := p.Save(third); err != nil {
+		t.Fatal(err)
+	}
+	if kept := mustReadFile(t, filepath.Join(root, project.RecoveryRecordName)); !bytes.Equal(kept, unreadable) {
+		t.Fatalf("an unreadable record was replaced: %s", kept)
+	}
+	listed, err := project.RecoveryCopies(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, retained := range listed {
+		if retained.KeptAt != "" || retained.Reason != "" {
+			t.Fatalf("a copy listed with a time the record cannot say: %+v", retained)
+		}
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

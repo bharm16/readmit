@@ -218,13 +218,15 @@ backups are kept in, and each backup, archive copy and rollback copy the
 application wrote there — its folder, the identity its completion marker
 sealed, the project's name and catalog identity, when and why, the source
 folder and retirement selection an archive copy was taken under, and the
-staged candidate a rollback copy was prepared for. A backup directory records
-none of that, and a creation date is never read from a file. It holds no
+staged candidate a rollback copy was prepared for, and (amended 2026-09-27,
+before the document was released) the one case an archive copy of a case
+holds. A backup directory records none of that, and a creation date is never
+read from a file. It holds no
 evidence, and forgetting a record deletes nothing. Storage's writing and
 deleting tasks — restoring a backup as a new project, deleting a backup,
 taking an archive copy, deleting a source against its recorded archive,
-moving a project, restoring a recovery copy and preparing an update — are
-reviews held by the backend under the same rule as a send.
+moving a project, restoring a recovery copy as a new project and preparing an
+update — are reviews held by the backend under the same rule as a send.
 
 #561 adds a ninth shell document, `readmit-desktop-preferences/v1`: the theme,
 the text size and an optional local reviewer name, so the next window opens

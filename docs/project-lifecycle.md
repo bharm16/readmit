@@ -43,9 +43,22 @@ other documents, delete evidence, or rewrite identities. Inspect `project show`
 afterward and choose coherent project/revision versions when recovering both.
 Recovering an older registration document can leave newer evidence unregistered;
 the evidence remains on disk. Recovery copies are not an edit journal and record
-neither authors nor times. The desktop application's project maintenance screen
-lists each copy with the state reading it found and recovers a selected one
-through the same operation ([desktop](desktop.md#project-maintenance-backup-and-staged-upgrades)).
+no author.
+
+A copy's name records no time, and a file's time is never read as one. So each
+time a replacement keeps a new copy, the project records when and why beside
+the copies, in `recovery-copies.json` (`readmit-recovery-copies/v1`): the
+document, the copy's digest, `kept_at` in RFC 3339 UTC, and `reason` — `saved`
+or `recovered`. The record is bounded to 1,024 entries, the oldest forgotten
+first; forgetting an entry deletes no copy. A copy kept before the record
+existed, or when it could not be written, has no entry; a record this release
+cannot read is left as written and extended no further. Neither a replacement
+nor a recovery depends on it, and quotas count its growth with the copy.
+
+The desktop application's Storage lists each copy with the state reading it
+found and when and why it was kept, opens one read-only, and restores a
+selected one into a separate new project through the same operation, leaving
+the current project unchanged ([desktop](desktop.md#storage)).
 
 ## Retained-file quotas
 

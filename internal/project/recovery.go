@@ -42,7 +42,9 @@ const (
 
 // RecoveryCopy is one retained earlier version of a project document, as its
 // file name records it: the document it was retained for and the SHA-256 of
-// its bytes. Copies record neither authors nor times, so none is reported.
+// its bytes. KeptAt and Reason are when and why the project recorded keeping
+// it, RFC 3339 in UTC, and empty for a copy it has no record of: a copy's
+// time is never read from its file. No author is recorded.
 type RecoveryCopy struct {
 	Document string
 	Digest   string
@@ -51,6 +53,8 @@ type RecoveryCopy struct {
 	// Current is a copy holding exactly the bytes of the document as it
 	// stands, so recovering it changes nothing.
 	Current bool
+	KeptAt  string
+	Reason  RecoveryReason
 }
 
 // RecoveryCopies lists every recovery copy of the project's documents, by
@@ -67,6 +71,7 @@ func RecoveryCopies(path string) ([]RecoveryCopy, error) {
 		return nil, errors.New("cannot list the project directory")
 	}
 	copies := []RecoveryCopy{}
+	recorded := keptAt(root)
 	for _, name := range recoverable {
 		current, missing, err := readDocument(root, name)
 		if err != nil || missing {
@@ -78,6 +83,9 @@ func RecoveryCopies(path string) ([]RecoveryCopy, error) {
 			}
 			digest := kept.Digest
 			retained := RecoveryCopy{Document: name, Digest: digest, State: RecoveryUnreadable}
+			if entry, known := recorded[[2]string{name, digest}]; known {
+				retained.KeptAt, retained.Reason = entry.KeptAt, entry.Reason
+			}
 			data, err := readRecoveryCopy(root, name, digest)
 			switch {
 			case errors.Is(err, errDamagedCopy):
@@ -119,7 +127,7 @@ func Recover(root, name, digest string) error {
 		return err
 	}
 	if name == QuotaDocumentName {
-		u, err := projected(root, name, data)
+		u, err := projected(root, name, data, RecoveryRecovered)
 		if err == nil {
 			err = quota.permits(u)
 		}
@@ -127,7 +135,7 @@ func Recover(root, name, digest string) error {
 			return err
 		}
 	}
-	return installWithQuota(root, name, data, name != QuotaDocumentName)
+	return installWithQuota(root, name, data, name != QuotaDocumentName, RecoveryRecovered)
 }
 
 // lowercaseDigest reports whether digest names a recovery copy of the document
@@ -178,4 +186,43 @@ func readRecovered(name string, data []byte) (Quota, error) {
 		return q, q.validate()
 	}
 	return q, errors.New("recovery supports project, revisions, and quota documents only")
+}
+
+// Recovered is what one readable recovery copy holds, read through the reader
+// of the document it was kept for: exactly one member is set.
+type Recovered struct {
+	Project   *Document
+	Revisions *Revisions
+	Quota     *Quota
+}
+
+// ReadRecoveryCopy reads one recovery copy of the project at path — its bytes
+// checked against the digest its name records and read by its document's own
+// reader, as Recover reads it — and writes nothing. A copy Recover would
+// refuse is refused here in the same words.
+func ReadRecoveryCopy(path, name, digest string) (Recovered, error) {
+	if !slices.Contains(recoverable, name) {
+		return Recovered{}, errors.New("recovery supports project, revisions, and quota documents only")
+	}
+	if !lowercaseDigest(name, digest) {
+		return Recovered{}, errors.New("recovery requires a lowercase SHA-256 digest")
+	}
+	root, err := artifactpath.Directory(path)
+	if err != nil {
+		return Recovered{}, err
+	}
+	data, err := readRecoveryCopy(root, name, digest)
+	if err != nil {
+		return Recovered{}, err
+	}
+	switch name {
+	case DocumentName:
+		document, err := Decode(data)
+		return Recovered{Project: &document}, err
+	case RevisionsDocumentName:
+		revisions, err := DecodeRevisions(data)
+		return Recovered{Revisions: &revisions}, err
+	}
+	quota, err := readRecovered(name, data)
+	return Recovered{Quota: &quota}, err
 }

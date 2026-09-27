@@ -96,7 +96,11 @@ func CheckQuota(path string) (Usage, error) {
 	}
 	return u, err
 }
-func projected(root, name string, data []byte) (Usage, error) {
+
+// projected is the project's usage once name holds data, counting the
+// recovery copy the replacement keeps and the growth of the record of when
+// and why it was kept, recorded for reason.
+func projected(root, name string, data []byte, reason RecoveryReason) (Usage, error) {
 	u, err := usage(root)
 	if err != nil {
 		return u, err
@@ -121,14 +125,20 @@ func projected(root, name string, data []byte) (Usage, error) {
 			return u, errors.New("cannot inspect recovery quota")
 		}
 	}
+	grown, err := recordGrowth(root, name, data, reason)
+	if err != nil {
+		return u, err
+	}
+	u.Files += grown.Files
+	u.Bytes += grown.Bytes
 	return u, nil
 }
-func enforceQuota(root, name string, data []byte) error {
+func enforceQuota(root, name string, data []byte, reason RecoveryReason) error {
 	q, present, err := ReadQuota(root)
 	if err != nil || !present {
 		return err
 	}
-	u, err := projected(root, name, data)
+	u, err := projected(root, name, data, reason)
 	if err != nil {
 		return err
 	}
@@ -153,7 +163,7 @@ func SetQuota(root string, q Quota) error {
 		return errors.New("cannot encode quota")
 	}
 	data = append(data, '\n')
-	u, err := projected(root, QuotaDocumentName, data)
+	u, err := projected(root, QuotaDocumentName, data, RecoverySaved)
 	if err != nil {
 		return err
 	}
@@ -161,5 +171,5 @@ func SetQuota(root string, q Quota) error {
 		return err
 	}
 	// A quota can be raised even when external writes exceeded the old limit.
-	return installWithQuota(root, QuotaDocumentName, data, false)
+	return installWithQuota(root, QuotaDocumentName, data, false, RecoverySaved)
 }

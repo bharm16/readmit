@@ -724,6 +724,7 @@ export interface CaseSearchSettings {
   identity?: string;
   settings: SearchSettings | null;
   reason?: string;
+  repairable?: boolean;
 }
 
 /** internal/project.Status */
@@ -3163,6 +3164,7 @@ export interface IndexDetails {
   damaged?: boolean;
   expired?: boolean;
   unsupported?: boolean;
+  repairable?: boolean;
 }
 
 /** internal/desktop.IndexResult */
@@ -5324,7 +5326,12 @@ export interface ProjectRecoveryCopy {
   size: number;
   state: string;
   current?: boolean;
+  kept_at?: string;
+  reason?: ProjectRecoveryReason;
 }
+
+/** internal/project.RecoveryReason */
+export type ProjectRecoveryReason = "saved" | "recovered";
 
 /** internal/desktop.ProjectResult */
 export interface ProjectResult {
@@ -5377,6 +5384,9 @@ export interface PromotionApproval {
   reviewed: string;
   output: string;
 }
+
+/** internal/protect.RetentionState */
+export type ProtectRetentionState = "within-retention" | "past-retention" | "not-declared";
 
 /** internal/protect.RotationState */
 export type ProtectRotationState = "current" | "overdue" | "not-declared";
@@ -5618,6 +5628,34 @@ export interface ReceiverSnapshotsResult {
   reason?: string;
   context: RequestContext;
   snapshots: ReceiverSnapshot[];
+}
+
+/** internal/desktop.RecoveryCopyContents */
+export interface RecoveryCopyContents {
+  schema?: string;
+  title?: string;
+  cases?: number;
+  interface_versions?: string[];
+  revisions?: number;
+  notes?: number;
+  latest?: string;
+  max_bytes?: number;
+  max_files?: number;
+}
+
+/** internal/desktop.RecoveryCopyRequest */
+export interface RecoveryCopyRequest {
+  context: RequestContext;
+  document: string;
+  digest: string;
+}
+
+/** internal/desktop.RecoveryCopyResult */
+export interface RecoveryCopyResult {
+  state: State;
+  reason?: string;
+  copy?: ProjectRecoveryCopy;
+  contents?: RecoveryCopyContents;
 }
 
 /** internal/redact.FieldRule */
@@ -5976,6 +6014,12 @@ export interface RegisteredRevision {
   operation: string;
   parent: string;
   evidence: string;
+}
+
+/** internal/desktop.RelatedWork */
+export interface RelatedWork {
+  kind: ItemKind;
+  count: number;
 }
 
 /** internal/desktop.RemoveItemResult */
@@ -6442,6 +6486,20 @@ export interface ResumeRunResult {
   reason?: string;
   resume?: DurableRunResumption;
 }
+
+/** internal/desktop.RetentionHold */
+export interface RetentionHold {
+  kind: RetentionKind;
+  entry: string;
+  case?: string;
+  state?: ProtectRetentionState;
+  until?: string;
+  blocks?: boolean;
+  problem?: string;
+}
+
+/** internal/desktop.RetentionKind */
+export type RetentionKind = "transfer-package" | "search-index";
 
 /** internal/desktop.RetirementPreview */
 export interface RetirementPreview {
@@ -7514,6 +7572,7 @@ export interface SearchSettingsResult {
   state: State;
   reason?: string;
   settings?: SearchSettings;
+  repairable?: boolean;
 }
 
 /** internal/desktop.SecretChange */
@@ -8002,7 +8061,10 @@ export interface StorageBackup {
   project_id?: string;
   created_at: string | null;
   size: number;
+  files?: number;
+  evidence?: number;
   reason?: BackupReason;
+  case?: string;
   availability: Availability;
   problem?: string;
   folder: string;
@@ -8052,7 +8114,21 @@ export interface StorageReview {
   documents?: LifecycleCompatibility[];
   copy?: ProjectRecoveryCopy;
   upgrade?: UpgradePlanView;
+  retention?: RetentionHold[];
+  related?: RelatedWork[];
   consequence: string;
+}
+
+/** internal/desktop.StorageScopeResult */
+export interface StorageScopeResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  project_id?: string;
+  files: number;
+  bytes: number;
+  evidence: number;
+  indexes: number;
 }
 
 /** internal/suite.Binding */
@@ -9253,6 +9329,7 @@ export interface UpgradePlanView {
   installer_handoff: string;
   offline: string;
   signing_deferred: string;
+  refusal?: string;
 }
 
 /** internal/desktop.UpgradePrepareRequest */
@@ -9367,6 +9444,7 @@ export interface Facade {
   AuthorTest(request: TestRequest): Promise<TestResult>;
   BackupLocation(): Promise<ProjectLocationResult>;
   BackupProject(request: StorageBackupRequest): Promise<StorageBackupResult>;
+  BackupScope(request: StorageBackupRequest): Promise<StorageScopeResult>;
   BindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult>;
   BindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult>;
   BuildIndex(request: BuildIndexRequest): Promise<BuildIndexResult>;
@@ -9485,6 +9563,7 @@ export interface Facade {
   InspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult>;
   InspectProjectQuota(path: string): Promise<ProjectQuotaResult>;
   InspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult>;
+  InspectRecoveryCopy(request: RecoveryCopyRequest): Promise<RecoveryCopyResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
@@ -9615,6 +9694,7 @@ export interface Facade {
   ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
   RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
   RevealBackup(id: string): Promise<RevealResult>;
+  RevealIncomplete(folder: string): Promise<RevealResult>;
   RevealItem(request: ItemRequest): Promise<RevealResult>;
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;

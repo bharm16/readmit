@@ -18,8 +18,9 @@ type FileClass string
 
 const (
 	// ClassMutableDocument is one of the project's own versioned documents —
-	// project.json, revisions.json, quota.json — or a recovery copy of one
-	// that the document store retained under its name.
+	// project.json, revisions.json, quota.json, and the record of when and
+	// why recovery copies were kept — or a recovery copy of one that the
+	// document store retained under its name.
 	ClassMutableDocument FileClass = "mutable-project-document"
 	// ClassCredentialReference is a readmit-secrets/v1 document: a
 	// registration of references into an external store, never a value.
@@ -44,7 +45,7 @@ const (
 func ClassifyFile(name, schema string) FileClass {
 	base := path.Base(name)
 	switch base {
-	case DocumentName, RevisionsDocumentName, QuotaDocumentName:
+	case DocumentName, RevisionsDocumentName, QuotaDocumentName, RecoveryRecordName:
 		return ClassMutableDocument
 	}
 	if document, _, ok := artifactdir.ParsePreviousName(base); ok {
