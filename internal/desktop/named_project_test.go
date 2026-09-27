@@ -122,7 +122,7 @@ func TestAProjectIsRenamedAndMovedWithoutRewritingEvidence(t *testing.T) {
 		t.Fatalf("two projects of one name share an identity or a folder: %+v %+v", first.Project, second.Project)
 	}
 	projects := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem})
-	if projects.Page == nil || projects.Page.Total != 2 {
+	if projects.Page == nil || projects.Page.Total == nil || *projects.Page.Total != 2 {
 		t.Fatalf("projects: %+v", projects)
 	}
 
@@ -141,6 +141,34 @@ func TestAProjectIsRenamedAndMovedWithoutRewritingEvidence(t *testing.T) {
 		Draft: desktop.ItemDraft{Environment: targetDraft("127.0.0.1:2576")}, IntentID: "edit-lab"})
 	if saved.Outcome != desktop.SavedOutcome {
 		t.Fatalf("save: %+v", saved)
+	}
+	// A test saved from the incident against a second environment, and one run
+	// of it; the two environments are then given the same name.
+	peer := newAckingPeer(t, "AA")
+	laboratory := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem,
+		Draft: desktop.ItemDraft{Environment: targetDraft(peer.address)}, IntentID: "peer-lab"})
+	if laboratory.Outcome != desktop.SavedOutcome {
+		t.Fatalf("the second environment: %+v", laboratory)
+	}
+	draft := ackTest(t, incidentIdentity(t, app, root), "Booking is accepted")
+	draft.Messages = []string{"s0001-e000001"}
+	test := saveTest(t, app, desktop.SaveItemRequest{Context: context, IntentID: "save-test",
+		Draft: desktop.ItemDraft{Test: draft, TestLinks: &desktop.TestLinks{Environment: laboratory.Saved.ID}}})
+	spec := listed(t, app, root, desktop.TestItem)["Booking is accepted"].Summary.Test.Entry
+	preflight := app.PreflightRun(desktop.RunPreflightRequest{Workspace: root, Spec: spec})
+	if preflight.Preflight == nil {
+		t.Fatalf("preflight: %+v", preflight)
+	}
+	if ran := app.StartDurableRun(desktop.DurableRunRequest{Workspace: root, Spec: spec, Output: preflight.Preflight.Destination.Name,
+		Expected: preflight.Preflight.Identity}); ran.State != desktop.Completed || ran.Run == nil {
+		t.Fatalf("the run: %+v", ran)
+	}
+	run := listed(t, app, root, desktop.RunItem)["@"+preflight.Preflight.Destination.Name]
+	history := bytesUnder(t, filepath.Join(root, preflight.Preflight.Destination.Name))
+	for _, ref := range []desktop.ItemRef{lab.Ref, *laboratory.Saved} {
+		if renamed := app.RenameItem(desktop.RenameRequest{Context: context, Ref: ref, Name: "Scheduling lab"}); renamed.State != desktop.Completed {
+			t.Fatalf("rename an environment: %+v", renamed)
+		}
 	}
 
 	renamed := app.RenameItem(desktop.RenameRequest{Context: context, Ref: desktop.ItemRef{Kind: desktop.ProjectItem, ID: context.ProjectID}, Name: "Scheduling regression"})
@@ -182,9 +210,29 @@ func TestAProjectIsRenamedAndMovedWithoutRewritingEvidence(t *testing.T) {
 		t.Fatalf("the case after the move: %+v", casesAfter)
 	}
 	environmentsAfter := app.ListCatalog(desktop.CatalogQuery{Context: after, Kind: desktop.EnvironmentItem})
-	if environmentsAfter.Page == nil || len(environmentsAfter.Page.Items) != 1 || environmentsAfter.Page.Items[0].Ref.Revision != "1" ||
-		environmentsAfter.Page.Items[0].Summary.Environment.Address != "127.0.0.1:2576" {
-		t.Fatalf("the saved environment and its history after the move: %+v", environmentsAfter)
+	if environmentsAfter.Page == nil || len(environmentsAfter.Page.Items) != 2 {
+		t.Fatalf("the saved environments after the move: %+v", environmentsAfter)
+	}
+	for _, environment := range environmentsAfter.Page.Items {
+		if environment.Name != "Scheduling lab" || environment.Ref.ID == lab.Ref.ID && (environment.Ref.Revision != "1" || environment.Summary.Environment.Address != "127.0.0.1:2576") {
+			t.Fatalf("the saved environment and its history after the move: %+v", environment)
+		}
+	}
+	if environmentsAfter.Page.Items[0].Ref.ID == environmentsAfter.Page.Items[1].Ref.ID {
+		t.Fatal("two environments of one name share an identity")
+	}
+	// The test and its run history reopen where the project is now.
+	testsAfter := app.ListCatalog(desktop.CatalogQuery{Context: after, Kind: desktop.TestItem})
+	if testsAfter.Page == nil || len(testsAfter.Page.Items) != 1 || testsAfter.Page.Items[0].Ref != test || testsAfter.Page.Items[0].Ref.Revision != "1" ||
+		testsAfter.Page.Items[0].Summary.Test.LatestRun == nil || testsAfter.Page.Items[0].Summary.Test.LatestRun.ID != run.Ref.ID {
+		t.Fatalf("the test after the move: %+v", testsAfter)
+	}
+	runsAfter := app.ListCatalog(desktop.CatalogQuery{Context: after, Kind: desktop.RunItem})
+	if runsAfter.Page == nil || len(runsAfter.Page.Items) != 1 || runsAfter.Page.Items[0].Ref.ID != run.Ref.ID || runsAfter.Page.Items[0].Availability != desktop.ItemAvailable {
+		t.Fatalf("the run history after the move: %+v", runsAfter)
+	}
+	if now := bytesUnder(t, filepath.Join(moved, preflight.Preflight.Destination.Name)); !maps.EqualFunc(now, history, bytes.Equal) {
+		t.Fatal("moving the project rewrote its run history")
 	}
 	if now := bytesUnder(t, filepath.Join(moved, "incident")); !maps.EqualFunc(now, evidence, bytes.Equal) {
 		t.Fatal("renaming or moving the project rewrote evidence")
@@ -261,4 +309,14 @@ func TestAProjectIsReadWithoutAnAuthorSeatAndWrittenOnlyWithOne(t *testing.T) {
 	if again := listed(t, author, root, desktop.EnvironmentItem)["lab-replay"]; again.Ref != lab.Ref {
 		t.Fatalf("recording changed an object's identity: %+v %+v", again.Ref, lab.Ref)
 	}
+}
+
+// incidentIdentity is the verified identity of the project's incident case.
+func incidentIdentity(t *testing.T, app *desktop.App, root string) string {
+	t.Helper()
+	opened := app.OpenCase(root, "incident")
+	if opened.Case == nil {
+		t.Fatalf("the incident: %+v", opened)
+	}
+	return opened.Case.Identity
 }

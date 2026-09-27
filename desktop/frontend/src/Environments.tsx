@@ -8,7 +8,7 @@ import {
   checkCredential,
   checkEnvironment,
   checkEnvironmentDestination,
-  listCatalog,
+  listWholeCatalog,
   listCredentials,
   listReceiverSnapshots,
   locateItem,
@@ -159,7 +159,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded 
 
   const refresh = useCallback(async () => {
     if (!root) return;
-    const answer = await listCatalog({ context: context(), kind: "environment", filter: {} });
+    const answer = await listWholeCatalog({ context: context(), kind: "environment", filter: {} });
     if (answer.state === "completed" || answer.state === "empty") {
       setItems(answer.page?.items ?? []);
       setListFailure(null);

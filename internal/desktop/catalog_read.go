@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ import (
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profilepackage"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/report"
 	"github.com/bharm16/readmit/internal/reproducer"
@@ -59,15 +61,31 @@ type loadedCatalog struct {
 	document   catalog.Document
 	recorded   bool
 	incomplete []catalog.Incomplete
+	// opened is when this viewer last opened each object, by identity.
+	opened map[string]string
+	// uncatalogued are the objects a read lists that the catalog has no room
+	// to record, by identity: they are opened and changed nowhere.
+	uncatalogued map[string]bool
+	// lower and upper are the entry names this load's discovery window
+	// covers: every name after lower up to upper, and past it when upper is
+	// empty, which is the last window.
+	lower, upper string
 
 	author, execute bool
 
 	runViews    []runView
 	runsRead    bool
+	suiteRuns   []suiteRunView
+	suitesRead  bool
+	suiteViews  []suiteView
 	completions []observewindow.Completion
 	doneRead    bool
 	identities  map[string]string
 	packets     *relations
+	// private are the project's private local-state folders by the
+	// commitment an export review records for each, read once per load.
+	private    map[string][]privateState
+	privateErr error
 	// analyses are the retained diagnoses read during this load, by entry.
 	analyses map[string]diagnose.Retained
 	// configNames are the names a person reads for the configurations the
@@ -83,6 +101,14 @@ type loadedCatalog struct {
 // true), made only under the author admission, settles interrupted saves and
 // records every new association first.
 func (a *App) loadCatalog(ctx context.Context, request RequestContext, record bool) (*loadedCatalog, refusal) {
+	return a.loadWindow(ctx, request, record, "")
+}
+
+// loadWindow is loadCatalog over the discovery window after the entry name
+// lower: the project's first window when lower is empty. A project folder
+// holds more entries than one load reads only past catalog.MaxItems; each
+// later window is read by its own load, and nothing is recorded from it.
+func (a *App) loadWindow(ctx context.Context, request RequestContext, record bool, lower string) (*loadedCatalog, refusal) {
 	opened, declined := openProjectFolder(request.Project)
 	if opened == nil {
 		return nil, declined
@@ -95,7 +121,7 @@ func (a *App) loadCatalog(ctx context.Context, request RequestContext, record bo
 	if err != nil {
 		return nil, refusal{Failed, "a project must be an existing folder that is not a symbolic link"}
 	}
-	loaded := &loadedCatalog{ctx: ctx, root: opened.Root, project: opened, revisions: *revisions, store: store, identities: map[string]string{}, analyses: map[string]diagnose.Retained{}}
+	loaded := &loadedCatalog{ctx: ctx, root: opened.Root, project: opened, revisions: *revisions, store: store, identities: map[string]string{}, analyses: map[string]diagnose.Retained{}, uncatalogued: map[string]bool{}}
 	document, present, err := store.Read()
 	if errors.Is(err, catalog.ErrUnsupportedVersion) {
 		return nil, refusal{Failed, "the project's catalog was written by a version this release cannot read"}
@@ -108,21 +134,24 @@ func (a *App) loadCatalog(ctx context.Context, request RequestContext, record bo
 	}
 	verifiers := func(kind string) catalog.Verifier { return verifierFor(ItemKind(kind)) }
 	if record {
-		loaded.incomplete, err = store.Recover(verifiers, catalog.Options{Now: a.now})
+		loaded.incomplete, err = store.Recover(verifiers, catalog.Options{Now: a.now, Associate: associateEntry(opened.Root)})
 	} else {
 		loaded.incomplete, err = store.Inspect(verifiers)
 	}
 	if err != nil {
 		return nil, refusal{Failed, "an interrupted save of this project cannot be read"}
 	}
-	discovered, declined := discover(ctx, opened.Root, *revisions, &opened.Document)
+	discovered, upper, declined := discover(ctx, opened.Root, *revisions, &opened.Document, lower)
 	if declined.state != "" {
 		return nil, declined
 	}
+	loaded.lower, loaded.upper = lower, upper
 	staged := store.PendingFiles()
 	discovered = slices.DeleteFunc(discovered, func(entry found) bool { return slices.Contains(staged, entry.entry) })
 	if record {
-		loaded.document, err = store.Update(a.now(), func(document *catalog.Document) (bool, error) { return associated(document, discovered), nil })
+		loaded.document, err = store.Update(a.now(), func(document *catalog.Document) (bool, error) {
+			return associated(document, discovered, catalog.MaxItems), nil
+		})
 		if err != nil {
 			return nil, probeWriteFailure(opened.Root,
 				"this account cannot write the project's catalog",
@@ -133,10 +162,17 @@ func (a *App) loadCatalog(ctx context.Context, request RequestContext, record bo
 		if !present {
 			document = catalog.Document{Schema: catalog.Schema, Items: []catalog.Item{}}
 		}
-		associated(&document, discovered)
+		// Every discovered object is listed; the ones past what the catalog
+		// records are named, exactly as recording would leave them.
+		recorded := len(document.Items)
+		associated(&document, discovered, -1)
+		for i := max(recorded, catalog.MaxItems); i < len(document.Items); i++ {
+			loaded.uncatalogued[document.Items[i].ID] = true
+		}
 		loaded.document = document
 	}
 	loaded.recorded = present
+	loaded.opened = a.openedIn(loaded.document.Project.ID)
 	if present {
 		a.rememberProject(loaded.document.Project.ID, opened.Root, opened.Document.Settings.Title)
 	}
@@ -151,36 +187,98 @@ type found struct {
 	entry string
 }
 
-// discover lists the project's entries and names the kind each declares, by
-// the listing's own recognizers and the declared contract; it verifies
-// nothing. Registered cases and revisions are named whether or not their
-// entry is still there, so a moved one stays a visible, missing object.
-func discover(ctx context.Context, root string, revisions project.Revisions, document *project.Document) ([]found, refusal) {
-	entries, err := os.ReadDir(root)
-	switch {
-	case errors.Is(err, fs.ErrPermission):
-		return nil, refusal{PermissionDenied, "this account cannot read the project folder"}
-	case err != nil:
-		return nil, refusal{Failed, "the project folder cannot be read"}
-	case len(entries) > MaxWorkspaceEntries:
-		return nil, refusal{Failed, "the folder holds more entries than this release lists"}
+// discover lists the project's entries in one discovery window and names the
+// kind each declares, by the listing's own recognizers and the declared
+// contract; it verifies nothing. Registered cases and revisions are named
+// whether or not their entry is still there, so a moved one stays a visible,
+// missing object.
+//
+// A window is the first catalog.MaxItems entry names after lower, in name
+// order. The folder is read in bounded chunks, and no more names than two
+// windows are held at once. upper is the last name of a window more entries
+// follow, and empty for the last window.
+func discover(ctx context.Context, root string, revisions project.Revisions, document *project.Document, lower string) ([]found, string, refusal) {
+	names, upper, declined := window(ctx, root, lower)
+	if declined.state != "" {
+		return nil, "", declined
 	}
 	var discovered []found
 	for _, registered := range document.Cases {
-		discovered = append(discovered, found{CaseItem, registered.Name})
+		if inWindow(registered.Name, lower, upper) {
+			discovered = append(discovered, found{CaseItem, registered.Name})
+		}
 	}
 	for _, registered := range revisions.Revisions {
-		discovered = append(discovered, found{VariantItem, registered.Name})
+		if inWindow(registered.Name, lower, upper) {
+			discovered = append(discovered, found{VariantItem, registered.Name})
+		}
 	}
-	for _, entry := range entries {
+	for _, name := range names {
 		if ctx.Err() != nil {
-			return nil, cancelledRefusal
+			return nil, "", cancelledRefusal
 		}
-		if kind, ok := entryKind(root, entry); ok && !slices.Contains(discovered, found{kind, entry.Name()}) {
-			discovered = append(discovered, found{kind, entry.Name()})
+		info, err := os.Lstat(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		if kind, ok := entryKind(root, fs.FileInfoToDirEntry(info)); ok && !slices.Contains(discovered, found{kind, name}) {
+			discovered = append(discovered, found{kind, name})
 		}
 	}
-	return discovered, refusal{}
+	return discovered, upper, refusal{}
+}
+
+// window reads the entry names of one discovery window.
+func window(ctx context.Context, root, lower string) ([]string, string, refusal) {
+	folder, err := os.Open(root)
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return nil, "", refusal{PermissionDenied, "this account cannot read the project folder"}
+	case err != nil:
+		return nil, "", refusal{Failed, "the project folder cannot be read"}
+	}
+	defer folder.Close()
+	var names []string
+	keep := func() {
+		slices.Sort(names)
+		if len(names) > catalog.MaxItems+1 {
+			names = names[:catalog.MaxItems+1]
+		}
+	}
+	for {
+		if ctx.Err() != nil {
+			return nil, "", cancelledRefusal
+		}
+		chunk, err := folder.Readdirnames(MaxWorkspaceEntries)
+		for _, name := range chunk {
+			if name > lower {
+				names = append(names, name)
+			}
+		}
+		if len(names) > 2*catalog.MaxItems {
+			keep()
+		}
+		if errors.Is(err, io.EOF) || err == nil && len(chunk) == 0 {
+			break
+		}
+		if errors.Is(err, fs.ErrPermission) {
+			return nil, "", refusal{PermissionDenied, "this account cannot read the project folder"}
+		}
+		if err != nil {
+			return nil, "", refusal{Failed, "the project folder cannot be read"}
+		}
+	}
+	keep()
+	if len(names) > catalog.MaxItems {
+		return names[:catalog.MaxItems], names[catalog.MaxItems-1], refusal{}
+	}
+	return names, "", refusal{}
+}
+
+// inWindow reports whether an entry name falls in the window after lower up
+// to upper, or past it when upper is empty.
+func inWindow(name, lower, upper string) bool {
+	return name > lower && (upper == "" || name <= upper)
 }
 
 // familyKinds name the object kind a declared contract family belongs to, so
@@ -231,6 +329,9 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 			return SuiteItem, true
 		case TestReleaseRole:
 			return TestItem, true
+		case PreparedSuiteRole:
+			// A prepared suite is one execution of the suite it retains.
+			return RunItem, true
 		}
 		return "", false
 	case JobArtifact, ResultArtifact:
@@ -239,6 +340,12 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 		return EnvironmentItem, true
 	case PacketArtifact, PortableReviewArtifact, SyntheticPacketArtifact:
 		return ReportItem, true
+	case ReviewArtifact:
+		// An export review is the report a derived packet is exported from.
+		if declares(filepath.Join(root, name, "review.json"), redact.ReviewSchema) {
+			return ReportItem, true
+		}
+		return "", false
 	case DiagnosisArtifact, DiagnosisGroupsArtifact, AnalysisArtifact:
 		return AnalysisItem, true
 	case ProfileArtifact, PackArtifact, PackageArtifact:
@@ -285,10 +392,11 @@ func regular(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// associated records every discovered object the catalog does not hold yet.
-// An entry that is a file the application saved for an object is not
-// discovered as another one.
-func associated(document *catalog.Document, discovered []found) bool {
+// associated records every discovered object the catalog does not hold yet,
+// while it holds fewer than capacity objects (a negative capacity bounds
+// nothing). An entry that is a file the application saved for an object is
+// not discovered as another one.
+func associated(document *catalog.Document, discovered []found, capacity int) bool {
 	managed := map[string]bool{}
 	for _, item := range document.Items {
 		for _, revision := range item.Revisions {
@@ -301,6 +409,9 @@ func associated(document *catalog.Document, discovered []found) bool {
 	for _, entry := range discovered {
 		if managed[entry.entry] || document.ByEntry(string(entry.kind), entry.entry) >= 0 {
 			continue
+		}
+		if capacity >= 0 && len(document.Items) >= capacity {
+			break
 		}
 		// The identity this entry would derive can belong to an object that
 		// has since been located elsewhere; this is then a different object,
@@ -316,15 +427,24 @@ func associated(document *catalog.Document, discovered []found) bool {
 	return changed
 }
 
-// list reads every object of one kind now.
+// list reads every object of one kind in this load's window now. An object
+// the application saved without a project entry of its own is in the first.
 func (c *loadedCatalog) list(kind ItemKind) []CatalogItem {
 	items := []CatalogItem{}
 	for _, item := range c.document.Items {
-		if item.Kind == string(kind) && !c.removed(item) {
+		if item.Kind == string(kind) && !c.removed(item) && c.windowed(item) {
 			items = append(items, c.read(item))
 		}
 	}
 	return items
+}
+
+// windowed reports whether an object is listed in this load's window.
+func (c *loadedCatalog) windowed(item catalog.Item) bool {
+	if item.Entry == "" {
+		return c.lower == ""
+	}
+	return inWindow(item.Entry, c.lower, c.upper)
 }
 
 // incompleteSaves reports the saves recovery left unpublished.
@@ -358,7 +478,7 @@ func (c *loadedCatalog) read(item catalog.Item) CatalogItem {
 		ProjectID:    c.document.Project.ID,
 		CreatedAt:    stamped(item.CreatedAt),
 		UpdatedAt:    stamped(item.UpdatedAt),
-		LastOpenedAt: stamped(item.LastOpenedAt),
+		LastOpenedAt: stamped(cmp.Or(item.LastOpenedAt, c.opened[item.ID])),
 		Availability: ItemAvailable,
 		Capabilities: []ActionID{},
 	}
@@ -403,9 +523,16 @@ func (c *loadedCatalog) read(item catalog.Item) CatalogItem {
 	if out.UpdatedAt == nil && read.updatedAt != nil {
 		out.UpdatedAt = stampedTime(*read.updatedAt)
 	}
-	out.Capabilities = c.capabilities(kind, availability)
+	if c.uncatalogued[item.ID] && out.Availability == ItemAvailable {
+		out.Reason = uncataloguedReason
+	}
+	out.Capabilities = capabilitiesFor(out, admissions{author: c.author, execute: c.execute})
 	return out
 }
+
+// uncataloguedReason is why an object the catalog cannot record offers
+// nothing beyond opening it.
+const uncataloguedReason = "the project holds more objects than its catalog records; this one can be opened, and is changed only once fewer objects are kept here"
 
 // backing resolves the files behind one object: a saved object's revision
 // files, each still the bytes that were published, or a discovered object's
@@ -488,12 +615,6 @@ func unsupportedDeclaration(path string) bool {
 var extraSchemas = []string{observesource.SchemaV1, observesource.Schema, observesource.SchemaDatabase,
 	assertion.Schema, scenario.Schema, scenario.OrderSchema, "readmit-runner/v1", "readmit-hub-schedules/v1"}
 
-// capabilities are the actions permitted on an object now: what its state
-// allows, and what the backend admits. Being readable permits nothing more.
-func (c *loadedCatalog) capabilities(kind ItemKind, availability Availability) []ActionID {
-	return capabilitiesFor(kind, availability, admissions{author: c.author, execute: c.execute})
-}
-
 // admissions are what the operation guard admits now.
 type admissions struct{ author, execute bool }
 
@@ -502,13 +623,19 @@ func (a *App) admitted(ctx context.Context) admissions {
 	return admissions{author: a.authorPreview(ctx), execute: a.admissionPreview(ctx).Admitted}
 }
 
-// capabilitiesFor is what a person may do to an object of kind in its state,
-// as the guard admits now. Reading is always permitted; every change needs
-// the author admission and a send the execute admission.
-func capabilitiesFor(kind ItemKind, availability Availability, admitted admissions) []ActionID {
+// capabilitiesFor is what a person may do to one object in its state, as the
+// guard admits now. Reading is always permitted; every change needs the
+// author admission and a send the execute admission. Being readable permits
+// nothing more.
+func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
+	kind, availability := item.Ref.Kind, item.Availability
 	actions := []ActionID{}
 	if availability != ItemMissing {
 		actions = append(actions, OpenAction)
+	}
+	if availability == ItemAvailable && item.Reason == uncataloguedReason {
+		// Nothing can be recorded of it, so nothing is changed.
+		return actions
 	}
 	if !admitted.author {
 		return actions
@@ -517,7 +644,10 @@ func capabilitiesFor(kind ItemKind, availability Availability, admitted admissio
 		return append(actions, LocateAction)
 	}
 	actions = append(actions, RenameAction)
-	if slices.Contains(savedKinds, kind) {
+	// A variant is saved as a new case derived from another; its own
+	// evidence is never saved over. Of the profiles, only a local profile is
+	// saved; a metadata pack or a package is read-only.
+	if slices.Contains(savedKinds, kind) && kind != VariantItem && (kind != ProfileItem || item.Summary.Profile != nil && item.Summary.Profile.Form == "local-profile") {
 		actions = append(actions, SaveAction)
 	}
 	if kind == SuiteItem {
@@ -525,6 +655,14 @@ func capabilitiesFor(kind ItemKind, availability Availability, admitted admissio
 	}
 	if kind == EnvironmentItem || kind == ObservationItem {
 		actions = append(actions, RemoveAction)
+	}
+	// An export review exports only once it is ready for approval; a case is
+	// what an export review is derived from.
+	if report := item.Summary.Report; kind == ReportItem && report != nil && report.Form == "export-review" && report.Status == readyForApproval {
+		actions = append(actions, ExportPacketAction)
+	}
+	if kind == CaseItem {
+		actions = append(actions, DeriveReviewAction)
 	}
 	if admitted.execute {
 		switch kind {
@@ -829,12 +967,162 @@ func readSuite(c *loadedCatalog, item catalog.Item, paths map[string]string) (vi
 	for _, environment := range document.Environments {
 		environments = append(environments, environment.ID)
 	}
-	return view{name: document.ID, summary: ItemSummary{Suite: &SuiteSummary{Tests: len(document.Tests), Environments: environments}}}, nil
+	summary := &SuiteSummary{Tests: len(document.Tests), Environments: environments}
+	// The latest run of a suite is the latest execution of its current
+	// version: an execution of an earlier version is not one of this one.
+	identity := suite.Identity(data)
+	for _, run := range c.suiteExecutions() {
+		if run.identity == identity && (summary.LatestRun == nil || startedLater(run, *summary)) {
+			summary.LatestRun = &ItemRef{Kind: RunItem, ID: run.id}
+			summary.LatestRunAt, summary.LatestOutcome = stampedTime(run.started), run.outcome
+		}
+	}
+	return view{name: document.ID, summary: ItemSummary{Suite: summary}}, nil
+}
+
+// startedLater reports whether an execution started after the one a summary
+// names; a start nobody knows is earlier than every known one, and the
+// identity breaks every tie.
+func startedLater(run suiteRunView, summary SuiteSummary) bool {
+	named := ""
+	if summary.LatestRunAt != nil {
+		named = *summary.LatestRunAt
+	}
+	started := ""
+	if at := stampedTime(run.started); at != nil {
+		started = *at
+	}
+	return cmp.Or(cmp.Compare(named, started), cmp.Compare(run.id, summary.LatestRun.ID)) < 0
+}
+
+// suiteRunView is one retained suite execution: the identity of the suite
+// document it executed, that suite's own id, and what it did.
+type suiteRunView struct {
+	id, identity, suite, outcome string
+	started, completed           time.Time
+	jobs, uncertain              int
+}
+
+// suiteExecutions reads every retained suite execution of the project once
+// per load.
+func (c *loadedCatalog) suiteExecutions() []suiteRunView {
+	if c.suitesRead {
+		return c.suiteRuns
+	}
+	c.suitesRead = true
+	for _, item := range c.document.Items {
+		if item.Kind != string(RunItem) || item.Entry == "" || c.removed(item) {
+			continue
+		}
+		path := filepath.Join(c.root, item.Entry)
+		if !regular(filepath.Join(path, "suite.json")) {
+			continue
+		}
+		if run, err := suiteExecution(item.ID, path); err == nil {
+			c.suiteRuns = append(c.suiteRuns, run)
+		}
+	}
+	return c.suiteRuns
+}
+
+// suiteExecution reads one retained suite execution through the suite's own
+// reader. An execution without its queue report was interrupted; one whose
+// queue did not execute every job was stopped.
+func suiteExecution(id, path string) (suiteRunView, error) {
+	execution, err := suite.OpenExecution(path)
+	if err != nil {
+		return suiteRunView{}, err
+	}
+	run := suiteRunView{id: id, identity: execution.Identity, suite: execution.Suite.ID, jobs: len(execution.Queue.Jobs), outcome: "incomplete"}
+	if execution.Report != nil {
+		run.outcome = "stopped"
+		if execution.Report.Executed == len(execution.Report.Jobs) {
+			run.outcome = "executed"
+		}
+	}
+	for _, job := range execution.Jobs {
+		if !job.StartedAt.IsZero() && (run.started.IsZero() || job.StartedAt.Before(run.started)) {
+			run.started = job.StartedAt
+		}
+		if job.CompletedAt.After(run.completed) {
+			run.completed = job.CompletedAt
+		}
+		if job.DeliveryUncertain {
+			run.uncertain++
+		}
+	}
+	return run, nil
+}
+
+// suiteView is one suite of the project: its identity and the id it declares.
+type suiteView struct {
+	ref            ItemRef
+	identity, name string
+}
+
+// suites reads every suite of the project once per load.
+func (c *loadedCatalog) suites() []suiteView {
+	if c.suiteViews != nil {
+		return c.suiteViews
+	}
+	c.suiteViews = []suiteView{}
+	for _, item := range c.document.Items {
+		if item.Kind != string(SuiteItem) || c.removed(item) {
+			continue
+		}
+		paths, availability, _ := c.backing(item)
+		if availability != ItemAvailable {
+			continue
+		}
+		data, err := boundedFile(paths[primaryRole(SuiteItem)], suite.MaxBytes)
+		if err != nil {
+			continue
+		}
+		if document, err := suite.Decode(data); err == nil {
+			c.suiteViews = append(c.suiteViews, suiteView{ref: ItemRef{Kind: SuiteItem, ID: item.ID, Revision: item.RevisionLabel()},
+				identity: suite.Identity(data), name: document.ID})
+		}
+	}
+	return c.suiteViews
+}
+
+// suiteOf is the project's suite an execution ran: the suite whose current
+// version it executed, or else the one suite that declares its id.
+func (c *loadedCatalog) suiteOf(run suiteRunView) *ItemRef {
+	var named []ItemRef
+	for _, held := range c.suites() {
+		if held.identity == run.identity {
+			return &held.ref
+		}
+		if held.name == run.suite {
+			named = append(named, held.ref)
+		}
+	}
+	if len(named) == 1 {
+		return &named[0]
+	}
+	return nil
 }
 
 func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(RunItem)]
 	summary := &RunSummary{}
+	if regular(filepath.Join(path, "suite.json")) {
+		// One execution of a suite: several jobs, each to its own target.
+		execution, err := suiteExecution(item.ID, path)
+		if err != nil {
+			return view{}, err
+		}
+		summary.Outcome, summary.Jobs, summary.Uncertain = execution.outcome, execution.jobs, execution.uncertain
+		summary.DeliveryUncertain = execution.uncertain > 0
+		summary.StartedAt, summary.CompletedAt = stampedTime(execution.started), stampedTime(execution.completed)
+		summary.Suite = c.suiteOf(execution)
+		read := view{summary: ItemSummary{Run: summary}}
+		if !execution.started.IsZero() {
+			read.createdAt = &execution.started
+		}
+		return read, nil
+	}
 	var run *replay.Run
 	if declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema) {
 		receipt, err := connectedtransport.Open(path)
@@ -981,6 +1269,12 @@ func readReport(c *loadedCatalog, item catalog.Item, paths map[string]string) (v
 	path := paths[primaryRole(ReportItem)]
 	manifest := filepath.Join(path, "manifest.json")
 	switch {
+	case declares(filepath.Join(path, "review.json"), redact.ReviewSchema):
+		review, private, err := c.exportReview(path)
+		if err != nil {
+			return view{}, err
+		}
+		return view{summary: ItemSummary{Report: &ReportSummary{Form: "export-review", RelatedCase: c.caseByIdentity(private.caseIdentity), Status: review.State}}}, nil
 	case declares(manifest, report.RetainedSchema):
 		packet, err := report.OpenRetained(c.ctx, path)
 		if err != nil {
@@ -1004,6 +1298,75 @@ func readReport(c *loadedCatalog, item catalog.Item, paths map[string]string) (v
 		return view{}, err
 	}
 	return view{name: packet.Manifest.Scenario, summary: ItemSummary{Report: &ReportSummary{Form: "synthetic-packet", RelatedCase: c.caseByIdentity(packet.Manifest.InputIdentity), Status: "sealed"}}}, nil
+}
+
+// privateState is one private local-state folder of the project: its entry
+// and the identity of the case it was derived from.
+type privateState struct {
+	entry, caseIdentity string
+}
+
+// exportReview reads the export review at path and the one private
+// local-state folder of the project its commitment names. A review whose
+// private state is absent, or held by more than one folder, is not one that
+// can be exported, and says so.
+func (c *loadedCatalog) exportReview(path string) (*redact.Review, privateState, error) {
+	review, err := redact.OpenReview(path)
+	if err != nil {
+		return nil, privateState{}, err
+	}
+	if c.private == nil {
+		c.private = map[string][]privateState{}
+		folders, err := projectEntries(c.root, catalog.MaxItems, func(name string) bool {
+			info, err := os.Lstat(filepath.Join(c.root, name))
+			return err == nil && info.IsDir() && regular(filepath.Join(c.root, name, "state.json"))
+		})
+		c.privateErr = err
+		for _, name := range folders {
+			if commitment, identity, err := redact.OpenPrivateState(filepath.Join(c.root, name)); err == nil {
+				c.private[commitment] = append(c.private[commitment], privateState{entry: name, caseIdentity: identity})
+			}
+		}
+	}
+	if c.privateErr != nil {
+		return nil, privateState{}, c.privateErr
+	}
+	switch held := c.private[review.LocalStateCommitment]; len(held) {
+	case 0:
+		return nil, privateState{}, errors.New("the private local state this export review was derived with is not in the project")
+	case 1:
+		return review, held[0], nil
+	}
+	return nil, privateState{}, errors.New("more than one folder of the project holds this export review's private local state")
+}
+
+// projectEntries are the names of the project folder's entries keep accepts,
+// read in bounded chunks. More than limit of them is refused rather than
+// read in part.
+func projectEntries(root string, limit int, keep func(name string) bool) ([]string, error) {
+	folder, err := os.Open(root)
+	if err != nil {
+		return nil, errors.New("the project folder cannot be read")
+	}
+	defer folder.Close()
+	var kept []string
+	for {
+		chunk, err := folder.Readdirnames(MaxWorkspaceEntries)
+		for _, name := range chunk {
+			if keep(name) {
+				if kept = append(kept, name); len(kept) > limit {
+					return nil, errors.New("the project holds more of these than this release reads")
+				}
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			slices.Sort(kept)
+			return kept, nil
+		}
+		if err != nil {
+			return nil, errors.New("the project folder cannot be read")
+		}
+	}
 }
 
 // relations are the verified relationships between the project's sealed

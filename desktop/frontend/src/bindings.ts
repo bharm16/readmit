@@ -36,6 +36,7 @@ import type {
   CaptureSessionResult,
   CaseResult,
   CaseStatus,
+  CatalogPage,
   CatalogQuery,
   CatalogResult,
   CleanRunResult,
@@ -1647,6 +1648,34 @@ const SUBMIT_ATTEMPTS = 3;
 export function listCatalog(query: CatalogQuery): Promise<CatalogResult> {
   return retryingRead(() => facade().ListCatalog(query), { state: "failed", context: query.context });
 }
+
+/** Every object of one list: its first page and each page its next_cursor
+ * continues, asked under the query's own context, merged into one page. The
+ * merged page keeps the first page's snapshot and incomplete saves, and the
+ * last page's total and partial state. A page that is not answered ends the
+ * walk with that answer, so a screen never shows part of a list as the whole.
+ * Past WHOLE_CATALOG_PAGES the walk stops with the page partial and its next_cursor
+ * kept. Whether the answer is still wanted is the caller's RequestScope's to
+ * decide, as for any other read. */
+export async function listWholeCatalog(query: CatalogQuery): Promise<CatalogResult> {
+  const { cursor: _ignored, ...start } = query;
+  const first = await listCatalog(start);
+  if (!first.page) return first;
+  let page: CatalogPage = { ...first.page, items: [...first.page.items] };
+  for (let pages = 1; page.next_cursor; pages++) {
+    if (pages >= WHOLE_CATALOG_PAGES) return { ...first, page: { ...page, partial: true } };
+    const next = await listCatalog({ ...start, cursor: page.next_cursor });
+    if (!next.page) return next;
+    const { items, snapshot: _snapshot, incomplete: _incomplete, recorded: _recorded, ...rest } = next.page;
+    const { next_cursor: _cursor, partial: _partial, reason: _reason, ...kept } = page;
+    page = { ...kept, ...rest, items: [...page.items, ...items] };
+  }
+  return { ...first, state: page.items.length === 0 ? first.state : "completed", page };
+}
+
+/** The most pages one whole list is read in: every object of the largest
+ * project catalog several times over. */
+const WHOLE_CATALOG_PAGES = 100;
 
 export function openItem(request: ItemRequest): Promise<ItemResult> {
   return retryingRead(() => facade().OpenItem(request), { state: "failed", context: request.context });

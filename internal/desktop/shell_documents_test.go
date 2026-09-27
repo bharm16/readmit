@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,7 +10,7 @@ import (
 	"testing"
 )
 
-// The nine shell documents share one store, so they share one set of
+// The ten shell documents share one store, so they share one set of
 // guarantees and this is where those guarantees are tested once: what the
 // store reads and refuses to read, how it replaces a document, and what the
 // remembered selections read and write. The documents' own tests keep their
@@ -166,5 +167,47 @@ func TestASelectionRecallReportsWhatTheStoreRefused(t *testing.T) {
 	}
 	if _, err := selection.recall(); !errors.Is(err, errNotADocument) {
 		t.Fatalf("an oversized selection recalled as %v", err)
+	}
+}
+
+// The objects a viewer opened are remembered within their bounds, the least
+// recently opened forgotten first, and a document this release cannot read is
+// never overwritten: opening an object then records nothing.
+func TestTheOpenedObjectsDocumentIsBoundedAndNeverOverwrittenWhenUnreadable(t *testing.T) {
+	documents := ShellDocuments{Folder: t.TempDir()}
+	app := New(folderAnswer(t.TempDir()), documents)
+	project := strings.Repeat("a", 24)
+	id := func(i int) string { return fmt.Sprintf("%024x", i) }
+	for i := range MaxOpenedItems + 2 {
+		if app.recordOpened(project, id(i)) == "" {
+			t.Fatalf("opening %d recorded nothing", i)
+		}
+	}
+	opened := app.openedIn(project)
+	if len(opened) != MaxOpenedItems || opened[id(0)] != "" || opened[id(1)] != "" || opened[id(MaxOpenedItems+1)] == "" {
+		t.Fatalf("%d objects remembered", len(opened))
+	}
+	for i := range MaxKnownProjects + 1 {
+		app.recordOpened(fmt.Sprintf("%024x", i+1), id(0))
+	}
+	if len(app.openedIn(project)) != 0 {
+		t.Fatal("the least recently opened project was not forgotten")
+	}
+	for name, content := range map[string]string{
+		"another version": `{"schema":"readmit-desktop-opened/v2","projects":[]}`,
+		"unknown member":  `{"schema":"readmit-desktop-opened/v1","projects":[],"extra":1}`,
+		"not an identity": `{"schema":"readmit-desktop-opened/v1","projects":[{"id":"x","items":[]}]}`,
+		"not a time":      `{"schema":"readmit-desktop-opened/v1","projects":[{"id":"` + project + `","items":[{"id":"` + id(1) + `","opened_at":"yesterday"}]}]}`,
+		"damaged":         `{"schema":`,
+	} {
+		if err := os.WriteFile(documents.path(openedName), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if app.recordOpened(project, id(2)) != "" || len(app.openedIn(project)) != 0 {
+			t.Fatalf("%s: an unreadable document was used", name)
+		}
+		if kept, err := os.ReadFile(documents.path(openedName)); err != nil || string(kept) != content {
+			t.Fatalf("%s: an unreadable document was overwritten", name)
+		}
 	}
 }

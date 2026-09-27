@@ -9,7 +9,7 @@ import {
   findingReviewHistory,
   findSimilarFindings,
   listAnalysisProfiles,
-  listCatalog,
+  listWholeCatalog,
   newIntentId,
   openCaseFindings,
   openItemDraft,
@@ -573,7 +573,7 @@ function HistorySheet({ context, caseRef, onClose, onOpen }: { context: () => im
   const [failure, setFailure] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    void listCatalog({ context: context(), kind: "analysis", filter: { related_case: caseRef }, sort: "created" }).then((answer) => {
+    void listWholeCatalog({ context: context(), kind: "analysis", filter: { related_case: caseRef }, sort: "created" }).then((answer) => {
       if (!live) return;
       if (answer.state !== "completed" && answer.state !== "empty") {
         setFailure(answer.reason ?? "The history could not be read.");
@@ -737,7 +737,7 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
   const [config, setConfig] = useState<DiagnoseConfig | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const answer = await listCatalog({ context: context(), kind: "analysis-settings", filter: {} });
+    const answer = await listWholeCatalog({ context: context(), kind: "analysis-settings", filter: {} });
     setItems(answer.page?.items ?? []);
   }, [context]);
   useEffect(() => {
@@ -888,7 +888,7 @@ export function useSimilarFindings({ root, caseRef, busy }: { root: string | nul
   useEffect(() => {
     if (!root) return;
     let live = true;
-    void listCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => {
+    void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => {
       if (live) setCases(answer.page?.items ?? []);
     });
     if (caseRef)

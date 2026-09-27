@@ -362,8 +362,10 @@ type App struct {
 	captureMu       sync.Mutex
 	captureProgress *CaptureProgress
 
-	// projectsMu serializes the remembered projects document alone.
+	// projectsMu serializes the remembered projects document alone, and
+	// openedMu the document of the objects this viewer opened.
 	projectsMu sync.Mutex
+	openedMu   sync.Mutex
 	// storageMu serializes the remembered storage document and guards
 	// chosenBackups, the backups this process was shown through the host's
 	// folder dialog, which are kept in memory alone.
@@ -397,7 +399,7 @@ type App struct {
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its nine local documents.
+// over the folder given, where the shell keeps its ten local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {

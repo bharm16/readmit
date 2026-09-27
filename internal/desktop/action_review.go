@@ -9,15 +9,16 @@ import (
 	"os/user"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/operation"
-	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/suite"
 )
@@ -84,18 +85,11 @@ type ReplayActionOptions struct {
 	Policy          string                  `json:"policy,omitzero"`
 }
 
-// ExportActionOptions name the export review a derived packet is exported
-// from and the private local state its derivation wrote.
-type ExportActionOptions struct {
-	Review     string `json:"review"`
-	LocalState string `json:"local_state"`
-}
-
-// PromotionActionOptions name the suite environment, the release pins and
-// the revision assumption a promotion approval is recorded for.
+// PromotionActionOptions name the suite environment and the revision
+// assumption a promotion approval is recorded for. The release pins are the
+// project's own: the one set of released tests that accepts the suite.
 type PromotionActionOptions struct {
 	Environment string `json:"environment"`
-	Releases    string `json:"releases"`
 	Revision    string `json:"revision"`
 }
 
@@ -108,7 +102,8 @@ type ScanActionOptions struct {
 // PrepareActionRequest asks for the review of one action: the objects it is
 // scoped to, the destination it goes to, and its typed options. A send is
 // scoped to one case and goes to one environment; a promotion approval is
-// scoped to one suite; an export names its review in its options. A
+// scoped to one suite; an export is scoped to one export review, a report of
+// the project, whose private local state the project resolves. A
 // collection is scoped to one observation and, when its source is reached
 // under an environment's send policy, goes to that environment; a reset is
 // scoped to one environment; a credential scan to the project.
@@ -118,10 +113,12 @@ type PrepareActionRequest struct {
 	Items       []ItemRef               `json:"items"`
 	Destination *ItemRef                `json:"destination,omitzero"`
 	Replay      *ReplayActionOptions    `json:"replay,omitzero"`
-	Export      *ExportActionOptions    `json:"export,omitzero"`
 	Promotion   *PromotionActionOptions `json:"promotion,omitzero"`
 	Scan        *ScanActionOptions      `json:"scan,omitzero"`
 	Storage     *StorageActionOptions   `json:"storage,omitzero"`
+	// DeriveReview names the inputs an export review of the one scoped case
+	// is derived with.
+	DeriveReview *DeriveReviewOptions `json:"derive_review,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -156,6 +153,7 @@ type ActionReview struct {
 	Reset        *EnvironmentResetReview `json:"reset,omitzero"`
 	Scan         *ScanReview             `json:"scan,omitzero"`
 	Storage      *StorageReview          `json:"storage,omitzero"`
+	Derive       *DeriveReviewView       `json:"derive,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -179,9 +177,13 @@ func (r *ActionReviewResult) refuse(state State, reason string) { r.State, r.Rea
 
 // ReviewDecisions are the explicit decisions an action's requirements ask
 // for, made with the final click.
+//
+// DeclaredInventory is the declaration a derivation requires: the digest of
+// the inventory its review showed, which the person declares complete.
 type ReviewDecisions struct {
-	Rationale string   `json:"rationale,omitzero"`
-	Confirmed []string `json:"confirmed,omitzero"`
+	Rationale         string   `json:"rationale,omitzero"`
+	Confirmed         []string `json:"confirmed,omitzero"`
+	DeclaredInventory string   `json:"declared_inventory,omitzero"`
 }
 
 // ExecuteActionRequest is the final explicit action of one review. IntentID
@@ -244,6 +246,7 @@ type ReviewedActionResult struct {
 	Reset     *EnvironmentReset     `json:"reset,omitzero"`
 	Scan      *ScanOutcome          `json:"scan,omitzero"`
 	Storage   *StorageOutcome       `json:"storage,omitzero"`
+	Derived   *PrivacyReviewOutcome `json:"derived,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -270,6 +273,7 @@ type boundAction struct {
 	reset           *resetBinding
 	scan            *scanBinding
 	storage         storagePlan
+	derive          PrivacyReviewRequest
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -307,6 +311,8 @@ var actionPolicies = map[ActionID]actionPolicy{
 		bind: bindReset, execute: executeReset},
 	ScanSecretsAction: {consent: ScanConsent, review: slot{}, perform: slot{profile: "ScanSecrets"},
 		bind: bindScan, execute: executeScan},
+	DeriveReviewAction: {consent: DeriveConsent, requirements: []ReviewRequirement{InventoryDeclarationRequirement},
+		review: slot{}, perform: slot{profile: "DeriveExportReview"}, bind: bindDeriveReview, execute: executeDeriveReview},
 }
 
 // hold runs work holding one slot.
@@ -550,6 +556,9 @@ func unmet(requirements []ReviewRequirement, bound *boundAction, decisions Revie
 			return "every manual step is confirmed, and nothing else, before a reset; nothing was reset"
 		}
 	}
+	if slices.Contains(requirements, InventoryDeclarationRequirement) {
+		return declaredInventory(bound, decisions)
+	}
 	return ""
 }
 
@@ -710,18 +719,22 @@ func (a *App) scoped(ctx context.Context, request RequestContext, refs []ItemRef
 	var items []CatalogItem
 	var records []catalog.Item
 	for _, ref := range refs {
-		index := loaded.document.Find(ref.ID)
-		if index < 0 || loaded.document.Items[index].Kind != string(ref.Kind) || loaded.removed(loaded.document.Items[index]) {
+		// An object of a later discovery window is read in its own.
+		window, index, declined := a.findAcross(ctx, request, loaded, ref.ID, false)
+		if window == nil {
+			return nil, nil, nil, declined
+		}
+		if index < 0 || window.document.Items[index].Kind != string(ref.Kind) || window.removed(window.document.Items[index]) {
 			return nil, nil, nil, refusal{Failed, "the project holds no such object"}
 		}
-		item := loaded.read(loaded.document.Items[index])
+		item := window.read(window.document.Items[index])
 		if item.Availability != ItemAvailable {
 			return nil, nil, nil, refusal{Failed, "an object this action needs is " + string(item.Availability)}
 		}
 		if ref.Revision != "" && ref.Revision != item.Ref.Revision {
 			return nil, nil, nil, refusal{Failed, "the object changed since it was shown; look at it again"}
 		}
-		items, records = append(items, item), append(records, loaded.document.Items[index])
+		items, records = append(items, item), append(records, window.document.Items[index])
 	}
 	return loaded, items, records, refusal{}
 }
@@ -804,22 +817,18 @@ func executeReplaySend(a *App, ctx context.Context, bound *boundAction, _ Review
 }
 
 func bindExport(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
-	if request.Export == nil || len(request.Items) != 0 {
+	if len(request.Items) != 1 || request.Items[0].Kind != ReportItem {
 		return nil, refusal{Failed, "an export is reviewed for one export review of the project"}
 	}
-	options := *request.Export
-	loaded, _, _, declined := a.scoped(ctx, request.Context, nil)
+	loaded, items, records, declined := a.scoped(ctx, request.Context, request.Items)
 	if loaded == nil {
 		return nil, declined
 	}
-	reviewPath, err := artifactpath.Child(loaded.root, options.Review)
-	if err != nil {
-		return nil, refusal{Failed, "the export review must be one entry of the project"}
+	entry := records[0].Entry
+	if items[0].Summary.Report == nil || items[0].Summary.Report.Form != "export-review" || entry == "" {
+		return nil, refusal{Failed, "an export is reviewed for one export review of the project"}
 	}
-	if _, err := artifactpath.Child(loaded.root, options.LocalState); err != nil {
-		return nil, refusal{Failed, "the private local state must be one folder of the project"}
-	}
-	opened, err := redact.OpenReview(reviewPath)
+	opened, private, err := loaded.exportReview(filepath.Join(loaded.root, entry))
 	if err != nil {
 		return nil, refusal{Failed, err.Error()}
 	}
@@ -827,7 +836,7 @@ func bindExport(a *App, ctx context.Context, request PrepareActionRequest, held 
 	if refused.state != "" {
 		return nil, refused
 	}
-	view := &ExportReviewView{Review: options.Review, State: opened.State, Findings: len(opened.Findings)}
+	view := &ExportReviewView{Review: entry, State: opened.State, Findings: len(opened.Findings)}
 	for _, finding := range opened.Findings {
 		if !finding.Resolved {
 			view.Unresolved++
@@ -838,10 +847,10 @@ func bindExport(a *App, ctx context.Context, request PrepareActionRequest, held 
 		refusal = "the export review is not ready for approval; an incomplete review exports nothing"
 	}
 	return &boundAction{action: ExportPacketAction, origin: request,
-		export: PrivacyExportRequest{Workspace: loaded.root, Review: options.Review, LocalState: options.LocalState, Approval: opened.Identity, Output: destination.Name},
+		export: PrivacyExportRequest{Workspace: loaded.root, Review: entry, LocalState: private.entry, Approval: opened.Identity, Output: destination.Name},
 		binding: binding(string(ExportPacketAction), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, false, held),
-			opened.Identity, options.Review, options.LocalState, destination.Name),
-		review: ActionReview{Ready: ready, Refusal: refusal, Export: view, Destination: ReviewDestination{Output: destination.Name}}}, noRefusal
+			opened.Identity, entry, private.entry, opened.LocalStateCommitment, destination.Name),
+		review: ActionReview{Items: items, Ready: ready, Refusal: refusal, Export: view, Destination: ReviewDestination{Output: destination.Name}}}, noRefusal
 }
 
 func executeExport(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
@@ -874,24 +883,88 @@ func bindPromotion(a *App, ctx context.Context, request PrepareActionRequest, he
 		return nil, declined
 	}
 	entry := backingEntry(records[0])
-	if artifactpath.EntryName(options.Releases) != nil {
-		return nil, refusal{Failed, "the release references must be one entry of the project"}
-	}
-	review, err := suite.ReviewPromotion(filepath.Join(loaded.root, entry), options.Environment, filepath.Join(loaded.root, options.Releases), options.Revision)
-	if err != nil {
-		return nil, refusal{Failed, err.Error()}
+	releases, review, declined := suiteReleases(loaded.root, entry, options)
+	if releases == "" {
+		return &boundAction{action: ApprovePromotionAction, origin: request,
+			binding: binding(string(ApprovePromotionAction), loaded.root, loaded.document.Project.ID, a.reviewer(), declined.reason),
+			review:  ActionReview{Items: items, Refusal: declined.reason}}, noRefusal
 	}
 	destination, refused := promotionOutput.destination(loaded.root, "")
 	if refused.state != "" {
 		return nil, refused
 	}
 	return &boundAction{action: ApprovePromotionAction, origin: request,
-		suite: SuitePromotionApproveRequest{Workspace: loaded.root, Entry: entry, Environment: options.Environment, Releases: options.Releases,
+		suite: SuitePromotionApproveRequest{Workspace: loaded.root, Entry: entry, Environment: options.Environment, Releases: releases,
 			Revision: options.Revision, Reviewed: review.Identity(), Output: destination.Name},
 		binding: binding(string(ApprovePromotionAction), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, false, held),
-			review.Identity(), destination.Name),
+			review.Identity(), releases, destination.Name),
 		review: ActionReview{Items: items, Ready: destination.Fresh, Refusal: destination.Reason, Promotion: &review,
 			Destination: ReviewDestination{Output: destination.Name}}}, noRefusal
+}
+
+// suiteReleases resolves the released tests a promotion of the suite at entry
+// is reviewed with: the one set of release pins of the project the suite's own
+// preparation accepts for the environment. None, or more than one, is a
+// review that is not ready, and says which.
+func suiteReleases(root, entry string, options PromotionActionOptions) (string, suite.PromotionReview, refusal) {
+	names, err := projectEntries(root, maxReleaseSets, func(name string) bool {
+		path := filepath.Join(root, name)
+		return regular(path) && declares(path, suite.ReleasesSchema)
+	})
+	if err != nil {
+		return "", suite.PromotionReview{}, refusal{Failed, "the project's released tests cannot be read: " + err.Error()}
+	}
+	type accepted struct {
+		entry  string
+		review suite.PromotionReview
+		tests  []string
+	}
+	var found []accepted
+	for _, name := range names {
+		path := filepath.Join(root, name)
+		review, err := suite.ReviewPromotion(filepath.Join(root, entry), options.Environment, path, options.Revision)
+		if err != nil {
+			continue
+		}
+		found = append(found, accepted{entry: name, review: review, tests: releasedTests(root, path)})
+	}
+	switch len(found) {
+	case 0:
+		return "", suite.PromotionReview{}, refusal{Failed, "this suite has no released tests to approve for this environment"}
+	case 1:
+		return found[0].entry, found[0].review, refusal{}
+	}
+	sets := []string{}
+	for _, set := range found {
+		sets = append(sets, strings.Join(set.tests, ", "))
+	}
+	return "", suite.PromotionReview{}, refusal{Failed, "more than one set of released tests accepts this suite (" + strings.Join(sets, "; ") + "); approve one version at a time"}
+}
+
+// maxReleaseSets bounds the sets of release pins one approval review reads,
+// each through a preparation of the suite.
+const maxReleaseSets = 16
+
+// releasedTests names each test a set of release pins releases, by the test
+// and the version of its release: never by a file or a digest.
+func releasedTests(root, path string) []string {
+	tests := []string{}
+	data, err := boundedFile(path, suite.MaxBytes)
+	if err != nil {
+		return tests
+	}
+	references, err := suite.DecodeReleases(data)
+	if err != nil {
+		return tests
+	}
+	for _, reference := range references.Tests {
+		named := reference.Test
+		if release, err := expectation.Read(artifactpath.JoinReference(root, reference.Release)); err == nil {
+			named += " version " + strconv.Itoa(release.Baseline.Revision)
+		}
+		tests = append(tests, named)
+	}
+	return tests
 }
 
 func executePromotion(a *App, _ context.Context, bound *boundAction, decisions ReviewDecisions) ReviewedActionResult {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -347,5 +348,94 @@ func TestARevisionRecordsItsAuthor(t *testing.T) {
 	draft.Intent, draft.Author = "intent-3", "line\nbreak"
 	if _, err := s.Save(draft, accept, clock); err == nil {
 		t.Fatal("an author that is not printable text was recorded")
+	}
+}
+
+// entryDraft is a save that publishes a new folder entry beside one member,
+// owing one association.
+func entryDraft(intent string) catalog.Draft {
+	return catalog.Draft{Kind: "variant", Intent: intent, Digest: sum(intent),
+		Members: []catalog.Staged{{Role: "plan", File: "plan.json", Data: []byte("plan")}},
+		Entry: &catalog.Entry{Prefix: "variant", Owes: "incident", Build: func(path string) error {
+			if err := os.Mkdir(path, 0o700); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(path, "evidence"), []byte("derived"), 0o600)
+		}}}
+}
+
+// verifyEntry accepts a staged entry holding its evidence.
+func verifyEntry(files map[string]string) error {
+	data, err := os.ReadFile(filepath.Join(files[catalog.EntryRole], "evidence"))
+	if err != nil || string(data) != "derived" {
+		return errors.New("the entry is not the one built")
+	}
+	return nil
+}
+
+// A save that publishes an entry builds it where the project cannot see it,
+// publishes it by one rename under a generated name, records the association
+// it owes and only then names the object. Until then the entry is hidden;
+// recovery finishes a verified one, a discard never unhides a published one,
+// and an unpublished one is withdrawn whole.
+func TestASaveThatPublishesAnEntryOwesItsAssociationFirst(t *testing.T) {
+	owed := map[string]string{}
+	options := clock
+	options.Associate = func(kind, entry, owes string) error { owed[entry] = kind + ":" + owes; return nil }
+
+	s := newStore(t)
+	saved, err := s.Save(entryDraft("intent-1"), verifyEntry, options)
+	if err != nil || saved.Item.Entry != "variant-001" || owed["variant-001"] != "variant:incident" {
+		t.Fatalf("save: %+v %v %v", saved, err, owed)
+	}
+	if _, err := os.Stat(filepath.Join(s.Root(), "variant-001", "evidence")); err != nil {
+		t.Fatalf("the entry was not published: %v", err)
+	}
+	if staging, _ := os.ReadDir(filepath.Join(s.Root(), catalog.Folder, "staging")); len(staging) != 0 {
+		t.Fatalf("a published save left staging: %v", staging)
+	}
+
+	// Stopped after the rename: the entry is hidden and cannot be discarded
+	// out of hiding; recovery records what it owes and names it.
+	crashed := options
+	crashed.Fault = func(at string) error {
+		if at == catalog.PointRenamed {
+			return errors.New("crash")
+		}
+		return nil
+	}
+	if _, err := s.Save(entryDraft("intent-2"), verifyEntry, crashed); err == nil {
+		t.Fatal("a crashed save succeeded")
+	}
+	if files := s.PendingFiles(); !slices.Contains(files, "variant-002") {
+		t.Fatalf("the unnamed entry is not hidden: %v", files)
+	}
+	if err := s.Discard("intent-2"); !errors.Is(err, catalog.ErrEntryPublished) {
+		t.Fatalf("a published entry was discarded: %v", err)
+	}
+	if incomplete, err := s.Recover(func(string) catalog.Verifier { return verifyEntry }, catalog.Options{Now: clock.Now}); err != nil || len(incomplete) != 1 {
+		t.Fatalf("recovery without the association it owes: %+v %v", incomplete, err)
+	}
+	if incomplete, err := s.Recover(func(string) catalog.Verifier { return verifyEntry }, options); err != nil || len(incomplete) != 0 || owed["variant-002"] == "" {
+		t.Fatalf("recovery: %+v %v %v", incomplete, err, owed)
+	}
+
+	// Stopped before the build: discarding withdraws it whole, and the name
+	// it would have taken stays free.
+	early := options
+	early.Fault = func(at string) error {
+		if at == catalog.PointMember+catalog.EntryRole {
+			return errors.New("crash")
+		}
+		return nil
+	}
+	if _, err := s.Save(entryDraft("intent-3"), verifyEntry, early); err == nil {
+		t.Fatal("a crashed save succeeded")
+	}
+	if err := s.Discard("intent-3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(s.Root(), "variant-003")); !os.IsNotExist(err) || len(s.PendingFiles()) != 0 {
+		t.Fatalf("a discarded save left %v", s.PendingFiles())
 	}
 }

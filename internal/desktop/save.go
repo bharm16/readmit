@@ -30,10 +30,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings and finding reviews whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants and profiles whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -74,6 +74,12 @@ type ItemDraft struct {
 	// saved as the readmit-finding-decisions/v1 document `readmit diagnose
 	// review` reads.
 	FindingReview *FindingReviewDraft `json:"finding_review,omitzero"`
+	// Variant is a new case derived from a registered one by a reproducer
+	// plan, saved with its lineage and project association.
+	Variant *VariantDraft `json:"variant,omitzero"`
+	// Profile is a local interface profile, saved with the seal of its
+	// version and its origin in one revision.
+	Profile *ProfileDraft `json:"profile,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -131,7 +137,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -235,16 +241,23 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 			return result
 		}
 		root, store := loaded.root, loaded.store
-		staged, projection, problems := validateItemDraft(draftScope{root: root, loaded: loaded, item: request.Item, intent: request.IntentID}, request.Kind, request.Draft)
+		scope := draftScope{root: root, loaded: loaded, item: request.Item, intent: request.IntentID}
+		staged, projection, problems := validateItemDraft(scope, request.Kind, request.Draft)
 		if staged == nil {
 			result.State, result.Outcome, result.Problems = Failed, InvalidOutcome, problems
 			result.Reason = "the draft has problems to fix; nothing was saved"
 			return result
 		}
+		var entry *catalog.Entry
+		if request.Kind == VariantItem {
+			// The derived case is published beside the plan it was built by.
+			source, _ := resolveVariantSource(scope, projection.Variant.Source)
+			entry = variantEntry(source, projection.Variant.Plan)
+		}
 		saved, err := store.Save(catalog.Draft{
 			Kind: string(request.Kind), ItemID: request.Item, Name: projection.Name, Base: request.BaseRevision,
-			Intent: request.IntentID, Digest: submissionDigest(request, staged), Author: a.reviewerName(), Members: staged,
-		}, verifierFor(request.Kind), catalog.Options{Now: a.now, Fault: a.saveFault})
+			Intent: request.IntentID, Digest: submissionDigest(request, staged), Author: a.reviewerName(), Members: staged, Entry: entry,
+		}, verifierFor(request.Kind), catalog.Options{Now: a.now, Fault: a.saveFault, Associate: associateEntry(root)})
 		var conflict *catalog.Conflict
 		switch {
 		case errors.As(err, &conflict):
@@ -294,6 +307,10 @@ func (a *App) DiscardIncompleteSave(request IncompleteSaveRequest) CatalogResult
 		if err == nil {
 			err = store.Discard(request.Operation)
 		}
+		if errors.Is(err, catalog.ErrEntryPublished) {
+			result.refuse(Failed, "this save already placed its case in the project; retry it to register the case, which nothing else does")
+			return result
+		}
 		if err != nil {
 			result.refuse(Failed, "no incomplete save of this project is held under that operation")
 			return result
@@ -330,7 +347,11 @@ func (a *App) projectRoot(ctx context.Context, request RequestContext) (string, 
 // same submission is recognized and another under the same identity is not.
 func submissionDigest(request SaveItemRequest, staged []catalog.Staged) string {
 	digest := sha256.New()
-	for _, part := range []string{string(request.Kind), request.Item, request.BaseRevision, request.Draft.Name} {
+	parts := []string{string(request.Kind), request.Item, request.BaseRevision, request.Draft.Name}
+	if variant := request.Draft.Variant; variant != nil {
+		parts = append(parts, string(variant.Source.Kind)+":"+variant.Source.ID)
+	}
+	for _, part := range parts {
 		digest.Write([]byte(part + "\x00"))
 	}
 	for _, member := range staged {
@@ -419,6 +440,21 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.AnalysisSettings = members, config
 		}
+	case ProfileItem:
+		if draft.Profile == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "profile", Problem: "a profile is a local interface profile"})
+		}
+		members, profile, found := validateProfileDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.Profile = members, profile
+		}
+	case VariantItem:
+		members, variant, found := validateVariantDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized = members, variant
+		}
 	case FindingReviewItem:
 		if draft.FindingReview == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "finding_review", Problem: "a finding review is the decisions made about one analysis"})
@@ -483,6 +519,10 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 		case FindingReviewItem:
 			_, _, err := readDecisionsFile(files["decisions"])
 			return err
+		case VariantItem:
+			return verifyVariant(files)
+		case ProfileItem:
+			return verifyProfile(files)
 		}
 		return errors.New("this release does not save this kind of object")
 	}

@@ -168,7 +168,7 @@ func (a *App) knownProjects(ctx context.Context) []CatalogItem {
 		default:
 			item.Availability, item.Reason = ItemUnreadable, reason
 		}
-		item.Capabilities = capabilitiesFor(ProjectItem, item.Availability, admitted)
+		item.Capabilities = capabilitiesFor(item, admitted)
 		item.LastOpenedAt = stamped(known.OpenedAt)
 		items = append(items, item)
 	}
@@ -219,7 +219,7 @@ func projectAt(folder, id string) (*project.Project, catalog.Document, string, e
 // projectItem is one loaded project as the catalog lists it.
 func projectItem(loaded *loadedCatalog) CatalogItem {
 	item := summarized(loaded.project, loaded.document, loaded.recorded)
-	item.Capabilities = capabilitiesFor(ProjectItem, ItemAvailable, admissions{author: loaded.author, execute: loaded.execute})
+	item.Capabilities = capabilitiesFor(item, admissions{author: loaded.author, execute: loaded.execute})
 	return item
 }
 

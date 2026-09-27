@@ -149,6 +149,10 @@ type coverageSuite struct {
 	selection  Selection
 	queue      runqueue.Plan
 	admissions map[string]runqueue.JobReport
+	// identity is the Identity of the retained suite document, and report the
+	// retained queue report, nil when the execution retained none.
+	identity string
+	report   *runqueue.Report
 }
 
 func sameCoverageJSON(a, b any) bool {
@@ -157,6 +161,12 @@ func sameCoverageJSON(a, b any) bool {
 	return bytes.Equal(x, y)
 }
 func loadCoverageSuite(path, digest string) (coverageSuite, error) {
+	return loadRetainedSuite(path, func(identity string) bool { return identity == digest })
+}
+
+// loadRetainedSuite reads one retained suite folder and checks its members
+// against each other and its suite document's identity against accept.
+func loadRetainedSuite(path string, accept func(identity string) bool) (coverageSuite, error) {
 	var s coverageSuite
 	bad := errors.New("coverage requires matching retained suite, selection and queue")
 	dir, err := artifactpath.Directory(path)
@@ -168,8 +178,8 @@ func loadCoverageSuite(path, digest string) (coverageSuite, error) {
 	if err != nil {
 		return s, err
 	}
-	sum := sha256.Sum256(raw)
-	if hex.EncodeToString(sum[:]) != digest {
+	s.identity = Identity(raw)
+	if !accept(s.identity) {
 		return s, bad
 	}
 	s.document, err = Decode(raw)
@@ -246,6 +256,7 @@ func loadCoverageSuite(path, digest string) (coverageSuite, error) {
 	if report.Executed != executed || report.StartFailed != startFailed || report.Refused != refused || report.Skipped != skipped {
 		return s, bad
 	}
+	s.report = &report
 	return s, nil
 }
 
@@ -458,22 +469,35 @@ func BuildCoverage(directory string, requirements []Requirement, exclusions []Ex
 	return encoded, nil
 }
 
+// retainedJob is where one job's retained run is and whether it is there,
+// held to the queue report's admission of the job when the suite retains one.
+func (s coverageSuite) retainedJob(id string) (string, bool, error) {
+	path := filepath.Join(s.dir, "runs", id)
+	admission, hasReport := s.admissions[id]
+	if _, err := os.Lstat(path); os.IsNotExist(err) {
+		if hasReport && admission.Admission == runqueue.Executed {
+			return "", false, errors.New("suite report claims an execution whose evidence is absent")
+		}
+		return path, false, nil
+	}
+	if hasReport && admission.Admission != runqueue.Executed {
+		return "", false, errors.New("suite report excludes an existing execution")
+	}
+	return path, true, nil
+}
+
 func coverageJob(ctx context.Context, s coverageSuite, j runqueue.Job) (JobCoverage, string, error) {
 	row := JobCoverage{ID: j.ID, Execution: "unknown", Reason: "No durable execution exists; completion is unknown.", Expiry: "not_applicable", Exclusion: "none", Stability: runcompare.Stability{State: "insufficient_history", Reason: "No repeated comparable executions selected.", FlakyAssertions: []string{}}}
-	path := filepath.Join(s.dir, "runs", j.ID)
-	admission, hasReport := s.admissions[j.ID]
-	if _, err := os.Lstat(path); os.IsNotExist(err) {
-		if hasReport {
-			if admission.Admission == runqueue.Executed {
-				return row, "", errors.New("suite report claims an execution whose evidence is absent")
-			}
+	path, present, err := s.retainedJob(j.ID)
+	if err != nil {
+		return row, "", err
+	}
+	if !present {
+		if admission, hasReport := s.admissions[j.ID]; hasReport {
 			row.Execution = string(admission.Admission)
 			row.Reason = admission.Reason
 		}
 		return row, "", nil
-	}
-	if hasReport && admission.Admission != runqueue.Executed {
-		return row, "", errors.New("suite report excludes an existing execution")
 	}
 	retained, err := runresult.Open(path)
 	if err != nil {

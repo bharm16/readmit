@@ -167,7 +167,27 @@ type Draft struct {
 	Digest  string
 	Author  string
 	Members []Staged
+	// Entry, when set, is a new project entry the save publishes beside its
+	// members: the save creates a new object backed by it.
+	Entry *Entry
 }
+
+// Entry is a new project entry a save publishes beside its member files: a
+// folder the application builds in the catalog's own staging area, published
+// by one rename as the first free application-named entry Prefix-NNN once it
+// verifies, and then associated with the project as Owes says, before the
+// catalog names the revision. The object is not the catalog's until all of
+// that is done; until then its entry is not an object of its own. Build
+// writes the folder at the path it is given, which does not exist yet.
+type Entry struct {
+	Prefix string
+	Owes   string
+	Build  func(path string) error
+}
+
+// EntryRole is the role under which a verifier is handed the folder of a
+// save's entry: where it is staged, or the project entry once published.
+const EntryRole = "entry"
 
 // Verifier reads a staged revision through its kind's own readers: every
 // member's file, by role, at once, so members that only mean something
@@ -201,13 +221,22 @@ var (
 	// ErrTooManyPending refuses a new save while the project holds as many
 	// interrupted saves as it keeps; one is retried or discarded first.
 	ErrTooManyPending = errors.New("the project holds as many interrupted saves as it keeps; retry or discard one first")
+	// ErrEntryPublished refuses to discard a save whose entry is already
+	// published: only retrying it records the association it owes.
+	ErrEntryPublished = errors.New("this save already published its entry; retry it to record what it owes")
 )
 
 // Options are the save's collaborators: the clock, and the fault a test
 // injects at a named point of the publication.
+//
+// Associate records the association a save's entry owes — its kind, the
+// project entry it was published as and what its Draft.Entry.Owes says —
+// and succeeds when the association is already recorded. A save or a
+// recovery that owes one does not publish without it.
 type Options struct {
-	Now   func() time.Time
-	Fault func(point string) error
+	Now       func() time.Time
+	Fault     func(point string) error
+	Associate func(kind, entry, owes string) error
 }
 
 func (o Options) now() time.Time {
@@ -226,27 +255,37 @@ func (o Options) fault(point string) error {
 
 // The points a publication passes, in order. A fault at any of them stops the
 // save there, as a crash would.
+//
+// A save with an entry also passes PointMember+EntryRole before it builds the
+// entry, PointRenamed once the entry is published, and PointAssociated once
+// the association it owes is recorded.
 const (
-	PointPending   = "pending"
-	PointMember    = "member:" // followed by the member's role
-	PointVerified  = "verified"
-	PointPublished = "published"
+	PointPending    = "pending"
+	PointMember     = "member:" // followed by the member's role
+	PointVerified   = "verified"
+	PointRenamed    = "renamed"
+	PointAssociated = "associated"
+	PointPublished  = "published"
 )
 
 // pending is the record written before the first member file: everything
 // recovery needs to complete or refuse the publication.
 type pending struct {
-	Schema    string   `json:"schema"`
-	Intent    string   `json:"intent"`
-	Digest    string   `json:"digest"`
-	Kind      string   `json:"kind"`
-	Item      string   `json:"item"`
-	Create    bool     `json:"create"`
-	Name      string   `json:"name,omitzero"`
-	Base      string   `json:"base,omitzero"`
-	Author    string   `json:"author,omitzero"`
-	Members   []Member `json:"members"`
-	CreatedAt string   `json:"created_at"`
+	Schema  string   `json:"schema"`
+	Intent  string   `json:"intent"`
+	Digest  string   `json:"digest"`
+	Kind    string   `json:"kind"`
+	Item    string   `json:"item"`
+	Create  bool     `json:"create"`
+	Name    string   `json:"name,omitzero"`
+	Base    string   `json:"base,omitzero"`
+	Author  string   `json:"author,omitzero"`
+	Members []Member `json:"members"`
+	// Entry is the project entry a save with one publishes, and Owes the
+	// association it owes.
+	Entry     string `json:"entry,omitzero"`
+	Owes      string `json:"owes,omitzero"`
+	CreatedAt string `json:"created_at"`
 }
 
 // Save publishes one draft as one revision, or nothing.
@@ -312,10 +351,24 @@ func (s *Store) Save(draft Draft, verify Verifier, options Options) (Saved, erro
 			return Saved{}, errors.Join(ErrIncomplete, err)
 		}
 	}
+	if record.Entry != "" {
+		if err := options.fault(PointMember + EntryRole); err != nil {
+			return Saved{}, err
+		}
+		if draft.Entry == nil || draft.Entry.Build == nil {
+			return Saved{}, errors.Join(ErrIncomplete, errors.New("a save that publishes an entry builds it"))
+		}
+		if err := s.stageEntry(record, draft.Entry.Build); err != nil {
+			return Saved{}, errors.Join(ErrIncomplete, err)
+		}
+	}
 	if err := s.verifyMembers(record, verify); err != nil {
 		return Saved{}, errors.Join(ErrIncomplete, err)
 	}
 	if err := options.fault(PointVerified); err != nil {
+		return Saved{}, err
+	}
+	if err := s.publishEntry(record, options); err != nil {
 		return Saved{}, err
 	}
 	saved, err := s.publish(record, now)
@@ -336,14 +389,23 @@ func (s *Store) Save(draft Draft, verify Verifier, options Options) (Saved, erro
 		// record, which recovery removes.
 		return saved, nil
 	}
-	s.removePending(record.Intent)
+	s.finish(record)
 	return saved, nil
+}
+
+// finish removes what a published save no longer needs: its staging folder,
+// if it had one, and its pending record.
+func (s *Store) finish(record pending) {
+	if record.Entry != "" {
+		s.removeStaged(record)
+	}
+	s.removePending(record.Intent)
 }
 
 // sameMembers reports whether a pending record stages exactly the members a
 // retried submission carries, role by role and byte for byte.
 func sameMembers(record pending, draft Draft) bool {
-	if len(record.Members) != len(draft.Members) || record.Kind != draft.Kind {
+	if len(record.Members) != len(draft.Members) || record.Kind != draft.Kind || (record.Entry != "") != (draft.Entry != nil) {
 		return false
 	}
 	for i, staged := range draft.Members {
@@ -404,6 +466,16 @@ func (s *Store) plan(document Document, draft Draft, now time.Time) (pending, er
 			return pending{}, errors.New("a save names the kind of the object it saves")
 		}
 		record.Item = draft.ItemID
+	}
+	if draft.Entry != nil {
+		if !record.Create || !token(draft.Entry.Prefix) || artifactpath.EntryName(draft.Entry.Owes) != nil {
+			return pending{}, errors.New("a save that publishes an entry creates a new object, under a generated name, owing one entry's association")
+		}
+		entry, err := s.freeEntry(document, draft.Entry.Prefix)
+		if err != nil {
+			return pending{}, err
+		}
+		record.Entry, record.Owes = entry, draft.Entry.Owes
 	}
 	prefix := MemberPrefix(draft.Kind, record.Item) + intentKey(draft.Intent)[:8] + "-"
 	for _, staged := range draft.Members {
@@ -475,6 +547,13 @@ func (s *Store) verifyMembers(record pending, verify Verifier) error {
 		}
 		files[staged.Role] = s.Path(staged)
 	}
+	if record.Entry != "" {
+		folder, err := s.entryFolder(record)
+		if err != nil {
+			return err
+		}
+		files[EntryRole] = folder
+	}
 	if verify != nil {
 		return verify(files)
 	}
@@ -511,7 +590,7 @@ func (s *Store) publish(record pending, now time.Time) (Saved, error) {
 	stamp := Stamp(now)
 	index := document.Find(record.Item)
 	if index < 0 {
-		document.Items = append(document.Items, Item{Kind: record.Kind, ID: record.Item, Name: record.Name, CreatedAt: stamp})
+		document.Items = append(document.Items, Item{Kind: record.Kind, ID: record.Item, Name: record.Name, Entry: record.Entry, CreatedAt: stamp})
 		index = len(document.Items) - 1
 	}
 	item := &document.Items[index]
@@ -574,7 +653,7 @@ func (s *Store) settle(verifier func(kind string) Verifier, options Options, wri
 		}
 		if _, done, _ := replayed(document, Draft{Intent: record.Intent, Digest: record.Digest}); done {
 			if write {
-				s.removePending(record.Intent)
+				s.finish(record)
 			}
 			continue
 		}
@@ -584,13 +663,22 @@ func (s *Store) settle(verifier func(kind string) Verifier, options Options, wri
 			reason = "the object changed since this save began"
 		case s.verifyMembers(record, verifier(record.Kind)) != nil:
 			reason = "not every file of this save was written and verified"
+			if write && record.Entry != "" {
+				// An entry that never verified is not kept: a retry of the
+				// same submission builds it again.
+				s.removeStaged(record)
+			}
 		}
 		if reason == "" && !write {
 			reason = "every file of this save verified; it is published when the project is next opened for writing"
 		}
 		if reason == "" {
-			if _, err := s.publish(record, options.now()); err == nil {
-				s.removePending(record.Intent)
+			err := s.publishEntry(record, options)
+			if err == nil {
+				_, err = s.publish(record, options.now())
+			}
+			if err == nil {
+				s.finish(record)
 				continue
 			}
 			reason = "the verified save could not be published"
@@ -613,7 +701,22 @@ func (s *Store) Discard(operation string) error {
 		return err
 	}
 	if _, done, _ := replayed(document, Draft{Intent: record.Intent, Digest: record.Digest}); done {
-		return s.removePending(operation)
+		s.finish(record)
+		return nil
+	}
+	if record.Entry != "" {
+		// A published entry is kept hidden by its record until the
+		// association it owes is recorded: dropping the record would list
+		// it without one.
+		root, err := s.open()
+		if err != nil {
+			return err
+		}
+		_, published := root.Lstat(record.Entry)
+		root.Close()
+		if published == nil {
+			return ErrEntryPublished
+		}
 	}
 	return s.abandon(record)
 }
@@ -630,6 +733,11 @@ func (s *Store) abandon(record pending) error {
 		if err := root.Remove(staged.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return errors.New("the files of the incomplete save could not be removed")
 		}
+	}
+	// An entry already published is evidence the project may hold; only the
+	// staging folder is the save's own to remove.
+	if record.Entry != "" && s.removeStaged(record) != nil {
+		return errors.New("the files of the incomplete save could not be removed")
 	}
 	return s.removePending(record.Intent)
 }
@@ -698,11 +806,15 @@ func decodePending(data []byte) (pending, error) {
 	if err := validateMembers(Item{Kind: record.Kind, ID: record.Item}, record.Members); err != nil {
 		return pending{}, errors.New("a pending save record cannot be read")
 	}
+	if (record.Entry != "") != (record.Owes != "") || record.Entry != "" && (!record.Create || artifactpath.EntryName(record.Entry) != nil || artifactpath.EntryName(record.Owes) != nil) {
+		return pending{}, errors.New("a pending save record cannot be read")
+	}
 	return record, nil
 }
 
-// PendingFiles are the project entries unpublished saves staged, which are
-// not objects of their own.
+// PendingFiles are the project entries unpublished saves staged or
+// published without the catalog naming them yet, which are not objects of
+// their own.
 func (s *Store) PendingFiles() []string {
 	records, err := s.pendingRecords()
 	if err != nil {
@@ -712,6 +824,9 @@ func (s *Store) PendingFiles() []string {
 	for _, record := range records {
 		for _, member := range record.Members {
 			files = append(files, member.Path)
+		}
+		if record.Entry != "" {
+			files = append(files, record.Entry)
 		}
 	}
 	return files
@@ -842,4 +957,113 @@ func (s *Store) lock() (func(), error) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// stagingFolder is where a save builds the entry it publishes, inside the
+// catalog's own area and never an entry of the project.
+const stagingFolder = "staging"
+
+// maxGenerated bounds the generated entries one prefix numbers.
+const maxGenerated = 999
+
+func stagingPath(intent string) string {
+	return path.Join(Folder, stagingFolder, intentKey(intent)[:32])
+}
+
+// freeEntry is the first Prefix-NNN no entry of the project, no catalog item
+// and no other interrupted save holds.
+func (s *Store) freeEntry(document Document, prefix string) (string, error) {
+	root, err := s.open()
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	records, err := s.pendingRecords()
+	if err != nil {
+		return "", err
+	}
+	for n := 1; n <= maxGenerated; n++ {
+		name := prefix + "-" + strconv.Itoa(1000 + n)[1:]
+		claimed := slices.ContainsFunc(records, func(record pending) bool { return record.Entry == name }) ||
+			slices.ContainsFunc(document.Items, func(item Item) bool { return item.Entry == name })
+		if _, err := root.Lstat(name); !claimed && errors.Is(err, fs.ErrNotExist) {
+			return name, nil
+		}
+	}
+	return "", errors.New("the project holds more generated entries of this kind than this release numbers")
+}
+
+// stageEntry builds a save's entry in its staging folder, unless the entry is
+// already published. A folder an interrupted attempt of the same submission
+// left there is built again.
+func (s *Store) stageEntry(record pending, build func(path string) error) error {
+	root, err := s.open()
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if _, err := root.Lstat(record.Entry); err == nil {
+		return nil
+	}
+	if err := s.removeStaged(record); err != nil {
+		return err
+	}
+	if err := root.MkdirAll(path.Join(Folder, stagingFolder), 0o700); err != nil {
+		return errors.New("cannot create the staging folder")
+	}
+	return build(filepath.Join(s.root, filepath.FromSlash(stagingPath(record.Intent))))
+}
+
+// entryFolder is where a save's entry is now: the project entry once
+// published, else its staging folder. It is an error when neither holds it.
+func (s *Store) entryFolder(record pending) (string, error) {
+	root, err := s.open()
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	for _, name := range []string{record.Entry, stagingPath(record.Intent)} {
+		if info, err := root.Lstat(name); err == nil && info.IsDir() {
+			return filepath.Join(s.root, filepath.FromSlash(name)), nil
+		}
+	}
+	return "", errors.New("the entry of this save was not written")
+}
+
+// publishEntry publishes a verified save's entry by one rename, unless it is
+// already published, and records the association it owes.
+func (s *Store) publishEntry(record pending, options Options) error {
+	if record.Entry == "" {
+		return nil
+	}
+	root, err := s.open()
+	if err != nil {
+		return errors.Join(ErrIncomplete, err)
+	}
+	defer root.Close()
+	if _, err := root.Lstat(record.Entry); errors.Is(err, fs.ErrNotExist) {
+		if err := root.Rename(stagingPath(record.Intent), record.Entry); err != nil {
+			return errors.Join(ErrIncomplete, errors.New("the entry of this save could not be published"))
+		}
+	} else if err != nil {
+		return errors.Join(ErrIncomplete, err)
+	}
+	if err := options.fault(PointRenamed); err != nil {
+		return err
+	}
+	if options.Associate == nil {
+		return errors.Join(ErrIncomplete, errors.New("the association this save owes cannot be recorded here"))
+	}
+	if err := options.Associate(record.Kind, record.Entry, record.Owes); err != nil {
+		return errors.Join(ErrIncomplete, err)
+	}
+	return options.fault(PointAssociated)
+}
+
+// removeStaged removes a save's staging folder, if it has one.
+func (s *Store) removeStaged(record pending) error {
+	if err := os.RemoveAll(filepath.Join(s.root, filepath.FromSlash(stagingPath(record.Intent)))); err != nil {
+		return errors.New("the staging folder of this save could not be removed")
+	}
+	return nil
 }

@@ -383,7 +383,7 @@ func (a *App) recordMade(loaded *loadedCatalog, entry string) (ItemRef, error) {
 	stamp := catalog.Stamp(a.now())
 	var ref ItemRef
 	_, err := loaded.store.Update(a.now(), func(document *catalog.Document) (bool, error) {
-		associated(document, []found{{AnalysisItem, entry}})
+		associated(document, []found{{AnalysisItem, entry}}, catalog.MaxItems)
 		index := document.ByEntry(string(AnalysisItem), entry)
 		if index < 0 {
 			return false, catalog.ErrNoItem

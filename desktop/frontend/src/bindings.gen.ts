@@ -37,6 +37,7 @@ export type ActionID =
   | "environment.reset"
   | "secret.scan"
   | "item.remove"
+  | "export.derive-review"
   | "storage.restore-backup"
   | "storage.delete-backup"
   | "storage.archive-copy"
@@ -63,6 +64,7 @@ export interface ActionReview {
   reset?: EnvironmentResetReview;
   scan?: ScanReview;
   storage?: StorageReview;
+  derive?: DeriveReviewView;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -766,7 +768,9 @@ export interface CatalogItem {
 export interface CatalogPage {
   items: CatalogItem[];
   next_cursor?: string;
-  total: number;
+  total: number | null;
+  partial?: boolean;
+  reason?: string;
   snapshot: string;
   recorded: boolean;
   incomplete: IncompleteSave[];
@@ -1109,6 +1113,7 @@ export type Consent =
   | "collect"
   | "reset"
   | "scan"
+  | "derive"
   | "restore"
   | "delete"
   | "copy"
@@ -1429,6 +1434,22 @@ export interface CustomerRunnerStatus {
   schema: string;
   state: string;
   jobs: number;
+}
+
+/** internal/desktop.DeriveReviewOptions */
+export interface DeriveReviewOptions {
+  spec: string;
+  policy: string;
+  inventory: string;
+}
+
+/** internal/desktop.DeriveReviewView */
+export interface DeriveReviewView {
+  spec: string;
+  policy: string;
+  inventory: InventoryDeclaration;
+  review: string;
+  private: string;
 }
 
 /** internal/desktop.DestinationCheckRequest */
@@ -2030,12 +2051,6 @@ export type ExplanationInputKind =
   | "before-source"
   | "after"
   | "after-source";
-
-/** internal/desktop.ExportActionOptions */
-export interface ExportActionOptions {
-  review: string;
-  local_state: string;
-}
 
 /** internal/exportreview.Coverage */
 export interface ExportReviewCoverage {
@@ -3296,6 +3311,14 @@ export type InterruptibleOperation =
   | "suite-coverage-assessment"
   | "synthetic-packet";
 
+/** internal/desktop.InventoryDeclaration */
+export interface InventoryDeclaration {
+  entry: string;
+  artifacts: RedactOriginalArtifact[];
+  residual_values: number;
+  digest: string;
+}
+
 /** internal/desktop.ItemDraft */
 export interface ItemDraft {
   name?: string;
@@ -3311,6 +3334,8 @@ export interface ItemDraft {
   project?: ProjectDraft;
   analysis_settings?: DiagnoseConfig;
   finding_review?: FindingReviewDraft;
+  variant?: VariantDraft;
+  profile?: ProfileDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -4735,10 +4760,10 @@ export interface PrepareActionRequest {
   items: ItemRef[];
   destination?: ItemRef;
   replay?: ReplayActionOptions;
-  export?: ExportActionOptions;
   promotion?: PromotionActionOptions;
   scan?: ScanActionOptions;
   storage?: StorageActionOptions;
+  derive_review?: DeriveReviewOptions;
 }
 
 /** internal/desktop.PreparedCandidate */
@@ -4839,6 +4864,13 @@ export interface ProfileCompareResult {
   comparison?: ProfileVersionComparison;
   assessment?: ProfileAssessment;
   later_pin?: LaterProfilePin;
+}
+
+/** internal/desktop.ProfileDraft */
+export interface ProfileDraft {
+  profile: LocalProfile;
+  pack?: ItemRef;
+  origin?: ProfilePackageOrigin;
 }
 
 /** internal/desktop.ProfileLibraryEntry */
@@ -5291,7 +5323,6 @@ export interface ProjectVersionName {
 /** internal/desktop.PromotionActionOptions */
 export interface PromotionActionOptions {
   environment: string;
-  releases: string;
   revision: string;
 }
 
@@ -6419,6 +6450,7 @@ export type ReviewDecision = "not-decided" | "incomplete-review" | "stale-approv
 export interface ReviewDecisions {
   rationale?: string;
   confirmed?: string[];
+  declared_inventory?: string;
 }
 
 /** internal/desktop.ReviewDestination */
@@ -6449,7 +6481,7 @@ export interface ReviewRequest {
 }
 
 /** internal/desktop.ReviewRequirement */
-export type ReviewRequirement = "rationale" | "confirmations";
+export type ReviewRequirement = "rationale" | "confirmations" | "inventory-declaration";
 
 /** internal/desktop.ReviewResult */
 export interface ReviewResult {
@@ -6482,6 +6514,7 @@ export interface ReviewedActionResult {
   reset?: EnvironmentReset;
   scan?: ScanOutcome;
   storage?: StorageOutcome;
+  derived?: PrivacyReviewOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -6839,6 +6872,8 @@ export interface RunSummary {
   delivery_uncertain: boolean;
   boundary?: string;
   source_case?: ItemRef;
+  suite?: ItemRef;
+  jobs?: number;
 }
 
 /** internal/desktop.RunTargetView */
@@ -8326,6 +8361,8 @@ export interface SuiteSummary {
   tests: number;
   environments: string[];
   latest_run: ItemRef | null;
+  latest_run_at?: string;
+  latest_outcome?: string;
 }
 
 /** internal/suite.Table */
@@ -9188,6 +9225,12 @@ export interface UpgradeStagedPackage {
 
 /** internal/upgrade.Staging */
 export type UpgradeStaging = "intact" | "altered" | "absent";
+
+/** internal/desktop.VariantDraft */
+export interface VariantDraft {
+  source: ItemRef;
+  plan: ReproducerPlan;
+}
 
 /** internal/desktop.VariantSummary */
 export interface VariantSummary {

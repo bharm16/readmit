@@ -463,3 +463,36 @@ test("Edit connection chooses its CA certificate with the native file picker", a
   await user.click(within(sheet).getByRole("button", { name: "Save" }));
   expect((facade.oneCall("SaveItem")[0] as SaveItemRequest).draft.environment).toMatchObject({ ca_file: `${WORKSPACE_ROOT}/certs/qa-ca.pem`, transport: "tls" });
 });
+
+test("lists every environment past the first page", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(handlers());
+  const many: CatalogItem[] = Array.from({ length: 250 }, (_, index) => ({
+    ...UNCLASSIFIED,
+    ref: { kind: "environment", id: `env-${String(index).padStart(3, "0")}`, revision: "rev-1" },
+    name: `Fixture ${String(index).padStart(3, "0")}`,
+  }));
+  facade.reply({
+    ListCatalog: (query) => {
+      if (query.kind !== "environment") return catalogOfListing(query, facade);
+      const start = query.cursor === "page-2" ? 200 : 0;
+      const items = many.slice(start, start + 200);
+      return {
+        state: "completed",
+        context: query.context,
+        page: { items, total: many.length, snapshot: "s", recorded: true, incomplete: [], ...(start === 0 ? { next_cursor: "page-2" } : {}) },
+      };
+    },
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await goTo(user, "Environments");
+  const table = await page().findByRole("table", { name: "Environments" });
+  await waitFor(() => expect(table.getAttribute("aria-rowcount")).toBe("251"));
+  const cursors = facade
+    .callsTo("ListCatalog")
+    .map((call) => call.args[0] as { kind: string; cursor?: string })
+    .filter((query) => query.kind === "environment")
+    .map((query) => query.cursor);
+  expect(cursors).toEqual([undefined, "page-2"]);
+});

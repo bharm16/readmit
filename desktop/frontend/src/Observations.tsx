@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   chooseEnvironmentFile,
   inspectCompletion,
-  listCatalog,
+  listWholeCatalog,
   newIntentId,
   observationHistory,
   openItemDraft,
@@ -122,7 +122,7 @@ export function useObservation({
 
   const read = useCallback(async () => {
     if (!id) return;
-    const listed = await listCatalog({ context: context(), kind: "observation", filter: {} });
+    const listed = await listWholeCatalog({ context: context(), kind: "observation", filter: {} });
     const found = listed.page?.items.find((candidate) => candidate.ref.id === id) ?? null;
     setItem(found);
     if (!found) {
@@ -355,7 +355,7 @@ function ObservationEditor({
     setDirty(false);
     setChooseFailure(null);
     setFilterDraft({ column: "", value: "" });
-    void listCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => setCases(answer.page?.items ?? []));
+    void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => setCases(answer.page?.items ?? []));
   }, [open, draft, item, context]);
 
   if (!held) return null;

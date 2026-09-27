@@ -365,7 +365,7 @@ msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
 ```
 
 Removing the application removes the application. It never removes evidence, a
-project, or the nine local shell-state documents described under Appearance;
+project, or the ten local shell-state documents described under Appearance;
 the uninstaller does not delete those owner-only files.
 
 Continuous integration downloads the built packages onto fresh native runners,
@@ -959,20 +959,32 @@ time never stands in for one, and an unknown date is null.
 | --- | --- |
 | Case | its entry, registered or not, investigation status, owner, tags, incidents, interface revision, evidence state, and a synthetic or variant marker |
 | Test | source case, current version, boundary, tags, and the latest run whose retained test is exactly this version, with its outcome and start (none when no run executed it) |
-| Suite | included tests, environments it binds |
-| Run | address actually reached, start and completion, outcome, uncertain deliveries |
+| Suite | included tests, environments it binds, and the latest retained execution of its current version, with its start and outcome (none when no execution ran this version) |
+| Run | address actually reached, start and completion, outcome, uncertain deliveries; for a suite execution, its suite and number of jobs, the earliest start and latest completion of its jobs, how many jobs have an unsettled delivery, and `executed`, `stopped` (the queue did not execute every job) or `incomplete` (no queue report was retained) |
 | Environment | declared classification, address and transport, the latest explicit check (when, its outcome and the revision it checked), the linked observation, whether it has a send policy, and its reset's name and number of actions |
 | Observation | source type, latest completed collection among the project's completion records |
-| Report | form, related case, state |
+| Report | form, related case, state: a sealed packet `not-reviewed` or `reviewed` once a portable review is exported from it, a portable review `sealed`, and an export review (`export-review`) `blocked` or `ready-for-approval` |
 | Profile | family, protocol version, published version |
 
 A page holds at most 200 rows. The first page is cut from a snapshot of the
 whole ordered list, which the process holds for ten minutes; `NextCursor`
 continues exactly that snapshot whatever changed on disk since, and a cursor
-whose snapshot is no longer held is refused. Ties break by identity. A
-project folder past the listing's own bound of 1024 entries is refused
-rather than listed in part. The query takes a kind, a name to match against display
-names only, typed filters (availability, case status, owner) and an order.
+whose snapshot is no longer held is refused. Ties break by identity. The
+project folder is read in chunks of the listing's bound of 1024 entries, and
+discovered in windows of the first 4096 entry names after the last window's,
+in name order, so a folder of any size is listed rather than refused. While
+a later window remains, a page is `partial`, says so in its `reason`, and its
+`total` is null rather than the count read so far; once the window's pages
+are listed, `NextCursor` continues into the next window, and the last
+window's pages carry the whole list's total. An object the application saved
+without an entry of its own is listed in the first window. An object of any
+window is opened, changed and reviewed where it is, and a write records the
+window it touches. The catalog records at most 4096 objects; one past that is
+still listed and opened, offers nothing else, and says why. The query takes a
+kind, a name to match against display names only, typed filters
+(availability, case status, owner) and an order. The window's
+`listWholeCatalog` follows every `next_cursor` under the query's own context
+and answers the whole list, or the first page that was not answered.
 
 The identities and the application's own metadata live in the project's
 catalog, `readmit-catalog/v1` in the project's `.readmit` folder, beside
@@ -991,6 +1003,14 @@ catalog metadata. `LocateItem` associates a missing object with the entry
 that now holds the same kind of object, under the same identity — a
 registered case only with the very evidence the project recorded — and a
 missing project with the folder whose catalog records its identity.
+
+`OpenItem` is the explicit open of one object. When this viewer last opened
+each object is its own record, like the projects it opened: it is kept by
+project and object identity, the 512 most recently opened objects of each of
+the 64 projects remembered, in `readmit-desktop-opened/v1` beside the shell's
+other documents and never in the project, and the catalog lists it as the
+object's `last_opened_at`. Listing an object records nothing, another viewer
+sees none of it, and a document this release cannot read is left as it is.
 
 ### Projects by name
 
@@ -1017,9 +1037,10 @@ and a folder that now holds a different project is refused.
 `SaveItem` publishes a whole draft of an Environment (its target and, when it
 has them, its send policy, reset plan and links), a Test, an Observation (a
 source and its window together), Analysis settings (one
-`readmit-diagnose-config/v1` document) or a Finding review (one
-`readmit-finding-decisions/v1` document) as one revision, or nothing, and
-records the local reviewer name as the revision's author.
+`readmit-diagnose-config/v1` document), a Finding review (one
+`readmit-finding-decisions/v1` document), a Profile (a local profile, its
+version seal and, when it records one, its origin) or a Variant as one
+revision, or nothing, and records the local reviewer name as the revision's author.
 The draft is validated first through the readers a save stages it through
 (`ValidateDraft` runs the same step alone and writes nothing). Every member
 is then written as a new file of the project, named by the application,
@@ -1058,6 +1079,30 @@ chosen spec as a new draft bound to the project's case with the same
 evidence, and `ExportTestItem` writes a saved version's exact bytes to a new
 file. The guided sample's own test is saved without a license, as authoring
 the sample always was.
+
+A local Profile is published with the `readmit-profile-version/v1` seal of
+exactly its content in the same revision, so no profile is ever current
+without its seal; a version already sealed, by this object or any seal in the
+project, is refused with other content (`profile.profile.version`), and a
+profile keeps its id. A metadata pack or profile package is listed and
+opened, never saved.
+
+A Variant is a new case derived from a case or revision the project
+registers, by a reproducer plan (`variant`: its source and its
+`readmit-reproducer-plan/v1` plan), and is always saved as a new object:
+derived evidence is never saved over. The whole plan is resolved over the
+verified source first; the derived case is built by the reproducer
+`readmit reproduce` runs in the catalog's own staging area, read back as
+evidence derived by that plan, published by one rename as a new
+`variant-NNN` entry of the project, registered through the operation
+`readmit project revise` runs as a revision of its source — its lineage and
+its project association — and only then named by the catalog beside the plan
+it was built by. Until all of that is done the entry is not listed at all, so
+a derived case is never listed without its association; recovery completes a
+save whose case verified, registering it once, or removes an unverified build
+and lists the save as incomplete. A save whose case was already placed cannot
+be discarded, only retried, so the case is never left listed unregistered.
+The case it came from is never touched.
 
 A pending record written before the first file is what recovery reads. When
 a project is opened after an interruption, a save whose every file verified
@@ -1108,7 +1153,24 @@ analyze as a row with its reason, and, saved, retains the grouping as a
 `PrepareAction` prepares the review of a send (`replay.send`), an export
 (`export.derived-packet`), a version approval (`suite.approve-promotion`), an
 observation's collection (`observation.collect`), an environment's reset
-(`environment.reset`) or a credential scan (`secret.scan`).
+(`environment.reset`), a credential scan (`secret.scan`) or the derivation of
+an export review (`export.derive-review`).
+An export is scoped to one export review, a Report of the project: the
+private local state it was derived with is the one project folder whose
+`state.json` is the commitment the review records, and a review whose private
+state is gone or held twice is an unreadable row that offers no export. The
+catalog offers `export.derived-packet` on an export review itself; the window
+never infers it, and offers it only on a review ready for approval; a case
+offers `export.derive-review`. The private local states and the release pins
+are each read from a bounded listing of the project, and a project holding
+more than it reads is refused with that reason. A version approval is scoped to one suite with the
+environment and revision it is recorded for, and is reviewed with the one set
+of the project's release pins the suite's own preparation accepts; none, or
+more than one, is a review that is not ready and names each set by its tests
+and their release versions. A derivation is
+scoped to one case, with its original specification, disclosure policy and
+original-artifact inventory, and shows that inventory — its artifacts, how
+many known residual values it holds, and its digest.
 It reads the objects, resolves the destination and a fresh output entry,
 decides whether the action could proceed, and binds the project, the
 reviewer (the local account, and the customer-hub subject when one is signed
@@ -1126,7 +1188,13 @@ review does nothing. Every binding is read again before any effect, and a
 change is answered as a `stale` review carrying a refreshed one, which needs
 a click of its own. An approval records a durable decision about the exact
 version shown, requires its rationale, and sends nothing; the recorded
-approval stays evidence of that version whatever changes later. A send whose
+approval stays evidence of that version whatever changes later. A derivation
+requires its own specific decision, `declared_inventory`: the digest of the
+inventory its review showed, which the person declares complete in the final
+click. Without it, or for any other inventory, nothing is written, and an
+inventory edited after the review was shown is a stale review; it is never
+taken from generic consent, and an export needs none. Enabling a schedule is
+not a reviewed action: no review this facade prepares authorizes one. A send whose
 deliveries no acknowledgement settled is `uncertain`, never completed.
 `WithdrawReview` ends a review. The click's `IntentID` is the operation the
 action runs as, so `CancelOperation` with it stops that action — and only
@@ -2709,13 +2777,14 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes of 100%, 125%,
 150%, 175% and 200%. Until a person saves a choice in Settings › General the
-window follows the system theme at 100%. The shell keeps nine separate
+window follows the system theme at 100%. The shell keeps ten separate
 owner-only local documents: saved
 filters and views (`readmit-filters/v2`, which also reads `/v1`),
 the working session (`readmit-desktop-session/v1`), editor drafts
 (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
 edits), the projects folder and the projects opened
-(`readmit-desktop-projects/v1`), the backup folder and the backups, archive
+(`readmit-desktop-projects/v1`), when each object of a project was last
+opened (`readmit-desktop-opened/v1`), the backup folder and the backups, archive
 copies and rollback copies this viewer wrote (`readmit-desktop-storage/v1`),
 the saved theme, text size and local reviewer name
 (`readmit-desktop-preferences/v1`), and selected paths for the operation policy

@@ -113,39 +113,45 @@ func (r *PrivacyReviewResult) refuse(state State, reason string) { r.State, r.Re
 // receivers on the loopback, and never to a configured endpoint.
 func (a *App) DeriveExportReview(request PrivacyReviewRequest) PrivacyReviewResult {
 	return runNamed[PrivacyReviewResult, *PrivacyReviewResult](a, profiles["DeriveExportReview"], func(ctx context.Context) PrivacyReviewResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return PrivacyReviewResult{State: declined.state, Reason: declined.reason}
-		}
-		casePath, specPath, policyPath, inventoryPath, reason, ok := privacyInputs(root, request)
-		if !ok {
-			return PrivacyReviewResult{State: Failed, Reason: reason}
-		}
-		review, refused := destinationFor(root, request.Output, "review")
-		if refused.state != "" {
-			return PrivacyReviewResult{State: refused.state, Reason: refused.reason}
-		}
-		private, refused := destinationFor(root, request.LocalState, "review-private")
-		if refused.state != "" {
-			return PrivacyReviewResult{State: refused.state, Reason: refused.reason}
-		}
-		if review.Name == private.Name {
-			return PrivacyReviewResult{State: Failed, Reason: "the review and its private local state must be separate directories"}
-		}
-		created, err := redact.Create(ctx, redact.Request{
-			CasePath:      casePath,
-			SpecPath:      specPath,
-			PolicyPath:    policyPath,
-			InventoryPath: inventoryPath,
-			Output:        filepath.Join(root, review.Name),
-			LocalState:    filepath.Join(root, private.Name),
-		})
-		if err != nil {
-			state, reason := privacyRefusal(err)
-			return PrivacyReviewResult{State: state, Reason: reason}
-		}
-		return PrivacyReviewResult{State: Completed, Outcome: privacyOutcome(review.Name, private.Name, created)}
+		return deriveExportReview(ctx, request)
 	})
+}
+
+// deriveExportReview is DeriveExportReview's work, for a caller already
+// holding the slot under the derivation's profile.
+func deriveExportReview(ctx context.Context, request PrivacyReviewRequest) PrivacyReviewResult {
+	root, declined := resolveFolder(request.Workspace)
+	if root == "" {
+		return PrivacyReviewResult{State: declined.state, Reason: declined.reason}
+	}
+	casePath, specPath, policyPath, inventoryPath, reason, ok := privacyInputs(root, request)
+	if !ok {
+		return PrivacyReviewResult{State: Failed, Reason: reason}
+	}
+	review, refused := destinationFor(root, request.Output, "review")
+	if refused.state != "" {
+		return PrivacyReviewResult{State: refused.state, Reason: refused.reason}
+	}
+	private, refused := destinationFor(root, request.LocalState, "review-private")
+	if refused.state != "" {
+		return PrivacyReviewResult{State: refused.state, Reason: refused.reason}
+	}
+	if review.Name == private.Name {
+		return PrivacyReviewResult{State: Failed, Reason: "the review and its private local state must be separate directories"}
+	}
+	created, err := redact.Create(ctx, redact.Request{
+		CasePath:      casePath,
+		SpecPath:      specPath,
+		PolicyPath:    policyPath,
+		InventoryPath: inventoryPath,
+		Output:        filepath.Join(root, review.Name),
+		LocalState:    filepath.Join(root, private.Name),
+	})
+	if err != nil {
+		state, reason := privacyRefusal(err)
+		return PrivacyReviewResult{State: state, Reason: reason}
+	}
+	return PrivacyReviewResult{State: Completed, Outcome: privacyOutcome(review.Name, private.Name, created)}
 }
 
 // privacyInputs resolves the four documents one derivation reads, each one
