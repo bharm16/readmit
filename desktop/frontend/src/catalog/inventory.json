@@ -186,24 +186,6 @@
     "line": 24
   },
   {
-    "name": "InventoryList",
-    "source": "desktop/frontend/src/MaintenancePanel.tsx",
-    "exported": false,
-    "line": 42
-  },
-  {
-    "name": "BackupReport",
-    "source": "desktop/frontend/src/MaintenancePanel.tsx",
-    "exported": false,
-    "line": 63
-  },
-  {
-    "name": "MaintenancePanel",
-    "source": "desktop/frontend/src/MaintenancePanel.tsx",
-    "exported": true,
-    "line": 92
-  },
-  {
     "name": "NoteDraft",
     "source": "desktop/frontend/src/NoteDraft.tsx",
     "exported": true,

@@ -342,19 +342,8 @@ func Archive(ctx context.Context, path, destination, selection string, deleteSou
 	if !reflect.DeepEqual(before, after) {
 		return report, errors.New("project changed during archive; source retained")
 	}
-	// A complete manifest must account for every canonical source byte; indexes
-	// deliberately have a recorded rebuild recipe instead of retained values.
-	indexed := map[string]bool{}
-	for _, entry := range held.Indexes {
-		indexed[entry.Name] = true
-	}
-	for _, file := range held.Files {
-		if before[file.Path] != (fingerprint{file.Size, file.SHA256}) {
-			return report, errors.New("archive does not match source; source retained")
-		}
-	}
-	if len(held.Files)+len(indexed) != len(before) {
-		return report, errors.New("archive does not account for source; source retained")
+	if err := accounts(before, held); err != nil {
+		return report, err
 	}
 	if !deleteSource {
 		return report, nil
@@ -362,20 +351,47 @@ func Archive(ctx context.Context, path, destination, selection string, deleteSou
 	if err := ctx.Err(); err != nil {
 		return report, err
 	}
+	_, err = unlink(root)
+	return report, err
+}
+
+// accounts checks that a verified archive accounts for every file of the
+// source an inventory fingerprinted: a complete manifest must account for
+// every canonical source byte, and indexes deliberately have a recorded
+// rebuild recipe instead of retained values.
+func accounts(before map[string]fingerprint, held backup.Document) error {
+	indexed := map[string]bool{}
+	for _, entry := range held.Indexes {
+		indexed[entry.Name] = true
+	}
+	for _, file := range held.Files {
+		if before[file.Path] != (fingerprint{file.Size, file.SHA256}) {
+			return errors.New("archive does not match source; source retained")
+		}
+	}
+	if len(held.Files)+len(indexed) != len(before) {
+		return errors.New("archive does not account for source; source retained")
+	}
+	return nil
+}
+
+// unlink retires a source whose archive was already verified: it is renamed
+// to its documented .retiring remainder path, and then removed whole. Once
+// renamed, the explicit deletion is finished even if cancellation arrives; a
+// failed removal leaves the remainder at that path.
+func unlink(root string) (Outcome, error) {
 	retiring, err := artifactpath.Destination(root + ".retiring")
 	if err != nil {
-		return report, errors.New("retirement destination already exists or is unsafe; source retained")
+		return Outcome{State: Retained}, errors.New("retirement destination already exists or is unsafe; source retained")
 	}
 	if _, err := os.Lstat(retiring); !errors.Is(err, fs.ErrNotExist) {
-		return report, errors.New("retirement destination already exists or cannot be inspected; source retained")
+		return Outcome{State: Retained}, errors.New("retirement destination already exists or cannot be inspected; source retained")
 	}
 	if err := os.Rename(root, retiring); err != nil {
-		return report, errors.New("cannot retire project; source retained")
+		return Outcome{State: Retained}, errors.New("cannot retire project; source retained")
 	}
-	// Once renamed, finish the explicit deletion even if cancellation arrives.
-	// A failed removal leaves the remainder at the documented .retiring path.
 	if err := os.RemoveAll(retiring); err != nil {
-		return report, errors.New("project deletion incomplete; remainder retained at PROJECT.retiring and recovery archive retained")
+		return Outcome{State: RemovalIncomplete, Remainder: retiring}, errors.New("project deletion incomplete; remainder retained at PROJECT.retiring and recovery archive retained")
 	}
-	return report, nil
+	return Outcome{State: Deleted}, nil
 }

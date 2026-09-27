@@ -352,6 +352,11 @@ type App struct {
 
 	// projectsMu serializes the remembered projects document alone.
 	projectsMu sync.Mutex
+	// storageMu serializes the remembered storage document and guards
+	// chosenBackups, the backups this process was shown through the host's
+	// folder dialog, which are kept in memory alone.
+	storageMu     sync.Mutex
+	chosenBackups map[string]string
 
 	// clock is the facade's time, which a test fixes; nil is the system
 	// clock.
@@ -377,7 +382,7 @@ type App struct {
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its seven local documents.
+// over the folder given, where the shell keeps its eight local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {

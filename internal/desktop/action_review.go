@@ -120,6 +120,7 @@ type PrepareActionRequest struct {
 	Export      *ExportActionOptions    `json:"export,omitzero"`
 	Promotion   *PromotionActionOptions `json:"promotion,omitzero"`
 	Scan        *ScanActionOptions      `json:"scan,omitzero"`
+	Storage     *StorageActionOptions   `json:"storage,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -153,6 +154,7 @@ type ActionReview struct {
 	Collect      *CollectReview          `json:"collect,omitzero"`
 	Reset        *EnvironmentResetReview `json:"reset,omitzero"`
 	Scan         *ScanReview             `json:"scan,omitzero"`
+	Storage      *StorageReview          `json:"storage,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -240,6 +242,7 @@ type ReviewedActionResult struct {
 	Collected *CollectionRow        `json:"collected,omitzero"`
 	Reset     *EnvironmentReset     `json:"reset,omitzero"`
 	Scan      *ScanOutcome          `json:"scan,omitzero"`
+	Storage   *StorageOutcome       `json:"storage,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -263,13 +266,16 @@ type boundAction struct {
 	collect *collectBinding
 	reset   *resetBinding
 	scan    *scanBinding
+	storage storagePlan
 }
 
 // slot is the operation slot one step of an action holds: a declared,
-// named profile, or local work that writes or does not.
+// named profile, or local work that writes or does not, and that Stop can
+// interrupt or not.
 type slot struct {
-	profile string
-	writes  bool
+	profile       string
+	writes        bool
+	interruptible bool
 }
 
 // actionPolicy is one action's own policy: its consent and requirements, the
@@ -305,7 +311,7 @@ func (a *App) hold(held slot, work func(context.Context) ReviewedActionResult) R
 	if held.profile != "" {
 		return runNamed[ReviewedActionResult, *ReviewedActionResult](a, profiles[held.profile], work)
 	}
-	return run(a, false, held.writes, work)
+	return run(a, held.interruptible, held.writes, work)
 }
 
 // reviewStore holds the reviews and final actions of this process.
@@ -314,8 +320,10 @@ type reviewStore struct {
 	reviews map[string]*heldReview
 	intents map[string]*heldIntent
 	// running is the operation executing now, and slot the slot name it
-	// holds, which CancelOperation cancels.
+	// holds, which CancelOperation cancels; interruptible says an unnamed
+	// slot it holds can be stopped.
 	running, slot string
+	interruptible bool
 }
 
 type heldReview struct {
@@ -552,8 +560,8 @@ func (a *App) perform(operation string, bound *boundAction, policy actionPolicy,
 		if stale, changed := a.staleReview(bound, fresh, declined, policy); changed {
 			return stale
 		}
-		a.markRunning(operation, policy.perform.profile)
-		defer a.markRunning("", "")
+		a.markRunning(operation, policy.perform)
+		defer a.markRunning("", slot{})
 		performed = true
 		return policy.execute(a, ctx, fresh, decisions)
 	})
@@ -589,14 +597,14 @@ func (a *App) staleReview(bound, fresh *boundAction, declined refusal, policy ac
 	return ReviewedActionResult{}, false
 }
 
-// markRunning records the operation a final action runs as and the slot name it
+// markRunning records the operation a final action runs as and the slot it
 // holds, for CancelOperation.
-func (a *App) markRunning(operation, profile string) {
+func (a *App) markRunning(operation string, held slot) {
 	a.reviews.mu.Lock()
 	defer a.reviews.mu.Unlock()
-	a.reviews.running, a.reviews.slot = operation, ""
-	if profile != "" {
-		a.reviews.slot = profiles[profile].Name
+	a.reviews.running, a.reviews.slot, a.reviews.interruptible = operation, "", held.interruptible
+	if held.profile != "" {
+		a.reviews.slot = profiles[held.profile].Name
 	}
 }
 
@@ -616,9 +624,9 @@ func (a *App) WithdrawReview(token string) ActionReviewResult {
 // nothing else. An operation the facade is not running does nothing.
 func (a *App) CancelOperation(operation string) {
 	a.reviews.mu.Lock()
-	running, name := a.reviews.running, a.reviews.slot
+	running, name, interruptible := a.reviews.running, a.reviews.slot, a.reviews.interruptible
 	a.reviews.mu.Unlock()
-	if operation == "" || operation != running || name == "" {
+	if operation == "" || operation != running || name == "" && !interruptible {
 		return
 	}
 	a.Cancel(name)

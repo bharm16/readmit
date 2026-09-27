@@ -36,7 +36,14 @@ export type ActionID =
   | "observation.collect"
   | "environment.reset"
   | "secret.scan"
-  | "item.remove";
+  | "item.remove"
+  | "storage.restore-backup"
+  | "storage.delete-backup"
+  | "storage.archive-copy"
+  | "storage.delete-source"
+  | "storage.move-project"
+  | "storage.restore-copy"
+  | "storage.prepare-update";
 
 /** internal/desktop.ActionReview */
 export interface ActionReview {
@@ -55,6 +62,7 @@ export interface ActionReview {
   collect?: CollectReview;
   reset?: EnvironmentResetReview;
   scan?: ScanReview;
+  storage?: StorageReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -286,7 +294,7 @@ export interface AuthoredTransformPlan {
 }
 
 /** internal/desktop.Availability */
-export type Availability = "available" | "missing" | "unreadable" | "unsupported";
+export type Availability = "available" | "missing" | "unreadable" | "unsupported" | "incomplete";
 
 /** internal/desktop.BackupCreateRequest */
 export interface BackupCreateRequest {
@@ -308,6 +316,9 @@ export interface BackupInventoryEntry {
   retention?: string;
   explanation?: string;
 }
+
+/** internal/desktop.BackupReason */
+export type BackupReason = "backup" | "archive" | "rollback";
 
 /** internal/desktop.BackupReportView */
 export interface BackupReportView {
@@ -942,7 +953,17 @@ export interface Condition {
 }
 
 /** internal/desktop.Consent */
-export type Consent = "send" | "export" | "approve" | "collect" | "reset" | "scan";
+export type Consent =
+  | "send"
+  | "export"
+  | "approve"
+  | "collect"
+  | "reset"
+  | "scan"
+  | "restore"
+  | "delete"
+  | "copy"
+  | "prepare";
 
 /** internal/corpus.Bounds */
 export interface CorpusBounds {
@@ -3273,6 +3294,9 @@ export interface LifecyclePlan {
   documents: LifecycleCompatibility[];
 }
 
+/** internal/lifecycle.RetireState */
+export type LifecycleRetireState = "retained" | "deleted" | "removal-incomplete";
+
 /** internal/localprofile.Profile */
 export interface LocalProfile {
   schema: string;
@@ -4407,6 +4431,16 @@ export interface PrepareActionRequest {
   export?: ExportActionOptions;
   promotion?: PromotionActionOptions;
   scan?: ScanActionOptions;
+  storage?: StorageActionOptions;
+}
+
+/** internal/desktop.PreparedCandidate */
+export interface PreparedCandidate {
+  path: string;
+  version: string;
+  os: string;
+  arch: string;
+  plan_digest: string;
 }
 
 /** internal/desktop.Privacy */
@@ -5502,6 +5536,12 @@ export interface RenameRequest {
   name: string;
 }
 
+/** internal/desktop.RepairSearchRequest */
+export interface RepairSearchRequest {
+  context: RequestContext;
+  case: ItemRef;
+}
+
 /** internal/desktop.ReplayActionOptions */
 export interface ReplayActionOptions {
   messages: string[];
@@ -6070,6 +6110,7 @@ export interface ReviewedActionResult {
   collected?: CollectionRow;
   reset?: EnvironmentReset;
   scan?: ScanOutcome;
+  storage?: StorageOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -7407,6 +7448,76 @@ export interface SourceWorkRequest {
 /** internal/desktop.State */
 export type State = "empty" | "busy" | "cancelled" | "failed" | "permission_denied" | "completed";
 
+/** internal/desktop.StorageActionOptions */
+export interface StorageActionOptions {
+  backup?: string;
+  name?: string;
+  location?: string;
+  document?: string;
+  digest?: string;
+  candidate?: string;
+}
+
+/** internal/desktop.StorageBackup */
+export interface StorageBackup {
+  id: string;
+  project: string;
+  project_id?: string;
+  created_at: string | null;
+  size: number;
+  reason?: BackupReason;
+  availability: Availability;
+  problem?: string;
+  folder: string;
+  candidate?: PreparedCandidate;
+}
+
+/** internal/desktop.StorageBackupRequest */
+export interface StorageBackupRequest {
+  context: RequestContext;
+}
+
+/** internal/desktop.StorageBackupResult */
+export interface StorageBackupResult {
+  state: State;
+  reason?: string;
+  backup?: StorageBackup;
+}
+
+/** internal/desktop.StorageBackupsResult */
+export interface StorageBackupsResult {
+  state: State;
+  reason?: string;
+  location?: string;
+  backups: StorageBackup[];
+}
+
+/** internal/desktop.StorageOutcome */
+export interface StorageOutcome {
+  project?: ProjectOpenResult;
+  backup?: StorageBackup;
+  source?: LifecycleRetireState;
+  remainder?: string;
+  incomplete?: string;
+  candidate?: PreparedCandidate;
+}
+
+/** internal/desktop.StorageReview */
+export interface StorageReview {
+  project?: string;
+  project_id?: string;
+  backup?: StorageBackup;
+  contents?: BackupReportView;
+  name?: string;
+  location?: string;
+  files?: number;
+  bytes?: number;
+  documents?: LifecycleCompatibility[];
+  copy?: ProjectRecoveryCopy;
+  upgrade?: UpgradePlanView;
+  consequence: string;
+}
+
 /** internal/suite.Binding */
 export interface SuiteBinding {
   parameter: string;
@@ -8591,6 +8702,8 @@ export interface Facade {
   AssessSuiteCoverage(request: SuiteCoverageAssessRequest): Promise<SuiteCoverageResult>;
   AuthorAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
+  BackupLocation(): Promise<ProjectLocationResult>;
+  BackupProject(request: StorageBackupRequest): Promise<StorageBackupResult>;
   BindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult>;
   BindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult>;
   BuildIndex(request: BuildIndexRequest): Promise<BuildIndexResult>;
@@ -8605,6 +8718,8 @@ export interface Facade {
   CheckScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
+  ChooseBackup(): Promise<StorageBackupResult>;
+  ChooseBackupLocation(): Promise<ProjectLocationResult>;
   ChooseCapturePath(kind: string): Promise<PathChoiceResult>;
   ChooseCommercialDestinations(): Promise<CommercialStatusResult>;
   ChooseCorpusPath(kind: string): Promise<CorpusPathResult>;
@@ -8690,6 +8805,7 @@ export interface Facade {
   ImportProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult>;
   ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
+  InspectBackup(id: string): Promise<BackupResult>;
   InspectCIResults(directory: string): Promise<CIInspectResult>;
   InspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult>;
   InspectFileMessage(request: FileInspectRequest): Promise<InspectionResult>;
@@ -8702,6 +8818,7 @@ export interface Facade {
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
+  ListBackups(): Promise<StorageBackupsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
   ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
   ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
@@ -8812,11 +8929,13 @@ export interface Facade {
   RenameItem(request: RenameRequest): Promise<ItemResult>;
   RenameView(workspace: string, from: string, to: string): Promise<ViewsResult>;
   RenewLicenseDocument(): Promise<OperationResult>;
+  RepairSearch(request: RepairSearchRequest): Promise<BuildIndexResult>;
   ResetTarget(request: TargetResetRequest): Promise<TargetResetResult>;
   ResolveOperationClock(): Promise<OperationResult>;
   RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
   ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
   RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
+  RevealBackup(id: string): Promise<RevealResult>;
   RevealItem(request: ItemRequest): Promise<RevealResult>;
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;

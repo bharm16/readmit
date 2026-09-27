@@ -365,7 +365,7 @@ msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
 ```
 
 Removing the application removes the application. It never removes evidence, a
-project, or the seven local shell-state documents described under Appearance;
+project, or the eight local shell-state documents described under Appearance;
 the uninstaller does not delete those owner-only files.
 
 Continuous integration downloads the built packages onto fresh native runners,
@@ -488,6 +488,11 @@ artifacts are never reported as completed.
 | `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
 | `DescribeSearchSettings` / `SaveSearchSettings` | Reports the fields and retention of a case's own search index, and builds that index at a destination Go chooses, replacing only an index verified as the case's own. |
 | `ChooseMaintenancePath` | Presents the host's native save dialog to name the new folder a backup, a restored project or a recovery or rollback archive is written into, and its folder dialog for an existing backup or staged-upgrade package folder. |
+| `BackupLocation` / `ChooseBackupLocation` | Reports the remembered folder backups are kept in while a backup can be written there, or chooses and remembers it in the host's folder dialog. |
+| `ListBackups` | Lists every backup in that folder and every one the application recorded writing elsewhere, newest first, with its project, creation, size and, for a missing, damaged, unfinished or linked one, the actual problem. Writes nothing. |
+| `BackupProject` | Backs up the selected project into a new folder the application names in the backup folder, verifies it whole and records it; a stopped or failed backup is left incomplete and unrecorded. |
+| `InspectBackup` / `ChooseBackup` / `RevealBackup` | Verifies one listed backup whole, opens a backup kept anywhere through the folder dialog, or shows a backup in its folder. |
+| `RepairSearch` | Rebuilds one case's own index under the fields and retention it already declared; an expired or unreadable index is refused with its reason. |
 | `CreateProjectBackup` | Copies a project into a new verified backup and reports evidence, mutable documents, exclusions and credential references separately. |
 | `VerifyProjectBackup` | Reads a backup whole and reports what it holds without writing. |
 | `RestoreProjectBackup` | Restores a backup into a new destination and rebuilds disposable indexes. |
@@ -2605,12 +2610,14 @@ retention of.
 
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
-nowhere. The shell keeps seven separate owner-only local documents: saved
+nowhere. The shell keeps eight separate owner-only local documents: saved
 filters and views (`readmit-filters/v2`, which also reads `/v1`),
 the working session (`readmit-desktop-session/v1`), editor drafts
 (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
 edits), the projects folder and the projects opened
-(`readmit-desktop-projects/v1`), and selected paths for the operation policy
+(`readmit-desktop-projects/v1`), the backup folder and the backups, archive
+copies and rollback copies this viewer wrote (`readmit-desktop-storage/v1`),
+and selected paths for the operation policy
 (`readmit-desktop-operation-selection/v1`), commercial destinations
 (`readmit-desktop-commercial-selection/v1`) and customer hub configuration
 (`readmit-desktop-hub-selection/v1`). Saved filter terms and retained drafts may
@@ -2781,63 +2788,65 @@ starts never makes it active.
 
 ## Project maintenance, backup and staged upgrades
 
-The **project maintenance** screen is the graphical path for the same operations
-`readmit backup`, `readmit project archive|delete|quota|migration-preview|recover`
-and `readmit upgrade` already own. The host's folder dialog picks an existing
-backup or staged package folder. A new destination — a backup, a restored
-project, a recovery or rollback archive — is named in the host's save dialog: a
-new name in a folder the person chooses, because a folder dialog returns only a
-folder that already exists. Naming it creates nothing; the writer creates the
-folder, and refuses a name that already exists with its reason, writing nothing
-into it. Dismissing either dialog chooses nothing and changes nothing.
-The typed facade calls the shared Go packages; the interface never reimplements
-backup, retirement or upgrade semantics and never holds secret values. As on the
-command line, preserving what already exists needs no license term: backup,
-verification, restore, document recovery, archive, delete and an upgrade's
-rollback point stay available after a license expires. Setting a quota is a
-change and is admitted like other authoring.
+Settings → Storage is the graphical path for the operations `readmit backup`,
+`readmit project archive|delete|recover` and `readmit upgrade` own. It lists
+the project's backups (Project, Created, Size, and Availability only when one
+has a problem) above the folder they are kept in, with Change. Create backup
+names the project and destination and writes a new backup there; Restore opens
+a backup's details or one chosen in the host's folder dialog and reviews a
+separate project with its name and location. A backup's menu has Show in
+folder, Verify backup and Delete. Recovery copies, Archive, Move project,
+Repair search, Staged update and Delete from this computer are the Storage
+menu's named tasks; each is a review of exactly what it will write or delete,
+with its one consequence line, before its final button. The typed facade calls
+the shared Go packages; the interface never reimplements backup, retirement or
+upgrade semantics and never holds secret values. As on the command line,
+preserving what already exists needs no license term: backup, verification,
+restore, document recovery, archive, delete and an upgrade's rollback point
+stay available after a license expires. Preparing an update never installs or
+runs the candidate, and opening Storage contacts no network.
 
-What a backup holds is shown in separate inventories: canonical registered
-evidence, mutable project documents, declared index exclusions, credential
-reference documents and protection key references. Indexes remain disposable and
-are rebuilt through the existing `BuildIndex` / `DescribeIndex` controls rather
-than a second search path. Archive and delete require a retirement preview whose
-selection token must still match; cancellation or a stale selection deletes
-nothing. The delete's confirmation belongs to the preview it was given beside:
-a new preview needs it given again, and a completed delete withdraws the
-preview of the project it removed. Each new folder is named for the one writer
-that asked for it — a backup, a restore, a recovery archive or a rollback
-archive — and is never offered to another, and each section shows only the
-report of its own last action.
+### Storage
 
-**Recovery copies** lists every copy `readmit project recover` can select —
-`project.json`, `revisions.json` or `quota.json`, `.recovery-` and the SHA-256
-of the bytes it kept — with its length and what reading it found: `readable`,
-`damaged` when its bytes no longer hash to its name, or `unreadable` when it is
-not a regular file or its document's reader refuses it. The copy holding the
-document as it stands is marked so. Only a readable copy that is not the
-current document can be selected, and **Recover the selected copy** restores it
-through the operation the command runs: the document it replaces is kept as
-another copy, the other documents are not rewound, and evidence and indexes are
-not rewritten. A copy that changed after it was listed is refused in the
-command's words, and the list is read again after every recovery, restored or
-refused. Copies record neither authors nor times, and the list claims neither.
-The screen reaches a project the window has opened; a project whose
-`project.json` this release cannot read is recovered with `readmit project
-recover`.
+Storage keeps one remembered folder for backups, archive copies and rollback
+copies, in `readmit-desktop-storage/v1`, with a record of each one the
+application wrote: its folder, the identity its completion marker sealed, the
+project's name and identity, when and why. `ListBackups` lists those records
+and every backup in the folder, newest first by that record; a backup the
+application did not record has no creation date, because none is read from a
+file. A missing, damaged, unfinished or linked backup stays a row with the
+actual reason. Listing reads only a backup's marker, seal and manifest;
+`InspectBackup` is the explicit full verification, and every task that uses a
+backup verifies it whole first. `BackupProject` writes a new folder the
+application names and never overwrites one; with no backup folder chosen it
+answers `empty` and writes nothing.
 
-The **Staged upgrade** section shows the plan `readmit upgrade check` prints:
-both build identities, whether the candidate is signed for distribution, each
-staged package's state (`intact`, `altered` or `absent`), each reviewed
-project's readability and the first refusal. Choosing another candidate
-withdraws the plan and the administrator's approval shown for the previous
-one. With the approval, **Prepare rollback archive** takes the archive
-`readmit upgrade prepare` takes, holding the same backup document, and still
-states that installing an unsigned candidate is refused. Opening Settings or
-the upgrade tab never contacts a network, downloads packages, elevates or
-interrupts a service — installation stays a native administrator handoff.
-Customer-hub administration journeys stay with the hub collaboration UI and
-are not duplicated here.
+Storage's writing and deleting tasks are reviewed actions, prepared with
+`PrepareAction` and executed once with `ExecuteReviewedAction`; a change to
+what the review bound is a stale review and nothing happens:
+
+- `storage.restore-backup` restores into a hidden folder beside where the
+  project will be, gives it the reviewed name (by default the backup's title
+  and "restored") and a new catalog identity, verifies it, then names and opens
+  it. The original keeps its identity and its place among the opened projects.
+  A restore that stops leaves the hidden folder as an incomplete restore, never
+  a project.
+- `storage.delete-backup` deletes exactly the files the backup's sealed
+  manifest names and refuses a backup holding anything else.
+- `storage.archive-copy` takes a verified archive of the project, keeps the
+  source, and records the association with its retirement selection.
+- `storage.delete-source` deletes the source only against that recorded,
+  verified archive while the source is still the bytes it was taken of; it never
+  takes a second archive. A removal that stops part way reports
+  `removal-incomplete` and its remainder, and is not retried over it.
+- `storage.move-project` copies the project, keeping its identity, into a
+  hidden folder of the chosen one, verifies every file against the source,
+  then names it and switches the opened project to it; the source is kept.
+- `storage.restore-copy` recovers a recovery copy in place, keeping the
+  replaced document as another copy.
+- `storage.prepare-update` takes a verified rollback copy and records the
+  staged candidate's folder, version, platform and plan digest. Nothing is
+  installed or run.
 
 ## Raw inspection and the performance corpus
 

@@ -237,7 +237,9 @@ const (
 // ChooseMaintenancePath presents the host's save dialog to name the new folder
 // a backup, a restored project or a recovery or rollback archive is written
 // into, and its folder picker for an existing backup source or staged upgrade
-// candidate.
+// candidate, or for the existing folder a Storage task creates its output in:
+// a restored project, a moved project or an archive copy, which the task then
+// names itself.
 func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
 	return run(a, true, false, func(ctx context.Context) MaintenancePathResult {
 		var choose func(context.Context, string) (string, refusal)
@@ -253,6 +255,12 @@ func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
 			choose, title = a.chooseFolder, "Open staged upgrade folder"
 		case "archive-destination":
 			choose, title = a.chooseDestination, "New archive folder"
+		case "restore-location":
+			choose, title = a.chooseFolder, "Choose where the restored project is created"
+		case "move-location":
+			choose, title = a.chooseFolder, "Choose where the project is moved"
+		case "archive-location":
+			choose, title = a.chooseFolder, "Choose where the archive is kept"
 		default:
 			return MaintenancePathResult{State: Failed, Reason: "unknown maintenance path kind"}
 		}

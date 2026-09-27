@@ -1,0 +1,26 @@
+/* ---------- Storage ----------
+   Backups as one table under the tab, then the location they are kept in. */
+.storage > .list-toolbar {
+  margin: 0;
+  min-height: var(--toolbar);
+}
+
+.storage-title {
+  margin: 0;
+}
+
+.storage > .storage-table {
+  max-height: none;
+}
+
+.storage-location {
+  border-top: 1px solid var(--line);
+  margin-top: var(--s4);
+  padding-top: var(--s3);
+}
+
+.storage-location > span:first-child {
+  color: var(--muted);
+  flex: none;
+  min-width: 9rem;
+}

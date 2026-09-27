@@ -279,6 +279,7 @@ var privacyStatus = Privacy{
 		"where you were — the folder, case, region and run you had open — in readmit-desktop-session/v1",
 		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1, or readmit-desktop-drafts/v2 once a draft names the object it edits",
 		"the folder new projects are created in and each project you have opened, as its identity, folder and name, in readmit-desktop-projects/v1",
+		"the folder backups are kept in and each backup, archive copy and rollback copy the application wrote, as its folder, identity, project name and date, with the staged update a rollback copy was prepared for, in readmit-desktop-storage/v1",
 		"inside each project, beside its evidence, the names, identities and dates of its objects and the files the application saved for them, in its own readmit-catalog/v1 catalog, and copies of the files you attached to its cases with their names, in readmit-attachments/v1, and the latest explicit check of each environment — when it ran, the revision it checked, the address it reached and what it found — in readmit-environment-check/v1",
 		"the commercial destinations file you selected, as a path only, in readmit-desktop-commercial-selection/v1",
 		"the customer hub configuration file you selected, as a path only, in readmit-desktop-hub-selection/v1",

@@ -136,3 +136,15 @@ func CredentialFileForTest(workspace, secretsFile string) string {
 func SetRevealForTest(a *App, reveal func(path string) error) {
 	a.reveal = reveal
 }
+
+// SetClockForTest fixes the facade's time, so what it records of its own acts
+// can be ordered by a test.
+func SetClockForTest(a *App, clock func() time.Time) {
+	a.clock = clock
+}
+
+// BackupProjectWithinForTest is BackupProject under ctx, so a test can stop
+// a backup deterministically. The work is the production one.
+func BackupProjectWithinForTest(a *App, ctx context.Context, request StorageBackupRequest) StorageBackupResult {
+	return a.backupProject(ctx, request)
+}

@@ -56,7 +56,7 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps seven bounded, versioned local documents (the recent folder
+- The shell keeps eight bounded, versioned local documents (the recent folder
   paths of `readmit-desktop-recent/v1` were retired by #548 and are no longer
   read or written): saved filters with the active selection and each project's saved views
   (`readmit-filters/v2`, which also reads `/v1`), the working session a viewer has not stored
@@ -66,12 +66,14 @@ static build stand unchanged. Nothing here is added to the release archives.
   (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
   edits) holding every editor's unstored work under internal identities, the
   remembered projects (`readmit-desktop-projects/v1`, amended 2026-09-26),
+  the remembered backup folder and the backups this viewer wrote
+  (`readmit-desktop-storage/v1`, amended 2026-09-26 by #565),
   and the paths of three operator-supplied files the
   person selected: the operation policy
   (`readmit-desktop-operation-selection/v1`), the commercial destinations
   (`readmit-desktop-commercial-selection/v1`) and the customer hub
   configuration (`readmit-desktop-hub-selection/v1`). Saved field terms and a
-  retained draft can contain patient data typed by the operator. All seven files
+  retained draft can contain patient data typed by the operator. All eight files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is
@@ -183,3 +185,15 @@ application stores under `.readmit/attachments` with names it generates. The
 attachments are metadata and files a person added, beside evidence and never
 inside it; nothing opens or runs them.
 
+#565 adds one more shell document, `readmit-desktop-storage/v1`: the folder
+backups are kept in, and each backup, archive copy and rollback copy the
+application wrote there — its folder, the identity its completion marker
+sealed, the project's name and catalog identity, when and why, the source
+folder and retirement selection an archive copy was taken under, and the
+staged candidate a rollback copy was prepared for. A backup directory records
+none of that, and a creation date is never read from a file. It holds no
+evidence, and forgetting a record deletes nothing. Storage's writing and
+deleting tasks — restoring a backup as a new project, deleting a backup,
+taking an archive copy, deleting a source against its recorded archive,
+moving a project, restoring a recovery copy and preparing an update — are
+reviews held by the backend under the same rule as a send.

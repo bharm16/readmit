@@ -158,9 +158,10 @@ func runShell(arguments []string) error {
 		fmt.Printf("readmit-desktop version %s\n", engine.Version())
 		return nil
 	}
-	// Seven local shell documents hold no evidence: recent folders, saved
-	// filters, the working session, editor drafts, and the selected paths of
-	// the operation policy, commercial destinations and customer hub config.
+	// Eight local shell documents hold no evidence: saved filters, the
+	// working session, editor drafts, remembered projects, remembered
+	// storage, and the selected paths of the operation policy, commercial
+	// destinations and customer hub config.
 	// The store owns their folder and their names; the shell names only that.
 	startupCheck := len(arguments) == 1 && arguments[0] == "--startup-check"
 	var documents desktop.ShellDocuments
