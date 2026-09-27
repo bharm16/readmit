@@ -219,3 +219,68 @@ func TestRevocationBeforeDestinationDecisionLeavesNoCompletionMarker(t *testing.
 		t.Fatal("pre-decision refusal incorrectly sealed")
 	}
 }
+
+func TestHTTPByteSnapshotVerifierUsesOnlyCapturedBytesAndOriginalBounds(t *testing.T) {
+	var sequence atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprintf(w, "response-%d", sequence.Add(1)) }))
+	defer server.Close()
+	spec := networkaction.HTTPSpec{Schema: networkaction.HTTPSchema, Plan: networkaction.Digest([]byte("plan")), Source: networkaction.Digest([]byte("source")), Project: "lab", Environment: "test", Revision: "1", Endpoint: "endpoint", Classification: "nonproduction", Operation: sendpolicy.ObservationRead, Method: "GET", URL: server.URL + "/state", ServerName: "example.com", Authorities: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw}), TimeoutMS: 1000, MaxBytes: 4096}
+	raw, _ := json.Marshal(spec)
+	p, err := networkaction.PrepareHTTP(raw, policy(t, server.Listener.Addr().String(), sendpolicy.ObservationRead))
+	if err != nil {
+		t.Fatal(err)
+	}
+	load := func(directory string) map[string][]byte {
+		files := map[string][]byte{}
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range entries {
+			raw, err := os.ReadFile(filepath.Join(directory, entry.Name()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			files[entry.Name()] = raw
+		}
+		return files
+	}
+	first, second := filepath.Join(t.TempDir(), "first"), filepath.Join(t.TempDir(), "second")
+	for _, out := range []string{first, second} {
+		if _, _, err := p.Execute(t.Context(), approved(p.Binding()), out, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	captured, replacement := load(first), load(second)
+	for name, raw := range replacement {
+		if err := os.WriteFile(filepath.Join(first, name), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, err := networkaction.VerifyHTTP(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := networkaction.OpenHTTP(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.ResponseDigest != networkaction.Digest([]byte("response-1")) || current.ResponseDigest != networkaction.Digest([]byte("response-2")) {
+		t.Fatal("snapshot verification re-read a replaced resource")
+	}
+	original := captured["response.bin"]
+	captured["response.bin"] = []byte("altered")
+	if _, err := networkaction.VerifyHTTP(captured); err == nil {
+		t.Fatal("changed response accepted")
+	}
+	captured["response.bin"] = original
+	captured["unexpected.json"] = []byte("{}")
+	if _, err := networkaction.VerifyHTTP(captured); err == nil {
+		t.Fatal("unknown snapshot member accepted")
+	}
+	delete(captured, "unexpected.json")
+	captured["action.json"] = make([]byte, (24<<20)+1)
+	if _, err := networkaction.VerifyHTTP(captured); err == nil {
+		t.Fatal("oversized snapshot member accepted")
+	}
+}

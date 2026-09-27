@@ -88,7 +88,7 @@ func connectedCommand() *cobra.Command {
 		}
 		return writeConnected(c, r.Document())
 	}}
-	root.AddCommand(prepare, convert, run, show, connectedProfileCommand(), connectedTransportCommand())
+	root.AddCommand(prepare, convert, run, show, connectedProfileCommand(), connectedTransportCommand(), connectedIsolationCommand())
 	return root
 }
 func writeConnected(c *cobra.Command, v any) error {
