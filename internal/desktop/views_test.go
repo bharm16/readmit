@@ -96,3 +96,36 @@ func TestSavedViewsAreProjectLocalExactAndNeverTouchEvidence(t *testing.T) {
 		t.Fatalf("a view and a filter did not coexist: %+v", views)
 	}
 }
+
+// Clear saved searches removes every view of this project and nothing else:
+// another project's views are kept, and no evidence or index is touched.
+func TestClearViewsRemovesOnlyThisProjectsSavedQueries(t *testing.T) {
+	app, root, state, _ := messagesWorkspace(t)
+	other := t.TempDir()
+	query := grid.Query{AckCodes: []string{"AA"}}
+	for _, name := range []string{"Accepted", "Accepted again"} {
+		if saved := app.SaveView(root, name, query); saved.State != desktop.Completed {
+			t.Fatalf("save %s: %+v", name, saved)
+		}
+	}
+	if saved := app.SaveView(other, "Elsewhere", query); saved.State != desktop.Completed {
+		t.Fatalf("save elsewhere: %+v", saved)
+	}
+	evidence := bytesUnder(t, root)
+	cleared := app.ClearViews(root)
+	if cleared.State != desktop.Empty || len(cleared.Views) != 0 {
+		t.Fatalf("clear: %+v", cleared)
+	}
+	if listed := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state}).ListViews(root); listed.State != desktop.Empty {
+		t.Fatalf("cleared views came back: %+v", listed)
+	}
+	if kept := app.ListViews(other); !reflect.DeepEqual(viewNames(kept), []string{"Elsewhere"}) {
+		t.Fatalf("another project's views were cleared: %+v", kept)
+	}
+	if !reflect.DeepEqual(bytesUnder(t, root), evidence) {
+		t.Fatal("clearing the views changed the project")
+	}
+	if again := app.ClearViews(root); again.State != desktop.Empty {
+		t.Fatalf("clearing a project with no view: %+v", again)
+	}
+}

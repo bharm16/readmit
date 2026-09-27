@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -114,6 +115,83 @@ func (f File) Rotate(ctx context.Context, name string, at time.Time) (Document, 
 		return Document{}, Control{}, stepRefusal{KeyStep, errUnanswered}
 	}
 	return f.save(rotate(document, name, at))
+}
+
+// Amendment changes the settings of a registered control. A nil member is
+// left exactly as it is registered; Arguments in particular is replaced only
+// when given, so a person who never saw the stored arguments cannot clear or
+// repeat them by accident. The name, state, generation and rotation record are
+// not amendable here.
+type Amendment struct {
+	Storage   *Storage
+	Command   *string
+	Arguments *[]string
+	MaxAge    *string
+	Retain    *string
+}
+
+// errLocatorUnanswered refuses an amendment that changes where the key is read
+// from when the new locator does not answer. Nothing was changed.
+var errLocatorUnanswered = errors.New("the key did not resolve from the changed locator; the control is unchanged")
+
+// Amend changes a registered control's settings and writes the document. A
+// change to the locator — the program or its arguments — changes which key
+// packages are written under, so it is recorded as a rotation: the key is read
+// through the new locator first, exactly as Rotate reads it, and only when it
+// answers is the generation bumped and the rotation time stamped with the
+// change. A key is never changed silently within one generation. Rotated
+// reports whether the amendment was recorded as a rotation.
+func (f File) Amend(ctx context.Context, name string, change Amendment, at time.Time) (updated Document, stored Control, rotated bool, err error) {
+	document, err := f.Read()
+	if err != nil {
+		return Document{}, Control{}, false, err
+	}
+	entry, err := Find(document, name)
+	if err != nil {
+		return Document{}, Control{}, false, err
+	}
+	amended := entry
+	if change.Storage != nil {
+		amended.Storage = *change.Storage
+	}
+	if change.Command != nil {
+		amended.Command = *change.Command
+	}
+	if change.Arguments != nil {
+		amended.Arguments = slices.Clone(*change.Arguments)
+		if amended.Arguments == nil {
+			amended.Arguments = []string{}
+		}
+	}
+	if change.MaxAge != nil {
+		amended.MaxAge = *change.MaxAge
+	}
+	if change.Retain != nil {
+		amended.Retain = *change.Retain
+	}
+	rotated = amended.Command != entry.Command || !slices.Equal(amended.Arguments, entry.Arguments)
+	if rotated {
+		if err := validateControl(amended); err != nil {
+			return Document{}, Control{}, false, err
+		}
+		if _, err := ReadKey(ctx, amended); err != nil {
+			return Document{}, Control{}, false, stepRefusal{KeyStep, errLocatorUnanswered}
+		}
+	}
+	updated, stored, err = f.save(amend(document, name, func(current *Control) error {
+		generation, rotatedAt := current.Generation, current.RotatedAt
+		*current = amended
+		current.Generation, current.RotatedAt = generation, rotatedAt
+		if rotated {
+			current.Generation++
+			current.RotatedAt = stamp(at)
+		}
+		return nil
+	}))
+	if err != nil {
+		return Document{}, Control{}, false, err
+	}
+	return updated, stored, rotated, nil
 }
 
 // Retire stops a control writing new packages and writes the document. It still

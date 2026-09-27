@@ -363,3 +363,49 @@ func TestAnInterruptedDocumentWriteIsReportedAndThePreviousDocumentKept(t *testi
 		t.Fatalf("reopened %+v (%v)", reopened, err)
 	}
 }
+
+// An amendment changes a control's settings and nothing else, and leaves the
+// arguments alone unless new ones are given. A changed locator changes which
+// key packages are written under, so it is recorded only as a rotation: the
+// key is read through the new locator first, and a locator that does not
+// answer changes nothing.
+func TestAmendKeepsTheGenerationUnlessTheLocatorChanges(t *testing.T) {
+	t.Setenv(storeSwitch, "emit")
+	file := registered(t, "lab-evidence")
+	before, err := file.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := before.Controls[0]
+
+	storage, maxAge, retain := CustomerKeyStorage, "", "24h"
+	_, stored, rotated, err := file.Amend(context.Background(), "lab-evidence",
+		Amendment{Storage: &storage, MaxAge: &maxAge, Retain: &retain}, registeredAt.Add(time.Hour))
+	if err != nil || rotated || stored.Generation != 1 || !stored.RotatedAt.Equal(original.RotatedAt) ||
+		stored.Storage != CustomerKeyStorage || stored.MaxAge != "" || stored.Retain != "24h" ||
+		stored.Command != original.Command || strings.Join(stored.Arguments, "\x00") != strings.Join(original.Arguments, "\x00") {
+		t.Fatalf("a settings amendment: %+v rotated=%v (%v)", stored, rotated, err)
+	}
+
+	// A locator that does not answer changes nothing.
+	settled := held(t, file.Path)
+	missing := []string{filepath.Join(t.TempDir(), "no-such-key")}
+	if _, _, _, err := file.Amend(context.Background(), "lab-evidence", Amendment{Arguments: &missing}, registeredAt.Add(2*time.Hour)); err == nil ||
+		err.Error() != "the key did not resolve from the changed locator; the control is unchanged" || StepOf(err) != KeyStep {
+		t.Fatalf("an unanswered locator change answered %v", err)
+	}
+	unchanged(t, file, settled, "an unanswered locator change")
+
+	// A locator that answers is recorded as a rotation.
+	replaced := []string{locator(t, testOnlyOtherKey)}
+	at := time.Date(2026, 10, 2, 8, 0, 0, 500_000_000, time.UTC)
+	_, stored, rotated, err = file.Amend(context.Background(), "lab-evidence", Amendment{Arguments: &replaced}, at)
+	if err != nil || !rotated || stored.Generation != 2 || !stored.RotatedAt.Equal(at.Truncate(time.Second)) || stored.Arguments[0] != replaced[0] {
+		t.Fatalf("an answered locator change: %+v rotated=%v (%v)", stored, rotated, err)
+	}
+
+	// A control nobody registered is refused.
+	if _, _, _, err := file.Amend(context.Background(), "never-registered", Amendment{}, at); err == nil {
+		t.Fatal("an amendment of an unregistered control was accepted")
+	}
+}

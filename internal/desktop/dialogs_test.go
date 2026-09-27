@@ -42,6 +42,7 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 	writeDocument(t, filepath.Dir(destinations), filepath.Base(destinations),
 		`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"https://portal.example.test/checkouts"}`)
 	policy := testlicense.New(t)
+	writeDocument(t, workspace, "protection.json", `{"schema":"readmit-protection/v1","controls":[{"name":"lab-evidence","storage":"none-declared","state":"active","command":"/usr/bin/true","arguments":["lab-key"],"generation":1,"rotated_at":"2026-09-18T09:00:00Z"}]}`+"\n")
 
 	type dialog struct {
 		name string
@@ -103,6 +104,9 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseInspectionPath(copy-destination)", call: func(a *desktop.App) any { return a.ChooseInspectionPath("copy-destination", "/chosen/source.hl7") }, opens: "save", destination: unnamed(), title: "Save copy"},
 		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file", "") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Open HL7 file"},
 		{name: "ChooseCorpusPath", call: func(a *desktop.App) any { return a.ChooseCorpusPath("corpus-folder") }, opens: "folder", folder: fresh()},
+		{name: "ExportProtectionControl", call: func(a *desktop.App) any {
+			return a.ExportProtectionControl(workspace, "protection.json", "lab-evidence")
+		}, opens: "save", title: "Export encryption control"},
 		{name: "ChooseScenarioLibraryImport", call: func(a *desktop.App) any { return a.ChooseScenarioLibraryImport() }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 	}
 	window := func(c *chooser) *desktop.App {

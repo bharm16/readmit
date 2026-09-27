@@ -649,8 +649,13 @@ func (a *App) reviewer() string {
 	return local
 }
 
-// reviewerName is how an approval names the person who gave it.
+// reviewerName is how an approval names the person who gave it: the local
+// reviewer name kept in the preferences, or else the account name. It is a
+// label only; the review binding (reviewer) never reads it.
 func (a *App) reviewerName() string {
+	if saved := a.savedReviewer(); saved != "" {
+		return saved
+	}
 	if current, err := user.Current(); err == nil && current.Username != "" {
 		return current.Username
 	}

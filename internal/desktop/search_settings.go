@@ -2,6 +2,8 @@ package desktop
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"strconv"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // maxIndexNames bounds how many collision-safe names SaveSearchSettings tries
@@ -130,4 +133,90 @@ func ownIndex(root string, opened *bundle.Bundle, caseName string) (string, bool
 		}
 	}
 	return "", false
+}
+
+// CaseSearchSettings is one case of the open project and the settings of its
+// own persistent search index, or nil when it has none and its messages are
+// read directly. Reason says why a case could not be read.
+type CaseSearchSettings struct {
+	Case     string          `json:"case"`
+	Identity string          `json:"identity,omitzero"`
+	Settings *SearchSettings `json:"settings"`
+	Reason   string          `json:"reason,omitzero"`
+}
+
+// SearchSettingsListResult lists every case of the open project with its
+// search settings.
+type SearchSettingsListResult struct {
+	State  State                `json:"state"`
+	Reason string               `json:"reason,omitzero"`
+	Cases  []CaseSearchSettings `json:"cases"`
+}
+
+func (r *SearchSettingsListResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
+// ListSearchSettings reports, for every case of the open project, the
+// declarations of its own persistent search index, as DescribeSearchSettings
+// reports one case's. It reads and writes no other file, and an expired
+// index is described, not extended. Saving stays SaveSearchSettings'.
+func (a *App) ListSearchSettings(workspace string) SearchSettingsListResult {
+	return run(a, false, false, func(ctx context.Context) SearchSettingsListResult {
+		result := SearchSettingsListResult{Cases: []CaseSearchSettings{}}
+		root, declined := resolveFolder(workspace)
+		if root == "" {
+			result.refuse(declined.state, declined.reason)
+			return result
+		}
+		entries, err := os.ReadDir(root)
+		switch {
+		case errors.Is(err, fs.ErrPermission):
+			result.refuse(PermissionDenied, "this account cannot read the project folder")
+			return result
+		case err != nil:
+			result.refuse(Failed, "the project folder cannot be read")
+			return result
+		}
+		now := time.Now().UTC()
+		for _, entry := range entries {
+			if ctx.Err() != nil {
+				result.refuse(Cancelled, "the search settings were not read")
+				return result
+			}
+			name := entry.Name()
+			if !entry.IsDir() || artifactpath.EntryName(name) != nil {
+				continue
+			}
+			path, err := artifactpath.Child(root, name)
+			if err != nil {
+				continue
+			}
+			if _, err := bundle.Describe(path); err != nil {
+				continue
+			}
+			row := CaseSearchSettings{Case: name}
+			opened, err := operation.OpenCase(path)
+			if err != nil {
+				row.Reason = err.Error()
+				result.Cases = append(result.Cases, row)
+				continue
+			}
+			row.Identity = opened.Identity
+			if indexName, own := ownIndex(root, opened, name); own {
+				if document, err := index.Open(artifactpath.JoinReference(root, indexName)); err == nil {
+					row.Settings = &SearchSettings{
+						Fields: document.Policy.Fields, Retention: document.Policy.Retention, RetainUntil: document.Policy.RetainUntil,
+						Expired: document.Usable(now) != nil,
+					}
+				}
+			}
+			result.Cases = append(result.Cases, row)
+		}
+		result.State = Completed
+		if len(result.Cases) == 0 {
+			result.State, result.Reason = Empty, "this project has no case"
+		}
+		return result
+	})
 }

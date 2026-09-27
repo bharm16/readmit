@@ -5,6 +5,7 @@ import (
 
 	"github.com/bharm16/readmit/docs"
 	"github.com/bharm16/readmit/internal/capability"
+	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/project"
 )
 
@@ -89,9 +90,11 @@ type Shell struct {
 	Commands   []Command   `json:"commands"`
 	Themes     []Theme     `json:"themes"`
 	TextScales []int       `json:"text_scales"`
-	Privacy    Privacy     `json:"privacy"`
-	Support    Support     `json:"support"`
-	Vocabulary Vocabulary  `json:"vocabulary"`
+	// Version is the build identity this executable was stamped with.
+	Version    string     `json:"version"`
+	Privacy    Privacy    `json:"privacy"`
+	Support    Support    `json:"support"`
+	Vocabulary Vocabulary `json:"vocabulary"`
 }
 
 // ShellResult carries one state, like every other result the interface reads.
@@ -243,11 +246,12 @@ const (
 )
 
 // themes and textScales are the appearance choices offered. Text scales to
-// twice its size, and neither choice is written anywhere: both follow the
-// system until they are changed, and start from the system again next launch.
+// twice its size. The choice made is kept in the preferences document
+// (ReadPreferences, SavePreferences); until one is kept the window follows the
+// system theme at the unscaled size.
 var (
 	themes     = []Theme{SystemTheme, LightTheme, DarkTheme}
-	textScales = []int{100, 125, 150, 200}
+	textScales = []int{100, 125, 150, 175, 200}
 )
 
 // privacyStatus is the truth about this build, stated in the window. There is
@@ -279,6 +283,7 @@ var privacyStatus = Privacy{
 		"where you were — the folder, case, region and run you had open — in readmit-desktop-session/v1",
 		"the editor work you had not stored yet — notes you were writing, test drafts, assertion-set drafts, canonical edits, suite drafts and reproducer plans — in readmit-desktop-drafts/v1, or readmit-desktop-drafts/v2 once a draft names the object it edits",
 		"the folder new projects are created in and each project you have opened, as its identity, folder and name, in readmit-desktop-projects/v1",
+		"the theme, text size and local reviewer name you saved, in readmit-desktop-preferences/v1",
 		"the folder backups are kept in and each backup, archive copy and rollback copy the application wrote, as its folder, identity, project name and date, with the staged update a rollback copy was prepared for, in readmit-desktop-storage/v1",
 		"inside each project, beside its evidence, the names, identities and dates of its objects and the files the application saved for them, in its own readmit-catalog/v1 catalog, and copies of the files you attached to its cases with their names, in readmit-attachments/v1, and the latest explicit check of each environment — when it ran, the revision it checked, the address it reached and what it found — in readmit-environment-check/v1",
 		"the commercial destinations file you selected, as a path only, in readmit-desktop-commercial-selection/v1",
@@ -391,8 +396,8 @@ func openCapabilities(data []byte) []string {
 // the support guidance and the privacy status. It reads nothing and writes
 // nothing, so it does not claim the operation slot and stays available while an
 // operation runs: the palette and the privacy status work whenever the window
-// is open. The per-operation connected/offline states live in DisclosureStatus,
-// which answers through the slot like every other read.
+// is open. What is configured and connected now lives in ListConnections,
+// which reads saved configuration and runtime state without the slot.
 func (a *App) Shell() ShellResult {
 	described := Shell{
 		Regions:    regions,
@@ -400,6 +405,7 @@ func (a *App) Shell() ShellResult {
 		Commands:   commands,
 		Themes:     themes,
 		TextScales: textScales,
+		Version:    engine.Version(),
 		Privacy:    privacyStatus,
 		Support:    supportStatus,
 		Vocabulary: vocabulary(),

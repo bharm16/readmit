@@ -58,7 +58,6 @@ import type {
   DiagnosisGroupsResult,
   DiagnosisRequest,
   DiagnosisResult,
-  DisclosureStatusResult,
   DraftRequest,
   DraftValidation,
   DurableRunRequest,
@@ -335,6 +334,15 @@ import type {
   StorageBackupRequest,
   StorageBackupResult,
   RepairSearchRequest,
+  Preferences,
+  PreferencesResult,
+  ConnectionsResult,
+  SearchSettingsListResult,
+  ProtectionListResult,
+  ProtectionCheckResult,
+  ProtectionControlUpdate,
+  ProtectionUpdateResult,
+  ProtectionExportResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -554,14 +562,6 @@ export function shell(): Promise<ShellResult> {
   return guard(() => facade().Shell(), { state: "failed" });
 }
 
-/** How each disclosed activity stands right now. It does not claim the
- * operation slot: it reads which named operation holds it, so an activity
- * running now reads active, and it refuses busy only while an operation it
- * cannot attribute holds the slot. It contacts nothing: the answer is read
- * from the window's own state. */
-export function disclosureStatus(): Promise<DisclosureStatusResult> {
-  return retryingRead(() => facade().DisclosureStatus(), { state: "failed" });
-}
 
 export function startDurableRun(request: DurableRunRequest): Promise<DurableRunResult> {
  return guard(() => facade().StartDurableRun(request), { state: "failed", reason: "The desktop connection was interrupted. Recover the output directory to inspect evidence; do not resend automatically." });
@@ -1958,4 +1958,53 @@ export function backupProject(request: StorageBackupRequest): Promise<StorageBac
 /** Rebuilds one case's own search data under its unchanged retention. */
 export function repairSearch(request: RepairSearchRequest): Promise<BuildIndexResult> {
   return guard(() => facade().RepairSearch(request), { state: "failed" });
+}
+
+// Settings (#561): saved preferences, the inventory of configured connections,
+// saved searches and encryption controls.
+
+/** The saved theme, text size and local reviewer name. */
+export function readPreferences(): Promise<PreferencesResult> {
+  return retryingRead(() => facade().ReadPreferences(), { state: "failed", preferences: { theme: "system", text_scale: 100 } });
+}
+
+/** Saves all three preferences together. */
+export function savePreferences(preferences: Preferences): Promise<PreferencesResult> {
+  return guard(() => facade().SavePreferences(preferences), { state: "failed", preferences });
+}
+
+/** Every configured connection and what is reaching one now. Reads saved
+ * configuration and this window's own state; contacts nothing. */
+export function listConnections(context: RequestContext): Promise<ConnectionsResult> {
+  return retryingRead(() => facade().ListConnections(context), { state: "failed", context, rows: [] });
+}
+
+/** Removes every saved view of this project. */
+export function clearViews(workspace: string): Promise<ViewsResult> {
+  return guard(() => facade().ClearViews(workspace), { state: "failed", views: [] });
+}
+
+/** What each case's search index keeps, and until when. */
+export function listSearchSettings(workspace: string): Promise<SearchSettingsListResult> {
+  return retryingRead(() => facade().ListSearchSettings(workspace), { state: "failed", cases: [] });
+}
+
+/** Every encryption control the project declares. */
+export function listProtectionControls(workspace: string): Promise<ProtectionListResult> {
+  return retryingRead(() => facade().ListProtectionControls(workspace), { state: "failed", controls: [], unreadable: [], limitations: [] });
+}
+
+/** Asks the control's key program for its key once; nothing is kept. */
+export function checkProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionCheckResult> {
+  return guard(() => facade().CheckProtectionControl(workspace, entry, name), { state: "failed", name });
+}
+
+/** Saves a control's settings; a changed key program is recorded as a rotation. */
+export function updateProtectionControl(request: ProtectionControlUpdate): Promise<ProtectionUpdateResult> {
+  return guard(() => facade().UpdateProtectionControl(request), { state: "failed", rotated: false });
+}
+
+/** Writes one control's reference to a file the person names. */
+export function exportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult> {
+  return guard(() => facade().ExportProtectionControl(workspace, entry, name), { state: "failed" });
 }

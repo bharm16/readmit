@@ -338,6 +338,7 @@ var destinationActivities = map[string]string{
 var operationsRunningDeclaredPrograms = []string{
 	"TestSecretReference", "RotateSecretReference", "ScanSecrets",
 	"RotateProtectionControl", "PackProtectedPackage", "OpenProtectedPackage",
+	"CheckProtectionControl", "UpdateProtectionControl",
 	"DiagnoseHub", "ConnectHub", "CompleteHubAuth", "ConnectOperatorHub",
 	"EnrollRunner", "ExecuteRunnerJob",
 	"CheckTarget", "ResetTarget", "StartReduction",

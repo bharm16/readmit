@@ -142,6 +142,7 @@ func (a *App) CheckEnvironment(request ItemRequest) EnvironmentCheckResult {
 			result.refuse(Failed, err.Error())
 			return result
 		}
+		a.reach(reachingTarget{ref: "environment:" + item.Ref.ID, name: item.Name, kind: ConnectionEnvironment, destination: target.Address})
 		report, decision, err := operation.DiagnoseTarget(ctx, target, members.policy, sendpolicy.SystemResolver)
 		checked := a.now()
 		result.Report, result.Decision, result.CheckedAt = toEnvironmentReport(report), &decision, catalog.Stamp(checked)

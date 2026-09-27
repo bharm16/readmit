@@ -12,7 +12,6 @@ import type { Vocabulary } from "../bindings";
 import { VocabularyContext } from "../vocabulary";
 import {
   catalogOfListing,
-  disclosureStatusResult,
   filtersResult,
   guideResult,
   messagesResult,
@@ -40,7 +39,8 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     CommercialStatus: () => ({ state: "empty" }),
     LicenseStatus: () => ({ state: "empty" }),
     HubStatus: () => ({ state: "empty", connected: false, authenticated: false }),
-    DisclosureStatus: () => disclosureStatusResult(),
+    ReadPreferences: () => ({ state: "completed", preferences: { theme: "system", text_scale: 100 } }),
+    ListConnections: (context) => ({ state: "empty", context, rows: [] }),
     // Retaining where the viewer is and dropping a stored draft answer
     // quietly unless a test is about them.
     RecordView: () => sessionStored,

@@ -41,7 +41,6 @@ import {
   REPORT_SHA256,
   testResult,
   NO_STAGES_MISSING,
-  disclosureStatusResult,
   durableRunResult,
   folderChosen,
   runEvidenceResult,
@@ -57,7 +56,7 @@ import {
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
-import type { CommercialStatusResult, HubResult, ScenarioCatalogResult } from "./bindings";
+import type { CommercialStatusResult, HubResult, RequestContext, ScenarioCatalogResult } from "./bindings";
 
 /** Opens a folder the way a person does from anywhere: the projects page's
  * Open… button, which is the SelectWorkspace dialog. */
@@ -716,7 +715,7 @@ test("a navigation read whose slot stays held is reported busy after a bounded n
 });
 
 test("the panels' opening reads that meet a held slot are asked again and draw what the facade holds", async () => {
-  // The scenario, hub, commercial and disclosure panels each read
+  // The scenario, hub, commercial and connection panels each read
   // as they open, together, and the facade answers every read that arrives
   // while another holds its one slot busy. Each of these answers busy twice —
   // once for each mount StrictMode makes — before it answers.
@@ -725,6 +724,8 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
     let asked = 0;
     return () => (++asked <= 2 ? busy : answer());
   };
+  let connectionsAsked = 0;
+  const busyConnections = (context: RequestContext) => (++connectionsAsked <= 2 ? { state: "busy" as const, reason: BUSY, context, rows: [] } : null);
   const user = userEvent.setup();
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
@@ -742,20 +743,25 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
       }),
       { state: "busy", reason: BUSY },
     ),
-    DisclosureStatus: busyFirst(() => disclosureStatusResult(), { state: "busy", reason: BUSY }),
+    ListConnections: (context) =>
+      busyConnections(context) ?? {
+        state: "completed",
+        context,
+        rows: [{ ref: "hub:client", name: "Team hub", kind: "team", destination: "", state: "not-checked", checked_at: null, last_seen: null, owner: { kind: "team" }, disclosure: "hub", actions: ["edit"], detail: { signed_in: false } }],
+      },
   });
   await openFolder(user);
   // Each panel draws the facade's answer, not the busy refusal.
   expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
   expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
   await goToView(user, "Settings", "Security");
-  const table = screen.getByRole("table", { name: /deliberately configured activities/i });
-  expect(await within(table).findAllByText(/Idle/i)).toBeTruthy();
+  const table = await screen.findByRole("table", { name: "Connections" });
+  expect(await within(table).findByText("Team hub")).toBeTruthy();
   for (const method of [
     "ScenarioCatalog",
     "HubStatus",
     "CommercialStatus",
-    "DisclosureStatus",
+    "ListConnections",
   ] as const) {
     await waitFor(() => expect(facade.callsTo(method).length).toBeGreaterThan(2));
   }

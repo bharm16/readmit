@@ -25,7 +25,7 @@ import { OperationAccess } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
 import { PacketPanel } from "../PacketPanel";
 import { PerformanceCorpus } from "../PerformanceCorpus";
-import { PrivacyDisclosure, SupportGuidance } from "../PrivacyDisclosure";
+import { SupportGuidance } from "../SupportGuidance";
 import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
 import { ProfileEditor } from "../ProfileEditor";
@@ -216,15 +216,6 @@ export const examples: Example[] = [
   e("OperatorHub", () => <OperatorHub />),
   e("PacketPanel", () => <PacketPanel {...common} />),
   e("PerformanceCorpus", () => <PerformanceCorpus {...common} request={1} />),
-  e("PrivacyDisclosure", () => (
-    <PrivacyDisclosure
-      operations={f.shellResult().shell!.privacy.operations}
-      workspaceOpen={true}
-      onOpenRunPanel={noop}
-      onStartCapture={noop}
-      onStartObservation={noop}
-    />
-  )),
   e("SupportGuidance", () => (
     <SupportGuidance support={f.shellResult().shell!.support} />
   )),

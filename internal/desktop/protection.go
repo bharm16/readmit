@@ -47,17 +47,17 @@ var protectionLimitations = []string{
 // absolute path, and a count instead of the arguments, because an argument is
 // the one place an operator could have put key material.
 type ProtectionControl struct {
-	Name             string `json:"name"`
-	Storage          string `json:"storage"`
-	State            string `json:"state"`
-	Generation       int    `json:"generation"`
-	RotatedAt        string `json:"rotated_at"`
-	Rotation         string `json:"rotation"`
-	MaxAge           string `json:"max_age,omitzero"`
-	Retain           string `json:"retain,omitzero"`
-	Command          string `json:"command"`
-	LocatorArguments int    `json:"locator_arguments"`
-	Key              string `json:"key"`
+	Name             string                `json:"name"`
+	Storage          protect.Storage       `json:"storage"`
+	State            protect.State         `json:"state"`
+	Generation       int                   `json:"generation"`
+	RotatedAt        string                `json:"rotated_at"`
+	Rotation         protect.RotationState `json:"rotation"`
+	MaxAge           string                `json:"max_age,omitzero"`
+	Retain           string                `json:"retain,omitzero"`
+	Command          string                `json:"command"`
+	LocatorArguments int                   `json:"locator_arguments"`
+	Key              string                `json:"key"`
 }
 
 // ProtectionDocument is one protection document of the open workspace, as
@@ -92,9 +92,9 @@ func protectionView(entry string, document protect.Document) *ProtectionDocument
 	now := time.Now()
 	for _, control := range document.Controls {
 		view.Controls = append(view.Controls, ProtectionControl{
-			Name: control.Name, Storage: string(control.Storage), State: string(control.State),
+			Name: control.Name, Storage: control.Storage, State: control.State,
 			Generation: control.Generation, RotatedAt: control.RotatedAt.UTC().Format(time.RFC3339),
-			Rotation: string(control.Rotation(now)), MaxAge: control.MaxAge, Retain: control.Retain,
+			Rotation: control.Rotation(now), MaxAge: control.MaxAge, Retain: control.Retain,
 			Command: control.Command, LocatorArguments: len(control.Arguments), Key: protect.Mask,
 		})
 	}

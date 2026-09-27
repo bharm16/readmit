@@ -1,6 +1,8 @@
 import { HelpTopics } from "./ContextHelp";
 import { OperationAccess } from "./OperationAccess";
-import { PrivacyDisclosure, SupportGuidance } from "./PrivacyDisclosure";
+import { SupportGuidance } from "./SupportGuidance";
+import { GeneralView, SecurityView, usePreferences, type ConnectionRoute } from "./Settings";
+import { useEncryption } from "./Encryption";
 import { HubPanel } from "./HubPanel";
 import { RunnerPanel } from "./RunnerPanel";
 import { RunComparison } from "./RunComparison";
@@ -138,7 +140,6 @@ import {
   type SearchResult,
   type Shell,
   type State,
-  type Theme,
   type WorkspaceResult,
 } from "./bindings";
 import { Comparison, readsComparison } from "./Comparison";
@@ -187,7 +188,6 @@ import {
   BackLink,
   Categories,
   EmptyState,
-  FormDialog,
   FrameContext,
   GLOBAL_DESTINATIONS,
   Modal,
@@ -197,7 +197,6 @@ import {
   PROJECT_DESTINATIONS,
   Page,
   ProjectSwitcher,
-  ValueRows,
   folderName,
   humanize,
   type Destination,
@@ -399,9 +398,11 @@ export default function App() {
 
   const [focused, setFocused] = useState<RegionId>("navigation");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [theme, setTheme] = useState<Theme>("system");
-  const [scale, setScale] = useState(0);
-  const [editingGeneral, setEditingGeneral] = useState(false);
+  const preferences = usePreferences();
+  const [startUpdate, setStartUpdate] = useState(false);
+  // Observation setup opened from Security's Add connection returns there.
+  const [observingFromSecurity, setObservingFromSecurity] = useState(false);
+  const [packagesOpen, setPackagesOpen] = useState(false);
   // The inspector width each project was last given, in rem. The shown width
   // is clamped to the room there is now without overwriting the wider choice.
   const [inspectorWidths, setInspectorWidths] = useState<Record<string, number>>({});
@@ -600,21 +601,6 @@ export default function App() {
     setWatchedRun(folder);
     await pushRecord(view(folder));
   }, [pushRecord, view, workspaceRoot]);
-
-  // The chosen theme and text size are applied to the document and written
-  // nowhere: both follow the system again the next time the window opens.
-  useEffect(() => {
-    if (theme === "system") {
-      document.documentElement.removeAttribute("data-theme");
-    } else {
-      document.documentElement.setAttribute("data-theme", theme);
-    }
-  }, [theme]);
-
-  useEffect(() => {
-    const percent = described?.text_scales[scale] ?? 100;
-    document.documentElement.style.setProperty("--text-scale", String(percent / 100));
-  }, [described, scale]);
 
   // Whether an operation holds the window's one slot: this window's own, or a
   // screen's whose call holds the facade, such as the raw inspection and the
@@ -1916,7 +1902,10 @@ export default function App() {
     go: (objectId, view) => open({ destination: "environments", objectId, ...(view ? { view } : {}) }),
     back,
     busy,
+    onAdded: () => open({ destination: "settings", view: "security" }),
   });
+
+  const encryption = useEncryption({ root: place === "encryption" ? root : null, busy });
 
   // Storage reads under its own request scope, so its reads never make
   // another list's answer look stale.
@@ -1926,6 +1915,34 @@ export default function App() {
   const openSettings = useCallback((view: SettingsView) => open({ destination: "settings", view }), [open]);
 
   const openStorage = useCallback(() => openSettings("storage"), [openSettings]);
+
+  /** Security's Add connection and Edit: the owner of that kind's setup. */
+  const openConnection = (route: ConnectionRoute) => {
+    switch (route.kind) {
+      case "environment":
+        open({ destination: "environments", ...(route.id ? { objectId: route.id } : {}), view: route.id ? "edit" : "add" });
+        return;
+      case "observation":
+        if (route.id) {
+          open({ destination: "environments", objectId: `observation:${route.id}` });
+        } else {
+          setCaptureBinding(null);
+          setObserving(true);
+          setObservingFromSecurity(true);
+          open({ destination: "environments" });
+        }
+        return;
+      case "team":
+        openSettings("team");
+        return;
+      case "runner":
+        openSettings("runners");
+        return;
+      case "license":
+        openSettings("license");
+        return;
+    }
+  };
 
   // Every command the facade declares has an action here. The record is keyed by
   // the declared identifiers, so a command the window forgot is a type error
@@ -1969,13 +1986,20 @@ export default function App() {
     "go-to-navigation": () => focusRegion("navigation"),
     "go-to-evidence": () => focusRegion("evidence"),
     "go-to-inspector": () => focusRegion("inspector"),
-    "larger-text": () =>
-      setScale((current) => Math.min((described?.text_scales.length ?? 1) - 1, current + 1)),
-    "smaller-text": () => setScale((current) => Math.max(0, current - 1)),
+    "larger-text": () => {
+      const scales = described?.text_scales ?? [100];
+      const next = scales.find((percent) => percent > preferences.saved.text_scale);
+      if (next !== undefined) void preferences.save({ ...preferences.saved, text_scale: next });
+    },
+    "smaller-text": () => {
+      const scales = described?.text_scales ?? [100];
+      const next = [...scales].reverse().find((percent) => percent < preferences.saved.text_scale);
+      if (next !== undefined) void preferences.save({ ...preferences.saved, text_scale: next });
+    },
     "switch-theme": () => {
       const themes = described?.themes ?? ["system"];
-      const next = themes[(themes.indexOf(theme) + 1) % themes.length];
-      setTheme(next ?? "system");
+      const next = themes[(themes.indexOf(preferences.saved.theme) + 1) % themes.length];
+      void preferences.save({ ...preferences.saved, theme: next ?? "system" });
     },
   };
 
@@ -2859,6 +2883,10 @@ export default function App() {
               onClose={() => {
                 setObserving(false);
                 setCaptureBinding(null);
+                if (observingFromSecurity) {
+                  setObservingFromSecurity(false);
+                  open({ destination: "settings", view: "security" });
+                }
               }}
             />
           ) : opened ? (
@@ -3072,30 +3100,15 @@ export default function App() {
         <Page id="settings" shown={place === "settings"} title="Settings">
           <Categories label="Settings categories" categories={SETTINGS_VIEWS} selected={settingsView} onSelect={setView}>
             <TaskPanel tabs="settings-views" tab="general" className="task-panel view-panel" shown={settingsView === "general"}>
-              <div className="section-header">
-                <h2>General</h2>
-                <button type="button" onClick={() => setEditingGeneral(true)}>
-                  Edit
-                </button>
-              </div>
-              <ValueRows
-                label="General"
-                rows={[
-                  { label: "Theme", value: themeLabel(theme) },
-                  { label: "Text size", value: `${described?.text_scales[scale] ?? 100}%` },
-                ]}
-              />
-              <GeneralEditor
-                open={editingGeneral}
+              <GeneralView
+                preferences={preferences}
                 themes={described?.themes ?? ["system"]}
                 scales={described?.text_scales ?? [100]}
-                theme={theme}
-                scale={scale}
-                onClose={() => setEditingGeneral(false)}
-                onSave={(nextTheme, nextScale) => {
-                  setTheme(nextTheme);
-                  setScale(nextScale);
-                  setEditingGeneral(false);
+                version={described?.version ?? ""}
+                canUpdate={root !== null}
+                onCheckUpdate={() => {
+                  setStartUpdate(true);
+                  openSettings("storage");
                 }}
               />
             </TaskPanel>
@@ -3109,24 +3122,14 @@ export default function App() {
               <RunnerPanel />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="security" className="task-panel view-panel" shown={settingsView === "security"}>
-              {described ? (
-                <PrivacyDisclosure
-                  operations={described.privacy.operations}
-                  workspaceOpen={root !== null}
-                  onOpenRunPanel={() => open({ destination: "run-test" })}
-                  onStartCapture={() => {
-                    setCapturing(true);
-                    open({ destination: "cases" });
-                  }}
-                  onStartObservation={() => {
-                    setCaptureBinding(null);
-                    setObserving(true);
-                    open({ destination: "environments" });
-                  }}
+              {place === "settings" && settingsView === "security" ? (
+                <SecurityView
+                  root={root}
+                  busy={busy}
+                  operations={described?.privacy.operations ?? []}
+                  onOpen={openConnection}
+                  onEncryption={() => open({ destination: "encryption" })}
                 />
-              ) : null}
-              {root ? (
-                <ProtectionPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} />
               ) : null}
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="storage" className="task-panel view-panel" shown={settingsView === "storage"}>
@@ -3137,12 +3140,34 @@ export default function App() {
                   context={storageContext}
                   busy={busy}
                   onOpenProject={(folder) => void openFolder(() => openWorkspace(folder))}
+                  startUpdate={startUpdate}
+                  onUpdateStarted={() => setStartUpdate(false)}
                 />
               ) : root ? null : (
                 noProject("storage and backups")
               )}
             </TaskPanel>
           </Categories>
+        </Page>
+
+        <Page
+          id="encryption"
+          shown={place === "encryption"}
+          title="Encryption"
+          back={<BackLink label="Settings" onBack={back} />}
+          actions={
+            root ? (
+              <>
+                {encryption.actions}
+                <Menu label="More encryption actions" items={[{ label: "Packages", onSelect: () => setPackagesOpen(true) }]} />
+              </>
+            ) : null
+          }
+        >
+          {root ? encryption.body : noProject("encryption")}
+          <Modal open={packagesOpen && root !== null} title="Packages" size="wide" onClose={() => setPackagesOpen(false)}>
+            <ProtectionPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} />
+          </Modal>
         </Page>
 
         <Page id="help" shown={place === "help"} title="Help">
@@ -3582,66 +3607,6 @@ function SuiteHandoffNotice({ handoff }: { handoff: SuiteRunHandoff }) {
   );
 }
 
-function themeLabel(theme: Theme): string {
-  return theme === "system" ? "System" : theme === "light" ? "Light" : theme === "dark" ? "Dark" : humanize(theme);
-}
-
-/** General settings' Edit sheet: the saved choices, prefilled; Save applies
- * them together. */
-function GeneralEditor({
-  open,
-  themes,
-  scales,
-  theme,
-  scale,
-  onClose,
-  onSave,
-}: {
-  open: boolean;
-  themes: Theme[];
-  scales: number[];
-  theme: Theme;
-  scale: number;
-  onClose: () => void;
-  onSave: (theme: Theme, scale: number) => void;
-}) {
-  const [draftTheme, setDraftTheme] = useState(theme);
-  const [draftScale, setDraftScale] = useState(scale);
-  useEffect(() => {
-    if (open) {
-      setDraftTheme(theme);
-      setDraftScale(scale);
-    }
-  }, [open, theme, scale]);
-  return (
-    <FormDialog
-      open={open}
-      title="General"
-      size="small"
-      submitLabel="Save"
-      dirty={draftTheme !== theme || draftScale !== scale}
-      onClose={onClose}
-      onSubmit={() => onSave(draftTheme, draftScale)}
-    >
-      <label htmlFor="theme">Theme</label>
-      <select id="theme" value={draftTheme} onChange={(event) => setDraftTheme(event.target.value as Theme)}>
-        {themes.map((choice) => (
-          <option key={choice} value={choice}>
-            {themeLabel(choice)}
-          </option>
-        ))}
-      </select>
-      <label htmlFor="text-size">Text size</label>
-      <select id="text-size" value={draftScale} onChange={(event) => setDraftScale(Number(event.target.value))}>
-        {scales.map((percent, index) => (
-          <option key={percent} value={index}>
-            {percent}%
-          </option>
-        ))}
-      </select>
-    </FormDialog>
-  );
-}
 
 /** The recent projects the switcher offers besides the open one, at most
  * five, by the names their projects record. */

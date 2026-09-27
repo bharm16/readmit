@@ -252,6 +252,15 @@ func (a *App) RemoveView(workspace, name string) ViewsResult {
 	})
 }
 
+// ClearViews removes every view saved for the project open at workspace. It
+// removes the saved queries only: no evidence, index or export is read,
+// changed or removed, and the views of every other project are kept.
+func (a *App) ClearViews(workspace string) ViewsResult {
+	return a.changeViews(workspace, func([]grid.View) ([]grid.View, refusal) {
+		return nil, refusal{}
+	})
+}
+
 // changeViews applies one change to one project's views under the operation
 // slot and stores the whole document. A refused change stores nothing and
 // reports the views as they were.

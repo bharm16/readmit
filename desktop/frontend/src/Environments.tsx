@@ -48,21 +48,22 @@ import "./environments.css";
 
 /** Where Environments is: its list, one environment, its credentials, or one observation. */
 export type EnvironmentPlace =
-  | { kind: "list" }
-  | { kind: "environment"; id: string }
+  | { kind: "list"; adding?: boolean }
+  | { kind: "environment"; id: string; editing?: boolean }
   | { kind: "credentials"; id: string }
   | { kind: "observation"; id: string; environment?: string };
 
 export function environmentPlace(objectId: string | undefined, view: string | undefined): EnvironmentPlace {
-  if (!objectId) return { kind: "list" };
+  if (!objectId) return view === "add" ? { kind: "list", adding: true } : { kind: "list" };
   if (objectId.startsWith("observation:")) {
     const [, id = "", environment] = objectId.split(":");
     return environment ? { kind: "observation", id, environment } : { kind: "observation", id };
   }
-  return view === "credentials" ? { kind: "credentials", id: objectId } : { kind: "environment", id: objectId };
+  if (view === "credentials") return { kind: "credentials", id: objectId };
+  return view === "edit" ? { kind: "environment", id: objectId, editing: true } : { kind: "environment", id: objectId };
 }
 
-const TRANSPORTS: { value: "tls" | "plain"; label: string }[] = [
+export const TRANSPORTS: { value: "tls" | "plain"; label: string }[] = [
   { value: "tls", label: "TLS" },
   { value: "plain", label: "TCP/MLLP" },
 ];
@@ -72,7 +73,7 @@ const STORES: Record<SecretStore, string> = { "os-keychain": "OS keychain", "cus
 const ROTATIONS: Record<string, string> = { current: "Current", overdue: "Overdue", "not-declared": "Not declared" };
 
 /** How a connection check's outcome reads. */
-const CHECK_OUTCOMES: Record<string, string> = {
+export const CHECK_OUTCOMES: Record<string, string> = {
   reachable: "Reachable",
   unsolicited_bytes: "Reachable, sent unexpected bytes",
   connection_refused: "Connection refused",
@@ -141,13 +142,20 @@ export type EnvironmentsProps = {
   go: (objectId: string, view?: string) => void;
   back: () => void;
   busy: boolean;
+  /** Where a save started from elsewhere (Settings → Security → Add
+   * connection) returns; without it the saved environment opens. */
+  onAdded?: (() => void) | undefined;
 };
 
 /** Environments supplies its page's title, way back, actions and body. */
-export function useEnvironments({ root, context, place, go, back, busy }: EnvironmentsProps) {
+export function useEnvironments({ root, context, place, go, back, busy, onAdded }: EnvironmentsProps) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [listFailure, setListFailure] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const addRequested = place.kind === "list" && place.adding === true;
+  useEffect(() => {
+    if (addRequested) setAdding(true);
+  }, [addRequested]);
 
   const refresh = useCallback(async () => {
     if (!root) return;
@@ -167,7 +175,7 @@ export function useEnvironments({ root, context, place, go, back, busy }: Enviro
 
   const envId = place.kind === "environment" || place.kind === "credentials" ? place.id : null;
   const selected = envId ? (items?.find((item) => item.ref.id === envId) ?? null) : null;
-  const detail = useEnvironmentDetail({ item: selected, context, refresh, go, back, busy, place });
+  const detail = useEnvironmentDetail({ item: selected, context, refresh, go, back, busy, place, onEdited: onAdded });
   const observation = useObservation({
     id: place.kind === "observation" ? place.id : null,
     environment: place.kind === "observation" ? (items?.find((item) => item.ref.id === place.environment) ?? null) : null,
@@ -279,11 +287,15 @@ export function useEnvironments({ root, context, place, go, back, busy }: Enviro
           mode="add"
           context={context}
           item={null}
-          onClose={() => setAdding(false)}
+          onClose={() => {
+            setAdding(false);
+            if (addRequested && onAdded) onAdded();
+          }}
           onSaved={async (saved) => {
             setAdding(false);
             await refresh();
-            go(saved.id);
+            if (addRequested && onAdded) onAdded();
+            else go(saved.id);
           }}
         />
       </>
@@ -301,6 +313,7 @@ function useEnvironmentDetail({
   back,
   busy,
   place,
+  onEdited,
 }: {
   item: CatalogItem | null;
   context: () => RequestContext;
@@ -309,6 +322,8 @@ function useEnvironmentDetail({
   back: () => void;
   busy: boolean;
   place: EnvironmentPlace;
+  /** Where an edit started from elsewhere returns once it is saved or closed. */
+  onEdited?: (() => void) | undefined;
 }) {
   const [draft, setDraft] = useState<ItemDraft | null>(null);
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
@@ -338,6 +353,13 @@ function useEnvironmentDetail({
     setSheet(null);
     await refresh();
   };
+
+  // Opened to edit from elsewhere (Settings → Security): the connection sheet
+  // opens as soon as the draft is read.
+  const editingFromElsewhere = place.kind === "environment" && place.editing === true;
+  useEffect(() => {
+    if (editingFromElsewhere && draft) setSheet("connection");
+  }, [editingFromElsewhere, draft !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Saves the environment with one change applied to its whole draft. */
   const saveWith = async (change: (draft: ItemDraft) => ItemDraft, fields: Record<string, string>): Promise<SubmitFailure | null> => {
@@ -485,8 +507,14 @@ function useEnvironmentDetail({
         context={context}
         item={item}
         draft={draft}
-        onClose={() => setSheet(null)}
-        onSaved={saved}
+        onClose={() => {
+          setSheet(null);
+          if (editingFromElsewhere && onEdited) onEdited();
+        }}
+        onSaved={async () => {
+          await saved();
+          if (editingFromElsewhere && onEdited) onEdited();
+        }}
       />
       <FormDialog
         open={sheet === "check"}

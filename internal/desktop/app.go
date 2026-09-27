@@ -326,6 +326,15 @@ type App struct {
 	// the slot is running now, as the programs report themselves; see
 	// declaredProgramStarted.
 	programs int
+	// reaching is what the operation holding the slot recorded it reaches,
+	// so the connection inventory names it even once its configuration is
+	// removed; see reach.
+	reaching *reachingTarget
+
+	// sessionsMu guards when this window last connected or ended each hub
+	// session, which the connection inventory reports.
+	sessionsMu sync.Mutex
+	sessions   map[string]sessionMark
 
 	// sessionMu serializes the working session alone. Retaining an unstored
 	// note edit and the place it was typed in must not wait for the operation
@@ -357,6 +366,9 @@ type App struct {
 	// folder dialog, which are kept in memory alone.
 	storageMu     sync.Mutex
 	chosenBackups map[string]string
+	// preferencesMu serializes the preferences document alone, so saving
+	// them never waits for the operation slot.
+	preferencesMu sync.Mutex
 
 	// clock is the facade's time, which a test fixes; nil is the system
 	// clock.
@@ -382,7 +394,7 @@ type App struct {
 }
 
 // New binds the facade to a host folder dialog and the shell document store
-// over the folder given, where the shell keeps its eight local documents.
+// over the folder given, where the shell keeps its nine local documents.
 // NewWithOperationSelection restores the three remembered selections from the
 // same store. None holds evidence.
 func New(chooser FolderChooser, documents ShellDocuments) *App {
@@ -438,6 +450,7 @@ func (a *App) release() {
 	a.running = false
 	a.operation = ""
 	a.runOutput = ""
+	a.reaching = nil
 }
 
 // declaredProgramStarted counts one operator-declared program as running,

@@ -365,7 +365,7 @@ msiexec /x readmit-desktop_VERSION_x64.msi /qn /norestart
 ```
 
 Removing the application removes the application. It never removes evidence, a
-project, or the eight local shell-state documents described under Appearance;
+project, or the nine local shell-state documents described under Appearance;
 the uninstaller does not delete those owner-only files.
 
 Continuous integration downloads the built packages onto fresh native runners,
@@ -572,9 +572,9 @@ the state recovery needs most. They are serialized among themselves, so a
 reader never observes a partial document. `Shell` cannot
 fail in the facade; it still carries a state, because the binding itself is
 unavailable while the application is starting, and the window says so rather
-than drawing itself with no commands and no privacy status. `DisclosureStatus`
-does not claim the slot either, because which operation holds it is what it
-reports; Settings › Security describes it.
+than drawing itself with no commands and no privacy status. `ListConnections`
+does not claim the slot either, because which operation is reaching a
+destination is what it reports; Settings › Security describes it.
 
 `Cancel` cannot retract bytes an operation has already written. Choosing a
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
@@ -2608,16 +2608,18 @@ retention of.
 
 ### Appearance
 
-The window offers `system`, `light` and `dark`, and text sizes from 100% to
-200%. Both start from the system every time the window opens and are written
-nowhere. The shell keeps eight separate owner-only local documents: saved
+The window offers `system`, `light` and `dark`, and text sizes of 100%, 125%,
+150%, 175% and 200%. Until a person saves a choice in Settings › General the
+window follows the system theme at 100%. The shell keeps nine separate
+owner-only local documents: saved
 filters and views (`readmit-filters/v2`, which also reads `/v1`),
 the working session (`readmit-desktop-session/v1`), editor drafts
 (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
 edits), the projects folder and the projects opened
 (`readmit-desktop-projects/v1`), the backup folder and the backups, archive
 copies and rollback copies this viewer wrote (`readmit-desktop-storage/v1`),
-and selected paths for the operation policy
+the saved theme, text size and local reviewer name
+(`readmit-desktop-preferences/v1`), and selected paths for the operation policy
 (`readmit-desktop-operation-selection/v1`), commercial destinations
 (`readmit-desktop-commercial-selection/v1`) and customer hub configuration
 (`readmit-desktop-hub-selection/v1`). Saved filter terms and retained drafts may
@@ -2730,34 +2732,46 @@ typed to filter by and the other a note whose subject is the evidence beside it.
 Because durable execution, source collection, environment connectivity checks
 and fixture resets, observation windows, the customer hub and the runner all
 genuinely reach configured destinations, a blanket no-network claim would be
-false, so Settings › Security discloses each such
-activity separately: its destination, the data it carries, the authorization it
-requires, and — answered by the facade from the window's own connection state,
-contacting nothing — whether it is idle, active, configured, offline or
-connected right now. That answer does not claim the operation slot: every
-operation that can reach a destination or change a target runs under a name,
-and the activity that name belongs to is active while it holds the slot, so the
-status reads which operation holds it, once, and is answered while that
-operation runs without starting or changing anything. Each active activity says
-which of its operations is running — a connectivity check, a fixture reset, a
-send-policy evaluation or a reduction for the environment, for example. The hub
-reads active while a hub request or the sign-in runs, and otherwise connected,
-offline or not configured from its own connection objects; with no hub
-configuration selected it is not configured even then, because a hub operation
-refuses before it reaches anything. The portal never reads active: this window
-makes no request to it. An operation that holds the slot without a name is local
-work no activity can be attributed to, so while one runs the answer is `busy`,
-never an idle state. Nothing on that list is contacted by startup or by any local
-operation, and each activity's next action opens the screen where it is
-configured or run. The same region states the support guidance the facade
-derives from the checked capability ledger and the verified qualification
-state: the connector and database refusals #35 and #75 own, the
-de-identification and external-equivalence declines, the unsigned preview
-status, and every ledger row still open, named as open rather than promised.
-That status is part
+false, so Settings › Security lists the connections this computer actually has
+configured, by name, destination and state (`ListConnections`, #561): saved
+environments and observation sources, the selected team and operator hubs, and
+the customer portal once its destinations file is selected. The list is built
+from saved configuration and the window's own state and contacts nothing — no
+name lookup, credential locator, hub status probe or runner configuration read
+— and it does not claim the operation slot. A connection reads Active while an
+operation reaches it (and stays listed while it does, even if another window
+removed its configuration), Connected only for a live hub session,
+Disconnected once this window ended one, Checked with its time after an
+explicit check or a trustworthy collection, Not checked when nothing has
+reached it, and Unavailable with the reason when its configuration cannot be
+read; a check is never shown as Connected. A running operation that belongs to
+no listed connection, and a declared program while it runs, are listed as their
+activity. A connection's details carry its destination, the data it may carry
+and the authorization it requires from the shell's privacy table, with Edit
+opening the owner's setup and, for a connected hub, Disconnect. The list is
+read again when an operation starts or ends and on Refresh status. Help carries
+the support guidance the facade derives from the checked capability ledger and
+the verified qualification state: the connector and database refusals #35 and
+#75 own, the de-identification and external-equivalence declines, the unsigned
+preview status, and every ledger row still open, named as open rather than
+promised. That status is part
 of the facade, so it is the same fact the rest of the product is built on rather
 than a sentence the interface maintains separately, and the frontend sources are
 checked to hold no network call and no browser storage at all.
+
+Settings › Security › Encryption lists the project's encryption controls
+(`ListProtectionControls`): name, storage declaration, state, key generation and
+rotation status. Add control and a control's Edit are one sheet — name, storage
+declaration, the key program chosen in the native picker, its arguments,
+rotation interval and retention period — and one Save. Stored arguments are
+counted and never shown; Replace arguments starts an empty list. Saving a
+changed key program or arguments (`UpdateProtectionControl`) reads the key
+through the new locator first and records a rotation, so a generation never
+silently changes key. Check control (`CheckProtectionControl`) reads the key
+once and records nothing; Record rotation, Export control (the reference only,
+never key bytes) and Retire control, which asks once, are in the control's
+menu. Encrypted packages are packed, inspected, opened and discarded under
+Encryption's menu until sharing (#560) owns them.
 
 Some operations run a program the operator declared by its absolute path: the
 locator of a credential reference when one is tested, rotated or scanned for,
@@ -4437,7 +4451,8 @@ step is confirmed in the review, and the final button runs only that. These
 share the Go engine with the CLI, keeping parity with `readmit target`,
 `readmit secret`, and the policy and plan readers of `readmit target check`
 and `readmit target reset`. The file-level observation setup stays a started
-task reached from Security and from a capture's binding.
+task reached from Security's Add connection › Source and from a capture's
+binding.
 
 ### Named environments and observations
 

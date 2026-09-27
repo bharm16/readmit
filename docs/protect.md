@@ -43,12 +43,15 @@ readmit protect discard transfer-2026-09-18
 | `protect discard PACKAGE [--override-retention]` | Unlinks the files a package declares and states what that does not establish |
 
 The [desktop shell](desktop.md#privacy-review-protected-export-and-support-sharing)
-reaches these operations from its protection panel: a control is registered as
-a structured form, the document is shown with the key masked and the locator
-arguments counted, and packages are packed, inspected, opened and discarded
-under the control a person selects. Retiring a control there is `protect
-retire`, written as the same bytes; the window asks first, then shows the
-control retired, offers it for no new package and still opens what it wrote.
+reaches these operations from Settings › Security › Encryption: a control is
+added or edited in one sheet, listed with its storage declaration, state,
+generation and rotation, and shown with the locator arguments counted, never
+echoed; changing a control's key program is recorded as a rotation. Check
+control reads the key once and records nothing, and Export control writes the
+reference only. Packages are packed, inspected, opened and discarded from
+Encryption's Packages. Retiring a control there is `protect retire`, written as
+the same bytes; the window asks once, then shows the control retired, offers it
+for no new package and still opens what it wrote.
 The window never renders key material, a rotation is recorded only when the
 declared store answers, and every refusal — a missing key, a retired control, a
 retained package — is this command's own. Packing a package writes it beside
