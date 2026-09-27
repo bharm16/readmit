@@ -345,3 +345,32 @@ func entriesOf(t *testing.T, folder string) []string {
 	}
 	return names
 }
+
+// workspaceState is every entry under a folder by its relative path: a file by
+// the SHA-256 of its bytes, a symbolic link by where it points, so a test can
+// state that a refused import changed nothing, the links it was refused at
+// included.
+func workspaceState(t *testing.T, root string) map[string]string {
+	t.Helper()
+	state := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			target, err := os.Readlink(path)
+			state[relative] = "link to " + target
+			return err
+		}
+		state[relative] = fileDigest(t, path)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state
+}

@@ -224,7 +224,6 @@ func TestStartupRestorationAndInspectionReachNoConfiguredDestination(t *testing.
 	}
 	second.InspectRunnerJob(runnerRequest.Output, job)
 	second.ShowRunnerAdmissions()
-	second.ScenarioCatalog()
 	second.ObservationSupport()
 	// Selecting a hub configuration again is a local read: it is configured
 	// and offline, and connecting stays a separate deliberate action.
@@ -305,7 +304,7 @@ var destinationActivities = map[string]string{
 	"StartDurableRun": "run", "ResumeDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
 	"DeriveExportReview": "run", "ExportDerivedPacket": "run", "GenerateSyntheticPacket": "run", "SendReplay": "run", "ReexecuteReviewedEvidence": "run",
 	"EnrollRunner": "runner", "ExecuteRunnerJob": "runner",
-	"DiagnoseSource": "capture", "CollectSource": "capture", "StartCapture": "capture",
+	"DiagnoseSource": "capture", "CollectSource": "capture", "StartCapture": "capture", "StartSampleFixture": "capture",
 	"CheckTarget": "environment", "CheckEnvironment": "environment", "CheckEnvironmentDestination": "environment", "ResetTarget": "environment", "EvaluateSendPolicy": "environment", "StartReduction": "environment", "PreviewReplay": "environment",
 	"CollectObservation": "observe",
 	"DiagnoseHub":        "hub", "ConnectHub": "hub", "StartHubAuth": "hub", "CompleteHubAuth": "hub", "HubStatus": "hub",

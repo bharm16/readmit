@@ -46,20 +46,6 @@ export const privateExamples: Example[] = [
   }),
   p("PerformanceCorpus", "ProgressLine", privateData.progressLine),
   p("PerformanceCorpus", "ScanReport", privateData.scanReport),
-  p("ProfileEditor", "PinStatus", {
-    resolution: f.localProfileFixture().resolution,
-  }),
-  p("ProfileEditor", "Fact", {
-    term: "Identity",
-    children: "synthetic-profile-identity",
-  }),
-  p("ProfileEditor", "WholeNumber", { value: 3, min: 0, onCommit: noop }),
-  p("ProfileEditor", "Repetitions", {
-    group: "Synthetic group",
-    value: { min: 1, max: 3 },
-    disabled: false,
-    onChange: noop,
-  }),
   p("ProjectPanel", "EditableDocument", {
     result: f.revisionsResult(),
     indicators: f.indicatorTable(),

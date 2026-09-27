@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/expectation"
@@ -34,6 +35,9 @@ import (
 // its spec names that revision's target file, as every readmit-test/v1 spec
 // names a file, so a later edit of the environment reaches the test when the
 // test is saved again.
+//
+// A test may also link reusable check groups, each by the exact version it
+// uses, which are decided against the retained evidence of each of its runs.
 
 // TestLinksSchema is the contract of a test's links member.
 const TestLinksSchema = "readmit-test-links/v1"
@@ -83,14 +87,19 @@ const (
 // maxSourceBytes bounds a source's references.
 const maxSourceBytes = 256
 
+// maxLinkedCheckGroups bounds the check groups one test links.
+const maxLinkedCheckGroups = 16
+
 // TestLinks is what a test names beside its spec: the catalog identity of the
 // environment it runs against, how its reset is decided, the tags a person
-// gave it, sorted, and where it was created from.
+// gave it, sorted, the check groups it links, each at the exact version it
+// uses, and where it was created from.
 type TestLinks struct {
 	Schema      string      `json:"schema,omitzero"`
 	Environment string      `json:"environment,omitzero"`
 	Reset       TestReset   `json:"reset,omitzero"`
 	Tags        []string    `json:"tags,omitzero"`
+	Checks      []ItemRef   `json:"checks,omitzero"`
 	Source      *TestSource `json:"source,omitzero"`
 }
 
@@ -198,6 +207,11 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		}
 		environment, target = members, entry
 	}
+	for i, ref := range links.Checks {
+		if problem := scope.checkGroupOfTest(ref); problem != "" {
+			problems = append(problems, FieldProblem{Field: testField("checks", i), Problem: problem})
+		}
+	}
 
 	var data []byte
 	if draft.Test != nil {
@@ -269,7 +283,7 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		return nil, normalized, problems
 	}
 	staged := []catalog.Staged{{Role: "test", File: "test.json", Data: data}}
-	if links.Environment != "" || links.Reset != "" || len(links.Tags) > 0 || links.Source != nil {
+	if links.Environment != "" || links.Reset != "" || len(links.Tags) > 0 || len(links.Checks) > 0 || links.Source != nil {
 		encoded, err := encodeMember(links)
 		if err != nil {
 			return nil, normalized, append(problems, FieldProblem{Field: "test_links", Problem: err.Error()})
@@ -301,6 +315,16 @@ func checkTestLinks(links TestLinks) []FieldProblem {
 	problems := []FieldProblem{}
 	if links.Environment != "" && !catalog.ValidID(links.Environment) {
 		problems = append(problems, FieldProblem{Field: "test.environment", Problem: "an environment is named by its identity in the project"})
+	}
+	if len(links.Checks) > maxLinkedCheckGroups {
+		problems = append(problems, FieldProblem{Field: "test.checks", Problem: "a test links at most " + strconv.Itoa(maxLinkedCheckGroups) + " check groups"})
+	}
+	for i, ref := range links.Checks {
+		number, err := strconv.Atoi(ref.Revision)
+		if ref.Kind != CheckGroupItem || !catalog.ValidID(ref.ID) || err != nil || number < 1 || strconv.Itoa(number) != ref.Revision ||
+			slices.ContainsFunc(links.Checks[:i], func(linked ItemRef) bool { return linked.ID == ref.ID }) {
+			problems = append(problems, FieldProblem{Field: testField("checks", i), Problem: "a check group is linked once, by its identity and the exact version the test uses"})
+		}
 	}
 	switch links.Reset {
 	case "", ResetFromEnvironment, ResetManual:
@@ -351,7 +375,13 @@ func readTestLinks(path string) (TestLinks, error) {
 // verifyTest reads a staged test revision through the readers the command
 // line reads its spec with, and its links.
 func verifyTest(files map[string]string) error {
-	if _, err := testrunner.ReadSpec(files["test"]); err != nil {
+	if declares(files["test"], expectation.Schema) {
+		// An approved test release, as an upgrade of its profile pin
+		// publishes it, is read by the release reader.
+		if _, err := expectation.Read(files["test"]); err != nil {
+			return err
+		}
+	} else if _, err := testrunner.ReadSpec(files["test"]); err != nil {
 		return err
 	}
 	if path, held := files["links"]; held {
@@ -381,6 +411,46 @@ func (s draftScope) environmentOfTest(id string) (*environmentMembers, string, s
 		return nil, "", "that environment's target is not one entry of the project"
 	}
 	return members, entry, ""
+}
+
+// checkGroupOfTest reads the exact version of a check group a test links, as
+// the assertion reader reads its set, and answers why it cannot be linked, or
+// nothing.
+func (s draftScope) checkGroupOfTest(ref ItemRef) string {
+	if s.loaded == nil {
+		return "the project holds no such check group"
+	}
+	index := s.loaded.document.Find(ref.ID)
+	if index < 0 || s.loaded.document.Items[index].Kind != string(CheckGroupItem) || s.loaded.removed(s.loaded.document.Items[index]) {
+		return "the project holds no such check group"
+	}
+	if _, err := s.loaded.checkGroupSet(s.loaded.document.Items[index], ref.Revision); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// checkGroupSet is the path of one saved version of a check group's
+// readmit-assertion-set/v1 document, read through the assertion reader. A
+// check group the project only holds as a discovered file has no version to
+// link.
+func (c *loadedCatalog) checkGroupSet(item catalog.Item, revision string) (string, error) {
+	if len(item.Revisions) == 0 || revision == "" {
+		return "", errors.New("a test links a saved version of a check group; save this check group in the Library first")
+	}
+	paths, availability, reason := c.revisionBacking(item, revision)
+	if availability != ItemAvailable {
+		return "", errors.New(reason)
+	}
+	path := paths[primaryRole(CheckGroupItem)]
+	data, err := boundedFile(path, assertion.MaxSetBytes)
+	if err == nil {
+		_, err = assertion.Decode(data)
+	}
+	if err != nil {
+		return "", errors.New("that version of the check group cannot be read: " + err.Error())
+	}
+	return path, nil
 }
 
 // environmentReset is the reset instructions an environment's named reset
@@ -797,7 +867,7 @@ func testChanges(before, after *savedTest) []TestChange {
 		{ChangeBoundary, x.Observation.Boundary != y.Observation.Boundary},
 		{ChangeObservation, x.Observation.Path != y.Observation.Path},
 		{ChangeReset, x.Setup.ResetInstructions != y.Setup.ResetInstructions || lx.Reset != ly.Reset},
-		{ChangeChecks, !reflect.DeepEqual(x.Assertions, y.Assertions)},
+		{ChangeChecks, !reflect.DeepEqual(x.Assertions, y.Assertions) || !slices.Equal(lx.Checks, ly.Checks)},
 		{ChangeTags, !slices.Equal(lx.Tags, ly.Tags)},
 	} {
 		if change.changed {
@@ -807,15 +877,105 @@ func testChanges(before, after *savedTest) []TestChange {
 	return changes
 }
 
+// TestRunChecksRequest names one retained run of a test and the version of
+// the test it executed, whose linked check groups it is decided against.
+type TestRunChecksRequest struct {
+	Context RequestContext `json:"context"`
+	Test    ItemRef        `json:"test"`
+	Run     ItemRef        `json:"run"`
+}
+
+// TestRunChecksResult is each check group the test version links, in the
+// order it links them, decided against the run's retained evidence. It is
+// Empty when the version links none.
+type TestRunChecksResult struct {
+	State   State             `json:"state"`
+	Reason  string            `json:"reason,omitzero"`
+	Context RequestContext    `json:"context"`
+	Checks  []TestRunCheckSet `json:"checks"`
+}
+
+func (r *TestRunChecksResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// TestRunCheckSet is one linked check group, at the exact version the test
+// links, and what deciding it against the run's evidence established: the
+// explanation `readmit explain` gives for that set and run, or why none could
+// be assembled. No value is revealed.
+type TestRunCheckSet struct {
+	Group       ItemRef         `json:"group"`
+	Name        string          `json:"name"`
+	State       State           `json:"state"`
+	Reason      string          `json:"reason,omitzero"`
+	Explanation *RunExplanation `json:"explanation,omitzero"`
+}
+
+// TestRunChecks decides the check groups one version of a test links against
+// the retained evidence of one run that executed exactly that version, each
+// through the re-decider `readmit explain` uses. It is a read: nothing runs,
+// nothing is sent and nothing is retained, so deciding again decides the same.
+func (a *App) TestRunChecks(request TestRunChecksRequest) TestRunChecksResult {
+	return run(a, false, false, func(ctx context.Context) TestRunChecksResult {
+		result := TestRunChecksResult{Context: request.Context, Checks: []TestRunCheckSet{}}
+		if request.Test.Kind != TestItem || request.Run.Kind != RunItem {
+			result.refuse(Failed, "a test's linked checks are decided against one of its runs")
+			return result
+		}
+		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Test, false)
+		if loaded == nil {
+			result.refuse(refused.State, refused.Reason)
+			return result
+		}
+		record := loaded.document.Items[loaded.document.Find(item.Ref.ID)]
+		saved, err := loaded.testOf(record, request.Test.Revision)
+		if err != nil {
+			result.refuse(Failed, "this test cannot be read: "+err.Error())
+			return result
+		}
+		if !slices.ContainsFunc(loaded.runsOf(saved.spec), func(run runView) bool { return run.id == request.Run.ID }) {
+			result.refuse(Failed, "that run did not execute this version of the test")
+			return result
+		}
+		runEntry := loaded.document.Items[loaded.document.Find(request.Run.ID)].Entry
+		if saved.links == nil || len(saved.links.Checks) == 0 {
+			result.State = Empty
+			return result
+		}
+		for _, ref := range saved.links.Checks {
+			decided := TestRunCheckSet{Group: ref}
+			index := loaded.document.Find(ref.ID)
+			if index < 0 || loaded.document.Items[index].Kind != string(CheckGroupItem) {
+				decided.State, decided.Reason = Failed, "the project holds no such check group"
+				result.Checks = append(result.Checks, decided)
+				continue
+			}
+			group := loaded.document.Items[index]
+			decided.Name = loaded.read(group).Name
+			set, err := loaded.checkGroupSet(group, ref.Revision)
+			if err != nil {
+				decided.State, decided.Reason = Failed, err.Error()
+				result.Checks = append(result.Checks, decided)
+				continue
+			}
+			explained := explainRun(ctx, RunExplanationRequest{Workspace: loaded.root, Run: runEntry, Assertions: loaded.entryOf(set)})
+			decided.State, decided.Reason, decided.Explanation = explained.State, explained.Reason, explained.Explanation
+			result.Checks = append(result.Checks, decided)
+		}
+		result.State = Completed
+		return result
+	})
+}
+
 // ItemRevision is one published revision of a saved object: the reference
 // that names it, its number, when and by whom it was published, and whether
-// it is current.
+// it is current. Version is the version a profile revision published, as
+// a test's pin names it.
 type ItemRevision struct {
 	Ref         ItemRef `json:"ref"`
 	Number      int     `json:"number"`
 	PublishedAt *string `json:"published_at"`
 	Author      string  `json:"author,omitzero"`
 	Current     bool    `json:"current"`
+	Version     string  `json:"version,omitzero"`
 }
 
 // ItemHistoryResult is an object's published revisions, newest first.
@@ -847,11 +1007,19 @@ func (a *App) ItemHistory(request ItemRequest) ItemHistoryResult {
 		}
 		record := loaded.document.Items[index]
 		for i, revision := range slices.Backward(record.Revisions) {
-			result.Revisions = append(result.Revisions, ItemRevision{
+			published := ItemRevision{
 				Ref:    ItemRef{Kind: request.Ref.Kind, ID: record.ID, Revision: strconv.Itoa(revision.Number)},
 				Number: revision.Number, PublishedAt: stamped(revision.PublishedAt), Author: revision.Author,
 				Current: i == len(record.Revisions)-1,
-			})
+			}
+			if request.Ref.Kind == ProfileItem {
+				if paths, availability, _ := loaded.membersBacking(revision.Members); availability == ItemAvailable {
+					if profile, _, err := readLocalProfile(paths); err == nil {
+						published.Version = profile.Identity.Version
+					}
+				}
+			}
+			result.Revisions = append(result.Revisions, published)
 		}
 		if len(result.Revisions) > 0 {
 			result.State = Completed

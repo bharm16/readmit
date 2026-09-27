@@ -9,134 +9,46 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/scenario"
-	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/bharm16/readmit/internal/scenariolibrary"
 	"github.com/bharm16/readmit/internal/synth"
 )
 
-// ScenarioCatalogResult carries the closed set of lifecycle profiles and events
-// the shared engine supports, including unavailable events with reasons.
-type ScenarioCatalogResult struct {
-	State   State             `json:"state"`
-	Reason  string            `json:"reason,omitzero"`
-	Catalog *scenario.Catalog `json:"catalog,omitzero"`
+func lifecycleForFamily(family string) (scenario.ProfileName, bool) {
+	switch strings.ToUpper(family) {
+	case "ADT":
+		return scenario.ADTLifecycle, true
+	case "SIU":
+		return scenario.SIULifecycle, true
+	case "ORM":
+		return scenario.ORMLifecycle, true
+	case "ORU":
+		return scenario.ORULifecycle, true
+	default:
+		return "", false
+	}
 }
 
-func (r *ScenarioCatalogResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
-
-// ScenarioPreviewRequest carries a scenario or order-scenario document and
-// whether identifiers may be revealed locally.
-type ScenarioPreviewRequest struct {
-	Workspace       string `json:"workspace"`
-	Document        string `json:"document"`
-	RevealSensitive bool   `json:"reveal_sensitive,omitzero"`
+// readChosenFile reads one file a person chose by path under the bound its
+// contract is held to, through the shared document store. It must be a
+// regular file once any link is followed, so a FIFO, a device or an oversized
+// file is refused rather than opened and read to its end, and a file this
+// account cannot read keeps the filesystem's refusal behind the sentence.
+func readChosenFile(path string, limit int64) ([]byte, error) {
+	chosen := chosenFile
+	chosen.MaxBytes = int(limit)
+	return chosen.Read(path)
 }
 
-// ScenarioStepView is one previewed step without message bytes.
-type ScenarioStepView struct {
-	Ordinal     int    `json:"ordinal"`
-	ID          string `json:"id"`
-	At          string `json:"at"`
-	Event       string `json:"event"`
-	Description string `json:"description"`
-	Subject     string `json:"subject"`
-	Into        string `json:"into,omitzero"`
-	Expect      string `json:"expect"`
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Reason      string `json:"reason,omitzero"`
-}
-
-// ScenarioSubjectView is one linked identity. Identifiers stay masked unless
-// RevealSensitive was deliberately set on the request.
-type ScenarioSubjectView struct {
-	ID           string `json:"id"`
-	Kind         string `json:"kind"`
-	InitialState string `json:"initial_state"`
-	Namespace    string `json:"namespace,omitzero"`
-	Identifier   string `json:"identifier,omitzero"`
-	Patient      string `json:"patient,omitzero"`
-	Masked       bool   `json:"masked"`
-}
-
-// ScenarioPreviewResult carries the shared-engine timeline for a designed workflow.
-type ScenarioPreviewResult struct {
-	State    State                 `json:"state"`
-	Reason   string                `json:"reason,omitzero"`
-	Scenario string                `json:"scenario,omitzero"`
-	Version  string                `json:"version,omitzero"`
-	Profile  string                `json:"profile,omitzero"`
-	BaseTime string                `json:"base_time,omitzero"`
-	Accepted int                   `json:"accepted,omitzero"`
-	Refused  int                   `json:"refused,omitzero"`
-	Subjects []ScenarioSubjectView `json:"subjects,omitzero"`
-	Steps    []ScenarioStepView    `json:"steps,omitzero"`
-}
-
-func (r *ScenarioPreviewResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
-
-// ScenarioDocumentResult opens, saves or validates one scenario document.
-type ScenarioDocumentResult struct {
-	State    State  `json:"state"`
-	Reason   string `json:"reason,omitzero"`
-	Document string `json:"document,omitzero"`
-	Output   string `json:"output,omitzero"`
-	Profile  string `json:"profile,omitzero"`
-	ID       string `json:"id,omitzero"`
-	Version  string `json:"version,omitzero"`
-}
-
-func (r *ScenarioDocumentResult) refuse(state State, reason string) {
-	r.State, r.Reason = state, reason
-}
-
-// ScenarioSaveRequest writes a scenario document to a new workspace entry.
-type ScenarioSaveRequest struct {
-	Workspace string `json:"workspace"`
-	Document  string `json:"document"`
-	Output    string `json:"output"`
-}
-
-// ScenarioGenerateRequest materializes streams from a generator plan and
-// optionally registers a new generated case for inspection or test authoring.
-type ScenarioGenerateRequest struct {
-	Workspace         string `json:"workspace"`
-	Document          string `json:"document"`
-	OutputName        string `json:"output_name"`
-	CaseName          string `json:"case_name,omitzero"`
-	RegisterInProject bool   `json:"register_in_project,omitzero"`
-	CaseTitle         string `json:"case_title,omitzero"`
-	CaseOwner         string `json:"case_owner,omitzero"`
-	CaseVersion       string `json:"case_version,omitzero"`
-}
-
-// ScenarioGenerateResult reports the generation directory, streams and optional case.
-type ScenarioGenerateResult struct {
-	State            State  `json:"state"`
-	Reason           string `json:"reason,omitzero"`
-	OutputPath       string `json:"output_path,omitzero"`
-	GenerationPath   string `json:"generation_path,omitzero"`
-	StreamCount      int    `json:"stream_count,omitzero"`
-	CaseName         string `json:"case_name,omitzero"`
-	CaseIdentity     string `json:"case_identity,omitzero"`
-	ProvenanceMode   string `json:"provenance_mode,omitzero"`
-	Registered       bool   `json:"registered,omitzero"`
-	GeneratorSeed    uint64 `json:"generator_seed,omitzero"`
-	GeneratorVersion string `json:"generator_version,omitzero"`
-	ProfileVersion   string `json:"profile_version,omitzero"`
-	BaseTime         string `json:"base_time,omitzero"`
-}
-
-func (r *ScenarioGenerateResult) refuse(state State, reason string) {
-	r.State, r.Reason = state, reason
+// chosenFile is how a file a person chose by path is read.
+var chosenFile = artifactdir.Document{
+	Links:    artifactdir.FollowLinks,
+	Refusals: artifactdir.DocumentRefusals{Irregular: errors.New("not a regular file within the bound")},
 }
 
 // ScenarioLibraryRequest names library and expectations documents in a workspace.
@@ -144,12 +56,6 @@ type ScenarioLibraryRequest struct {
 	Workspace    string `json:"workspace"`
 	Library      string `json:"library"`
 	Expectations string `json:"expectations,omitzero"`
-	Output       string `json:"output,omitzero"`
-	TemplateID   string `json:"template_id,omitzero"`
-	TemplateVer  string `json:"template_version,omitzero"`
-	Plan         string `json:"plan,omitzero"`
-	Coverage     string `json:"coverage,omitzero"`
-	Profile      string `json:"profile,omitzero"`
 }
 
 // ScenarioLibraryResult reports library templates, digests and check outcomes.
@@ -157,13 +63,13 @@ type ScenarioLibraryResult struct {
 	State     State                         `json:"state"`
 	Reason    string                        `json:"reason,omitzero"`
 	Document  string                        `json:"document,omitzero"`
-	Output    string                        `json:"output,omitzero"`
 	Templates []ScenarioLibraryTemplateView `json:"templates,omitzero"`
 	Streams   int                           `json:"streams,omitzero"`
 	Fields    int                           `json:"fields,omitzero"`
 	Target    string                        `json:"target,omitzero"`
-	Compared  []ScenarioLibraryCompareView  `json:"compared,omitzero"`
 }
+
+func (r *ScenarioLibraryResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // ScenarioLibraryTemplateView is one pinned library entry.
 type ScenarioLibraryTemplateView struct {
@@ -172,44 +78,6 @@ type ScenarioLibraryTemplateView struct {
 	Profile  string   `json:"profile"`
 	Coverage []string `json:"coverage"`
 	PlanSHA  string   `json:"plan_sha256"`
-}
-
-// ScenarioLibraryCompareView names how two revisions differ without rewriting either.
-type ScenarioLibraryCompareView struct {
-	ID          string `json:"id"`
-	FromVersion string `json:"from_version"`
-	ToVersion   string `json:"to_version"`
-	SamePlan    bool   `json:"same_plan"`
-	FromSHA     string `json:"from_sha256"`
-	ToSHA       string `json:"to_sha256"`
-}
-
-func (r *ScenarioLibraryResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
-
-// ScenarioProfileBindRequest maps a local interface profile (#252) onto a
-// lifecycle template family without substituting an unsupported workflow.
-type ScenarioProfileBindRequest struct {
-	Workspace string `json:"workspace"`
-	Entry     string `json:"entry"`
-	PackEntry string `json:"pack_entry,omitzero"`
-}
-
-// ScenarioProfileBindResult reports the local profile identity and the
-// lifecycle profile that family selects, or why none is available.
-type ScenarioProfileBindResult struct {
-	State            State  `json:"state"`
-	Reason           string `json:"reason,omitzero"`
-	ProfileID        string `json:"profile_id,omitzero"`
-	ProfileVersion   string `json:"profile_version,omitzero"`
-	Family           string `json:"family,omitzero"`
-	HL7Version       string `json:"hl7_version,omitzero"`
-	LifecycleProfile string `json:"lifecycle_profile,omitzero"`
-	GeneratorVersion string `json:"generator_version,omitzero"`
-	Available        bool   `json:"available,omitzero"`
-}
-
-func (r *ScenarioProfileBindResult) refuse(state State, reason string) {
-	r.State, r.Reason = state, reason
 }
 
 // SynthGenerateRequest writes the frozen SIU synthetic family from declared
@@ -235,6 +103,8 @@ type SynthGenerateResult struct {
 	Variants   []SynthVariantView `json:"variants,omitzero"`
 }
 
+func (r *SynthGenerateResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
 // SynthVariantView is one case bundle of a written family, as the family's
 // readmit-synth/v1 completion record lists it.
 type SynthVariantView struct {
@@ -242,321 +112,6 @@ type SynthVariantView struct {
 	Path        string `json:"path"`
 	Identity    string `json:"identity"`
 	KnownDefect string `json:"known_defect,omitzero"`
-}
-
-func (r *SynthGenerateResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
-
-// ScenarioCatalog reports supported lifecycle profiles and event availability.
-func (a *App) ScenarioCatalog() ScenarioCatalogResult {
-	return run(a, false, false, func(context.Context) ScenarioCatalogResult {
-		catalog := scenario.SupportedCatalog()
-		return ScenarioCatalogResult{State: Completed, Catalog: &catalog}
-	})
-}
-
-// BindScenarioProfile selects the lifecycle profile implied by a saved local
-// interface profile without substituting another family silently.
-func (a *App) BindScenarioProfile(request ScenarioProfileBindRequest) ScenarioProfileBindResult {
-	return run(a, false, false, func(context.Context) ScenarioProfileBindResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ScenarioProfileBindResult{State: declined.state, Reason: declined.reason}
-		}
-		data, refused := workspaceDocument(root, request.Entry, 256<<10, "the local profile")
-		if data == nil {
-			return ScenarioProfileBindResult{State: refused.state, Reason: refused.reason}
-		}
-		profile, err := localprofile.Decode(data)
-		if err != nil {
-			return ScenarioProfileBindResult{State: Failed, Reason: err.Error()}
-		}
-		family := profile.Base.Family
-		lifecycle, ok := lifecycleForFamily(family)
-		result := ScenarioProfileBindResult{
-			State:            Completed,
-			ProfileID:        profile.Identity.ID,
-			ProfileVersion:   profile.Identity.Version,
-			Family:           family,
-			HL7Version:       profile.Base.HL7Version,
-			GeneratorVersion: "readmit-scenario-generator-v1",
-			Available:        ok,
-		}
-		if !ok {
-			result.Reason = "family " + family + " has no supported fixture lifecycle profile in this release"
-			return result
-		}
-		result.LifecycleProfile = string(lifecycle)
-		return result
-	})
-}
-
-// PreviewScenario walks a designed workflow through the shared engine.
-func (a *App) PreviewScenario(request ScenarioPreviewRequest) ScenarioPreviewResult {
-	return run(a, false, false, func(context.Context) ScenarioPreviewResult {
-		data, err := a.resolveScenarioDocument(request.Workspace, request.Document, scenariogen.MaxBytes)
-		if err != nil {
-			return ScenarioPreviewResult{State: Failed, Reason: err.Error()}
-		}
-		timeline, err := scenario.PreviewDocument(data)
-		if err != nil {
-			return ScenarioPreviewResult{State: Failed, Reason: err.Error()}
-		}
-		return presentTimeline(timeline, request.RevealSensitive)
-	})
-}
-
-// OpenScenario reads one scenario or order-scenario document from the workspace.
-func (a *App) OpenScenario(workspace, entry string) ScenarioDocumentResult {
-	return run(a, false, false, func(context.Context) ScenarioDocumentResult {
-		data, err := a.resolveScenarioDocument(workspace, entry, scenariogen.MaxBytes)
-		if err != nil {
-			return ScenarioDocumentResult{State: Failed, Reason: err.Error()}
-		}
-		return presentScenarioDocument(data)
-	})
-}
-
-// SaveScenario writes a validated scenario document to a new workspace entry.
-func (a *App) SaveScenario(request ScenarioSaveRequest) ScenarioDocumentResult {
-	return run(a, false, true, func(context.Context) ScenarioDocumentResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ScenarioDocumentResult{State: declined.state, Reason: declined.reason}
-		}
-		presented := presentScenarioDocument([]byte(request.Document))
-		if presented.State != Completed {
-			return presented
-		}
-		canonical := []byte(presented.Document)
-		if err := writeWorkspaceEntry(root, request.Output, canonical); err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioDocumentResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
-			}
-			return ScenarioDocumentResult{State: Failed, Reason: err.Error()}
-		}
-		presented.Output = request.Output
-		return presented
-	})
-}
-
-// GenerateScenario materializes deterministic streams, retains generation.json
-// and writes a new generated case beside them through the one operation that
-// owns both the streams and the case's provenance, then may register that
-// case.
-func (a *App) GenerateScenario(request ScenarioGenerateRequest) ScenarioGenerateResult {
-	return run(a, true, true, func(ctx context.Context) ScenarioGenerateResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ScenarioGenerateResult{State: declined.state, Reason: declined.reason}
-		}
-		if request.OutputName == "" {
-			return ScenarioGenerateResult{State: Failed, Reason: "generation requires a new output directory name"}
-		}
-		if artifactpath.EntryName(request.OutputName) != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: "generation destination must be a new directory entry of the open workspace"}
-		}
-		caseName := request.CaseName
-		if caseName == "" {
-			caseName = request.OutputName + "-case"
-		}
-		if artifactpath.EntryName(caseName) != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
-		}
-		data, err := a.resolveScenarioDocument(root, request.Document, scenariogen.MaxBytes)
-		if err != nil {
-			data = []byte(request.Document)
-		}
-		// The plan is refused in its own words before any destination is
-		// resolved, exactly as the generator's reader refuses it.
-		if _, err := scenariogen.Decode(data); err != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
-		}
-		outputPath, err := artifactpath.Destination(filepath.Join(root, request.OutputName))
-		if err != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: "generation destination must be a new directory entry of the open workspace"}
-		}
-		casePath, err := artifactpath.Destination(filepath.Join(root, caseName))
-		if err != nil {
-			return ScenarioGenerateResult{State: Failed, Reason: "case destination must be a new directory entry of the open workspace"}
-		}
-		written, err := scenariogen.WriteCase(ctx, data, outputPath, casePath)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-				return ScenarioGenerateResult{State: Cancelled, Reason: cancelledRefusal.reason}
-			}
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioGenerateResult{State: PermissionDenied, Reason: "this account cannot write a generated case into the open workspace"}
-			}
-			return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
-		}
-		result := ScenarioGenerateResult{
-			State:            Completed,
-			OutputPath:       outputPath,
-			GenerationPath:   filepath.Join(outputPath, "generation.json"),
-			StreamCount:      written.Streams,
-			CaseName:         caseName,
-			CaseIdentity:     written.Identity,
-			ProvenanceMode:   string(bundle.Generated),
-			GeneratorSeed:    written.Seed,
-			GeneratorVersion: written.GeneratorVersion,
-			ProfileVersion:   written.ProfileVersion,
-			BaseTime:         written.BaseTime.Format(time.RFC3339),
-		}
-		if request.RegisterInProject {
-			if _, err := operation.RegisterCase(root, caseName, operation.CaseRegistration{
-				Title:            request.CaseTitle,
-				Owner:            request.CaseOwner,
-				InterfaceVersion: request.CaseVersion,
-			}); err != nil {
-				return ScenarioGenerateResult{State: Failed, Reason: err.Error()}
-			}
-			result.Registered = true
-		}
-		return result
-	})
-}
-
-// OpenScenarioLibrary reads a reusable scenario library document.
-func (a *App) OpenScenarioLibrary(workspace, entry string) ScenarioLibraryResult {
-	return run(a, false, false, func(context.Context) ScenarioLibraryResult {
-		data, err := a.resolveScenarioDocument(workspace, entry, scenariolibrary.MaxBytes)
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		return presentLibrary(data)
-	})
-}
-
-// SaveScenarioLibraryEntry appends or versions a template without overwriting
-// another pinned revision or silently changing its plan digest.
-func (a *App) SaveScenarioLibraryEntry(request ScenarioLibraryRequest) ScenarioLibraryResult {
-	return run(a, false, true, func(context.Context) ScenarioLibraryResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ScenarioLibraryResult{State: declined.state, Reason: declined.reason}
-		}
-		if request.TemplateID == "" || request.TemplateVer == "" || request.Plan == "" || request.Profile == "" {
-			return ScenarioLibraryResult{State: Failed, Reason: "library entry requires id, version, profile and plan"}
-		}
-		var library scenariolibrary.Library
-		if request.Library != "" {
-			existing, err := a.resolveScenarioDocument(root, request.Library, scenariolibrary.MaxBytes)
-			if err != nil {
-				return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-			}
-			// The library is read by the reader `readmit scenario
-			// check-library` reads it with, and refused in its words.
-			if library, err = scenariolibrary.Decode(existing); err != nil {
-				return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-			}
-		} else {
-			library = scenariolibrary.Library{Schema: "readmit-scenario-library/v1"}
-		}
-		planData := []byte(request.Plan)
-		if decoded, err := a.resolveScenarioDocument(root, request.Plan, scenariogen.MaxBytes); err == nil {
-			planData = decoded
-		}
-		plan, err := scenariogen.Decode(planData)
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		digest, err := scenariolibrary.PlanDigest(planData)
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		coverage := splitCSV(request.Coverage)
-		if len(coverage) == 0 {
-			coverage = []string{"desktop"}
-		}
-		for _, template := range library.Templates {
-			if template.ID == request.TemplateID && template.Version == request.TemplateVer {
-				existing, err := scenariolibrary.PlanDigest(template.Plan)
-				if err != nil {
-					return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-				}
-				if existing == digest {
-					return ScenarioLibraryResult{State: Failed, Reason: "library already holds this exact template revision"}
-				}
-				return ScenarioLibraryResult{State: Failed, Reason: "cannot overwrite another library revision; bump the template version"}
-			}
-		}
-		encodedPlan, err := json.Marshal(plan, json.Deterministic(true))
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: "cannot encode library plan"}
-		}
-		library.Templates = append(library.Templates, scenariolibrary.Template{
-			ID: request.TemplateID, Version: request.TemplateVer, Profile: request.Profile,
-			Coverage: coverage, Plan: jsontext.Value(encodedPlan),
-		})
-		out, err := json.Marshal(library, json.Deterministic(true), jsontext.WithIndent("  "))
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: "cannot encode scenario library"}
-		}
-		out = append(out, '\n')
-		// Nothing is written that the command's reader would refuse: a
-		// template whose profile is not its plan's, an identity or coverage
-		// tag outside the library's names, or a seventeenth template.
-		if _, err := scenariolibrary.Decode(out); err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		destination := request.Output
-		if destination == "" {
-			destination = request.Library
-		}
-		if destination == "" {
-			return ScenarioLibraryResult{State: Failed, Reason: "library save requires an output entry"}
-		}
-		overwrite := request.Library != "" && destination == request.Library
-		if err := writeWorkspaceEntry(root, destination, out, overwrite); err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioLibraryResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
-			}
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		presented := presentLibrary(out)
-		presented.Output = destination
-		return presented
-	})
-}
-
-// CompareScenarioLibraryEntries reports whether two pinned revisions share a
-// plan. TemplateVer is the from-version; Expectations holds the to-version
-// string for this read-only comparison (not an expectations document path).
-func (a *App) CompareScenarioLibraryEntries(request ScenarioLibraryRequest) ScenarioLibraryResult {
-	return run(a, false, false, func(context.Context) ScenarioLibraryResult {
-		data, err := a.resolveScenarioDocument(request.Workspace, request.Library, scenariolibrary.MaxBytes)
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		presented := presentLibrary(data)
-		if presented.State != Completed {
-			return presented
-		}
-		if request.TemplateID == "" || request.TemplateVer == "" || request.Expectations == "" {
-			return ScenarioLibraryResult{State: Failed, Reason: "compare requires template id, from version and to version"}
-		}
-		var from, to *ScenarioLibraryTemplateView
-		for i := range presented.Templates {
-			template := &presented.Templates[i]
-			if template.ID != request.TemplateID {
-				continue
-			}
-			if template.Version == request.TemplateVer {
-				from = template
-			}
-			if template.Version == request.Expectations {
-				to = template
-			}
-		}
-		if from == nil || to == nil {
-			return ScenarioLibraryResult{State: Failed, Reason: "both template revisions must exist in the library"}
-		}
-		presented.Compared = []ScenarioLibraryCompareView{{
-			ID: request.TemplateID, FromVersion: from.Version, ToVersion: to.Version,
-			SamePlan: from.PlanSHA == to.PlanSHA, FromSHA: from.PlanSHA, ToSHA: to.PlanSHA,
-		}}
-		return presented
-	})
 }
 
 // scenarioCheckOperation names a fixture check while it holds the slot, so
@@ -589,107 +144,6 @@ func (a *App) CheckScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibra
 		presented.Streams = result.Streams
 		presented.Fields = result.Fields
 		presented.Target = result.Target
-		return presented
-	})
-}
-
-// ExportScenarioLibrary copies a library document to a new destination without
-// changing pinned revisions.
-func (a *App) ExportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibraryResult {
-	return run(a, false, true, func(context.Context) ScenarioLibraryResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ScenarioLibraryResult{State: declined.state, Reason: declined.reason}
-		}
-		data, err := a.resolveScenarioDocument(root, request.Library, scenariolibrary.MaxBytes)
-		if err != nil {
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		// A library the reader refuses is refused before anything is
-		// written, so an export is always a library the command reads.
-		presented := presentLibrary(data)
-		if presented.State != Completed {
-			return presented
-		}
-		if request.Output == "" {
-			return ScenarioLibraryResult{State: Failed, Reason: "export requires a new destination entry"}
-		}
-		if err := writeWorkspaceEntry(root, request.Output, data); err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioLibraryResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
-			}
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		presented.Output = request.Output
-		return presented
-	})
-}
-
-// ScenarioLibraryChoiceResult reports the library file a person chose to
-// import, by its full path.
-type ScenarioLibraryChoiceResult struct {
-	State  State  `json:"state"`
-	Reason string `json:"reason,omitzero"`
-	Path   string `json:"path,omitzero"`
-}
-
-func (r *ScenarioLibraryChoiceResult) refuse(state State, reason string) {
-	r.State, r.Reason = state, reason
-}
-
-// ChooseScenarioLibraryImport presents the host's native file dialog for the
-// scenario library to import. The library comes from elsewhere on the
-// machine, so the choice is answered as the full path ImportScenarioLibrary
-// reads; choosing reads and writes nothing, and a dismissed dialog is a
-// cancellation.
-func (a *App) ChooseScenarioLibraryImport() ScenarioLibraryChoiceResult {
-	return run(a, true, false, func(ctx context.Context) ScenarioLibraryChoiceResult {
-		files, declined := a.chooseFiles(ctx, "Choose the scenario library to import", "readmit documents", "*.json")
-		if len(files) == 0 {
-			return ScenarioLibraryChoiceResult{State: declined.state, Reason: declined.reason}
-		}
-		if len(files) != 1 {
-			return ScenarioLibraryChoiceResult{State: Failed, Reason: "choose exactly one file"}
-		}
-		return ScenarioLibraryChoiceResult{State: Completed, Path: files[0]}
-	})
-}
-
-// ImportScenarioLibrary copies an external library document into the workspace
-// as a new entry; existing revisions are never overwritten.
-func (a *App) ImportScenarioLibrary(request ScenarioLibraryRequest) ScenarioLibraryResult {
-	return run(a, false, true, func(context.Context) ScenarioLibraryResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return ScenarioLibraryResult{State: declined.state, Reason: declined.reason}
-		}
-		// The library comes from elsewhere on the machine, so it is named by
-		// its absolute path; a relative one would be read from wherever the
-		// application happened to start.
-		if !filepath.IsAbs(request.Library) {
-			return ScenarioLibraryResult{State: Failed, Reason: "the library to import is named by its absolute path"}
-		}
-		data, err := readChosenFile(request.Library, scenariolibrary.MaxBytes)
-		if err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioLibraryResult{State: PermissionDenied, Reason: "this account cannot read the selected library file"}
-			}
-			return ScenarioLibraryResult{State: Failed, Reason: "cannot read the selected library file"}
-		}
-		presented := presentLibrary(data)
-		if presented.State != Completed {
-			return presented
-		}
-		if request.Output == "" {
-			return ScenarioLibraryResult{State: Failed, Reason: "import requires a new destination entry"}
-		}
-		if err := writeWorkspaceEntry(root, request.Output, data); err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				return ScenarioLibraryResult{State: PermissionDenied, Reason: "this account cannot write into the open workspace"}
-			}
-			return ScenarioLibraryResult{State: Failed, Reason: err.Error()}
-		}
-		presented.Output = request.Output
 		return presented
 	})
 }
@@ -748,21 +202,6 @@ func (a *App) GenerateSynth(request SynthGenerateRequest) SynthGenerateResult {
 	})
 }
 
-func lifecycleForFamily(family string) (scenario.ProfileName, bool) {
-	switch strings.ToUpper(family) {
-	case "ADT":
-		return scenario.ADTLifecycle, true
-	case "SIU":
-		return scenario.SIULifecycle, true
-	case "ORM":
-		return scenario.ORMLifecycle, true
-	case "ORU":
-		return scenario.ORULifecycle, true
-	default:
-		return "", false
-	}
-}
-
 // resolveScenarioDocument reads a document given inline, by absolute path or
 // as one entry of the workspace. An entry is held to the bound its caller
 // names: a scenario or plan to the generator's, a library or expectations
@@ -798,70 +237,6 @@ func (a *App) resolveScenarioDocument(workspace, fileOrDoc string, limit int) ([
 	return data, nil
 }
 
-// readChosenFile reads one file a person chose by path under the bound its
-// contract is held to, through the shared document store. It must be a
-// regular file once any link is followed, so a FIFO, a device or an oversized
-// file is refused rather than opened and read to its end, and a file this
-// account cannot read keeps the filesystem's refusal behind the sentence.
-func readChosenFile(path string, limit int64) ([]byte, error) {
-	chosen := chosenFile
-	chosen.MaxBytes = int(limit)
-	return chosen.Read(path)
-}
-
-// chosenFile is how a file a person chose by path is read.
-var chosenFile = artifactdir.Document{
-	Links:    artifactdir.FollowLinks,
-	Refusals: artifactdir.DocumentRefusals{Irregular: errors.New("not a regular file within the bound")},
-}
-
-func presentTimeline(timeline scenario.Timeline, reveal bool) ScenarioPreviewResult {
-	subjects := make([]ScenarioSubjectView, 0, len(timeline.Subjects))
-	for _, subject := range timeline.Subjects {
-		view := ScenarioSubjectView{
-			ID: subject.ID, Kind: string(subject.Kind), InitialState: string(subject.InitialState),
-			Patient: subject.Patient, Masked: !reveal,
-		}
-		if reveal {
-			view.Namespace = subject.Namespace
-			view.Identifier = subject.Identifier
-		}
-		subjects = append(subjects, view)
-	}
-	steps := make([]ScenarioStepView, 0, len(timeline.Steps))
-	for _, step := range timeline.Steps {
-		steps = append(steps, ScenarioStepView{
-			Ordinal: step.Ordinal, ID: step.ID, At: step.At.Format(time.RFC3339),
-			Event: string(step.Event), Description: step.Description, Subject: step.Subject,
-			Into: step.Into, Expect: string(step.Expect), From: string(step.From),
-			To: string(step.To), Reason: step.Reason,
-		})
-	}
-	return ScenarioPreviewResult{
-		State: Completed, Scenario: timeline.Scenario.ID, Version: timeline.Scenario.Version,
-		Profile: string(timeline.Profile), BaseTime: timeline.BaseTime.Format(time.RFC3339),
-		Accepted: timeline.Accepted, Refused: timeline.Refused, Subjects: subjects, Steps: steps,
-	}
-}
-
-func presentScenarioDocument(data []byte) ScenarioDocumentResult {
-	// One read for either contract, dispatched by the contract name the
-	// document declares; a document of neither contract is refused as
-	// neither, never decoded as whichever contract would take it.
-	workflow, err := scenario.DecodeDocument(data)
-	if err != nil {
-		return ScenarioDocumentResult{State: Failed, Reason: err.Error()}
-	}
-	canonical, err := json.Marshal(workflow, json.Deterministic(true), jsontext.WithIndent("  "))
-	if err != nil {
-		return ScenarioDocumentResult{State: Failed, Reason: "scenario could not be canonicalized"}
-	}
-	return ScenarioDocumentResult{
-		State: Completed, Document: string(append(canonical, '\n')),
-		Profile: string(workflow.Profile), ID: workflow.Identity().ID, Version: workflow.Identity().Version,
-	}
-}
-
 // presentLibrary reads a library with the reader `readmit scenario
 // check-library` uses, so the window opens, exports and imports exactly the
 // libraries the command reads and refuses the rest in the command's words.
@@ -888,19 +263,4 @@ func presentLibrary(data []byte) ScenarioLibraryResult {
 	return ScenarioLibraryResult{
 		State: Completed, Document: string(append(canonical, '\n')), Templates: views,
 	}
-}
-
-func splitCSV(value string) []string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	parts := strings.Split(value, ",")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
 }

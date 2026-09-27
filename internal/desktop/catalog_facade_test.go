@@ -53,6 +53,7 @@ func catalogProject(t *testing.T) (*desktop.App, string) {
 	writeDocument(t, root, "local-profile.json", fixture(t, "local-profile.json"))
 	writeDocument(t, root, "pack.json", fixture(t, "profile-pack.json"))
 	writeDocument(t, root, "scenario.json", fixture(t, "scenario-siu.json"))
+	writeDocument(t, root, "plan.json", strings.Replace(fixture(t, "scenario-generator.json"), `"id": "siu-appointment-lifecycle"`, `"id": "siu-generated-lifecycle"`, 1))
 	writeDocument(t, root, "window.json", facadeWindowDocument)
 	writeDocument(t, root, "source.json", facadeSourceDocument)
 	writeDocument(t, root, "export.csv", "appointment,status\nA1,booked\n")
@@ -209,8 +210,13 @@ func TestTheCatalogListsEveryKindThroughItsOwnReader(t *testing.T) {
 	if len(profiles) != 2 {
 		t.Fatalf("the profile pack: %+v", profiles)
 	}
-	if scenarios := listed(t, app, root, desktop.ScenarioItem); scenarios["siu-appointment-lifecycle"].Summary.Scenario == nil {
+	scenarios := listed(t, app, root, desktop.ScenarioItem)
+	if workflow := scenarios["siu-appointment-lifecycle"].Summary.Scenario; workflow == nil || workflow.Plan || workflow.Seed != nil || workflow.Family != "SIU" {
 		t.Fatalf("the scenario: %+v", scenarios)
+	}
+	if plan := scenarios["siu-generated-lifecycle"].Summary.Scenario; plan == nil || !plan.Plan || plan.Seed == nil || *plan.Seed != 0 ||
+		plan.BaseTime == nil || *plan.BaseTime != "2026-01-01T12:00:00Z" || plan.GeneratorVersion != "readmit-scenario-generator-v1" || plan.Family != "SIU" {
+		t.Fatalf("the generator plan: %+v", scenarios)
 	}
 	analyses := listed(t, app, root, desktop.AnalysisItem)
 	if diagnosis := analyses["@diagnosis"]; diagnosis.Summary.Analysis == nil || diagnosis.Summary.Analysis.RelatedCase == nil ||

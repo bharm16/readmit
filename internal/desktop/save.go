@@ -30,10 +30,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants and profiles whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups and scenarios whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -80,6 +80,12 @@ type ItemDraft struct {
 	// Profile is a local interface profile, saved with the seal of its
 	// version and its origin in one revision.
 	Profile *ProfileDraft `json:"profile,omitzero"`
+	// CheckGroup is a reusable check group, saved as the
+	// readmit-assertion-set/v1 document the command line evaluates.
+	CheckGroup *CheckGroupDraft `json:"check_group,omitzero"`
+	// Scenario is a synthetic generator plan, saved as the
+	// readmit-scenario-generator/v1 document `readmit scenario generate` reads.
+	Scenario *ScenarioDraft `json:"scenario,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -137,7 +143,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -287,6 +293,11 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 		}
 		result.State, result.Outcome, result.Replayed, result.Projection = Completed, SavedOutcome, saved.Replayed, projection
 		result.Saved = &ItemRef{Kind: request.Kind, ID: saved.Item.ID, Revision: revisionLabel(saved.Revision)}
+		if request.Kind == ProfileItem && slices.ContainsFunc(staged, func(member catalog.Staged) bool { return member.Role == packRole }) {
+			// The profile carries its pack: the pin names the profile itself.
+			self := *result.Saved
+			projection.Profile.Pack = &self
+		}
 		return result
 	})
 }
@@ -445,6 +456,15 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.AnalysisSettings = members, config
 		}
+	case CheckGroupItem:
+		if draft.CheckGroup == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "check_group", Problem: "a check group is a named set of checks"})
+		}
+		members, group, found := validateCheckGroupDraft(draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.CheckGroup = members, group
+		}
 	case ProfileItem:
 		if draft.Profile == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "profile", Problem: "a profile is a local interface profile"})
@@ -468,6 +488,27 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		problems = append(problems, found...)
 		if len(found) == 0 {
 			staged, normalized.FindingReview = members, review
+		}
+	case ScenarioItem:
+		if draft.Scenario == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "scenario", Problem: "a scenario is a synthetic generator plan"})
+		}
+		members, plan, found := validateScenarioDraft(draft, scope.nextRevision())
+		problems = append(problems, found...)
+		if len(found) == 0 && draft.Scenario.Profile != nil {
+			// The local profile the scenario is authored for is kept beside
+			// the plan, and must cover the family of its workflow.
+			if problem := scope.scenarioProfile(*draft.Scenario.Profile, plan.Plan); problem != nil {
+				problems = append(problems, *problem)
+			} else if metadata, err := metadataMember(libraryMetadata{Profile: draft.Scenario.Profile}); err != nil {
+				problems = append(problems, FieldProblem{Field: "scenario.profile", Problem: err.Error()})
+			} else {
+				ref := *draft.Scenario.Profile
+				members, plan.Profile = append(members, metadata...), &ref
+			}
+		}
+		if len(problems) == 0 {
+			staged, normalized.Scenario = members, plan
 		}
 	default:
 		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: savedKindsRule})
@@ -528,6 +569,10 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return verifyVariant(files)
 		case ProfileItem:
 			return verifyProfile(files)
+		case CheckGroupItem:
+			return verifyCheckGroup(files)
+		case ScenarioItem:
+			return verifyScenario(files)
 		}
 		return errors.New("this release does not save this kind of object")
 	}

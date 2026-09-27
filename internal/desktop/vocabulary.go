@@ -3,11 +3,19 @@ package desktop
 import (
 	"strings"
 
+	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/localprofile"
+	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/profilepack"
+	"github.com/bharm16/readmit/internal/profileversion"
+	"github.com/bharm16/readmit/internal/scenario"
+	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/bharm16/readmit/internal/testauthor"
 )
 
@@ -34,6 +42,54 @@ type Vocabulary struct {
 	// ACKPositions are the acknowledgement positions an ACK field check
 	// addresses, in the order a picker offers them.
 	ACKPositions []string `json:"ack_positions"`
+	// Checks, Profiles and Scenarios are every value the library's editors
+	// offer, as the readers of their documents accept them.
+	Checks    CheckVocabulary    `json:"checks"`
+	Profiles  ProfileVocabulary  `json:"profiles"`
+	Scenarios ScenarioVocabulary `json:"scenarios"`
+	// FixtureModes are the modes the built-in SIU fixture runs in.
+	FixtureModes []observation.Mode `json:"fixture_modes"`
+	// AffectedTestImpacts are what Affected tests says about one pinned test.
+	AffectedTestImpacts []string `json:"affected_test_impacts"`
+}
+
+// CheckVocabulary is every value a check's editor offers: the sixteen
+// operators, the message and observation scopes, the quantifiers a per-record
+// check takes and the states a field is in.
+type CheckVocabulary struct {
+	Operators     []assertion.Operator     `json:"operators"`
+	MessageScopes []assertion.MessageScope `json:"message_scopes"`
+	RecordScopes  []assertion.RecordScope  `json:"record_scopes"`
+	Quantifiers   []assertion.Quantifier   `json:"quantifiers"`
+	FieldStates   []hl7.State              `json:"field_states"`
+}
+
+// ProfileVocabulary is every value a local profile's editor offers.
+type ProfileVocabulary struct {
+	HL7Versions        []string                         `json:"hl7_versions"`
+	Families           []string                         `json:"families"`
+	Usages             []localprofile.Usage             `json:"usages"`
+	DataTypes          []string                         `json:"data_types"`
+	ConditionOperators []localprofile.ConditionOperator `json:"condition_operators"`
+	Bindings           []localprofile.Binding           `json:"bindings"`
+	UniversalIDTypes   []string                         `json:"universal_id_types"`
+	Precisions         []localprofile.Precision         `json:"precisions"`
+	TimeZoneRules      []localprofile.TimeZoneRule      `json:"timezone_rules"`
+	Unbounded          string                           `json:"unbounded"`
+	Origins            []localprofile.Origin            `json:"origins"`
+	SupportOutcomes    []profilepack.Outcome            `json:"support_outcomes"`
+}
+
+// ScenarioVocabulary is every lifecycle family and event the generator
+// implements, the named workflows a new scenario starts from, and the values
+// a plan's rows and variants take.
+type ScenarioVocabulary struct {
+	Catalog          scenario.Catalog       `json:"catalog"`
+	Templates        []ScenarioTemplate     `json:"templates"`
+	Expectations     []scenario.Expectation `json:"expectations"`
+	Encodings        []string               `json:"encodings"`
+	GeneratorVersion string                 `json:"generator_version"`
+	MaxSeed          uint64                 `json:"max_seed"`
 }
 
 // ReceiverFaultVocabulary is every fault action a step can declare, whether
@@ -112,5 +168,29 @@ func vocabulary() Vocabulary {
 			Sequence: MaxSequenceEvents, Diagnosis: MaxDiagnosisFindings,
 		},
 		ACKPositions: testauthor.ACKPositions(),
+		Checks: CheckVocabulary{
+			Operators:     assertion.Operators(),
+			MessageScopes: []assertion.MessageScope{assertion.InputMessages, assertion.ObservedMessages},
+			RecordScopes:  []assertion.RecordScope{assertion.BeforeRecords, assertion.AfterRecords},
+			Quantifiers:   []assertion.Quantifier{assertion.QuantifierEvery, assertion.QuantifierAny, assertion.QuantifierNone},
+			FieldStates:   []hl7.State{hl7.Present, hl7.Empty, hl7.Null, hl7.Omitted},
+		},
+		Profiles: ProfileVocabulary{
+			HL7Versions: profilepack.HL7Versions(), Families: profilepack.Families(), Usages: localprofile.Usages(),
+			DataTypes: localprofile.DataTypes(), ConditionOperators: localprofile.ConditionOperators(), Bindings: localprofile.Bindings(),
+			UniversalIDTypes: localprofile.UniversalIDTypes(), Precisions: localprofile.Precisions(), TimeZoneRules: localprofile.TimeZoneRules(),
+			Unbounded: localprofile.Unbounded,
+			Origins:   []localprofile.Origin{localprofile.OriginProfile, localprofile.OriginOverridden, localprofile.OriginLocal, localprofile.OriginUndeclared},
+			SupportOutcomes: []profilepack.Outcome{profilepack.OutcomeSupported, profilepack.OutcomeUntested, profilepack.OutcomeUnsupported,
+				profilepack.OutcomeUnknown},
+		},
+		Scenarios: ScenarioVocabulary{
+			Catalog: scenario.SupportedCatalog(), Templates: scenarioTemplates(),
+			Expectations: []scenario.Expectation{scenario.Accepted, scenario.Refused}, Encodings: []string{"utf-8", "iso-8859-1"},
+			GeneratorVersion: scenariogen.Version, MaxSeed: maxWindowSeed,
+		},
+		FixtureModes: []observation.Mode{observation.Fixed, observation.Defective},
+		AffectedTestImpacts: []string{string(profileversion.ImpactAffected), string(profileversion.ImpactUnaffected),
+			string(profileversion.ImpactCurrent), string(profileversion.ImpactUnrelated), ImpactUnknown},
 	}
 }

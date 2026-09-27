@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/catalog"
@@ -22,10 +24,19 @@ import (
 // ProfileDraft is a local profile as its editor holds it, the metadata pack
 // it is authored against, chosen by name, and the origin and attribution it
 // records. The pack is not saved beside it: the profile's own pin names it.
+//
+// PackDocument is the exact readmit-profile-pack document an imported
+// package carried, held while the project does not yet hold that pack. Saving
+// the profile records it in the same revision, as the profile's own pack
+// member, so the profile and its pack are published together or not at all;
+// a project already holding exactly that pack reuses it. Once saved, the
+// profile object itself is the pack its pin names, and each later revision
+// carries the pack forward.
 type ProfileDraft struct {
-	Profile localprofile.Profile   `json:"profile"`
-	Pack    *ItemRef               `json:"pack,omitzero"`
-	Origin  *profilepackage.Origin `json:"origin,omitzero"`
+	Profile      localprofile.Profile   `json:"profile"`
+	Pack         *ItemRef               `json:"pack,omitzero"`
+	Origin       *profilepackage.Origin `json:"origin,omitzero"`
+	PackDocument string                 `json:"pack_document,omitzero"`
 }
 
 // The roles a profile is saved as.
@@ -33,6 +44,9 @@ const (
 	profileRole = "profile"
 	sealRole    = "seal"
 	originRole  = "origin"
+	// packRole is the metadata pack a profile carries itself, recorded from
+	// an imported package.
+	packRole = "pack"
 )
 
 // validateProfileDraft validates a whole profile version: the profile held to
@@ -74,6 +88,28 @@ func validateProfileDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, 
 	}
 	staged := []catalog.Staged{{Role: profileRole, File: "profile.json", Data: document}, {Role: sealRole, File: "version.json", Data: sealed}}
 	normalized := &ProfileDraft{Profile: ordered, Pack: pack}
+	carried := ""
+	switch {
+	case held.PackDocument != "":
+		reused, document, problem := scope.importedPack(profile, held.PackDocument)
+		if problem != nil {
+			problems = append(problems, *problem)
+		}
+		if reused != nil {
+			normalized.Pack = reused
+		}
+		carried = document
+	case pack != nil && scope.item != "" && pack.ID == scope.item && scope.loaded != nil:
+		// A profile that carries its own pack keeps it in every revision.
+		data, err := scope.loaded.packBytes(*pack)
+		if err != nil {
+			problems = append(problems, FieldProblem{Field: "profile.pack", Problem: err.Error()})
+		}
+		carried = string(data)
+	}
+	if carried != "" {
+		staged = append(staged, catalog.Staged{Role: packRole, File: "pack.json", Data: []byte(carried)})
+	}
 	if held.Origin != nil {
 		origin := *held.Origin
 		if origin.Schema == "" {
@@ -94,6 +130,46 @@ func validateProfileDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, 
 		return nil, nil, problems
 	}
 	return staged, normalized, nil
+}
+
+// importedPack decides the metadata pack an imported package carried: the
+// project's own pack when it already holds exactly that pack, or the document
+// to record beside the profile when it holds none by that name. A different
+// pack under the same identity, or one that is not the pack the profile pins,
+// is a problem at the pack.
+func (s draftScope) importedPack(profile localprofile.Profile, document string) (*ItemRef, string, *FieldProblem) {
+	problem := func(text string) (*ItemRef, string, *FieldProblem) {
+		return nil, "", &FieldProblem{Field: "profile.pack_document", Problem: text}
+	}
+	carried, err := profilepack.Decode([]byte(document))
+	if err != nil {
+		return problem("the imported package's metadata pack cannot be read: " + err.Error())
+	}
+	if carried.Satisfies(profile.Base.Pack) != nil {
+		return problem("the imported package's metadata pack is not the pack and version this profile pins")
+	}
+	if s.loaded == nil {
+		return nil, document, nil
+	}
+	for _, item := range s.loaded.document.Items {
+		// The object this very submission already published is not another
+		// pack, so a repeated click decides the same way again.
+		if item.Kind != string(ProfileItem) || s.loaded.removed(item) ||
+			s.intent != "" && slices.ContainsFunc(item.Revisions, func(revision catalog.Revision) bool { return revision.Intent == s.intent }) {
+			continue
+		}
+		ref := ItemRef{Kind: ProfileItem, ID: item.ID, Revision: item.RevisionLabel()}
+		held, err := s.loaded.packOf(ref)
+		if err != nil || held.Identity != carried.Identity {
+			continue
+		}
+		if !reflect.DeepEqual(held, carried) {
+			return problem("the project already holds a different metadata pack named " + carried.Identity.ID + " version " + carried.Identity.Version +
+				"; the imported package's pack is not saved over it")
+		}
+		return &ref, "", nil
+	}
+	return nil, document, nil
 }
 
 // profileWithPack is a profile draft as a save decides it: the contract
@@ -141,15 +217,30 @@ func (c *loadedCatalog) packOf(ref ItemRef) (profilepack.Pack, error) {
 	if ref.Kind != ProfileItem || index < 0 || c.document.Items[index].Kind != string(ProfileItem) || c.removed(c.document.Items[index]) {
 		return profilepack.Pack{}, errors.New("the project holds no such metadata pack")
 	}
-	paths, availability, reason := c.backing(c.document.Items[index])
-	if availability != ItemAvailable {
-		return profilepack.Pack{}, errors.New(reason)
-	}
-	data, err := boundedFile(paths[profileRole], profilepack.MaxPackBytes)
+	data, err := c.packBytes(ref)
 	if err != nil {
 		return profilepack.Pack{}, err
 	}
 	return profilepack.Decode(data)
+}
+
+// packBytes is the metadata pack document one profile object is or carries:
+// a pack the project holds as its own object, or the pack a local profile
+// recorded from an imported package.
+func (c *loadedCatalog) packBytes(ref ItemRef) ([]byte, error) {
+	index := c.document.Find(ref.ID)
+	if ref.Kind != ProfileItem || index < 0 || c.document.Items[index].Kind != string(ProfileItem) || c.removed(c.document.Items[index]) {
+		return nil, errors.New("the project holds no such metadata pack")
+	}
+	paths, availability, reason := c.backing(c.document.Items[index])
+	if availability != ItemAvailable {
+		return nil, errors.New(reason)
+	}
+	path, held := paths[packRole]
+	if !held {
+		path = paths[profileRole]
+	}
+	return boundedFile(path, profilepack.MaxPackBytes)
 }
 
 // earlierProfiles are the profiles the object an edit began from published,
@@ -257,7 +348,21 @@ func verifyProfile(files map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return seal.Verify(profile)
+	if err := seal.Verify(profile); err != nil {
+		return err
+	}
+	if path, held := files[packRole]; held {
+		data, err := boundedFile(path, profilepack.MaxPackBytes)
+		if err != nil {
+			return err
+		}
+		pack, err := profilepack.Decode(data)
+		if err != nil {
+			return err
+		}
+		return pack.Satisfies(profile.Base.Pack)
+	}
+	return nil
 }
 
 // membersBacking resolves the files of one published revision, each still the

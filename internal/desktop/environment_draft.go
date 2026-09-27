@@ -435,23 +435,31 @@ type ItemDraftResult struct {
 
 func (r *ItemDraftResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
+// draftKinds are the kinds whose editor starts from OpenItemDraft.
+var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem}
+
 // OpenItemDraft answers the draft an editor starts from. A reference with no
-// identity is a new environment, observation or test: a new environment
-// starts unclassified with its transport unchosen, so the person chooses its
-// security mode, a new observation from the default source and window, and a
-// new test over the case and messages its origin names. An existing object
-// answers the members its current revision declares, exactly as saved — a
-// test also any earlier revision its reference names, read-only — and a copy
-// is this draft saved under no identity. It is a read: nothing is connected,
-// collected or written.
+// identity is a new object: a new environment starts unclassified with its
+// transport unchosen, so the person chooses its security mode; a new
+// observation from the default source and window; a new test over the case
+// and messages its origin names; new analysis settings from the default
+// configuration; a new check group empty; a new profile at version 1 with
+// nothing pinned yet; and a new scenario from the basic synthetic workflow,
+// its seed allocated once and its base time the current time to the whole
+// second. An existing object answers the members its current revision
+// declares, exactly as saved; a test, check group, profile or scenario also
+// the earlier revision its reference names, read-only. A check group holding checks this release does not
+// evaluate answers them as unsupported, never dropped. A copy is this draft
+// saved under no identity. It is a read: nothing is connected, collected,
+// generated or written.
 func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 	return run(a, false, false, func(ctx context.Context) ItemDraftResult {
 		result := ItemDraftResult{Context: request.Context}
 		if request.Ref.Kind == TestItem {
 			return a.openTestDraft(ctx, request)
 		}
-		if !slices.Contains([]ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem}, request.Ref.Kind) {
-			result.refuse(Failed, "this release opens environment, observation, test, analysis settings and finding review drafts")
+		if !slices.Contains(draftKinds, request.Ref.Kind) {
+			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile and scenario drafts")
 			return result
 		}
 		if request.Ref.ID == "" && request.Ref.Kind == FindingReviewItem {
@@ -465,6 +473,8 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			}
 			draft := ItemDraft{}
 			switch request.Ref.Kind {
+			case CheckGroupItem, ProfileItem, ScenarioItem:
+				draft = a.newLibraryDraft(request.Ref.Kind)
 			case EnvironmentItem:
 				target := operation.DefaultTarget()
 				target.Classification, target.Transport = replay.Unclassified, ""
@@ -484,11 +494,23 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			result.refuse(refused.State, refused.Reason)
 			return result
 		}
-		if item.Availability != ItemAvailable {
+		// A check group whose checks this release cannot all evaluate still
+		// opens, so every check it holds is shown.
+		if item.Availability != ItemAvailable && !(request.Ref.Kind == CheckGroupItem && item.Availability == ItemUnsupported && item.Summary.CheckGroup != nil) {
 			result.refuse(Failed, "this object is "+string(item.Availability)+": "+item.Reason)
 			return result
 		}
-		record := loaded.document.Items[loaded.document.Find(item.Ref.ID)]
+		// A library object opens at the revision its reference names; any other
+		// kind opens at its current revision.
+		revision := ""
+		if slices.Contains([]ItemKind{CheckGroupItem, ProfileItem, ScenarioItem}, request.Ref.Kind) {
+			revision = request.Ref.Revision
+		}
+		record, held := itemAt(loaded.document.Items[loaded.document.Find(item.Ref.ID)], revision)
+		if !held {
+			result.refuse(Failed, "this object has no revision "+revision)
+			return result
+		}
 		draft := ItemDraft{Name: item.Name}
 		switch request.Ref.Kind {
 		case AnalysisSettingsItem:
@@ -498,6 +520,13 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				return result
 			}
 			draft.AnalysisSettings = &config
+		case CheckGroupItem, ProfileItem, ScenarioItem:
+			opened, err := a.libraryDraftOf(loaded, record, item.Name)
+			if err != nil {
+				result.refuse(Failed, err.Error())
+				return result
+			}
+			draft = opened
 		case FindingReviewItem:
 			paths, _, _ := loaded.backing(record)
 			decisions, _, err := readDecisionsFile(paths[primaryRole(FindingReviewItem)])
@@ -530,6 +559,7 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			draft.Observation = observation
 		}
 		ref := item.Ref
+		ref.Revision = record.RevisionLabel()
 		result.State, result.Ref, result.Draft = Completed, &ref, &draft
 		return result
 	})

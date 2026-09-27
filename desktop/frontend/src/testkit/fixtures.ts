@@ -51,8 +51,6 @@ import type {
   ReproducerResolution,
   ReproducerResult,
   RunState,
-  ScenarioCatalogResult,
-  ScenarioPreviewResult,
   TestRunnerStatus,
   TestDraftDocument,
   TestResult,
@@ -302,6 +300,18 @@ export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): V
       "ERR-11",
       "ERR-12",
     ],
+    checks: {operators: ["field_equals", "field_not_equals", "field_state", "text_matches", "numeric_range", "numeric_tolerance", "date_window", "values_equal", "record_count", "records_unique", "records_contain", "records_ordered", "record_multiplicity", "records_absent", "record_key_matches", "records_changed"], message_scopes: ["input", "observed"], record_scopes: ["before", "after"], quantifiers: ["every", "any", "none"], field_states: ["present", "empty", "null", "omitted"]},
+    profiles: {hl7_versions: ["2.3.1", "2.4", "2.5", "2.5.1", "2.6", "2.7.1", "2.8.2"], families: ["ADT", "SIU", "ORM", "ORU"], usages: ["R", "RE", "C", "O", "X"], data_types: ["AD", "CE", "CF", "CNE", "CP", "CQ", "CWE", "CX", "DLN", "DR", "DT", "DTM", "ED", "EI", "EIP", "FN", "FT", "HD", "ID", "IS", "MO", "MSG", "NM", "PL", "PT", "RP", "SAD", "SI", "SN", "ST", "TM", "TS", "TX", "VID", "XAD", "XCN", "XON", "XPN", "XTN"], condition_operators: ["present", "absent", "value_in"], bindings: ["required", "suggested"], universal_id_types: ["DNS", "GUID", "HCD", "HL7", "ISO", "L", "M", "N", "Random", "URI", "UUID", "x400", "x500"], precisions: ["year", "month", "day", "hour", "minute", "second", "fraction"], timezone_rules: ["required", "optional", "forbidden"], unbounded: "*", origins: ["profile", "overridden", "local", "undeclared"], support_outcomes: ["supported", "untested", "unsupported", "unknown"]},
+    scenarios: {
+      catalog: {profiles: [{name: "readmit-siu-lifecycle-v1", kinds: [{kind: "appointment", states: ["booked", "cancelled", "none", "noshow"]}, {kind: "patient", states: ["active"]}], events: [{event: "S12", description: "new appointment booking", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true}, {event: "S13", description: "appointment rescheduling", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true}, {event: "S14", description: "appointment modification", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true}, {event: "S15", description: "appointment cancellation", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true}, {event: "S26", description: "patient did not show up for appointment", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true}], schema: "readmit-scenario/v1", order: false}], generator_version: "readmit-scenario-generator-v1", all_events: [{event: "A01", description: "admit or visit notification", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A01; it belongs to readmit-adt-lifecycle-v1"}, {event: "A02", description: "transfer a patient", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A02; it belongs to readmit-adt-lifecycle-v1"}, {event: "A03", description: "discharge or end visit", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A03; it belongs to readmit-adt-lifecycle-v1"}, {event: "A04", description: "register a patient", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A04; it belongs to readmit-adt-lifecycle-v1"}, {event: "A08", description: "update patient information", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A08; it belongs to readmit-adt-lifecycle-v1"}, {event: "A11", description: "cancel admit or visit notification", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A11; it belongs to readmit-adt-lifecycle-v1"}, {event: "A13", description: "cancel discharge or end visit", kind: "visit", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A13; it belongs to readmit-adt-lifecycle-v1"}, {event: "A40", description: "merge patient identifier list", kind: "patient", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event A40; it belongs to readmit-adt-lifecycle-v1"}, {event: "ORM-CA", description: "cancel order request", kind: "order", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event ORM-CA; it belongs to readmit-orm-lifecycle-v1"}, {event: "ORM-NW", description: "new order request", kind: "order", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event ORM-NW; it belongs to readmit-orm-lifecycle-v1"}, {event: "ORM-XO", description: "change order request", kind: "order", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event ORM-XO; it belongs to readmit-orm-lifecycle-v1"}, {event: "ORU-C", description: "corrected result report", kind: "order", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event ORU-C; it belongs to readmit-oru-lifecycle-v1"}, {event: "ORU-F", description: "final result report", kind: "order", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event ORU-F; it belongs to readmit-oru-lifecycle-v1"}, {event: "ORU-P", description: "preliminary result report", kind: "order", profile: "readmit-siu-lifecycle-v1", available: false, reason: "profile readmit-siu-lifecycle-v1 declares no event ORU-P; it belongs to readmit-oru-lifecycle-v1"}]},
+      templates: [{id: "siu-basic", name: "Booking and reschedule", profile: "readmit-siu-lifecycle-v1", family: "SIU", subjects: [{id: "patient-a", kind: "patient", namespace: "READMIT", identifier: "SYNTH-PATIENT-A", initial_state: "active"}, {id: "appointment-a", kind: "appointment", namespace: "READMIT", identifier: "SYNTH-APPOINTMENT-A", patient: "patient-a", initial_state: "none"}], steps: [{id: "booking", event: "S12", subject: "appointment-a", after: "0s", expect: "accepted"}, {id: "reschedule", event: "S13", subject: "appointment-a", after: "10m", expect: "accepted"}]}],
+      expectations: ["accepted", "refused"],
+      encodings: ["utf-8", "iso-8859-1"],
+      generator_version: "readmit-scenario-generator-v1",
+      max_seed: 9007199254740991,
+    },
+    fixture_modes: ["fixed", "defective"],
+    affected_test_impacts: ["affected", "unaffected", "current", "unrelated", "unknown"],
   };
 }
 
@@ -1155,93 +1165,6 @@ export function buildIndexResultFixture(
   };
 }
 
-export function profilePackFixture(): import("../bindings").ProfilePackResult {
-  return {
-    state: "completed",
-    pack: { id: "fixture-siu", version: "1" },
-    provenance: {
-      source: { name: "Fixture Author", location: "testdata/fixtures/profile-pack.json", revision: "1" },
-      extraction: { method: "Manual authoring", content_digest: "sha256:0000" },
-      license: { spdx: "LicenseRef-readmit-fixture", notice: "testdata/README.md" },
-      rights_review: { status: "approved", reference: "testdata/README.md" },
-    },
-    coverage: [
-      {
-        hl7_version: "2.5.1",
-        family: "SIU",
-        parse: "supported",
-        labels: "supported",
-        structural: "unsupported",
-        workflow: "unsupported",
-      },
-    ],
-    bundleable: true,
-  };
-}
-
-export function localProfileFixture(): import("../bindings").LocalProfileResult {
-  return {
-    state: "completed",
-    profile: {
-      schema: "readmit-local-profile/v1",
-      profile: { id: "fixture-local-siu", version: "1" },
-      base: { pack: { id: "fixture-siu", version: "1" }, hl7_version: "2.5.1", family: "SIU" },
-      segments: [
-        {
-          id: "SCH",
-          description: "Scheduling segment",
-          cardinality: { min: 1, max: "1" },
-          fields: [
-            {
-              position: 1,
-              name: "Placer appointment number",
-              usage: "R",
-              cardinality: { min: 1, max: "1" },
-              type: "EI",
-            },
-          ],
-        },
-      ],
-    },
-    resolution: {
-      profile: { id: "fixture-local-siu", version: "1" },
-      base: { pack: { id: "fixture-siu", version: "1" }, hl7_version: "2.5.1", family: "SIU" },
-      pinned: true,
-      support: { parse: "supported", labels: "supported", structural: "unsupported", workflow: "unsupported" },
-      segments: [
-        {
-          id: "SCH",
-          description: "Scheduling segment",
-          site_defined: false,
-          cardinality_origin: "local",
-          fields: [
-            {
-              position: 1,
-              name: "Placer appointment number",
-              pack_name: "Placer Appointment Number",
-              name_origin: "profile",
-              usage: "R",
-              usage_origin: "local",
-              condition_origin: "undeclared",
-              cardinality_origin: "local",
-              type_origin: "local",
-              terminology_origin: "undeclared",
-              authority_origin: "undeclared",
-              date_origin: "undeclared",
-            },
-          ],
-        },
-      ],
-      findings: [],
-    },
-    seal: {
-      schema: "readmit-profile-version/v1",
-      profile: { id: "fixture-local-siu", version: "1" },
-      content: { bytes: 3322, sha256: "e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054" },
-    },
-  };
-}
-
 export function defaultTargetResult(overrides: Partial<TargetResult> = {}): TargetResult {
   return {
     state: "completed",
@@ -1433,83 +1356,6 @@ export function defaultTargetResetResult(overrides: Partial<TargetResetResult> =
       attempted_at: "2026-09-21T12:00:00Z",
     },
     ...overrides,
-  };
-}
-
-export function scenarioCatalogFixture(): ScenarioCatalogResult {
-  return {
-    state: "completed",
-    catalog: {
-      generator_version: "readmit-scenario-generator-v1",
-      profiles: [
-        {
-          name: "readmit-siu-lifecycle-v1",
-          schema: "readmit-scenario/v1",
-          order: false,
-          kinds: [
-            { kind: "patient", states: ["active"] },
-            { kind: "appointment", states: ["none", "booked", "cancelled", "noshow"] },
-          ],
-          events: [
-            { event: "S12", description: "new appointment booking", kind: "appointment", profile: "readmit-siu-lifecycle-v1", available: true },
-          ],
-        },
-      ],
-      all_events: [
-        {
-          event: "A01",
-          description: "admit or visit notification",
-          kind: "visit",
-          profile: "readmit-siu-lifecycle-v1",
-          available: false,
-          reason: "profile readmit-siu-lifecycle-v1 declares no event A01; it belongs to readmit-adt-lifecycle-v1",
-        },
-      ],
-    },
-  };
-}
-
-export function scenarioPreviewFixture(options: { reveal?: boolean } = {}): ScenarioPreviewResult {
-  return {
-    state: "completed",
-    scenario: "siu-draft",
-    version: "1",
-    profile: "readmit-siu-lifecycle-v1",
-    base_time: "2026-01-01T12:00:00Z",
-    accepted: 1,
-    refused: 0,
-    subjects: options.reveal
-      ? [
-          {
-            id: "patient-a",
-            kind: "patient",
-            initial_state: "active",
-            masked: false,
-            namespace: "READMIT",
-            identifier: "SYNTH-PATIENT-A",
-          },
-        ]
-      : [
-          {
-            id: "patient-a",
-            kind: "patient",
-            initial_state: "active",
-            masked: true,
-          },
-        ],
-    steps: [
-      {
-        ordinal: 1,
-        id: "book",
-        at: "2026-01-01T12:00:00Z",
-        event: "S12",
-        description: "new appointment booking",
-        subject: "appointment-a",
-        expect: "accepted",
-        from: "none",
-        to: "booked",
-      },
-    ],
   };
 }
 

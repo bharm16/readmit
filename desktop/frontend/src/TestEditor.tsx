@@ -149,11 +149,19 @@ export function useTestEditor({
   onSaved,
   onClose,
   onRun,
+  checkGroups = [],
+  addCheckGroup = null,
+  onCheckGroupAdded,
 }: {
   start: EditorStart | null;
   context: () => RequestContext;
   cases: CatalogItem[];
   environments: CatalogItem[];
+  /** The project's saved check groups, which a test links by exact version. */
+  checkGroups?: CatalogItem[];
+  /** A check group Use in test adds to this draft when it opens. */
+  addCheckGroup?: ItemRef | null;
+  onCheckGroupAdded?: () => void;
   busy: boolean;
   /** Opens the chosen case for a new test, answering its draft. */
   onOpenCase: (item: CatalogItem) => Promise<EditorStart | null>;
@@ -187,7 +195,11 @@ export function useTestEditor({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setWork(start?.work ?? null);
+    // Use in test adds its group as an unsaved change of this draft.
+    const linked = start?.work && addCheckGroup ? (start.work.links.checks ?? []) : [];
+    const adding = start?.work && addCheckGroup && !linked.some((ref) => ref.id === addCheckGroup.id);
+    setWork(start?.work ? (adding ? { ...start.work, links: { ...start.work.links, checks: [...linked, addCheckGroup!] } } : start.work) : null);
+    if (start?.work && addCheckGroup) onCheckGroupAdded?.();
     setOriginal(start?.work ? JSON.stringify(start.work) : "");
     setTestContext(start?.context ?? null);
     setNotices(start?.notices ?? []);
@@ -481,7 +493,18 @@ export function useTestEditor({
               trigger={<span>Add check</span>}
               items={operatorsHere.map((operator) => ({ label: OPERATORS[operator], onSelect: () => setSheet({ kind: "check", index: null, operator }) }))}
             />
-            <Menu label="More check actions" items={[{ label: "Suggest checks", onSelect: () => setSheet({ kind: "suggest" }) }]} />
+            <Menu
+              label="More check actions"
+              items={[
+                { label: "Suggest checks", onSelect: () => setSheet({ kind: "suggest" }) },
+                ...checkGroups
+                  .filter((group) => group.availability === "available" && !(work.links.checks ?? []).some((ref) => ref.id === group.ref.id))
+                  .map((group) => ({
+                    label: `Link ${group.name}`,
+                    onSelect: () => change({ ...work, links: { ...work.links, checks: [...(work.links.checks ?? []), group.ref] } }),
+                  })),
+              ]}
+            />
           </span>
         ) : null}
       </div>
@@ -521,6 +544,34 @@ export function useTestEditor({
         />
       )}
       <FieldProblems problems={problems} field="test.expectations" />
+      {(work?.links.checks ?? []).length > 0 ? (
+        <>
+          <h3>Check groups</h3>
+          <ul className="linked-groups" aria-label="Check groups">
+            {(work?.links.checks ?? []).map((ref, index) => (
+              <li key={ref.id}>
+                <span>
+                  {checkGroups.find((group) => group.ref.id === ref.id)?.name ?? "Check group"}
+                  {ref.revision ? ` · v${ref.revision}` : ""}
+                </span>
+                {!readOnly && work ? (
+                  <button type="button" className="quiet" onClick={() => change({ ...work, links: { ...work.links, checks: (work.links.checks ?? []).filter((_, at) => at !== index) } })}>
+                    Remove
+                  </button>
+                ) : null}
+                {problems
+                  .filter((problem) => problem.field === `test.checks.${index}`)
+                  .map((problem) => (
+                    <span key={problem.problem} className="field-error" role="alert">
+                      {problem.problem}
+                    </span>
+                  ))}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      <FieldProblems problems={problems} field="test.checks" />
       {problems
         .filter((problem) => /^test\.expectations\.\d+$/.test(problem.field))
         .map((problem) => {
@@ -565,11 +616,17 @@ export function useTestEditor({
           Edit checks
         </button>
       </div>
-      {checks.length === 0 ? (
+      {checks.length === 0 && (work.links.checks ?? []).length === 0 ? (
         <p>No checks</p>
       ) : (
         <CheckRows checks={checks} messages={messages} onInspect={setInspecting} />
       )}
+      {(work.links.checks ?? []).length > 0 ? (
+        <ValueRows
+          label="Check groups"
+          rows={(work.links.checks ?? []).map((ref) => ({ label: "Check group", value: `${checkGroups.find((group) => group.ref.id === ref.id)?.name ?? "Check group"}${ref.revision ? ` · v${ref.revision}` : ""}` }))}
+        />
+      ) : null}
       {problems.length > 0 ? (
         <ul className="problem-list" aria-label="Problems">
           {problems.map((problem) => (

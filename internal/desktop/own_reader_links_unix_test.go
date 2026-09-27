@@ -291,145 +291,6 @@ func TestAReductionRefusesALinkToItsCorrelationRules(t *testing.T) {
 	})
 }
 
-// Every document the profile panel reads — a pack, a local profile, a
-// references index, a version seal, an origin and a package — and every
-// scenario document and library the scenario panel reads by name.
-func TestProfileAndScenarioReadersRefuseALinkToADocumentOfTheirKind(t *testing.T) {
-	root := t.TempDir()
-	app := workspaceApp(t)
-	profile := fixture(t, "local-profile.json")
-	for name, document := range map[string]string{
-		"local-profile.json": profile, "profile-pack.json": fixture(t, "profile-pack.json"),
-		"profile-version.json": fixture(t, "profile-version.json"), "profile-origin.json": fixture(t, "profile-origin.json"),
-		"references.json": fixture(t, "profile-references.json"), "scenario.json": fixture(t, "scenario-siu.json"),
-		"plan.json": fixture(t, "scenario-generator.json"), "library.json": fixture(t, "scenario-library.json"),
-		"expectations.json": fixture(t, "scenario-expectations.json"),
-		"profile-v2.json":   strings.Replace(profile, `"version": "1"`, `"version": "2"`, 1),
-		// The profile scan reads every *.json entry, so the pack a profile names
-		// here is under another name, where only naming it reads it.
-		"pack.document": fixture(t, "profile-pack.json"),
-	} {
-		writeDocument(t, root, name, document)
-	}
-	exported := func(profile, pack, version, origin, output string) refused {
-		result := app.ExportProfilePackage(desktop.ProfilePackageExportRequest{Workspace: root, Profile: profile, Pack: pack,
-			Version: version, Origin: origin, Output: output, Reviewed: true})
-		return refused{result.State, result.Reason}
-	}
-	if packaged := exported("local-profile.json", "profile-pack.json", "profile-version.json", "profile-origin.json", "package.json"); packaged.state != desktop.Completed {
-		t.Fatalf("a package to import: %+v", packaged)
-	}
-	library := func(request desktop.ScenarioLibraryRequest) desktop.ScenarioLibraryRequest {
-		request.Workspace, request.TemplateID, request.Profile = root, "siu-appointment-lifecycle", "readmit-siu-lifecycle-v1"
-		return request
-	}
-	for _, version := range []string{"1", "2"} {
-		if saved := app.SaveScenarioLibraryEntry(library(desktop.ScenarioLibraryRequest{Library: map[string]string{"1": "", "2": "versions.json"}[version],
-			Output: "versions.json", TemplateVer: version, Plan: "plan.json"})); saved.State != desktop.Completed {
-			t.Fatalf("a library holding version %s: %+v", version, saved)
-		}
-	}
-	compare := func(from, to, references string) refused {
-		result := app.CompareProfiles(desktop.ProfileCompareRequest{Workspace: root, From: from, To: to, References: references})
-		return refused{result.State, result.Reason}
-	}
-	scenario := notOneRegularFile("the scenario document")
-	refusesLinksToEntriesItAccepts(t, root, []ownReader{
-		{"InspectProfilePack", "profile-pack.json", notOneRegularFile("the profile pack"), func(entry string) refused {
-			result := app.InspectProfilePack(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenProfile(entry)", "local-profile.json", notOneRegularFile("the local profile"), func(entry string) refused {
-			result := app.OpenProfile(root, entry, "pack.document")
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenProfile(packEntry)", "pack.document", fallsBack, func(entry string) refused {
-			result := app.OpenProfile(root, "local-profile.json", entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"ValidateProfile(Pack)", "pack.document", notOneRegularFile("the profile pack"), func(entry string) refused {
-			result := app.ValidateProfile(desktop.ProfileValidateRequest{Workspace: root, Document: profile, Pack: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"CompareProfiles(From)", "local-profile.json", fallsBack, func(entry string) refused { return compare(entry, "profile-v2.json", "") }},
-		{"CompareProfiles(To)", "profile-v2.json", fallsBack, func(entry string) refused { return compare("local-profile.json", entry, "") }},
-		{"CompareProfiles(References)", "references.json", fallsBack, func(entry string) refused {
-			return compare("local-profile.json", "profile-v2.json", entry)
-		}},
-		{"UpgradeProfilePin(References)", "references.json", notOneRegularFile("the references document"), func(entry string) refused {
-			result := app.UpgradeProfilePin(desktop.ProfileUpgradePinRequest{Workspace: root, References: entry, Test: "test-reschedule.json",
-				WasPin: profileversion.Pin{ID: "fixture-local-siu", Version: "1", SHA256: "e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054"},
-				NowPin: profileversion.Pin{ID: "fixture-local-siu", Version: "2", SHA256: "4444444444444444444444444444444444444444444444444444444444444444"},
-				Output: "upgraded.json"})
-			return refused{result.State, result.Reason}
-		}},
-		{"ExportProfilePackage(Profile)", "local-profile.json", notOneRegularFile("the local profile"), func(entry string) refused {
-			return exported(entry, "profile-pack.json", "profile-version.json", "profile-origin.json", "package-profile.json")
-		}},
-		{"ExportProfilePackage(Pack)", "profile-pack.json", notOneRegularFile("the profile pack"), func(entry string) refused {
-			return exported("local-profile.json", entry, "profile-version.json", "profile-origin.json", "package-pack.json")
-		}},
-		{"ExportProfilePackage(Version)", "profile-version.json", notOneRegularFile("the profile version seal"), func(entry string) refused {
-			return exported("local-profile.json", "profile-pack.json", entry, "profile-origin.json", "package-version.json")
-		}},
-		{"ExportProfilePackage(Origin)", "profile-origin.json", notOneRegularFile("the profile origin"), func(entry string) refused {
-			return exported("local-profile.json", "profile-pack.json", "profile-version.json", entry, "package-origin.json")
-		}},
-		{"ImportProfilePackage(Package)", "package.json", notOneRegularFile("the profile package"), func(entry string) refused {
-			result := app.ImportProfilePackage(desktop.ProfilePackageImportRequest{Workspace: root, Package: entry, Output: "imported"})
-			return refused{result.State, result.Reason}
-		}},
-		{"InspectProfilePackage", "package.json", notOneRegularFile("the profile package"), func(entry string) refused {
-			result := app.InspectProfilePackage(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"BindScenarioProfile(Entry)", "local-profile.json", notOneRegularFile("the local profile"), func(entry string) refused {
-			result := app.BindScenarioProfile(desktop.ScenarioProfileBindRequest{Workspace: root, Entry: entry, PackEntry: "profile-pack.json"})
-			return refused{result.State, result.Reason}
-		}},
-		{"PreviewScenario(Document)", "scenario.json", scenario, func(entry string) refused {
-			result := app.PreviewScenario(desktop.ScenarioPreviewRequest{Workspace: root, Document: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenScenario", "scenario.json", scenario, func(entry string) refused {
-			result := app.OpenScenario(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"GenerateScenario(Document)", "plan.json", fallsBack, func(entry string) refused {
-			result := app.GenerateScenario(desktop.ScenarioGenerateRequest{Workspace: root, Document: entry, OutputName: "generated"})
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenScenarioLibrary", "library.json", scenario, func(entry string) refused {
-			result := app.OpenScenarioLibrary(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"SaveScenarioLibraryEntry(Library)", "versions.json", scenario, func(entry string) refused {
-			result := app.SaveScenarioLibraryEntry(library(desktop.ScenarioLibraryRequest{Library: entry, Output: "saved-library.json", TemplateVer: "3", Plan: "plan.json"}))
-			return refused{result.State, result.Reason}
-		}},
-		{"SaveScenarioLibraryEntry(Plan)", "plan.json", fallsBack, func(entry string) refused {
-			result := app.SaveScenarioLibraryEntry(library(desktop.ScenarioLibraryRequest{Output: "plan-library.json", TemplateVer: "1", Plan: entry}))
-			return refused{result.State, result.Reason}
-		}},
-		{"CompareScenarioLibraryEntries(Library)", "versions.json", scenario, func(entry string) refused {
-			result := app.CompareScenarioLibraryEntries(library(desktop.ScenarioLibraryRequest{Library: entry, TemplateVer: "1", Expectations: "2"}))
-			return refused{result.State, result.Reason}
-		}},
-		{"CheckScenarioLibrary(Library)", "library.json", scenario, func(entry string) refused {
-			result := app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: entry, Expectations: "expectations.json"})
-			return refused{result.State, result.Reason}
-		}},
-		{"CheckScenarioLibrary(Expectations)", "expectations.json", scenario, func(entry string) refused {
-			result := app.CheckScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: "library.json", Expectations: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"ExportScenarioLibrary(Library)", "library.json", scenario, func(entry string) refused {
-			result := app.ExportScenarioLibrary(desktop.ScenarioLibraryRequest{Workspace: root, Library: entry, Output: "exported-library.json"})
-			return refused{result.State, result.Reason}
-		}},
-	})
-}
-
 // Every suite document, release references document, prepared suite and
 // coverage document the suite panels read; every specification, baseline,
 // release and profile a baseline or a release is reviewed, approved or opened
@@ -476,7 +337,6 @@ func TestSuiteBaselineAndImportReadersRefuseALinkToAnEntryOfTheirKind(t *testing
 		return refused{result.State, result.Reason}
 	}
 	writeDocument(t, root, "profile.json", fixture(t, "local-profile.json"))
-	writeDocument(t, root, "assertions.json", fixture(t, "assertion-set.json"))
 	// A baseline and a release each reviewed, and approved once, so that
 	// approving again and reviewing against the previous one are real.
 	baseline := func(request desktop.BaselineRequest) desktop.BaselineRequest {
@@ -626,10 +486,6 @@ func TestSuiteBaselineAndImportReadersRefuseALinkToAnEntryOfTheirKind(t *testing
 		}},
 		{"ImportTest", "booking.json", []string{"cannot read a bounded regular test spec"}, func(entry string) refused {
 			result := app.ImportTest(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"ImportAssertionSet", "assertions.json", []string{"that entry could not be read"}, func(entry string) refused {
-			result := app.ImportAssertionSet(root, entry)
 			return refused{result.State, result.Reason}
 		}},
 	})

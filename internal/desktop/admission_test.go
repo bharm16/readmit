@@ -110,30 +110,17 @@ func TestWorkThatReachesADestinationIsAdmittedAsExecution(t *testing.T) {
 	}
 }
 
-// Writing an edited canonical test or assertion set as a new document is
-// authoring, admitted as saving an authored test or set is: without an
-// activation it is refused and nothing is written.
-func TestExportingAnEditedTestOrAssertionSetIsAdmittedAsAuthoring(t *testing.T) {
+// Writing an edited canonical test as a new document is authoring, admitted
+// as saving an authored test is: without an activation it is refused and
+// nothing is written.
+func TestExportingAnEditedTestIsAdmittedAsAuthoring(t *testing.T) {
 	workspace := t.TempDir()
-	assertions, err := os.ReadFile("../../testdata/fixtures/assertion-set.json")
-	if err != nil {
-		t.Fatal(err)
-	}
 	unactivated := windowWith(t, "")
-	for output, state := range map[string]desktop.State{
-		"spec.json":       unactivated.ExportTest(desktop.CanonicalTestRequest{Workspace: workspace, Document: canonicalSpec, Output: "spec.json"}).State,
-		"assertions.json": unactivated.ExportAssertionSet(desktop.CanonicalAssertionRequest{Workspace: workspace, Document: string(assertions), Output: "assertions.json"}).State,
-	} {
-		if state != desktop.PermissionDenied {
-			t.Errorf("an unactivated window wrote %s: %s", output, state)
-		}
-		if _, err := os.Lstat(filepath.Join(workspace, output)); !os.IsNotExist(err) {
-			t.Errorf("a refused export wrote %s", output)
-		}
+	if state := unactivated.ExportTest(desktop.CanonicalTestRequest{Workspace: workspace, Document: canonicalSpec, Output: "spec.json"}).State; state != desktop.PermissionDenied {
+		t.Errorf("an unactivated window wrote spec.json: %s", state)
 	}
-	activated := windowWith(t, testlicense.New(t))
-	if result := activated.ExportAssertionSet(desktop.CanonicalAssertionRequest{Workspace: workspace, Document: string(assertions), Output: "assertions.json"}); result.State != desktop.Completed {
-		t.Fatalf("an activated window could not export an assertion set: %+v", result)
+	if _, err := os.Lstat(filepath.Join(workspace, "spec.json")); !os.IsNotExist(err) {
+		t.Error("a refused export wrote spec.json")
 	}
 }
 

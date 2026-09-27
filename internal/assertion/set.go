@@ -157,6 +157,17 @@ const (
 	RecordsChanged Operator = "records_changed"
 )
 
+// Operators is the closed set in the order a person is offered it. Each is
+// bound once in the compatibility table the reader dispatches on.
+func Operators() []Operator {
+	return []Operator{
+		FieldEquals, FieldNotEquals, FieldState, TextMatches, NumericRange,
+		NumericTolerance, DateWindow, ValuesEqual, RecordCount, RecordsUnique,
+		RecordsContain, RecordsOrdered, RecordMultiplicity, RecordsAbsent,
+		RecordKeyMatches, RecordsChanged,
+	}
+}
+
 // Set is one assertion set exactly as written. Only Decode produces one that
 // evaluates: a Set assembled in Go without going through the reader refuses
 // to evaluate, so the reader's refusals cannot be bypassed by construction.

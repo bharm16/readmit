@@ -3,7 +3,6 @@ import * as f from "../testkit/fixtures";
 import { artifacts, catalogRows } from "./fixtures";
 import { VocabularyContext } from "../vocabulary";
 import { IndicatorsContext, Outcome } from "../lifecycle";
-import { AssertionSetAuthoring } from "../AssertionSetAuthoring";
 import { Baseline } from "../Baseline";
 import { CapturePanel } from "../CapturePanel";
 import { Comparison } from "../Comparison";
@@ -26,7 +25,6 @@ import { PerformanceCorpus } from "../PerformanceCorpus";
 import { SupportGuidance } from "../SupportGuidance";
 import { PrivacyDocuments } from "../PrivacyDocuments";
 import { PrivacyPanel } from "../PrivacyPanel";
-import { ProfileEditor } from "../ProfileEditor";
 import { ProtectionPanel } from "../ProtectionPanel";
 import { Reduction } from "../Reduction";
 import { Reexecution } from "../Reexecution";
@@ -43,7 +41,6 @@ import { RunComparison } from "../RunComparison";
 import { RunExplanation } from "../RunExplanation";
 import { RunPanel } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
-import { ScenarioPanel } from "../ScenarioPanel";
 import { Sequence } from "../Sequence";
 import { SuitePanel } from "../SuitePanel";
 import { SyntheticPackets } from "../SyntheticPackets";
@@ -127,12 +124,6 @@ const e = (
   ...(openButtons ? { openButtons } : {}),
 });
 export const examples: Example[] = [
-  e(
-    "AssertionSetAuthoring",
-    () => <AssertionSetAuthoring {...common} inspected={null} />,
-    "ready",
-    ["Structured", "Advanced JSON"],
-  ),
   e("Baseline", () => <Baseline {...common} />),
   e("CapturePanel", () => <CapturePanel {...common} />),
   e("Comparison", () => (
@@ -202,7 +193,6 @@ export const examples: Example[] = [
     />
   )),
   e("PrivacyPanel", () => <PrivacyPanel {...common} />),
-  e("ProfileEditor", () => <ProfileEditor {...common} />),
   e("ProtectionPanel", () => <ProtectionPanel {...common} />),
   e("Reduction", () => (
     <Reduction
@@ -281,12 +271,6 @@ export const examples: Example[] = [
   e("RunExplanation", () => <RunExplanation {...common} />),
   e("RunPanel", () => <RunPanel {...common} onWatch={async () => {}} />),
   e("RunnerPanel", () => <RunnerPanel />),
-  e(
-    "ScenarioPanel",
-    () => <ScenarioPanel {...common} onStartTestDraft={noop} />,
-    "ready",
-    ["Design", "Preview", "Generate", "Library", "SIU fixtures", "Raw"],
-  ),
   e("Sequence", () => (
     <Sequence
       {...common}

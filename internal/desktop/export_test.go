@@ -54,15 +54,6 @@ func DeclaredProgramRunningForTest(a *App) func() {
 	return a.declaredProgramStarted()
 }
 
-// ImportProfilePackageWithinForTest is ImportProfilePackage's work under a
-// context the test controls, so a cancellation lands before the import
-// directory exists or after one of its documents was written rather than
-// wherever scheduling puts it. The reader, the import and every refusal are
-// the production ones; only the operation slot is not taken.
-func ImportProfilePackageWithinForTest(ctx context.Context, request ProfilePackageImportRequest) ProfilePackageResult {
-	return importProfilePackage(ctx, request)
-}
-
 // PreviewSchedulePolicyAtForTest is PreviewSchedulePolicy taken at the
 // instant now rather than when the test runs, so a test states which
 // occurrences are missed at a fixed time of day. The slot, the contract's
@@ -178,4 +169,15 @@ func ExecuteStorageWithinForTest(a *App, ctx context.Context, request PrepareAct
 		return ReviewedActionResult{State: Failed, Reason: bound.review.Refusal}
 	}
 	return policy.execute(a, ctx, bound, ReviewDecisions{})
+}
+
+// SetSeedsForTest draws every new scenario seed from seeds.
+func SetSeedsForTest(a *App, seeds func() uint64) {
+	a.seeds = seeds
+}
+
+// SetSaveFaultForTest has every catalog save fail at the named point, or at
+// none when fault is nil, so a test states what an interrupted save leaves.
+func SetSaveFaultForTest(a *App, fault func(point string) error) {
+	a.saveFault = fault
 }

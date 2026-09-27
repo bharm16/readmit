@@ -147,7 +147,6 @@ var facadeNames = names{
 			"internal/desktop.packetOperation",
 			"internal/desktop.practiceOperation",
 			"internal/desktop.privacyOperation",
-			"internal/desktop.profileImportOperation",
 			"internal/desktop.protectOperation",
 			"internal/desktop.reductionOperation",
 			"internal/desktop.reexecutionOperation",

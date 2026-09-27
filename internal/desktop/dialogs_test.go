@@ -132,7 +132,9 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ExportProtectionControl", call: func(a *desktop.App) any {
 			return a.ExportProtectionControl(workspace, "protection.json", "lab-evidence")
 		}, opens: "save", title: "Export encryption control"},
-		{name: "ChooseScenarioLibraryImport", call: func(a *desktop.App) any { return a.ChooseScenarioLibraryImport() }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
+		{name: "ChooseLibraryFile(check-group)", call: func(a *desktop.App) any { return a.ChooseLibraryFile("check-group") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Import check group"},
+		{name: "ChooseLibraryFile(profile)", call: func(a *desktop.App) any { return a.ChooseLibraryFile("profile") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Import profile"},
+		{name: "ChooseLibraryFile(scenario)", call: func(a *desktop.App) any { return a.ChooseLibraryFile("scenario") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Import scenario"},
 		{name: "ImportTestDraft", call: func(a *desktop.App) any { return a.ImportTestDraft(context) }, opens: "files", files: []string{testFile}, title: "Import test"},
 		{name: "ExportTestItem", call: func(a *desktop.App) any { return a.ExportTestItem(desktop.ItemRequest{Context: context, Ref: test}) }, opens: "save", destination: unnamed(), title: "Export test", writes: true},
 		{name: "ImportAnalysisSettings", call: func(a *desktop.App) any { return a.ImportAnalysisSettings(context) }, opens: "files", files: []string{settingsFile}, title: "Import analysis settings"},

@@ -384,6 +384,12 @@ type App struct {
 	reviews reviewStore
 	// snapshots are the catalog lists later pages continue.
 	snapshots snapshotStore
+	// previews are the scenario previews this process generated, held in
+	// memory alone so a preview writes nothing.
+	previews previewStore
+	// seeds, when set, is where a new scenario's seed is drawn from in place
+	// of the process's random source; a test sets it.
+	seeds func() uint64
 	// actor, when set, is who the window's reviews are made by, in place of
 	// the local account and hub subject; a test sets it.
 	actor func() string

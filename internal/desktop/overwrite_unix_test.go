@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
-	"syscall"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/bundle"
@@ -27,7 +26,6 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/operation"
-	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
 	"github.com/bharm16/readmit/internal/secret"
@@ -38,54 +36,12 @@ import (
 // victim is what the file outside the workspace holds before any save.
 const victim = "synthetic document outside the workspace; a save must never change it\n"
 
-// overwriteSave is one save that may overwrite its output. prepare puts the
-// documents the save reads into a workspace, and save calls it with the output
-// named output.
-type overwriteSave struct {
-	name    string
-	output  string
-	prepare func(t *testing.T, root string)
-	save    func(app *desktop.App, root, output string) saved
-}
-
 // saved is what one save answered, and report what it said it saved, which
 // must be the same over a regular file and over every entry it replaces.
 type saved struct {
 	state  desktop.State
 	reason string
 	report any
-}
-
-// hostileOutputs plants one entry at output for each way it can lead
-// elsewhere or stand in the way. Each link leads to victim, outside the
-// workspace, or to own, the workspace's own document. The save must replace
-// the entry, or, when refusal names a sentence, refuse with it.
-var hostileOutputs = []struct {
-	how     string
-	plant   func(root, outside, output, own string) error
-	refusal string
-}{
-	{"a symbolic link out of the workspace", func(root, outside, output, _ string) error {
-		return os.Symlink(filepath.Join(outside, "victim.json"), filepath.Join(root, output))
-	}, ""},
-	{"a symbolic link to an entry of the workspace", func(root, _, output, own string) error {
-		return os.Symlink(filepath.Join(root, own), filepath.Join(root, output))
-	}, ""},
-	{"a hard link to a file outside the workspace", func(root, outside, output, _ string) error {
-		return os.Link(filepath.Join(outside, "victim.json"), filepath.Join(root, output))
-	}, ""},
-	{"a FIFO", func(root, _, output, _ string) error {
-		return syscall.Mkfifo(filepath.Join(root, output), 0o600)
-	}, ""},
-	{"a folder", func(root, _, output, _ string) error {
-		return os.Mkdir(filepath.Join(root, output), 0o700)
-	}, "cannot write destination file"},
-	{"the partial file an interrupted save left", func(root, _, output, _ string) error {
-		return os.WriteFile(filepath.Join(root, output+".incomplete"), []byte("an interrupted save\n"), 0o600)
-	}, "cannot replace destination file; an interrupted write is retained beside it"},
-	{"a symbolic link out of the workspace where the replacement is written", func(root, outside, output, _ string) error {
-		return os.Symlink(filepath.Join(outside, "victim.json"), filepath.Join(root, output+".incomplete"))
-	}, "cannot replace destination file; an interrupted write is retained beside it"},
 }
 
 // overwriteWorkspaces returns a prepared workspace and a folder beside it
@@ -118,138 +74,6 @@ func ownerOnlyBytes(t *testing.T, path string) []byte {
 		t.Errorf("%s is %v, want owner-only", filepath.Base(path), info.Mode().Perm())
 	}
 	return mustRead(t, path)
-}
-
-// overwritesReplaceTheEntry drives each save over a regular file, then over
-// every hostile entry at its output name, and holds it to the rule.
-func overwritesReplaceTheEntry(t *testing.T, saves []overwriteSave) {
-	t.Helper()
-	for _, s := range saves {
-		// Over a regular file the save completes and leaves the bytes it
-		// reported, owner-only, with nothing else beside them.
-		regularRoot, _ := overwriteWorkspaces(t, s.prepare)
-		writeDocument(t, regularRoot, s.output, "the previous document at this name\n")
-		regularListed := entriesOf(t, regularRoot)
-		regular := s.save(workspaceApp(t), regularRoot, s.output)
-		if regular.state != desktop.Completed {
-			t.Fatalf("%s over a regular file: %+v", s.name, regular)
-		}
-		want := ownerOnlyBytes(t, filepath.Join(regularRoot, s.output))
-		if after := entriesOf(t, regularRoot); !reflect.DeepEqual(regularListed, after) {
-			t.Errorf("%s over a regular file left %v, was %v", s.name, after, regularListed)
-		}
-
-		for _, hostile := range hostileOutputs {
-			call := s.name + " over " + hostile.how
-			root, outside := overwriteWorkspaces(t, s.prepare)
-			own := "own.json"
-			writeDocument(t, root, own, "the workspace's own document\n")
-			if err := hostile.plant(root, outside, s.output, own); err != nil {
-				t.Fatal(err)
-			}
-			listed, before, ownBefore := entriesOf(t, root), bytesUnder(t, outside), ownerOnlyBytes(t, filepath.Join(root, own))
-			app := workspaceApp(t)
-			got := answeredWithin(t, call, func() saved { return s.save(app, root, s.output) })
-			if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
-				t.Errorf("%s changed the file outside the workspace", call)
-			}
-			if ownAfter := ownerOnlyBytes(t, filepath.Join(root, own)); string(ownAfter) != string(ownBefore) {
-				t.Errorf("%s changed another entry of the workspace", call)
-			}
-			// Replaced or refused, the workspace holds the same names: no
-			// partial replacement is left beside the entry, and a refusal
-			// leaves what was there.
-			if after := entriesOf(t, root); !reflect.DeepEqual(listed, after) {
-				t.Errorf("%s left %v, was %v", call, after, listed)
-			}
-			if hostile.refusal != "" {
-				if got.state != desktop.Failed || got.reason != hostile.refusal {
-					t.Errorf("%s: %+v, want the refusal %q", call, got, hostile.refusal)
-				}
-				continue
-			}
-			if got.state != desktop.Completed {
-				t.Errorf("%s: %+v, want the entry replaced", call, got)
-				continue
-			}
-			if written := ownerOnlyBytes(t, filepath.Join(root, s.output)); string(written) != string(want) {
-				t.Errorf("%s saved other bytes than it saves over a regular file", call)
-			}
-			if !reflect.DeepEqual(got.report, regular.report) {
-				t.Errorf("%s reported %+v, want what it reports over a regular file: %+v", call, got.report, regular.report)
-			}
-		}
-	}
-}
-
-// The two saves that may overwrite a workspace entry: upgrading one saved
-// test's profile pin, and saving a scenario library entry into the library it
-// was read from. The library is read by its name trimmed of surrounding
-// spaces and saved under the name as given, so a name that differs only by a
-// trailing space reads the regular library and saves over whatever is at the
-// untrimmed name.
-func TestOverwritingAWorkspaceEntryReplacesItAndNeverWritesThroughIt(t *testing.T) {
-	generator := string(mustRead(t, filepath.Join("..", "..", "testdata", "fixtures", "scenario-generator.json")))
-	overwritesReplaceTheEntry(t, []overwriteSave{
-		{
-			name:   "UpgradeProfilePin",
-			output: "pinned.json",
-			prepare: func(t *testing.T, root string) {
-				writeDocument(t, root, "references.json", string(mustRead(t, filepath.Join("..", "..", "testdata", "fixtures", "profile-references.json"))))
-			},
-			save: func(app *desktop.App, root, output string) saved {
-				result := app.UpgradeProfilePin(desktop.ProfileUpgradePinRequest{
-					Workspace: root, References: "references.json", Test: "test-reschedule.json",
-					WasPin: profileversion.Pin{ID: "fixture-local-siu", Version: "1", SHA256: "e96a3350b728a78d063cf99afddeec3854d393682039ed4348fbc89057c55054"},
-					NowPin: profileversion.Pin{ID: "fixture-local-siu", Version: "2", SHA256: "4444444444444444444444444444444444444444444444444444444444444444"},
-					Output: output,
-				})
-				if result.State == desktop.Completed {
-					// The bytes the save has always written are the upgraded
-					// index's own encoding.
-					encoded, err := result.References.Encode()
-					if err != nil {
-						return saved{desktop.Failed, err.Error(), nil}
-					}
-					if written, err := os.ReadFile(filepath.Join(root, output)); err != nil || string(written) != string(encoded) {
-						return saved{desktop.Failed, "the saved index is not the upgraded index's encoding", nil}
-					}
-				}
-				return saved{result.State, result.Reason, result.References}
-			},
-		},
-		{
-			name:   "SaveScenarioLibraryEntry",
-			output: "library.json ",
-			prepare: func(t *testing.T, root string) {
-				writeDocument(t, root, "library.json", string(mustRead(t, filepath.Join("..", "..", "testdata", "fixtures", "scenario-library.json"))))
-			},
-			save: func(app *desktop.App, root, output string) saved {
-				request := desktop.ScenarioLibraryRequest{
-					Workspace: root, Library: output, TemplateID: "siu-appointment-lifecycle", TemplateVer: "1",
-					Profile: "readmit-siu-lifecycle-v1", Plan: generator, Coverage: "baseline",
-				}
-				// The same entry saved as a new library is written by the
-				// exclusive writer this change leaves alone: the overwrite
-				// must write exactly those bytes.
-				request.Output = "fresh.json"
-				fresh := app.SaveScenarioLibraryEntry(request)
-				request.Output = ""
-				result := app.SaveScenarioLibraryEntry(request)
-				if fresh.State != desktop.Completed {
-					return saved{fresh.State, fresh.Reason, nil}
-				}
-				defer os.Remove(filepath.Join(root, "fresh.json"))
-				if result.State == desktop.Completed {
-					created, _ := os.ReadFile(filepath.Join(root, "fresh.json"))
-					if written, err := os.ReadFile(filepath.Join(root, output)); err != nil || string(written) != string(created) {
-						return saved{desktop.Failed, "the overwritten library is not the library saved as a new entry", nil}
-					}
-				}
-				return saved{result.State, result.Reason, result.Templates}
-			},
-		},
-	})
 }
 
 // replacingSave is one save that writes over the document at its name by

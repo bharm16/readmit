@@ -1,0 +1,109 @@
+/* Library (Library.tsx, ProfileLibrary.tsx, ScenarioLibrary.tsx,
+ * SampleData.tsx): an editor's fields above its list, a profile's outline
+ * beside the selected field, and the Sample data sections. Geometry and
+ * colour come from the shared tokens. */
+
+.editor-fields {
+  display: grid;
+  gap: var(--label-gap);
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: var(--s4);
+  max-width: var(--report-column);
+}
+
+/* A profile: the outline is 15rem beside the selected field where there is
+   room; a narrow window stacks them and the outline folds. */
+.profile-layout {
+  display: grid;
+  gap: var(--s6);
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: 0;
+}
+
+.profile-outline summary {
+  display: none;
+}
+
+.profile-outline > ul {
+  border-right: 1px solid var(--line);
+  list-style: none;
+  margin: 0;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 0 var(--s2) 0 0;
+}
+
+.profile-outline ul ul {
+  list-style: none;
+  margin: 0 0 var(--s2);
+  padding: 0;
+}
+
+.outline-segment {
+  display: block;
+  font-weight: 600;
+  padding: var(--s1) 0;
+}
+
+.outline-field {
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--text);
+  display: block;
+  min-height: var(--button);
+  overflow: hidden;
+  padding: 0 var(--s2);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.outline-field:hover {
+  background: var(--hover);
+}
+
+.outline-field[aria-current="true"] {
+  background: var(--selection);
+}
+
+:root.narrow-window .profile-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root.narrow-window .profile-outline summary {
+  display: list-item;
+  min-height: var(--button);
+}
+
+:root.narrow-window .profile-outline > ul {
+  border-right: 0;
+  max-height: 14rem;
+}
+
+.check-field {
+  display: grid;
+  gap: var(--label-gap);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.json-editor {
+  font-family: var(--mono);
+  font-size: var(--text-support);
+  min-height: 20rem;
+  width: 100%;
+}
+
+.sample-section {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--s3);
+  margin-top: var(--s6);
+  max-width: var(--report-column);
+  padding-top: var(--s4);
+}
+
+.sample-section h2 {
+  margin: 0;
+}
