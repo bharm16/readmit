@@ -25,7 +25,7 @@ func OpenPlan(directory string) (*Plan, error) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}
-	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 {
+	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 && declared.Schema != PlanSchemaV3 {
 		return nil, invalid
 	}
 	if !sealed(declared.Schema, files) {
@@ -39,7 +39,7 @@ func sealed(schema string, files map[string][]byte) bool {
 }
 func readPlan(files map[string][]byte) (*Plan, error) {
 	var d PlanDocument
-	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 {
+	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 && d.Schema != PlanSchemaV3 {
 		return nil, invalid
 	}
 	supplied := map[string][]byte{}
@@ -87,6 +87,9 @@ func references(d Test) []Reference {
 	for _, ds := range d.Datasets {
 		if ds.Projection != nil {
 			refs = append(refs, *ds.Projection)
+		}
+		if ds.Completion.Policy != nil {
+			refs = append(refs, *ds.Completion.Policy)
 		}
 		if ds.Completion.Barrier != nil {
 			refs = append(refs, *ds.Completion.Barrier)

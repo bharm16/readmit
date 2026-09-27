@@ -10,6 +10,8 @@ import (
 
 const (
 	TestSchema        = "readmit-connected-test/v1"
+	TestSchemaV3      = "readmit-connected-test/v3"
+	PlanSchemaV3      = "readmit-execution-plan/v3"
 	TestSchemaV2      = "readmit-connected-test/v2"
 	PlanSchemaV2      = "readmit-execution-plan/v2"
 	PlanSchema        = "readmit-execution-plan/v1"
@@ -93,6 +95,7 @@ type Step struct {
 	FHIR         *FHIRRequest  `json:"fhir_request,omitzero"`
 }
 type Completion struct {
+	Policy     *Reference `json:"policy,omitzero"`
 	Kind       string     `json:"kind"`
 	HorizonMS  int64      `json:"horizon_ms"`
 	Barrier    *Reference `json:"barrier,omitzero"`

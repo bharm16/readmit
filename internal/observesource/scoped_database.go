@@ -155,6 +155,30 @@ func OpenDatabaseAction(directory string) (networkaction.Result, error) {
 	if err != nil {
 		return networkaction.Result{}, err
 	}
+	return VerifyDatabaseAction(files)
+}
+
+// VerifyDatabaseAction verifies exactly the caller's retained byte snapshot.
+// It neither rereads a path nor opens a database/credential provider.
+func VerifyDatabaseAction(files map[string][]byte) (networkaction.Result, error) {
+	total := 0
+	if len(files) > dbActionFamily.Layout.MaxFiles {
+		return networkaction.Result{}, errors.New("database action exceeds bounds")
+	}
+	for name, raw := range files {
+		if !dbActionFamily.Layout.AllowFile(name) || len(raw) > dbActionFamily.Layout.MaxFileBytes {
+			return networkaction.Result{}, errors.New("invalid database action member")
+		}
+		total += len(raw)
+	}
+	if total > dbActionFamily.Layout.MaxBytes {
+		return networkaction.Result{}, errors.New("database action exceeds bounds")
+	}
+	for _, name := range dbActionFamily.Layout.RequiredFiles {
+		if _, ok := files[name]; !ok {
+			return networkaction.Result{}, errors.New("missing database action member")
+		}
+	}
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(networkaction.ResultSchema, files) {
 		return networkaction.Result{}, errors.New("database action identity mismatch")
 	}

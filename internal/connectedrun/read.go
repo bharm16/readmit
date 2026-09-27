@@ -21,6 +21,13 @@ import (
 // Open verifies and re-evaluates only retained evidence. It never reconstructs
 // live execution configuration, resumes an intent or reconnects to a source.
 func Open(ctx context.Context, directory string) (Result, error) {
+	header, headerErr := (artifactdir.Document{MaxBytes: 4 << 20}).Read(filepath.Join(directory, "manifest.json"))
+	var head struct {
+		Schema string `json:"schema"`
+	}
+	if headerErr == nil && json.Unmarshal(header, &head) == nil && head.Schema == SchemaV2 {
+		return openIntervals(ctx, directory)
+	}
 	files, err := artifactdir.Read(directory, family.Layout)
 	if err != nil {
 		return Result{}, err

@@ -97,7 +97,7 @@ func validateTypedBindings(checks assertion.DatasetSetDocument, test Test, files
 // then acquire using its compiled projection and exact selected source identity.
 // No manual intermediate dataset-file step or live-read evaluator is involved.
 func CollectDataset(ctx context.Context, p *Plan, id, instance string, request observesource.DatasetRequest) (*dataset.Snapshot, error) {
-	if p == nil || p.document.Test.Schema != TestSchemaV2 || !identifier.MatchString(instance) {
+	if p == nil || p.document.Test.Schema != TestSchemaV2 && p.document.Test.Schema != TestSchemaV3 || !identifier.MatchString(instance) {
 		return nil, invalid
 	}
 	i := slices.IndexFunc(p.document.Test.Datasets, func(d Dataset) bool { return d.ID == id })
@@ -136,7 +136,7 @@ type DatasetResult struct {
 // assertion package. The owning orchestrator still gates horizon completion;
 // a single snapshot cannot settle a connected execution on its own.
 func EvaluateDatasets(ctx context.Context, p *Plan, execution Execution, evidence map[string]*dataset.Snapshot) (DatasetResult, error) {
-	if p == nil || p.document.Test.Schema != TestSchemaV2 || p.document.Test.Checks.Schema != assertion.DatasetSchema {
+	if p == nil || p.document.Test.Schema != TestSchemaV2 && p.document.Test.Schema != TestSchemaV3 || p.document.Test.Checks.Schema != assertion.DatasetSchema {
 		return DatasetResult{}, invalid
 	}
 	if err := validateExecution(p, execution); err != nil {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -203,13 +204,61 @@ func Open(path string) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	return replay(root, digest(raw), journal)
+	return replay(func(name string, limit int) ([]byte, error) { return readBounded(root, name, limit) }, digest(raw), journal)
+}
+
+// Verify replays a caller-owned immutable snapshot without reopening paths.
+// It shares Open's chain and payload checks and admits no active operation.
+func Verify(files map[string][]byte) (Summary, error) {
+	bad := errors.New("capture journal snapshot is invalid")
+	if len(files) > 10002 {
+		return Summary{}, bad
+	}
+	total := 0
+	for name, raw := range files {
+		if name == "capture.json" {
+			if len(raw) > maxPlanBytes {
+				return Summary{}, bad
+			}
+		} else if name == "journal.jsonl" {
+			if len(raw) > maxJournalBytes {
+				return Summary{}, bad
+			}
+		} else {
+			if !strings.HasPrefix(name, "received/") || !strings.HasSuffix(name, ".bin") || !occurrencePattern.MatchString(strings.TrimSuffix(strings.TrimPrefix(name, "received/"), ".bin")) || len(raw) > maxFrameBytes {
+				return Summary{}, bad
+			}
+			total += len(raw)
+			if total > maxRetainedBytes {
+				return Summary{}, bad
+			}
+		}
+	}
+	raw, ok := files["capture.json"]
+	if !ok {
+		return Summary{}, bad
+	}
+	journal, ok := files["journal.jsonl"]
+	if !ok {
+		return Summary{}, bad
+	}
+	var capture Capture
+	if json.Unmarshal(raw, &capture) != nil || capture.validate() != nil {
+		return Summary{}, bad
+	}
+	return replay(func(name string, limit int) ([]byte, error) {
+		raw, ok := files[name]
+		if !ok || len(raw) > limit {
+			return nil, bad
+		}
+		return raw, nil
+	}, digest(raw), journal)
 }
 
 // replay verifies the chain and reports what the records establish. Every
 // refusal is the same: a journal that does not read back is not repaired, not
 // partially trusted, and not reported as a capture that finished.
-func replay(root *os.Root, previous string, journal []byte) (Summary, error) {
+func replay(read func(string, int) ([]byte, error), previous string, journal []byte) (Summary, error) {
 	bad := errors.New("capture journal is invalid or retained evidence changed")
 	summary := Summary{Schema: Schema, State: durablerun.Interrupted, StopReason: durablerun.Interrupted, Recovered: true}
 	received := make(map[string]bool)
@@ -246,7 +295,7 @@ func replay(root *os.Root, previous string, journal []byte) (Summary, error) {
 				if retained > maxRetainedBytes {
 					return bad
 				}
-				if err := verify(root, *e.Frame); err != nil {
+				if err := verify(read, *e.Frame); err != nil {
 					return err
 				}
 				received[e.Occurrence] = true
@@ -346,8 +395,8 @@ func terminal(state durablerun.State) bool {
 	return false
 }
 
-func verify(root *os.Root, frame payload) error {
-	data, err := readBounded(root, frame.Path, frame.Size)
+func verify(read func(string, int) ([]byte, error), frame payload) error {
+	data, err := read(frame.Path, frame.Size)
 	if err != nil {
 		return err
 	}

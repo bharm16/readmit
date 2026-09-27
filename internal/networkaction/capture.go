@@ -20,6 +20,16 @@ import (
 )
 
 const CaptureActionSchema = "readmit-network-capture-action/v1"
+const CaptureActionSchemaV2 = "readmit-network-capture-action/v2"
+
+// CaptureSpecV2 removes the historical one-connection lifetime. Its limits
+// remain safety ceilings, never a business completion rule.
+type CaptureSpecV2 struct {
+	Schema         string      `json:"schema"`
+	Definition     CaptureSpec `json:"definition"`
+	MaxConnections int         `json:"max_connections"`
+	MaxSessions    int         `json:"max_sessions"`
+}
 
 type CaptureSpec struct {
 	Schema         string            `json:"schema"`
@@ -41,14 +51,34 @@ type CaptureSpec struct {
 	MaxMessages    int               `json:"max_messages"`
 }
 type CapturePlan struct {
-	spec           CaptureSpec
-	policy         sendpolicy.ScopedPolicy
-	binding        Binding
-	raw, policyRaw []byte
+	maxConnections, maxSessions int
+	continuous                  bool
+	spec                        CaptureSpec
+	policy                      sendpolicy.ScopedPolicy
+	binding                     Binding
+	raw, policyRaw              []byte
 }
 
 func PrepareCapture(raw, policyRaw []byte) (*CapturePlan, error) {
 	var s CaptureSpec
+	original := bytes.Clone(raw)
+	maxConnections, maxSessions := 1, 1
+	continuous := false
+	var head struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(raw, &head) != nil {
+		return nil, refused
+	}
+	if head.Schema == CaptureActionSchemaV2 {
+		var v CaptureSpecV2
+		if len(raw) > 3<<20 || json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || v.MaxConnections < 1 || v.MaxConnections > receiver.MaxConnections || v.MaxSessions < 1 || v.MaxSessions > bundle.MaxSources {
+			return nil, refused
+		}
+		raw, _ = json.Marshal(v.Definition, json.Deterministic(true))
+		maxConnections, maxSessions = v.MaxConnections, v.MaxSessions
+		continuous = true
+	}
 	if len(raw) > 3<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || s.Schema != CaptureActionSchema || !hash.MatchString(s.Plan) || !hash.MatchString(s.Source) || !identifier.MatchString(s.Endpoint) || s.Classification != "nonproduction" || s.TimeoutMS < 1 || s.TimeoutMS > 300000 || s.MaxFrameBytes < 1 || s.MaxFrameBytes > 16<<20 || s.MaxBytes < s.MaxFrameBytes+(16<<10) || s.MaxBytes > 32<<20 || s.MaxMessages < 1 || s.MaxMessages > receiver.MaxMessages {
 		return nil, refused
 	}
@@ -81,22 +111,30 @@ func PrepareCapture(raw, policyRaw []byte) (*CapturePlan, error) {
 	if err != nil {
 		return nil, refused
 	}
+	if continuous {
+		var v CaptureSpecV2
+		_ = json.Unmarshal(original, &v)
+		raw, _ = json.Marshal(v, json.Deterministic(true))
+	}
 	credential, _ := json.Marshal(s.PrivateKey, json.Deterministic(true))
-	return &CapturePlan{spec: s, policy: policy, raw: raw, policyRaw: bytes.Clone(policyRaw), binding: Binding{Plan: s.Plan, Source: s.Source, Configuration: Digest(raw), Policy: Digest(policyRaw), Credentials: Digest(credential), Project: s.Project, Environment: s.Environment, Revision: s.Revision, Endpoint: s.Endpoint, Operation: sendpolicy.CaptureListen}}, nil
+	return &CapturePlan{maxConnections: maxConnections, maxSessions: maxSessions, continuous: continuous, spec: s, policy: policy, raw: raw, policyRaw: bytes.Clone(policyRaw), binding: Binding{Plan: s.Plan, Source: s.Source, Configuration: Digest(raw), Policy: Digest(policyRaw), Credentials: Digest(credential), Project: s.Project, Environment: s.Environment, Revision: s.Revision, Endpoint: s.Endpoint, Operation: sendpolicy.CaptureListen}}, nil
 }
 func (p *CapturePlan) Binding() Binding { return p.binding }
 
 type CaptureSession struct {
-	done    chan struct{}
-	cancel  context.CancelFunc
-	result  *bundle.Bundle
-	err     error
-	address string
+	progress func() receiver.CaptureProgress
+	done     chan struct{}
+	cancel   context.CancelFunc
+	result   *bundle.Bundle
+	err      error
+	address  string
 }
 
-func (s *CaptureSession) Address() string               { return s.address }
-func (s *CaptureSession) Stop()                         { s.cancel() }
-func (s *CaptureSession) Wait() (*bundle.Bundle, error) { <-s.done; return s.result, s.err }
+func (s *CaptureSession) Progress() receiver.CaptureProgress { return s.progress() }
+func (s *CaptureSession) Done() <-chan struct{}              { return s.done }
+func (s *CaptureSession) Address() string                    { return s.address }
+func (s *CaptureSession) Stop()                              { s.cancel() }
+func (s *CaptureSession) Wait() (*bundle.Bundle, error)      { <-s.done; return s.result, s.err }
 
 var captureFamily = artifactdir.Family{Layout: artifactdir.Layout{Noun: "network capture action", Nested: []string{"case", "journal"}, RequiredFiles: []string{"action.json", "policy.json", "decision.json", "operation.json", "result.json", "identity.sha256"}, AllowFile: func(n string) bool {
 	switch n {
@@ -167,7 +205,7 @@ func (p *CapturePlan) Start(ctx context.Context, authority Authority, output str
 			return nil, refused
 		}
 	}
-	collector, err := receiver.NewCollector(receiver.CollectorConfig{Policy: s.Policy, OutputPath: filepath.Join(w.Path(), "case"), JournalPath: filepath.Join(w.Path(), "journal"), MaxFrameBytes: s.MaxFrameBytes, IdleTimeout: time.Duration(s.TimeoutMS) * time.Millisecond, ApplicationTimeout: time.Duration(s.TimeoutMS) * time.Millisecond, MaxMessages: s.MaxMessages, MaxConnections: 1, MaxSessions: 1, MaxCaptureBytes: s.MaxBytes, TLS: tlsConfig != nil, ClientCertificate: len(s.Authorities) > 0})
+	collector, err := receiver.NewCollector(receiver.CollectorConfig{Policy: s.Policy, OutputPath: filepath.Join(w.Path(), "case"), JournalPath: filepath.Join(w.Path(), "journal"), MaxFrameBytes: s.MaxFrameBytes, IdleTimeout: time.Duration(s.TimeoutMS) * time.Millisecond, ApplicationTimeout: time.Duration(s.TimeoutMS) * time.Millisecond, MaxMessages: s.MaxMessages, MaxConnections: p.maxConnections, MaxSessions: p.maxSessions, MaxCaptureBytes: s.MaxBytes, TLS: tlsConfig != nil, ClientCertificate: len(s.Authorities) > 0})
 	if err != nil {
 		return nil, refused
 	}
@@ -182,7 +220,7 @@ func (p *CapturePlan) Start(ctx context.Context, authority Authority, output str
 	if tlsConfig != nil {
 		listener = tls.NewListener(listener, tlsConfig)
 	}
-	session := &CaptureSession{done: make(chan struct{}), cancel: cancel, address: listener.Addr().String()}
+	session := &CaptureSession{progress: collector.Progress, done: make(chan struct{}), cancel: cancel, address: listener.Addr().String()}
 	failed = false
 	go func() {
 		defer close(session.done)
@@ -197,6 +235,9 @@ func (p *CapturePlan) Start(ctx context.Context, authority Authority, output str
 			result.ResponseDigest = captured.Identity
 		}
 		if err != nil {
+			if p.continuous && captured != nil {
+				result.ResponseDigest = captured.Identity
+			}
 			session.err = refused
 		}
 		if finish(w, result) != nil {
