@@ -1,0 +1,56 @@
+{
+  "schema": "readmit-local-profile/v2",
+  "definition": {
+    "schema": "readmit-local-profile/v1",
+    "profile": {
+      "id": "owned-scheduling",
+      "version": "1"
+    },
+    "base": {
+      "pack": {
+        "id": "fixture-siu",
+        "version": "1"
+      },
+      "hl7_version": "2.5.1",
+      "family": "SIU"
+    },
+    "segments": [
+      {
+        "id": "ZEV",
+        "fields": [
+          {
+            "position": 1,
+            "usage": "R",
+            "type": "ST"
+          }
+        ]
+      }
+    ]
+  },
+  "structure": [],
+  "workflows": [
+    {
+      "id": "owned-scheduling",
+      "version": "1",
+      "kind": "scheduling",
+      "identity": [
+        "SCH-1.1",
+        "SCH-1.2"
+      ],
+      "status": "ZEV-1",
+      "initial": [
+        "BOOKED"
+      ],
+      "transitions": [
+        {
+          "from": "BOOKED",
+          "to": "RESCHEDULED"
+        },
+        {
+          "from": "RESCHEDULED",
+          "to": "CANCELLED"
+        }
+      ]
+    }
+  ]
+}

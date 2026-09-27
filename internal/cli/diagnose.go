@@ -49,7 +49,7 @@ func diagnoseCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&output, "output", "", "New directory for "+diagnose.ReportName+" and "+diagnose.MarkdownName+" (never overwrite)")
 	cmd.Flags().StringVar(&configPath, "config", "", "Explicit readmit-diagnose-config/v1 JSON configuration selecting the profile, ruleset, rules and namespaces")
-	cmd.AddCommand(diagnoseReviewCommand(), diagnosisGroupsCommand())
+	cmd.AddCommand(diagnoseReviewCommand(), diagnosisGroupsCommand(), profileEvaluateCommand("profile"))
 	return cmd
 }
 

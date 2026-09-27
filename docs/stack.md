@@ -99,8 +99,10 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   packaging and the desktop share, and resolving it
   against its pinned pack marks every rule `profile`, `overridden`, `local` or
   `undeclared`. Because a v1 pack carries labels and nothing else, every
-  constraint resolves local and the resolution says so. No message is evaluated
-  against a profile and no profile is bundled. See
+  constraint resolves local and the resolution says so. The explicit `internal/profileeval` service now evaluates retained messages
+  against pinned local constraints, with separate v2 group/workflow envelopes;
+  no new upstream profile is bundled. Unsupported base constraints remain named
+  outcomes. See [profile evaluation](profile-evaluation.md). See
   [local profiles](local-profiles.md).
 - `internal/profilepackage` transports reviewed local contracts and their exact
   pack/version pins as `readmit-profile-package/v1`, with separate

@@ -1,0 +1,101 @@
+# Evaluate pinned v2 interface profiles
+
+`profile evaluate PROFILE PACK CASE` and `diagnose profile PROFILE PACK CASE`
+read a retained case through its verifying reader and evaluate actual message
+bytes. Both call `internal/profileeval.EvaluateBundle`. They print the versioned
+`readmit-profile-evaluation/v1` result as customer-local JSON. Exit 1 means a
+constraint failed; exit 2 means an unsupported or undecided requirement remains.
+A `local_verdict` is separate from the overall verdict and base support.
+
+The existing `readmit-local-profile/v1` and `readmit-profile-pack/v1` readers and
+canonical encodings are unchanged. A v1 pack still supplies no structural or
+workflow content. Evaluating a local rule against a v1 pack may establish the
+local rule, but the overall verdict cannot claim complete base validation.
+
+`readmit-local-profile/v2` embeds a v1 `definition` and adds an ordered
+`structure` and explicitly versioned `workflows`. `readmit-profile-pack/v2`
+embeds unchanged v1 `metadata` and adds message-specific `sequence` trees and
+segment field requirements. Neither format upgrades its embedded v1 claims.
+New versions are explicit artifacts; no reader migrates or updates a saved pin.
+
+The evaluator implements:
+
+- Segment and field cardinality, required/optional/conditional/forbidden usage,
+  local required code sets and assigning-authority positions.
+- Ordered nested and repeating segment groups, with bounded alternative matching
+  so ambiguous optional segments are not assigned greedily. Work exhaustion is
+  unsupported, never a successful prefix match.
+- Primitive ST/TX/FT/ID/IS, SI, NM, DT/DTM/TM checks, and declared date precision
+  and timezone requirements. Unsupported composite datatypes are explicitly
+  reported; checking an identifier authority does not claim its entire composite
+  datatype was validated.
+- The existing lossless selector's empty, null, omitted and present states,
+  standard escaped delimiters and declared ASCII/UTF-8 handling. Unsupported
+  encodings/escapes and undeclared Z-segments remain named findings.
+- Site-declared lifecycle transitions over an ordered tuple of identity
+  selectors. Identity/visit, scheduling and order/result fixture profiles live
+  in `testdata/profile-evaluation`. They are fictional interface contracts,
+  not universal clinical rules. Repeated OBX records are evaluated separately;
+  placer and filler identities retain their declared namespace components.
+
+Findings carry the original occurrence, selector and byte offsets. A missing
+position has offsets -1, never a fabricated location. Origins distinguish base
+profile requirements, overridden fields, local rules and workflow expectations.
+Original bytes are never repaired or normalized by evaluation.
+
+A workflow's first observed state cannot prove its prerequisite never existed.
+Without `--complete-capture`, a missing prerequisite is undecided. The flag is
+an explicit operator declaration; a finalized case alone does not establish it.
+The evaluator performs no terminology lookup, remote validation or secret read.
+
+`connected profile-checks PLAN PROFILE_ID PACK_ID` calls the same evaluator on
+exact prepared v2 input bytes and the exact profile/pack dependencies retained
+by IG01. Changing the source files cannot move those pins. The result binds the
+profile content, pack bytes, input hashes and evaluator version. It is a separate
+check report; it does not rewrite or add members to execution-result/v1.
+
+## Reproduce the upstream extraction
+
+The development-only normalizer reads these adopted archives offline:
+
+- nHapi commit `2495edd1e23a85ab9146cb03947c17d45120cf1f`, archive SHA-256
+  `165a28565b88ba1a9a26f9be893639490af074a529774f8a8da77f0905330882`.
+- HL7apy 1.3.5 commit `9550b6eca2c580e9615d756b294dbe5ea471667c`, archive SHA-256
+  `8b496e4e94221b8472a9df81be73d98b8726c1d6b386637a6f08264fc83ddb63`.
+
+```
+python3 tools/profile_extract.py --nhapi NHAPI_ARCHIVE --hl7apy HL7APY_ARCHIVE --output NEW_REVIEW_DIRECTORY
+READMIT_PROFILE_EXTRACTION=NEW_REVIEW_DIRECTORY go test -short -tags readmit_nosync ./internal/profileeval -run TestPinnedExtractionReadback
+```
+
+The extractor checks both archive hashes, reads C# declarations and a restricted
+literal Python syntax without importing/executing upstream code, and produces
+seven packs plus exact notices and an extraction receipt. It refuses unknown
+syntax instead of silently dropping it. It extracts structural metadata only:
+no upstream prose, composite component definitions or external code tables.
+HL7apy's extracted fields supply no maximum lengths; zero records that absence.
+Neither .NET nor Python is added to the shipped Go runtime.
+
+[The recorded extraction receipt](profile-extraction-receipt.json) names 235
+normalized message structures and exact output hashes. The outputs were read
+back through the Go reader. They remain outside source control and distribution.
+[The 28-cell matrix](profile-evaluation-matrix.json) distinguishes independently
+tested local constraints from unqualified upstream structure/workflow support.
+The local matrix tests do not certify any complete base-standard cell.
+
+## Open completion gates for #577
+
+The exact extracted content and incorporated HL7 terms still need the owner's
+redistribution review under D1/ADR-0009. The normalizer always records `pending`;
+software does not approve rights. No new upstream pack is shipped.
+
+Full composite datatype/component validation, terminology requirements beyond
+local sets, independently qualified positive/negative fixtures for every
+upstream structure, and complete patient merge/visit/order relationship semantics
+remain incomplete. The fixture lifecycle profiles establish only their stated
+local transitions. Required missing rules remain unsupported. These gaps keep
+#577 open; this work is not a scope reduction or certification claim.
+
+References: [pinned nHapi source and license](https://github.com/nHapiNET/nHapi/tree/2495edd1e23a85ab9146cb03947c17d45120cf1f),
+[pinned HL7apy](https://github.com/crs4/hl7apy/tree/9550b6eca2c580e9615d756b294dbe5ea471667c),
+and [HL7 v2.5.1 datatype definitions](https://hl7.eu/HL7v2x/v251/std251/ch02a.html).
