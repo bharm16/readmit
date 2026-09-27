@@ -1,0 +1,17 @@
+{
+  "resourceType":"CapabilityStatement",
+  "url":"urn:owned:capability",
+  "version":"fixture-1",
+  "status":"active",
+  "date":"2026-01-01",
+  "kind":"instance",
+  "software":{"name":"Independent owned fixture","version":"1"},
+  "implementation":{"description":"Synthetic local qualification","url":"https://one.test/fhir"},
+  "fhirVersion":"4.0.1",
+  "format":["application/fhir+json"],
+  "patchFormat":["application/json-patch+json"],
+  "rest":[{"mode":"server","resource":[
+    {"type":"Patient","profile":"urn:owned:patient-profile|1","supportedProfile":["urn:owned:patient-local|2"],"interaction":[{"code":"read"},{"code":"search-type"}],"versioning":"versioned","readHistory":true,"searchParam":[{"name":"identifier","definition":"http://hl7.org/fhir/SearchParameter/Patient-identifier","type":"token"}]},
+    {"type":"Appointment","interaction":[{"code":"read"},{"code":"create"},{"code":"update"},{"code":"delete"},{"code":"patch"}],"versioning":"versioned-update","conditionalCreate":true,"conditionalRead":"full-support","conditionalUpdate":false,"conditionalDelete":"single","searchParam":[{"name":"date","type":"date"},{"name":"status","type":"token"}]}
+  ]}]
+}
