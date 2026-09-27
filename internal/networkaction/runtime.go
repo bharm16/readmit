@@ -32,11 +32,17 @@ type RuntimeHTTPSpec struct {
 	HTTP          HTTPSpec `json:"http"`
 }
 type RuntimeHTTPPlan struct {
+	v2      *RuntimeHTTPSpecV2
 	base    *HTTPPlan
 	spec    RuntimeHTTPSpec
 	binding Binding
 }
 type RuntimeTarget struct {
+	Page        *SearchPageScope
+	Contract    string
+	ContentType string
+	Body        []byte
+	Headers     HTTPHeadersV2
 	URL, Method string
 	Operation   sendpolicy.Operation
 	Binding     Binding
@@ -195,7 +201,18 @@ func (p *RuntimeHTTPPlan) Execute(ctx context.Context, authority Authority, reso
 		if check(ctx) != nil {
 			return HTTPResponse{}, receipt, refused
 		}
-		material, err = provider.Material(ctx, RuntimeTarget{URL: s.URL, Method: s.Method, Operation: s.Operation, Binding: p.binding, Actor: actor, Check: authorityCheck})
+		target := RuntimeTarget{URL: s.URL, Method: s.Method, Operation: s.Operation, Binding: p.binding, Actor: actor, Check: authorityCheck, Contract: RuntimeHTTPSchema}
+		if p.v2 != nil {
+			target.Contract = RuntimeHTTPSchemaV2
+			target.Body = bytes.Clone(s.Body)
+			target.ContentType = s.ContentType
+			target.Headers = p.v2.Headers
+			if p.v2.Page != nil {
+				copy := *p.v2.Page
+				target.Page = &copy
+			}
+		}
+		material, err = provider.Material(ctx, target)
 		if err != nil {
 			return HTTPResponse{}, receipt, credentialRefusal(err)
 		}
@@ -236,6 +253,9 @@ func (p *RuntimeHTTPPlan) Execute(ctx context.Context, authority Authority, reso
 	if err != nil {
 		return HTTPResponse{}, receipt, refused
 	}
+	if p.v2 != nil {
+		p.v2.Headers.apply(req.Header)
+	}
 	if p.spec.Accept != "" {
 		req.Header.Set("Accept", p.spec.Accept)
 	}
@@ -266,7 +286,11 @@ func (p *RuntimeHTTPPlan) Execute(ctx context.Context, authority Authority, reso
 			}
 		}
 	}
-	return HTTPResponse{Status: response.Status, Body: ResponseBody{raw: response.Body}, header: safeHeaders(response.Header)}, receipt, nil
+	headers := safeHeaders(response.Header)
+	if p.v2 != nil {
+		headers = safeHeadersV2(response.Header)
+	}
+	return HTTPResponse{Status: response.Status, Body: ResponseBody{raw: response.Body}, header: headers}, receipt, nil
 }
 
 func sensitiveEcho(body, value []byte) bool {
