@@ -1014,6 +1014,13 @@ export interface Condition {
   values?: string[];
 }
 
+/** internal/desktop.ConnectedActionOptions */
+export interface ConnectedActionOptions {
+  plan: string;
+  policy: string;
+  credential?: string;
+}
+
 /** internal/desktop.ConnectionAction */
 export type ConnectionAction = "edit" | "disconnect";
 
@@ -5904,6 +5911,7 @@ export interface RepairSearchRequest {
 
 /** internal/desktop.ReplayActionOptions */
 export interface ReplayActionOptions {
+  connected?: ConnectedActionOptions;
   messages: string[];
   transformations: ReplayTransformation[];
   policy?: string;

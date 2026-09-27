@@ -28,7 +28,8 @@ The new containing artifact records connected environment, authority and TLS
 facts without adding members to historical manifests. Its reader never resumes
 an intent. An acknowledged transport is not an application verdict.
 
-Desktop adapters and live observation/FHIR/SMART orchestration remain separate
-owners. Their integration must consume this boundary and existing review
-mechanisms rather than widen legacy defaults or treat a raw network helper as
-execution authority.
+The desktop adapter consumes the existing one-action review and rechecks its
+executing lease. Shared HTTP action and capture executors apply the same scope
+boundary to protocol I/O, and typed HTTP acquisition v2 retains that network
+evidence with its dataset. Protocol-specific interpretation, signing and runtime
+scheduling remain independent of network permission.

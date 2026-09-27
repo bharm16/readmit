@@ -78,23 +78,40 @@ an unsettled ACK remains uncertain. A new explicit execution is an operator
 choice, never an automatic recovery retry. Authored duplicate stimuli retain
 separate step and occurrence identifiers.
 
-## Integration boundaries
+## Integrated action paths
 
-`internal/destination` also exposes the same scoped listener admission and a
-bounded single HTTPS round trip. HTTPS never inherits a proxy, follows redirects
-or retries writes. Operation and HTTP method must agree; each linked request
-needs fresh admission. `ScopedLink` rejects cross-origin next/reference,
-Location and discovery links. Caller adapters must bind exact request bytes and
-credential purpose in their authority callback. This is a shared transport
-boundary, not a FHIR/SMART protocol executor or an observation orchestrator.
-Those adapters remain with IG06 and IG09–IG13.
+`internal/networkaction` executes immutable HTTP action plans for observation,
+FHIR metadata/search/action, SMART token endpoints and setup, using the same
+scope-bound authority as v2 execution. Preparation is local and effect-free.
+Execution retains its exact configuration, operation decision and durable intent
+before the one request. A failed response after a possible write is uncertain;
+no redirect, reconnect or write retry occurs. SMART response bodies are never
+retained or serialized; protocol adapters explicitly expose their in-memory body.
+Protocol semantics and SMART signing remain with IG09–IG13.
 
-Desktop wiring is intentionally pending: the desktop owner must adapt #547's
-existing one-action review to `connectedtransport.Authority.Check`, bind its
-receipt to `Prepared.Binding`, recheck revocation/generation on every call, and
-publish the retained result through existing run detail/catalog flows. No new
-review ceremony or frontend/facade changes are introduced here. Navigation
-instrumentation and end-to-end desktop authority tests remain with that owner.
+The scoped capture action admits its bind and purpose-bound TLS key before
+starting the existing collector. Each accept/read/write rechecks authority.
+Separate-endpoint application ACK policies are refused because they require a
+separate outbound action, never permission borrowed from the listener.
+
+Typed HTTP and database observations use the same scoped authority. HTTP uses
+`observesource.DatasetRequest.Network`; database reads use `DatabaseNetwork`.
+Both use `NetworkAuthority`, and the connected plan enforces its exact project,
+environment revision, dataset endpoint and policy identity before acquisition.
+`readmit-dataset-acquisition/v2` binds the retained network action and its exact
+response or typed driver result to the dataset; v1 acquisitions keep their old
+meaning. Database connections and queries recheck authority without inheriting
+stimulus permission. HTTP, capture and database action artifacts have offline
+verifiers; none asks whether a historical grant is still live.
+
+Desktop connected sends use the existing `PrepareAction` / `ExecuteReviewedAction`
+lifecycle through `Replay.Connected`. The named case and environment, compiled
+plan, policy, actor, current operation grant and destination are bound to the
+same expiring one-action consent. The executing lease is checked before DNS,
+secrets, connection and every write. It cannot be used before the final click,
+after completion, or as a recurring runner grant. Catalog and run-evidence reads
+recognize the resulting transport artifact and remain offline. No layout or
+second approval ceremony is introduced; typed bindings are generated from Go.
 
 ## Validation
 

@@ -2,6 +2,7 @@ package destination
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"net"
@@ -12,12 +13,13 @@ import (
 // ScopedRoute can only be obtained after a fresh action authorization and a
 // recorded scoped policy decision. Its fields cannot be edited by a caller.
 type ScopedRoute struct {
-	route     Route
-	check     func(context.Context) error
-	operation sendpolicy.Operation
-	address   string
-	used      *atomic.Bool
-	deadline  time.Time
+	route         Route
+	check         func(context.Context) error
+	operation     sendpolicy.Operation
+	address       string
+	used          *atomic.Bool
+	deadline      time.Time
+	actionContext context.Context
 }
 type ScopedRequest struct {
 	Policy    sendpolicy.ScopedPolicy
@@ -32,6 +34,7 @@ func AdmitScoped(ctx context.Context, r ScopedRequest) (ScopedRoute, error) {
 	if r.Authorize == nil || r.Record == nil || r.Budget <= 0 || r.Budget > 5*time.Minute {
 		return ScopedRoute{}, errors.New("scoped connection requires bounded authority and retention")
 	}
+	actionContext := ctx
 	ctx, cancel := context.WithTimeout(ctx, r.Budget)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -50,7 +53,7 @@ func AdmitScoped(ctx context.Context, r ScopedRequest) (ScopedRoute, error) {
 	if err := r.Authorize(ctx); err != nil {
 		return ScopedRoute{}, err
 	}
-	return ScopedRoute{route: route, check: r.Authorize, operation: r.Request.Operation, address: r.Request.Address, used: new(atomic.Bool), deadline: deadline}, nil
+	return ScopedRoute{route: route, check: r.Authorize, operation: r.Request.Operation, address: r.Request.Address, used: new(atomic.Bool), deadline: deadline, actionContext: actionContext}, nil
 }
 func (r ScopedRoute) Open(ctx context.Context, security *Security) (*Connection, error) {
 	if r.check == nil || r.operation == sendpolicy.CaptureListen || !r.used.CompareAndSwap(false, true) {
@@ -91,4 +94,30 @@ func (r ScopedRoute) Check(ctx context.Context) error {
 		return errors.New("no scoped authority")
 	}
 	return r.check(ctx)
+}
+
+// DialContext serves database protocols that negotiate TLS after an initial
+// protocol preamble. The configured driver still verifies TLS through ClientConfig.
+func (r ScopedRoute) DialContext(ctx context.Context, _, _ string) (net.Conn, error) {
+	if r.check == nil || r.operation != sendpolicy.ObservationRead || !r.used.CompareAndSwap(false, true) {
+		return nil, errors.New("scoped database dial refused")
+	}
+	if err := r.check(ctx); err != nil {
+		return nil, err
+	}
+	remaining := time.Until(r.deadline)
+	if remaining <= 0 {
+		return nil, errors.New("scoped connection budget exhausted")
+	}
+	conn, err := (&net.Dialer{Timeout: remaining}).DialContext(ctx, "tcp", r.route.address)
+	if err != nil {
+		return nil, err
+	}
+	return &authorizedWrite{Conn: conn, ctx: r.actionContext, check: r.Check}, nil
+}
+func (r ScopedRoute) ClientConfig(security Security) (*tls.Config, error) {
+	if r.check == nil {
+		return nil, errors.New("no scoped authority")
+	}
+	return r.route.ClientConfig(security)
 }

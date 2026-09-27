@@ -93,7 +93,44 @@ func ScopedHTTP(ctx context.Context, r ScopedRequest, request *http.Request, sec
 	if err != nil {
 		return HTTPResult{}, refused
 	}
-	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, ForceAttemptHTTP2: false, ResponseHeaderTimeout: r.Budget, MaxResponseHeaderBytes: 64 << 10, DialContext: func(context.Context, string, string) (net.Conn, error) { return nil, refused }, DialTLSContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	return HTTPOnScopedRoute(ctx, route, copy, security, maxBytes, r.Budget)
+}
+
+// HTTPOnScopedRoute consumes one previously admitted HTTPS route. It cannot
+// substitute a different endpoint, operation, proxy or fallback dial.
+func HTTPOnScopedRoute(ctx context.Context, route ScopedRoute, request *http.Request, security Security, maxBytes int, budget time.Duration) (HTTPResult, error) {
+	refused := errors.New("scoped HTTPS request refused")
+	if request == nil || request.URL == nil || budget <= 0 || budget > 5*time.Minute || maxBytes < 1 || maxBytes > 16<<20 {
+		return HTTPResult{}, refused
+	}
+	u := *request.URL
+	address := u.Host
+	if u.Port() == "" {
+		address = net.JoinHostPort(u.Hostname(), "443")
+	}
+	if !route.Matches(address, route.operation) || request.Host != "" && request.Host != u.Host {
+		return HTTPResult{}, refused
+	}
+	if _, err := ScopedLink(u.String(), u.String()); err != nil {
+		return HTTPResult{}, refused
+	}
+	allowed := false
+	switch route.operation {
+	case sendpolicy.ObservationRead, sendpolicy.FHIRMetadata, sendpolicy.FHIRSearch:
+		allowed = request.Method == "GET"
+	case sendpolicy.SMARTToken:
+		allowed = request.Method == "POST"
+	case sendpolicy.FHIRAction, sendpolicy.SetupAction:
+		allowed = request.Method == "POST" || request.Method == "PUT" || request.Method == "PATCH" || request.Method == "DELETE"
+	}
+	if !allowed {
+		return HTTPResult{}, refused
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	copy := request.Clone(ctx)
+	copy.GetBody = nil
+	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true, ForceAttemptHTTP2: false, ResponseHeaderTimeout: budget, MaxResponseHeaderBytes: 64 << 10, DialContext: func(context.Context, string, string) (net.Conn, error) { return nil, refused }, DialTLSContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		conn, err := route.Open(ctx, &security)
 		if err != nil {
 			return nil, err

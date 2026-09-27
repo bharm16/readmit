@@ -10,8 +10,17 @@ import (
 	"github.com/bharm16/readmit/internal/secret"
 )
 
-func (r *databaseReader) readDataset(ctx context.Context, p dataset.Projection) attempt {
-	taken := attempt{at: time.Now(), record: Evidence{Kind: DatabaseQuery, Attempts: 1}}
+func (r *databaseReader) readDataset(ctx context.Context, p dataset.Projection) (taken attempt) {
+	taken = attempt{at: time.Now(), record: Evidence{Kind: DatabaseQuery, Attempts: 1}}
+	defer func() {
+		if r.complete != nil && r.complete(taken) != nil {
+			taken = failure(taken, observewindow.SampleFailed, "scoped database evidence could not be finalized")
+		}
+	}()
+	check := func() bool { return ctx.Err() == nil && (r.check == nil || r.check(ctx) == nil) }
+	if !check() {
+		return failure(taken, observewindow.SampleFailed, "database authority is not current")
+	}
 	record := dataset.DatabaseRead{Schema: dataset.DatabaseSchema, Driver: r.declaration.Driver, Columns: []dataset.DatabaseColumn{}, Rows: [][]dataset.DriverValue{}}
 	fail := func(status observewindow.SampleStatus) attempt {
 		raw, _ := json.Marshal(record, json.Deterministic(true))
@@ -38,6 +47,9 @@ func (r *databaseReader) readDataset(ctx context.Context, p dataset.Projection) 
 			return fail(observewindow.SampleFailed)
 		}
 	}
+	if !check() {
+		return fail(observewindow.SampleFailed)
+	}
 	conn, err := r.db.Conn(ctx)
 	if err != nil {
 		return fail(observewindow.SampleFailed)
@@ -48,6 +60,9 @@ func (r *databaseReader) readDataset(ctx context.Context, p dataset.Projection) 
 		names = append(names, c.Locator[0])
 	}
 	query, args := databaseProjectionQuery(d, names)
+	if !check() {
+		return fail(observewindow.SampleFailed)
+	}
 	rows, err := conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return fail(observewindow.SampleFailed)

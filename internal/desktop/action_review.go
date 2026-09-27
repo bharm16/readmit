@@ -78,6 +78,7 @@ const (
 // every message, in source order), the named transformations, and the send
 // policy the destination is decided under, if the project uses one.
 type ReplayActionOptions struct {
+	Connected       *ConnectedActionOptions `json:"connected,omitzero"`
 	Messages        []string                `json:"messages"`
 	Transformations []replay.Transformation `json:"transformations"`
 	Policy          string                  `json:"policy,omitzero"`
@@ -256,17 +257,19 @@ func (r *ReviewedActionResult) refuse(state State, reason string) {
 // request each action executes, the binding over all of it, the display, and
 // the preparation it was made from, so executing it binds exactly that again.
 type boundAction struct {
-	action  ActionID
-	origin  PrepareActionRequest
-	binding string
-	review  ActionReview
-	replay  ReplayRequest
-	export  PrivacyExportRequest
-	suite   SuitePromotionApproveRequest
-	collect *collectBinding
-	reset   *resetBinding
-	scan    *scanBinding
-	storage storagePlan
+	connected       *connectedBinding
+	executionReview *executionReview
+	action          ActionID
+	origin          PrepareActionRequest
+	binding         string
+	review          ActionReview
+	replay          ReplayRequest
+	export          PrivacyExportRequest
+	suite           SuitePromotionApproveRequest
+	collect         *collectBinding
+	reset           *resetBinding
+	scan            *scanBinding
+	storage         storagePlan
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -498,6 +501,7 @@ func (a *App) ExecuteReviewedAction(request ExecuteActionRequest) ReviewedAction
 		return result
 	}
 	review.consumed = request.IntentID
+	review.bound.executionReview = &executionReview{token: request.Token, intent: request.IntentID, expires: review.expires}
 	intent := &heldIntent{payload: payload, at: a.now(), done: make(chan struct{})}
 	store.intents[request.IntentID] = intent
 	store.mu.Unlock()
@@ -563,6 +567,7 @@ func (a *App) perform(operation string, bound *boundAction, policy actionPolicy,
 		a.markRunning(operation, policy.perform)
 		defer a.markRunning("", slot{})
 		performed = true
+		fresh.executionReview = bound.executionReview
 		return policy.execute(a, ctx, fresh, decisions)
 	})
 	if !performed && result.State == PermissionDenied {
@@ -730,6 +735,9 @@ func backingEntry(item catalog.Item) string {
 }
 
 func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
+	if request.Replay != nil && request.Replay.Connected != nil {
+		return bindConnectedSend(a, ctx, request, held)
+	}
 	if len(request.Items) != 1 || request.Items[0].Kind != CaseItem || request.Destination == nil || request.Destination.Kind != EnvironmentItem {
 		return nil, refusal{Failed, "a send is reviewed for one case and one environment"}
 	}
@@ -777,6 +785,9 @@ func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, h
 // settled makes the outcome uncertain, whether or not the send was stopped:
 // uncertainty is never read as completion or as a clean stop.
 func executeReplaySend(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
+	if bound.connected != nil {
+		return executeConnectedSend(a, ctx, bound)
+	}
 	sent := a.sendReplay(ctx, ReplaySendRequest{Replay: bound.replay, Expected: bound.review.Replay.Identity, Approved: true})
 	result := ReviewedActionResult{State: sent.State, Reason: sent.Reason, Replay: sent.Run, Outcome: ActionCompleted}
 	switch {

@@ -6,7 +6,9 @@ import (
 
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/dataset"
+	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/observesource"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 const DatasetResultSchema = "readmit-dataset-execution-result/v1"
@@ -110,6 +112,12 @@ func CollectDataset(ctx context.Context, p *Plan, id, instance string, request o
 	if err != nil {
 		return nil, err
 	}
+	if request.Network != nil && !networkScopeMatches(p, d.ID, request.Network.Binding()) {
+		return nil, invalid
+	}
+	if request.DatabaseNetwork != nil && !networkScopeMatches(p, d.ID, request.DatabaseNetwork.Binding()) {
+		return nil, invalid
+	}
 	request.Projection = projection
 	request.Binding = dataset.Binding{Run: instance, Phase: d.Phase, Source: d.Source, Namespace: d.Namespace}
 	return observesource.CollectDataset(ctx, request)
@@ -150,4 +158,9 @@ func EvaluateDatasets(ctx context.Context, p *Plan, execution Execution, evidenc
 		verdict = assertion.VerdictUndecided
 	}
 	return DatasetResult{Schema: DatasetResultSchema, PlanIdentity: p.Identity(), CheckIdentity: p.document.Test.Checks.SHA256, Execution: execution, Verdict: verdict, Report: report}, nil
+}
+
+func networkScopeMatches(p *Plan, endpoint string, b networkaction.Binding) bool {
+	env := p.document.Environment
+	return b.Plan == p.Identity() && b.Project == env.Project && b.Environment == env.ID && b.Revision == env.Revision && b.Endpoint == endpoint && b.Policy == env.AddressPolicyIdentity && b.Operation == sendpolicy.ObservationRead
 }

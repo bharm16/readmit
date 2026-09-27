@@ -14,6 +14,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/operationguard"
@@ -865,6 +866,9 @@ func (a *App) OpenRunEvidence(request RunEvidenceRequest) RunEvidenceResult {
 		path, err := runEvidencePath(root, request.Entry)
 		if err != nil {
 			return RunEvidenceResult{State: Failed, Reason: "a retained execution is named by one workspace entry, or one job inside a suite execution's runs"}
+		}
+		if declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema) {
+			return connectedRunEvidence(path, request)
 		}
 		retained, err := runresult.Open(path)
 		if errors.Is(err, engine.ErrUnsupportedVersion) {

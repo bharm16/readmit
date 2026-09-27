@@ -56,9 +56,10 @@ uses existing source readers and credential/destination rules, and returns the
 sealed snapshot. `readmit-dataset-acquisition/v1` retains the network decision
 where applicable and binds the nested dataset. `OpenDataset` uses no original
 path, URL, database connection or credential provider. Caller-supplied authority
-must bind the selected source and projection to the approved action. The shared
-scoped observation admission integration remains part of the IG02/IG06 adapters;
-this change does not broaden historical network permissions.
+must bind the selected source and projection to the approved action. HTTP and database acquisitions can consume the shared scoped action authority
+through the v2 acquisition envelope. Their compiled plan, source, environment,
+policy and purpose are checked before effects; historical permissions remain
+unchanged.
 
 A complete snapshot means one declared source response was fully acquired and
 projected. It does not mean a downstream observation horizon ended. Missing,

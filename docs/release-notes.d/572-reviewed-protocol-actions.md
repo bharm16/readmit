@@ -1,0 +1,1 @@
+- Connected sends now consume the existing desktop one-action review, with offline catalog/run inspection. Scoped HTTP actions, capture listeners and typed HTTP observations share exact endpoint/purpose authority, retained decisions and no automatic resend.

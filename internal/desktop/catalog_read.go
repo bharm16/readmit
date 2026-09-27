@@ -20,6 +20,7 @@ import (
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/expectation"
@@ -248,6 +249,8 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 	path := filepath.Join(root, name)
 	if entry.IsDir() && entry.Type()&fs.ModeSymlink == 0 {
 		switch {
+		case declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema):
+			return RunItem, true
 		case declares(filepath.Join(path, "manifest.json"), replay.Schema):
 			return RunItem, true
 		case regular(filepath.Join(path, reproducer.ManifestName)):
@@ -833,7 +836,19 @@ func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view
 	path := paths[primaryRole(RunItem)]
 	summary := &RunSummary{}
 	var run *replay.Run
-	if declares(filepath.Join(path, "manifest.json"), replay.Schema) {
+	if declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema) {
+		receipt, err := connectedtransport.Open(path)
+		if err != nil {
+			return view{}, err
+		}
+		run, err = replay.Open(filepath.Join(path, "run"))
+		if err != nil {
+			return view{}, err
+		}
+		summary.Outcome = receipt.State
+		summary.Boundary = "transport-only"
+		summary.SourceCase = c.caseByIdentity(receipt.Binding.Source)
+	} else if declares(filepath.Join(path, "manifest.json"), replay.Schema) {
 		opened, err := replay.Open(path)
 		if err != nil {
 			return view{}, err

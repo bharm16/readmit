@@ -185,3 +185,18 @@ func bindCredentialSnapshot(raw, storeRaw []byte, env connectedtest.Environment,
 	}
 	return c, ref.Locator(), nil
 }
+
+type MessagePreview struct {
+	Source, Outbound string
+	WireBytes        int
+}
+
+// Preview returns display metadata from the sealed plan without effects.
+func (p *Prepared) Preview() (replay.Target, []MessagePreview) {
+	messages := []MessagePreview{}
+	for _, m := range p.replay.Mappings() {
+		wire, _ := p.replay.Outbound(m.OutboundOccurrence)
+		messages = append(messages, MessagePreview{Source: m.SourceOccurrence, Outbound: m.OutboundOccurrence, WireBytes: len(wire)})
+	}
+	return p.replay.Configuration(), messages
+}

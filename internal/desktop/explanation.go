@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/runexplain"
 )
 
@@ -227,6 +228,16 @@ func explainedBundle(root, entry string) (string, string, refusal) {
 		return "", "", refusal{Failed, notARetainedRun}
 	}
 	named := entry
+	if declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema) {
+		if _, err := connectedtransport.Open(path); err != nil {
+			return "", "", refusal{Failed, "the connected transport evidence cannot be verified"}
+		}
+		nested, err := artifactpath.Child(path, "run")
+		if err != nil {
+			return "", "", refusal{Failed, notARetainedRun}
+		}
+		return nested, entry + "/run", refusal{}
+	}
 	kind, _ := classify(filepath.Dir(path), filepath.Base(path), true)
 	if kind == JobArtifact {
 		if path, err = artifactpath.Child(path, "result"); err != nil {

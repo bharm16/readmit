@@ -17,14 +17,20 @@ import (
 )
 
 type databaseReader struct {
+	cleanup     func()
+	check       func(context.Context) error
+	complete    func(attempt) error
 	declaration Database
-	route       destination.Route
+	route       databaseRoute
 	tls         *tls.Config
 	db          *sql.DB
 	maxAge      time.Duration
 }
 
 func (r *databaseReader) close() {
+	if r.cleanup != nil {
+		r.cleanup()
+	}
 	if r.db != nil {
 		r.db.Close()
 	}
