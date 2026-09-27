@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type {
   Comparison as ComparisonView,
   CompareResult,
@@ -9,6 +8,7 @@ import type {
 import { NormalizationPolicyEditor } from "./RulesEditor";
 import { Report, type Indicators } from "./shell";
 import "./comparison.css";
+import { useViewChange, useViewState } from "./viewstate";
 
 /** How every row kind and every reason the engine reports reads in the window.
  * The engine names them; this maps each to a sentence and decides none. */
@@ -141,11 +141,11 @@ export function Comparison({
   /** Called after an authored policy landed, so the picker offers it. */
   onSaved?: () => void;
 }) {
-  const [right, setRight] = useState("");
-  const [keys, setKeys] = useState("");
-  const [fields, setFields] = useState("");
-  const [policy, setPolicy] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
+  const [right, setRight] = useViewState("Comparison.right", "");
+  const [keys, setKeys] = useViewState("Comparison.keys", "");
+  const [fields, setFields] = useViewState("Comparison.fields", "");
+  const [policy, setPolicy] = useViewState("Comparison.policy", "");
+  const [selected, setSelected] = useViewState<number | null>("Comparison.selected", null);
 
   const comparison: ComparisonView | null = result?.comparison ?? null;
 
@@ -160,9 +160,7 @@ export function Comparison({
     comparison?.keys.join(" "),
     comparison?.fields.join(" "),
   ].join("\u0000");
-  useEffect(() => {
-    setSelected(null);
-  }, [rowsAreNew]);
+  useViewChange("Comparison.rows", rowsAreNew, () => setSelected(null));
 
   const terms = (value: string) => value.split(/[\s,]+/).filter(Boolean);
   const opened = comparison?.rows.find((row) => row.position === selected) ?? null;

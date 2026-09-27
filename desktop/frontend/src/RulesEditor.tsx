@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useRef, type Ref } from "react";
 import {
   openCorrelationRules,
   saveCorrelationRules,
@@ -14,6 +14,7 @@ import {
   type SequenceAnalysisResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** Structured editors for the authored rule and policy documents.
  *
@@ -228,22 +229,22 @@ export function CorrelationRulesEditor({
   /** Called after a save landed, so the listing offers the new revision. */
   onSaved?: () => void;
 }) {
-  const [rules, setRules] = useState<CorrelationRuleDraft[]>([]);
-  const [authorities, setAuthorities] = useState<CorrelationAuthority[]>([]);
-  const [draft, setDraft] = useState<CorrelationRuleDraft>(EMPTY_CORRELATION_RULE);
-  const [authority, setAuthority] = useState<CorrelationAuthority>(EMPTY_AUTHORITY);
-  const [document, setDocument] = useState("");
-  const [entry, setEntry] = useState("");
-  const [output, setOutput] = useState("");
-  const [result, setResult] = useState<CorrelationRulesResult | null>(null);
+  const [rules, setRules] = useViewState<CorrelationRuleDraft[]>("CorrelationRulesEditor.rules", []);
+  const [authorities, setAuthorities] = useViewState<CorrelationAuthority[]>("CorrelationRulesEditor.authorities", []);
+  const [draft, setDraft] = useViewState<CorrelationRuleDraft>("CorrelationRulesEditor.draft", EMPTY_CORRELATION_RULE);
+  const [authority, setAuthority] = useViewState<CorrelationAuthority>("CorrelationRulesEditor.authority", EMPTY_AUTHORITY);
+  const [document, setDocument] = useViewState("CorrelationRulesEditor.document", "");
+  const [entry, setEntry] = useViewState("CorrelationRulesEditor.entry", "");
+  const [output, setOutput] = useViewState("CorrelationRulesEditor.output", "");
+  const [result, setResult] = useViewState<CorrelationRulesResult | null>("CorrelationRulesEditor.result", null);
   // Whether the rules on screen were changed since they were last opened or
   // saved. Opening another document replaces them, so that asks first.
-  const [unsaved, setUnsaved] = useState(false);
+  const [unsaved, setUnsaved] = useViewState("CorrelationRulesEditor.unsaved", false);
   // The retained document whose opening waits for the person's answer.
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useViewState<string | null>("CorrelationRulesEditor.confirming", null);
   // The entry the rules on screen were opened from, named beside the identity
   // of its exact bytes.
-  const [openedFrom, setOpenedFrom] = useState("");
+  const [openedFrom, setOpenedFrom] = useViewState("CorrelationRulesEditor.openedFrom", "");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
   const lifecycle = useLifecycle<string>();
@@ -598,31 +599,31 @@ export function SequenceAnalysisEditor({
   busy: boolean;
   onSaved?: () => void;
 }) {
-  const [rulesSHA, setRulesSHA] = useState("");
-  const [tolerance, setTolerance] = useState("0");
-  const [windows, setWindows] = useState<WindowDraft[]>([]);
-  const [retries, setRetries] = useState<RetryDraft[]>([]);
-  const [downstream, setDownstream] = useState<DownstreamDraft[]>([]);
-  const [windowDraft, setWindowDraft] = useState<WindowDraft>(EMPTY_WINDOW);
-  const [retryDraft, setRetryDraft] = useState<RetryDraft>(EMPTY_RETRY);
-  const [downstreamDraft, setDownstreamDraft] = useState<DownstreamDraft>(EMPTY_DOWNSTREAM);
-  const [document, setDocument] = useState("");
-  const [entry, setEntry] = useState("");
-  const [output, setOutput] = useState("");
-  const [result, setResult] = useState<SequenceAnalysisResult | null>(null);
+  const [rulesSHA, setRulesSHA] = useViewState("SequenceAnalysisEditor.rulesSHA", "");
+  const [tolerance, setTolerance] = useViewState("SequenceAnalysisEditor.tolerance", "0");
+  const [windows, setWindows] = useViewState<WindowDraft[]>("SequenceAnalysisEditor.windows", []);
+  const [retries, setRetries] = useViewState<RetryDraft[]>("SequenceAnalysisEditor.retries", []);
+  const [downstream, setDownstream] = useViewState<DownstreamDraft[]>("SequenceAnalysisEditor.downstream", []);
+  const [windowDraft, setWindowDraft] = useViewState<WindowDraft>("SequenceAnalysisEditor.windowDraft", EMPTY_WINDOW);
+  const [retryDraft, setRetryDraft] = useViewState<RetryDraft>("SequenceAnalysisEditor.retryDraft", EMPTY_RETRY);
+  const [downstreamDraft, setDownstreamDraft] = useViewState<DownstreamDraft>("SequenceAnalysisEditor.downstreamDraft", EMPTY_DOWNSTREAM);
+  const [document, setDocument] = useViewState("SequenceAnalysisEditor.document", "");
+  const [entry, setEntry] = useViewState("SequenceAnalysisEditor.entry", "");
+  const [output, setOutput] = useViewState("SequenceAnalysisEditor.output", "");
+  const [result, setResult] = useViewState<SequenceAnalysisResult | null>("SequenceAnalysisEditor.result", null);
   // The case identity an opened declaration binds to. It stays the one the
   // declaration names, so extending a declaration never rebinds it to the
   // open case; before anything is opened, the open case's identity is used.
-  const [boundIdentity, setBoundIdentity] = useState<string | null>(null);
+  const [boundIdentity, setBoundIdentity] = useViewState<string | null>("SequenceAnalysisEditor.boundIdentity", null);
   const bindsTo = boundIdentity ?? caseIdentity;
   // Whether the declaration on screen was changed since it was last opened or
   // saved. Opening another one replaces it, so that asks first.
-  const [unsaved, setUnsaved] = useState(false);
+  const [unsaved, setUnsaved] = useViewState("SequenceAnalysisEditor.unsaved", false);
   // The retained declaration whose opening waits for the person's answer.
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useViewState<string | null>("SequenceAnalysisEditor.confirming", null);
   // The entry the declaration on screen was opened from, named beside the
   // identity of its exact bytes.
-  const [openedFrom, setOpenedFrom] = useState("");
+  const [openedFrom, setOpenedFrom] = useViewState("SequenceAnalysisEditor.openedFrom", "");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
   const lifecycle = useLifecycle<string>();
@@ -1049,20 +1050,20 @@ export function NormalizationPolicyEditor({
   busy: boolean;
   onSaved?: () => void;
 }) {
-  const [rules, setRules] = useState<PolicyRuleDraft[]>([]);
-  const [draft, setDraft] = useState<PolicyRuleDraft>(EMPTY_POLICY_RULE);
-  const [document, setDocument] = useState("");
-  const [entry, setEntry] = useState("");
-  const [output, setOutput] = useState("");
-  const [result, setResult] = useState<NormalizationPolicyResult | null>(null);
+  const [rules, setRules] = useViewState<PolicyRuleDraft[]>("NormalizationPolicyEditor.rules", []);
+  const [draft, setDraft] = useViewState<PolicyRuleDraft>("NormalizationPolicyEditor.draft", EMPTY_POLICY_RULE);
+  const [document, setDocument] = useViewState("NormalizationPolicyEditor.document", "");
+  const [entry, setEntry] = useViewState("NormalizationPolicyEditor.entry", "");
+  const [output, setOutput] = useViewState("NormalizationPolicyEditor.output", "");
+  const [result, setResult] = useViewState<NormalizationPolicyResult | null>("NormalizationPolicyEditor.result", null);
   // Whether the policy on screen was changed since it was last opened or
   // saved. Opening another policy replaces it, so that asks first.
-  const [unsaved, setUnsaved] = useState(false);
+  const [unsaved, setUnsaved] = useViewState("NormalizationPolicyEditor.unsaved", false);
   // The retained policy whose opening waits for the person's answer.
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useViewState<string | null>("NormalizationPolicyEditor.confirming", null);
   // The entry the policy on screen was opened from, named beside the
   // identity of its exact bytes.
-  const [openedFrom, setOpenedFrom] = useState("");
+  const [openedFrom, setOpenedFrom] = useViewState("NormalizationPolicyEditor.openedFrom", "");
   // What the editor itself is waiting on the application for: an open or a
   // save of its own. Its controls wait with it, as they do for the window's.
   const lifecycle = useLifecycle<string>();

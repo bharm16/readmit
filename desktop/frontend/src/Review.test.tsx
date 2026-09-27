@@ -292,7 +292,9 @@ test("a save this account cannot write is denied beside the steps, and a preview
   await readCaseIdentity(user, "other-identity-fixed-for-tests");
   await user.click(within(screen.getByRole("region", { name: "Navigation" })).getByRole("button", { name: "Reports" }));
   await openView(user, "Transform and export");
-  await waitFor(() => expect(panel.queryByText(/^Preview of /)).toBeNull());
-  expect(panel.queryByText("this account cannot write into the open workspace")).toBeNull();
-  expect(steps(panel)).toEqual([]);
+  // The page was not mounted while away; it is drawn again for this case.
+  const reopened = within(await screen.findByRole("region", { name: "Review and transform" }));
+  await waitFor(() => expect(reopened.queryByText(/^Preview of /)).toBeNull());
+  expect(reopened.queryByText("this account cannot write into the open workspace")).toBeNull();
+  expect(steps(reopened)).toEqual([]);
 });

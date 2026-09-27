@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import "./raw.css";
 import {
   chooseCorpusPath,
@@ -22,6 +22,7 @@ import { ControlledDetails } from "./ControlledDetails";
 import { Report, type Indicators } from "./shell";
 import { useLifecycle } from "./lifecycle";
 import { TaskTabs } from "./TaskTabs";
+import { useViewState } from "./viewstate";
 
 /** How often a running generation or scan is asked what it has reached. */
 const PROGRESS_MS = 250;
@@ -292,11 +293,11 @@ export function PerformanceCorpus({
   /** Counts the palette's requests to open this screen. */
   request: number;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useViewState("PerformanceCorpus.open", false);
   const toggle = useRef<HTMLButtonElement>(null);
   // One task is shown at a time; the other keeps its unsaved inputs, and a
   // task still running keeps its status and cancellation in view.
-  const [task, setTask] = useState<"generate" | "scan">("generate");
+  const [task, setTask] = useViewState<"generate" | "scan">("PerformanceCorpus.task", "generate");
   // This screen's calls hold the window's one slot, so the rest of the window
   // is unavailable meanwhile rather than answered busy; generation and a scan
   // both run under the facade's corpus operation, which its cancel stops.
@@ -304,30 +305,30 @@ export function PerformanceCorpus({
     window: true,
     names: { generate: "corpus", scan: "corpus" },
   });
-  const [progress, setProgress] = useState<CorpusProgress | null>(null);
-  const [feedback, setFeedback] = useState<{ state: State; reason?: string | undefined } | null>(null);
+  const [progress, setProgress] = useViewState<CorpusProgress | null>("PerformanceCorpus.progress", null);
+  const [feedback, setFeedback] = useViewState<{ state: State; reason?: string | undefined } | null>("PerformanceCorpus.feedback", null);
 
-  const [seed, setSeed] = useState("");
-  const [baseTime, setBaseTime] = useState("");
-  const [generator, setGenerator] = useState("");
-  const [profile, setProfile] = useState("");
-  const [messages, setMessages] = useState("");
-  const [generation, setGeneration] = useState<Declared>(undeclared);
-  const [folder, setFolder] = useState("");
-  const [corpusName, setCorpusName] = useState("corpus.mllp");
-  const [manifestName, setManifestName] = useState("corpus.json");
-  const [generated, setGenerated] = useState<CorpusGenerateResult | null>(null);
+  const [seed, setSeed] = useViewState("PerformanceCorpus.seed", "");
+  const [baseTime, setBaseTime] = useViewState("PerformanceCorpus.baseTime", "");
+  const [generator, setGenerator] = useViewState("PerformanceCorpus.generator", "");
+  const [profile, setProfile] = useViewState("PerformanceCorpus.profile", "");
+  const [messages, setMessages] = useViewState("PerformanceCorpus.messages", "");
+  const [generation, setGeneration] = useViewState<Declared>("PerformanceCorpus.generation", undeclared);
+  const [folder, setFolder] = useViewState("PerformanceCorpus.folder", "");
+  const [corpusName, setCorpusName] = useViewState("PerformanceCorpus.corpusName", "corpus.mllp");
+  const [manifestName, setManifestName] = useViewState("PerformanceCorpus.manifestName", "corpus.json");
+  const [generated, setGenerated] = useViewState<CorpusGenerateResult | null>("PerformanceCorpus.generated", null);
 
-  const [stream, setStream] = useState("");
-  const [scanning, setScanning] = useState<Declared>(undeclared);
-  const [batchRecords, setBatchRecords] = useState("");
-  const [batchBytes, setBatchBytes] = useState("");
-  const [windowOffset, setWindowOffset] = useState("0");
-  const [windowLimit, setWindowLimit] = useState("20");
-  const [benchmark, setBenchmark] = useState(false);
-  const [reportFolder, setReportFolder] = useState("");
-  const [reportName, setReportName] = useState("benchmark.json");
-  const [scanned, setScanned] = useState<CorpusScanResult | null>(null);
+  const [stream, setStream] = useViewState("PerformanceCorpus.stream", "");
+  const [scanning, setScanning] = useViewState<Declared>("PerformanceCorpus.scanning", undeclared);
+  const [batchRecords, setBatchRecords] = useViewState("PerformanceCorpus.batchRecords", "");
+  const [batchBytes, setBatchBytes] = useViewState("PerformanceCorpus.batchBytes", "");
+  const [windowOffset, setWindowOffset] = useViewState("PerformanceCorpus.windowOffset", "0");
+  const [windowLimit, setWindowLimit] = useViewState("PerformanceCorpus.windowLimit", "20");
+  const [benchmark, setBenchmark] = useViewState("PerformanceCorpus.benchmark", false);
+  const [reportFolder, setReportFolder] = useViewState("PerformanceCorpus.reportFolder", "");
+  const [reportName, setReportName] = useViewState("PerformanceCorpus.reportName", "benchmark.json");
+  const [scanned, setScanned] = useViewState<CorpusScanResult | null>("PerformanceCorpus.scanned", null);
 
   const disabled = busy || running !== null;
 
@@ -565,7 +566,7 @@ export function PerformanceCorpus({
                     Generate corpus
                   </button>
                 </div>
-                <Report
+                <Report outcome
                   indicators={indicators}
                   progress={null}
                   result={generated && generated.state !== "completed" ? generated : null}
@@ -688,7 +689,7 @@ export function PerformanceCorpus({
                     Scan stream
                   </button>
                 </div>
-                <Report
+                <Report outcome
                   indicators={indicators}
                   progress={null}
                   result={scanned && scanned.state !== "completed" ? scanned : null}

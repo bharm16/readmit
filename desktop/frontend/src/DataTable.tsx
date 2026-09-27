@@ -9,7 +9,7 @@
 // the owner asks for them, are only for choosing several rows for an action;
 // Space toggles the focused row's and Shift with an arrow extends a choice
 // already started.
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ROW_REM } from "./geometry";
 import { useMeasured } from "./measure";
 import { IconButton } from "./IconButton";
@@ -23,11 +23,28 @@ export type Column<T> = {
   /** 1 is the primary column and is never hidden; higher numbers are hidden
    * first when the table is too narrow for every column. */
   priority: number;
-  /** The narrowest the column can usefully be, in rem. */
+  /** The narrowest the column can usefully be, in rem; a column that does
+   * not flex is exactly this wide. */
   minWidth: number;
+  /** The column takes a share of the room the fixed columns leave. Without
+   * any flexing column the first one does. */
+  flex?: boolean;
   render: (row: T) => ReactNode;
   sortable?: boolean;
 };
+
+/** Where Back returned to: the list holding `anchor` scrolls it to the top,
+ * once for each return (`at` is the route returned to). */
+export const ReturnAnchor = createContext<{ anchor?: string | undefined; at?: object | undefined }>({});
+
+/** The first row a list shows, for the place being left to return to. */
+export function firstShownRow(list: HTMLElement): string | undefined {
+  const top = list.getBoundingClientRect().top + (list.querySelector("thead")?.getBoundingClientRect().height ?? 0);
+  for (const row of list.querySelectorAll<HTMLElement>("tbody tr[data-row-id]")) {
+    if (row.getBoundingClientRect().bottom > top + 1) return row.dataset.rowId;
+  }
+  return undefined;
+}
 
 /** Rows drawn on either side of the visible ones. */
 export const OVERSCAN = 8;
@@ -132,6 +149,20 @@ export function DataTable<T>({
     }
   };
 
+  // Returned to by Back: the row that was first on screen is again.
+  const returned = useContext(ReturnAnchor);
+  const appliedReturn = useRef<object | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!viewport || !returned.anchor || !returned.at || appliedReturn.current === returned.at || rowHeight <= 0) return;
+    const at = rows.findIndex((row) => rowId(row) === returned.anchor);
+    if (at < 0) return;
+    appliedReturn.current = returned.at;
+    viewport.scrollTop = at * rowHeight;
+    setScrollTop(viewport.scrollTop);
+    // rowId is the owner's accessor; a new function each render names the same ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returned, rows, rowHeight, viewport]);
+
   // A resize or a new text size moves every row; the selected one is brought
   // back into view, and keeps the keyboard if it had it.
   const hadFocus = useRef(false);
@@ -177,6 +208,7 @@ export function DataTable<T>({
   };
 
   const span = shown.length + (checkable ? 1 : 0);
+  const anyFlex = shown.some((column) => column.flex);
   return (
     <div
       className={className ? `table-view ${className}` : "table-view"}
@@ -188,6 +220,12 @@ export function DataTable<T>({
       }}
     >
       <table aria-label={label} aria-rowcount={rows.length + 1} aria-multiselectable={checkable || undefined}>
+        <colgroup>
+          {checkable ? <col className="check-column" /> : null}
+          {shown.map((column, position) => (
+            <col key={column.key} style={(anyFlex ? column.flex : position === 0) ? { minWidth: `${column.minWidth}rem` } : { width: `${column.minWidth}rem` }} />
+          ))}
+        </colgroup>
         <thead>
           <tr aria-rowindex={1}>
             {checkable ? (

@@ -20,7 +20,7 @@
   padding: 0.4rem 0.8rem;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-weight: 500;
 }
@@ -37,7 +37,7 @@
 
 .profile-meta-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
   gap: 0.8rem;
   margin-bottom: 1rem;
 }
@@ -59,7 +59,7 @@
 
 .segment-card {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sheet);
   padding: 0.8rem;
   margin-bottom: 1rem;
 }
@@ -82,7 +82,7 @@
   font-size: 0.85rem;
   background: var(--hover);
   padding: 0.2rem 0.4rem;
-  border-radius: 3px;
+  border-radius: var(--radius-control);
 }
 
 .fields-table-wrapper {
@@ -138,7 +138,7 @@
 .result-box {
   margin-top: 1rem;
   padding: 0.8rem;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   border: 1px solid currentColor;
 }
 
@@ -182,7 +182,7 @@
 .compare-inputs-grid,
 .exchange-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(13.75rem, 1fr));
   gap: 0.8rem;
   margin-bottom: 1rem;
 }
@@ -267,10 +267,8 @@
   align-items: start;
 }
 
-@media (max-width: 60rem) {
-  .profile-structure {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.app.compact .profile-structure {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .field-detail,
@@ -280,7 +278,7 @@
 .condition-inputs,
 .allowed-values {
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sheet);
   padding: 0.6rem 0.8rem;
   margin: 0 0 0.8rem;
   min-width: 0;

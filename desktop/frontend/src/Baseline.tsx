@@ -1,25 +1,25 @@
 import { HIDDEN_VALUE } from "./display";
 import "./baseline.css";
-import { useState } from "react";
 import { approveBaseline, openBaseline, reviewBaseline, type BaselineResult } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** Local approval is deliberately independent of run completion and session restoration.
  * onSaved is called once an approval wrote a new file, so the panels whose
  * pickers list the workspace's entries (a released test version among them)
  * offer it. */
 export function Baseline({ workspace, busy, onSaved }: { workspace: string; busy: boolean; onSaved?: () => void }) {
-  const [released, setReleased] = useState(false);
-  const [releaseID, setReleaseID] = useState("");
-  const [profiles, setProfiles] = useState("");
-  const [spec, setSpec] = useState("");
-  const [previous, setPrevious] = useState("");
-  const [show, setShow] = useState(false);
-  const [approver, setApprover] = useState("");
-  const [rationale, setRationale] = useState("");
-  const [output, setOutput] = useState("");
-  const [result, setResult] = useState<BaselineResult | null>(null);
-  const [inspecting, setInspecting] = useState(false);
+  const [released, setReleased] = useViewState("Baseline.released", false);
+  const [releaseID, setReleaseID] = useViewState("Baseline.releaseID", "");
+  const [profiles, setProfiles] = useViewState("Baseline.profiles", "");
+  const [spec, setSpec] = useViewState("Baseline.spec", "");
+  const [previous, setPrevious] = useViewState("Baseline.previous", "");
+  const [show, setShow] = useViewState("Baseline.show", false);
+  const [approver, setApprover] = useViewState("Baseline.approver", "");
+  const [rationale, setRationale] = useViewState("Baseline.rationale", "");
+  const [output, setOutput] = useViewState("Baseline.output", "");
+  const [result, setResult] = useViewState<BaselineResult | null>("Baseline.result", null);
+  const [inspecting, setInspecting] = useViewState("Baseline.inspecting", false);
   const { running, run } = useLifecycle<"working">();
   const working = running !== null;
   const disabled = busy || working;

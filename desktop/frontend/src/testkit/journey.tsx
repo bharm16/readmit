@@ -27,6 +27,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { inject } from "vitest";
 import App from "../App";
+import { forgetViewState } from "../viewstate";
 import type { Facade, HubAdminFacade } from "../bindings";
 import { startDownstream } from "./downstream.js";
 import { deploymentAuthority } from "./deployment.js";
@@ -182,6 +183,8 @@ export class Journey {
       throw new Error("the application is already running");
     }
     this.bridge = startBridge(this.binary, this.root, options.fileSizeLimit);
+    // A launched application starts with nothing a page held last time.
+    forgetViewState();
     window.go = {
       desktop: { App: this.facade(this.bridge) },
       hubadmin: { Admin: this.boundFacade(this.bridge, "hubadmin", "Admin") },

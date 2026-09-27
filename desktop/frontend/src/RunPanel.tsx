@@ -20,6 +20,8 @@ import {
 } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentBanner";
 import { useLifecycle } from "./lifecycle";
+import { Reveal } from "./layout";
+import { useViewState } from "./viewstate";
 
 // The backend owns entry validation. This narrower check keeps a malformed
 // output name out of the viewer's session before the backend can refuse it.
@@ -70,25 +72,25 @@ export function RunPanel({
   const suites = entries.filter((artifact) => artifact.kind === "suite").map((artifact) => artifact.name);
   const runs = entries.filter((artifact) => artifact.kind === "job" || artifact.kind === "result").map((artifact) => artifact.name);
 
-  const [selected, setSelected] = useState("");
-  const [environment, setEnvironment] = useState("");
-  const [output, setOutput] = useState("");
-  const [resumeOutput, setResumeOutput] = useState("");
-  const [resumedTo, setResumedTo] = useState("");
-  const [preflight, setPreflight] = useState<RunPreflightResult | null>(null);
+  const [selected, setSelected] = useViewState("RunPanel.selected", "");
+  const [environment, setEnvironment] = useViewState("RunPanel.environment", "");
+  const [output, setOutput] = useViewState("RunPanel.output", "");
+  const [resumeOutput, setResumeOutput] = useViewState("RunPanel.resumeOutput", "");
+  const [resumedTo, setResumedTo] = useViewState("RunPanel.resumedTo", "");
+  const [preflight, setPreflight] = useViewState<RunPreflightResult | null>("RunPanel.preflight", null);
   const lifecycle = useLifecycle<"executing" | "preflighting" | "browsing" | "cleaning">({
     names: { executing: "durable-run" },
   });
   const operation = lifecycle.running;
   const busy = operation !== null;
-  const [result, setResult] = useState<DurableRunResult | null>(null);
-  const [report, setReport] = useState<SuiteRunReport | null>(null);
-  const [progress, setProgress] = useState<RunProgressResult | null>(null);
+  const [result, setResult] = useViewState<DurableRunResult | null>("RunPanel.result", null);
+  const [report, setReport] = useViewState<SuiteRunReport | null>("RunPanel.report", null);
+  const [progress, setProgress] = useViewState<RunProgressResult | null>("RunPanel.progress", null);
   const [evidence, setEvidence] = useState<RunEvidenceResult | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const [history, setHistory] = useState("");
-  const [resumeResult, setResumeResult] = useState<ResumeRunResult | null>(null);
-  const [cleanResult, setCleanResult] = useState<CleanRunResult | null>(null);
+  const [history, setHistory] = useViewState("RunPanel.history", "");
+  const [resumeResult, setResumeResult] = useViewState<ResumeRunResult | null>("RunPanel.resumeResult", null);
+  const [cleanResult, setCleanResult] = useViewState<CleanRunResult | null>("RunPanel.cleanResult", null);
   const poll = useRef<number | null>(null);
 
   useEffect(() => {
@@ -367,8 +369,7 @@ export function RunPanel({
       {cleanResult?.reason ? <p role="alert">Cleanup refused: {cleanResult.reason}</p> : null}
       {cleanResult?.cleanup ? <p>Cleanup removed {cleanResult.cleanup.removed.length ? cleanResult.cleanup.removed.join(", ") : "nothing"}; retained {cleanResult.cleanup.retained.length} evidence entries.</p> : null}
       {evidence?.evidence ? <>
-        <button disabled={busy} aria-describedby="run-values-warning" onClick={() => void openHistory(!revealed)}>{revealed ? "Hide values" : "Show values"}</button>
-        <p id="run-values-warning" className="hint">Values may contain patient data.</p>
+        <Reveal revealed={revealed} disabled={busy} onToggle={(next) => void openHistory(next)} />
       </> : null}
       {evidence?.evidence ? <RunEvidenceView evidence={evidence.evidence} onOpenCase={onOpenCase} /> : null}
       {progress && history ? <p>{progress.state === "empty" ? progress.reason : null}</p> : null}

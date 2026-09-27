@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { type FormEvent } from "react";
 import {
   chooseOperatorHubConfig,
   connectOperatorHub,
@@ -9,6 +9,7 @@ import {
   type HubTransferResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** The hub panel's operator-only mode. A hub its operator serves without an
  * access policy is an opaque store of artifacts by SHA-256 digest, reached
@@ -20,14 +21,14 @@ import { useLifecycle } from "./lifecycle";
  * and shows the custody notice. The selection and connection last while the
  * window is open. */
 export function OperatorHub() {
-  const [status, setStatus] = useState<HubResult | null>(null);
-  const [transfer, setTransfer] = useState<{ kind: "read" | "store"; result: HubTransferResult } | null>(null);
-  const [digest, setDigest] = useState("");
+  const [status, setStatus] = useViewState<HubResult | null>("OperatorHub.status", null);
+  const [transfer, setTransfer] = useViewState<{ kind: "read" | "store"; result: HubTransferResult } | null>("OperatorHub.transfer", null);
+  const [digest, setDigest] = useViewState("OperatorHub.digest", "");
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useViewState<string | null>("OperatorHub.message", null);
   // The mode is disclosed on demand; closing it hides it and keeps its state.
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useViewState("OperatorHub.open", false);
 
   const connected = status?.connected ?? false;
   const configured = Boolean(status?.config_path);

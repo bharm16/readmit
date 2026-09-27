@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { DiagnosisClassification, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
+import type { BundleMode, SearchField, Theme, DiagnosisClassification, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -109,6 +109,29 @@ export const FIELD_STATES: DisplayMap<Exclude<FieldState, "">> = {
   empty: "Empty",
   null: "Null",
   omitted: "Not present",
+};
+
+/** Where a case's evidence came from. Generated evidence is synthetic. */
+export const PROVENANCES: DisplayMap<BundleMode> = {
+  imported: "Imported",
+  generated: "Synthetic",
+  recorded: "Captured",
+  derived: "Variant",
+  collected: "Collected",
+};
+
+export const THEMES: DisplayMap<Theme> = { system: "System", light: "Light", dark: "Dark" };
+
+/** The declared detail a project search matched. A message-content match is
+ * named by its exact field path instead. */
+export const SEARCH_FIELDS: DisplayMap<Exclude<SearchField, "content">> = {
+  name: "Name",
+  title: "Title",
+  owner: "Owner",
+  tag: "Tag",
+  incident: "Incident",
+  status: "Status",
+  "interface version": "Interface revision",
 };
 
 /** A value that exists but has not been deliberately revealed. */

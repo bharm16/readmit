@@ -65,7 +65,8 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
       <App />
     </StrictMode>,
   );
-  // The window is up once it draws the facade's own privacy statement.
-  await screen.findByText(shellResult().shell?.privacy.statement ?? "");
+  // The window is up once it draws its navigation, which it does only after
+  // the facade described the shell.
+  await screen.findByRole("navigation", { name: "Main" });
   return { facade, screen };
 }

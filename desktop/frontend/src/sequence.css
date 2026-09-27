@@ -39,7 +39,7 @@
 
 .issue {
   border: 1px solid currentColor;
-  border-radius: 1rem;
+  border-radius: var(--radius-control);
   color: var(--warning);
   font-size: 0.8125rem;
   font-weight: 500;

@@ -372,3 +372,26 @@ test("Quota shows the project's declared limits and what it uses, and Edit sets 
   expect(facade.oneCall("SetProjectQuota")[0]).toEqual({ project: WORKSPACE_ROOT, max_bytes: 2048 * 1_048_576, max_files: 1000 });
   expect(await within(await screen.findByRole("dialog", { name: "Quota" })).findByText("42 MB of 2.0 GB")).toBeTruthy();
 });
+
+test("Delete from this computer from the command palette opens its review, and Enter there deletes nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp(
+    handlers({
+      PrepareAction: (request) => ({
+        state: "completed",
+        context: request.context,
+        review: review("storage.delete-source", { project: "Scheduling investigation", backup: { ...NEWEST, reason: "archive" }, consequence: "Archives the selected source, then deletes it from this computer; this is not secure erasure." }),
+      }),
+    }),
+  );
+  await openStorage(user);
+  await user.keyboard("{Control>}k{/Control}");
+  await user.keyboard("Delete");
+  expect(within(await screen.findByRole("listbox", { name: "Commands" })).getAllByRole("option")[0]?.textContent).toMatch(/^Delete from this computer/);
+  await user.keyboard("{Enter}");
+  const sheet = await screen.findByRole("dialog", { name: "Delete from this computer" });
+  expect(await within(sheet).findByText("Archives the selected source, then deletes it from this computer; this is not secure erasure.")).toBeTruthy();
+  expect(facade.callsTo("PrepareAction")).toHaveLength(1);
+  await user.keyboard("{Enter}");
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});

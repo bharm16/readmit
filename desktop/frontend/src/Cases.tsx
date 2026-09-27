@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import type { CaseStatus, CatalogItem } from "./bindings";
 import { DataTable, type Column, type SortState } from "./DataTable";
-import { EmptyState, FormDialog, Menu } from "./layout";
+import { EmptyState, FormDialog, Menu, usePaletteActions, type MenuItem } from "./layout";
 import { listDate } from "./Projects";
 
 export const CASE_STATUSES: { value: CaseStatus; label: string }[] = [
@@ -125,6 +125,14 @@ export function CaseList({
       />
     );
   }
+  const actionsFor = (item: CatalogItem): MenuItem[] =>
+    CASE_ACTIONS.map((entry) => ({
+      label: entry.label,
+      onSelect: () => onAction(item, entry.action),
+      disabled: busy || (entry.action !== "remove" && entry.action !== "details" && item.availability !== "available"),
+      ...(entry.separated ? { separated: true } : {}),
+      ...(entry.tone ? { tone: entry.tone } : {}),
+    }));
   const columns: Column<CatalogItem>[] = [
     {
       key: "case",
@@ -163,20 +171,13 @@ export function CaseList({
               Retry
             </button>
           ) : null}
-          <Menu
-            label={`More actions for ${item.name}`}
-            items={CASE_ACTIONS.map((entry) => ({
-              label: entry.label,
-              onSelect: () => onAction(item, entry.action),
-              disabled: busy || (entry.action !== "remove" && entry.action !== "details" && item.availability !== "available"),
-              ...(entry.separated ? { separated: true } : {}),
-              ...(entry.tone ? { tone: entry.tone } : {}),
-            }))}
-          />
+          <Menu label={`More actions for ${item.name}`} items={actionsFor(item)} />
         </span>
       ),
     },
   ];
+  const chosen = cases.find((item) => item.ref.id === selected) ?? null;
+  usePaletteActions(chosen?.name ?? null, chosen ? actionsFor(chosen) : []);
   return (
     <>
       <ViewChips view={view} onView={onView} />

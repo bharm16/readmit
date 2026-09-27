@@ -3,11 +3,12 @@
 // review decisions saved as revisions, the evidence shown in Messages, and
 // Similar findings across chosen cases. Fixtures carry positions, rule names
 // and states only.
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AnalysisProfile, CatalogItem, FindingDecision, FindingsResult, ItemRequest, SaveItemRequest, SimilarRequest } from "./bindings";
 import { renderApp } from "./testkit/app";
+import { windowWidth } from "./testkit/window";
 import {
   CASE_ENTRY,
   CASE_IDENTITY,
@@ -404,4 +405,20 @@ test("Create test opens the test editor from a confirmed finding with its expect
   expect(origin?.proposals?.every((proposal) => proposal.source === "finding")).toBe(true);
   expect(await screen.findByRole("heading", { level: 1, name: "New test" })).toBeTruthy();
   expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+test("in a narrow window a finding is shown alone, with the way back to the findings", async () => {
+  const user = userEvent.setup();
+  await openFindings(user, { OpenCaseFindings: (request) => ({ ...findings(["f000001", "f000002"]), context: request.context }) });
+  const table = await page().findByRole("table", { name: "Findings" });
+  await waitFor(() => expect(rowsOf(table)).toHaveLength(2));
+  windowWidth(820);
+  await user.click(within(table).getAllByRole("row")[1]!);
+  expect(await screen.findByRole("region", { name: "Finding" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Main content" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Back to findings" }));
+  expect(screen.getByRole("region", { name: "Main content" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Finding" })).toBeNull();
 });

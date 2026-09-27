@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, type FormEvent } from "react";
 import {
   cancelHubAdministrationPreview,
   previewHubAdministration,
@@ -6,6 +6,7 @@ import {
   type HubAdminResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 const empty: HubAdminRequest = {
   operation: "migrate",
@@ -32,9 +33,9 @@ const operations: { value: HubAdminRequest["operation"]; label: string }[] = [
 /** A reviewed command for the customer's host. The application never invokes
  * it: the Go shell binding only reads local copies through the hub's readers. */
 export function HubAdministration() {
-  const [request, setRequest] = useState<HubAdminRequest>(empty);
-  const [result, setResult] = useState<HubAdminResult | null>(null);
-  const [cleared, setCleared] = useState(false);
+  const [request, setRequest] = useViewState<HubAdminRequest>("HubAdministration.request", empty);
+  const [result, setResult] = useViewState<HubAdminResult | null>("HubAdministration.result", null);
+  const [cleared, setCleared] = useViewState("HubAdministration.cleared", false);
   // A review in flight describes the request it was asked for: changing the
   // request or cancelling withdraws its answer.
   const { running, run, withdraw } = useLifecycle<"previewing">();

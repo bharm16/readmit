@@ -16,6 +16,7 @@ import {
 } from "./bindings";
 import { SyntheticPackets } from "./SyntheticPackets";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** The investigation-packet panels: assembly from actual retained evidence,
  * export of the five inert offline renderings, and read-only opening of both
@@ -51,27 +52,27 @@ export function PacketPanel({
   const packets = entries.filter((artifact) => artifact.kind === "packet").map((artifact) => artifact.name);
   const reviews = entries.filter((artifact) => artifact.kind === "portable-review").map((artifact) => artifact.name);
 
-  const [caseName, setCaseName] = useState("");
-  const [specName, setSpecName] = useState("");
-  const [currentName, setCurrentName] = useState("");
-  const [baselineName, setBaselineName] = useState("");
-  const [baselineCaseName, setBaselineCaseName] = useState("");
-  const [output, setOutput] = useState("");
+  const [caseName, setCaseName] = useViewState("PacketPanel.caseName", "");
+  const [specName, setSpecName] = useViewState("PacketPanel.specName", "");
+  const [currentName, setCurrentName] = useViewState("PacketPanel.currentName", "");
+  const [baselineName, setBaselineName] = useViewState("PacketPanel.baselineName", "");
+  const [baselineCaseName, setBaselineCaseName] = useViewState("PacketPanel.baselineCaseName", "");
+  const [output, setOutput] = useViewState("PacketPanel.output", "");
   const [preview, setPreview] = useState<PacketPreviewResult | null>(null);
   const [previewFor, setPreviewFor] = useState<PacketRequest | null>(null);
-  const [assembled, setAssembled] = useState<PacketResult | null>(null);
+  const [assembled, setAssembled] = useViewState<PacketResult | null>("PacketPanel.assembled", null);
   const lifecycle = useLifecycle<"previewing" | "assembling" | "exporting">({
     names: { assembling: "packet", exporting: "packet" },
   });
   const operation = lifecycle.running;
   const busy = operation !== null;
 
-  const [packetName, setPacketName] = useState("");
-  const [packet, setPacket] = useState<PacketResult | null>(null);
-  const [exportDestination, setExportDestination] = useState("");
-  const [destinationChoice, setDestinationChoice] = useState<PacketPathResult | null>(null);
-  const [exported, setExported] = useState<PacketExportResult | null>(null);
-  const [reviewName, setReviewName] = useState("");
+  const [packetName, setPacketName] = useViewState("PacketPanel.packetName", "");
+  const [packet, setPacket] = useViewState<PacketResult | null>("PacketPanel.packet", null);
+  const [exportDestination, setExportDestination] = useViewState("PacketPanel.exportDestination", "");
+  const [destinationChoice, setDestinationChoice] = useViewState<PacketPathResult | null>("PacketPanel.destinationChoice", null);
+  const [exported, setExported] = useViewState<PacketExportResult | null>("PacketPanel.exported", null);
+  const [reviewName, setReviewName] = useViewState("PacketPanel.reviewName", "");
   const [review, setReview] = useState<PacketReviewResult | null>(null);
   const [revealed, setRevealed] = useState(false);
   // Export is its own task over the one selected packet, offered once that

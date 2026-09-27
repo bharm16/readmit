@@ -32,7 +32,7 @@ import {
   type StorageBackupsResult,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
-import { EmptyState, FormDialog, Menu, Modal, ValueRows } from "./layout";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows, usePaletteActions, type MenuItem } from "./layout";
 import { ReviewSheet } from "./ReviewSheet";
 import { listDate } from "./Projects";
 import "./storage.css";
@@ -271,6 +271,33 @@ export function StorageView({
     );
   };
 
+  // The Storage menu, which the palette also lists while Storage is shown.
+  const storageMenu: MenuItem[] = [
+    { label: "Quota", onSelect: () => setTask("quota") },
+    { label: "Recovery copies…", onSelect: () => setTask("copies") },
+    {
+      label: "Archive…",
+      // The archive goes to the backup location when there is one;
+      // otherwise the person chooses its folder first.
+      onSelect: () => {
+        if (location) {
+          setOptions({});
+          setTask("archive");
+        } else {
+          void withFolder("archive-location", (path) => {
+            setOptions({ location: path });
+            setTask("archive");
+          });
+        }
+      },
+    },
+    { label: "Move project…", onSelect: () => void withFolder("move-location", (path) => { setOptions({ location: path }); setTask("move"); }) },
+    { label: "Repair search…", onSelect: () => setTask("repair") },
+    { label: "Staged update…", onSelect: () => void withFolder("upgrade-candidate", (path) => { setOptions({ candidate: path }); setTask("update"); }) },
+    { label: "Delete from this computer…", tone: "danger" as const, separated: true, onSelect: () => { setOptions({}); setTask("delete-source"); } },
+  ];
+  usePaletteActions(projectName, storageMenu);
+
   return (
     <section className="storage" aria-label="Storage">
       <div className="toolbar list-toolbar">
@@ -289,30 +316,7 @@ export function StorageView({
           </button>
           <Menu
             label="More storage actions"
-            items={[
-              { label: "Quota", onSelect: () => setTask("quota") },
-              { label: "Recovery copies…", onSelect: () => setTask("copies") },
-              {
-                label: "Archive…",
-                // The archive goes to the backup location when there is one;
-                // otherwise the person chooses its folder first.
-                onSelect: () => {
-                  if (location) {
-                    setOptions({});
-                    setTask("archive");
-                  } else {
-                    void withFolder("archive-location", (path) => {
-                      setOptions({ location: path });
-                      setTask("archive");
-                    });
-                  }
-                },
-              },
-              { label: "Move project…", onSelect: () => void withFolder("move-location", (path) => { setOptions({ location: path }); setTask("move"); }) },
-              { label: "Repair search…", onSelect: () => setTask("repair") },
-              { label: "Staged update…", onSelect: () => void withFolder("upgrade-candidate", (path) => { setOptions({ candidate: path }); setTask("update"); }) },
-              { label: "Delete from this computer…", tone: "danger" as const, separated: true, onSelect: () => { setOptions({}); setTask("delete-source"); } },
-            ]}
+            items={storageMenu}
           />
         </div>
       </div>

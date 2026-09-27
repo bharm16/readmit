@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ReductionReport, ReductionResult } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./reproducer.css";
+import { useViewState } from "./viewstate";
 
 /** What each outcome of the engine's closed set establishes, in words, and
  * what the sequence it reports is. Only a reduced outcome carries a
@@ -75,17 +76,17 @@ export function Reduction({
   onStart: (config: ReductionForm) => void;
   onCancel: () => void;
 }) {
-  const [spec, setSpec] = useState("");
-  const [rules, setRules] = useState("");
-  const [grouping, setGrouping] = useState("group-per-occurrence/v1");
-  const [assertions, setAssertions] = useState("");
-  const [trials, setTrials] = useState("32");
-  const [confirmations, setConfirmations] = useState("2");
-  const [resetPlan, setResetPlan] = useState("");
-  const [target, setTarget] = useState("");
-  const [policy, setPolicy] = useState("");
-  const [confirmed, setConfirmed] = useState("");
-  const [work, setWork] = useState("reduction-work");
+  const [spec, setSpec] = useViewState("Reduction.spec", "");
+  const [rules, setRules] = useViewState("Reduction.rules", "");
+  const [grouping, setGrouping] = useViewState("Reduction.grouping", "group-per-occurrence/v1");
+  const [assertions, setAssertions] = useViewState("Reduction.assertions", "");
+  const [trials, setTrials] = useViewState("Reduction.trials", "32");
+  const [confirmations, setConfirmations] = useViewState("Reduction.confirmations", "2");
+  const [resetPlan, setResetPlan] = useViewState("Reduction.resetPlan", "");
+  const [target, setTarget] = useViewState("Reduction.target", "");
+  const [policy, setPolicy] = useViewState("Reduction.policy", "");
+  const [confirmed, setConfirmed] = useViewState("Reduction.confirmed", "");
+  const [work, setWork] = useViewState("Reduction.work", "reduction-work");
   const runButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
 
@@ -133,7 +134,7 @@ export function Reduction({
         minimal over the declared partition, or a search that stopped at its budget —
         never global minimality. Cancel stops further trials without resending.
       </p>
-      <Report indicators={indicators} progress={progress} result={result} />
+      <Report outcome indicators={indicators} progress={progress} result={result} />
 
       <form
         onSubmit={(event) => {

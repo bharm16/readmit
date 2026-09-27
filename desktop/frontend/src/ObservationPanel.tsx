@@ -602,7 +602,7 @@ export function ObservationPanel({
         validation never queries an endpoint; collection requires an explicit authorize checkbox.
         Database adapters stay unqualified until #75.
       </p>
-      <Report indicators={indicators} progress={null} result={result} />
+      <Report outcome indicators={indicators} progress={null} result={result} />
       {notice ? <p role="status">{notice}</p> : null}
       <RetentionStatus retention={retainer.retention} onRetry={() => retainer.retry()} onKeepAsNew={() => retainer.keepAsNew()} onDiscard={() => void retainer.dropCurrent()} />
 

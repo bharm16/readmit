@@ -192,7 +192,7 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     return null;
   };
 
-  if (!root || !caseRef) return { toolbar: null, body: null, details: null, selected: null };
+  if (!root || !caseRef) return { toolbar: null, body: null, details: null, selected: null, close: () => undefined };
 
   const analysis = result?.analysis;
   const running = analyzing.running !== null;
@@ -405,6 +405,7 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     toolbar,
     selected,
     details,
+    close: () => setSelected(null),
     body: (
       <>
         {notice ? <p role="alert">{notice}</p> : null}

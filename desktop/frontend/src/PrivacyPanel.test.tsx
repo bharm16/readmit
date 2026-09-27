@@ -619,6 +619,7 @@ test("a review answer that arrives after its policy was replaced is not shown un
   await waitFor(() => expect(screen.getByRole("button", { name: "Create review" })).toBeTruthy());
   expect(screen.queryByText(/ready-for-approval/)).toBeNull();
   expect(screen.queryByText(PRIVACY_REVIEW_IDENTITY)).toBeNull();
+  await openTask(user, "Export packet");
   expect((screen.getByLabelText("Disclosure review") as HTMLSelectElement).value).toBe("");
   expect((facade.oneCall("DeriveExportReview")[0] as { policy: string }).policy).toBe(POLICY_ENTRY);
 });

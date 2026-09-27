@@ -72,6 +72,9 @@ export type ReturnContext = {
   selection?: string;
   /** How far the page had been scrolled, in CSS pixels. */
   scrollTop?: number;
+  /** The first row its list showed, by id: the list scrolls back to it by
+   * row, so a text size changed meanwhile cannot move it. */
+  anchor?: string;
 };
 
 export type Route = {

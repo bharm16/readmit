@@ -7,6 +7,7 @@ import {
   type ReexecutionResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** The reexecution step of the privacy review: `readmit redact reexecute`
  * from the window.
@@ -34,16 +35,16 @@ export function Reexecution({
   specs: string[];
   onRefresh: () => void;
 }) {
-  const [review, setReview] = useState("");
-  const [localState, setLocalState] = useState("");
-  const [packet, setPacket] = useState("");
-  const [spec, setSpec] = useState("");
-  const [phase, setPhase] = useState("");
-  const [approval, setApproval] = useState("");
-  const [output, setOutput] = useState("");
+  const [review, setReview] = useViewState("Reexecution.review", "");
+  const [localState, setLocalState] = useViewState("Reexecution.localState", "");
+  const [packet, setPacket] = useViewState("Reexecution.packet", "");
+  const [spec, setSpec] = useViewState("Reexecution.spec", "");
+  const [phase, setPhase] = useViewState("Reexecution.phase", "");
+  const [approval, setApproval] = useViewState("Reexecution.approval", "");
+  const [output, setOutput] = useViewState("Reexecution.output", "");
   const [previewed, setPreviewed] = useState<ReexecutionPreviewResult | null>(null);
-  const [authorized, setAuthorized] = useState(false);
-  const [sent, setSent] = useState<ReexecutionResult | null>(null);
+  const [authorized, setAuthorized] = useViewState("Reexecution.authorized", false);
+  const [sent, setSent] = useViewState<ReexecutionResult | null>("Reexecution.sent", null);
   const lifecycle = useLifecycle<"previewing" | "sending">({ names: { sending: "reexecution" } });
   const operation = lifecycle.running;
   const busy = operation !== null;

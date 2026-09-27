@@ -37,7 +37,7 @@ import {
   type TargetClassification,
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
-import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
+import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
 import { IconButton } from "./IconButton";
 import { RESET_OPERATORS, RESET_REASONS, SEND_POLICY_REASONS, TARGET_CLASSIFICATIONS } from "./display";
 import { listDate } from "./Projects";
@@ -213,7 +213,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded 
         </span>
       ),
     },
-    { key: "address", header: "Address", priority: 2, minWidth: 13.75, render: (item) => summaryOf(item)?.address || "—" },
+    { key: "address", header: "Address", priority: 2, minWidth: 13.75, flex: true, render: (item) => summaryOf(item)?.address || "—" },
     { key: "classification", header: "Classification", priority: 3, minWidth: 9, render: (item) => classificationText(summaryOf(item)?.classification) },
     {
       key: "checked",
@@ -634,8 +634,43 @@ function useEnvironmentDetail({
     </div>
   );
 
+  const menu: MenuItem[] = [
+    { label: "Credentials", onSelect: () => go(ref.id, "credentials") },
+    { label: "Allowed destinations…", onSelect: () => setSheet("destinations"), disabled: !draft },
+    { label: "Check destination…", onSelect: () => setSheet("check-destination") },
+    {
+      label: "Duplicate",
+      disabled: !draft,
+      separated: true,
+      onSelect: () => {
+        if (!draft) return;
+        setNotice(null);
+        void saveItem({ context: context(), kind: "environment", draft: { ...draft, name: `${item.name} copy` }, intent_id: newIntentId() }).then(async (answer) => {
+          if (answer.outcome === "saved" && answer.saved) {
+            await refresh();
+            go(answer.saved.id);
+          } else {
+            setNotice(saveProblem(answer, {}).reason);
+          }
+        });
+      },
+    },
+    { label: "Details", onSelect: () => setSheet("details") },
+    { label: "Remove…", onSelect: () => setSheet("remove"), tone: "danger" as const, separated: true },
+  ];
+
   return {
     title: item.name,
+    // What the palette lists for this environment: its page's actions, each
+    // opening the same sheet or review its button does.
+    palette: {
+      object: item.name,
+      items: [
+        { label: "Test connection…", onSelect: () => setSheet("check"), disabled: busy || !draft || item.availability !== "available" },
+        ...(reset && reset.actions.length > 0 ? [{ label: "Reset…", onSelect: () => setSheet("reset"), disabled: busy }] : []),
+        ...menu,
+      ],
+    },
     actions: (
       <>
         <button type="button" disabled={busy || !draft || item.availability !== "available"} onClick={() => setSheet("check")}>
@@ -643,30 +678,7 @@ function useEnvironmentDetail({
         </button>
         <Menu
           label="More environment actions"
-          items={[
-            { label: "Credentials", onSelect: () => go(ref.id, "credentials") },
-            { label: "Allowed destinations…", onSelect: () => setSheet("destinations"), disabled: !draft },
-            { label: "Check destination…", onSelect: () => setSheet("check-destination") },
-            {
-              label: "Duplicate",
-              disabled: !draft,
-              separated: true,
-              onSelect: () => {
-                if (!draft) return;
-                setNotice(null);
-                void saveItem({ context: context(), kind: "environment", draft: { ...draft, name: `${item.name} copy` }, intent_id: newIntentId() }).then(async (answer) => {
-                  if (answer.outcome === "saved" && answer.saved) {
-                    await refresh();
-                    go(answer.saved.id);
-                  } else {
-                    setNotice(saveProblem(answer, {}).reason);
-                  }
-                });
-              },
-            },
-            { label: "Details", onSelect: () => setSheet("details") },
-            { label: "Remove…", onSelect: () => setSheet("remove"), tone: "danger" as const, separated: true },
-          ]}
+          items={menu}
         />
       </>
     ),

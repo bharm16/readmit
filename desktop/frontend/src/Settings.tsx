@@ -27,17 +27,18 @@ import {
 } from "./bindings";
 import { DataTable, type Column } from "./DataTable";
 import { IconButton } from "./IconButton";
-import { EmptyState, FormDialog, Menu, Modal, ValueRows, humanize, type SubmitFailure } from "./layout";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { listDate } from "./Projects";
 import { instantOf } from "./Messages";
 import { CHECK_OUTCOMES, TRANSPORTS } from "./Environments";
+import { THEMES, term } from "./display";
 
 // ---------- Preferences ----------
 
 const DEFAULT_PREFERENCES: Preferences = { theme: "system", text_scale: 100 };
 
 export function themeLabel(theme: Theme): string {
-  return theme === "system" ? "System" : theme === "light" ? "Light" : theme === "dark" ? "Dark" : humanize(theme);
+  return term(THEMES, theme).text;
 }
 
 /** The saved preferences, and what the window shows now: the saved values, or
@@ -332,7 +333,7 @@ export function SecurityView({
         </span>
       ),
     },
-    { key: "destination", header: "Destination", priority: 2, minWidth: 12.5, render: (entry) => entry.destination || "—" },
+    { key: "destination", header: "Destination", priority: 2, minWidth: 12.5, flex: true, render: (entry) => entry.destination || "—" },
     { key: "status", header: "Status", priority: 1, minWidth: 9, render: connectionStatus },
   ];
 

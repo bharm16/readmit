@@ -5,6 +5,7 @@ import App from "../App";
 import "../styles.css";
 import { installCatalogFixtures, unhandledMethods } from "./fixtures";
 import inventory from "./inventory.json";
+import { forgetViewState } from "../viewstate";
 
 interface Recorder {
   Mode(): Promise<string>;
@@ -513,6 +514,8 @@ async function run() {
       await visit(
         `Components / ${example.name} / ${example.state}`,
         async () => {
+          // Each example starts from its own state, not the last one's.
+          forgetViewState();
           root.render(
             <CaptureBoundary key={`${example.name}-${example.state}`}>
               <ExampleFrame example={example} />
@@ -534,6 +537,7 @@ async function run() {
   for (const example of privateExamples) {
     variant = "private-ready";
     await visit(`Internal views / ${example.name}`, async () => {
+      forgetViewState();
       root.render(
         <CaptureBoundary key={example.name}>
           <ExampleFrame example={example} />

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   discardProtectedPackage,
   inspectProtectedPackage,
@@ -12,6 +12,7 @@ import {
   type ProtectionResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** Encrypted transfer packages, written, inspected, opened and discarded under
  * a project's encryption controls. The controls themselves are managed in
@@ -42,23 +43,23 @@ export function ProtectionPanel({
   const busy = operation !== null;
 
   // Package work.
-  const [packDocument, setPackDocument] = useState("");
+  const [packDocument, setPackDocument] = useViewState("ProtectionPanel.packDocument", "");
   // What the facade last answered for the pack task's file, with the file it
   // answered for: a view of another file offers none of its controls.
-  const [packView, setPackView] = useState<{ entry: string; result: ProtectionResult } | null>(null);
-  const [packControl, setPackControl] = useState("");
-  const [packSources, setPackSources] = useState<string[]>([]);
-  const [packOutput, setPackOutput] = useState("");
-  const [packed, setPacked] = useState<ProtectionPackageResult | null>(null);
-  const [selectedPackage, setSelectedPackage] = useState("");
-  const [packageView, setPackageView] = useState<ProtectionPackageResult | null>(null);
-  const [openResult, setOpenResult] = useState<ProtectionPackageResult | null>(null);
-  const [discardOverride, setDiscardOverride] = useState(false);
+  const [packView, setPackView] = useViewState<{ entry: string; result: ProtectionResult } | null>("ProtectionPanel.packView", null);
+  const [packControl, setPackControl] = useViewState("ProtectionPanel.packControl", "");
+  const [packSources, setPackSources] = useViewState<string[]>("ProtectionPanel.packSources", []);
+  const [packOutput, setPackOutput] = useViewState("ProtectionPanel.packOutput", "");
+  const [packed, setPacked] = useViewState<ProtectionPackageResult | null>("ProtectionPanel.packed", null);
+  const [selectedPackage, setSelectedPackage] = useViewState("ProtectionPanel.selectedPackage", "");
+  const [packageView, setPackageView] = useViewState<ProtectionPackageResult | null>("ProtectionPanel.packageView", null);
+  const [openResult, setOpenResult] = useViewState<ProtectionPackageResult | null>("ProtectionPanel.openResult", null);
+  const [discardOverride, setDiscardOverride] = useViewState("ProtectionPanel.discardOverride", false);
   // Discarding unlinks files, so it asks first, naming the package, its
   // declared retention and the retention handling chosen for it.
-  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useViewState("ProtectionPanel.confirmingDiscard", false);
   const keepPackage = useRef<HTMLButtonElement | null>(null);
-  const [discarded, setDiscarded] = useState<ProtectionDiscardResult | null>(null);
+  const [discarded, setDiscarded] = useViewState<ProtectionDiscardResult | null>("ProtectionPanel.discarded", null);
 
   const packShown = packView !== null && packView.entry === packDocument ? packView.result : null;
   // Only an active control of the pack task's own file writes a package, so a

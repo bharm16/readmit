@@ -33,13 +33,13 @@ const (
 // the text that matched. Occurrence and Selector are present when the match
 // is inside an indexed case occurrence, routing directly to the inspector.
 type Match struct {
-	Kind       MatchKind `json:"kind"`
-	Name       string    `json:"name"`
-	Label      string    `json:"label"`
-	Field      string    `json:"field"`
-	Region     RegionID  `json:"region"`
-	Occurrence string    `json:"occurrence,omitzero"`
-	Selector   string    `json:"selector,omitzero"`
+	Kind       MatchKind   `json:"kind"`
+	Name       string      `json:"name"`
+	Label      string      `json:"label"`
+	Field      SearchField `json:"field"`
+	Region     RegionID    `json:"region"`
+	Occurrence string      `json:"occurrence,omitzero"`
+	Selector   string      `json:"selector,omitzero"`
 }
 
 // SearchResult carries one state. Matches is always present, empty when the
@@ -56,8 +56,23 @@ func (r refusal) search() SearchResult {
 
 // declaration is one declared field of a searchable thing: the fixed name a
 // match reports, and the value the query is compared against.
+// SearchField is the declared detail a search matched. A message-content
+// match is named by its field path in Selector instead.
+type SearchField string
+
+const (
+	NameField             SearchField = "name"
+	TitleField            SearchField = "title"
+	OwnerField            SearchField = "owner"
+	TagField              SearchField = "tag"
+	IncidentField         SearchField = "incident"
+	StatusField           SearchField = "status"
+	InterfaceVersionField SearchField = "interface version"
+	ContentField          SearchField = "content"
+)
+
 type declaration struct {
-	field string
+	field SearchField
 	value string
 }
 
@@ -94,8 +109,6 @@ func (a *App) Search(path, query string) SearchResult {
 	for _, artifact := range artifacts {
 		if field, hit := firstMatch(wanted, []declaration{
 			{"name", artifact.Name},
-			{"contract", artifact.Schema},
-			{"provenance", artifact.Provenance},
 		}); hit {
 			matches = append(matches, Match{Kind: ArtifactMatch, Name: artifact.Name, Label: artifact.Name, Field: field, Region: NavigationRegion})
 		}
@@ -178,7 +191,7 @@ func (a *App) Search(path, query string) SearchResult {
 					Kind:       ContentMatch,
 					Name:       caseName,
 					Label:      label,
-					Field:      hit.Value.Selector,
+					Field:      ContentField,
 					Region:     InspectorRegion,
 					Occurrence: hit.Record.ID,
 					Selector:   hit.Value.Selector,
@@ -211,16 +224,13 @@ func registeredFields(registered project.Case) []declaration {
 	return append(fields,
 		declaration{"status", string(registered.Status)},
 		declaration{"interface version", registered.InterfaceVersion},
-		declaration{"contract", registered.Schema},
-		declaration{"provenance", registered.Provenance},
-		declaration{"identity", registered.Identity},
 	)
 }
 
 // firstMatch reports the first declared field holding wanted, which is already
 // lowercased. One thing found is one result, so the search stops at the field
 // that explains it rather than listing the same case once per field.
-func firstMatch(wanted string, fields []declaration) (string, bool) {
+func firstMatch(wanted string, fields []declaration) (SearchField, bool) {
 	for _, declared := range fields {
 		if declared.value != "" && strings.Contains(strings.ToLower(declared.value), wanted) {
 			return declared.field, true

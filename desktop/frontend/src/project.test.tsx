@@ -336,3 +336,38 @@ test("a second navigation started while one runs starts nothing else, so no stal
   expect(facade.callsTo("OpenCase")[0]?.args[1]).toBe(CASE_ENTRY);
 });
 
+
+test("the command palette lists the selected case's own actions, and Remove from project only opens its confirmation", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    RemoveCaseFromProject: (request) => ({ state: "completed", context: request.context }),
+  });
+  const row = await findCaseRow("Duplicate appointment after reschedule");
+  row.focus();
+  await user.keyboard("{Home}");
+  await user.keyboard("{Control>}k{/Control}");
+  await user.keyboard("Remove");
+  const option = within(await screen.findByRole("listbox", { name: "Commands" })).getAllByRole("option")[0]!;
+  expect(option.textContent).toBe("Remove from projectDuplicate appointment after reschedule");
+  // Enter opens the confirmation the case's menu opens; it removes nothing.
+  await user.keyboard("{Enter}");
+  const sheet = within(await screen.findByRole("dialog", { name: "Remove Duplicate appointment after reschedule?" }));
+  expect(document.activeElement).not.toBe(sheet.getByRole("button", { name: "Remove" }));
+  await user.keyboard("{Enter}");
+  expect(facade.callsTo("RemoveCaseFromProject")).toHaveLength(0);
+});
+
+test("Back from a case keeps the list's applied filter", async () => {
+  const user = userEvent.setup();
+  await openProject(user, { OpenCase: () => caseResult() });
+  await findCaseRow("Duplicate appointment after reschedule");
+  await user.click(page().getByRole("button", { name: "Filter cases" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Filter cases" }));
+  await user.click(sheet.getByRole("checkbox", { name: "Investigating" }));
+  await user.click(sheet.getByRole("button", { name: "Apply" }));
+  await user.click(await findCaseRow("Duplicate appointment after reschedule"));
+  expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
+  await user.click(page().getByRole("button", { name: "Back to cases" }));
+  expect(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Investigating" })).toBeTruthy();
+  expect(page().getByRole("row", { name: "Duplicate appointment after reschedule" })).toBeTruthy();
+});

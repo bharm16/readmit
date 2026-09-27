@@ -172,18 +172,20 @@ test("a build is handed to the revision comparison, which compares it with the r
   const panel = await openGrid(facade, user);
   await build(user, panel, "incident-reproducer");
   await openCaseFlow(user, "Compare with another case");
-  const revisions = within(screen.getByRole("region", { name: "Reproducer revisions" }));
-  await user.type(revisions.getByLabelText("Later run"), "run-of-something-else");
+  // A flow not on screen is not mounted, so each is found where it is now.
+  const revisions = () => within(screen.getByRole("region", { name: "Reproducer revisions" }));
+  const editor = () => within(screen.getByRole("region", { name: "Reproducer editor" }));
+  await user.type(revisions().getByLabelText("Later run"), "run-of-something-else");
 
   // The build becomes the later revision, the run named for whatever was there
   // before is cleared, and focus waits on the earlier revision.
   await openCaseFlow(user, "Build a reproducer");
-  await user.click(panel.getByLabelText("Revision folder"));
-  await tabTo(user, panel.getByRole("button", { name: "Compare revisions" }));
+  await user.click(editor().getByLabelText("Revision folder"));
+  await tabTo(user, editor().getByRole("button", { name: "Compare revisions" }));
   await user.keyboard("{Enter}");
-  expect((revisions.getByLabelText("Later revision") as HTMLInputElement).value).toBe("incident-reproducer");
-  expect((revisions.getByLabelText("Later run") as HTMLInputElement).value).toBe("");
-  expect(document.activeElement).toBe(revisions.getByLabelText("Earlier revision"));
+  expect((revisions().getByLabelText("Later revision") as HTMLInputElement).value).toBe("incident-reproducer");
+  expect((revisions().getByLabelText("Later run") as HTMLInputElement).value).toBe("");
+  expect(document.activeElement).toBe(revisions().getByLabelText("Earlier revision"));
   expect(facade.callsTo("CompareReproducers")).toHaveLength(0);
 
   const compared: ReproducerComparisonResult = {
@@ -215,19 +217,19 @@ test("a build is handed to the revision comparison, which compares it with the r
     left_result: "earlier-run",
     right_result: "",
   });
-  expect(await revisions.findByText("Both were built from the same case")).toBeTruthy();
-  expect(revisions.getByText(`${NEXT_OCCURRENCE} · Setup dependency no longer retained · was acknowledgement · required by ${GRID_OCCURRENCE}`)).toBeTruthy();
-  expect(revisions.getByText("One of these revisions has no retained run, so nothing is claimed about either.")).toBeTruthy();
+  expect(await revisions().findByText("Both were built from the same case")).toBeTruthy();
+  expect(revisions().getByText(`${NEXT_OCCURRENCE} · Setup dependency no longer retained · was acknowledgement · required by ${GRID_OCCURRENCE}`)).toBeTruthy();
+  expect(revisions().getByText("One of these revisions has no retained run, so nothing is claimed about either.")).toBeTruthy();
   // The one run that was named is shown as it was read, not dropped because
   // the other revision has none.
-  expect(revisions.getByText(/^Earlier run · assertion_failure · executed against/)).toBeTruthy();
-  expect(revisions.queryByText(/^Later run · /)).toBeNull();
+  expect(revisions().getByText(/^Earlier run · assertion_failure · executed against/)).toBeTruthy();
+  expect(revisions().queryByText(/^Later run · /)).toBeNull();
 
   // Handing the build over again withdraws the comparison on screen, which
   // belonged to the revisions named before.
   await openCaseFlow(user, "Build a reproducer");
-  await user.click(panel.getByRole("button", { name: "Compare revisions" }));
-  expect(revisions.queryByText("Both were built from the same case")).toBeNull();
+  await user.click(editor().getByRole("button", { name: "Compare revisions" }));
+  expect(revisions().queryByText("Both were built from the same case")).toBeNull();
 }, 15_000);
 
 test("an edit names only the occurrence the panel shows as chosen", async () => {

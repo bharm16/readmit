@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import {
   captureProgress,
   chooseCapturePath,
@@ -32,6 +32,7 @@ import { Status } from "./shell";
 import "./capture.css";
 import { useLifecycle } from "./lifecycle";
 import { useVocabulary } from "./vocabulary";
+import { useViewState } from "./viewstate";
 
 type Mode = "source" | "collect" | "listen";
 
@@ -220,45 +221,45 @@ export function CapturePanel({
   onBindObservation?: (binding: CaptureObservationBinding) => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<Mode>("source");
-  const [source, setSource] = useState<EvidenceSource>(defaultSource);
-  const [sourceFile, setSourceFile] = useState("source.json");
+  const [mode, setMode] = useViewState<Mode>("CapturePanel.mode", "source");
+  const [source, setSource] = useViewState<EvidenceSource>("CapturePanel.source", defaultSource);
+  const [sourceFile, setSourceFile] = useViewState("CapturePanel.sourceFile", "source.json");
   // A collection plan declares no batch boundary, so it offers the framings
   // that need none; both lists are the facade's.
   const planVocabulary = useVocabulary()?.import_plan;
-  const [planFraming, setPlanFraming] = useState<ImportFraming>("raw");
-  const [planTerminator, setPlanTerminator] = useState<HL7Terminator>("cr");
-  const [planMembers, setPlanMembers] = useState(".hl7");
-  const [policyFile, setPolicyFile] = useState("receiver-policy.json");
-  const [policy, setPolicy] = useState<PolicyBase>(defaultPolicy);
-  const [enhanced, setEnhanced] = useState(false);
+  const [planFraming, setPlanFraming] = useViewState<ImportFraming>("CapturePanel.planFraming", "raw");
+  const [planTerminator, setPlanTerminator] = useViewState<HL7Terminator>("CapturePanel.planTerminator", "cr");
+  const [planMembers, setPlanMembers] = useViewState("CapturePanel.planMembers", ".hl7");
+  const [policyFile, setPolicyFile] = useViewState("CapturePanel.policyFile", "receiver-policy.json");
+  const [policy, setPolicy] = useViewState<PolicyBase>("CapturePanel.policy", defaultPolicy);
+  const [enhanced, setEnhanced] = useViewState("CapturePanel.enhanced", false);
   // The controlled faults a step can declare, whether each waits, and the
   // delay a waiting one starts with, as the facade publishes them.
   const faults = useVocabulary()?.receiver_faults;
   const waits = (action: string) => faults?.actions.some((fault) => fault.action === action && fault.waits) ?? false;
-  const [faultAction, setFaultAction] = useState(NO_FAULT);
-  const [faultDelayMs, setFaultDelayMs] = useState(faults?.default_delay_ms ?? 0);
+  const [faultAction, setFaultAction] = useViewState("CapturePanel.faultAction", NO_FAULT);
+  const [faultDelayMs, setFaultDelayMs] = useViewState("CapturePanel.faultDelayMs", faults?.default_delay_ms ?? 0);
   // The documents reopened from disk, as they were read or last saved, and
   // whether a policy control changed since.
-  const [openedSource, setOpenedSource] = useState<{ file: string; source: EvidenceSource } | null>(null);
-  const [openedPolicy, setOpenedPolicy] = useState<OpenedPolicy | null>(null);
-  const [policyEdited, setPolicyEdited] = useState(false);
-  const [listeningOn, setListeningOn] = useState<string | null>(null);
-  const [address, setAddress] = useState("127.0.0.1:0");
-  const [addressEdited, setAddressEdited] = useState(false);
-  const [approvedBind, setApprovedBind] = useState(false);
-  const [outputName, setOutputName] = useState("capture.case");
-  const [journalName, setJournalName] = useState("capture.journal");
-  const [observationName, setObservationName] = useState("observation.json");
-  const [fixtureMode, setFixtureMode] = useState<"fixed" | "defective">("fixed");
-  const [maxMessages, setMaxMessages] = useState(0);
-  const [maxConnections, setMaxConnections] = useState(1);
-  const [tlsCert, setTlsCert] = useState("");
-  const [tlsKeyRef, setTlsKeyRef] = useState("");
-  const [secretsFile, setSecretsFile] = useState("");
-  const [clientCA, setClientCA] = useState("");
-  const [stagedFolder, setStagedFolder] = useState("");
-  const [stagedReceipt, setStagedReceipt] = useState("");
+  const [openedSource, setOpenedSource] = useViewState<{ file: string; source: EvidenceSource } | null>("CapturePanel.openedSource", null);
+  const [openedPolicy, setOpenedPolicy] = useViewState<OpenedPolicy | null>("CapturePanel.openedPolicy", null);
+  const [policyEdited, setPolicyEdited] = useViewState("CapturePanel.policyEdited", false);
+  const [listeningOn, setListeningOn] = useViewState<string | null>("CapturePanel.listeningOn", null);
+  const [address, setAddress] = useViewState("CapturePanel.address", "127.0.0.1:0");
+  const [addressEdited, setAddressEdited] = useViewState("CapturePanel.addressEdited", false);
+  const [approvedBind, setApprovedBind] = useViewState("CapturePanel.approvedBind", false);
+  const [outputName, setOutputName] = useViewState("CapturePanel.outputName", "capture.case");
+  const [journalName, setJournalName] = useViewState("CapturePanel.journalName", "capture.journal");
+  const [observationName, setObservationName] = useViewState("CapturePanel.observationName", "observation.json");
+  const [fixtureMode, setFixtureMode] = useViewState<"fixed" | "defective">("CapturePanel.fixtureMode", "fixed");
+  const [maxMessages, setMaxMessages] = useViewState("CapturePanel.maxMessages", 0);
+  const [maxConnections, setMaxConnections] = useViewState("CapturePanel.maxConnections", 1);
+  const [tlsCert, setTlsCert] = useViewState("CapturePanel.tlsCert", "");
+  const [tlsKeyRef, setTlsKeyRef] = useViewState("CapturePanel.tlsKeyRef", "");
+  const [secretsFile, setSecretsFile] = useViewState("CapturePanel.secretsFile", "");
+  const [clientCA, setClientCA] = useViewState("CapturePanel.clientCA", "");
+  const [stagedFolder, setStagedFolder] = useViewState("CapturePanel.stagedFolder", "");
+  const [stagedReceipt, setStagedReceipt] = useViewState("CapturePanel.stagedReceipt", "");
   // A browser takes focus from a control it disables, so a running capture
   // hands it to its Cancel control and every action returns it afterwards to
   // the control that started it. A capture, collecting or listening, runs
@@ -269,13 +270,13 @@ export function CapturePanel({
     stops: { collecting: cancelControl, listening: cancelControl },
   });
   const operation = lifecycle.running;
-  const [access, setAccess] = useState<SourceAccessResult | null>(null);
-  const [collection, setCollection] = useState<SourceCollectionResult | null>(null);
-  const [preview, setPreview] = useState<CapturePreviewResult | null>(null);
-  const [session, setSession] = useState<CaptureSessionResult | null>(null);
-  const [journal, setJournal] = useState<CaptureJournalResult | null>(null);
-  const [finalized, setFinalized] = useState<ImportCommitResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [access, setAccess] = useViewState<SourceAccessResult | null>("CapturePanel.access", null);
+  const [collection, setCollection] = useViewState<SourceCollectionResult | null>("CapturePanel.collection", null);
+  const [preview, setPreview] = useViewState<CapturePreviewResult | null>("CapturePanel.preview", null);
+  const [session, setSession] = useViewState<CaptureSessionResult | null>("CapturePanel.session", null);
+  const [journal, setJournal] = useViewState<CaptureJournalResult | null>("CapturePanel.journal", null);
+  const [finalized, setFinalized] = useViewState<ImportCommitResult | null>("CapturePanel.finalized", null);
+  const [error, setError] = useViewState<string | null>("CapturePanel.error", null);
   const locked = busy || operation !== null;
   const serving = operation === "listening" || operation === "collecting";
   // While a capture runs, the screen reads where it listens: with a port of 0

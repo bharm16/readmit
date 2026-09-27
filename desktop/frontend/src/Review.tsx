@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type {
   AuthoredTransformPlan,
   Review as ReviewDocument,
@@ -12,6 +12,7 @@ import type {
 } from "./bindings";
 import { Report, type Indicators } from "./shell";
 import "./review.css";
+import { useViewChange, useViewState } from "./viewstate";
 
 /** How each decision reads. The facade names them and decides all of them; this
  * maps each to a sentence and none of them to a colour alone. */
@@ -90,26 +91,26 @@ export function Review({
   onOpenPlan: (entry: string) => Promise<TransformPlanResult | null>;
   onReview: (review: string, approve: string, offset: number) => void;
 }) {
-  const [rules, setRules] = useState("");
-  const [plan, setPlan] = useState("");
-  const [profile, setProfile] = useState("");
-  const [entry, setEntry] = useState("");
-  const [approval, setApproval] = useState("");
-  const [planOutput, setPlanOutput] = useState("");
-  const [operator, setOperator] = useState<TransformOperator>("rebase-identifiers/v1");
-  const [stepRule, setStepRule] = useState("patient");
-  const [stepShift, setStepShift] = useState("24h");
-  const [stepEntry, setStepEntry] = useState("t000001");
-  const [stepPosition, setStepPosition] = useState("1");
-  const [authoredSteps, setAuthoredSteps] = useState<TransformStep[]>([]);
+  const [rules, setRules] = useViewState("Review.rules", "");
+  const [plan, setPlan] = useViewState("Review.plan", "");
+  const [profile, setProfile] = useViewState("Review.profile", "");
+  const [entry, setEntry] = useViewState("Review.entry", "");
+  const [approval, setApproval] = useViewState("Review.approval", "");
+  const [planOutput, setPlanOutput] = useViewState("Review.planOutput", "");
+  const [operator, setOperator] = useViewState<TransformOperator>("Review.operator", "rebase-identifiers/v1");
+  const [stepRule, setStepRule] = useViewState("Review.stepRule", "patient");
+  const [stepShift, setStepShift] = useViewState("Review.stepShift", "24h");
+  const [stepEntry, setStepEntry] = useViewState("Review.stepEntry", "t000001");
+  const [stepPosition, setStepPosition] = useViewState("Review.stepPosition", "1");
+  const [authoredSteps, setAuthoredSteps] = useViewState<TransformStep[]>("Review.authoredSteps", []);
   // The steps as the plan the panel last saved or opened held them, so a
   // change nobody saved is known before an open would replace it.
-  const [storedSteps, setStoredSteps] = useState<TransformStep[]>([]);
+  const [storedSteps, setStoredSteps] = useViewState<TransformStep[]>("Review.storedSteps", []);
   // What the plan line below reports: the plan saved or opened last, by the
   // action that produced it. A refusal is the status line's alone.
-  const [storedPlan, setStoredPlan] = useState<{ action: "saved" | "opened"; plan: AuthoredTransformPlan } | null>(null);
-  const [reopenEntry, setReopenEntry] = useState("");
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [storedPlan, setStoredPlan] = useViewState<{ action: "saved" | "opened"; plan: AuthoredTransformPlan } | null>("Review.storedPlan", null);
+  const [reopenEntry, setReopenEntry] = useViewState("Review.reopenEntry", "");
+  const [confirming, setConfirming] = useViewState<string | null>("Review.confirming", null);
   const openButton = useRef<HTMLButtonElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
 
@@ -120,12 +121,12 @@ export function Review({
   // Steps are authored over the case on screen and a save binds them to it,
   // so another case starts the plan again rather than carrying steps written
   // against other evidence.
-  useEffect(() => {
+  useViewChange("Review.case", caseIdentity, () => {
     setAuthoredSteps([]);
     setStoredSteps([]);
     setStoredPlan(null);
     setConfirming(null);
-  }, [caseIdentity]);
+  });
 
   // The window withdraws a plan answer when the case it was about is closed,
   // and the line naming that plan goes with it.
@@ -346,7 +347,7 @@ export function Review({
           <p className="hint">Choose the correlation rules below; a plan pins the rules it preserves.</p>
         ) : null}
       </form>
-      <Report indicators={indicators} progress={planProgress} result={planResult} />
+      <Report outcome indicators={indicators} progress={planProgress} result={planResult} />
       {storedPlan ? (
         <p className="hint">
           {storedPlan.action === "saved" ? "Saved" : "Opened"} {storedPlan.plan.output} · {storedPlan.plan.plan.steps.length}{" "}
@@ -419,7 +420,7 @@ export function Review({
         )}
       </form>
 
-      <Report indicators={indicators} progress={transformProgress} result={transformResult} />
+      <Report outcome indicators={indicators} progress={transformProgress} result={transformResult} />
 
       {transformation ? (
         <p className="hint">
@@ -467,7 +468,7 @@ export function Review({
         </button>
       </form>
 
-      <Report indicators={indicators} progress={reviewProgress} result={reviewResult} />
+      <Report outcome indicators={indicators} progress={reviewProgress} result={reviewResult} />
 
       {review ? (
         <Inventory

@@ -12,6 +12,8 @@ export type PaletteEntry = {
   label: string;
   /** The platform's shortcut, as a person presses it. */
   keys?: string;
+  /** The selected object an action acts on. */
+  object?: string;
   run: () => void;
 };
 
@@ -116,6 +118,7 @@ export function CommandPalette({
               onClick={() => choose(entry)}
             >
               <span className="name">{entry.label}</span>
+              {entry.object ? <span className="palette-object">{entry.object}</span> : null}
               {entry.keys ? <kbd>{entry.keys}</kbd> : null}
             </li>
           ))}

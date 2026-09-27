@@ -1,6 +1,6 @@
 .privacy-documents {
   border: 1px solid var(--line);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sheet);
   display: grid;
   gap: 0.6rem;
   margin: 1rem 0;
@@ -34,7 +34,7 @@
 
 .privacy-documents .preflight {
   border: 1px solid var(--line);
-  border-radius: 0.4rem;
+  border-radius: var(--radius-sheet);
   display: grid;
   gap: 0.4rem;
   padding: 0.8rem;

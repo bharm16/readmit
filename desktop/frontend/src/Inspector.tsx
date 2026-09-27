@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { FieldState, InspectionResult, InspectorNode } from "./bindings";
 import { FIELD_STATES, HIDDEN_VALUE } from "./display";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
-import { BackLink, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
+import { BackLink, FormDialog, Menu, Modal, Reveal, ValueRows, type SubmitFailure } from "./layout";
 import { IconButton } from "./IconButton";
 import { observedInstant, typeLabel } from "./Messages";
 import "./inspector.css";
@@ -118,7 +118,7 @@ export function MessageReader({
               {inspection.notice}
             </p>
           ) : null}
-          <TaskTabs label="Message views" id="reader-views" tabs={VIEWS} selected={view} onSelect={setView} keepMounted>
+          <TaskTabs label="Message views" id="reader-views" tabs={VIEWS} selected={view} onSelect={setView} panels>
             <TaskPanel tabs="reader-views" tab="fields" shown={view === "fields"}>
               {inspection.decode_state === "unparsed" ? (
                 <div className="reader-empty">
@@ -185,7 +185,9 @@ export function MessageReader({
                             {child.node.kind === "segment" ? (
                               <>
                                 <span className="outline-code">{child.node.segment}</span>
-                                <span className="outline-name">{child.segment_name}</span>
+                                <span className="outline-name">
+                                  <span>{child.segment_name}</span>
+                                </span>
                               </>
                             ) : (
                               <>
@@ -247,12 +249,7 @@ export function MessageReader({
               )}
             </TaskPanel>
           </TaskTabs>
-          <div className="reveal">
-            <button type="button" disabled={busy} onClick={() => onReveal(!revealed)}>
-              {revealed ? "Hide values" : "Show values"}
-            </button>
-            {revealed ? null : <span className="consequence">May contain patient data.</span>}
-          </div>
+          <Reveal revealed={revealed} disabled={busy} onToggle={onReveal} />
         </>
       ) : null}
 

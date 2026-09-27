@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import "./hub.css";
 import {
   chooseHubConfig,
@@ -22,32 +22,33 @@ import { OperatorHub } from "./OperatorHub";
 import { HubAdministration } from "./HubAdministration";
 import type { Artifact } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { ViewKey, useViewState } from "./viewstate";
 
 /** The hub panel sits directly above the privacy screens, so the collaboration
  * journeys it hosts can name the open workspace's sharing-policy entries and
  * published support bundles without retyping a path. */
 export function HubPanel({ workspace, entries = [] }: { workspace?: string | null; entries?: Artifact[] }) {
-  const [status, setStatus] = useState<HubResult | null>(null);
-  const [diagnosis, setDiagnosis] = useState<HubDiagnosisResult | null>(null);
-  const [authUrl, setAuthUrl] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [artifacts, setArtifacts] = useState<HubArtifactsResult | null>(null);
-  const [transfer, setTransfer] = useState<HubTransferResult | null>(null);
-  const [downloadDest, setDownloadDest] = useState("");
-  const [uploadSource, setUploadSource] = useState("");
+  const [status, setStatus] = useViewState<HubResult | null>("HubPanel.status", null);
+  const [diagnosis, setDiagnosis] = useViewState<HubDiagnosisResult | null>("HubPanel.diagnosis", null);
+  const [authUrl, setAuthUrl] = useViewState<string | null>("HubPanel.authUrl", null);
+  const [selectedProject, setSelectedProject] = useViewState<string | null>("HubPanel.selectedProject", null);
+  const [artifacts, setArtifacts] = useViewState<HubArtifactsResult | null>("HubPanel.artifacts", null);
+  const [transfer, setTransfer] = useViewState<HubTransferResult | null>("HubPanel.transfer", null);
+  const [downloadDest, setDownloadDest] = useViewState("HubPanel.downloadDest", "");
+  const [uploadSource, setUploadSource] = useViewState("HubPanel.uploadSource", "");
   // A sign-in waits for the browser under the facade's hub-sign-in operation,
   // which its cancel stops.
   const lifecycle = useLifecycle<"working" | "signing-in">({ names: { "signing-in": "hub-sign-in" } });
   const busy = lifecycle.running !== null;
-  const [message, setMessage] = useState<string | null>(null);
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [message, setMessage] = useViewState<string | null>("HubPanel.message", null);
+  const [adminOpen, setAdminOpen] = useViewState("HubPanel.adminOpen", false);
   // The project whose results the panel shows now. An answer for another
   // project — one asked for before the selection, configuration or session
   // changed — is discarded rather than shown under this one.
   const shown = useRef<string | null>(null);
   // The last project and resource an offline draft was offered for, kept
   // after sign-out for local retention only; another configuration drops it.
-  const [offline, setOffline] = useState<RevisionContext | null>(null);
+  const [offline, setOffline] = useViewState<RevisionContext | null>("HubPanel.offline", null);
   const rememberRevision = useCallback((context: RevisionContext) => setOffline(context), []);
 
   function clearProject() {
@@ -209,6 +210,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
   // reason; it is neither diagnosed nor connected to until one is chosen again.
   const isConfigured = status?.state === "completed" && Boolean(status.config_path);
 
+  const teamContext = `${status?.config_path ?? ""}|${status?.issuer ?? ""}|${status?.subject ?? ""}|${selectedProject}`;
   return (
     <section className="hub-panel" aria-labelledby="hub-panel-title">
       <h3 id="hub-panel-title">Hub</h3>
@@ -465,17 +467,18 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       <div id="hub-admin-handoff" hidden={!adminOpen}><HubAdministration /></div>
 
       {isAuthenticated && selectedProject ? (
+        // A new configuration, session or project is a new context: the
+        // team panel starts over rather than keeping another one's heads,
+        // command IDs or results.
+        <ViewKey key={teamContext} id={teamContext}>
         <TeamCollaboration
-          // A new configuration, session or project is a new context: the
-          // team panel starts over rather than keeping another one's heads,
-          // command IDs or results.
-          key={`${status?.config_path ?? ""}|${status?.issuer ?? ""}|${status?.subject ?? ""}|${selectedProject}`}
           project={selectedProject}
           workspace={workspace ?? ""}
           entries={entries}
           capabilities={status?.projects?.find((p) => p.project === selectedProject)?.capabilities ?? []}
           onRevisionContext={rememberRevision}
         />
+        </ViewKey>
       ) : null}
       {!isAuthenticated && offline && workspace ? <OfflineRevisionDraft workspace={workspace} context={offline} /> : null}
     </section>

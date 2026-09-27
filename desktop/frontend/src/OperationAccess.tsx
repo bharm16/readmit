@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ComputerLicense } from "./ComputerLicense";
 import { ControlledDetails } from "./ControlledDetails";
 import { IconButton } from "./IconButton";
@@ -10,6 +10,7 @@ import {
   type OperationResult,
 } from "./bindings";
 import { useLifecycle } from "./lifecycle";
+import { useViewState } from "./viewstate";
 
 /** The empty role selections: an unused author/device or authority pair is
  * explicitly empty, exactly as the operation policy contract requires. */
@@ -22,19 +23,19 @@ const NONE = "(none)";
  * and never issues an entitlement or contacts a service on its own. Runner
  * capacity lives with the runner, not here. */
 export function OperationAccess() {
-  const [result, setResult] = useState<OperationResult | null>(null);
+  const [result, setResult] = useViewState<OperationResult | null>("OperationAccess.result", null);
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useViewState<string | null>("OperationAccess.notice", null);
 
-  const [verified, setVerified] = useState<LicenseVerifyResult | null>(null);
-  const [author, setAuthor] = useState(NONE);
-  const [device, setDevice] = useState(NONE);
-  const [authority, setAuthority] = useState(NONE);
-  const [folder, setFolder] = useState<string | null>(null);
+  const [verified, setVerified] = useViewState<LicenseVerifyResult | null>("OperationAccess.verified", null);
+  const [author, setAuthor] = useViewState("OperationAccess.author", NONE);
+  const [device, setDevice] = useViewState("OperationAccess.device", NONE);
+  const [authority, setAuthority] = useViewState("OperationAccess.authority", NONE);
+  const [folder, setFolder] = useViewState<string | null>("OperationAccess.folder", null);
 
-  const [exported, setExported] = useState<LicenseExportResult | null>(null);
-  const [commercial, setCommercial] = useState<CommercialStatusResult | null>(null);
+  const [exported, setExported] = useViewState<LicenseExportResult | null>("OperationAccess.exported", null);
+  const [commercial, setCommercial] = useViewState<CommercialStatusResult | null>("OperationAccess.commercial", null);
 
   useEffect(() => {
     let active = true;

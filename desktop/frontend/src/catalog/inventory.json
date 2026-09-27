@@ -78,12 +78,6 @@
     "line": 63
   },
   {
-    "name": "StateHelp",
-    "source": "desktop/frontend/src/ContextHelp.tsx",
-    "exported": true,
-    "line": 23
-  },
-  {
     "name": "HelpTopics",
     "source": "desktop/frontend/src/ContextHelp.tsx",
     "exported": true,
