@@ -188,9 +188,13 @@ func connect(ctx context.Context, plan *Plan, route destination.Route) (net.Conn
 	if err == nil {
 		return connection, nil
 	}
+	return nil, connectionFailure(err)
+}
+
+func connectionFailure(err error) *TransportError {
 	var failure *destination.Failure
 	if !errors.As(err, &failure) {
-		return nil, &TransportError{Phase: "tls", Class: "tls_verification"}
+		return &TransportError{Phase: "tls", Class: "tls_verification"}
 	}
 	class := transportClass(failure.Kind)
 	if failure.Phase == destination.Handshake && class != "timeout" && class != "cancelled" {
@@ -199,7 +203,7 @@ func connect(ctx context.Context, plan *Plan, route destination.Route) (net.Conn
 			class = "tls_verification"
 		}
 	}
-	return nil, &TransportError{Phase: string(failure.Phase), Class: class}
+	return &TransportError{Phase: string(failure.Phase), Class: class}
 }
 
 func writeAll(writer io.Writer, data []byte) (int, error) {

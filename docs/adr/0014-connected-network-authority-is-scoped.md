@@ -1,0 +1,34 @@
+---
+status: accepted
+date: 2026-09-26
+---
+
+# Connected network authority is scoped and rechecked at effects
+
+IG02 introduces independent network-policy, network-decision, runner-grant,
+credential-scope and transport-receipt contracts. Compilation can pin the new
+policy reference but cannot authorize a connection. Legacy send-policy, secrets,
+target, run and result versions retain their members and admission rules.
+
+A separately selected live authority binds exact plan and source identities,
+configuration, environment revision, endpoint, operation and policy. Runner
+configuration is distinct from a desktop one-action review. An adapter rechecks
+that authority before DNS, private-key resolution, dialing and every payload
+write; secrets never become plan inputs. Effective configuration and actor/grant
+identity remain private retained evidence. Operational decisions omit addresses.
+
+The destination package validates every member of a bounded DNS answer and
+seals one selected address into a single-use route. A new connection needs a new
+admission. HTTPS shares that boundary, verified TLS and purpose separation;
+proxies, redirect following and automatic write retries are absent.
+
+Connected v2 execution reuses replay's sender, ACK correlation, uncertainty and
+immutable run writer. A scoped preparation cannot enter the legacy send path.
+The new containing artifact records connected environment, authority and TLS
+facts without adding members to historical manifests. Its reader never resumes
+an intent. An acknowledged transport is not an application verdict.
+
+Desktop adapters and live observation/FHIR/SMART orchestration remain separate
+owners. Their integration must consume this boundary and existing review
+mechanisms rather than widen legacy defaults or treat a raw network helper as
+execution authority.

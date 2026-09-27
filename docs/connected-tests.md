@@ -63,3 +63,6 @@ The Go `Reanalyze` operation returns `readmit-execution-analysis/v1` with a new
 analysis instance identity bound to the retained execution identity. It writes
 nothing and never changes the historical result. All retained content,
 including keys and endpoint metadata, remains customer-local sensitive evidence.
+
+For explicitly authorized non-loopback v2 execution, see
+[scoped connected transport](connected-transports.md).

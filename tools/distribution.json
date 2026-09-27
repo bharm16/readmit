@@ -49,6 +49,8 @@
     "testdata/fixtures/replay-transformed.mllp",
     "docs/run-bundle.md",
     "docs/test-runner.md",
+    "docs/connected-tests.md",
+    "docs/connected-transports.md",
     "docs/durable-runs.md",
     "docs/customer-runner.md",
     "docs/customer-ci.md",

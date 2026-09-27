@@ -183,6 +183,7 @@ type Mapping struct {
 // Plan is sealed by Prepare. Inspect it through methods returning private copies;
 // caller edits cannot change the validated endpoint or bytes Execute will use.
 type Plan struct {
+	scoped         bool
 	sourcePath     string
 	sourceInfo     os.FileInfo
 	sourceIdentity string

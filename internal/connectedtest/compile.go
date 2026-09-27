@@ -111,11 +111,19 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 		return nil, errors.New("unsupported target revision provenance")
 	}
 	for _, ref := range env.Grants {
-		b, err := resolve(ref, sendpolicy.PolicySchema)
+		if ref.Schema != sendpolicy.PolicySchema && ref.Schema != sendpolicy.ScopedPolicySchema {
+			return nil, invalid
+		}
+		b, err := resolve(ref, ref.Schema)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := sendpolicy.DecodePolicy(b); err != nil {
+		if ref.Schema == sendpolicy.ScopedPolicySchema {
+			policy, err := sendpolicy.DecodeScopedPolicy(b)
+			if err != nil || policy.Project != env.Project || policy.Environment != env.ID || policy.Revision != env.Revision {
+				return nil, errors.New("scoped policy environment differs")
+			}
+		} else if _, err := sendpolicy.DecodePolicy(b); err != nil {
 			return nil, err
 		}
 		if Digest(b) != env.AddressPolicyIdentity {
