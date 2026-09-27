@@ -14,8 +14,6 @@
 
 import type {
   ActionReviewResult,
-  AssertionSetRequest,
-  AssertionSetResult,
   AttachmentRemoveRequest,
   AttachmentsResult,
   BackupResult,
@@ -27,8 +25,6 @@ import type {
   CIHandoffRequest,
   CIHandoffResult,
   CIInspectResult,
-  CanonicalAssertionRequest,
-  CanonicalAssertionResult,
   CaptureJournalResult,
   CapturePreviewResult,
   CaptureProgressResult,
@@ -108,7 +104,6 @@ import type {
   LicenseReviewRequest,
   LicenseReviewResult,
   LicenseVerifyResult,
-  LocalProfileResult,
   LocateRequest,
   MaintenancePathResult,
   MigrationPreviewResult,
@@ -150,17 +145,6 @@ import type {
   PrivacyExportResult,
   PrivacyReviewRequest,
   PrivacyReviewResult,
-  ProfileCompareRequest,
-  ProfileCompareResult,
-  ProfileLibraryResult,
-  ProfilePackResult,
-  ProfilePackageExportRequest,
-  ProfilePackageImportRequest,
-  ProfilePackageResult,
-  ProfileSaveRequest,
-  ProfileUpgradePinRequest,
-  ProfileUpgradePinResult,
-  ProfileValidateRequest,
   ProjectFilesResult,
   ProjectForgetResult,
   ProjectLocationResult,
@@ -233,18 +217,6 @@ import type {
   SampleCaptureRequest,
   SaveItemRequest,
   SaveItemResult,
-  ScenarioCatalogResult,
-  ScenarioDocumentResult,
-  ScenarioGenerateRequest,
-  ScenarioGenerateResult,
-  ScenarioLibraryChoiceResult,
-  ScenarioLibraryRequest,
-  ScenarioLibraryResult,
-  ScenarioPreviewRequest,
-  ScenarioPreviewResult,
-  ScenarioProfileBindRequest,
-  ScenarioProfileBindResult,
-  ScenarioSaveRequest,
   SchedulePolicyRequest,
   SchedulePreviewResult,
   SearchResult,
@@ -282,8 +254,6 @@ import type {
   SupportPublishRequest,
   SupportPublishResult,
   SupportRequest,
-  SynthGenerateRequest,
-  SynthGenerateResult,
   SyntheticPacketPathKind,
   SyntheticPacketRequest,
   SyntheticPacketResult,
@@ -350,6 +320,33 @@ import type {
   FindingReviewHistoryResult,
   SimilarRequest,
   SimilarResult,
+  ItemHistoryResult,
+  ProfileComparisonResult,
+  ScenarioCaseResult,
+  ProfileEvaluationResult,
+  LibraryExportResult,
+  LibraryDocumentResult,
+  MetadataPacksResult,
+  ScenarioPlanPreviewResult,
+  AffectedTestsResult,
+  ProfileResolutionResult,
+  SampleFixtureResult,
+  LibraryImportRequest,
+  LibraryExportRequest,
+  LibraryDocumentRequest,
+  ProfileVersionsRequest,
+  ScenarioCaseRequest,
+  SampleFixtureRequest,
+  ScenarioPreviewInspectRequest,
+  ProfileEvaluationRequest,
+  ProfilePinsRequest,
+  ProfilePinsResult,
+  TestRunChecksRequest,
+  TestRunChecksResult,
+  ScenarioLibraryRequest,
+  ScenarioLibraryResult,
+  SynthGenerateRequest,
+  SynthGenerateResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -741,36 +738,6 @@ export function suggestExpectations(request: TestRequest): Promise<TestResult> {
  * here, so no suggested value crosses this boundary towards the draft. */
 export function approveExpectations(request: TestRequest): Promise<TestResult> {
   return guard(() => facade().ApproveExpectations(request), { state: "failed" });
-}
-
-/** Answers one structured edit of an assertion-set draft. */
-export function authorAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult> {
-  return guard(() => facade().AuthorAssertionSet(request), { state: "failed" });
-}
-
-/** Writes the generated set into one new workspace entry. */
-export function saveAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult> {
-  return guard(() => facade().SaveAssertionSet(request), { state: "failed" });
-}
-
-/** Opens an existing complete set into the structured draft. */
-export function importAssertionSet(
-  workspace: string,
-  entry: string,
-): Promise<AssertionSetResult> {
-  return guard(() => facade().ImportAssertionSet(workspace, entry), { state: "failed" });
-}
-
-/** Validates assertion-set bytes with the same strict reader explain uses. */
-export function validateAssertionSet(document: string): Promise<CanonicalAssertionResult> {
-  return guard(() => facade().ValidateAssertionSet(document), { state: "failed" });
-}
-
-/** Writes exact reviewed assertion-set bytes to a new workspace entry. */
-export function exportAssertionSet(
-  request: CanonicalAssertionRequest,
-): Promise<CanonicalAssertionResult> {
-  return guard(() => facade().ExportAssertionSet(request), { state: "failed" });
 }
 
 /** Aligns two collections of the open workspace and reports them as rows. It
@@ -1312,48 +1279,6 @@ export function verifyCIGate(directory: string, identity: string): Promise<CIGat
   return guard(() => facade().VerifyCIGate(directory, identity), { state: "failed" });
 }
 
-// --- Interface Profile Management (readmit-local-profile/v1, readmit-profile-pack/v1, etc.) ---
-
-export function inspectProfilePack(workspace: string, entry: string): Promise<ProfilePackResult> {
-  return guard(() => facade().InspectProfilePack(workspace, entry), { state: "failed", bundleable: false });
-}
-
-export function openProfileLibrary(workspace: string, directory: string): Promise<ProfileLibraryResult> {
-  return guard(() => facade().OpenProfileLibrary(workspace, directory), { state: "failed", bundleable: false });
-}
-
-export function openProfile(workspace: string, entry: string, packEntry: string): Promise<LocalProfileResult> {
-  return guard(() => facade().OpenProfile(workspace, entry, packEntry), { state: "failed" });
-}
-
-export function validateProfile(request: ProfileValidateRequest): Promise<LocalProfileResult> {
-  return guard(() => facade().ValidateProfile(request), { state: "failed" });
-}
-
-export function saveProfile(request: ProfileSaveRequest): Promise<LocalProfileResult> {
-  return guard(() => facade().SaveProfile(request), { state: "failed" });
-}
-
-export function compareProfiles(request: ProfileCompareRequest): Promise<ProfileCompareResult> {
-  return guard(() => facade().CompareProfiles(request), { state: "failed" });
-}
-
-export function upgradeProfilePin(request: ProfileUpgradePinRequest): Promise<ProfileUpgradePinResult> {
-  return guard(() => facade().UpgradeProfilePin(request), { state: "failed" });
-}
-
-export function exportProfilePackage(request: ProfilePackageExportRequest): Promise<ProfilePackageResult> {
-  return guard(() => facade().ExportProfilePackage(request), { state: "failed" });
-}
-
-export function importProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult> {
-  return guard(() => facade().ImportProfilePackage(request), { state: "failed" });
-}
-
-export function inspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult> {
-  return guard(() => facade().InspectProfilePackage(workspace, entry), { state: "failed" });
-}
-
 export function observationSupport(): Promise<ObservationSupportResult> {
   return guard(() => facade().ObservationSupport(), { state: "failed" });
 }
@@ -1450,64 +1375,6 @@ export function openCaptureJournal(workspace: string, journalPath: string): Prom
 export function finalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult> {
   return guard(() => facade().FinalizeCaptureImport(request), { state: "failed" });
 }
-
-// --- Synthetic scenario authoring (readmit-scenario/v1, generator, library) ---
-
-export function scenarioCatalog(): Promise<ScenarioCatalogResult> {
-  return retryingRead(() => facade().ScenarioCatalog(), { state: "failed" });
-}
-
-export function bindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult> {
-  return guard(() => facade().BindScenarioProfile(request), { state: "failed" });
-}
-
-export function previewScenario(request: ScenarioPreviewRequest): Promise<ScenarioPreviewResult> {
-  return guard(() => facade().PreviewScenario(request), { state: "failed" });
-}
-
-export function openScenario(workspace: string, entry: string): Promise<ScenarioDocumentResult> {
-  return guard(() => facade().OpenScenario(workspace, entry), { state: "failed" });
-}
-
-export function saveScenario(request: ScenarioSaveRequest): Promise<ScenarioDocumentResult> {
-  return guard(() => facade().SaveScenario(request), { state: "failed" });
-}
-
-export function generateScenario(request: ScenarioGenerateRequest): Promise<ScenarioGenerateResult> {
-  return guard(() => facade().GenerateScenario(request), { state: "failed" });
-}
-
-export function openScenarioLibrary(workspace: string, entry: string): Promise<ScenarioLibraryResult> {
-  return guard(() => facade().OpenScenarioLibrary(workspace, entry), { state: "failed" });
-}
-
-export function saveScenarioLibraryEntry(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
-  return guard(() => facade().SaveScenarioLibraryEntry(request), { state: "failed" });
-}
-
-export function compareScenarioLibraryEntries(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
-  return guard(() => facade().CompareScenarioLibraryEntries(request), { state: "failed" });
-}
-
-export function checkScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
-  return guard(() => facade().CheckScenarioLibrary(request), { state: "failed" });
-}
-
-export function exportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
-  return guard(() => facade().ExportScenarioLibrary(request), { state: "failed" });
-}
-
-export function importScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
-  return guard(() => facade().ImportScenarioLibrary(request), { state: "failed" });
-}
-export function chooseScenarioLibraryImport(): Promise<ScenarioLibraryChoiceResult> {
-  return guard(() => facade().ChooseScenarioLibraryImport(), { state: "failed" });
-}
-
-export function generateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult> {
-  return guard(() => facade().GenerateSynth(request), { state: "failed" });
-}
-
 
 
 
@@ -1660,6 +1527,19 @@ const SUBMIT_ATTEMPTS = 3;
 
 export function listCatalog(query: CatalogQuery): Promise<CatalogResult> {
   return retryingRead(() => facade().ListCatalog(query), { state: "failed", context: query.context });
+}
+
+/** `readmit scenario check-library`: regenerates a library's pinned template
+ * in memory and checks it against independent fixture expectations; writes
+ * nothing. */
+export function checkScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult> {
+  return guard(() => facade().CheckScenarioLibrary(request), { state: "failed" });
+}
+
+/** `readmit synth`: writes the reproducible SIU synthetic family from declared
+ * inputs into a new workspace entry. */
+export function generateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult> {
+  return guard(() => facade().GenerateSynth(request), { state: "failed" });
 }
 
 /** Every object of one list: its first page and each page its next_cursor
@@ -2055,4 +1935,84 @@ export function importAnalysisSettings(context: RequestContext): Promise<ItemDra
 /** Writes the saved analysis settings to a file the person names. */
 export function exportAnalysisSettings(request: ItemRequest): Promise<ExportSettingsResult> {
   return guard(() => facade().ExportAnalysisSettings(request), { state: "failed", context: request.context });
+}
+
+// ---------- Library (#557) ----------
+
+/** Every saved version of one object, newest first. */
+export function itemHistory(request: ItemRequest): Promise<ItemHistoryResult> {
+  return retryingRead(() => facade().ItemHistory(request), { state: "failed", context: request.context, revisions: [] });
+}
+
+/** The host's file dialog for a check group, profile or scenario to import. */
+export function chooseLibraryFile(kind: "check-group" | "profile" | "scenario"): Promise<PathChoiceResult> {
+  return guard(() => facade().ChooseLibraryFile(kind), { state: "failed" });
+}
+
+/** Reads a chosen file into a new, unsaved draft; nothing is written. */
+export function importLibraryItem(request: LibraryImportRequest): Promise<ItemDraftResult> {
+  return guard(() => facade().ImportLibraryItem(request), { state: "failed", context: request.context, new: true });
+}
+
+export function exportLibraryItem(request: LibraryExportRequest): Promise<LibraryExportResult> {
+  return guard(() => facade().ExportLibraryItem(request), { state: "failed", context: request.context, bytes: 0 });
+}
+
+/** The document a draft saves as, for Edit JSON. */
+export function libraryDocument(request: DraftRequest): Promise<LibraryDocumentResult> {
+  return retryingRead(() => facade().LibraryDocument(request), { state: "failed", context: request.context });
+}
+
+/** Reads edited JSON back into the draft, strictly. */
+export function applyLibraryDocument(request: LibraryDocumentRequest): Promise<ItemDraftResult> {
+  return guard(() => facade().ApplyLibraryDocument(request), { state: "failed", context: request.context, new: false });
+}
+
+export function resolveProfileDraft(request: DraftRequest): Promise<ProfileResolutionResult> {
+  return retryingRead(() => facade().ResolveProfileDraft(request), { state: "failed", context: request.context, problems: [] });
+}
+
+export function profileAffectedTests(request: ItemRequest): Promise<AffectedTestsResult> {
+  return retryingRead(() => facade().ProfileAffectedTests(request), { state: "failed", context: request.context, tests: [] });
+}
+
+export function compareProfileVersions(request: ProfileVersionsRequest): Promise<ProfileComparisonResult> {
+  return retryingRead(() => facade().CompareProfileVersions(request), { state: "failed", context: request.context });
+}
+
+export function metadataPacks(context: RequestContext): Promise<MetadataPacksResult> {
+  return retryingRead(() => facade().MetadataPacks(context), { state: "failed", context, packs: [] });
+}
+
+/** Generates a scenario's messages in memory for reading; nothing is written or sent. */
+export function previewScenarioDraft(request: DraftRequest): Promise<ScenarioPlanPreviewResult> {
+  return guard(() => facade().PreviewScenarioDraft(request), { state: "failed", context: request.context, problems: [], seed: 0, streams: 0, messages: [] });
+}
+
+export function inspectScenarioPreview(request: ScenarioPreviewInspectRequest): Promise<InspectionResult> {
+  return guard(() => facade().InspectScenarioPreview(request), { state: "failed" } as InspectionResult);
+}
+
+/** Generates a saved scenario's case once and adds it to the project. */
+export function createScenarioCase(request: ScenarioCaseRequest): Promise<ScenarioCaseResult> {
+  return guard(() => facade().CreateScenarioCase(request), { state: "failed", context: request.context, replayed: false, streams: 0, seed: 0 });
+}
+
+/** Runs the built-in SIU fixture on loopback until it stops; Cancel("capture") stops it. */
+export function startSampleFixture(request: SampleFixtureRequest): Promise<SampleFixtureResult> {
+  return guard(() => facade().StartSampleFixture(request), { state: "failed", context: request.context, received: 0, origin: "synthetic" });
+}
+
+export function evaluateProfile(request: ProfileEvaluationRequest): Promise<ProfileEvaluationResult> {
+  return retryingRead(() => facade().EvaluateProfile(request), { state: "failed", context: request.context });
+}
+
+/** Moves the chosen tests' pins to the reviewed profile version, each as a new version of that test. */
+export function upgradeProfilePins(request: ProfilePinsRequest): Promise<ProfilePinsResult> {
+  return guard(() => facade().UpgradeProfilePins(request), { state: "failed", context: request.context, upgraded: [], refused: [] });
+}
+
+/** The check groups a test version links, decided against one of its runs. */
+export function testRunChecks(request: TestRunChecksRequest): Promise<TestRunChecksResult> {
+  return retryingRead(() => facade().TestRunChecks(request), { state: "failed", context: request.context, checks: [] });
 }

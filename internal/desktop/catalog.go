@@ -214,6 +214,25 @@ type CaseSummary struct {
 	// declares them, each with the name the project records for it, empty
 	// when it has none: what Edit details opens with.
 	Sources []project.Source `json:"sources,omitzero"`
+	// Scenario is the synthetic scenario, at the exact revision, a generated
+	// case was created from, when the project records one.
+	Scenario *CaseScenario `json:"scenario,omitzero"`
+	// Fixture is the built-in sample fixture run a case was received from:
+	// the mode it ran in and the observation ledger entry it wrote beside it.
+	Fixture *CaseFixture `json:"fixture,omitzero"`
+}
+
+// CaseFixture is the sample fixture run a case came from.
+type CaseFixture struct {
+	Mode        string `json:"mode"`
+	Observation string `json:"observation"`
+}
+
+// CaseScenario is the scenario a generated case came from: its reference at
+// the revision whose plan generated the case, and its name.
+type CaseScenario struct {
+	Ref  ItemRef `json:"ref"`
+	Name string  `json:"name,omitzero"`
 }
 
 // provenanceMarker is the one provenance a case row shows: synthetic for
@@ -323,8 +342,13 @@ type ReportSummary struct {
 	Status      string   `json:"status,omitzero"`
 }
 
+// CheckGroupSummary is how many checks a check group holds, the revision it
+// is at (empty for a group the application has not saved), and how many of
+// its checks use an operator this release does not evaluate.
 type CheckGroupSummary struct {
-	Assertions int `json:"assertions"`
+	Assertions  int    `json:"assertions"`
+	Revision    string `json:"revision,omitzero"`
+	Unsupported int    `json:"unsupported"`
 }
 
 // ProfileSummary is the family and protocol version a profile covers and the
@@ -336,9 +360,21 @@ type ProfileSummary struct {
 	PublishedVersion string `json:"published_version,omitzero"`
 }
 
+// ScenarioSummary is a scenario's declared version and lifecycle profile, the
+// message family it generates, and, for a generator plan, the seed, base time
+// and generator version it is pinned to. A workflow document that is not a
+// plan declares no seed or generator.
 type ScenarioSummary struct {
-	Version string `json:"version"`
-	Profile string `json:"profile"`
+	Version          string  `json:"version"`
+	Profile          string  `json:"profile"`
+	Family           string  `json:"family,omitzero"`
+	Plan             bool    `json:"plan"`
+	Seed             *uint64 `json:"seed"`
+	BaseTime         *string `json:"base_time"`
+	GeneratorVersion string  `json:"generator_version,omitzero"`
+	// LocalProfile is the saved local profile, at its exact revision, a
+	// Library scenario is authored for.
+	LocalProfile *ItemRef `json:"local_profile,omitzero"`
 }
 
 // AnalysisSummary is one retained analysis. A diagnosis ("diagnosis") names

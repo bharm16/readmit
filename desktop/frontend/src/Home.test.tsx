@@ -435,27 +435,10 @@ test("each retained sheet draft resumes in its sheet with the draft and the unsa
   }
 }, 15_000);
 
-test("a draft of a library or suite editor resumes on that editor's page", async () => {
+test("a suite editor draft resumes on that editor's page; an earlier library editor's draft is offered only for Discard", async () => {
   const suite = { schema: "readmit-suite/v1", id: "scheduling-regression", owner: "Integration desk", tags: [], parallelism: 1, environments: [], tables: [], tests: [] };
   const scenario = '{"schema":"readmit-scenario/v1","name":"restored-reschedule-scenario"}';
-  const plan = '{"schema":"readmit-scenario-generator/v1","name":"restored-generator-plan"}';
   const editors = [
-    {
-      draft: editorDraft("d1", "scenario", scenario, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-scenario-draft/v1" }),
-      object: "Scenario",
-      heading: "Library",
-      tab: "Scenarios",
-      shown: scenario,
-    },
-    {
-      draft: editorDraft("d2", "generator-plan", plan, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-generator-plan-draft/v1" }),
-      object: "Scenario plan",
-      heading: "Library",
-      tab: "Scenarios",
-      shown: plan,
-      // The plan is edited on the scenario editor's own Generate view.
-      view: "Generate",
-    },
     {
       draft: editorDraft(
         "d3",
@@ -482,6 +465,14 @@ test("a draft of a library or suite editor resumes on that editor's page", async
     expect(await page().findByDisplayValue(shown)).toBeTruthy();
     expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
   }
+  // The Library's editors now open saved objects; an earlier scenario draft has no editor to return to.
+  cleanup();
+  const user = userEvent.setup();
+  await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [editorDraft("d1", "scenario", scenario, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-scenario-draft/v1" })] }) });
+  await user.click(await page().findByRole("button", { name: "Review" }));
+  const review = within(screen.getByRole("dialog", { name: "Drafts to restore" }));
+  expect(review.getByRole("rowheader", { name: "Scenario" })).toBeTruthy();
+  expect(review.queryByRole("button", { name: "Scenario" })).toBeNull();
 }, 15_000);
 
 test("a draft whose case is gone says so on Cases and opens nothing", async () => {

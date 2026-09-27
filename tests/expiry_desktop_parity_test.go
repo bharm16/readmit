@@ -119,12 +119,26 @@ func TestAnExpiredTermGatesTheSameOperationsInTheWindowAsOnTheCommandLine(t *tes
 	if out, err := cli("profile", "import", cliPackage, "--output", filepath.Join(t.TempDir(), "imported")); err != nil {
 		t.Fatalf("the command line refused a profile import under an expired term: %v %s", err, out)
 	}
-	if result := window.ExportProfilePackage(desktop.ProfilePackageExportRequest{Workspace: profiles, Profile: "profile.json", Pack: "pack.json", Version: "version.json",
-		Origin: "origin.json", Output: "package.json", Reviewed: true}); result.State != desktop.Completed {
-		t.Fatalf("the window refused a profile export under an expired term: %+v", result)
-	}
-	if result := window.ImportProfilePackage(desktop.ProfilePackageImportRequest{Workspace: profiles, Package: "package.json", Output: "imported"}); result.State != desktop.Completed {
+	// The window reads a package into a Library draft and exports a profile
+	// package the project holds, neither of which authors anything.
+	project := desktop.RequestContext{Project: root}
+	if result := window.ImportLibraryItem(desktop.LibraryImportRequest{Context: project, Kind: desktop.ProfileItem, Path: cliPackage}); result.State != desktop.Completed {
 		t.Fatalf("the window refused a profile import under an expired term: %+v", result)
+	}
+	writeDocument(t, root, "profile-package.json", string(mustRead(t, cliPackage)))
+	var held *desktop.ItemRef
+	if listed := window.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.ProfileItem}); listed.Page != nil {
+		for _, item := range listed.Page.Items {
+			if item.Summary.Profile != nil && item.Summary.Profile.Form == "profile-package" {
+				held = &item.Ref
+			}
+		}
+	}
+	if held == nil {
+		t.Fatal("the project does not list the profile package it holds")
+	}
+	if result := window.ExportLibraryItem(desktop.LibraryExportRequest{Context: project, Ref: *held, Destination: filepath.Join(t.TempDir(), "package.json")}); result.State != desktop.Completed {
+		t.Fatalf("the window refused a profile export under an expired term: %+v", result)
 	}
 
 	// Preserving what exists is ungated in both: each entry point backs the

@@ -37,6 +37,9 @@ var profiles = map[string]operationguard.Profile{
 	"DiagnoseSource": {Name: "source-diagnosis", Interruptible: true, Execution: operationguard.Execute},
 	"CollectSource":  {Name: "collect", Interruptible: true, Author: true, Execution: operationguard.Execute},
 	"StartCapture":   {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
+	// The built-in SIU fixture of the library's sample data, stopped by the
+	// capture's own cancel.
+	"StartSampleFixture": {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
 
 	// The environment and observation.
 	"CheckTarget":                 {Name: targetCheckOperation, Interruptible: true, Execution: operationguard.Execute},
@@ -96,7 +99,6 @@ var profiles = map[string]operationguard.Profile{
 	"AssemblePacket":        {Name: packetOperation, Interruptible: true},
 	"ExportPacketReview":    {Name: packetOperation, Interruptible: true},
 	"PublishSupportSummary": {Name: supportOperation, Interruptible: true},
-	"ImportProfilePackage":  {Name: profileImportOperation, Interruptible: true},
 	"VerifyCIGate":          {Name: ciGateVerifyOperation, Interruptible: true},
 	"CheckScenarioLibrary":  {Name: scenarioCheckOperation, Interruptible: true},
 	"AssessSuiteCoverage":   {Name: suiteCoverageOperation, Interruptible: true},

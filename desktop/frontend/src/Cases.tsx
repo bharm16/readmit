@@ -393,6 +393,7 @@ export function CaseFacts({ item, revisions, onClose }: { item: CatalogItem | nu
           ...((f.tags ?? []).length > 0 ? [{ label: "Tags", value: (f.tags ?? []).join(", ") }] : []),
           { label: "Interface revision", value: revision ?? "Unassigned" },
           ...((f.incidents ?? []).length > 0 ? [{ label: "Incidents", value: (f.incidents ?? []).join(", ") }] : []),
+          ...(f.scenario ? [{ label: "Generated from", value: f.scenario.name ?? "Scenario" }] : []),
         ]}
       />
     </Modal>

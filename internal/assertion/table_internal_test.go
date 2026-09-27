@@ -1,6 +1,9 @@
 package assertion
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // operators restates the closed set this contract carries, so the named
 // constants and the compatibility table the reader dispatches on cannot drift
@@ -23,6 +26,9 @@ var expectedMembers = []expectedMember{
 }
 
 func TestEveryOperatorIsBoundToOneSubjectAndOneExpectation(t *testing.T) {
+	if offered := Operators(); !slices.Equal(offered, operators) {
+		t.Fatalf("the operators offered are %v, and the contract names %v", offered, operators)
+	}
 	if len(compatibility) != len(operators) {
 		t.Fatalf("the compatibility table binds %d operators and %d are named", len(compatibility), len(operators))
 	}

@@ -575,56 +575,17 @@ func besideWorkspace(t *testing.T) (root, outside string) {
 	return resolved(t, filepath.Join(parent, "workspace")), resolved(t, filepath.Join(parent, "outside"))
 }
 
-// A profile library is a folder of pack documents the library reader lists and
-// reads, so the folder is an entry like any other: the workspace itself, or
-// one real folder of it, never a folder reached through a link, a `..` or an
-// absolute path. The folder beside the workspace holds the same pack, so only
-// the rule can refuse it.
-func TestOpeningAProfileLibraryRefusesAFolderThatIsNotOneOfTheWorkspace(t *testing.T) {
-	app := workspaceApp(t)
-	root, outside := besideWorkspace(t)
-	for _, folder := range []string{root, outside} {
-		if err := os.Mkdir(filepath.Join(folder, "library"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		writeDocument(t, filepath.Join(folder, "library"), "pack.json", fixture(t, "profile-pack.json"))
-	}
-	if opened := app.OpenProfileLibrary(outside, "library"); opened.State != desktop.Completed || len(opened.Entries) != 1 {
-		t.Fatalf("the library outside does not open, so it cannot show a refusal: %+v", opened)
-	}
-	writeDocument(t, root, "evidence.txt", "synthetic bytes where a library is expected")
-	plantHostile(t, root, outside, "library")
-	refusesEveryEntry(t, []confinedMember{
-		{"OpenProfileLibrary", []string{"a profile library must be the open workspace or one folder of it, never a symbolic link"}, map[string]string{
-			"a symbolic link out of the workspace":         "link-library",
-			"a symbolic link to a folder of the workspace": "alias-library",
-			"a `..` escape": filepath.Join("..", "outside", "library"),
-			"an absolute path to the workspace's folder": filepath.Join(root, "library"),
-			"an absolute path outside the workspace":     filepath.Join(outside, "library"),
-			"a FIFO":                                     "fifo.json",
-			"a regular file":                             "evidence.txt",
-		}, func(entry string) refused {
-			result := app.OpenProfileLibrary(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-	})
-	if opened := app.OpenProfileLibrary(root, "library"); opened.State != desktop.Completed || len(opened.Entries) != 1 {
-		t.Fatalf("the workspace's own library no longer opens: %+v", opened)
-	}
-}
-
-// A generated family, a collection's staging folder and receipt, a capture's
-// case and observation, and the case a staged collection is finalized into
+// A collection's staging folder and receipt, a capture's case and
+// observation, and the case a staged collection is finalized into
 // are new entries of the workspace. Their creation is exclusive, but a name
 // that is not one entry would still place them somewhere else: beside the
 // workspace, inside one of its folders, or through a linked folder out of it.
-// Each request below is complete: the generation, synthesis, collection and
+// Each request below is complete: the collection and
 // finalization write under fresh names at the end, and a capture handed a name
 // the rule missed would start listening.
 func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *testing.T) {
 	app := workspaceApp(t)
 	root, outside := besideWorkspace(t)
-	writeDocument(t, root, "plan.json", fixture(t, "scenario-generator.json"))
 	payload := "MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r"
 	for _, folder := range []string{"export", "folder"} {
 		if err := os.Mkdir(filepath.Join(root, folder), 0o700); err != nil {
@@ -656,13 +617,6 @@ func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *t
 	}
 	listed, before := entriesOf(t, root), bytesUnder(t, outside)
 
-	generate := func(output, caseName string) desktop.ScenarioGenerateRequest {
-		return desktop.ScenarioGenerateRequest{Workspace: root, Document: "plan.json", OutputName: output, CaseName: caseName}
-	}
-	synthesize := func(output string) desktop.SynthGenerateRequest {
-		return desktop.SynthGenerateRequest{Workspace: root, OutputName: output, Seed: "0", BaseTime: "2026-01-01T12:00:00Z",
-			GeneratorVersion: "readmit-synth-v1", ProfileVersion: "readmit-siu-v1"}
-	}
 	collect := func(output, receipt string) desktop.SourceWorkRequest {
 		return desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", Plan: &importPlan, OutputName: output, ReceiptName: receipt}
 	}
@@ -684,18 +638,6 @@ func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *t
 	}
 	caseDestination := []string{"the case destination must be one valid directory entry name"}
 	refusesEveryEntry(t, []confinedMember{
-		{"GenerateScenario(OutputName)", []string{"generation destination must be a new directory entry of the open workspace"}, names, func(name string) refused {
-			result := app.GenerateScenario(generate(name, "fresh-case"))
-			return refused{result.State, result.Reason}
-		}},
-		{"GenerateScenario(CaseName)", []string{"case destination must be a new directory entry of the open workspace"}, names, func(name string) refused {
-			result := app.GenerateScenario(generate("fresh-family", name))
-			return refused{result.State, result.Reason}
-		}},
-		{"GenerateSynth(OutputName)", []string{"synth destination must be a new directory entry of the open workspace"}, names, func(name string) refused {
-			result := app.GenerateSynth(synthesize(name))
-			return refused{result.State, result.Reason}
-		}},
 		{"CollectSource(OutputName)", []string{"the staging folder must be one new entry of the open workspace"}, names, func(name string) refused {
 			result := app.CollectSource(collect(name, "fresh-receipt.json"))
 			return refused{result.State, result.Reason}
@@ -736,12 +678,6 @@ func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *t
 	}
 
 	// The same requests, each naming fresh entries of the workspace, write.
-	if result := app.GenerateScenario(generate("fresh-family", "fresh-case")); result.State != desktop.Completed {
-		t.Fatalf("a generation into fresh entries: %+v", result)
-	}
-	if result := app.GenerateSynth(synthesize("fresh-synth")); result.State != desktop.Completed {
-		t.Fatalf("a synthetic family into a fresh entry: %+v", result)
-	}
 	if result := app.CollectSource(collect("fresh-staged", "fresh-receipt.json")); result.State != desktop.Completed {
 		t.Fatalf("a collection into fresh entries: %+v", result)
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/assertion"
+	"github.com/bharm16/readmit/internal/assertionauthor"
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
@@ -40,6 +41,7 @@ import (
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/scenario"
+	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/bharm16/readmit/internal/sequenceanalysis"
 	"github.com/bharm16/readmit/internal/suite"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -73,6 +75,11 @@ type loadedCatalog struct {
 	lower, upper string
 
 	author, execute bool
+
+	// origins are the recorded sources of generated objects, by identity,
+	// read once when a case is first read.
+	origins     map[string]catalog.Origin
+	originsRead bool
 
 	runViews    []runView
 	runsRead    bool
@@ -297,6 +304,7 @@ var familyKinds = map[string]ItemKind{
 	"readmit-profile-package/":    ProfileItem,
 	"readmit-scenario/":           ScenarioItem,
 	"readmit-order-scenario/":     ScenarioItem,
+	"readmit-scenario-generator/": ScenarioItem,
 	"readmit-sequence-analysis/":  AnalysisItem,
 	"readmit-transform-plan/":     VariantItem,
 	"readmit-runner/":             RunnerItem,
@@ -496,7 +504,13 @@ func (c *loadedCatalog) read(item catalog.Item) CatalogItem {
 		read, availability, reason = c.readRegistered(item)
 	case availability == ItemAvailable:
 		read, err = readers[kind](c, item, paths)
-		if err != nil {
+		var partly *unsupportedClauses
+		switch {
+		case errors.As(err, &partly):
+			// Every clause is kept and shown; the ones this release cannot
+			// evaluate make the object unsupported, not unreadable.
+			availability, reason = ItemUnsupported, err.Error()
+		case err != nil:
 			availability, reason = ItemUnreadable, err.Error()
 			if unsupportedDeclaration(paths[primaryRole(kind)]) {
 				availability, reason = ItemUnsupported, "it declares a contract version this release does not read"
@@ -512,6 +526,9 @@ func (c *loadedCatalog) read(item catalog.Item) CatalogItem {
 			evidence = operation.EvidenceMissing
 		}
 		read.summary.Case = &CaseSummary{Entry: item.Entry, Tags: []string{}, Incidents: []string{}, Evidence: evidence}
+	}
+	if kind == CaseItem && read.summary.Case != nil {
+		c.caseOrigin(item.ID, read.summary.Case)
 	}
 	// A name is one a person gave the object here or one the object declares
 	// itself; a file name is never made into one.
@@ -531,6 +548,34 @@ func (c *loadedCatalog) read(item catalog.Item) CatalogItem {
 	}
 	out.Capabilities = capabilitiesFor(out, admissions{author: c.author, execute: c.execute})
 	return out
+}
+
+// caseOrigin adds where a generated case came from, as the project records
+// it: the scenario and exact revision it was generated from, or the sample
+// fixture run and the ledger it wrote. Either is synthetic.
+func (c *loadedCatalog) caseOrigin(id string, summary *CaseSummary) {
+	if !c.originsRead {
+		c.originsRead, c.origins = true, map[string]catalog.Origin{}
+		if held, err := c.store.Origins(); err == nil {
+			for _, origin := range held {
+				c.origins[origin.Item] = origin
+			}
+		}
+	}
+	origin, held := c.origins[id]
+	switch {
+	case !held:
+		return
+	case origin.Kind == catalog.OriginScenario:
+		scenario := &CaseScenario{Ref: ItemRef{Kind: ScenarioItem, ID: origin.Source, Revision: strconv.Itoa(origin.Revision)}}
+		if index := c.document.Find(origin.Source); index >= 0 {
+			scenario.Name = c.document.Items[index].Name
+		}
+		summary.Scenario = scenario
+	case origin.Kind == catalog.OriginFixture:
+		summary.Fixture = &CaseFixture{Mode: origin.Mode, Observation: origin.Observation}
+	}
+	summary.Provenance = SyntheticOrigin
 }
 
 // uncataloguedReason is why an object the catalog cannot record offers
@@ -616,7 +661,7 @@ func unsupportedDeclaration(path string) bool {
 
 // extraSchemas are the contracts the catalog reads beyond the listing's own.
 var extraSchemas = []string{observesource.SchemaV1, observesource.Schema, observesource.SchemaDatabase,
-	assertion.Schema, scenario.Schema, scenario.OrderSchema, "readmit-runner/v1", "readmit-hub-schedules/v1"}
+	assertion.Schema, scenario.Schema, scenario.OrderSchema, scenariogen.Schema, "readmit-runner/v1", "readmit-hub-schedules/v1"}
 
 // admissions are what the operation guard admits now.
 type admissions struct{ author, execute bool }
@@ -1414,16 +1459,35 @@ func (c *loadedCatalog) packetRelations() relations {
 	return found
 }
 
+// readCheckGroup reads a check group clause by clause, so a group holding a
+// check this release cannot evaluate is still listed, with every check it
+// holds counted and the unsupported ones named as its reason.
 func readCheckGroup(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	data, err := boundedFile(paths[primaryRole(CheckGroupItem)], 1<<20)
 	if err != nil {
 		return view{}, err
 	}
-	set, err := assertion.Decode(data)
+	set, unsupported, err := assertionauthor.ReadLenient(data)
 	if err != nil {
 		return view{}, err
 	}
-	return view{name: set.Name, summary: ItemSummary{CheckGroup: &CheckGroupSummary{Assertions: len(set.Assertions)}}}, nil
+	summary := &CheckGroupSummary{Assertions: len(set.Assertions) + len(unsupported), Revision: item.RevisionLabel(), Unsupported: len(unsupported)}
+	read := view{name: set.Name, summary: ItemSummary{CheckGroup: summary}}
+	if len(unsupported) > 0 {
+		return read, &unsupportedClauses{count: len(unsupported)}
+	}
+	return read, nil
+}
+
+// unsupportedClauses is a check group read whole whose count checks use an
+// operator, or members, this release does not evaluate.
+type unsupportedClauses struct{ count int }
+
+func (u *unsupportedClauses) Error() string {
+	if u.count == 1 {
+		return "one check uses an operator this release does not evaluate"
+	}
+	return strconv.Itoa(u.count) + " checks use an operator this release does not evaluate"
 }
 
 func readProfile(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
@@ -1464,18 +1528,51 @@ func readScenario(c *loadedCatalog, item catalog.Item, paths map[string]string) 
 	if err != nil {
 		return view{}, err
 	}
+	if declares(path, scenariogen.Schema) {
+		plan, err := scenariogen.Decode(data)
+		if err != nil {
+			return view{}, err
+		}
+		workflow, err := scenario.DecodeDocument(plan.Template)
+		if err != nil {
+			return view{}, err
+		}
+		identity := workflow.Identity()
+		seed, base := plan.Seed, catalog.Stamp(workflow.BaseTime)
+		metadata, err := readMetadata(paths)
+		if err != nil {
+			return view{}, err
+		}
+		return view{name: identity.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: identity.Version, Profile: string(workflow.Profile),
+			Family: lifecycleFamily(workflow.Profile), Plan: true, Seed: &seed, BaseTime: &base, GeneratorVersion: plan.GeneratorVersion,
+			LocalProfile: metadata.Profile}}}, nil
+	}
 	if declares(path, scenario.OrderSchema) {
 		orders, err := scenario.DecodeOrders(data)
 		if err != nil {
 			return view{}, err
 		}
-		return view{name: orders.Scenario.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: orders.Scenario.Version, Profile: string(orders.Profile)}}}, nil
+		return view{name: orders.Scenario.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: orders.Scenario.Version, Profile: string(orders.Profile),
+			Family: lifecycleFamily(orders.Profile)}}}, nil
 	}
 	declared, err := scenario.Decode(data)
 	if err != nil {
 		return view{}, err
 	}
-	return view{name: declared.Scenario.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: declared.Scenario.Version, Profile: string(declared.Profile)}}}, nil
+	return view{name: declared.Scenario.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: declared.Scenario.Version, Profile: string(declared.Profile),
+		Family: lifecycleFamily(declared.Profile)}}}, nil
+}
+
+// lifecycleFamily is the message family a lifecycle profile generates, the
+// inverse of lifecycleForFamily; empty for a profile this release does not
+// implement.
+func lifecycleFamily(profile scenario.ProfileName) string {
+	for _, family := range []string{"ADT", "SIU", "ORM", "ORU"} {
+		if named, _ := lifecycleForFamily(family); named == profile {
+			return family
+		}
+	}
+	return ""
 }
 
 func readAnalysis(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {

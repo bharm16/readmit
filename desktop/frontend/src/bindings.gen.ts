@@ -75,6 +75,23 @@ export interface ActionReviewResult {
   review?: ActionReview;
 }
 
+/** internal/desktop.AffectedTest */
+export interface AffectedTest {
+  ref: ItemRef;
+  name: string;
+  pinned: ProfileVersionPin;
+  impact: string;
+}
+
+/** internal/desktop.AffectedTestsResult */
+export interface AffectedTestsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  profile?: LocalProfileIdentity;
+  tests: AffectedTest[];
+}
+
 /** internal/desktop.AnalysisProfile */
 export interface AnalysisProfile {
   builtin?: string;
@@ -143,6 +160,15 @@ export interface Artifact {
   provenance?: string;
   reason?: string;
   role?: SuiteRole;
+}
+
+/** internal/assertionauthor.UnsupportedClause */
+export interface AssertionAuthorUnsupportedClause {
+  id: string;
+  operator: string;
+  raw: string;
+  position: number;
+  reason: string;
 }
 
 /** internal/assertion.Change */
@@ -251,34 +277,11 @@ export interface AssertionRecordRef {
 /** internal/assertion.RecordScope */
 export type AssertionRecordScope = "before" | "after";
 
-/** internal/desktop.AssertionSetDraft */
-export interface AssertionSetDraft {
-  draft: AssertionSetDraftDocument;
-  output?: string;
-  identity?: string;
-}
-
 /** internal/assertionauthor.Draft */
 export interface AssertionSetDraftDocument {
   schema: string;
   name: string;
   assertions: AssertionClause[];
-}
-
-/** internal/desktop.AssertionSetRequest */
-export interface AssertionSetRequest {
-  workspace: string;
-  draft: AssertionSetDraftDocument;
-  name?: string;
-  assertions?: AssertionClause[];
-  output?: string;
-}
-
-/** internal/desktop.AssertionSetResult */
-export interface AssertionSetResult {
-  state: State;
-  reason?: string;
-  set?: AssertionSetDraft;
 }
 
 /** internal/assertion.Subject */
@@ -306,14 +309,6 @@ export interface AssertionTransitionRef {
 export interface AssertionWindow {
   from: string;
   to: string;
-}
-
-/** internal/profileversion.AssessedTest */
-export interface AssessedTest {
-  test: string;
-  case: string;
-  pinned: ProfileVersionPin;
-  impact: ProfileVersionImpact;
 }
 
 /** internal/desktop.Attachment */
@@ -547,22 +542,6 @@ export interface CIResultsView {
   exit_code: number;
 }
 
-/** internal/desktop.CanonicalAssertionRequest */
-export interface CanonicalAssertionRequest {
-  workspace: string;
-  document: string;
-  output: string;
-}
-
-/** internal/desktop.CanonicalAssertionResult */
-export interface CanonicalAssertionResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  identity?: string;
-}
-
 /** internal/desktop.CanonicalTestRequest */
 export interface CanonicalTestRequest {
   workspace: string;
@@ -711,11 +690,23 @@ export interface CaseEvidence {
   unparsed: number;
 }
 
+/** internal/desktop.CaseFixture */
+export interface CaseFixture {
+  mode: string;
+  observation: string;
+}
+
 /** internal/desktop.CaseResult */
 export interface CaseResult {
   state: State;
   reason?: string;
   case?: CaseEvidence;
+}
+
+/** internal/desktop.CaseScenario */
+export interface CaseScenario {
+  ref: ItemRef;
+  name?: string;
 }
 
 /** internal/desktop.CaseSearchSettings */
@@ -743,6 +734,8 @@ export interface CaseSummary {
   evidence: string;
   provenance?: string;
   sources?: ProjectSource[];
+  scenario?: CaseScenario;
+  fixture?: CaseFixture;
 }
 
 /** internal/desktop.CatalogFilter */
@@ -801,9 +794,27 @@ export interface CatalogResult {
 /** internal/desktop.CatalogSort */
 export type CatalogSort = "name" | "updated" | "created";
 
+/** internal/desktop.CheckGroupDraft */
+export interface CheckGroupDraft {
+  set: AssertionSetDraftDocument;
+  unsupported: AssertionAuthorUnsupportedClause[];
+  names?: Record<string, string>;
+}
+
 /** internal/desktop.CheckGroupSummary */
 export interface CheckGroupSummary {
   assertions: number;
+  revision?: string;
+  unsupported: number;
+}
+
+/** internal/desktop.CheckVocabulary */
+export interface CheckVocabulary {
+  operators: AssertionOperator[];
+  message_scopes: AssertionMessageScope[];
+  record_scopes: AssertionRecordScope[];
+  quantifiers: AssertionQuantifier[];
+  field_states: FieldState[];
 }
 
 /** internal/desktop.CleanRunResult */
@@ -3328,7 +3339,7 @@ export interface InterfaceRevision {
   default: boolean;
 }
 
-/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.profileImportOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
+/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
 export type InterruptibleOperation =
   | "analysis"
   | "capture"
@@ -3340,7 +3351,6 @@ export type InterruptibleOperation =
   | "packet"
   | "practice"
   | "privacy"
-  | "profile-import"
   | "protect"
   | "reduction"
   | "reexecution"
@@ -3378,6 +3388,8 @@ export interface ItemDraft {
   finding_review?: FindingReviewDraft;
   variant?: VariantDraft;
   profile?: ProfileDraft;
+  check_group?: CheckGroupDraft;
+  scenario?: ScenarioDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -3451,6 +3463,7 @@ export interface ItemRevision {
   published_at: string | null;
   author?: string;
   current: boolean;
+  version?: string;
 }
 
 /** internal/desktop.ItemSummary */
@@ -3530,10 +3543,46 @@ export interface Lane {
   latest: string | null;
 }
 
-/** internal/desktop.LaterProfilePin */
-export interface LaterProfilePin {
-  pin?: ProfileVersionPin;
-  refusal?: string;
+/** internal/desktop.LibraryDocumentRequest */
+export interface LibraryDocumentRequest {
+  context: RequestContext;
+  kind: ItemKind;
+  draft: ItemDraft;
+  document: string;
+}
+
+/** internal/desktop.LibraryDocumentResult */
+export interface LibraryDocumentResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  schema?: string;
+  document?: string;
+}
+
+/** internal/desktop.LibraryExportRequest */
+export interface LibraryExportRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  destination?: string;
+}
+
+/** internal/desktop.LibraryExportResult */
+export interface LibraryExportResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  path?: string;
+  schema?: string;
+  bytes: number;
+  sha256?: string;
+}
+
+/** internal/desktop.LibraryImportRequest */
+export interface LibraryImportRequest {
+  context: RequestContext;
+  kind: ItemKind;
+  path: string;
 }
 
 /** internal/desktop.LicenseActivateRequest */
@@ -3786,18 +3835,6 @@ export interface LocalProfileResolvedSegment {
   fields: LocalProfileResolvedField[];
 }
 
-/** internal/desktop.LocalProfileResult */
-export interface LocalProfileResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  seal_output?: string;
-  profile?: LocalProfile;
-  resolution?: LocalProfileResolution;
-  seal?: ProfileVersion;
-}
-
 /** internal/localprofile.TerminologySet */
 export interface LocalProfileTerminologySet {
   id: string;
@@ -3933,6 +3970,23 @@ export interface MessagesResult {
   scanned: number;
   facets: MessageFacets;
   search_index: SearchIndexState;
+}
+
+/** internal/desktop.MetadataPack */
+export interface MetadataPack {
+  item: CatalogItem;
+  pack?: ProfilePackIdentity;
+  provenance?: ProfilePackProvenance;
+  bundleable: boolean;
+  matrix: ProfileLibraryRow[];
+}
+
+/** internal/desktop.MetadataPacksResult */
+export interface MetadataPacksResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  packs: MetadataPack[];
 }
 
 /** internal/desktop.MigrationPreviewResult */
@@ -4222,6 +4276,9 @@ export interface ObservationIdentifier {
   universal_id: string;
   universal_id_type: string;
 }
+
+/** internal/observation.Mode */
+export type ObservationMode = "fixed" | "defective";
 
 /** internal/observation.Record */
 export interface ObservationRecord {
@@ -4912,27 +4969,12 @@ export interface PrivacyReviewResult {
   outcome?: PrivacyReviewOutcome;
 }
 
-/** internal/desktop.ProfileAssessment */
-export interface ProfileAssessment {
-  comparison: ProfileVersionComparison;
-  tests: AssessedTest[];
-}
-
-/** internal/desktop.ProfileCompareRequest */
-export interface ProfileCompareRequest {
-  workspace: string;
-  from: string;
-  to: string;
-  references?: string;
-}
-
-/** internal/desktop.ProfileCompareResult */
-export interface ProfileCompareResult {
+/** internal/desktop.ProfileComparisonResult */
+export interface ProfileComparisonResult {
   state: State;
   reason?: string;
+  context: RequestContext;
   comparison?: ProfileVersionComparison;
-  assessment?: ProfileAssessment;
-  later_pin?: LaterProfilePin;
 }
 
 /** internal/desktop.ProfileDraft */
@@ -4940,21 +4982,24 @@ export interface ProfileDraft {
   profile: LocalProfile;
   pack?: ItemRef;
   origin?: ProfilePackageOrigin;
+  pack_document?: string;
 }
 
-/** internal/desktop.ProfileLibraryEntry */
-export interface ProfileLibraryEntry {
-  pack: ProfilePackIdentity;
-  provenance: ProfilePackProvenance;
+/** internal/desktop.ProfileEvaluationRequest */
+export interface ProfileEvaluationRequest {
+  context: RequestContext;
+  profile: ItemRef;
+  pack?: ItemRef;
+  case: ItemRef;
+  complete_capture: boolean;
 }
 
-/** internal/desktop.ProfileLibraryResult */
-export interface ProfileLibraryResult {
+/** internal/desktop.ProfileEvaluationResult */
+export interface ProfileEvaluationResult {
   state: State;
   reason?: string;
-  entries?: ProfileLibraryEntry[];
-  matrix?: ProfileLibraryRow[];
-  bundleable: boolean;
+  context: RequestContext;
+  report?: ProfileevalReport;
 }
 
 /** internal/desktop.ProfileLibraryRow */
@@ -4966,16 +5011,6 @@ export interface ProfileLibraryRow {
   structural: ProfilePackOutcome;
   workflow: ProfilePackOutcome;
   pack: ProfilePackIdentity;
-}
-
-/** internal/profilepack.Coverage */
-export interface ProfilePackCoverage {
-  hl7_version: string;
-  family: string;
-  parse: ProfilePackSupport;
-  labels: ProfilePackSupport;
-  structural: ProfilePackSupport;
-  workflow: ProfilePackSupport;
 }
 
 /** internal/profilepack.Extraction */
@@ -5015,16 +5050,6 @@ export interface ProfilePackProvenance {
   rights_review: ProfilePackRightsReview;
 }
 
-/** internal/desktop.ProfilePackResult */
-export interface ProfilePackResult {
-  state: State;
-  reason?: string;
-  pack?: ProfilePackIdentity;
-  provenance?: ProfilePackProvenance;
-  coverage?: ProfilePackCoverage[];
-  bundleable: boolean;
-}
-
 /** internal/profilepack.ReviewStatus */
 export type ProfilePackReviewStatus = "pending" | "approved";
 
@@ -5041,27 +5066,6 @@ export interface ProfilePackSource {
   revision: string;
 }
 
-/** internal/profilepack.Support */
-export type ProfilePackSupport = "supported" | "untested" | "unsupported";
-
-/** internal/desktop.ProfilePackageExportRequest */
-export interface ProfilePackageExportRequest {
-  workspace: string;
-  profile: string;
-  pack: string;
-  version: string;
-  origin: string;
-  output: string;
-  reviewed: boolean;
-}
-
-/** internal/desktop.ProfilePackageImportRequest */
-export interface ProfilePackageImportRequest {
-  workspace: string;
-  package: string;
-  output: string;
-}
-
 /** internal/profilepackage.Origin */
 export interface ProfilePackageOrigin {
   schema: string;
@@ -5074,29 +5078,32 @@ export interface ProfilePackageOrigin {
   review_reference: string;
 }
 
-/** internal/desktop.ProfilePackageResult */
-export interface ProfilePackageResult {
-  state: State;
-  reason?: string;
-  output?: string;
-  origin?: ProfilePackageOrigin;
-  pack?: ProfilePackIdentity;
-  profile?: LocalProfileIdentity;
-  version?: LocalProfileIdentity;
-  seal?: ProfileVersion;
-  provenance?: ProfilePackProvenance;
-  sha256?: string;
-  conflict?: string;
-  dependency?: string;
-  rights?: string;
+/** internal/desktop.ProfilePinsRequest */
+export interface ProfilePinsRequest {
+  context: RequestContext;
+  profile: ItemRef;
+  tests: ItemRef[];
+  intent_id: string;
 }
 
-/** internal/desktop.ProfileSaveRequest */
-export interface ProfileSaveRequest {
-  workspace: string;
-  document: string;
-  output: string;
-  seal_output?: string;
+/** internal/desktop.ProfilePinsResult */
+export interface ProfilePinsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  upgraded: ItemRef[];
+  refused: RefusedPin[];
+}
+
+/** internal/desktop.ProfileResolutionResult */
+export interface ProfileResolutionResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  problems: FieldProblem[];
+  resolution?: LocalProfileResolution;
+  support?: ProfilePackOutcomes;
+  seal?: ProfileVersion;
 }
 
 /** internal/desktop.ProfileSummary */
@@ -5105,31 +5112,6 @@ export interface ProfileSummary {
   family?: string;
   protocol_version?: string;
   published_version?: string;
-}
-
-/** internal/desktop.ProfileUpgradePinRequest */
-export interface ProfileUpgradePinRequest {
-  workspace: string;
-  references: string;
-  test: string;
-  was_pin: ProfileVersionPin;
-  now_pin: ProfileVersionPin;
-  output: string;
-}
-
-/** internal/desktop.ProfileUpgradePinResult */
-export interface ProfileUpgradePinResult {
-  state: State;
-  reason?: string;
-  output?: string;
-  references?: ProfileVersionReferences;
-}
-
-/** internal/desktop.ProfileValidateRequest */
-export interface ProfileValidateRequest {
-  workspace: string;
-  document: string;
-  pack?: string;
 }
 
 /** internal/profileversion.Version */
@@ -5161,9 +5143,6 @@ export interface ProfileVersionContent {
   sha256: string;
 }
 
-/** internal/profileversion.Impact */
-export type ProfileVersionImpact = "affected" | "unaffected" | "current" | "unrelated";
-
 /** internal/profileversion.Kind */
 export type ProfileVersionKind = "added" | "removed" | "changed";
 
@@ -5183,18 +5162,63 @@ export interface ProfileVersionPin {
   sha256: string;
 }
 
-/** internal/profileversion.Reference */
-export interface ProfileVersionReference {
-  test: string;
-  case: string;
-  sha256: string;
-  pinned: ProfileVersionPin;
+/** internal/desktop.ProfileVersionsRequest */
+export interface ProfileVersionsRequest {
+  context: RequestContext;
+  ref: ItemRef;
+  from: string;
 }
 
-/** internal/profileversion.References */
-export interface ProfileVersionReferences {
+/** internal/desktop.ProfileVocabulary */
+export interface ProfileVocabulary {
+  hl7_versions: string[];
+  families: string[];
+  usages: LocalProfileUsage[];
+  data_types: string[];
+  condition_operators: LocalProfileConditionOperator[];
+  bindings: LocalProfileBinding[];
+  universal_id_types: string[];
+  precisions: LocalProfilePrecision[];
+  timezone_rules: LocalProfileTimeZoneRule[];
+  unbounded: string;
+  origins: LocalProfileOrigin[];
+  support_outcomes: ProfilePackOutcome[];
+}
+
+/** internal/profileeval.Finding */
+export interface ProfileevalFinding {
+  occurrence: string;
+  rule: string;
+  origin: string;
+  outcome: string;
+  selector?: string;
+  state?: FieldState;
+  start: number;
+  end: number;
+}
+
+/** internal/profileeval.Pin */
+export interface ProfileevalPin {
   schema: string;
-  tests: ProfileVersionReference[];
+  id: string;
+  version: string;
+  sha256: string;
+}
+
+/** internal/profileeval.Report */
+export interface ProfileevalReport {
+  case_identity?: string;
+  verdict: string;
+  schema: string;
+  operator: string;
+  profile: ProfileevalPin;
+  pack: ProfileevalPin;
+  inputs: Record<string, string>;
+  complete_capture: boolean;
+  local_verdict: string;
+  base_support: string;
+  workflow_support: string;
+  findings: ProfileevalFinding[];
 }
 
 /** internal/desktop.ProjectArchiveRequest */
@@ -6008,6 +6032,12 @@ export type ReferenceKind = "acknowledgement" | "link" | "collision" | "unsuppor
 export interface Referrer {
   ref: ItemRef;
   name: string;
+}
+
+/** internal/desktop.RefusedPin */
+export interface RefusedPin {
+  ref: ItemRef;
+  reason: string;
 }
 
 /** internal/desktop.Region */
@@ -7211,6 +7241,30 @@ export interface SampleCaptureRequest {
   output: string;
 }
 
+/** internal/desktop.SampleFixtureRequest */
+export interface SampleFixtureRequest {
+  context: RequestContext;
+  mode: string;
+  address: string;
+  max_messages?: number;
+  idle_timeout?: string;
+}
+
+/** internal/desktop.SampleFixtureResult */
+export interface SampleFixtureResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  phase?: CapturePhase;
+  bound_address?: string;
+  case?: ItemRef;
+  case_entry?: string;
+  observation_entry?: string;
+  received: number;
+  ledger?: FixtureLedger;
+  origin: string;
+}
+
 /** internal/desktop.SaveCopyRequest */
 export interface SaveCopyRequest {
   file: string;
@@ -7265,6 +7319,30 @@ export interface ScanReview {
   reference?: string;
 }
 
+/** internal/desktop.ScenarioCaseRequest */
+export interface ScenarioCaseRequest {
+  context: RequestContext;
+  scenario: ItemRef;
+  intent_id: string;
+}
+
+/** internal/desktop.ScenarioCaseResult */
+export interface ScenarioCaseResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  case?: ItemRef;
+  entry?: string;
+  identity?: string;
+  provenance?: string;
+  replayed: boolean;
+  streams: number;
+  seed: number;
+  base_time?: string;
+  generator_version?: string;
+  profile_version?: string;
+}
+
 /** internal/scenario.Catalog */
 export interface ScenarioCatalog {
   profiles: ScenarioProfileCatalog[];
@@ -7272,22 +7350,11 @@ export interface ScenarioCatalog {
   all_events: ScenarioEventAvailability[];
 }
 
-/** internal/desktop.ScenarioCatalogResult */
-export interface ScenarioCatalogResult {
-  state: State;
-  reason?: string;
-  catalog?: ScenarioCatalog;
-}
-
-/** internal/desktop.ScenarioDocumentResult */
-export interface ScenarioDocumentResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  profile?: string;
-  id?: string;
-  version?: string;
+/** internal/desktop.ScenarioDraft */
+export interface ScenarioDraft {
+  plan: ScenariogenPlan;
+  template?: ScenarioScenario;
+  profile?: ItemRef;
 }
 
 /** internal/scenario.EventAvailability */
@@ -7300,33 +7367,13 @@ export interface ScenarioEventAvailability {
   reason?: string;
 }
 
-/** internal/desktop.ScenarioGenerateRequest */
-export interface ScenarioGenerateRequest {
-  workspace: string;
-  document: string;
-  output_name: string;
-  case_name?: string;
-  register_in_project?: boolean;
-  case_title?: string;
-  case_owner?: string;
-  case_version?: string;
-}
+/** internal/scenario.Expectation */
+export type ScenarioExpectation = "accepted" | "refused";
 
-/** internal/desktop.ScenarioGenerateResult */
-export interface ScenarioGenerateResult {
-  state: State;
-  reason?: string;
-  output_path?: string;
-  generation_path?: string;
-  stream_count?: number;
-  case_name?: string;
-  case_identity?: string;
-  provenance_mode?: string;
-  registered?: boolean;
-  generator_seed?: number;
-  generator_version?: string;
-  profile_version?: string;
-  base_time?: string;
+/** internal/scenario.Identity */
+export interface ScenarioIdentity {
+  id: string;
+  version: string;
 }
 
 /** internal/scenario.Kind */
@@ -7338,34 +7385,11 @@ export interface ScenarioKindAvailability {
   states: ScenarioState[];
 }
 
-/** internal/desktop.ScenarioLibraryChoiceResult */
-export interface ScenarioLibraryChoiceResult {
-  state: State;
-  reason?: string;
-  path?: string;
-}
-
-/** internal/desktop.ScenarioLibraryCompareView */
-export interface ScenarioLibraryCompareView {
-  id: string;
-  from_version: string;
-  to_version: string;
-  same_plan: boolean;
-  from_sha256: string;
-  to_sha256: string;
-}
-
 /** internal/desktop.ScenarioLibraryRequest */
 export interface ScenarioLibraryRequest {
   workspace: string;
   library: string;
   expectations?: string;
-  output?: string;
-  template_id?: string;
-  template_version?: string;
-  plan?: string;
-  coverage?: string;
-  profile?: string;
 }
 
 /** internal/desktop.ScenarioLibraryResult */
@@ -7373,12 +7397,10 @@ export interface ScenarioLibraryResult {
   state: State;
   reason?: string;
   document?: string;
-  output?: string;
   templates?: ScenarioLibraryTemplateView[];
   streams?: number;
   fields?: number;
   target?: string;
-  compared?: ScenarioLibraryCompareView[];
 }
 
 /** internal/desktop.ScenarioLibraryTemplateView */
@@ -7390,45 +7412,46 @@ export interface ScenarioLibraryTemplateView {
   plan_sha256: string;
 }
 
-/** internal/desktop.ScenarioPreviewRequest */
-export interface ScenarioPreviewRequest {
-  workspace: string;
-  document: string;
-  reveal_sensitive?: boolean;
-}
-
-/** internal/desktop.ScenarioPreviewResult */
-export interface ScenarioPreviewResult {
+/** internal/desktop.ScenarioPlanPreviewResult */
+export interface ScenarioPlanPreviewResult {
   state: State;
   reason?: string;
-  scenario?: string;
-  version?: string;
-  profile?: string;
+  context: RequestContext;
+  problems: FieldProblem[];
+  preview_id?: string;
+  origin?: string;
+  seed: number;
   base_time?: string;
-  accepted?: number;
-  refused?: number;
-  subjects?: ScenarioSubjectView[];
-  steps?: ScenarioStepView[];
-}
-
-/** internal/desktop.ScenarioProfileBindRequest */
-export interface ScenarioProfileBindRequest {
-  workspace: string;
-  entry: string;
-  pack_entry?: string;
-}
-
-/** internal/desktop.ScenarioProfileBindResult */
-export interface ScenarioProfileBindResult {
-  state: State;
-  reason?: string;
-  profile_id?: string;
-  profile_version?: string;
-  family?: string;
-  hl7_version?: string;
-  lifecycle_profile?: string;
   generator_version?: string;
-  available?: boolean;
+  profile?: string;
+  streams: number;
+  messages: ScenarioPreviewMessage[];
+}
+
+/** internal/desktop.ScenarioPreviewInspectRequest */
+export interface ScenarioPreviewInspectRequest {
+  preview_id: string;
+  message: number;
+  path: string;
+  node_offset: number;
+  byte_offset: number;
+  reveal: boolean;
+}
+
+/** internal/desktop.ScenarioPreviewMessage */
+export interface ScenarioPreviewMessage {
+  index: number;
+  row: string;
+  variant: string;
+  step: string;
+  event: string;
+  expect?: string;
+  message_code: string;
+  trigger_event: string;
+  at: string;
+  after: string;
+  duplicate: boolean;
+  origin: string;
 }
 
 /** internal/scenario.ProfileCatalog */
@@ -7447,11 +7470,14 @@ export type ScenarioProfileName =
   | "readmit-orm-lifecycle-v1"
   | "readmit-oru-lifecycle-v1";
 
-/** internal/desktop.ScenarioSaveRequest */
-export interface ScenarioSaveRequest {
-  workspace: string;
-  document: string;
-  output: string;
+/** internal/scenario.Scenario */
+export interface ScenarioScenario {
+  schema: string;
+  scenario: ScenarioIdentity;
+  profile: ScenarioProfileName;
+  base_time: string;
+  subjects: ScenarioSubject[];
+  steps: ScenarioStep[];
 }
 
 /** internal/scenario.State */
@@ -7466,36 +7492,91 @@ export type ScenarioState =
   | "booked"
   | "noshow";
 
-/** internal/desktop.ScenarioStepView */
-export interface ScenarioStepView {
-  ordinal: number;
+/** internal/scenario.Step */
+export interface ScenarioStep {
   id: string;
-  at: string;
   event: string;
-  description: string;
   subject: string;
   into?: string;
-  expect: string;
-  from: string;
-  to: string;
-  reason?: string;
+  after: string;
+  expect: ScenarioExpectation;
 }
 
-/** internal/desktop.ScenarioSubjectView */
-export interface ScenarioSubjectView {
+/** internal/scenario.Subject */
+export interface ScenarioSubject {
   id: string;
-  kind: string;
-  initial_state: string;
-  namespace?: string;
-  identifier?: string;
+  kind: ScenarioKind;
+  namespace: string;
+  identifier: string;
   patient?: string;
-  masked: boolean;
+  initial_state: ScenarioState;
 }
 
 /** internal/desktop.ScenarioSummary */
 export interface ScenarioSummary {
   version: string;
   profile: string;
+  family?: string;
+  plan: boolean;
+  seed: number | null;
+  base_time: string | null;
+  generator_version?: string;
+  local_profile?: ItemRef;
+}
+
+/** internal/desktop.ScenarioTemplate */
+export interface ScenarioTemplate {
+  id: string;
+  name: string;
+  profile: ScenarioProfileName;
+  family: string;
+  subjects: ScenarioSubject[];
+  steps: ScenarioStep[];
+}
+
+/** internal/desktop.ScenarioVocabulary */
+export interface ScenarioVocabulary {
+  catalog: ScenarioCatalog;
+  templates: ScenarioTemplate[];
+  expectations: ScenarioExpectation[];
+  encodings: string[];
+  generator_version: string;
+  max_seed: number;
+}
+
+/** internal/scenariogen.Mutation */
+export interface ScenariogenMutation {
+  op: string;
+  step: string;
+  field?: string;
+  state?: string;
+  after?: string;
+  encoding?: string;
+  offset?: string;
+}
+
+/** internal/scenariogen.Plan */
+export interface ScenariogenPlan {
+  schema: string;
+  generator_version: string;
+  seed: number;
+  template: unknown;
+  rows: ScenariogenRow[];
+  variants: ScenariogenVariant[];
+}
+
+/** internal/scenariogen.Row */
+export interface ScenariogenRow {
+  id: string;
+  patient_name: string;
+  notes: string[];
+  encoding: string;
+}
+
+/** internal/scenariogen.Variant */
+export interface ScenariogenVariant {
+  id: string;
+  mutations: ScenariogenMutation[];
 }
 
 /** internal/desktop.ScheduleEntryInput */
@@ -8967,6 +9048,7 @@ export interface TestLinks {
   environment?: string;
   reset?: TestReset;
   tags?: string[];
+  checks?: ItemRef[];
   source?: TestSource;
 }
 
@@ -9051,6 +9133,30 @@ export interface TestReviewed {
   suggestion: string;
   outcome: string;
   expectation?: string;
+}
+
+/** internal/desktop.TestRunCheckSet */
+export interface TestRunCheckSet {
+  group: ItemRef;
+  name: string;
+  state: State;
+  reason?: string;
+  explanation?: RunExplanation;
+}
+
+/** internal/desktop.TestRunChecksRequest */
+export interface TestRunChecksRequest {
+  context: RequestContext;
+  test: ItemRef;
+  run: ItemRef;
+}
+
+/** internal/desktop.TestRunChecksResult */
+export interface TestRunChecksResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  checks: TestRunCheckSet[];
 }
 
 /** internal/desktop.TestRunRow */
@@ -9437,6 +9543,11 @@ export interface Vocabulary {
   receiver_faults: ReceiverFaultVocabulary;
   bounds: WindowBounds;
   ack_positions: string[];
+  checks: CheckVocabulary;
+  profiles: ProfileVocabulary;
+  scenarios: ScenarioVocabulary;
+  fixture_modes: ObservationMode[];
+  affected_test_impacts: string[];
 }
 
 /** internal/desktop.WindowBounds */
@@ -9467,19 +9578,18 @@ export interface Facade {
   ActivateOperations(): Promise<OperationResult>;
   AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   AnalyzeCase(request: AnalyzeRequest): Promise<FindingsResult>;
+  ApplyLibraryDocument(request: LibraryDocumentRequest): Promise<ItemDraftResult>;
   ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
   ApproveSuitePromotion(request: SuitePromotionApproveRequest): Promise<SuitePromotionResult>;
   ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
   AssemblePacket(request: PacketRequest): Promise<PacketResult>;
   AssessSuiteCoverage(request: SuiteCoverageAssessRequest): Promise<SuiteCoverageResult>;
-  AuthorAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   BackupLocation(): Promise<ProjectLocationResult>;
   BackupProject(request: StorageBackupRequest): Promise<StorageBackupResult>;
   BackupScope(request: StorageBackupRequest): Promise<StorageScopeResult>;
   BindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult>;
-  BindScenarioProfile(request: ScenarioProfileBindRequest): Promise<ScenarioProfileBindResult>;
   BuildIndex(request: BuildIndexRequest): Promise<BuildIndexResult>;
   BuildReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   Cancel(operation: string): Promise<void>;
@@ -9503,6 +9613,7 @@ export interface Facade {
   ChooseHubConfig(): Promise<HubResult>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
   ChooseInspectionPath(kind: string, source: string): Promise<InspectionPathResult>;
+  ChooseLibraryFile(kind: string): Promise<PathChoiceResult>;
   ChooseLicenseFolder(): Promise<LicenseFolderResult>;
   ChooseMaintenancePath(kind: string): Promise<MaintenancePathResult>;
   ChooseOperationPolicy(): Promise<OperationResult>;
@@ -9510,7 +9621,6 @@ export interface Facade {
   ChoosePacketExportPath(): Promise<PacketPathResult>;
   ChooseProjectLocation(): Promise<ProjectLocationResult>;
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
-  ChooseScenarioLibraryImport(): Promise<ScenarioLibraryChoiceResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
   CleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult>;
@@ -9520,10 +9630,9 @@ export interface Facade {
   CommercialStatus(): Promise<CommercialStatusResult>;
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
-  CompareProfiles(request: ProfileCompareRequest): Promise<ProfileCompareResult>;
+  CompareProfileVersions(request: ProfileVersionsRequest): Promise<ProfileComparisonResult>;
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
-  CompareScenarioLibraryEntries(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   CompleteHubAuth(code: string, state: string): Promise<HubResult>;
   ConnectHub(): Promise<HubResult>;
   ConnectOperatorHub(): Promise<HubResult>;
@@ -9532,6 +9641,7 @@ export interface Facade {
   CreateNamedProject(request: NewProjectRequest): Promise<ProjectOpenResult>;
   CreateProjectBackup(request: BackupCreateRequest): Promise<BackupResult>;
   CreateSampleWorkspace(): Promise<WorkspaceResult>;
+  CreateScenarioCase(request: ScenarioCaseRequest): Promise<ScenarioCaseResult>;
   DeactivateLicense(): Promise<InstalledLicenseResult>;
   DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
   DecideFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
@@ -9552,6 +9662,7 @@ export interface Facade {
   EditReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   EditorDrafts(): Promise<EditorDraftsResult>;
   EnrollRunner(configPath: string): Promise<RunnerEnrollmentResult>;
+  EvaluateProfile(request: ProfileEvaluationRequest): Promise<ProfileEvaluationResult>;
   EvaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult>;
   ExecuteReviewedAction(request: ExecuteActionRequest): Promise<ReviewedActionResult>;
   ExecuteRunnerJob(request: RunnerExecuteRequest): Promise<RunnerExecutionResult>;
@@ -9560,14 +9671,12 @@ export interface Facade {
   ExplainObservation(request: ObservationExplainRequest): Promise<ObservationCompletionResult>;
   ExplainRun(request: RunExplanationRequest): Promise<RunExplanationResult>;
   ExportAnalysisSettings(request: ItemRequest): Promise<ExportSettingsResult>;
-  ExportAssertionSet(request: CanonicalAssertionRequest): Promise<CanonicalAssertionResult>;
   ExportDerivedPacket(request: PrivacyExportRequest): Promise<PrivacyExportResult>;
   ExportInstalledLicense(): Promise<LicenseExportResult>;
+  ExportLibraryItem(request: LibraryExportRequest): Promise<LibraryExportResult>;
   ExportLicenseDocument(): Promise<LicenseExportResult>;
   ExportPacketReview(request: PacketExportRequest): Promise<PacketExportResult>;
-  ExportProfilePackage(request: ProfilePackageExportRequest): Promise<ProfilePackageResult>;
   ExportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult>;
-  ExportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   ExportTestItem(request: ItemRequest): Promise<ExportTestResult>;
   Filters(): Promise<FiltersResult>;
@@ -9576,16 +9685,13 @@ export interface Facade {
   FindingReviewHistory(request: ItemRequest): Promise<FindingReviewHistoryResult>;
   ForgetProject(id: string): Promise<ProjectForgetResult>;
   GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
-  GenerateScenario(request: ScenarioGenerateRequest): Promise<ScenarioGenerateResult>;
   GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
   GenerateSyntheticPacket(request: SyntheticPacketRequest): Promise<SyntheticPacketResult>;
   GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
   Guide(workspace: string): Promise<GuideResult>;
   HubStatus(): Promise<HubResult>;
   ImportAnalysisSettings(request: RequestContext): Promise<ItemDraftResult>;
-  ImportAssertionSet(workspace: string, entry: string): Promise<AssertionSetResult>;
-  ImportProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult>;
-  ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
+  ImportLibraryItem(request: LibraryImportRequest): Promise<ItemDraftResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
   ImportTestDraft(request: RequestContext): Promise<ItemDraftResult>;
   InspectBackup(id: string): Promise<BackupResult>;
@@ -9594,13 +9700,13 @@ export interface Facade {
   InspectFileMessage(request: FileInspectRequest): Promise<InspectionResult>;
   InspectGatePolicy(path: string): Promise<GatePolicyResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
-  InspectProfilePack(workspace: string, entry: string): Promise<ProfilePackResult>;
-  InspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult>;
   InspectProjectQuota(path: string): Promise<ProjectQuotaResult>;
   InspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult>;
   InspectRecoveryCopy(request: RecoveryCopyRequest): Promise<RecoveryCopyResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
+  InspectScenarioPreview(request: ScenarioPreviewInspectRequest): Promise<InspectionResult>;
   ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
+  LibraryDocument(request: DraftRequest): Promise<LibraryDocumentResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
   ListAnalysisProfiles(request: ItemRequest): Promise<AnalysisProfilesResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
@@ -9621,6 +9727,7 @@ export interface Facade {
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
   MessageFields(request: MessageFieldsRequest): Promise<MessageFieldsResult>;
+  MetadataPacks(request: RequestContext): Promise<MetadataPacksResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
   NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
@@ -9645,15 +9752,11 @@ export interface Facade {
   OpenObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult>;
   OpenPacket(workspace: string, entry: string): Promise<PacketResult>;
   OpenPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult>;
-  OpenProfile(workspace: string, entry: string, packEntry: string): Promise<LocalProfileResult>;
-  OpenProfileLibrary(workspace: string, directory: string): Promise<ProfileLibraryResult>;
   OpenProject(path: string): Promise<ProjectResult>;
   OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
   OpenProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
-  OpenScenario(workspace: string, entry: string): Promise<ScenarioDocumentResult>;
-  OpenScenarioLibrary(workspace: string, entry: string): Promise<ScenarioLibraryResult>;
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   OpenSequenceAnalysis(workspace: string, entry: string): Promise<SequenceAnalysisResult>;
@@ -9683,11 +9786,12 @@ export interface Facade {
   PreviewReexecution(request: ReexecutionRequest): Promise<ReexecutionPreviewResult>;
   PreviewReplay(request: ReplayRequest): Promise<ReplayResult>;
   PreviewRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
-  PreviewScenario(request: ScenarioPreviewRequest): Promise<ScenarioPreviewResult>;
+  PreviewScenarioDraft(request: DraftRequest): Promise<ScenarioPlanPreviewResult>;
   PreviewSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult>;
   PreviewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult>;
   PreviewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
+  ProfileAffectedTests(request: ItemRequest): Promise<AffectedTestsResult>;
   ProjectFiles(request: ItemRequest): Promise<ProjectFilesResult>;
   ProjectLocation(): Promise<ProjectLocationResult>;
   PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
@@ -9726,6 +9830,7 @@ export interface Facade {
   RepairSearch(request: RepairSearchRequest): Promise<BuildIndexResult>;
   ResetTarget(request: TargetResetRequest): Promise<TargetResetResult>;
   ResolveOperationClock(): Promise<OperationResult>;
+  ResolveProfileDraft(request: DraftRequest): Promise<ProfileResolutionResult>;
   RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
   ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
   RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
@@ -9741,7 +9846,6 @@ export interface Facade {
   RotateSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
   RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
-  SaveAssertionSet(request: AssertionSetRequest): Promise<AssertionSetResult>;
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
   SaveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult>;
   SaveCredential(request: CredentialSaveRequest): Promise<CredentialsResult>;
@@ -9758,7 +9862,6 @@ export interface Facade {
   SaveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult>;
   SaveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult>;
   SavePreferences(p: Preferences): Promise<PreferencesResult>;
-  SaveProfile(request: ProfileSaveRequest): Promise<LocalProfileResult>;
   SaveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult>;
   SaveReceiverPolicy(request: ReceiverPolicyRequest): Promise<ReceiverPolicyResult>;
   SaveRedactInventory(request: RedactInventoryRequest): Promise<RedactInventoryResult>;
@@ -9767,8 +9870,6 @@ export interface Facade {
   SaveRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
   SaveRunnerGrant(request: RunnerGrantRequest): Promise<RunnerDocumentResult>;
   SaveRunnerJob(request: RunnerJobRequest): Promise<RunnerDocumentResult>;
-  SaveScenario(request: ScenarioSaveRequest): Promise<ScenarioDocumentResult>;
-  SaveScenarioLibraryEntry(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   SaveSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult>;
   SaveSearchSettings(request: SearchSettingsRequest): Promise<BuildIndexResult>;
   SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
@@ -9785,7 +9886,6 @@ export interface Facade {
   SaveView(workspace: string, name: string, query: GridQuery): Promise<ViewsResult>;
   ScanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult>;
   ScanSecrets(request: SecretScanRequest): Promise<SecretScanResult>;
-  ScenarioCatalog(): Promise<ScenarioCatalogResult>;
   Search(path: string, query: string): Promise<SearchResult>;
   SearchHubNotifications(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
   SearchHubReviews(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
@@ -9803,21 +9903,21 @@ export interface Facade {
   StartDurableRun(request: DurableRunRequest): Promise<DurableRunResult>;
   StartHubAuth(): Promise<HubAuthUrlResult>;
   StartReduction(request: ReductionRequest): Promise<ReductionResult>;
+  StartSampleFixture(request: SampleFixtureRequest): Promise<SampleFixtureResult>;
   StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
   StoreOperatorHubArtifact(): Promise<HubTransferResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
   TestHistory(request: ItemRequest): Promise<TestHistoryResult>;
+  TestRunChecks(request: TestRunChecksRequest): Promise<TestRunChecksResult>;
   TestSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretTestResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   UpdateProtectionControl(request: ProtectionControlUpdate): Promise<ProtectionUpdateResult>;
-  UpgradeProfilePin(request: ProfileUpgradePinRequest): Promise<ProfileUpgradePinResult>;
+  UpgradeProfilePins(request: ProfilePinsRequest): Promise<ProfilePinsResult>;
   UploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult>;
-  ValidateAssertionSet(document: string): Promise<CanonicalAssertionResult>;
   ValidateDraft(request: DraftRequest): Promise<DraftValidation>;
   ValidateObservationPair(request: ObservationValidateRequest): Promise<ObservationValidateResult>;
   ValidateObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult>;
   ValidateObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult>;
-  ValidateProfile(request: ProfileValidateRequest): Promise<LocalProfileResult>;
   ValidateSuite(canonical: string): Promise<SuiteDocumentResult>;
   ValidateTest(document: string): Promise<CanonicalTestResult>;
   VerifyCIGate(directory: string, identity: string): Promise<CIGateVerifyResult>;

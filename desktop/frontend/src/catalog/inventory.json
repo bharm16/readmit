@@ -12,18 +12,6 @@
     "line": 3327
   },
   {
-    "name": "FieldInputs",
-    "source": "desktop/frontend/src/AssertionSetAuthoring.tsx",
-    "exported": false,
-    "line": 149
-  },
-  {
-    "name": "AssertionSetAuthoring",
-    "source": "desktop/frontend/src/AssertionSetAuthoring.tsx",
-    "exported": true,
-    "line": 212
-  },
-  {
     "name": "Baseline",
     "source": "desktop/frontend/src/Baseline.tsx",
     "exported": true,
@@ -256,36 +244,6 @@
     "source": "desktop/frontend/src/PrivacyPanel.tsx",
     "exported": true,
     "line": 65
-  },
-  {
-    "name": "PinStatus",
-    "source": "desktop/frontend/src/ProfileEditor.tsx",
-    "exported": false,
-    "line": 106
-  },
-  {
-    "name": "Fact",
-    "source": "desktop/frontend/src/ProfileEditor.tsx",
-    "exported": false,
-    "line": 119
-  },
-  {
-    "name": "WholeNumber",
-    "source": "desktop/frontend/src/ProfileEditor.tsx",
-    "exported": false,
-    "line": 245
-  },
-  {
-    "name": "Repetitions",
-    "source": "desktop/frontend/src/ProfileEditor.tsx",
-    "exported": false,
-    "line": 283
-  },
-  {
-    "name": "ProfileEditor",
-    "source": "desktop/frontend/src/ProfileEditor.tsx",
-    "exported": true,
-    "line": 385
   },
   {
     "name": "EditableDocument",
@@ -550,12 +508,6 @@
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": true,
     "line": 1371
-  },
-  {
-    "name": "ScenarioPanel",
-    "source": "desktop/frontend/src/ScenarioPanel.tsx",
-    "exported": true,
-    "line": 142
   },
   {
     "name": "Relations",

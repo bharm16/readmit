@@ -37,7 +37,6 @@ import {
   runEvidenceResult,
   runPreflightResult,
   runProgressResult,
-  scenarioCatalogFixture,
   suiteArtifacts,
   suitePreparedResult,
   SUITE_ENTRY,
@@ -47,8 +46,8 @@ import {
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { windowWidth } from "./testkit/window";
-import { findCaseRow, goTo, goToView, openView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
-import type { CommercialStatusResult, HubResult, RequestContext, ScenarioCatalogResult } from "./bindings";
+import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
+import type { CommercialStatusResult, HubResult, RequestContext } from "./bindings";
 
 /** Opens a folder the way a person does from anywhere: the projects page's
  * Open… button, which is the SelectWorkspace dialog. */
@@ -588,7 +587,6 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
   const user = userEvent.setup();
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
-    ScenarioCatalog: busyFirst<ScenarioCatalogResult>(() => scenarioCatalogFixture(), { state: "busy", reason: BUSY }),
     HubStatus: busyFirst<HubResult>(() => ({ state: "empty", connected: false, authenticated: false }), {
       state: "busy",
       reason: BUSY,
@@ -615,13 +613,10 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
   expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
   await goToView(user, "Settings", "License");
   expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
-  await goToView(user, "Tests", "Library");
-  await openView(user, "Scenarios");
   await goToView(user, "Settings", "Security");
   const table = await screen.findByRole("table", { name: "Connections" });
   expect(await within(table).findByText("Team hub")).toBeTruthy();
   for (const method of [
-    "ScenarioCatalog",
     "HubStatus",
     "CommercialStatus",
     "ListConnections",

@@ -56,7 +56,6 @@ export function installCatalogFixtures() {
     ReadSecrets: () => f.defaultSecretsResult(),
     ReadSendPolicy: () => f.defaultSendPolicyResult(),
     ReadResetPlan: () => f.defaultResetPlanResult(),
-    ScenarioCatalog: () => f.scenarioCatalogFixture(),
     OpenSequence: () =>
       f.sequenceResult([
         f.sequenceEvent(f.GRID_OCCURRENCE, 1),

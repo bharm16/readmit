@@ -114,10 +114,13 @@ export type TestsProps = {
   /** Hands the saved version's spec to the run review. */
   onRun: (entry: string) => void;
   onLibrary: () => void;
+  /** A check group Use in test adds to the next edit that opens. */
+  addCheckGroup?: ItemRef | null;
+  onCheckGroupAdded?: () => void;
 };
 
 /** Tests supplies its pages' titles, ways back, actions and bodies. */
-export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary }: TestsProps) {
+export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded }: TestsProps) {
   // Tests reads under its own request scope, so its reads never make another
   // list's answer look stale.
   const scope = useRef(new RequestScope());
@@ -125,6 +128,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [cases, setCases] = useState<CatalogItem[]>([]);
   const [environments, setEnvironments] = useState<CatalogItem[]>([]);
+  const [checkGroups, setCheckGroups] = useState<CatalogItem[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
   const [view, setView] = useState<TestsView>(NO_TESTS_VIEW);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -134,11 +138,13 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
 
   const refresh = useCallback(async () => {
     if (!root) return;
-    const [tests, caseList, environmentList] = await Promise.all([
+    const [tests, caseList, environmentList, groupList] = await Promise.all([
       listWholeCatalog({ context: context(), kind: "test", filter: {} }),
       listWholeCatalog({ context: context(), kind: "case", filter: {} }),
       listWholeCatalog({ context: context(), kind: "environment", filter: {} }),
+      listWholeCatalog({ context: context(), kind: "check-group", filter: {} }),
     ]);
+    if (groupList.state === "completed" || groupList.state === "empty") setCheckGroups(groupList.page?.items ?? []);
     if (tests.state === "completed" || tests.state === "empty") {
       setItems(tests.page?.items ?? []);
       setFailure(null);
@@ -209,6 +215,9 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     context,
     cases,
     environments,
+    checkGroups,
+    addCheckGroup: place.kind === "edit" ? addCheckGroup : null,
+    ...(onCheckGroupAdded ? { onCheckGroupAdded } : {}),
     busy,
     onOpenCase: openCase,
     onSaved: (saved) => {

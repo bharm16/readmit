@@ -17,7 +17,7 @@ import { useId, type ReactElement } from "react";
 /** The glyphs an icon button can carry. Each is decorative: its meaning is the
  * button's accessible name, so the shape is a second channel, never the only
  * one. */
-export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "refresh" | "more" | "search" | "filter";
+export type IconGlyph = "help" | "close" | "undo" | "previous" | "next" | "up" | "down" | "refresh" | "more" | "search" | "filter";
 
 const glyphs: Record<IconGlyph, ReactElement> = {
   // Circle with a question mark.
@@ -51,6 +51,18 @@ const glyphs: Record<IconGlyph, ReactElement> = {
   next: (
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
       <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Chevron up.
+  up: (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M3 10l5-5 5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ),
+  // Chevron down.
+  down: (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   // Three dots (more actions).

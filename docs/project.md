@@ -379,6 +379,15 @@ association and leaves the copy, which no longer counts against adding
 another. Nothing
 opens, interprets or runs an attachment.
 
+Where a generated case came from also lives beside the catalog, in
+`.readmit/origins.json`, a strict-JSON `readmit-origins/v1` document: for a
+case generated from a Library scenario, the scenario's catalog identity and
+the exact revision whose plan generated it; for a case the built-in SIU
+sample fixture received, the mode it ran in and the observation ledger entry
+it wrote beside it. Either case is listed as synthetic. An origin is recorded
+once, never in the evidence itself, and generating the same case again
+records nothing new.
+
 ## The editable document: readmit-revisions/v1
 
 The editable side of a project is one further canonical file, `revisions.json`,

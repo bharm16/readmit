@@ -245,14 +245,12 @@ of the consumer's own contract.
   message.
 - **A composite type's components are not modelled.** A field declares one data
   type; the components inside it are not separately constrained.
-- **Desktop application editing**: The desktop app provides an interactive,
-  typed constraint editor in the inspector region (`manage-profiles` command),
-  with draft-store persistence, canonical Go validation, opening an existing
-  profile (one a package import wrote included, with the pack beside it named)
-  against its pinned pack, version comparison, impact assessment against saved
-  test reference indexes,
-  single-test pin upgrading, and package export/import
-  ([`desktop.md`](desktop.md)).
+- **Desktop application editing**: Tests › Library › Profiles
+  (`manage-profiles` command) shows a saved profile's fields resolved against
+  its pinned pack and edits the whole profile, saving each change as a new
+  sealed version; it also compares versions, lists the tests that pin one and
+  upgrades chosen pins after review, and imports and exports packages
+  ([`desktop.md`](desktop.md#interface-profile-management)).
 - **No profile is bundled**, and nothing reads the bundled v2.5.1 dictionary
   through this contract.
 - **Versioning, change impact and import/export** are integrated in the desktop

@@ -120,6 +120,8 @@ import {
   type SearchResult,
   type Shell,
   type State,
+  type ItemDraftResult,
+  type ItemRef,
   type AttachmentsResult,
   type WorkspaceResult,
   messageFields,
@@ -133,9 +135,11 @@ import { MessageReader } from "./Inspector";
 import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
 import { Reproducer, type ReproducerView } from "./Reproducer";
 import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
-import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
-import { ProfileEditor } from "./ProfileEditor";
-import { ScenarioPanel } from "./ScenarioPanel";
+import { LibraryList, UseInTestSheet, importDraft, useCheckGroup, useLibraryItems, type LibraryKind } from "./Library";
+import { useProfile } from "./ProfileLibrary";
+import { useScenario } from "./ScenarioLibrary";
+import { SampleFixture, ScenarioLibraryCheck, SyntheticFamilies } from "./SampleData";
+import { SyntheticPackets } from "./SyntheticPackets";
 import { useTests, type TestsPlace } from "./Tests";
 import { useFindings, useSimilarFindings, type EvidenceRef } from "./Findings";
 import { Report, Separator, Status } from "./shell";
@@ -404,7 +408,13 @@ export default function App() {
   currentRoute.current = route;
   const caseView = viewOf(route, "cases", CASE_VIEWS);
   const testsView = viewOf(route, "tests", TESTS_VIEWS);
-  const libraryView = viewOf(route, "library", LIBRARY_VIEWS);
+  // Library opens on Profiles, then on the category last chosen in this project.
+  const [libraryViews, setLibraryViews] = useState<Record<string, LibraryView>>({});
+  const routedLibraryView = route.destination === "library" && LIBRARY_VIEWS.some((view) => view.key === route.view) ? (route.view as LibraryView) : undefined;
+  const libraryView: LibraryView = routedLibraryView ?? libraryViews[route.projectId ?? ""] ?? "profiles";
+  useEffect(() => {
+    if (routedLibraryView) setLibraryViews((held) => (held[route.projectId ?? ""] === routedLibraryView ? held : { ...held, [route.projectId ?? ""]: routedLibraryView }));
+  }, [routedLibraryView, route.projectId]);
   const settingsView = viewOf(route, "settings", SETTINGS_VIEWS);
   const setView = useCallback((view: string) => routeTo({ type: "view", view }), [routeTo]);
   // What the place being left had, for Back to restore: the selection named,
@@ -455,6 +465,9 @@ export default function App() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [noteEditing, setNoteEditing] = useState<{ note: NoteItem | null } | null>(null);
+  // The check group a test's editor adds to its draft when it opens.
+  const [pendingCheckGroup, setPendingCheckGroup] = useState<ItemRef | null>(null);
+
   // Why a row's last Locate or Remove from recents was refused, by identity,
   // and why an attachment was not added or removed.
   const [projectNotices, setProjectNotices] = useState<Record<string, string>>({});
@@ -1716,6 +1729,8 @@ export default function App() {
           : { kind: "list" };
   const tests = useTests({
     root,
+    addCheckGroup: pendingCheckGroup,
+    onCheckGroupAdded: () => setPendingCheckGroup(null),
     shown: sidebarOf(place) === "tests" && place !== "library" && place !== "baselines",
     place: testsPlace,
     go: (to) => {
@@ -1817,6 +1832,81 @@ export default function App() {
       });
     },
   });
+
+  // Library: each tab's list, and the one object open in it.
+  const libraryScope = useRef(new RequestScope());
+  const libraryContext = useCallback(() => libraryScope.current.enter(root ?? ""), [root]);
+  const LIBRARY_KINDS: Record<LibraryView, LibraryKind> = { checks: "check-group", profiles: "profile", scenarios: "scenario" };
+  const libraryKind = LIBRARY_KINDS[libraryView];
+  const libraryObject = place === "library" ? route.objectId : undefined;
+  const onLibraryList = place === "library" && libraryObject === undefined;
+  const [libraryImport, setLibraryImport] = useState<ItemDraftResult | null>(null);
+  const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
+  const libraryLists: Record<LibraryView, ReturnType<typeof useLibraryItems>> = {
+    checks: useLibraryItems("check-group", libraryContext, onLibraryList && libraryView === "checks"),
+    profiles: useLibraryItems("profile", libraryContext, onLibraryList && libraryView === "profiles"),
+    scenarios: useLibraryItems("scenario", libraryContext, onLibraryList && libraryView === "scenarios"),
+  };
+  const openLibraryObject = useCallback(
+    (objectId: string) => routeTo({ type: "go", to: { destination: "library", view: libraryView, objectId }, leaving: leaving(objectId) }),
+    [leaving, libraryView, routeTo],
+  );
+  // A save names what it saved; a new object then opens as saved, and a new
+  // one left unsaved returns to its list.
+  const librarySaved = useCallback(
+    (saved: ItemRef) => {
+      setLibraryImport(null);
+      if (saved.id === "") routeTo({ type: "back" });
+      else routeTo({ type: "replace", to: { destination: "library", view: libraryView, objectId: saved.id } });
+    },
+    [libraryView, routeTo],
+  );
+  const libraryRef = (kind: LibraryKind): ItemRef | null =>
+    libraryKind === kind && libraryObject && libraryObject !== "new" && libraryObject !== "import" ? { kind, id: libraryObject } : null;
+  const libraryImported = libraryObject === "import" ? libraryImport : null;
+  const checkGroupPage = useCheckGroup({
+    context: libraryContext,
+    ref: libraryRef("check-group"),
+    imported: libraryKind === "check-group" ? libraryImported : null,
+    shown: place === "library" && libraryView === "checks" && libraryObject !== undefined,
+    busy,
+    onSaved: librarySaved,
+    onUseInTest: (ref, name) => setUsingInTest({ ref, name }),
+  });
+  const profilePage = useProfile({
+    onImport: () => void importLibrary(),
+    context: libraryContext,
+    ref: libraryRef("profile"),
+    imported: libraryKind === "profile" ? libraryImported : null,
+    shown: place === "library" && libraryView === "profiles" && libraryObject !== undefined,
+    busy,
+    onSaved: librarySaved,
+  });
+  const scenarioPage = useScenario({
+    context: libraryContext,
+    ref: libraryRef("scenario"),
+    imported: libraryKind === "scenario" ? libraryImported : null,
+    shown: place === "library" && libraryView === "scenarios" && libraryObject !== undefined,
+    busy,
+    onSaved: librarySaved,
+    onOpenCase: (_ref, entry) => {
+      if (root) void verifyCase(root, entry);
+    },
+  });
+  const libraryPage = libraryView === "checks" ? checkGroupPage : libraryView === "profiles" ? profilePage : scenarioPage;
+  const importLibrary = async () => {
+    setLibraryNotice(null);
+    const answer = await importDraft(libraryKind, libraryContext());
+    if (answer.state === "cancelled") return;
+    if (answer.state !== "completed" || !("draft" in answer) || !answer.draft) {
+      setLibraryNotice(("reason" in answer ? answer.reason : undefined) ?? "The file was not imported.");
+      return;
+    }
+    setLibraryImport(answer);
+    openLibraryObject("import");
+  };
+  // Use in test: the chosen check group, until a test is picked for it.
+  const [usingInTest, setUsingInTest] = useState<{ ref: ItemRef; name: string } | null>(null);
 
   const environments = useEnvironments({
     root,
@@ -2674,33 +2764,54 @@ export default function App() {
           {root && place === "edit-test" ? tests.body : null}
         </Page>
 
-        <Page id="library" shown={place === "library"} title="Library" back={<BackLink label="Tests" onBack={back} />}>
-          {root ? (
-            <TaskTabs label="Library views" id="library-views" tabs={LIBRARY_VIEWS} selected={libraryView} onSelect={setView} panels>
-              <TaskPanel tabs="library-views" tab="checks" className="task-panel view-panel" shown={libraryView === "checks"}>
-                <AssertionSetAuthoring key={"assertions-" + root} workspace={root} drafts={drafts} busy={busy} inspected={inspected} />
-              </TaskPanel>
-              <TaskPanel tabs="library-views" tab="profiles" className="task-panel view-panel" shown={libraryView === "profiles"}>
-                <ProfileEditor key={`profile-${root}`} workspace={root} drafts={drafts} busy={busy} />
-              </TaskPanel>
-              <TaskPanel tabs="library-views" tab="scenarios" className="task-panel view-panel" shown={libraryView === "scenarios"}>
-                <ScenarioPanel
-                  key={`scenario-${root}`}
-                  workspace={root}
-                  drafts={drafts}
-                  busy={busy}
-                  indicators={indicators}
-                  onOpenCase={(name) => {
-                    if (root) void verifyCase(root, name);
-                  }}
-                  onStartTestDraft={(name) => {
-                    if (root) void verifyCase(root, name);
-                  }}
-                />
-              </TaskPanel>
-            </TaskTabs>
-          ) : (
+        <Page
+          id="library"
+          shown={place === "library"}
+          title={libraryObject !== undefined ? libraryPage.title : "Library"}
+          back={<BackLink label={libraryObject !== undefined ? "Library" : "Tests"} onBack={back} />}
+          actions={
+            !root ? null : libraryObject !== undefined ? (
+              libraryPage.actions
+            ) : (
+              <>
+                <button type="button" disabled={busy} onClick={() => void importLibrary()}>
+                  {libraryView === "checks" ? "Import check group" : libraryView === "profiles" ? "Import profile" : "Import scenario"}
+                </button>
+                {libraryView !== "profiles" ? (
+                  <button type="button" className="primary" disabled={busy} onClick={() => openLibraryObject("new")}>
+                    {libraryView === "checks" ? "New check group" : "New scenario"}
+                  </button>
+                ) : null}
+              </>
+            )
+          }
+        >
+          {!root ? (
             noProject("library")
+          ) : libraryObject !== undefined ? (
+            libraryPage.body
+          ) : (
+            <TaskTabs label="Library views" id="library-views" tabs={LIBRARY_VIEWS} selected={libraryView} onSelect={setView} panels>
+              {libraryNotice ? (
+                <div className="notice danger" role="alert">
+                  {libraryNotice}
+                </div>
+              ) : null}
+              {LIBRARY_VIEWS.map((view) => (
+                <TaskPanel key={view.key} tabs="library-views" tab={view.key} className="task-panel view-panel" shown={libraryView === view.key}>
+                  <LibraryList
+                    kind={LIBRARY_KINDS[view.key]}
+                    items={libraryLists[view.key].items}
+                    loading={libraryLists[view.key].loading}
+                    failure={libraryLists[view.key].failure}
+                    busy={busy}
+                    onOpen={(item) => openLibraryObject(item.ref.id)}
+                    onCreate={() => (view.key === "profiles" ? void importLibrary() : openLibraryObject("new"))}
+                    onRetry={() => void libraryLists[view.key].refresh()}
+                  />
+                </TaskPanel>
+              ))}
+            </TaskTabs>
           )}
         </Page>
 
@@ -2999,6 +3110,25 @@ export default function App() {
               </button>
             }
           />
+          {root ? (
+            <SampleFixture
+              context={libraryContext}
+              busy={busy}
+              onOpenCase={(_ref, entry) => {
+                void verifyCase(root, entry);
+              }}
+            />
+          ) : null}
+          {root ? (
+            <>
+              <SyntheticFamilies workspace={root} busy={busy} />
+              <ScenarioLibraryCheck workspace={root} busy={busy} />
+            </>
+          ) : null}
+          <section className="sample-section" aria-label="Demo report">
+            <h2>Demo report</h2>
+            <SyntheticPackets onRefresh={() => void refreshListing()} />
+          </section>
         </Page>
 
         <Page id="benchmarks" shown={place === "benchmarks"} title="Benchmarks" back={<BackLink label="Tools" onBack={back} />}>
@@ -3571,6 +3701,18 @@ export default function App() {
           }}
         />
 
+        {usingInTest ? (
+          <UseInTestSheet
+            context={libraryContext}
+            group={usingInTest}
+            onClose={() => setUsingInTest(null)}
+            onPick={(test) => {
+              setPendingCheckGroup(usingInTest.ref);
+              routeTo({ type: "go", to: { destination: "edit-test", objectId: test.ref.id }, leaving: leaving() });
+            }}
+          />
+        ) : null}
+
         <CommandPalette open={paletteOpen} entries={paletteShown} onClose={() => setPaletteOpen(false)} />
       </VocabularyContext.Provider>
     </IndicatorsContext.Provider>
@@ -3615,10 +3757,6 @@ function caseEntry(item: CatalogItem): string | undefined {
 /** Where each kind of retained draft is continued. */
 const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: true; observe?: true }> = {
   "suite-editor": { route: { destination: "tests", view: "suites" } },
-  scenario: { route: { destination: "library", view: "scenarios" } },
-  "generator-plan": { route: { destination: "library", view: "scenarios" } },
-  "assertion-set-draft": { route: { destination: "library", view: "checks" } },
-  "local-profile": { route: { destination: "library", view: "profiles" } },
   "redact-policy": { route: { destination: "share-report" } },
   "redact-inventory": { route: { destination: "share-report" } },
   "reproducer-plan": { case: "reproduce" },
