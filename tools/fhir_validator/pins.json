@@ -1,0 +1,87 @@
+{
+  "schema": "readmit-fhir-validator-acquisition/v1",
+  "validator_commit": "1b90fb13f77bfd6e138db8e96f26a32195fb090d",
+  "platform": "linux/arm64",
+  "base_image": "debian:bookworm-slim@sha256:0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417",
+  "assets": [
+    {
+      "id": "validator",
+      "file": "validator_cli.jar",
+      "version": "6.10.4",
+      "url": "https://github.com/hapifhir/org.hl7.fhir.core/releases/download/6.10.4/validator_cli.jar",
+      "size": 200928617,
+      "sha256": "1106b9d58f9e363e47bea7c4fc065841e5fc91fe9d062775c3bfdd212bd653cc",
+      "license": "Apache-2.0",
+      "license_scope": "top-level project; embedded dependency notices separately inventoried"
+    },
+    {
+      "id": "runtime",
+      "file": "jre21-linux-arm64.tar.gz",
+      "version": "21.0.12.1+1",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_aarch64_linux_hotspot_21.0.12.1_1.tar.gz",
+      "size": 51149460,
+      "sha256": "14be1f35ebdbd1f6e8d57eb911a3ffb74d6d9aa255abc5daf2b1302002cf2cf2",
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "archive_root": "jdk-21.0.12.1+1-jre"
+    },
+    {
+      "id": "runtime-sbom",
+      "file": "jre21-linux-arm64-sbom.json",
+      "version": "21.0.12.1+1",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-sbom_aarch64_linux_hotspot_21.0.12.1_1.json",
+      "size": 178340,
+      "sha256": "67f093c2cad2d096636164f61aef3fc988b66fbffa47a932f89a875f3f284c42",
+      "license": "upstream component declarations"
+    },
+    {
+      "id": "core",
+      "file": "hl7.fhir.r4.core-4.0.1.tgz",
+      "version": "4.0.1",
+      "url": "https://packages.fhir.org/hl7.fhir.r4.core/4.0.1",
+      "size": 12815597,
+      "sha256": "ebd7731df7d36b5b7d39d5fb6c9d77b44bb7fe5742f1a2e87f164738c3289d44",
+      "license": "CC0-1.0",
+      "license_scope": "package declaration; external terminology rights remain separately declared"
+    },
+    {
+      "id": "hl7.fhir.xver-extensions",
+      "file": "hl7.fhir.xver-extensions-0.1.0.tgz",
+      "version": "0.1.0",
+      "url": "https://packages.fhir.org/hl7.fhir.xver-extensions/0.1.0",
+      "size": 183877,
+      "sha256": "f3bb9fa2083402e88a02b41f433655274e8a1cca563211c8f7ba6fd0badf537a",
+      "license": "CC0-1.0",
+      "required_by": "validator-init-6.10.4"
+    },
+    {
+      "id": "hl7.terminology.r4",
+      "file": "hl7.terminology.r4-6.2.0.tgz",
+      "version": "6.2.0",
+      "url": "https://packages.fhir.org/hl7.terminology.r4/6.2.0",
+      "size": 5661217,
+      "sha256": "79404c9cc95491fc0155627cd039c401a6eb4748175328131e91b709a41300e2",
+      "license": "CC0-1.0",
+      "required_by": "validator-init-6.10.4"
+    },
+    {
+      "id": "hl7.fhir.uv.extensions.r4",
+      "file": "hl7.fhir.uv.extensions.r4-5.2.0.tgz",
+      "version": "5.2.0",
+      "url": "https://packages.fhir.org/hl7.fhir.uv.extensions.r4/5.2.0",
+      "size": 1302452,
+      "sha256": "b406e75575f05676559d0759770c5939d023ee72fb2ef38e0b3259328487720a",
+      "license": "CC0-1.0",
+      "required_by": "validator-init-6.10.4"
+    },
+    {
+      "id": "compiler",
+      "file": "jdk21-linux-arm64.tar.gz",
+      "version": "21.0.12.1+1",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.12.1_1.tar.gz",
+      "size": 205641175,
+      "sha256": "23e37e026f12f3e706f18938ff611db3032d075b09d0879a25d06718c773e223",
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "archive_root": "jdk-21.0.12.1+1"
+    }
+  ]
+}

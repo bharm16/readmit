@@ -1,0 +1,79 @@
+{
+  "notices": [
+    {
+      "bytes": 5378,
+      "path": "licenses/validator/LICENSE",
+      "sha256": "76479448741d7a7a3a97b6afd9ab9699d95621faafc65a1b8e9149342ea00feb"
+    },
+    {
+      "bytes": 11376,
+      "path": "licenses/validator/LICENSE-junit.txt",
+      "sha256": "9648bb2891b9813970bddb68d4be8a5e6ec8280d0180a53dfb29236b579c55bb"
+    },
+    {
+      "bytes": 1509,
+      "path": "licenses/validator/LICENSE.txt",
+      "sha256": "1cde867cab5c8e842929da5391cef98b4017314822270e934e8e2eef3767c666"
+    },
+    {
+      "bytes": 11358,
+      "path": "licenses/validator/META-INF/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "bytes": 316,
+      "path": "licenses/validator/META-INF/LICENSE-notice.md",
+      "sha256": "c7d843e0faf8a251278c9220f6b5326a42a01f08b855c1ec871bcef6211a7e2a"
+    },
+    {
+      "bytes": 9303,
+      "path": "licenses/validator/META-INF/LICENSE-univocity-parsers.md",
+      "sha256": "d25d17d20162cce14cdbb467a0f6d75a35ba488a4144637b17392eaa8042c122"
+    },
+    {
+      "bytes": 14235,
+      "path": "licenses/validator/META-INF/LICENSE.md",
+      "sha256": "5aa4cd44c111add178d1c2e2fe36d58a484012c80167df925f826cd64d411bf0"
+    },
+    {
+      "bytes": 11359,
+      "path": "licenses/validator/META-INF/LICENSE.txt",
+      "sha256": "b1d2870f1a00e4d7f56576e5f0870cba109e041f8af66866cf5b499478e654e7"
+    },
+    {
+      "bytes": 172,
+      "path": "licenses/validator/META-INF/NOTICE",
+      "sha256": "a8ff0d486f1bdd29331e0e244f96245354779ef818ec25ecd60545ad335b68da"
+    },
+    {
+      "bytes": 1452,
+      "path": "licenses/validator/META-INF/NOTICE.md",
+      "sha256": "3852834ebb4c2e04ecc18c9d099a05eab72cbd6edf35fb191390be6306019b4c"
+    },
+    {
+      "bytes": 174,
+      "path": "licenses/validator/META-INF/NOTICE.txt",
+      "sha256": "64bc8696af3f6c770521412b85d3a733fa44b2ef5b0f4bd739e0c4d02eca492a"
+    },
+    {
+      "bytes": 1567,
+      "path": "licenses/validator/META-INF/licenses/ASM",
+      "sha256": "337e92fd361effe495d03978a34a3cd44681a63b8329adfd99c8996b306b2a8c"
+    },
+    {
+      "bytes": 1829,
+      "path": "licenses/validator/org/xmlresolver/notices/w3c-license.txt",
+      "sha256": "9a3ac27f4c5954a3e4afcf8311e36be7cd84c32a3681312de7563ce112b9cad0"
+    },
+    {
+      "bytes": 6050,
+      "path": "licenses/validator/turtle/LICENSE",
+      "sha256": "f1975e42c55e3a3d6bbbfad0dca4d9e518ed70b41b7458196ce2000593c0e859"
+    }
+  ],
+  "runtime_archive_sha256": "14be1f35ebdbd1f6e8d57eb911a3ffb74d6d9aa255abc5daf2b1302002cf2cf2",
+  "runtime_sbom_sha256": "67f093c2cad2d096636164f61aef3fc988b66fbffa47a932f89a875f3f284c42",
+  "schema": "readmit-validator-license-inventory/v1",
+  "scope": "Original bundled notice bytes are copied into each built capability; no per-dependency license grant is inferred from the root project license.",
+  "validator_sha256": "1106b9d58f9e363e47bea7c4fc065841e5fc91fe9d062775c3bfdd212bd653cc"
+}

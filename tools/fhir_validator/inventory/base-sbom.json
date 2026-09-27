@@ -1,0 +1,644 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:deb/debian/adduser@3.134?arch=all&distro=debian-12.15",
+      "name": "adduser",
+      "purl": "pkg:deb/debian/adduser@3.134?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "3.134"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/apt@2.6.1?arch=arm64&distro=debian-12.15",
+      "name": "apt",
+      "purl": "pkg:deb/debian/apt@2.6.1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.6.1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/base-files@12.4%2Bdeb12u15?arch=arm64&distro=debian-12.15",
+      "name": "base-files",
+      "purl": "pkg:deb/debian/base-files@12.4%2Bdeb12u15?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "12.4+deb12u15"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/base-passwd@3.6.1?arch=arm64&distro=debian-12.15",
+      "name": "base-passwd",
+      "purl": "pkg:deb/debian/base-passwd@3.6.1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.6.1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/bash@5.2.15-2%2Bb13?arch=arm64&distro=debian-12.15",
+      "name": "bash",
+      "purl": "pkg:deb/debian/bash@5.2.15-2%2Bb13?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "5.2.15-2+b13"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/bsdutils@1%3A2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "bsdutils",
+      "purl": "pkg:deb/debian/bsdutils@1%3A2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/coreutils@9.1-1?arch=arm64&distro=debian-12.15",
+      "name": "coreutils",
+      "purl": "pkg:deb/debian/coreutils@9.1-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "9.1-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/dash@0.5.12-2?arch=arm64&distro=debian-12.15",
+      "name": "dash",
+      "purl": "pkg:deb/debian/dash@0.5.12-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "0.5.12-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/debconf@1.5.82?arch=all&distro=debian-12.15",
+      "name": "debconf",
+      "purl": "pkg:deb/debian/debconf@1.5.82?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "1.5.82"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/debian-archive-keyring@2023.3%2Bdeb12u2?arch=all&distro=debian-12.15",
+      "name": "debian-archive-keyring",
+      "purl": "pkg:deb/debian/debian-archive-keyring@2023.3%2Bdeb12u2?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "2023.3+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/debianutils@5.7-0.5~deb12u1?arch=arm64&distro=debian-12.15",
+      "name": "debianutils",
+      "purl": "pkg:deb/debian/debianutils@5.7-0.5~deb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "5.7-0.5~deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/diffutils@1%3A3.8-4?arch=arm64&distro=debian-12.15",
+      "name": "diffutils",
+      "purl": "pkg:deb/debian/diffutils@1%3A3.8-4?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:3.8-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/dpkg@1.21.23?arch=arm64&distro=debian-12.15",
+      "name": "dpkg",
+      "purl": "pkg:deb/debian/dpkg@1.21.23?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.21.23"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/e2fsprogs@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "name": "e2fsprogs",
+      "purl": "pkg:deb/debian/e2fsprogs@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.47.0-2+b2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/findutils@4.9.0-4?arch=arm64&distro=debian-12.15",
+      "name": "findutils",
+      "purl": "pkg:deb/debian/findutils@4.9.0-4?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "4.9.0-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/gcc-12-base@12.2.0-14%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "gcc-12-base",
+      "purl": "pkg:deb/debian/gcc-12-base@12.2.0-14%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "12.2.0-14+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/gpgv@2.2.40-1.1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "gpgv",
+      "purl": "pkg:deb/debian/gpgv@2.2.40-1.1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.2.40-1.1+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/grep@3.8-5?arch=arm64&distro=debian-12.15",
+      "name": "grep",
+      "purl": "pkg:deb/debian/grep@3.8-5?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.8-5"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/gzip@1.12-1?arch=arm64&distro=debian-12.15",
+      "name": "gzip",
+      "purl": "pkg:deb/debian/gzip@1.12-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.12-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/hostname@3.23%2Bnmu1?arch=arm64&distro=debian-12.15",
+      "name": "hostname",
+      "purl": "pkg:deb/debian/hostname@3.23%2Bnmu1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.23+nmu1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/init-system-helpers@1.65.2%2Bdeb12u1?arch=all&distro=debian-12.15",
+      "name": "init-system-helpers",
+      "purl": "pkg:deb/debian/init-system-helpers@1.65.2%2Bdeb12u1?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "1.65.2+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libacl1@2.3.1-3?arch=arm64&distro=debian-12.15",
+      "name": "libacl1",
+      "purl": "pkg:deb/debian/libacl1@2.3.1-3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.3.1-3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libapt-pkg6.0@2.6.1?arch=arm64&distro=debian-12.15",
+      "name": "libapt-pkg6.0",
+      "purl": "pkg:deb/debian/libapt-pkg6.0@2.6.1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.6.1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libattr1@1%3A2.5.1-4?arch=arm64&distro=debian-12.15",
+      "name": "libattr1",
+      "purl": "pkg:deb/debian/libattr1@1%3A2.5.1-4?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:2.5.1-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libaudit-common@1%3A3.0.9-1?arch=all&distro=debian-12.15",
+      "name": "libaudit-common",
+      "purl": "pkg:deb/debian/libaudit-common@1%3A3.0.9-1?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "1:3.0.9-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libaudit1@1%3A3.0.9-1?arch=arm64&distro=debian-12.15",
+      "name": "libaudit1",
+      "purl": "pkg:deb/debian/libaudit1@1%3A3.0.9-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:3.0.9-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libblkid1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "libblkid1",
+      "purl": "pkg:deb/debian/libblkid1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libbz2-1.0@1.0.8-5%2Bb1?arch=arm64&distro=debian-12.15",
+      "name": "libbz2-1.0",
+      "purl": "pkg:deb/debian/libbz2-1.0@1.0.8-5%2Bb1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.0.8-5+b1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libc-bin@2.36-9%2Bdeb12u14?arch=arm64&distro=debian-12.15",
+      "name": "libc-bin",
+      "purl": "pkg:deb/debian/libc-bin@2.36-9%2Bdeb12u14?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.36-9+deb12u14"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libc6@2.36-9%2Bdeb12u14?arch=arm64&distro=debian-12.15",
+      "name": "libc6",
+      "purl": "pkg:deb/debian/libc6@2.36-9%2Bdeb12u14?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.36-9+deb12u14"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libcap-ng0@0.8.3-1%2Bb3?arch=arm64&distro=debian-12.15",
+      "name": "libcap-ng0",
+      "purl": "pkg:deb/debian/libcap-ng0@0.8.3-1%2Bb3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "0.8.3-1+b3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libcap2@1%3A2.66-4%2Bdeb12u3%2Bb1?arch=arm64&distro=debian-12.15",
+      "name": "libcap2",
+      "purl": "pkg:deb/debian/libcap2@1%3A2.66-4%2Bdeb12u3%2Bb1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:2.66-4+deb12u3+b1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libcom-err2@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "name": "libcom-err2",
+      "purl": "pkg:deb/debian/libcom-err2@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.47.0-2+b2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libcrypt1@1%3A4.4.33-2?arch=arm64&distro=debian-12.15",
+      "name": "libcrypt1",
+      "purl": "pkg:deb/debian/libcrypt1@1%3A4.4.33-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:4.4.33-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libdb5.3@5.3.28%2Bdfsg2-1?arch=arm64&distro=debian-12.15",
+      "name": "libdb5.3",
+      "purl": "pkg:deb/debian/libdb5.3@5.3.28%2Bdfsg2-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "5.3.28+dfsg2-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libdebconfclient0@0.270?arch=arm64&distro=debian-12.15",
+      "name": "libdebconfclient0",
+      "purl": "pkg:deb/debian/libdebconfclient0@0.270?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "0.270"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libext2fs2@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "name": "libext2fs2",
+      "purl": "pkg:deb/debian/libext2fs2@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.47.0-2+b2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libffi8@3.4.4-1?arch=arm64&distro=debian-12.15",
+      "name": "libffi8",
+      "purl": "pkg:deb/debian/libffi8@3.4.4-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.4.4-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libgcc-s1@12.2.0-14%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "libgcc-s1",
+      "purl": "pkg:deb/debian/libgcc-s1@12.2.0-14%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "12.2.0-14+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libgcrypt20@1.10.1-3%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "libgcrypt20",
+      "purl": "pkg:deb/debian/libgcrypt20@1.10.1-3%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.10.1-3+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libgmp10@2%3A6.2.1%2Bdfsg1-1.1?arch=arm64&distro=debian-12.15",
+      "name": "libgmp10",
+      "purl": "pkg:deb/debian/libgmp10@2%3A6.2.1%2Bdfsg1-1.1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2:6.2.1+dfsg1-1.1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libgnutls30@3.7.9-2%2Bdeb12u7?arch=arm64&distro=debian-12.15",
+      "name": "libgnutls30",
+      "purl": "pkg:deb/debian/libgnutls30@3.7.9-2%2Bdeb12u7?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.7.9-2+deb12u7"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libgpg-error0@1.46-1?arch=arm64&distro=debian-12.15",
+      "name": "libgpg-error0",
+      "purl": "pkg:deb/debian/libgpg-error0@1.46-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.46-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libhogweed6@3.8.1-2?arch=arm64&distro=debian-12.15",
+      "name": "libhogweed6",
+      "purl": "pkg:deb/debian/libhogweed6@3.8.1-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.8.1-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libidn2-0@2.3.3-1%2Bb1?arch=arm64&distro=debian-12.15",
+      "name": "libidn2-0",
+      "purl": "pkg:deb/debian/libidn2-0@2.3.3-1%2Bb1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.3.3-1+b1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/liblz4-1@1.9.4-1?arch=arm64&distro=debian-12.15",
+      "name": "liblz4-1",
+      "purl": "pkg:deb/debian/liblz4-1@1.9.4-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.9.4-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/liblzma5@5.4.1-1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "liblzma5",
+      "purl": "pkg:deb/debian/liblzma5@5.4.1-1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "5.4.1-1+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libmd0@1.0.4-2?arch=arm64&distro=debian-12.15",
+      "name": "libmd0",
+      "purl": "pkg:deb/debian/libmd0@1.0.4-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.0.4-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libmount1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "libmount1",
+      "purl": "pkg:deb/debian/libmount1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libnettle8@3.8.1-2?arch=arm64&distro=debian-12.15",
+      "name": "libnettle8",
+      "purl": "pkg:deb/debian/libnettle8@3.8.1-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.8.1-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libp11-kit0@0.24.1-2?arch=arm64&distro=debian-12.15",
+      "name": "libp11-kit0",
+      "purl": "pkg:deb/debian/libp11-kit0@0.24.1-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "0.24.1-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libpam-modules@1.5.2-6%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "libpam-modules",
+      "purl": "pkg:deb/debian/libpam-modules@1.5.2-6%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.5.2-6+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libpam-modules-bin@1.5.2-6%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "libpam-modules-bin",
+      "purl": "pkg:deb/debian/libpam-modules-bin@1.5.2-6%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.5.2-6+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libpam-runtime@1.5.2-6%2Bdeb12u2?arch=all&distro=debian-12.15",
+      "name": "libpam-runtime",
+      "purl": "pkg:deb/debian/libpam-runtime@1.5.2-6%2Bdeb12u2?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "1.5.2-6+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libpam0g@1.5.2-6%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "libpam0g",
+      "purl": "pkg:deb/debian/libpam0g@1.5.2-6%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.5.2-6+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libpcre2-8-0@10.42-1%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "libpcre2-8-0",
+      "purl": "pkg:deb/debian/libpcre2-8-0@10.42-1%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "10.42-1+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libseccomp2@2.5.4-1%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "libseccomp2",
+      "purl": "pkg:deb/debian/libseccomp2@2.5.4-1%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.5.4-1+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libselinux1@3.4-1%2Bb6?arch=arm64&distro=debian-12.15",
+      "name": "libselinux1",
+      "purl": "pkg:deb/debian/libselinux1@3.4-1%2Bb6?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.4-1+b6"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libsemanage-common@3.4-1?arch=all&distro=debian-12.15",
+      "name": "libsemanage-common",
+      "purl": "pkg:deb/debian/libsemanage-common@3.4-1?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "3.4-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libsemanage2@3.4-1%2Bb5?arch=arm64&distro=debian-12.15",
+      "name": "libsemanage2",
+      "purl": "pkg:deb/debian/libsemanage2@3.4-1%2Bb5?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.4-1+b5"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libsepol2@3.4-2.1?arch=arm64&distro=debian-12.15",
+      "name": "libsepol2",
+      "purl": "pkg:deb/debian/libsepol2@3.4-2.1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.4-2.1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libsmartcols1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "libsmartcols1",
+      "purl": "pkg:deb/debian/libsmartcols1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libss2@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "name": "libss2",
+      "purl": "pkg:deb/debian/libss2@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.47.0-2+b2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libstdc++6@12.2.0-14%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "libstdc++6",
+      "purl": "pkg:deb/debian/libstdc++6@12.2.0-14%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "12.2.0-14+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libsystemd0@252.39-1~deb12u2?arch=arm64&distro=debian-12.15",
+      "name": "libsystemd0",
+      "purl": "pkg:deb/debian/libsystemd0@252.39-1~deb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "252.39-1~deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libtasn1-6@4.19.0-2%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "libtasn1-6",
+      "purl": "pkg:deb/debian/libtasn1-6@4.19.0-2%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "4.19.0-2+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libtinfo6@6.4-4?arch=arm64&distro=debian-12.15",
+      "name": "libtinfo6",
+      "purl": "pkg:deb/debian/libtinfo6@6.4-4?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "6.4-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libudev1@252.39-1~deb12u2?arch=arm64&distro=debian-12.15",
+      "name": "libudev1",
+      "purl": "pkg:deb/debian/libudev1@252.39-1~deb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "252.39-1~deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libunistring2@1.0-2?arch=arm64&distro=debian-12.15",
+      "name": "libunistring2",
+      "purl": "pkg:deb/debian/libunistring2@1.0-2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.0-2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libuuid1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "libuuid1",
+      "purl": "pkg:deb/debian/libuuid1@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libxxhash0@0.8.1-1?arch=arm64&distro=debian-12.15",
+      "name": "libxxhash0",
+      "purl": "pkg:deb/debian/libxxhash0@0.8.1-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "0.8.1-1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/libzstd1@1.5.4%2Bdfsg2-5?arch=arm64&distro=debian-12.15",
+      "name": "libzstd1",
+      "purl": "pkg:deb/debian/libzstd1@1.5.4%2Bdfsg2-5?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.5.4+dfsg2-5"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/login@1%3A4.13%2Bdfsg1-1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "login",
+      "purl": "pkg:deb/debian/login@1%3A4.13%2Bdfsg1-1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:4.13+dfsg1-1+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/logsave@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "name": "logsave",
+      "purl": "pkg:deb/debian/logsave@1.47.0-2%2Bb2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.47.0-2+b2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/mawk@1.3.4.20200120-3.1?arch=arm64&distro=debian-12.15",
+      "name": "mawk",
+      "purl": "pkg:deb/debian/mawk@1.3.4.20200120-3.1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.3.4.20200120-3.1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/mount@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "mount",
+      "purl": "pkg:deb/debian/mount@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/ncurses-base@6.4-4?arch=all&distro=debian-12.15",
+      "name": "ncurses-base",
+      "purl": "pkg:deb/debian/ncurses-base@6.4-4?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "6.4-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/ncurses-bin@6.4-4?arch=arm64&distro=debian-12.15",
+      "name": "ncurses-bin",
+      "purl": "pkg:deb/debian/ncurses-bin@6.4-4?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "6.4-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/passwd@1%3A4.13%2Bdfsg1-1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "name": "passwd",
+      "purl": "pkg:deb/debian/passwd@1%3A4.13%2Bdfsg1-1%2Bdeb12u2?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:4.13+dfsg1-1+deb12u2"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/perl-base@5.36.0-7%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "perl-base",
+      "purl": "pkg:deb/debian/perl-base@5.36.0-7%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "5.36.0-7+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/sed@4.9-1%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "sed",
+      "purl": "pkg:deb/debian/sed@4.9-1%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "4.9-1+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/sysvinit-utils@3.06-4?arch=arm64&distro=debian-12.15",
+      "name": "sysvinit-utils",
+      "purl": "pkg:deb/debian/sysvinit-utils@3.06-4?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "3.06-4"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/tar@1.34%2Bdfsg-1.2%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "name": "tar",
+      "purl": "pkg:deb/debian/tar@1.34%2Bdfsg-1.2%2Bdeb12u1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1.34+dfsg-1.2+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all&distro=debian-12.15",
+      "name": "tzdata",
+      "purl": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "2026b-0+deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/usr-is-merged@37~deb12u1?arch=all&distro=debian-12.15",
+      "name": "usr-is-merged",
+      "purl": "pkg:deb/debian/usr-is-merged@37~deb12u1?arch=all&distro=debian-12.15",
+      "type": "library",
+      "version": "37~deb12u1"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/util-linux@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "util-linux",
+      "purl": "pkg:deb/debian/util-linux@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/util-linux-extra@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "name": "util-linux-extra",
+      "purl": "pkg:deb/debian/util-linux-extra@2.38.1-5%2Bdeb12u3?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "2.38.1-5+deb12u3"
+    },
+    {
+      "bom-ref": "pkg:deb/debian/zlib1g@1%3A1.2.13.dfsg-1?arch=arm64&distro=debian-12.15",
+      "name": "zlib1g",
+      "purl": "pkg:deb/debian/zlib1g@1%3A1.2.13.dfsg-1?arch=arm64&distro=debian-12.15",
+      "type": "library",
+      "version": "1:1.2.13.dfsg-1"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:oci/debian@sha256%3A0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417"
+        }
+      ],
+      "name": "debian",
+      "purl": "pkg:oci/debian@sha256%3A0c8bbb8e987a035fe1d9704eb2e571b7e9a836e1caa46345290674b45b69e417",
+      "type": "operating-system",
+      "version": "12.15"
+    },
+    "properties": [
+      {
+        "name": "readmit:inventory-scope",
+        "value": "Installed Debian packages of the pinned base image, as dpkg reports them. Their license texts are the per-package copyright files under /usr/share/doc in the image."
+      }
+    ]
+  },
+  "specVersion": "1.5",
+  "version": 1
+}

@@ -1,0 +1,475 @@
+{
+  "canary_subnet": "198.51.100.0/24",
+  "cases": [
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0",
+          "eth0"
+        ],
+        "other_ip": 10,
+        "outbound": 2,
+        "received": 20,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "egress-probe",
+      "exit_code": 0,
+      "fixture": "patient-egress-probe.json",
+      "fixture_sha256": "429e131dcf1b11f7a92669c0bc2216a02333a3a7dacdabad91dfddcac318bb90",
+      "message_ids": [
+        "TYPE_SPECIFIC_CHECKS_DT_CANONICAL_RESOLVE",
+        "Terminology_TX_NoValid_15",
+        "VALIDATION_VAL_PROFILE_SIGNPOST",
+        "VALIDATION_VAL_PROFILE_UNKNOWN_NOT_POLICY",
+        "http://hl7.org/fhir/StructureDefinition/DomainResource#dom-6"
+      ],
+      "outcome_sha256": "9da0c0b28c440333c3d05e3019c9f92774f0f8928a4ed7758ce541afaf384e75",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "internal-network",
+      "profiles": [],
+      "state": "evaluated"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0",
+          "eth0"
+        ],
+        "other_ip": 5,
+        "outbound": 2,
+        "received": 10,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "path-probe",
+      "exit_code": 0,
+      "fixture": "patient-path-probe.json",
+      "fixture_sha256": "704fb228b87d0971e850c800b0f38b8f950dd3ef036045e302f159d95a1951a1",
+      "message_ids": [
+        "Terminology_TX_NoValid_15",
+        "VALIDATION_VAL_PROFILE_SIGNPOST",
+        "VALIDATION_VAL_PROFILE_UNKNOWN_NOT_POLICY",
+        "http://hl7.org/fhir/StructureDefinition/DomainResource#dom-6"
+      ],
+      "outcome_sha256": "51fc5f0b27867f2fcfdfd1cc7464a88ea49eace9ad1a8e6c1ad8b5b8bb3e6dde",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "internal-network",
+      "profiles": [],
+      "state": "evaluated"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0",
+          "eth0"
+        ],
+        "other_ip": 5,
+        "outbound": 2,
+        "received": 10,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "terminology-miss",
+      "exit_code": 0,
+      "fixture": "observation-code-valid.json",
+      "fixture_sha256": "8e4939bbb551e6771d328604f336c251484195b808c5ce6278a1c3da2230b9d7",
+      "message_ids": [
+        "All_observations_should_have_a_performer",
+        "All_observations_should_have_an_effectiveDateTime_or_an_effectivePeriod",
+        "Terminology_TX_ValueSet_NotFound",
+        "VALIDATION_VAL_PROFILE_SIGNPOST",
+        "http://hl7.org/fhir/StructureDefinition/DomainResource#dom-6"
+      ],
+      "outcome_sha256": "e6edfda228484193b40060aa7d94d66eb550ba2fd2ed22e67b3bcbfe069d5427",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "internal-network",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/missing-terminology|1.0.0"
+      ],
+      "state": "evaluated"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0",
+          "eth0"
+        ],
+        "other_ip": 5,
+        "outbound": 2,
+        "received": 10,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "profile-miss",
+      "exit_code": 1,
+      "fixture": "patient-valid.json",
+      "fixture_sha256": "5f387ba2f750de4e80cbd9ad8523079d9a787035dcbcb37aa63c80e124a2a372",
+      "message_ids": [],
+      "outcome_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "internal-network",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/not-acquired|9.9.9"
+      ],
+      "state": "worker-crashed"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0",
+          "eth0"
+        ],
+        "other_ip": 1,
+        "outbound": 0,
+        "received": 1,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "package-miss",
+      "exit_code": -1,
+      "fixture": "patient-valid.json",
+      "fixture_sha256": "5f387ba2f750de4e80cbd9ad8523079d9a787035dcbcb37aa63c80e124a2a372",
+      "message_ids": [],
+      "outcome_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "packages": [
+        "readmit.not.staged#1.0.0"
+      ],
+      "placement": "internal-network",
+      "profiles": [],
+      "state": "package-unavailable"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0"
+        ],
+        "other_ip": 0,
+        "outbound": 0,
+        "received": 0,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "egress-probe",
+      "exit_code": 0,
+      "fixture": "patient-egress-probe.json",
+      "fixture_sha256": "429e131dcf1b11f7a92669c0bc2216a02333a3a7dacdabad91dfddcac318bb90",
+      "message_ids": [
+        "TYPE_SPECIFIC_CHECKS_DT_CANONICAL_RESOLVE",
+        "Terminology_TX_NoValid_15",
+        "VALIDATION_VAL_PROFILE_SIGNPOST",
+        "VALIDATION_VAL_PROFILE_UNKNOWN_NOT_POLICY",
+        "http://hl7.org/fhir/StructureDefinition/DomainResource#dom-6"
+      ],
+      "outcome_sha256": "9da0c0b28c440333c3d05e3019c9f92774f0f8928a4ed7758ce541afaf384e75",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "no-network",
+      "profiles": [],
+      "state": "evaluated"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0"
+        ],
+        "other_ip": 0,
+        "outbound": 0,
+        "received": 0,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "path-probe",
+      "exit_code": 0,
+      "fixture": "patient-path-probe.json",
+      "fixture_sha256": "704fb228b87d0971e850c800b0f38b8f950dd3ef036045e302f159d95a1951a1",
+      "message_ids": [
+        "Terminology_TX_NoValid_15",
+        "VALIDATION_VAL_PROFILE_SIGNPOST",
+        "VALIDATION_VAL_PROFILE_UNKNOWN_NOT_POLICY",
+        "http://hl7.org/fhir/StructureDefinition/DomainResource#dom-6"
+      ],
+      "outcome_sha256": "51fc5f0b27867f2fcfdfd1cc7464a88ea49eace9ad1a8e6c1ad8b5b8bb3e6dde",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "no-network",
+      "profiles": [],
+      "state": "evaluated"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0"
+        ],
+        "other_ip": 0,
+        "outbound": 0,
+        "received": 0,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "terminology-miss",
+      "exit_code": 0,
+      "fixture": "observation-code-valid.json",
+      "fixture_sha256": "8e4939bbb551e6771d328604f336c251484195b808c5ce6278a1c3da2230b9d7",
+      "message_ids": [
+        "All_observations_should_have_a_performer",
+        "All_observations_should_have_an_effectiveDateTime_or_an_effectivePeriod",
+        "Terminology_TX_ValueSet_NotFound",
+        "VALIDATION_VAL_PROFILE_SIGNPOST",
+        "http://hl7.org/fhir/StructureDefinition/DomainResource#dom-6"
+      ],
+      "outcome_sha256": "e6edfda228484193b40060aa7d94d66eb550ba2fd2ed22e67b3bcbfe069d5427",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "no-network",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/missing-terminology|1.0.0"
+      ],
+      "state": "evaluated"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0"
+        ],
+        "other_ip": 0,
+        "outbound": 0,
+        "received": 0,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "profile-miss",
+      "exit_code": 1,
+      "fixture": "patient-valid.json",
+      "fixture_sha256": "5f387ba2f750de4e80cbd9ad8523079d9a787035dcbcb37aa63c80e124a2a372",
+      "message_ids": [],
+      "outcome_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "packages": [
+        "readmit.synthetic.validation#1.0.0"
+      ],
+      "placement": "no-network",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/not-acquired|9.9.9"
+      ],
+      "state": "worker-crashed"
+    },
+    {
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0"
+        ],
+        "other_ip": 0,
+        "outbound": 0,
+        "received": 0,
+        "tcp": 0,
+        "udp": 0
+      },
+      "case": "package-miss",
+      "exit_code": -1,
+      "fixture": "patient-valid.json",
+      "fixture_sha256": "5f387ba2f750de4e80cbd9ad8523079d9a787035dcbcb37aa63c80e124a2a372",
+      "message_ids": [],
+      "outcome_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "packages": [
+        "readmit.not.staged#1.0.0"
+      ],
+      "placement": "no-network",
+      "profiles": [],
+      "state": "package-unavailable"
+    }
+  ],
+  "controls": [
+    {
+      "canary_requests": [
+        1,
+        0
+      ],
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0",
+          "eth0"
+        ],
+        "other_ip": 0,
+        "outbound": 6,
+        "received": 13,
+        "tcp": 10,
+        "udp": 0
+      },
+      "dial": {
+        "connected": true
+      },
+      "placement": "internal-network"
+    },
+    {
+      "canary_requests": [
+        1,
+        0
+      ],
+      "capture": {
+        "dropped": 0,
+        "interfaces": [
+          "lo",
+          "tunl0",
+          "gre0",
+          "gretap0",
+          "erspan0",
+          "ip_vti0",
+          "ip6_vti0",
+          "sit0",
+          "ip6tnl0",
+          "ip6gre0"
+        ],
+        "other_ip": 0,
+        "outbound": 0,
+        "received": 0,
+        "tcp": 0,
+        "udp": 0
+      },
+      "dial": {
+        "connected": false
+      },
+      "placement": "no-network"
+    }
+  ],
+  "date": "2026-09-27",
+  "engine": {
+    "arch": "arm64",
+    "os": "linux",
+    "version": "29.8.0"
+  },
+  "failures": [],
+  "filesystem": {
+    "image_write_blocked": true,
+    "input_write_blocked": true,
+    "outside_write_blocked": true,
+    "work_execution_blocked": true,
+    "work_file_created": true
+  },
+  "probe": {
+    "image": "sha256:f6adf4e7c2789987b6f6d87e9f004c4fce3956630aa4218881b81609807d7083",
+    "source_sha256": "cc28c7eb7cb964604af8c9eb55d4801ee93a1d139375bdd48f1673817aedb21f"
+  },
+  "schema": "readmit-fhir-validator-containment/v1",
+  "worker_image": "sha256:577fcbc84b47cc81931c94e2f74da02a38a848271bf3566b3cd295a7455fbde5"
+}

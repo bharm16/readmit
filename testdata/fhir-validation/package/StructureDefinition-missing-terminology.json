@@ -1,0 +1,26 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "missing-terminology",
+  "url": "https://readmit.example/fhir/StructureDefinition/missing-terminology",
+  "version": "1.0.0",
+  "name": "missingterminology",
+  "status": "active",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Observation",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Observation",
+  "derivation": "constraint",
+  "fhirVersion": "4.0.1",
+  "differential": {
+    "element": [
+      {
+        "id": "Observation.code",
+        "path": "Observation.code",
+        "binding": {
+          "strength": "required",
+          "valueSet": "https://readmit.example/fhir/ValueSet/not-acquired|9.9.9"
+        }
+      }
+    ]
+  }
+}
