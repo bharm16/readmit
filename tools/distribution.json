@@ -51,6 +51,7 @@
     "docs/test-runner.md",
     "docs/connected-tests.md",
     "docs/connected-transports.md",
+    "docs/typed-datasets.md",
     "docs/durable-runs.md",
     "docs/customer-runner.md",
     "docs/customer-ci.md",

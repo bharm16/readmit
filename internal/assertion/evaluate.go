@@ -173,14 +173,7 @@ func (s Set) Evaluate(ctx context.Context, evidence Evidence) (Report, error) {
 			report.Skipped++
 		}
 	}
-	switch {
-	case report.Failed > 0:
-		report.Verdict = VerdictFail
-	case report.Undecided > 0 || report.Passed == 0:
-		report.Verdict = VerdictUndecided
-	default:
-		report.Verdict = VerdictPass
-	}
+	report.Verdict = overallVerdict(report.Passed, report.Failed, report.Undecided)
 	return report, nil
 }
 

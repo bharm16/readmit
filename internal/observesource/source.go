@@ -160,8 +160,8 @@ type Extraction struct {
 	// RecordKey locates the value that identifies one observed record. It is
 	// the whole of what this collector reads out of a record: a key it can
 	// count, compare between samples, and correlate what the run produced
-	// against. No field value is retained, so nothing patient-identifying
-	// crosses into a completion record.
+	// against. Only keys reach the historical completion contract. Keys can themselves
+	// identify a person and remain customer-local sensitive evidence.
 	RecordKey importer.Locator `json:"record_key"`
 }
 

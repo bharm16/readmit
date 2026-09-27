@@ -9,12 +9,15 @@ import (
 )
 
 const (
-	TestSchema      = "readmit-connected-test/v1"
-	PlanSchema      = "readmit-execution-plan/v1"
-	ResultSchema    = "readmit-execution-result/v1"
-	AnalysisSchema  = "readmit-execution-analysis/v1"
-	OperatorVersion = "readmit-assertion-set/v1"
-	MaxBytes        = 16 << 20
+	TestSchema        = "readmit-connected-test/v1"
+	TestSchemaV2      = "readmit-connected-test/v2"
+	PlanSchemaV2      = "readmit-execution-plan/v2"
+	PlanSchema        = "readmit-execution-plan/v1"
+	ResultSchema      = "readmit-execution-result/v1"
+	AnalysisSchema    = "readmit-execution-analysis/v1"
+	OperatorVersion   = "readmit-assertion-set/v1"
+	OperatorVersionV2 = "readmit-dataset-assertion-set/v1"
+	MaxBytes          = 16 << 20
 )
 
 // Reference binds an exact local dependency to one project. File is a relative
@@ -97,6 +100,8 @@ type Completion struct {
 	MaxBytes   int        `json:"max_bytes"`
 }
 type Dataset struct {
+	Namespace  string     `json:"namespace,omitzero"`
+	Projection *Reference `json:"projection,omitzero"`
 	ID         string     `json:"id"`
 	Kind       string     `json:"kind"`
 	Phase      string     `json:"phase"`
