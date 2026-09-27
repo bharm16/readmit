@@ -61,12 +61,18 @@ func ExecuteWithClock(ctx context.Context, p *Prepared, instance, output string,
 	if _, err := authority.Check(ctx, p.transport.Binding()); err != nil {
 		return Result{}, err
 	}
-	w, err := artifactdir.Create(output, intervalFamily, artifactdir.Durable)
+	schema := SchemaV2
+	if p.sequence {
+		schema = PhaseSchema
+	}
+	f := intervalFamily
+	f.Seal = artifactdir.DirectoryHash(schema)
+	w, err := artifactdir.Create(output, f, artifactdir.Durable)
 	if err != nil {
 		return Result{}, err
 	}
 	defer w.Close()
-	r := IntervalRun{Boundaries: map[string]string{}, Schema: SchemaV2, Summary: Result{Schema: SchemaV2, Plan: p.plan.Identity(), Instance: instance, State: "incomplete", Verdict: assertion.VerdictUndecided, Phase: "arming", StartedAt: time.Now().UTC(), Observations: map[string]string{}, Armed: map[string]string{}}, Intervals: map[string]string{}, Acquisitions: map[string][]string{}}
+	r := IntervalRun{Boundaries: map[string]string{}, Schema: schema, Summary: Result{Schema: schema, Plan: p.plan.Identity(), Instance: instance, State: "incomplete", Verdict: assertion.VerdictUndecided, Phase: "arming", StartedAt: time.Now().UTC(), Observations: map[string]string{}, Armed: map[string]string{}}, Intervals: map[string]string{}, Acquisitions: map[string][]string{}}
 	if put(w, "started.json", r.Summary) != nil || w.Mkdir("observations") != nil || w.Mkdir("intervals") != nil || p.plan.Write(ctx, filepath.Join(w.Path(), "plan")) != nil || w.Sync() != nil {
 		return Result{}, invalid
 	}
@@ -283,6 +289,11 @@ func ExecuteWithClock(ctx context.Context, p *Prepared, instance, output string,
 		}
 		if state.last != nil {
 			evidence[state.source.definition.ID] = state.last
+		}
+		// A cancelled subsequent acquisition can clear last while the interval
+		// still retains its previous final snapshot. Name the journal's actual
+		// retained evidence even when coverage is insufficient.
+		if state.result.FinalSnapshot != "" {
 			r.Summary.Observations[state.source.definition.ID] = "intervals/" + state.source.definition.ID + "/" + state.result.FinalSnapshot
 		}
 	}
@@ -314,3 +325,5 @@ func ExecuteWithClock(ctx context.Context, p *Prepared, instance, output string,
 	r.Summary.Phase = "finished"
 	return finish()
 }
+
+const PhaseSchema = "readmit-connected-phase/v1"

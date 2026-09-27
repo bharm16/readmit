@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	Schema = "readmit-run/v1"
+	Schema         = "readmit-run/v1"
+	SequenceSchema = "readmit-sequence-run/v1"
 	// TargetSchema is the contract a run manifest's recorded transport is read
 	// back under. TargetSchemaV2 adds the credential reference below and
 	// TargetSchemaV3 adds the named environment; every version is read
@@ -183,6 +184,7 @@ type Mapping struct {
 // Plan is sealed by Prepare. Inspect it through methods returning private copies;
 // caller edits cannot change the validated endpoint or bytes Execute will use.
 type Plan struct {
+	sequence       bool
 	scoped         bool
 	sourcePath     string
 	sourceInfo     os.FileInfo

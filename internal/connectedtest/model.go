@@ -10,6 +10,8 @@ import (
 
 const (
 	TestSchema        = "readmit-connected-test/v1"
+	PhaseTestSchema   = "readmit-connected-phase-test/v1"
+	PhasePlanSchema   = "readmit-connected-phase-plan/v1"
 	TestSchemaV3      = "readmit-connected-test/v3"
 	PlanSchemaV3      = "readmit-execution-plan/v3"
 	TestSchemaV2      = "readmit-connected-test/v2"
@@ -209,3 +211,5 @@ type RevisionEvidence struct {
 }
 
 const RevisionEvidenceSchema = "readmit-target-revision-evidence/v1"
+
+func intervalTest(schema string) bool { return schema == TestSchemaV3 || schema == PhaseTestSchema }

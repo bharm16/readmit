@@ -20,15 +20,25 @@ import (
 // sockets, TLS handshakes, output writes, or mutation of source evidence. Empty
 // selection means all message events; ACKs/unparsed evidence are never sent.
 func Prepare(sourcePath string, target Target, options Options) (*Plan, error) {
-	return prepareLocal(sourcePath, target, options, false)
+	return prepareLocal(sourcePath, target, options, false, false)
 }
 
 // PrepareScoped validates an explicitly selected connected target offline.
 // Only SendScoped can present its separately authorized client identity.
 func PrepareScoped(sourcePath string, target Target, options Options) (*Plan, error) {
-	return prepareLocal(sourcePath, target, options, true)
+	return prepareLocal(sourcePath, target, options, true, false)
 }
-func prepareLocal(sourcePath string, target Target, options Options, scoped bool) (*Plan, error) {
+
+// PrepareScopedSequence preserves the explicitly authored selection order and
+// repeated original occurrences under readmit-sequence-run/v1. Legacy selection remains
+// a set in source order and still refuses duplicate IDs.
+func PrepareScopedSequence(sourcePath string, target Target, options Options) (*Plan, error) {
+	if len(options.Occurrences) < 1 || len(options.Occurrences) > MaxMessages {
+		return nil, errors.New("sequence requires a bounded explicit selection")
+	}
+	return prepareLocal(sourcePath, target, options, true, true)
+}
+func prepareLocal(sourcePath string, target Target, options Options, scoped, sequence bool) (*Plan, error) {
 	resolved, err := filepath.EvalSymlinks(sourcePath)
 	if err != nil {
 		return nil, errors.New("cannot resolve source bundle directory")
@@ -75,20 +85,31 @@ func prepareLocal(sourcePath string, target Target, options Options, scoped bool
 	}
 	selected := make(map[string]bool)
 	for _, id := range options.Occurrences {
-		if selected[id] {
+		if selected[id] && !sequence {
 			return nil, errors.New("duplicate occurrence selection")
 		}
 		selected[id] = true
 	}
-	p := &Plan{scoped: scoped, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), Durability: options.Durability}, changes: []Change{}}
+	p := &Plan{sequence: sequence, scoped: scoped, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), Durability: options.Durability}, changes: []Change{}}
 	rebases := make(map[string][]byte)
 	total := 0
-	for _, event := range source.Events {
-		if len(options.Occurrences) > 0 && !selected[event.ID] {
+	events := source.Events
+	if sequence {
+		events = nil
+		for _, id := range options.Occurrences {
+			at := slices.IndexFunc(source.Events, func(e bundle.Event) bool { return e.ID == id })
+			if at < 0 {
+				return nil, errors.New("unknown occurrence selection")
+			}
+			events = append(events, source.Events[at])
+		}
+	}
+	for _, event := range events {
+		if !sequence && len(options.Occurrences) > 0 && !selected[event.ID] {
 			continue
 		}
 		if event.Kind != bundle.Message {
-			if selected[event.ID] {
+			if selected[event.ID] || sequence {
 				return nil, errors.New("selected occurrence is not a message")
 			}
 			continue

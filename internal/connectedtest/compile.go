@@ -36,18 +36,24 @@ var invalid = errors.New("invalid connected test contract")
 // Compile has no ambient inputs, resolver, dialer, clock or secret provider.
 // Dependencies are supplied bytes; even a network-shaped reference is refused.
 func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Plan, error) {
+	return compile(raw, supplied, generation, false)
+}
+func compile(raw []byte, supplied map[string][]byte, generation Generation, phase bool) (*Plan, error) {
 	var d Test
 	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil {
 		return nil, invalid
 	}
-	operatorVersion := OperatorVersion
-	if d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3 {
-		operatorVersion = OperatorVersionV2
-	}
-	if (d.Schema != TestSchema && d.Schema != TestSchemaV2 && d.Schema != TestSchemaV3) || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
+	if d.Schema == PhaseTestSchema && !phase {
 		return nil, invalid
 	}
-	if (d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3) && (d.Checks.Schema != assertion.DatasetSchema || d.Bindings != (Bindings{})) {
+	operatorVersion := OperatorVersion
+	if d.Schema == TestSchemaV2 || intervalTest(d.Schema) {
+		operatorVersion = OperatorVersionV2
+	}
+	if (d.Schema != TestSchema && d.Schema != TestSchemaV2 && !intervalTest(d.Schema)) || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
+		return nil, invalid
+	}
+	if (d.Schema == TestSchemaV2 || intervalTest(d.Schema)) && (d.Checks.Schema != assertion.DatasetSchema || d.Bindings != (Bindings{})) {
 		return nil, invalid
 	}
 	if d.Limits.MaxSteps < 1 || d.Limits.MaxSteps > 256 || d.Limits.MaxBytes < 1 || d.Limits.MaxBytes > MaxBytes || d.Limits.DeadlineMS < 1 || d.Limits.DeadlineMS > 3600000 || len(d.Steps) < 1 || len(d.Steps) > d.Limits.MaxSteps {
@@ -73,7 +79,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			}
 		}
 	}
-	if d.Schema != TestSchemaV3 {
+	if !intervalTest(d.Schema) {
 		var fields struct {
 			Datasets []struct {
 				Completion map[string]jsontext.Value `json:"completion"`
@@ -93,11 +99,14 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 		return nil, err
 	}
 	planSchema := PlanSchema
-	if d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3 {
+	if d.Schema == TestSchemaV2 || intervalTest(d.Schema) {
 		planSchema = PlanSchemaV2
 	}
-	if d.Schema == TestSchemaV3 {
+	if intervalTest(d.Schema) {
 		planSchema = PlanSchemaV3
+	}
+	if d.Schema == PhaseTestSchema {
+		planSchema = PhasePlanSchema
 	}
 	p := &Plan{document: PlanDocument{Schema: planSchema, TestIdentity: Digest(canonical), Test: d, Environment: d.Environment, Generation: generation, Resolution: map[string]string{}}, files: map[string][]byte{"test.json": canonical}}
 	total := len(canonical)
@@ -274,7 +283,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 		effect := "fhir-request"
 		if s.V2 != nil {
 			effect = "v2-send"
-			if !occurrence.MatchString(s.V2.Occurrence) || occurrences[s.V2.Occurrence] {
+			if !occurrence.MatchString(s.V2.Occurrence) || d.Schema != PhaseTestSchema && occurrences[s.V2.Occurrence] {
 				return nil, invalid
 			}
 			occurrences[s.V2.Occurrence] = true
@@ -364,10 +373,10 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 	}
 	for _, ds := range d.Datasets {
 		c := ds.Completion
-		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources", "typed-rows"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !(d.Schema == TestSchemaV3 && slices.Contains([]string{"full-horizon", "processing-barrier"}, c.Kind) || d.Schema != TestSchemaV3 && slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind)) || c.HorizonMS < 1 || d.Schema == TestSchemaV3 && c.HorizonMS > 300000 || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
+		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources", "typed-rows"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !(intervalTest(d.Schema) && slices.Contains([]string{"full-horizon", "processing-barrier"}, c.Kind) || !intervalTest(d.Schema) && slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind)) || c.HorizonMS < 1 || intervalTest(d.Schema) && c.HorizonMS > 300000 || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
 			return nil, invalid
 		}
-		if d.Schema == TestSchemaV3 {
+		if intervalTest(d.Schema) {
 			if c.Policy == nil || ds.Kind != "typed-rows" {
 				return nil, invalid
 			}
@@ -386,7 +395,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			return nil, invalid
 		}
 		if ds.Kind == "typed-rows" {
-			if d.Schema != TestSchemaV2 && d.Schema != TestSchemaV3 || !identifier.MatchString(ds.Namespace) || !hash.MatchString(ds.Source) || ds.Projection == nil || d.Schema != TestSchemaV3 && c.Kind != "bounded-horizon" {
+			if d.Schema != TestSchemaV2 && !intervalTest(d.Schema) || !identifier.MatchString(ds.Namespace) || !hash.MatchString(ds.Source) || ds.Projection == nil || !intervalTest(d.Schema) && c.Kind != "bounded-horizon" {
 				return nil, invalid
 			}
 			raw, err := resolve(*ds.Projection, dataset.ProjectionSchema)
@@ -394,7 +403,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 				return nil, err
 			}
 			projection, err := dataset.DecodeProjection(raw)
-			if err != nil || projection.Limits.MaxRows > c.MaxRecords || projection.Limits.MaxBytes > c.MaxBytes || d.Schema != TestSchemaV3 && projection.Limits.TimeoutMS > c.HorizonMS {
+			if err != nil || projection.Limits.MaxRows > c.MaxRecords || projection.Limits.MaxBytes > c.MaxBytes || !intervalTest(d.Schema) && projection.Limits.TimeoutMS > c.HorizonMS {
 				return nil, invalid
 			}
 		} else if ds.Namespace != "" || ds.Projection != nil {
@@ -410,7 +419,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			}
 		}
 	}
-	if d.Checks.Schema == assertion.DatasetSchema && (d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3) {
+	if d.Checks.Schema == assertion.DatasetSchema && (d.Schema == TestSchemaV2 || intervalTest(d.Schema)) {
 		raw, err := resolve(d.Checks, assertion.DatasetSchema)
 		if err != nil {
 			return nil, err

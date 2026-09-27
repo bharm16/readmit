@@ -62,7 +62,11 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 		return nil, nil, err
 	}
 	now := time.Now().UTC()
-	r := &Run{Manifest: Manifest{Schema: Schema, State: "in_progress", ContainsSourceValues: true, ExportPolicy: "customer-local-only", SourceBundleIdentity: plan.sourceIdentity, Target: plan.Target(), StartedAt: now, MessageCount: len(plan.messages), Mappings: plan.Mappings(), Transformations: slices.Clone(plan.options.Transformations), Changes: cloneChanges(plan.changes)}, payloads: make(map[string][]byte)}
+	schema := Schema
+	if plan.sequence {
+		schema = SequenceSchema
+	}
+	r := &Run{Manifest: Manifest{Schema: schema, State: "in_progress", ContainsSourceValues: true, ExportPolicy: "customer-local-only", SourceBundleIdentity: plan.sourceIdentity, Target: plan.Target(), StartedAt: now, MessageCount: len(plan.messages), Mappings: plan.Mappings(), Transformations: slices.Clone(plan.options.Transformations), Changes: cloneChanges(plan.changes)}, payloads: make(map[string][]byte)}
 	if r.Manifest.Transformations == nil {
 		r.Manifest.Transformations = []Transformation{}
 	}
@@ -88,7 +92,7 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 	}
 	// The folder holding the run is synced last, so one this run cannot open
 	// is refused here, before anything is created or sent.
-	run, err := artifactdir.Create(path, runFamily, plan.options.Durability)
+	run, err := artifactdir.Create(path, runFamilyFor(schema), plan.options.Durability)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -198,7 +202,7 @@ func Open(path string) (*Run, error) {
 	if err := json.Unmarshal(files["manifest.json"], &r.Manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid run manifest")
 	}
-	if r.Manifest.Schema != Schema {
+	if r.Manifest.Schema != Schema && r.Manifest.Schema != SequenceSchema {
 		return nil, errors.New("unsupported run bundle schema version")
 	}
 	if r.Manifest.State != "complete" {
@@ -206,7 +210,7 @@ func Open(path string) (*Run, error) {
 	}
 	marker := files["identity.sha256"]
 	delete(files, "identity.sha256")
-	r.Identity = identityFor(files)
+	r.Identity = artifactdir.Identity(r.Manifest.Schema, files)
 	if string(marker) != r.Identity+"\n" {
 		return nil, errors.New("run identity does not match contents")
 	}
@@ -253,7 +257,7 @@ func validateRun(r *Run) error {
 	previousSource := ""
 	for i, e := range r.Events {
 		mapping := m.Mappings[i]
-		if e.OutboundOccurrence != fmt.Sprintf("o%06d", i+1) || mapping.OutboundOccurrence != e.OutboundOccurrence || mapping.SourceOccurrence != e.SourceOccurrence || !occurrencePattern.MatchString(e.SourceOccurrence) || e.SourceOccurrence <= previousSource {
+		if e.OutboundOccurrence != fmt.Sprintf("o%06d", i+1) || mapping.OutboundOccurrence != e.OutboundOccurrence || mapping.SourceOccurrence != e.SourceOccurrence || !occurrencePattern.MatchString(e.SourceOccurrence) || m.Schema == Schema && e.SourceOccurrence <= previousSource {
 			return invalid
 		}
 		previousSource = e.SourceOccurrence
@@ -389,4 +393,10 @@ func readFiles(path string) (map[string][]byte, error) {
 // paths and contents. No source path, filesystem time, or absolute path enters it.
 func identityFor(files map[string][]byte) string {
 	return artifactdir.Identity(Schema, files)
+}
+
+func runFamilyFor(schema string) artifactdir.Family {
+	f := runFamily
+	f.Seal = artifactdir.DirectoryHash(schema)
+	return f
 }

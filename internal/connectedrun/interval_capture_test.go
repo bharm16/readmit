@@ -158,7 +158,7 @@ func TestConnectedCaptureStartsBeforeACKAndRetainsLateDuplicate(t *testing.T) {
 	target.notifications = make(chan int, 2)
 	prepared, address := capturePrepared(t, dir, target)
 	var beforeACK atomic.Int32
-	target.output = func(_ int, _ string) { independentOutput(t, address, "run-one"); beforeACK.Add(1) }
+	target.setOutput(func(_ int, _ string) { independentOutput(t, address, "run-one"); beforeACK.Add(1) })
 	clock := &intervalClock{base: time.Now().UTC(), waits: make(chan chan time.Duration)}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

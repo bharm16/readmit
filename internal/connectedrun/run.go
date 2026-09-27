@@ -60,7 +60,7 @@ func (a liveAuthority) Check(ctx context.Context, b networkaction.Binding) (netw
 	if ctx.Err() != nil || a.prepared.unchanged() != nil {
 		return networkaction.Actor{}, invalid
 	}
-	return a.authority.Check(ctx, b)
+	return a.authority.Check(ctx, scopeStore(b, a.prepared.store))
 }
 
 // Execute owns the complete supported run: arm/baseline, send once, wait the

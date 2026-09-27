@@ -25,7 +25,7 @@ func Open(ctx context.Context, directory string) (Result, error) {
 	var head struct {
 		Schema string `json:"schema"`
 	}
-	if headerErr == nil && json.Unmarshal(header, &head) == nil && head.Schema == SchemaV2 {
+	if headerErr == nil && json.Unmarshal(header, &head) == nil && (head.Schema == SchemaV2 || head.Schema == PhaseSchema) {
 		return openIntervals(ctx, directory)
 	}
 	files, err := artifactdir.Read(directory, family.Layout)

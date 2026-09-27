@@ -32,12 +32,18 @@ func Inspect(directory string) (Result, error) {
 	if err != nil {
 		return Result{}, refused
 	}
+	return InspectRetained(files)
+}
+
+// InspectRetained reports the same interrupted v1 facts from one held byte map.
+// It reconstructs neither execution authority nor manual confirmation.
+func InspectRetained(files map[string][]byte) (Result, error) {
 	p, err := readPlan(files)
 	if err != nil {
 		return Result{}, err
 	}
 	if _, ok := files["identity.sha256"]; ok {
-		return Open(directory)
+		return openSnapshot(files)
 	}
 	result := Result{Schema: ResultSchema, Plan: p.identity, Scope: p.document.Scope, Setup: "interrupted", Cleanup: "not-started", Entries: []Entry{}, Resources: []Resource{}, Manual: []ManualClaim{}}
 	if raw, ok := files["setup.json"]; ok {

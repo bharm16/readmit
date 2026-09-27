@@ -16,6 +16,7 @@ import (
 )
 
 const ReceiptSchema = "readmit-connected-transport/v1"
+const ReceiptSchemaV2 = "readmit-connected-transport/v2"
 
 type Receipt struct {
 	Schema      string                    `json:"schema"`
@@ -71,12 +72,18 @@ func Execute(ctx context.Context, p *Prepared, authority Authority, instance, ou
 	if err != nil {
 		return Receipt{}, refused
 	}
-	w, err := artifactdir.Create(output, family, artifactdir.Durable)
+	schema := ReceiptSchema
+	if p.sequence {
+		schema = ReceiptSchemaV2
+	}
+	f := family
+	f.Seal = artifactdir.DirectoryHash(schema)
+	w, err := artifactdir.Create(output, f, artifactdir.Durable)
 	if err != nil {
 		return Receipt{}, refused
 	}
 	defer w.Close()
-	r := Receipt{Schema: ReceiptSchema, Instance: instance, Binding: p.binding, Actor: actor, Environment: p.plan.Document().Environment, State: "incomplete", ApplicationVerdict: "not-evaluated"}
+	r := Receipt{Schema: schema, Instance: instance, Binding: p.binding, Actor: actor, Environment: p.plan.Document().Environment, State: "incomplete", ApplicationVerdict: "not-evaluated"}
 	if put(w, "started.json", r) != nil {
 		return Receipt{}, refused
 	}

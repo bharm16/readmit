@@ -120,8 +120,8 @@ func startTarget(t *testing.T, dir string) *target {
 					if disconnect {
 						return
 					}
-					if s.output != nil {
-						s.output(int(ordinal), raw)
+					if output := s.getOutput(); output != nil {
+						output(int(ordinal), raw)
 					}
 					ack := "MSH|^~\\&|TARGET|LAB|SENDER|LAB|20260101000000||ACK|ACK|P|2.5.1\rMSA|AA|" + control + "\r"
 					c.Write(append(append([]byte{11}, []byte(ack)...), 28, 13))
@@ -572,3 +572,10 @@ func TestConnectedRuntimeRejectsResealedReadinessProjectionAndNetworkScope(t *te
 		})
 	}
 }
+
+func (s *target) setOutput(output func(int, string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.output = output
+}
+func (s *target) getOutput() func(int, string) { s.mu.Lock(); defer s.mu.Unlock(); return s.output }
