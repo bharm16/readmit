@@ -125,7 +125,10 @@ only the selected ADT_A01, SIU_S12, ORM_O01 and ORU_R01 order/cardinality paths,
 not every message in each family or the complete field vocabulary. The entire
 report stays nonpassing where required fields, usage or terminology are absent.
 
-ORM_O01 is absent from the adopted 2.7.1/2.8.2 sources. Those cells explicitly
+ORM_O01 is absent from the adopted 2.7.1/2.8.2 sources. The version-specific
+standard chapters also state that ORM was withdrawn as of v2.7; the separate
+source and applicability evidence is recorded in the
+[coverage-gap matrix](profile-coverage-gaps.json). Those cells explicitly
 produce `base-message-structure-unavailable`; no newer order message substitutes
 for it. In earlier nHapi versions the ORDER_DETAIL constructor declares all six
 order-detail segments required and supplies no choice flag. The finite ORM
@@ -138,6 +141,13 @@ fixture, its hash, selected structure, exact source pack and tested level.
 The exact extracted content and incorporated HL7 terms still need the owner's
 redistribution review under D1/ADR-0009. The normalizer always records `pending`;
 software does not approve rights. No new upstream pack is shipped.
+
+Rights approval, technical coverage and distribution are separate completion
+checks. The [source map](profile-source-map.json) identifies the actual files and
+notices behind the withheld outputs. The [gap matrix](profile-coverage-gaps.json)
+names the remaining version/constraint work, source needs, tests and affected
+claims. The [bounded distribution proposal](profile-redistribution-review.md)
+does not approve the proposed package or waive technical gaps.
 
 Composite metadata is now evaluated explicitly within the two wire levels.
 Upstream component usage absent from nHapi, terminology requirements beyond

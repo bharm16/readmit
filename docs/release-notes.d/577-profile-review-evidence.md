@@ -1,0 +1,1 @@
+- Documents exact profile source provenance, a proposed notice/source arrangement, and separate technical coverage and distribution gates. The seven upstream-derived packs remain withheld pending review and qualification.

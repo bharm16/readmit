@@ -9,6 +9,8 @@
     "docs/profile-packs.md",
     "docs/profile-extraction-v2-receipt.json",
     "docs/profile-redistribution-review.md",
+    "docs/profile-source-map.json",
+    "docs/profile-coverage-gaps.json",
     "testdata/fixtures/profile-pack.json",
     "testdata/fixtures/profile-pack-refused.json",
     "docs/profile-library.md",

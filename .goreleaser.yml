@@ -32,6 +32,8 @@ archives:
       - docs/profile-packs.md
       - docs/profile-extraction-v2-receipt.json
       - docs/profile-redistribution-review.md
+      - docs/profile-source-map.json
+      - docs/profile-coverage-gaps.json
       - docs/profile-library.md
       - docs/local-profiles.md
       - docs/profile-versions.md
