@@ -154,3 +154,7 @@ var r4ResourceTypes = map[string]bool{
 	"VerificationResult":                true,
 	"VisionPrescription":                true,
 }
+
+// KnownResourceType reports membership in the fixed FHIR R4 4.0.1 ResourceType
+// vocabulary. It does not claim projection support, permission or conformance.
+func KnownResourceType(name string) bool { return r4ResourceTypes[name] }
