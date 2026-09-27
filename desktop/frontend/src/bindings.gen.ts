@@ -1619,8 +1619,11 @@ export interface DiagnosisRuleInfo {
   id: string;
   ruleset: string;
   name: string;
-  severity?: string;
+  severity?: DiagnosisSeverity;
 }
+
+/** internal/diagnose.Severity */
+export type DiagnosisSeverity = "error" | "warning" | "info";
 
 /** internal/diagnose.SourceWindow */
 export interface DiagnosisSourceWindow {
@@ -2080,6 +2083,14 @@ export interface ExportReviewView {
   unresolved: number;
 }
 
+/** internal/desktop.ExportSettingsResult */
+export interface ExportSettingsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  path?: string;
+}
+
 /** internal/desktop.ExportTestResult */
 export interface ExportTestResult {
   state: State;
@@ -2364,6 +2375,20 @@ export interface FindingReviewSummary {
   decisions: number;
 }
 
+/** internal/desktop.FindingRow */
+export interface FindingRow {
+  id: string;
+  rule_id: string;
+  classification: DiagnosisClassification;
+  profile: string;
+  ruleset: string;
+  summary: string;
+  window?: string;
+  evidence: DiagnosisEvidence[];
+  severity?: DiagnosisSeverity;
+  labels: Record<string, string>;
+}
+
 /** internal/findingreview.Scope */
 export type FindingScope = "finding" | "occurrence" | "case";
 
@@ -2402,6 +2427,8 @@ export interface FindingsAnalysis {
   current: boolean;
   review?: ItemRef;
   diagnosis: Diagnosis;
+  matching: number;
+  findings: FindingRow[];
 }
 
 /** internal/desktop.FindingsRequest */
@@ -2411,6 +2438,7 @@ export interface FindingsRequest {
   identity: string;
   analysis?: ItemRef;
   offset: number;
+  severities?: DiagnosisSeverity[];
 }
 
 /** internal/desktop.FindingsResult */
@@ -7920,7 +7948,9 @@ export interface ShellResult {
 /** internal/desktop.SimilarFinding */
 export interface SimilarFinding {
   case: ItemRef;
+  member: number;
   finding: string;
+  occurrences: string[];
 }
 
 /** internal/desktop.SimilarGroup */
@@ -7950,6 +7980,7 @@ export interface SimilarRequest {
   cases: ItemRef[];
   profile: AnalysisProfileRef;
   save: boolean;
+  name?: string;
 }
 
 /** internal/desktop.SimilarResult */
@@ -7960,6 +7991,7 @@ export interface SimilarResult {
   members: SimilarMember[];
   groups: SimilarGroup[];
   saved?: ItemRef;
+  name?: string;
 }
 
 /** internal/desktop.SourceAccessResult */
@@ -9527,6 +9559,7 @@ export interface Facade {
   ExplainHubCustody(): Promise<HubResult>;
   ExplainObservation(request: ObservationExplainRequest): Promise<ObservationCompletionResult>;
   ExplainRun(request: RunExplanationRequest): Promise<RunExplanationResult>;
+  ExportAnalysisSettings(request: ItemRequest): Promise<ExportSettingsResult>;
   ExportAssertionSet(request: CanonicalAssertionRequest): Promise<CanonicalAssertionResult>;
   ExportDerivedPacket(request: PrivacyExportRequest): Promise<PrivacyExportResult>;
   ExportInstalledLicense(): Promise<LicenseExportResult>;
@@ -9549,6 +9582,7 @@ export interface Facade {
   GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
   Guide(workspace: string): Promise<GuideResult>;
   HubStatus(): Promise<HubResult>;
+  ImportAnalysisSettings(request: RequestContext): Promise<ItemDraftResult>;
   ImportAssertionSet(workspace: string, entry: string): Promise<AssertionSetResult>;
   ImportProfilePackage(request: ProfilePackageImportRequest): Promise<ProfilePackageResult>;
   ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
@@ -9623,6 +9657,7 @@ export interface Facade {
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   OpenSequenceAnalysis(workspace: string, entry: string): Promise<SequenceAnalysisResult>;
+  OpenSimilarFindings(request: ItemRequest): Promise<SimilarResult>;
   OpenSuite(workspace: string, entry: string): Promise<SuiteDocumentResult>;
   OpenSyntheticPacket(path: string): Promise<SyntheticPacketResult>;
   OpenTransformPlan(workspace: string, entry: string): Promise<TransformPlanResult>;

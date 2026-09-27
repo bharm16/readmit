@@ -1,16 +1,22 @@
 package desktop
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 // Analysis settings are named diagnosis configurations: the
@@ -293,4 +299,115 @@ func (c *loadedCatalog) offeredConfigs() map[string]bool {
 		}
 	}
 	return offered
+}
+
+// ImportAnalysisSettings opens a readmit-diagnose-config/v1 file a person
+// chose as a new, unsaved analysis-settings draft of the open project, named
+// after the file. The file is read through the strict parser `readmit
+// diagnose --config` applies, and its configuration is answered exactly as
+// read: one naming a profile or ruleset this release does not define stays
+// that, never changed into one it runs. Nothing is saved.
+func (a *App) ImportAnalysisSettings(request RequestContext) ItemDraftResult {
+	return run(a, true, false, func(ctx context.Context) ItemDraftResult {
+		result := ItemDraftResult{Context: request}
+		if loaded, declined := a.loadCatalog(ctx, request, false); loaded == nil {
+			result.refuse(declined.state, declined.reason)
+			return result
+		}
+		files, declined := a.chooseFiles(ctx, "Import analysis settings", "Analysis settings", "*.json")
+		if len(files) == 0 {
+			result.refuse(declined.state, declined.reason)
+			return result
+		}
+		config, err := readAnalysisSettingsFile(files[0])
+		if err != nil {
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		draft := ItemDraft{AnalysisSettings: &config}
+		if name := strings.TrimSuffix(filepath.Base(files[0]), filepath.Ext(files[0])); catalog.ValidName(name) {
+			draft.Name = name
+		}
+		result.State, result.New, result.Ref, result.Draft, result.Problems = Completed, true, &ItemRef{Kind: AnalysisSettingsItem}, &draft, []FieldProblem{}
+		return result
+	})
+}
+
+// ExportSettingsResult is where exported analysis settings were written.
+type ExportSettingsResult struct {
+	State   State          `json:"state"`
+	Reason  string         `json:"reason,omitzero"`
+	Context RequestContext `json:"context"`
+	Path    string         `json:"path,omitzero"`
+}
+
+func (r *ExportSettingsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// ExportAnalysisSettings writes the exact bytes of an analysis-settings
+// object's current revision, the readmit-diagnose-config/v1 document `readmit
+// diagnose --config` reads, to a new file the person names in the save
+// dialog, and reads them back. The saved document is written as it is, never
+// regenerated. A reference naming a revision that is no longer current is
+// refused.
+func (a *App) ExportAnalysisSettings(request ItemRequest) ExportSettingsResult {
+	return run(a, true, true, func(ctx context.Context) ExportSettingsResult {
+		result := ExportSettingsResult{Context: request.Context}
+		if request.Ref.Kind != AnalysisSettingsItem {
+			result.refuse(Failed, "only analysis settings are exported as analysis settings")
+			return result
+		}
+		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Ref, false)
+		if loaded == nil {
+			result.refuse(refused.State, refused.Reason)
+			return result
+		}
+		record := loaded.document.Items[loaded.document.Find(item.Ref.ID)]
+		if request.Ref.Revision != "" && request.Ref.Revision != record.RevisionLabel() {
+			result.refuse(Failed, "the analysis settings changed since they were shown; look at them again")
+			return result
+		}
+		paths, availability, reason := loaded.backing(record)
+		if availability != ItemAvailable {
+			result.refuse(Failed, reason)
+			return result
+		}
+		data, err := boundedFile(paths[primaryRole(AnalysisSettingsItem)], diagnose.MaxConfigBytes)
+		if err == nil {
+			_, err = diagnose.ParseConfig(data)
+		}
+		if err != nil {
+			result.refuse(Failed, "these analysis settings cannot be read: "+err.Error())
+			return result
+		}
+		name := strings.Map(func(r rune) rune {
+			if r == '/' || r == '\\' || r == ':' {
+				return '-'
+			}
+			return r
+		}, cmp.Or(item.Name, "analysis settings"))
+		named, declined := a.chooseNamedDestination(ctx, "Export analysis settings", name+".json")
+		if named == "" {
+			result.refuse(declined.state, declined.reason)
+			return result
+		}
+		destination, err := artifactpath.Destination(named)
+		if err != nil {
+			result.refuse(Failed, "analysis settings are exported outside retained evidence")
+			return result
+		}
+		if _, err := os.Lstat(destination); !errors.Is(err, fs.ErrNotExist) {
+			result.refuse(Failed, "a file is already there; name a new file for the analysis settings")
+			return result
+		}
+		if err := operation.WriteNewFile(destination, data, "cannot create the file", "cannot write the file"); err != nil {
+			result.refuse(Failed, "the analysis settings must be exported to a new file in a folder this account can write")
+			return result
+		}
+		if written, err := os.ReadFile(destination); err != nil || !bytes.Equal(written, data) {
+			result.refuse(Failed, "the exported analysis settings could not be verified after writing")
+			return result
+		}
+		result.State, result.Path = Completed, destination
+		return result
+	})
 }

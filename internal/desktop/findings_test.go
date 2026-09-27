@@ -9,6 +9,7 @@ package desktop_test
 import (
 	"context"
 	"encoding/json/v2"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -153,8 +154,9 @@ func TestOpenCaseFindingsReadsTheLatestAnalysisOfThisExactCaseVersion(t *testing
 		t.Fatalf("settings: %+v", settings)
 	}
 	third := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Settings: settings.Saved}, "press-4")
-	if now := app.OpenCaseFindings(request); now.Analysis == nil || now.Analysis.Ref != third.Analysis.Ref || !now.Analysis.Current {
-		t.Fatalf("after analyzing under settings: %+v", now)
+	if now := app.OpenCaseFindings(request); now.Analysis == nil || now.Analysis.Ref != third.Analysis.Ref || !now.Analysis.Current ||
+		now.Analysis.ProfileName != "Acknowledgements only" {
+		t.Fatalf("after analyzing under settings, named by them: %+v", now)
 	}
 	if name := historyName(third.Analysis.Ref); name != "Acknowledgements only" {
 		t.Fatalf("History names the analysis under saved settings %q", name)
@@ -168,7 +170,7 @@ func TestOpenCaseFindingsReadsTheLatestAnalysisOfThisExactCaseVersion(t *testing
 		t.Fatalf("after the settings changed the old analysis still reads as current: %+v", now)
 	}
 	older.Analysis = &third.Analysis.Ref
-	if kept := app.OpenCaseFindings(older); kept.Analysis == nil || kept.Analysis.Current {
+	if kept := app.OpenCaseFindings(older); kept.Analysis == nil || kept.Analysis.Current || kept.Analysis.ProfileName != "SIU" {
 		t.Fatalf("the analysis under the old settings: %+v", kept)
 	}
 	if name := historyName(third.Analysis.Ref); name != "" {
@@ -343,7 +345,7 @@ func TestSavedFindingReviewIsTheDecisionsReadmitDiagnoseReviewReads(t *testing.T
 	app, project, acked, identity := findingsProject(t)
 	root := project.Project
 	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
-	findings := made.Analysis.Diagnosis.Findings
+	findings := made.Analysis.Findings
 	if len(findings) < 2 {
 		t.Fatalf("the fixture's findings: %+v", findings)
 	}
@@ -422,7 +424,7 @@ func TestSavedFindingReviewIsTheDecisionsReadmitDiagnoseReviewReads(t *testing.T
 func TestFindingReviewRefusesAChangedAnalysisAndAStaleBase(t *testing.T) {
 	app, project, acked, identity := findingsProject(t)
 	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
-	finding := made.Analysis.Diagnosis.Findings[0].ID
+	finding := made.Analysis.Findings[0].ID
 	confirm := []findingreview.Decision{{Finding: finding, Verdict: findingreview.Confirmed, Rationale: "Seen in production"}}
 
 	// A review made while looking at other report bytes is refused.
@@ -480,7 +482,7 @@ func TestFindingReviewRefusesAChangedAnalysisAndAStaleBase(t *testing.T) {
 func TestUndoPublishesANewRevisionAndKeepsHistory(t *testing.T) {
 	app, project, acked, identity := findingsProject(t)
 	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
-	findings := made.Analysis.Diagnosis.Findings
+	findings := made.Analysis.Findings
 	first := []findingreview.Decision{
 		{Finding: findings[0].ID, Verdict: findingreview.Confirmed, Rationale: "Reproduced"},
 		{Finding: findings[1].ID, Verdict: findingreview.Dismissed, Rationale: "Expected in test"},
@@ -582,6 +584,12 @@ func TestSimilarFindingsKeepsAnUnreadableCaseAsARowAndGroupsTheRest(t *testing.T
 				t.Fatalf("the unreadable case is grouped: %+v", group)
 			}
 		}
+		// Each member finding names the messages its evidence references.
+		for _, member := range group.Members {
+			if len(member.Occurrences) == 0 || len(slices.Compact(slices.Clone(member.Occurrences))) != len(member.Occurrences) {
+				t.Fatalf("group %d member %+v references no messages, or one twice", i, member)
+			}
+		}
 	}
 	if compared.Saved != nil || len(slices.DeleteFunc(entriesOf(t, root), func(name string) bool { return !strings.HasPrefix(name, "grouping-") })) != 0 {
 		t.Fatal("a comparison nobody saved was written")
@@ -589,6 +597,10 @@ func TestSimilarFindingsKeepsAnUnreadableCaseAsARowAndGroupsTheRest(t *testing.T
 	// Saved, it is an analysis of the project, in each compared case's
 	// History.
 	request.Save = true
+	if unnamed := app.FindSimilarFindings(request); unnamed.State != desktop.Failed || unnamed.Saved != nil {
+		t.Fatalf("an unnamed comparison was saved: %+v", unnamed)
+	}
+	request.Name = "Acknowledgement errors"
 	saved := app.FindSimilarFindings(request)
 	if saved.Saved == nil {
 		t.Fatalf("saved comparison: %+v", saved)
@@ -604,5 +616,261 @@ func TestSimilarFindingsKeepsAnUnreadableCaseAsARowAndGroupsTheRest(t *testing.T
 	cancel()
 	if stopped := desktop.FindSimilarFindingsWithinForTest(app, ctx, request); stopped.State != desktop.Cancelled || stopped.Saved != nil {
 		t.Fatalf("a stopped comparison: %+v", stopped)
+	}
+}
+
+// The Findings view lists an analysis's findings the error first, then the
+// warning, each in the engine's order; the severities chosen list only the
+// findings of rules declaring them; and each evidence field carries the
+// bundled label the inspector names it by. The report is the engine's,
+// unchanged.
+func TestOpenCaseFindingsListsBySeverityAndFiltersByIt(t *testing.T) {
+	app, project, _, _ := findingsProject(t)
+	var inputs []bundle.Input
+	for _, name := range []string{"diagnose-booking.hl7", "diagnose-booking.hl7", "diagnose-ack.hl7"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "fixtures", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs = append(inputs, bundle.Input{Path: "SYNTHETIC-FIXTURE", Data: data})
+	}
+	written := writeInputs(t, project.Project, "repeated", inputs)
+	repeated := caseAt(t, app, project, "repeated")
+	made := analyzed(t, app, project, repeated, written.Identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
+	retained, err := diagnose.OpenReport(filepath.Join(project.Project, analysisEntries(t, project.Project)[0]), diagnose.Reading{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := retained.Report.Findings
+	if made.Analysis.Diagnosis.Total != len(engine) || made.Analysis.Matching != len(engine) || len(made.Analysis.Findings) != len(engine) ||
+		len(made.Analysis.Diagnosis.Findings) != 0 {
+		t.Fatalf("findings %+v of the engine's %d", made.Analysis, len(engine))
+	}
+	order := map[string]int{}
+	for i, finding := range engine {
+		order[finding.ID] = i
+	}
+	sawWarning := false
+	for i, row := range made.Analysis.Findings {
+		if row.Severity != diagnose.RuleSeverity(row.RuleID) || row.Severity == "" {
+			t.Fatalf("row %d of rule %s has severity %q", i, row.RuleID, row.Severity)
+		}
+		if engine[order[row.ID]].Summary != row.Summary {
+			t.Fatalf("row %d is not the engine's finding: %+v", i, row)
+		}
+		if i > 0 {
+			before := made.Analysis.Findings[i-1]
+			if before.Severity.Rank() < row.Severity.Rank() || before.Severity == row.Severity && order[before.ID] > order[row.ID] {
+				t.Fatalf("rows %d and %d are out of order: %s %s", i-1, i, before.RuleID, row.RuleID)
+			}
+		}
+		sawWarning = sawWarning || row.Severity == diagnose.SeverityWarning
+		for field, label := range row.Labels {
+			if label == "" || !slices.ContainsFunc(row.Evidence, func(evidence diagnose.Evidence) bool { return evidence.Field == field }) {
+				t.Fatalf("row %d labels %q %q", i, field, label)
+			}
+		}
+	}
+	if !sawWarning || made.Analysis.Findings[0].Severity != diagnose.SeverityError {
+		t.Fatalf("the fixture lists no error before a warning: %+v", made.Analysis.Findings)
+	}
+	duplicate := made.Analysis.Findings[slices.IndexFunc(made.Analysis.Findings, func(row desktop.FindingRow) bool { return row.RuleID == diagnose.DuplicateControl })]
+	if duplicate.Labels["MSH-10"] != "Message Control ID" {
+		t.Fatalf("the repeated control ID's evidence is not labelled: %+v", duplicate.Labels)
+	}
+	// Only warnings, then a severity no finding has.
+	request := desktop.FindingsRequest{Context: project, Case: repeated.Ref, Identity: written.Identity, Severities: []diagnose.Severity{diagnose.SeverityWarning}}
+	warnings := app.OpenCaseFindings(request)
+	if warnings.State != desktop.Completed || warnings.Analysis == nil || warnings.Analysis.Matching == 0 || warnings.Analysis.Matching >= len(engine) ||
+		warnings.Analysis.Diagnosis.Total != len(engine) {
+		t.Fatalf("warnings: %+v", warnings)
+	}
+	for _, row := range warnings.Analysis.Findings {
+		if row.Severity != diagnose.SeverityWarning {
+			t.Fatalf("a %s finding under the warning filter", row.Severity)
+		}
+	}
+	request.Severities = []diagnose.Severity{diagnose.SeverityInfo}
+	if none := app.OpenCaseFindings(request); none.State != desktop.Empty || none.Analysis == nil || none.Analysis.Matching != 0 || len(none.Analysis.Findings) != 0 {
+		t.Fatalf("no information finding: %+v", none)
+	}
+}
+
+// A review is authoring: a window whose activation admits no authoring is
+// refused before anything is recorded, and the analysis stays unreviewed.
+func TestFindingReviewSaveIsRefusedWithoutAuthorAdmission(t *testing.T) {
+	app, project, acked, identity := findingsProject(t)
+	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
+	draft := desktop.FindingReviewDraft{Analysis: made.Analysis.Ref, ReportSHA256: made.Analysis.ReportSHA256,
+		Decisions: []findingreview.Decision{{Finding: made.Analysis.Findings[0].ID, Verdict: findingreview.Confirmed, Rationale: "Reproduced"}}}
+	refused := windowWith(t, "").SaveItem(desktop.SaveItemRequest{Context: project, Kind: desktop.FindingReviewItem, IntentID: "review-1",
+		Draft: desktop.ItemDraft{FindingReview: &draft}})
+	if refused.State != desktop.PermissionDenied || refused.Outcome != desktop.FailedOutcome || refused.Saved != nil {
+		t.Fatalf("an unadmitted review save: %+v", refused)
+	}
+	if reviews := app.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.FindingReviewItem}); reviews.Page == nil || len(reviews.Page.Items) != 0 {
+		t.Fatalf("a refused review was recorded: %+v", reviews)
+	}
+	if history := app.FindingReviewHistory(desktop.ItemRequest{Context: project, Ref: made.Analysis.Ref}); history.State != desktop.Empty || history.Review != nil {
+		t.Fatalf("the analysis reads as reviewed: %+v", history)
+	}
+}
+
+// A saved comparison carries the name it was saved under into History and
+// reopens from there as the comparison it recorded: its cases and its groups
+// exactly as saved, with nothing analyzed again. Evidence the project no
+// longer holds stays a row saying so.
+func TestASavedComparisonReopensWithItsNameAndCases(t *testing.T) {
+	app, project, acked, _ := findingsProject(t)
+	regression := caseAt(t, app, project, "regression")
+	saved := app.FindSimilarFindings(desktop.SimilarRequest{Context: project, Cases: []desktop.ItemRef{acked.Ref, regression.Ref},
+		Profile: desktop.AnalysisProfileRef{Builtin: "siu"}, Save: true, Name: " Acknowledgement errors "})
+	if saved.Saved == nil || saved.Name != "Acknowledgement errors" || len(saved.Groups) == 0 {
+		t.Fatalf("saved: %+v", saved)
+	}
+	history := app.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.AnalysisItem, Filter: desktop.CatalogFilter{RelatedCase: &acked.Ref}})
+	if history.Page == nil || !slices.ContainsFunc(history.Page.Items, func(item desktop.CatalogItem) bool {
+		return item.Ref.ID == saved.Saved.ID && item.Name == "Acknowledgement errors" && item.Summary.Analysis.Form == "grouping"
+	}) {
+		t.Fatalf("the named comparison is not in History: %+v", history)
+	}
+	before := entriesOf(t, project.Project)
+	reopened := app.OpenSimilarFindings(desktop.ItemRequest{Context: project, Ref: *saved.Saved})
+	if reopened.State != desktop.Completed || reopened.Name != "Acknowledgement errors" || reopened.Saved == nil || reopened.Saved.ID != saved.Saved.ID {
+		t.Fatalf("reopened: %+v", reopened)
+	}
+	if len(reopened.Members) != 2 || !slices.ContainsFunc(reopened.Members, func(member desktop.SimilarMember) bool {
+		return member.Case.ID == acked.Ref.ID && member.State == desktop.SimilarAnalyzed && member.Name != ""
+	}) || !slices.ContainsFunc(reopened.Members, func(member desktop.SimilarMember) bool {
+		return member.Case.ID == regression.Ref.ID && member.State == desktop.SimilarAnalyzed
+	}) {
+		t.Fatalf("reopened members: %+v", reopened.Members)
+	}
+	if len(reopened.Groups) != len(saved.Groups) {
+		t.Fatalf("reopened groups %+v, saved %+v", reopened.Groups, saved.Groups)
+	}
+	for i, group := range reopened.Groups {
+		want := saved.Groups[i]
+		if group.Signature != want.Signature || group.RuleName != want.RuleName || !slices.Equal(group.Cases, want.Cases) || len(group.Members) != len(want.Members) {
+			t.Fatalf("group %d: %+v, saved %+v", i, group, want)
+		}
+		for j, member := range group.Members {
+			if member.Finding != want.Members[j].Finding || !slices.Equal(member.Occurrences, want.Members[j].Occurrences) {
+				t.Fatalf("group %d member %d: %+v, saved %+v", i, j, member, want.Members[j])
+			}
+		}
+	}
+	if after := entriesOf(t, project.Project); !slices.Equal(before, after) {
+		t.Fatalf("reopening wrote %v", after)
+	}
+	// Once the project no longer holds a compared case, it stays a row.
+	if removed := app.RemoveCaseFromProject(desktop.ItemRequest{Context: project, Ref: regression.Ref}); removed.State != desktop.Completed {
+		t.Fatalf("remove: %+v", removed)
+	}
+	kept := app.OpenSimilarFindings(desktop.ItemRequest{Context: project, Ref: *saved.Saved})
+	if kept.State != desktop.Completed || len(kept.Members) != 2 || !slices.ContainsFunc(kept.Members, func(member desktop.SimilarMember) bool {
+		return member.State == desktop.SimilarUnavailable && member.Reason != "" && member.Case.ID == "" && member.Name != ""
+	}) {
+		t.Fatalf("a comparison with a case the project no longer holds: %+v", kept.Members)
+	}
+	// Each grouped finding names the compared case it came from by position.
+	for _, group := range kept.Groups {
+		for _, member := range group.Members {
+			if member.Member < 0 || member.Member >= len(kept.Members) || kept.Members[member.Member].Case != member.Case {
+				t.Fatalf("a grouped finding names no compared case: %+v", member)
+			}
+		}
+	}
+	// A diagnosis is not a saved comparison.
+	analysis := analyzed(t, app, project, acked, caseIdentityOf(t, app, project.Project, "acked"), desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
+	if refused := app.OpenSimilarFindings(desktop.ItemRequest{Context: project, Ref: analysis.Analysis.Ref}); refused.State != desktop.Failed {
+		t.Fatalf("a diagnosis opened as a comparison: %+v", refused)
+	}
+}
+
+// Analysis settings a vendor wrote for a profile this release does not
+// define import as a draft exactly as read, save under a name unchanged,
+// and export as the bytes the project saved: the configuration identity an
+// analysis names them by is the same on every side.
+func TestImportedAnalysisSettingsStayAsReadAndExportWritesTheSavedBytes(t *testing.T) {
+	app, dialogs, project := casesProject(t)
+	vendor := diagnose.Config{Schema: diagnose.ConfigSchema, Profile: "vendor-siu-v7", Ruleset: "vendor-siu-diagnosis/v7",
+		Rules: []string{"vendor.custom-rule"}, Namespaces: []diagnose.Namespace{}}
+	data, err := json.Marshal(vendor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "Vendor scheduling.json")
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dialogs.files = []string{file}
+	before := entriesOf(t, project.Project)
+	imported := app.ImportAnalysisSettings(project)
+	if imported.State != desktop.Completed || !imported.New || imported.Draft == nil || imported.Draft.Name != "Vendor scheduling" ||
+		imported.Draft.AnalysisSettings == nil || imported.Draft.AnalysisSettings.Profile != vendor.Profile ||
+		imported.Draft.AnalysisSettings.Ruleset != vendor.Ruleset || !slices.Equal(imported.Draft.AnalysisSettings.Rules, vendor.Rules) {
+		t.Fatalf("imported: %+v", imported)
+	}
+	if after := entriesOf(t, project.Project); !slices.Equal(before, after) {
+		t.Fatalf("importing wrote %v", after)
+	}
+	saved := app.SaveItem(desktop.SaveItemRequest{Context: project, Kind: desktop.AnalysisSettingsItem, IntentID: "settings-1", Draft: *imported.Draft})
+	if saved.Saved == nil {
+		t.Fatalf("saving the imported settings: %+v", saved)
+	}
+	listed := app.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.AnalysisSettingsItem})
+	if listed.Page == nil || len(listed.Page.Items) != 1 || listed.Page.Items[0].Name != "Vendor scheduling" ||
+		listed.Page.Items[0].Summary.AnalysisSettings.Supported || listed.Page.Items[0].Summary.AnalysisSettings.Profile != vendor.Profile {
+		t.Fatalf("the saved settings: %+v", listed)
+	}
+	destination := filepath.Join(t.TempDir(), "exported.json")
+	dialogs.destination = destination
+	exported := app.ExportAnalysisSettings(desktop.ItemRequest{Context: project, Ref: *saved.Saved})
+	if exported.State != desktop.Completed || exported.Path == "" || dialogs.named[len(dialogs.named)-1] != "Vendor scheduling.json" {
+		t.Fatalf("export: %+v %v", exported, dialogs.named)
+	}
+	written, err := os.ReadFile(exported.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened := app.OpenItemDraft(desktop.ItemRequest{Context: project, Ref: *saved.Saved})
+	if opened.Draft == nil || opened.Draft.AnalysisSettings == nil {
+		t.Fatalf("the saved draft: %+v", opened)
+	}
+	reread, err := diagnose.ParseConfig(written)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := diagnose.ConfigSHA256(vendor)
+	if got, _ := diagnose.ConfigSHA256(reread); got != want {
+		t.Fatalf("the exported settings are configuration %s, imported %s", got, want)
+	}
+	// The one saved revision's member is the one file of the project's store
+	// declaring the configuration contract.
+	var savedBytes []byte
+	if err := filepath.WalkDir(project.Project, func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() {
+			if content, err := os.ReadFile(path); err == nil && strings.HasPrefix(string(content), "{\n  \"schema\": \"readmit-diagnose-config/v1\"") {
+				if savedBytes != nil {
+					t.Fatalf("two files declare the configuration contract: %s", path)
+				}
+				savedBytes = content
+			}
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if savedBytes == nil || string(written) != string(savedBytes) {
+		t.Fatalf("the exported bytes are not the saved revision's:\n%s\n%s", written, savedBytes)
+	}
+	if again := app.ExportAnalysisSettings(desktop.ItemRequest{Context: project, Ref: *saved.Saved}); again.State != desktop.Failed {
+		t.Fatalf("an existing file was replaced: %+v", again)
+	}
+	stale := *saved.Saved
+	stale.Revision = "9"
+	if refused := app.ExportAnalysisSettings(desktop.ItemRequest{Context: project, Ref: stale}); refused.State != desktop.Failed {
+		t.Fatalf("a revision that is not current was exported: %+v", refused)
 	}
 }

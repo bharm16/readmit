@@ -104,17 +104,40 @@ func Refuses(item Unsupported) bool {
 	return false
 }
 
+// Severity is how much one rule's findings matter to a person, as this
+// release declares it for the rule. It is display metadata only: a report,
+// its identity and the command line's output never carry it, and it is never
+// derived from a rule's name or a finding's summary.
+type Severity string
+
+const (
+	SeverityError   Severity = "error"
+	SeverityWarning Severity = "warning"
+	SeverityInfo    Severity = "info"
+)
+
+// Rank orders severities for a person: an error before a warning before
+// information, and all of them before a rule with no declared severity.
+func (s Severity) Rank() int {
+	switch s {
+	case SeverityError:
+		return 3
+	case SeverityWarning:
+		return 2
+	case SeverityInfo:
+		return 1
+	}
+	return 0
+}
+
 // RuleInfo names one rule of one registered ruleset for a person: its
-// identifier, the ruleset it belongs to and a short human name.
-//
-// Severity is reserved. No ruleset declares one yet, and a severity is a
-// product claim about a rule rather than something to derive from its name
-// or its summary, so every rule answers it empty until a ruleset declares it.
+// identifier, the ruleset it belongs to, a short human name and the severity
+// this release declares for it, when it declares one.
 type RuleInfo struct {
-	ID       string `json:"id"`
-	Ruleset  string `json:"ruleset"`
-	Name     string `json:"name"`
-	Severity string `json:"severity,omitzero"`
+	ID       string   `json:"id"`
+	Ruleset  string   `json:"ruleset"`
+	Name     string   `json:"name"`
+	Severity Severity `json:"severity,omitzero"`
 }
 
 // ruleNames are the human names of every registered rule. A rule shared by
@@ -138,12 +161,37 @@ var ruleNames = map[string]string{
 	StatusProgression:          "Conflicting final status",
 }
 
+// ruleSeverities are the severities this release declares for its rules. A
+// rule shared by several rulesets has one severity.
+var ruleSeverities = map[string]Severity{
+	DuplicateControl:           SeverityWarning,
+	ACKOutcome:                 SeverityError,
+	ACKError:                   SeverityError,
+	RequiredField:              SeverityError,
+	BookingNotObserved:         SeverityWarning,
+	LifecycleRequiredField:     SeverityError,
+	EventTypeMismatch:          SeverityError,
+	VisitNotObserved:           SeverityWarning,
+	AppointmentNotObserved:     SeverityWarning,
+	MergeIdentifierNotObserved: SeverityWarning,
+	ACKStageNotObserved:        SeverityWarning,
+	ACKErrorLocation:           SeverityInfo,
+	OrderRequiredField:         SeverityError,
+	OrderNotObserved:           SeverityWarning,
+	DuplicateOutput:            SeverityWarning,
+	StatusProgression:          SeverityError,
+}
+
+// RuleSeverity is the severity this release declares for one rule, or empty
+// for a rule it does not define.
+func RuleSeverity(rule string) Severity { return ruleSeverities[rule] }
+
 // Rules lists every rule of every registered ruleset, in registration order.
 func Rules() []RuleInfo {
 	var rules []RuleInfo
 	for _, set := range rulesets {
 		for _, rule := range set.rules {
-			rules = append(rules, RuleInfo{ID: rule, Ruleset: set.ruleset, Name: ruleNames[rule]})
+			rules = append(rules, RuleInfo{ID: rule, Ruleset: set.ruleset, Name: ruleNames[rule], Severity: ruleSeverities[rule]})
 		}
 	}
 	return rules

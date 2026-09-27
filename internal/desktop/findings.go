@@ -8,13 +8,16 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/findingreview"
+	"github.com/bharm16/readmit/internal/hl7"
 )
 
 // The Findings view reads a case's analyses as catalog objects. An analysis
@@ -46,28 +49,51 @@ var (
 // FindingsRequest opens the findings of one case. Identity is the verified
 // identity the window displayed for the case. Analysis names one retained
 // analysis of it, from History; left empty, the case's current analysis is
-// read. Offset begins the window of findings.
+// read. Offset begins the window of findings. Severities, when not empty,
+// lists only the findings whose rule declares one of them; a rule with no
+// declared severity matches none.
 type FindingsRequest struct {
-	Context  RequestContext `json:"context"`
-	Case     ItemRef        `json:"case"`
-	Identity string         `json:"identity"`
-	Analysis *ItemRef       `json:"analysis,omitzero"`
-	Offset   int            `json:"offset"`
+	Context    RequestContext      `json:"context"`
+	Case       ItemRef             `json:"case"`
+	Identity   string              `json:"identity"`
+	Analysis   *ItemRef            `json:"analysis,omitzero"`
+	Offset     int                 `json:"offset"`
+	Severities []diagnose.Severity `json:"severities,omitzero"`
+}
+
+// FindingRow is one finding as the Findings view lists it: the engine's
+// finding unchanged, the severity its rule declares, and the bundled label
+// of each evidence field, by field path, where the labels apply to every
+// message that field is evidenced in.
+type FindingRow struct {
+	diagnose.Finding
+	Severity diagnose.Severity `json:"severity,omitzero"`
+	Labels   map[string]string `json:"labels"`
 }
 
 // FindingsAnalysis is one retained analysis as the Findings view shows it:
 // the object, when it was made, the profile it ran under and the identity of
 // the exact report, whether it is the case's current analysis or history, the
-// person's review of it when there is one, and the report windowed.
+// person's review of it when there is one, and the report. Its findings are
+// listed in Findings, not in Diagnosis: the findings the request's severities
+// match (Matching of them), the error first, then the warning, then
+// information and then a rule with no declared severity, each in the
+// engine's order, windowed from the request's offset. Diagnosis.Total stays
+// the engine's count of every finding.
 type FindingsAnalysis struct {
-	Ref          ItemRef   `json:"ref"`
-	CreatedAt    *string   `json:"created_at"`
-	ProfileName  string    `json:"profile_name"`
-	ReportSHA256 string    `json:"report_sha256"`
-	ConfigSHA256 string    `json:"config_sha256"`
-	Current      bool      `json:"current"`
-	Review       *ItemRef  `json:"review,omitzero"`
-	Diagnosis    Diagnosis `json:"diagnosis"`
+	Ref          ItemRef  `json:"ref"`
+	CreatedAt    *string  `json:"created_at"`
+	ProfileName  string   `json:"profile_name"`
+	ReportSHA256 string   `json:"report_sha256"`
+	ConfigSHA256 string   `json:"config_sha256"`
+	Current      bool     `json:"current"`
+	Review       *ItemRef `json:"review,omitzero"`
+	// Diagnosis is the report's summary: its total, ruleset and unsupported
+	// evidence. Its own findings list is always empty; the window of rows is
+	// Findings.
+	Diagnosis Diagnosis    `json:"diagnosis"`
+	Matching  int          `json:"matching"`
+	Findings  []FindingRow `json:"findings"`
 }
 
 // FindingsResult answers one case's findings. Empty with no Analysis is a
@@ -107,7 +133,8 @@ func (a *App) openCaseFindings(ctx context.Context, request FindingsRequest) Fin
 		result.refuse(declined.state, declined.reason)
 		return result
 	}
-	if _, _, declined := openedCase(loaded.root, entry, request.Identity); declined.reason != "" {
+	_, source, declined := openedCase(loaded.root, entry, request.Identity)
+	if declined.reason != "" {
 		result.refuse(declined.state, declined.reason)
 		return result
 	}
@@ -139,12 +166,95 @@ func (a *App) openCaseFindings(ctx context.Context, request FindingsRequest) Fin
 		result.refuse(Failed, err.Error())
 		return result
 	}
-	windowed := windowedDiagnosis(entry, "", retained.Identity, retained.Report, request.Offset)
+	report := retained.Report
+	windowed := windowedDiagnosis(entry, "", retained.Identity, report, 0)
+	rows := findingRows(report.Findings, request.Severities)
+	start := min(request.Offset, len(rows))
+	window := rows[start : start+min(MaxDiagnosisFindings, len(rows)-start)]
+	labelled := evidenceLabeller(source)
+	for i := range window {
+		window[i].Labels = labelled(window[i].Finding)
+	}
 	result.State, result.Reason = windowed.State, windowed.Reason
-	result.Analysis = &FindingsAnalysis{Ref: chosen.Ref, CreatedAt: chosen.CreatedAt, ProfileName: profileName(retained.Report.Profile),
-		ReportSHA256: retained.Identity, ConfigSHA256: retained.Report.ConfigSHA256, Current: current != nil && current.Ref.ID == chosen.Ref.ID,
-		Review: loaded.reviewFor(retained.Identity), Diagnosis: *windowed.Diagnosis}
+	switch {
+	case len(report.Findings) == 0:
+	case len(rows) == 0:
+		result.State, result.Reason = Empty, "no finding of this analysis has the chosen severity"
+	case len(window) == 0:
+		result.State, result.Reason = Empty, "this window begins past the last finding of this diagnosis"
+	}
+	diagnosis := *windowed.Diagnosis
+	diagnosis.Offset, diagnosis.Findings = request.Offset, []diagnose.Finding{}
+	result.Analysis = &FindingsAnalysis{Ref: chosen.Ref, CreatedAt: chosen.CreatedAt,
+		ProfileName:  cmp.Or(loaded.configName(report.ConfigSHA256), profileName(report.Profile)),
+		ReportSHA256: retained.Identity, ConfigSHA256: report.ConfigSHA256, Current: current != nil && current.Ref.ID == chosen.Ref.ID,
+		Review: loaded.reviewFor(retained.Identity), Diagnosis: diagnosis, Matching: len(rows), Findings: window}
 	return result
+}
+
+// findingRows are the findings of one report whose rule declares one of the
+// chosen severities, or every finding when none is chosen: the most severe
+// first, and otherwise in the engine's order. The engine's order is total, so
+// no two rows compare equal.
+func findingRows(findings []diagnose.Finding, severities []diagnose.Severity) []FindingRow {
+	rows := []FindingRow{}
+	for _, finding := range findings {
+		severity := diagnose.RuleSeverity(finding.RuleID)
+		if len(severities) == 0 || severity != "" && slices.Contains(severities, severity) {
+			rows = append(rows, FindingRow{Finding: finding, Severity: severity, Labels: map[string]string{}})
+		}
+	}
+	slices.SortStableFunc(rows, func(x, y FindingRow) int { return cmp.Compare(y.Severity.Rank(), x.Severity.Rank()) })
+	return rows
+}
+
+// evidenceLabeller names the evidence fields of a finding over one opened
+// case with the bundled field labels, exactly as the inspector names a
+// field: by its segment and field position, and only where the labels apply
+// to the message it is evidenced in. A field evidenced in any message the
+// labels do not apply to is left unnamed rather than named by another
+// version's label. Each occurrence is read once.
+func evidenceLabeller(source *bundle.Bundle) func(diagnose.Finding) map[string]string {
+	events := map[string]bundle.Event{}
+	for _, event := range source.Events {
+		events[event.ID] = event
+	}
+	applies := map[string]*dictionary.Dictionary{}
+	labelsOf := func(occurrence string) *dictionary.Dictionary {
+		if held, ok := applies[occurrence]; ok {
+			return held
+		}
+		var labels *dictionary.Dictionary
+		if event, ok := events[occurrence]; ok {
+			if document, err := source.Document(event); err == nil {
+				labels = labelsFor(document, 0)
+			}
+		}
+		applies[occurrence] = labels
+		return labels
+	}
+	return func(finding diagnose.Finding) map[string]string {
+		named, unnamed := map[string]string{}, map[string]bool{}
+		for _, evidence := range finding.Evidence {
+			selector, err := hl7.ParseSelector(evidence.Field)
+			if err != nil || unnamed[evidence.Field] {
+				continue
+			}
+			labels := labelsOf(evidence.Occurrence)
+			parts := selector.Parts()
+			label := ""
+			if labels != nil {
+				label = labels.Label(parts.Segment, parts.Field)
+			}
+			if label == "" {
+				unnamed[evidence.Field] = true
+				delete(named, evidence.Field)
+				continue
+			}
+			named[evidence.Field] = label
+		}
+		return named
+	}
 }
 
 // entryOfID is the project entry the object with id is discovered at.
@@ -348,7 +458,7 @@ func (a *App) analyzeCase(ctx context.Context, request AnalyzeRequest) FindingsR
 		result.refuse(Failed, err.Error())
 		return result
 	}
-	ref, err := a.recordMade(loaded, destination.Name)
+	ref, err := a.recordMade(loaded, destination.Name, "")
 	if err != nil {
 		result.refuse(Failed, "the analysis was written to the project but its date could not be recorded: "+err.Error())
 		return result
@@ -376,10 +486,11 @@ func refRevision(ref *ItemRef) string {
 	return ref.Revision
 }
 
-// recordMade records the analysis object a new entry holds and when the
-// application made it. The object stays a discovered one: its entry is its
-// backing, and no revision is ever saved onto it.
-func (a *App) recordMade(loaded *loadedCatalog, entry string) (ItemRef, error) {
+// recordMade records the analysis object a new entry holds, when the
+// application made it and, when one is given, the name a person gave it. The
+// object stays a discovered one: its entry is its backing, and no revision is
+// ever saved onto it.
+func (a *App) recordMade(loaded *loadedCatalog, entry, name string) (ItemRef, error) {
 	stamp := catalog.Stamp(a.now())
 	var ref ItemRef
 	_, err := loaded.store.Update(a.now(), func(document *catalog.Document) (bool, error) {
@@ -389,6 +500,9 @@ func (a *App) recordMade(loaded *loadedCatalog, entry string) (ItemRef, error) {
 			return false, catalog.ErrNoItem
 		}
 		document.Items[index].CreatedAt, document.Items[index].UpdatedAt = stamp, stamp
+		if name != "" {
+			document.Items[index].Name = name
+		}
 		ref = ItemRef{Kind: AnalysisItem, ID: document.Items[index].ID}
 		return true, nil
 	})
@@ -780,12 +894,14 @@ const (
 )
 
 // SimilarRequest compares the findings of the chosen cases under one profile.
-// Save retains the comparison as a new analysis of the project.
+// Save retains the comparison as a new analysis of the project under Name,
+// which a saved comparison must have.
 type SimilarRequest struct {
 	Context RequestContext     `json:"context"`
 	Cases   []ItemRef          `json:"cases"`
 	Profile AnalysisProfileRef `json:"profile"`
 	Save    bool               `json:"save"`
+	Name    string             `json:"name,omitzero"`
 }
 
 // SimilarMember is one chosen case and what became of it.
@@ -796,10 +912,15 @@ type SimilarMember struct {
 	Reason string             `json:"reason,omitzero"`
 }
 
-// SimilarFinding is one finding of one compared case.
+// SimilarFinding is one finding of one compared case and the occurrences its
+// evidence references, each once, in evidence order.
 type SimilarFinding struct {
-	Case    ItemRef `json:"case"`
-	Finding string  `json:"finding"`
+	Case ItemRef `json:"case"`
+	// Member is the position of its case among the result's members, which
+	// tells two cases the project no longer holds apart.
+	Member      int      `json:"member"`
+	Finding     string   `json:"finding"`
+	Occurrences []string `json:"occurrences"`
 }
 
 // SimilarGroup is one signature the compared cases share: the rule and the
@@ -816,8 +937,8 @@ type SimilarGroup struct {
 }
 
 // SimilarResult answers one comparison: every chosen case as a row, the
-// groups of the cases that were analyzed, and the retained comparison when
-// one was saved.
+// groups of the cases that were analyzed, and the retained comparison, with
+// its name, when one was saved or reopened.
 type SimilarResult struct {
 	State   State           `json:"state"`
 	Reason  string          `json:"reason,omitzero"`
@@ -825,6 +946,7 @@ type SimilarResult struct {
 	Members []SimilarMember `json:"members"`
 	Groups  []SimilarGroup  `json:"groups"`
 	Saved   *ItemRef        `json:"saved,omitzero"`
+	Name    string          `json:"name,omitzero"`
 }
 
 func (r *SimilarResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -851,9 +973,14 @@ func (a *App) findSimilarFindings(ctx context.Context, request SimilarRequest) S
 		result.refuse(Failed, "a comparison reads the cases chosen for it; choose at least one")
 		return result
 	}
+	name := strings.TrimSpace(request.Name)
 	if request.Save {
 		if err := a.admitAuthor(); err != nil {
 			result.refuse(PermissionDenied, err.Error())
+			return result
+		}
+		if !catalog.ValidName(name) {
+			result.refuse(Failed, "a saved comparison is named: "+nameRule)
 			return result
 		}
 	}
@@ -868,7 +995,7 @@ func (a *App) findSimilarFindings(ctx context.Context, request SimilarRequest) S
 		return result
 	}
 	var reports []diagnose.Report
-	cases := map[string]ItemRef{}
+	cases := map[string]int{}
 	seen := map[string]bool{}
 	for _, ref := range request.Cases {
 		if seen[ref.ID] {
@@ -918,7 +1045,7 @@ func (a *App) findSimilarFindings(ctx context.Context, request SimilarRequest) S
 				member.Reason = "this is the same evidence as another chosen case"
 				break
 			}
-			cases[report.CaseIdentity] = member.Case
+			cases[report.CaseIdentity] = len(result.Members)
 			reports = append(reports, report)
 			member.State = SimilarAnalyzed
 		}
@@ -936,28 +1063,10 @@ func (a *App) findSimilarFindings(ctx context.Context, request SimilarRequest) S
 		result.refuse(Failed, err.Error())
 		return result
 	}
-	findings := map[diagnose.FindingReference]diagnose.Finding{}
-	for _, report := range grouping.Cases {
-		for _, finding := range report.Findings {
-			findings[diagnose.FindingReference{CaseIdentity: report.CaseIdentity, FindingID: finding.ID}] = finding
-		}
-	}
-	ruleNames := map[string]string{}
-	for _, rule := range diagnose.Rules() {
-		ruleNames[rule.ID] = rule.Name
-	}
-	for _, group := range grouping.Groups {
-		out := SimilarGroup{Signature: group.Signature, RuleID: group.RuleID, RuleName: ruleNames[group.RuleID], Classification: findings[group.Members[0]].Classification,
-			Cases: []ItemRef{}, Members: []SimilarFinding{}}
-		for _, member := range group.Members {
-			ref := cases[member.CaseIdentity]
-			if !slices.Contains(out.Cases, ref) {
-				out.Cases = append(out.Cases, ref)
-			}
-			out.Members = append(out.Members, SimilarFinding{Case: ref, Finding: member.FindingID})
-		}
-		result.Groups = append(result.Groups, out)
-	}
+	result.Groups = similarGroups(grouping, func(identity string) (ItemRef, int) {
+		at := cases[identity]
+		return result.Members[at].Case, at
+	})
 	result.State = Completed
 	if !request.Save {
 		return result
@@ -974,11 +1083,106 @@ func (a *App) findSimilarFindings(ctx context.Context, request SimilarRequest) S
 		result.refuse(Failed, err.Error())
 		return result
 	}
-	saved, err := a.recordMade(loaded, destination.Name)
+	saved, err := a.recordMade(loaded, destination.Name, name)
 	if err != nil {
-		result.refuse(Failed, "the comparison was written to the project but its date could not be recorded: "+err.Error())
+		result.refuse(Failed, "the comparison was written to the project but its date and name could not be recorded: "+err.Error())
 		return result
 	}
-	result.Saved = &saved
+	result.Saved, result.Name = &saved, name
 	return result
+}
+
+// similarGroups lays out the groups of one grouping, naming each case by the
+// object caseOf answers for its evidence. Every group keeps a row per
+// distinct evidence it occurs in, and every member finding the occurrences
+// its evidence references.
+func similarGroups(grouping diagnose.GroupsReport, caseOf func(identity string) (ItemRef, int)) []SimilarGroup {
+	findings := map[diagnose.FindingReference]diagnose.Finding{}
+	for _, report := range grouping.Cases {
+		for _, finding := range report.Findings {
+			findings[diagnose.FindingReference{CaseIdentity: report.CaseIdentity, FindingID: finding.ID}] = finding
+		}
+	}
+	ruleNames := map[string]string{}
+	for _, rule := range diagnose.Rules() {
+		ruleNames[rule.ID] = rule.Name
+	}
+	groups := []SimilarGroup{}
+	for _, group := range grouping.Groups {
+		out := SimilarGroup{Signature: group.Signature, RuleID: group.RuleID, RuleName: ruleNames[group.RuleID], Classification: findings[group.Members[0]].Classification,
+			Cases: []ItemRef{}, Members: []SimilarFinding{}}
+		seen := map[string]bool{}
+		for _, member := range group.Members {
+			ref, at := caseOf(member.CaseIdentity)
+			if !seen[member.CaseIdentity] {
+				seen[member.CaseIdentity] = true
+				out.Cases = append(out.Cases, ref)
+			}
+			occurrences := []string{}
+			for _, evidence := range findings[member].Evidence {
+				if !slices.Contains(occurrences, evidence.Occurrence) {
+					occurrences = append(occurrences, evidence.Occurrence)
+				}
+			}
+			out.Members = append(out.Members, SimilarFinding{Case: ref, Member: at, Finding: member.FindingID, Occurrences: occurrences})
+		}
+		groups = append(groups, out)
+	}
+	return groups
+}
+
+// OpenSimilarFindings reopens one saved comparison, from History, as the
+// comparison it recorded: every case it compared, each the project's case
+// with that evidence or, where the project no longer holds it, a row saying
+// so, and its groups exactly as saved. A saved comparison records only the
+// cases it compared, so a case that could not be compared when it was saved
+// is not among them. It runs nothing and writes nothing.
+func (a *App) OpenSimilarFindings(request ItemRequest) SimilarResult {
+	return run(a, false, false, func(ctx context.Context) SimilarResult {
+		result := SimilarResult{Context: request.Context, Members: []SimilarMember{}, Groups: []SimilarGroup{}}
+		if request.Ref.Kind != AnalysisItem {
+			result.refuse(Failed, "a saved comparison is one analysis of the project")
+			return result
+		}
+		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Ref, false)
+		if loaded == nil {
+			result.refuse(refused.State, refused.Reason)
+			return result
+		}
+		if item.Summary.Analysis == nil || item.Summary.Analysis.Form != "grouping" {
+			result.refuse(Failed, "this analysis is not a saved comparison")
+			return result
+		}
+		paths, availability, reason := loaded.backing(loaded.document.Items[loaded.document.Find(item.Ref.ID)])
+		if availability != ItemAvailable {
+			result.refuse(Failed, reason)
+			return result
+		}
+		grouping, err := diagnose.OpenGroups(paths[primaryRole(AnalysisItem)])
+		if err != nil {
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		cases := map[string]int{}
+		for _, report := range grouping.Cases {
+			member := SimilarMember{Case: ItemRef{Kind: CaseItem}, Name: "Case no longer in this project", State: SimilarUnavailable,
+				Reason: "the project no longer holds this evidence"}
+			if ref := loaded.caseByIdentity(report.CaseIdentity); ref != nil {
+				held := loaded.read(loaded.document.Items[loaded.document.Find(ref.ID)])
+				member.Case, member.Name, member.State, member.Reason = held.Ref, held.Name, SimilarAnalyzed, ""
+				if member.Name == "" && held.Summary.Case != nil {
+					member.Name = held.Summary.Case.Entry
+				}
+			}
+			cases[report.CaseIdentity] = len(result.Members)
+			result.Members = append(result.Members, member)
+		}
+		result.Groups = similarGroups(grouping, func(identity string) (ItemRef, int) {
+			at := cases[identity]
+			return result.Members[at].Case, at
+		})
+		saved := item.Ref
+		result.State, result.Saved, result.Name = Completed, &saved, item.Name
+		return result
+	})
 }

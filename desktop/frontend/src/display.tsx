@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { BundleMode, SearchField, Theme, DiagnosisClassification, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
+import type { BundleMode, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -92,6 +92,9 @@ export const TEST_CHANGES: DisplayMap<TestChange> = {
 
 /** What kind of claim an analysis finding makes. */
 export const CLASSIFICATIONS: DisplayMap<DiagnosisClassification> = { observed_fact: "Fact", profile_violation: "Violation", hypothesis: "Hypothesis" };
+
+/** How much a finding matters, as its rule declares. */
+export const SEVERITIES: DisplayMap<DiagnosisSeverity> = { error: "Error", warning: "Warning", info: "Info" };
 
 /** Where a finding's review stands. */
 export const FINDING_VERDICTS: DisplayMap<FindingVerdict> = { not_reviewed: "New", confirmed: "Confirmed", dismissed: "Dismissed", suppressed: "Suppressed" };
