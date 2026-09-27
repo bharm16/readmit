@@ -1,0 +1,6 @@
+{
+  "resourceType": "Patient",
+  "id": "synthetic-patient",
+  "active": true,
+  "gender": "female"
+}

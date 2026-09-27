@@ -1,0 +1,28 @@
+{
+  "resourceType": "Patient",
+  "id": "synthetic-patient",
+  "active": true,
+  "name": [
+    {
+      "family": "Synthetic",
+      "given": [
+        "Fixture"
+      ]
+    }
+  ],
+  "gender": "female",
+  "meta": {
+    "profile": [
+      "file:///etc/passwd"
+    ]
+  },
+  "managingOrganization": {
+    "reference": "../../etc/passwd"
+  },
+  "photo": [
+    {
+      "contentType": "text/plain",
+      "url": "file:///etc/passwd"
+    }
+  ]
+}

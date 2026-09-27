@@ -1,0 +1,26 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "required-local-code",
+  "url": "https://readmit.example/fhir/StructureDefinition/required-local-code",
+  "version": "1.0.0",
+  "name": "requiredlocalcode",
+  "status": "active",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Observation",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Observation",
+  "derivation": "constraint",
+  "fhirVersion": "4.0.1",
+  "differential": {
+    "element": [
+      {
+        "id": "Observation.code",
+        "path": "Observation.code",
+        "binding": {
+          "strength": "required",
+          "valueSet": "https://readmit.example/fhir/ValueSet/synthetic-status|1.0.0"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "resourceType": "CodeSystem",
+  "id": "synthetic-status",
+  "url": "https://readmit.example/fhir/CodeSystem/synthetic-status",
+  "version": "1.0.0",
+  "name": "SyntheticStatus",
+  "status": "active",
+  "content": "complete",
+  "caseSensitive": true,
+  "concept": [
+    {
+      "code": "ready"
+    },
+    {
+      "code": "held"
+    }
+  ]
+}

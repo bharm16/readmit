@@ -1,0 +1,73 @@
+{
+  "schema": "readmit-fhir-validator-fixtures/v1",
+  "source": "independently authored synthetic requirements",
+  "cases": [
+    {
+      "input": "patient-valid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/required-patient|1.0.0"
+      ],
+      "expected": "conforms",
+      "because": "The authored name and active constraints are satisfied."
+    },
+    {
+      "input": "patient-profile-invalid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/required-patient|1.0.0"
+      ],
+      "expected": "nonconforms",
+      "because": "The authored readmit-active invariant is false."
+    },
+    {
+      "input": "patient-required-name-missing.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/required-patient|1.0.0"
+      ],
+      "expected": "nonconforms",
+      "because": "The authored minimum name cardinality is not satisfied."
+    },
+    {
+      "input": "observation-base-invalid.json",
+      "profiles": [],
+      "expected": "nonconforms",
+      "because": "The required R4 Observation.status element is absent."
+    },
+    {
+      "input": "observation-code-valid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/required-local-code|1.0.0"
+      ],
+      "expected_if_local_terminology_evaluated": "conforms",
+      "otherwise": "terminology-unavailable"
+    },
+    {
+      "input": "observation-code-invalid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/required-local-code|1.0.0"
+      ],
+      "expected_if_local_terminology_evaluated": "nonconforms",
+      "otherwise": "terminology-unavailable"
+    },
+    {
+      "input": "observation-code-valid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/missing-terminology|1.0.0"
+      ],
+      "expected": "terminology-unavailable"
+    },
+    {
+      "input": "patient-valid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/unsupported-invariant|1.0.0"
+      ],
+      "expected": "invariant-unsupported"
+    },
+    {
+      "input": "patient-valid.json",
+      "profiles": [
+        "https://readmit.example/fhir/StructureDefinition/not-acquired|9.9.9"
+      ],
+      "expected": "profile-unavailable"
+    }
+  ]
+}

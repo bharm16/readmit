@@ -3,6 +3,18 @@
   "program": "bharm16/readmit#244",
   "rows": [
     {
+      "id": "tooling.tools.validator-capability",
+      "source": "tools/validator_capability.py",
+      "kind": "tooling",
+      "capability": "Acquire, build, stage and qualify the optional pinned offline FHIR validator worker",
+      "owner": "bharm16/readmit#582",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "administrator capability build; only acquire uses the network, the image builds and runs without one"}
+    },
+    {
       "id": "tooling.tools.integration-lab",
       "source": "tools/integration_lab.py",
       "kind": "tooling",

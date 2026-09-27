@@ -594,9 +594,10 @@ type declaredObserver struct{}
 // ObserveDeclaredPrograms returns a context under which every program an
 // operator declared that readmit runs reports itself: started is called as the
 // program is about to start, and the function it returns once the program has
-// ended, however it ended. readmit starts a program in exactly two places — a
-// locator's [Locator.Read], and the transfer program a source registration
-// declares — and both report here, so a caller that has to say while such a
+// ended, however it ended. readmit starts a program in exactly three places — a
+// locator's [Locator.Read], the transfer program a source registration
+// declares, and the container engine an administrator selects for FHIR
+// validation — and all report here, so a caller that has to say while such a
 // program is running learns it from the run itself. The observer learns that
 // a program runs and nothing else: not which one, its arguments, or anything
 // it printed.

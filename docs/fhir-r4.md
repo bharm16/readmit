@@ -8,7 +8,8 @@ parallel v2 message model is introduced.
 
 This is an evidence/projection implementation. A parsed resource, a satisfied
 capability requirement or a schema/profile-conformant payload does not establish
-workflow success. Whole-profile/implementation-guide validation remains IG12;
+workflow success. Whole-profile/implementation-guide validation is the optional
+pinned validator worker in [FHIR profile validation](fhir-validation.md);
 protocol acquisition, search completeness and interactions remain IG11. This
 package has no HTTP client, resolver, credential provider or terminology fetch.
 

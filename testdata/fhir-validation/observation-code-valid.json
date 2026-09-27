@@ -1,0 +1,17 @@
+{
+  "resourceType": "Observation",
+  "id": "synthetic-observation",
+  "status": "final",
+  "code": {
+    "coding": [
+      {
+        "system": "https://readmit.example/fhir/CodeSystem/synthetic-status",
+        "version": "1.0.0",
+        "code": "ready"
+      }
+    ]
+  },
+  "subject": {
+    "reference": "Patient/synthetic-patient"
+  }
+}

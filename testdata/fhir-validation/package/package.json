@@ -1,0 +1,13 @@
+{
+  "name": "readmit.synthetic.validation",
+  "version": "1.0.0",
+  "type": "fhir.ig",
+  "license": "UNLICENSED",
+  "canonical": "https://readmit.example/fhir/ig/validation",
+  "fhirVersions": [
+    "4.0.1"
+  ],
+  "dependencies": {
+    "hl7.fhir.r4.core": "4.0.1"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "required-patient",
+  "url": "https://readmit.example/fhir/StructureDefinition/required-patient",
+  "version": "1.0.0",
+  "name": "requiredpatient",
+  "status": "active",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "fhirVersion": "4.0.1",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient",
+        "path": "Patient",
+        "constraint": [
+          {
+            "key": "readmit-active",
+            "severity": "error",
+            "human": "The synthetic patient must be active.",
+            "expression": "active = true",
+            "source": "https://readmit.example/fhir/StructureDefinition/required-patient"
+          }
+        ]
+      },
+      {
+        "id": "Patient.active",
+        "path": "Patient.active",
+        "min": 1
+      },
+      {
+        "id": "Patient.name",
+        "path": "Patient.name",
+        "min": 1
+      }
+    ]
+  }
+}

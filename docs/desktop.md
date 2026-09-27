@@ -670,9 +670,10 @@ reports itself while it runs, whichever engine package starts it, and the
 privacy status's declared-program row is active exactly then, in the sentence
 its operation's name has. The facade's tests hold every operation in the
 reviewed inventory of operations that run a declared program to a name with
-its own sentence, and hold the engine to starting a program in only the two
+its own sentence, and hold the engine to starting a program in only the three
 places that report it: the locator read every credential, key and token goes
-through, and a source's transfer program.
+through, a source's transfer program, and the container engine that runs the
+optional FHIR validation worker. No window operation starts that worker yet.
 
 ## Workspaces and artifacts
 

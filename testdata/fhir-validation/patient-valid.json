@@ -1,0 +1,14 @@
+{
+  "resourceType": "Patient",
+  "id": "synthetic-patient",
+  "active": true,
+  "name": [
+    {
+      "family": "Synthetic",
+      "given": [
+        "Fixture"
+      ]
+    }
+  ],
+  "gender": "female"
+}

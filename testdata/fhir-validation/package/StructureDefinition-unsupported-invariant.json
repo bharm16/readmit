@@ -1,0 +1,31 @@
+{
+  "resourceType": "StructureDefinition",
+  "id": "unsupported-invariant",
+  "url": "https://readmit.example/fhir/StructureDefinition/unsupported-invariant",
+  "version": "1.0.0",
+  "name": "unsupportedinvariant",
+  "status": "active",
+  "kind": "resource",
+  "abstract": false,
+  "type": "Patient",
+  "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+  "derivation": "constraint",
+  "fhirVersion": "4.0.1",
+  "differential": {
+    "element": [
+      {
+        "id": "Patient",
+        "path": "Patient",
+        "constraint": [
+          {
+            "key": "readmit-unsupported",
+            "severity": "error",
+            "human": "The requested synthetic invariant needs an unavailable evaluator function.",
+            "expression": "readmitUnavailableFunction()",
+            "source": "https://readmit.example/fhir/StructureDefinition/unsupported-invariant"
+          }
+        ]
+      }
+    ]
+  }
+}

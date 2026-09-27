@@ -1,0 +1,7 @@
+{
+  "resourceType": "Observation",
+  "id": "synthetic-observation",
+  "code": {
+    "text": "A status is intentionally missing."
+  }
+}

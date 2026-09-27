@@ -185,10 +185,11 @@ func declaredProgramDetail(app *desktop.App) string {
 	return ""
 }
 
-// Readmit starts a program in exactly two places, and both report it to the
+// Readmit starts a program in exactly three places, and each reports it to the
 // observer every operation's context carries: the one read of a locator
 // (secret.Locator.Read), through which every credential, key and token is
-// resolved, and a source's transfer program (evidencesource). No other
+// resolved, a source's transfer program (evidencesource), and the container
+// engine that runs the optional FHIR validation worker (fhirvalidator). No other
 // package the facade can reach imports os/exec or starts a process another
 // way, so no program runs that the declared-program row could miss.
 func TestOnlyDeclaredProgramsAreStarted(t *testing.T) {
@@ -230,9 +231,9 @@ func TestOnlyDeclaredProgramsAreStarted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"../secret/secret.go": true, "../evidencesource/transfer.go": true}
+	want := map[string]bool{"../secret/secret.go": true, "../evidencesource/transfer.go": true, "../fhirvalidator/engine.go": true}
 	if !maps.Equal(starters, want) {
-		t.Errorf("programs are started from %v; only the locator read and the transfer program report themselves (%v)", slices.Sorted(maps.Keys(starters)), slices.Sorted(maps.Keys(want)))
+		t.Errorf("programs are started from %v; only the locator read, the transfer program and the validation engine report themselves (%v)", slices.Sorted(maps.Keys(starters)), slices.Sorted(maps.Keys(want)))
 	}
 	for path := range want {
 		source, err := os.ReadFile(path)

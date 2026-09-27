@@ -1,0 +1,28 @@
+{
+  "resourceType": "Patient",
+  "id": "synthetic-patient",
+  "active": true,
+  "name": [
+    {
+      "family": "Synthetic",
+      "given": [
+        "Fixture"
+      ]
+    }
+  ],
+  "gender": "female",
+  "meta": {
+    "profile": [
+      "https://readmit-egress.invalid/StructureDefinition/not-acquired|9.9.9"
+    ]
+  },
+  "managingOrganization": {
+    "reference": "http://198.51.100.19:8080/Organization/no-fetch"
+  },
+  "photo": [
+    {
+      "contentType": "image/png",
+      "url": "http://198.51.100.20:8080/no-fetch.png"
+    }
+  ]
+}

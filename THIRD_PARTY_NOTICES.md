@@ -40,3 +40,10 @@ and /text (BSD-3-Clause). Their complete license texts and the SQL Server
 driver's vendored-code notices are included in `licenses/`. These clients do
 not bundle database servers, Oracle Instant Client, ODBC, or Java. Driver
 availability and static builds do not qualify any server/version combination.
+
+The optional FHIR validation worker is not in any Readmit archive or package.
+An administrator builds it locally from the official HL7 FHIR validator 6.10.4
+(Apache-2.0, with the dependency notices bundled in its JAR), Eclipse Temurin 21
+(GPL-2.0-only WITH Classpath-exception-2.0), Debian and the HL7 FHIR packages
+(CC0-1.0). The exact pins, SBOMs and bundled license texts are in
+`tools/fhir_validator/`, and each built capability carries them too.
