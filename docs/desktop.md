@@ -1015,8 +1015,11 @@ and a folder that now holds a different project is refused.
 ### One Save per editor
 
 `SaveItem` publishes a whole draft of an Environment (its target and, when it
-has them, its send policy, reset plan and links), a Test or an Observation (a
-source and its window together) as one revision, or nothing.
+has them, its send policy, reset plan and links), a Test, an Observation (a
+source and its window together), Analysis settings (one
+`readmit-diagnose-config/v1` document) or a Finding review (one
+`readmit-finding-decisions/v1` document) as one revision, or nothing, and
+records the local reviewer name as the revision's author.
 The draft is validated first through the readers a save stages it through
 (`ValidateDraft` runs the same step alone and writes nothing). Every member
 is then written as a new file of the project, named by the application,
@@ -1070,6 +1073,35 @@ object, time and project; the draft store is written as
 `readmit-desktop-drafts/v2` only while it holds such a draft. A draft never
 holds an action review, and restoring one resumes an editor, never a send,
 a reset or an approval.
+
+### Findings
+
+The Findings view reads a case's analyses as catalog objects. An analysis is
+the report directory `readmit diagnose` writes, retained as a new
+`analysis-NNN` entry of the project and dated when the application made it;
+no revision is ever saved onto it. `OpenCaseFindings` reads the newest
+analysis of exactly the verified evidence the window displayed, provided the
+configuration it ran under is still offered (a built-in selection or the
+current revision of saved analysis settings); otherwise the case reads as not
+analyzed and the older analysis stays in History, which is `ListCatalog` of
+analyses filtered by `related_case`. `ListAnalysisProfiles` checks every
+built-in and saved profile against the case through the engine's own
+preflight (`diagnose.Check`) and runs nothing; `AnalyzeCase` refuses a
+profile that preflight refuses, runs as the interruptible `analysis`
+operation, writes nothing when stopped before its report is written, and
+answers a retried press with the analysis it already made. Analysis settings
+discovered in the project, including a profile or ruleset this release does
+not define, are listed and opened exactly as imported. A finding review is
+one object per analysis: every save is a new revision of the decisions
+document `readmit diagnose review` reads, validated against the analysis
+bound to the report identity the window displayed, and undoing a decision is
+a new revision without it, so `FindingReviewHistory` keeps every earlier
+decision and its reason. `PreviewFindingReview` shows what each decision
+covers and writes nothing. `FindSimilarFindings` groups the findings of the
+chosen cases as `readmit diagnose groups` does, keeps a case it could not
+analyze as a row with its reason, and, saved, retains the grouping as a
+`grouping-NNN` analysis in each compared case's History. `ReadMessages` given
+`occurrences` reads exactly those messages, wherever they fall in the list.
 
 ### Reviewed actions
 

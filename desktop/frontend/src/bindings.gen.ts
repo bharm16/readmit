@@ -73,11 +73,64 @@ export interface ActionReviewResult {
   review?: ActionReview;
 }
 
+/** internal/desktop.AnalysisProfile */
+export interface AnalysisProfile {
+  builtin?: string;
+  settings?: ItemRef;
+  name: string;
+  profile: string;
+  profile_name: string;
+  ruleset: string;
+  config_sha256: string;
+  compatible: boolean;
+  refusals: DiagnosisUnsupported[];
+}
+
+/** internal/desktop.AnalysisProfileRef */
+export interface AnalysisProfileRef {
+  builtin?: string;
+  settings?: ItemRef;
+}
+
+/** internal/desktop.AnalysisProfilesResult */
+export interface AnalysisProfilesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  profiles: AnalysisProfile[];
+}
+
+/** internal/desktop.AnalysisSettingsSummary */
+export interface AnalysisSettingsSummary {
+  profile: string;
+  profile_name: string;
+  ruleset: string;
+  rules: number;
+  namespaces: number;
+  supported: boolean;
+}
+
 /** internal/desktop.AnalysisSummary */
 export interface AnalysisSummary {
   form: string;
   related_case: ItemRef | null;
+  cases: ItemRef[];
   findings: number;
+  case_identity?: string;
+  profile?: string;
+  profile_name: string;
+  ruleset?: string;
+  config_sha256?: string;
+  unsupported: number;
+}
+
+/** internal/desktop.AnalyzeRequest */
+export interface AnalyzeRequest {
+  context: RequestContext;
+  case: ItemRef;
+  identity: string;
+  profile: AnalysisProfileRef;
+  intent_id: string;
 }
 
 /** internal/desktop.Artifact */
@@ -689,6 +742,7 @@ export interface CatalogFilter {
   availability?: Availability[];
   status?: CaseStatus[];
   owner?: string;
+  related_case?: ItemRef;
 }
 
 /** internal/desktop.CatalogItem */
@@ -1424,9 +1478,13 @@ export interface Diagnosis {
 /** internal/desktop.DiagnosisBuiltin */
 export interface DiagnosisBuiltin {
   id: string;
+  name: string;
   profile: string;
   ruleset: string;
 }
+
+/** internal/diagnose.Classification */
+export type DiagnosisClassification = "observed_fact" | "profile_violation" | "hypothesis";
 
 /** internal/diagnose.Evidence */
 export interface DiagnosisEvidence {
@@ -1441,7 +1499,7 @@ export interface DiagnosisEvidence {
 export interface DiagnosisFinding {
   id: string;
   rule_id: string;
-  classification: string;
+  classification: DiagnosisClassification;
   profile: string;
   ruleset: string;
   summary: string;
@@ -1520,6 +1578,14 @@ export interface DiagnosisResult {
   reason?: string;
   output?: string;
   diagnosis?: Diagnosis;
+}
+
+/** internal/diagnose.RuleInfo */
+export interface DiagnosisRuleInfo {
+  id: string;
+  ruleset: string;
+  name: string;
+  severity?: string;
 }
 
 /** internal/diagnose.SourceWindow */
@@ -2138,8 +2204,8 @@ export interface FinalizeCaptureRequest {
 /** internal/findingreview.Decision */
 export interface FindingDecision {
   finding: string;
-  verdict: string;
-  scope?: string;
+  verdict: FindingVerdict;
+  scope?: FindingScope;
   rationale: string;
 }
 
@@ -2184,6 +2250,43 @@ export interface FindingReview {
   total: number;
 }
 
+/** internal/desktop.FindingReviewDraft */
+export interface FindingReviewDraft {
+  analysis: ItemRef;
+  report_sha256: string;
+  decisions: FindingDecision[];
+}
+
+/** internal/desktop.FindingReviewEffect */
+export interface FindingReviewEffect {
+  finding: string;
+  verdict: FindingVerdict;
+  scope?: FindingScope;
+  findings: string[];
+}
+
+/** internal/desktop.FindingReviewHistoryResult */
+export interface FindingReviewHistoryResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  review?: ItemRef;
+  analysis?: ItemRef;
+  report_sha256?: string;
+  revisions: FindingReviewRevision[];
+  statuses: FindingStatus[];
+}
+
+/** internal/desktop.FindingReviewPreview */
+export interface FindingReviewPreview {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  problems: FieldProblem[];
+  effects: FindingReviewEffect[];
+  statuses: FindingStatus[];
+}
+
 /** internal/findingreview.Record */
 export interface FindingReviewRecord {
   schema: string;
@@ -2217,14 +2320,32 @@ export interface FindingReviewResult {
   review?: FindingReview;
 }
 
+/** internal/desktop.FindingReviewRevision */
+export interface FindingReviewRevision {
+  revision: string;
+  published_at: string | null;
+  author?: string;
+  decisions: FindingDecision[];
+}
+
+/** internal/desktop.FindingReviewSummary */
+export interface FindingReviewSummary {
+  analysis: ItemRef | null;
+  report_sha256: string;
+  decisions: number;
+}
+
+/** internal/findingreview.Scope */
+export type FindingScope = "finding" | "occurrence" | "case";
+
 /** internal/findingreview.Status */
 export interface FindingStatus {
   finding: string;
   rule_id: string;
-  classification: string;
-  verdict: string;
+  classification: DiagnosisClassification;
+  verdict: FindingVerdict;
   basis: string;
-  scope?: string;
+  scope?: FindingScope;
   suppressed_by?: string;
   rationale?: string;
   next_evidence: string;
@@ -2237,6 +2358,39 @@ export interface FindingUnsupported {
   occurrence?: string;
   field?: string;
   detail: string;
+}
+
+/** internal/findingreview.Verdict */
+export type FindingVerdict = "not_reviewed" | "confirmed" | "dismissed" | "suppressed";
+
+/** internal/desktop.FindingsAnalysis */
+export interface FindingsAnalysis {
+  ref: ItemRef;
+  created_at: string | null;
+  profile_name: string;
+  report_sha256: string;
+  config_sha256: string;
+  current: boolean;
+  review?: ItemRef;
+  diagnosis: Diagnosis;
+}
+
+/** internal/desktop.FindingsRequest */
+export interface FindingsRequest {
+  context: RequestContext;
+  case: ItemRef;
+  identity: string;
+  analysis?: ItemRef;
+  offset: number;
+}
+
+/** internal/desktop.FindingsResult */
+export interface FindingsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  analysis?: FindingsAnalysis;
+  rules: DiagnosisRuleInfo[];
 }
 
 /** internal/desktop.FixtureLedger */
@@ -3107,8 +3261,9 @@ export interface InterfaceRevision {
   default: boolean;
 }
 
-/** internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.profileImportOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
+/** internal/desktop.analysisOperation, internal/desktop.captureOperation, internal/desktop.ciGateVerifyOperation, internal/desktop.corpusOperation, internal/desktop.explanationOperation, internal/desktop.hubSignInOperation, internal/desktop.importOperation, internal/desktop.packetOperation, internal/desktop.practiceOperation, internal/desktop.privacyOperation, internal/desktop.profileImportOperation, internal/desktop.protectOperation, internal/desktop.reductionOperation, internal/desktop.reexecutionOperation, internal/desktop.replayOperation, internal/desktop.replayPreviewOperation, internal/desktop.runComparisonOperation, internal/desktop.runOperation, internal/desktop.runnerOperation, internal/desktop.scenarioCheckOperation, internal/desktop.suiteCoverageOperation, internal/desktop.syntheticPacketOperation */
 export type InterruptibleOperation =
+  | "analysis"
   | "capture"
   | "ci-gate-verify"
   | "corpus"
@@ -3144,6 +3299,8 @@ export interface ItemDraft {
   observation?: ObservationDraft;
   case?: CaseDraft;
   project?: ProjectDraft;
+  analysis_settings?: DiagnoseConfig;
+  finding_review?: FindingReviewDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -3184,6 +3341,8 @@ export type ItemKind =
   | "backup"
   | "runner"
   | "schedule"
+  | "analysis-settings"
+  | "finding-review"
   | "attachment";
 
 /** internal/desktop.ItemRef */
@@ -3235,6 +3394,8 @@ export interface ItemSummary {
   backup?: BackupSummary;
   runner?: RunnerSummary;
   schedule?: ScheduleSummary;
+  analysis_settings?: AnalysisSettingsSummary;
+  finding_review?: FindingReviewSummary;
 }
 
 /** internal/desktop.Kind */
@@ -3654,6 +3815,7 @@ export interface MessagesRequest {
   sort: GridOrder;
   offset: number;
   limit: number;
+  occurrences?: string[];
 }
 
 /** internal/desktop.MessagesResult */
@@ -7579,6 +7741,51 @@ export interface ShellResult {
   shell?: Shell;
 }
 
+/** internal/desktop.SimilarFinding */
+export interface SimilarFinding {
+  case: ItemRef;
+  finding: string;
+}
+
+/** internal/desktop.SimilarGroup */
+export interface SimilarGroup {
+  signature: string;
+  rule_id: string;
+  rule_name: string;
+  classification: DiagnosisClassification;
+  cases: ItemRef[];
+  members: SimilarFinding[];
+}
+
+/** internal/desktop.SimilarMember */
+export interface SimilarMember {
+  case: ItemRef;
+  name: string;
+  state: SimilarMemberState;
+  reason?: string;
+}
+
+/** internal/desktop.SimilarMemberState */
+export type SimilarMemberState = "analyzed" | "unavailable" | "unsupported" | "over_limit";
+
+/** internal/desktop.SimilarRequest */
+export interface SimilarRequest {
+  context: RequestContext;
+  cases: ItemRef[];
+  profile: AnalysisProfileRef;
+  save: boolean;
+}
+
+/** internal/desktop.SimilarResult */
+export interface SimilarResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  members: SimilarMember[];
+  groups: SimilarGroup[];
+  saved?: ItemRef;
+}
+
 /** internal/desktop.SourceAccessResult */
 export interface SourceAccessResult {
   state: State;
@@ -9019,6 +9226,7 @@ export interface Facade {
   ActivateLicense(request: LicenseActivateRequest): Promise<InstalledLicenseResult>;
   ActivateOperations(): Promise<OperationResult>;
   AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
+  AnalyzeCase(request: AnalyzeRequest): Promise<FindingsResult>;
   ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
   ApproveSuitePromotion(request: SuitePromotionApproveRequest): Promise<SuitePromotionResult>;
@@ -9122,6 +9330,8 @@ export interface Facade {
   ExportTestItem(request: ItemRequest): Promise<ExportTestResult>;
   Filters(): Promise<FiltersResult>;
   FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
+  FindSimilarFindings(request: SimilarRequest): Promise<SimilarResult>;
+  FindingReviewHistory(request: ItemRequest): Promise<FindingReviewHistoryResult>;
   ForgetProject(id: string): Promise<ProjectForgetResult>;
   GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
   GenerateScenario(request: ScenarioGenerateRequest): Promise<ScenarioGenerateResult>;
@@ -9148,6 +9358,7 @@ export interface Facade {
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   ItemHistory(request: ItemRequest): Promise<ItemHistoryResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
+  ListAnalysisProfiles(request: ItemRequest): Promise<AnalysisProfilesResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListBackups(): Promise<StorageBackupsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
@@ -9172,6 +9383,7 @@ export interface Facade {
   OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
   OpenCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
+  OpenCaseFindings(request: FindingsRequest): Promise<FindingsResult>;
   OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
   OpenCorrelationRules(workspace: string, entry: string): Promise<CorrelationRulesResult>;
   OpenDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult>;
@@ -9216,6 +9428,7 @@ export interface Facade {
   PrepareSuite(request: SuitePrepareRequest): Promise<SuitePreparedResult>;
   PrepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult>;
   PreviewCapture(request: CaptureRequest): Promise<CapturePreviewResult>;
+  PreviewFindingReview(request: DraftRequest): Promise<FindingReviewPreview>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
   PreviewProjectMigration(path: string): Promise<MigrationPreviewResult>;

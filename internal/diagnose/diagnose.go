@@ -1,12 +1,8 @@
 package diagnose
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json/v2"
-	"errors"
+	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +33,13 @@ type identity struct{ namespace, value string }
 // payload. Reports contain field references and fixed explanations, not raw IDs,
 // filenames, or free-text ERR content. Config is always validated at this seam.
 func Run(path string, config Config) (Report, error) {
+	return RunContext(context.Background(), path, config)
+}
+
+// RunContext is Run under a context that is checked before each occurrence is
+// interpreted. A cancelled run answers the context's error and no report: a
+// partial report would read as a whole one.
+func RunContext(ctx context.Context, path string, config Config) (Report, error) {
 	if err := config.validate(); err != nil {
 		return Report{}, err
 	}
@@ -50,44 +53,18 @@ func Run(path string, config Config) (Report, error) {
 		return Report{}, err
 	}
 	e := evaluator{profile: profile, requiredRule: set.requiredRule, report: Report{Schema: Schema, CaseIdentity: b.Identity, Profile: config.Profile, Ruleset: config.Ruleset, Rules: []string{}, Findings: []Finding{}, Unsupported: []Unsupported{}, Scope: "Only the listed rules of the named readmit fixture profile were examined over the stated observed case window. This is not HL7 conformance validation and is not proof of correctness. The capture may omit earlier or later events; observed times, declared message times, and import times are distinct."}, rules: make(map[string]bool), namespaces: authority.NewTable(mappingsOf(config.Namespaces)), unsupported: make(map[string]bool)}
-	configJSON, err := json.Marshal(config, json.Deterministic(true))
+	configHash, err := ConfigSHA256(config)
 	if err != nil {
-		return Report{}, errors.New("cannot encode diagnosis configuration")
+		return Report{}, err
 	}
-	configHash := sha256.Sum256(configJSON)
-	e.report.ConfigSHA256 = hex.EncodeToString(configHash[:])
+	e.report.ConfigSHA256 = configHash
 	e.report.Window = caseWindow(b)
-	// Without a named ruleset no rule identifier has a meaning here, so a rule is
-	// only unsupported when no registered ruleset defines it, and a profile only
-	// when no registered ruleset names it. Nothing is evaluated either way.
-	known := set.rules
-	if !rulesetSupported {
-		known = registeredRules()
+	checked := preflight(config, set, rulesetSupported, b.Manifest.Provenance.Generator)
+	for _, item := range checked.unsupported {
+		e.unsupportedItem(item.Code, item.Occurrence, item.Field, item.Detail)
 	}
-	for _, rule := range config.Rules {
-		if !slices.Contains(known, rule) {
-			e.unsupportedItem("unsupported_rule", "", "", "A configured rule is unsupported: "+rule)
-			continue
-		}
-		e.rules[rule] = true
-	}
-	profileSupported := rulesetSupported && config.Profile == set.profile
-	if !registeredProfile(config.Profile) || rulesetSupported && !profileSupported {
-		e.unsupportedItem("unsupported_profile", "", "", "The configured profile is unsupported: "+config.Profile)
-	}
-	if !rulesetSupported {
-		e.unsupportedItem("unsupported_ruleset", "", "", "The configured ruleset is unsupported: "+config.Ruleset)
-	}
-	if !profileSupported {
-		clear(e.rules)
-	}
-	if generator := b.Manifest.Provenance.Generator; generator != nil && generator.ProfileVersion != set.profile {
-		e.unsupportedItem("unsupported_bundle_profile", "", "", "The bundle declares an unsupported generator profile; "+set.profileKind+" profile rules were not evaluated.")
-		profileSupported = false
-		for _, rule := range set.profileRules {
-			delete(e.rules, rule)
-		}
-	}
+	e.rules = checked.rules
+	profileSupported := checked.profileSupported
 	if set.statesWindow {
 		e.findingWindow = e.report.Window.Description
 	}
@@ -101,6 +78,9 @@ func Run(path string, config Config) (Report, error) {
 	controlIDs := make(map[string][]Evidence)
 	controlOrder := []string{}
 	for _, event := range b.Events {
+		if err := ctx.Err(); err != nil {
+			return Report{}, err
+		}
 		if event.Kind == bundle.Unparsed {
 			e.unsupportedItem("unparsed_occurrence", event.ID, "", "The preserved occurrence cannot be parsed; no semantic rules were evaluated.")
 			continue
@@ -296,7 +276,7 @@ func (e *evaluator) unsupportedItem(code, occurrence, field, detail string) {
 	e.report.Unsupported = append(e.report.Unsupported, Unsupported{Code: code, Occurrence: occurrence, Field: field, Detail: detail})
 }
 
-func (e *evaluator) finding(rule, class, summary, window string, refs ...Evidence) {
+func (e *evaluator) finding(rule string, class Classification, summary, window string, refs ...Evidence) {
 	e.report.Findings = append(e.report.Findings, Finding{ID: fmt.Sprintf("f%06d", len(e.report.Findings)+1), RuleID: rule, Classification: class, Profile: e.report.Profile, Ruleset: e.report.Ruleset, Summary: summary, Window: window, Evidence: refs})
 }
 

@@ -52,10 +52,6 @@ import type {
   CorrelationReviewRequest,
   CorrelationReviewResult,
   CorrelationRulesResult,
-  DiagnoseConfigResult,
-  DiagnosisGroupsResult,
-  DiagnosisRequest,
-  DiagnosisResult,
   DraftRequest,
   DraftValidation,
   DurableRunRequest,
@@ -69,12 +65,8 @@ import type {
   Filter,
   FiltersResult,
   FinalizeCaptureRequest,
-  FindingDecisionsResult,
-  FindingReviewRequest,
-  FindingReviewResult,
   GatePolicyResult,
   GridResult,
-  GroupDiagnosesRequest,
   GuideResult,
   HubAdminFacade,
   HubAdminRequest,
@@ -343,6 +335,14 @@ import type {
   ProtectionExportResult,
   TestHistoryResult,
   ExportTestResult,
+  FindingsRequest,
+  FindingsResult,
+  AnalysisProfilesResult,
+  AnalyzeRequest,
+  FindingReviewPreview,
+  FindingReviewHistoryResult,
+  SimilarRequest,
+  SimilarResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -1494,50 +1494,11 @@ export function generateSynth(request: SynthGenerateRequest): Promise<SynthGener
   return guard(() => facade().GenerateSynth(request), { state: "failed" });
 }
 
-/** Runs one supported diagnosis over the verified case and writes report.json
- * and report.md into one new directory entry, exactly as `readmit diagnose`
- * writes them. Never overwrites a retained report. */
-export function runDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult> {
-  return guard(() => facade().RunDiagnosis(request), { state: "failed" });
-}
 
-/** Reads one retained diagnosis report directory with the same strict reader a
- * review uses, and reports the identity a review must name. */
-export function openDiagnosisReport(
-  workspace: string,
-  entry: string,
-  offset: number,
-): Promise<DiagnosisResult> {
-  return guard(() => facade().OpenDiagnosisReport(workspace, entry, offset), { state: "failed" });
-}
 
-/** Reads a retained grouping through its separate strict display reader.
- * It cannot be used as one diagnosis in a finding review. */
-export function openDiagnosisGroupsReport(
-  workspace: string,
-  entry: string,
-  offset: number,
-): Promise<DiagnosisGroupsResult> {
-  return guard(() => facade().OpenDiagnosisGroupsReport(workspace, entry, offset), { state: "failed", offset: 0, total: 0 });
-}
 
-/** Re-evaluates the selected cases under one configuration and groups equal
- * finding signatures, exactly as `readmit diagnose groups` does. */
-export function groupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult> {
-  return guard(() => facade().GroupDiagnoses(request), { state: "failed", offset: 0, total: 0 });
-}
 
-/** Joins the diagnosis and the analyst's decisions and reports every verdict,
- * basis, suppression scope and promotion — writing nothing. */
-export function reviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult> {
-  return guard(() => facade().ReviewFindings(request), { state: "failed" });
-}
 
-/** Re-verifies all inputs and persists the decisions document and the review
- * directory, exactly as `readmit diagnose review` writes them. */
-export function decideFindings(request: FindingReviewRequest): Promise<FindingReviewResult> {
-  return guard(() => facade().DecideFindings(request), { state: "failed" });
-}
 
 /** Reads two collections under a declared policy and reports every difference
  * beside what the policy did about it. It never edits the raw comparison and
@@ -1570,21 +1531,9 @@ export function saveNormalizationPolicy(request: RuleDocumentSaveRequest): Promi
   return guard(() => facade().SaveNormalizationPolicy(request), { state: "failed" });
 }
 
-export function openDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult> {
-  return guard(() => facade().OpenDiagnoseConfig(workspace, entry), { state: "failed" });
-}
 
-export function saveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult> {
-  return guard(() => facade().SaveDiagnoseConfig(request), { state: "failed" });
-}
 
-export function openFindingDecisions(workspace: string, entry: string): Promise<FindingDecisionsResult> {
-  return guard(() => facade().OpenFindingDecisions(workspace, entry), { state: "failed" });
-}
 
-export function saveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult> {
-  return guard(() => facade().SaveFindingDecisions(request), { state: "failed" });
-}
 
 // Raw inspection and the performance corpus: `readmit inspect`, `readmit
 // corpus generate` and `readmit corpus scan` in the window. The facade reads,
@@ -1998,4 +1947,37 @@ export function importTestDraft(context: RequestContext): Promise<ItemDraftResul
 /** Writes one version of a saved test to a file the person names. */
 export function exportTestItem(request: ItemRequest): Promise<ExportTestResult> {
   return guard(() => facade().ExportTestItem(request), { state: "failed", context: request.context });
+}
+
+// Findings (#551): a case's saved analysis and its review, Analyze, and
+// grouping findings across chosen cases.
+
+/** The latest analysis of this exact case version, or one chosen from History. */
+export function openCaseFindings(request: FindingsRequest): Promise<FindingsResult> {
+  return retryingRead(() => facade().OpenCaseFindings(request), { state: "failed", context: request.context, rules: [] });
+}
+
+/** The analysis profiles this case can be analyzed with, and why others cannot. */
+export function listAnalysisProfiles(request: ItemRequest): Promise<AnalysisProfilesResult> {
+  return retryingRead(() => facade().ListAnalysisProfiles(request), { state: "failed", context: request.context, profiles: [] });
+}
+
+/** Analyzes the case with one profile and saves the analysis; Stop cancels "analysis". */
+export function analyzeCase(request: AnalyzeRequest): Promise<FindingsResult> {
+  return submitted(() => facade().AnalyzeCase(request), { state: "failed", context: request.context, rules: [] });
+}
+
+/** What a review draft would decide and cover; nothing is written. */
+export function previewFindingReview(request: DraftRequest): Promise<FindingReviewPreview> {
+  return guard(() => facade().PreviewFindingReview(request), { state: "failed", context: request.context, problems: [], effects: [], statuses: [] });
+}
+
+/** Every revision of an analysis's review, and each finding's status now. */
+export function findingReviewHistory(request: ItemRequest): Promise<FindingReviewHistoryResult> {
+  return retryingRead(() => facade().FindingReviewHistory(request), { state: "failed", context: request.context, revisions: [], statuses: [] });
+}
+
+/** Groups the findings of the chosen cases under one profile. */
+export function findSimilarFindings(request: SimilarRequest): Promise<SimilarResult> {
+  return guard(() => facade().FindSimilarFindings(request), { state: "failed", context: request.context, members: [], groups: [] });
 }

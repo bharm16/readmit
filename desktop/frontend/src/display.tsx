@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
+import type { DiagnosisClassification, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -89,6 +89,18 @@ export const TEST_CHANGES: DisplayMap<TestChange> = {
   checks: "Checks",
   tags: "Tags",
 };
+
+/** What kind of claim an analysis finding makes. */
+export const CLASSIFICATIONS: DisplayMap<DiagnosisClassification> = { observed_fact: "Fact", profile_violation: "Violation", hypothesis: "Hypothesis" };
+
+/** Where a finding's review stands. */
+export const FINDING_VERDICTS: DisplayMap<FindingVerdict> = { not_reviewed: "New", confirmed: "Confirmed", dismissed: "Dismissed", suppressed: "Suppressed" };
+
+/** What a suppression covers. */
+export const FINDING_SCOPES: DisplayMap<FindingScope> = { finding: "This finding", occurrence: "This occurrence", case: "This case" };
+
+/** Whether a chosen case was compared. */
+export const SIMILAR_MEMBER_STATES: DisplayMap<SimilarMemberState> = { analyzed: "Analyzed", unavailable: "Unavailable", unsupported: "Unsupported", over_limit: "Over the limit" };
 
 /** A field's state. "" is how Go writes a state it did not record, which is
  * not a state a person can be told anything about. */

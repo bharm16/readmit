@@ -91,15 +91,26 @@ type Evidence struct {
 	Length     *int      `json:"length"`
 }
 
+// Classification is what kind of statement a finding makes: something the
+// capture shows, a disagreement with the profile, or a hypothesis the
+// observed window cannot settle.
+type Classification string
+
+const (
+	ObservedFact     Classification = "observed_fact"
+	ProfileViolation Classification = "profile_violation"
+	Hypothesis       Classification = "hypothesis"
+)
+
 type Finding struct {
-	ID             string     `json:"id"`
-	RuleID         string     `json:"rule_id"`
-	Classification string     `json:"classification"`
-	Profile        string     `json:"profile"`
-	Ruleset        string     `json:"ruleset"`
-	Summary        string     `json:"summary"`
-	Window         string     `json:"window,omitempty"`
-	Evidence       []Evidence `json:"evidence"`
+	ID             string         `json:"id"`
+	RuleID         string         `json:"rule_id"`
+	Classification Classification `json:"classification"`
+	Profile        string         `json:"profile"`
+	Ruleset        string         `json:"ruleset"`
+	Summary        string         `json:"summary"`
+	Window         string         `json:"window,omitempty"`
+	Evidence       []Evidence     `json:"evidence"`
 }
 
 type Unsupported struct {

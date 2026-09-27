@@ -1,0 +1,28 @@
+/* Findings (Findings.tsx): the selected finding beside the list, its
+ * decision history, and the list kept visibly historical while a new
+ * analysis runs. Geometry and colour come from the shared tokens. */
+
+.historical {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.finding-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.decision-history > li {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: var(--s2) 0;
+}
+
+.namespace-row {
+  display: grid;
+  gap: var(--s2);
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  margin-bottom: var(--s2);
+}

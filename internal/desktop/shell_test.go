@@ -524,11 +524,16 @@ func TestTheFacadePublishesTheWindowsChoicesAndBounds(t *testing.T) {
 	if len(vocabulary.DiagnosisBuiltins) != 3 {
 		t.Errorf("the facade publishes %d built-in diagnoses", len(vocabulary.DiagnosisBuiltins))
 	}
+	var builtinNames []string
 	for _, builtin := range vocabulary.DiagnosisBuiltins {
 		config, ok := desktop.DiagnosisBuiltinForTest(builtin.ID)
 		if !ok || config.Profile != builtin.Profile || config.Ruleset != builtin.Ruleset {
 			t.Errorf("built-in diagnosis %q is published as %s · %s but runs %+v", builtin.ID, builtin.Profile, builtin.Ruleset, config)
 		}
+		builtinNames = append(builtinNames, builtin.Name)
+	}
+	if !slices.Equal(builtinNames, []string{"SIU", "Lifecycle", "Orders"}) {
+		t.Errorf("the built-in diagnoses are named %v", builtinNames)
 	}
 
 	bounds := vocabulary.Bounds

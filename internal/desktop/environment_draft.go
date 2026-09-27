@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
@@ -449,8 +450,12 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 		if request.Ref.Kind == TestItem {
 			return a.openTestDraft(ctx, request)
 		}
-		if request.Ref.Kind != EnvironmentItem && request.Ref.Kind != ObservationItem {
-			result.refuse(Failed, "this release opens environment, observation and test drafts")
+		if !slices.Contains([]ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem}, request.Ref.Kind) {
+			result.refuse(Failed, "this release opens environment, observation, test, analysis settings and finding review drafts")
+			return result
+		}
+		if request.Ref.ID == "" && request.Ref.Kind == FindingReviewItem {
+			result.refuse(Failed, "a finding review starts from the analysis it is of")
 			return result
 		}
 		if request.Ref.ID == "" {
@@ -459,11 +464,15 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				return result
 			}
 			draft := ItemDraft{}
-			if request.Ref.Kind == EnvironmentItem {
+			switch request.Ref.Kind {
+			case EnvironmentItem:
 				target := operation.DefaultTarget()
 				target.Classification, target.Transport = replay.Unclassified, ""
 				draft.Environment = &target
-			} else {
+			case AnalysisSettingsItem:
+				config := diagnose.DefaultConfig()
+				draft.AnalysisSettings = &config
+			default:
 				draft.Observation = &ObservationDraft{Source: operation.DefaultObservationSource(), Window: operation.DefaultObservationWindow()}
 			}
 			result.State, result.Draft, result.New = Completed, &draft, true
@@ -481,7 +490,27 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 		}
 		record := loaded.document.Items[loaded.document.Find(item.Ref.ID)]
 		draft := ItemDraft{Name: item.Name}
-		if request.Ref.Kind == EnvironmentItem {
+		switch request.Ref.Kind {
+		case AnalysisSettingsItem:
+			config, err := loaded.settingsOf(record)
+			if err != nil {
+				result.refuse(Failed, err.Error())
+				return result
+			}
+			draft.AnalysisSettings = &config
+		case FindingReviewItem:
+			paths, _, _ := loaded.backing(record)
+			decisions, _, err := readDecisionsFile(paths[primaryRole(FindingReviewItem)])
+			if err != nil {
+				result.refuse(Failed, err.Error())
+				return result
+			}
+			review := FindingReviewDraft{ReportSHA256: decisions.Report, Decisions: decisions.Decisions}
+			if analysis := loaded.analysisByReport(decisions.Report); analysis != nil {
+				review.Analysis = *analysis
+			}
+			draft.FindingReview = &review
+		case EnvironmentItem:
 			members, err := loaded.environmentOf(record)
 			if err != nil {
 				result.refuse(Failed, err.Error())
@@ -492,7 +521,7 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				links := members.links
 				draft.Links = &links
 			}
-		} else {
+		default:
 			observation, err := loaded.observationOf(record)
 			if err != nil {
 				result.refuse(Failed, err.Error())

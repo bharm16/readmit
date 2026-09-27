@@ -50,13 +50,20 @@ const (
 	BackupItem      ItemKind = "backup"
 	RunnerItem      ItemKind = "runner"
 	ScheduleItem    ItemKind = "schedule"
+	// AnalysisSettingsItem is a named diagnosis configuration
+	// (readmit-diagnose-config/v1) an analysis can run under.
+	AnalysisSettingsItem ItemKind = "analysis-settings"
+	// FindingReviewItem is what a person decided about the findings of one
+	// analysis (readmit-finding-decisions/v1), each save a new revision.
+	FindingReviewItem ItemKind = "finding-review"
 	// AttachmentItem is a file attached to a case. It is named by a
 	// reference like any object, and listed only as its case's attachments.
 	AttachmentItem ItemKind = "attachment"
 )
 
 var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, EnvironmentItem, ObservationItem,
-	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem}
+	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem,
+	AnalysisSettingsItem, FindingReviewItem}
 
 // Availability is whether an object's backing can be read now. Readability
 // grants nothing: whether an action is permitted is Capabilities.
@@ -155,6 +162,10 @@ type ItemSummary struct {
 	Backup      *BackupSummary      `json:"backup,omitzero"`
 	Runner      *RunnerSummary      `json:"runner,omitzero"`
 	Schedule    *ScheduleSummary    `json:"schedule,omitzero"`
+	// AnalysisSettings and FindingReview are the two kinds the Findings
+	// view saves.
+	AnalysisSettings *AnalysisSettingsSummary `json:"analysis_settings,omitzero"`
+	FindingReview    *FindingReviewSummary    `json:"finding_review,omitzero"`
 }
 
 // ProjectSummary is a project as the project document declares it. Folder is
@@ -313,10 +324,24 @@ type ScenarioSummary struct {
 	Profile string `json:"profile"`
 }
 
+// AnalysisSummary is one retained analysis. A diagnosis ("diagnosis") names
+// the case it was run over, the verified identity of that case, the profile,
+// ruleset and configuration identity it ran under, the name a person reads for
+// that configuration (empty when the project offers it under no name), how
+// many findings it made and how many items it could not evaluate. A grouping ("grouping") names
+// every case of the project it compared, in Cases; a sequence analysis
+// ("sequence-analysis") names its case alone.
 type AnalysisSummary struct {
-	Form        string   `json:"form"`
-	RelatedCase *ItemRef `json:"related_case"`
-	Findings    int      `json:"findings"`
+	Form         string    `json:"form"`
+	RelatedCase  *ItemRef  `json:"related_case"`
+	Cases        []ItemRef `json:"cases"`
+	Findings     int       `json:"findings"`
+	CaseIdentity string    `json:"case_identity,omitzero"`
+	Profile      string    `json:"profile,omitzero"`
+	ProfileName  string    `json:"profile_name"`
+	Ruleset      string    `json:"ruleset,omitzero"`
+	ConfigSHA256 string    `json:"config_sha256,omitzero"`
+	Unsupported  int       `json:"unsupported"`
 }
 
 type VariantSummary struct {
@@ -349,10 +374,13 @@ const (
 
 // CatalogFilter narrows a list to typed values. A member left empty filters
 // nothing.
+// RelatedCase keeps the objects about one case: its analyses, the groupings
+// that compared it and the reports about it.
 type CatalogFilter struct {
 	Availability []Availability   `json:"availability,omitzero"`
 	Status       []project.Status `json:"status,omitzero"`
 	Owner        string           `json:"owner,omitzero"`
+	RelatedCase  *ItemRef         `json:"related_case,omitzero"`
 }
 
 // CatalogQuery is one page of one kind. Name matches display names only,
@@ -803,8 +831,26 @@ func filtered(items []CatalogItem, query CatalogQuery) []CatalogItem {
 		if query.Filter.Owner != "" && (item.Summary.Case == nil || item.Summary.Case.Owner != query.Filter.Owner) {
 			return true
 		}
+		if query.Filter.RelatedCase != nil && !relatedTo(item, query.Filter.RelatedCase.ID) {
+			return true
+		}
 		return false
 	})
+}
+
+// relatedTo reports whether an object is about the case with identity id.
+func relatedTo(item CatalogItem, id string) bool {
+	var related []ItemRef
+	if analysis := item.Summary.Analysis; analysis != nil {
+		related = append(related, analysis.Cases...)
+		if analysis.RelatedCase != nil {
+			related = append(related, *analysis.RelatedCase)
+		}
+	}
+	if report := item.Summary.Report; report != nil && report.RelatedCase != nil {
+		related = append(related, *report.RelatedCase)
+	}
+	return slices.ContainsFunc(related, func(ref ItemRef) bool { return ref.ID == id })
 }
 
 // sortItems orders a list; a date nobody knows sorts after every known one,

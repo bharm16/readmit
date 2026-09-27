@@ -80,23 +80,12 @@ import {
   type MessageRow,
   type SearchSettings,
   type FieldState,
+  type FindingStatus,
+  type TestExpectation,
   openSequence,
   openCorrelationReview,
   decideCorrelation,
-  runDiagnosis,
-  openDiagnosisReport,
-  openDiagnosisGroupsReport,
-  groupDiagnoses,
-  reviewFindings,
-  decideFindings,
   normalizeCompare,
-  type DiagnosisRequest,
-  type DiagnosisResult,
-  type DiagnosisGroupsResult,
-  type FindingReviewRequest,
-  type FindingReviewResult,
-  type FindingStatus,
-  type GroupDiagnosesRequest,
   type NormalizeResult,
   type CorrelationReviewResult,
   type SequenceResult,
@@ -145,7 +134,7 @@ import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
 import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { useTests, type TestsPlace } from "./Tests";
-import { Diagnosis } from "./Diagnosis";
+import { useFindings, useSimilarFindings } from "./Findings";
 import { Report, Separator, Status } from "./shell";
 import { CommandPalette, shortcut, type PaletteEntry } from "./CommandPalette";
 import type { SortState } from "./DataTable";
@@ -216,11 +205,6 @@ type Running =
   | "reduction-preview"
   | "reduction"
   | "review"
-  | "diagnosis"
-  | "diagnosis-report"
-  | "diagnosis-groups"
-  | "diagnosis-groups-report"
-  | "finding-review"
   | "normalize"
   | "recent"
   | "sample";
@@ -287,11 +271,6 @@ const PROGRESS: Record<Running, string> = {
   "reduction-preview": "Previewing the reduction…",
   reduction: "Running the reduction…",
   review: "Reading the export review…",
-  diagnosis: "Running the diagnosis…",
-  "diagnosis-report": "Opening the report…",
-  "diagnosis-groups": "Grouping findings…",
-  "diagnosis-groups-report": "Opening the grouping report…",
-  "finding-review": "Reviewing findings…",
   normalize: "Comparing under the policy…",
   recent: "Updating recent projects…",
   sample: "Importing the demo fixtures…",
@@ -334,6 +313,8 @@ export default function App() {
   const [messageView, setMessageView] = useState("");
   const [views, setViews] = useState<GridView[]>([]);
   const [checkedMessages, setCheckedMessages] = useState<Set<string>>(new Set());
+  // The messages a finding's evidence names, shown on their own until cleared.
+  const [evidenceFocus, setEvidenceFocus] = useState<string[] | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
   const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
@@ -357,9 +338,6 @@ export default function App() {
   const [planResult, setPlanResult] = useState<TransformPlanResult | null>(null);
   const [reductionResult, setReductionResult] = useState<ReductionResult | null>(null);
   const [reviewResult, setReviewResult] = useState<ReviewResult | null>(null);
-  const [diagnosisResult, setDiagnosisResult] = useState<DiagnosisResult | null>(null);
-  const [diagnosisGroupsResult, setDiagnosisGroupsResult] = useState<DiagnosisGroupsResult | null>(null);
-  const [findingReviewResult, setFindingReviewResult] = useState<FindingReviewResult | null>(null);
   const [normalizeResult, setNormalizeResult] = useState<NormalizeResult | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -648,10 +626,8 @@ export default function App() {
     setPlanResult(null);
     setReductionResult(null);
     setReviewResult(null);
-    setDiagnosisResult(null);
-    setDiagnosisGroupsResult(null);
-    setFindingReviewResult(null);
     setNormalizeResult(null);
+    setEvidenceFocus(null);
     setSelectedOccurrence(null);
   }, []);
 
@@ -719,7 +695,7 @@ export default function App() {
   // reuses the case's own index or reads the case directly. Only the answer to
   // the latest request commits.
   const loadMessages = useCallback(
-    async (folder: string, open: { case: string; identity: string }, query: GridQuery, sort: SortState | null, offset: number) => {
+    async (folder: string, open: { case: string; identity: string }, query: GridQuery, sort: SortState | null, offset: number, occurrences?: string[]) => {
       await readMessagesIn("messages", async (current) => {
         if (offset === 0) {
           setInspectionResult(null);
@@ -734,6 +710,7 @@ export default function App() {
           sort: sort?.column === "time" ? (sort.direction === "ascending" ? "time-ascending" : "time-descending") : "",
           offset,
           limit: 0,
+          ...(occurrences ? { occurrences } : {}),
         });
         if (!current()) return;
         setMessages((held) => ({
@@ -1169,86 +1146,6 @@ export default function App() {
     if (project) await readProject(project);
     await refreshListing();
   }, [investigation, readProject, refreshListing]);
-
-  // A diagnosis is bound to the identity the window verified for the open
-  // case, and it writes one new report directory, exactly as `readmit
-  // diagnose` writes it, so the listing is read again once it lands.
-  const diagnose = useCallback(
-    async (request: DiagnosisRequest) => {
-      const open = evidence?.case;
-      if (!root || !open) return;
-      await run("diagnosis", async () => {
-        setDiagnosisResult(null);
-        setFindingReviewResult(null);
-        setDiagnosisResult(
-          await runDiagnosis({ ...request, workspace: root, case: open.name, identity: open.identity }),
-        );
-      });
-      await refreshListing();
-    },
-    [evidence, refreshListing, root, run],
-  );
-
-  // A retained report is read again on every call, including for the next
-  // window of its findings, with the same strict reader a review uses.
-  const openReport = useCallback(
-    async (entry: string, offset: number) => {
-      if (!root) return;
-      await run("diagnosis-report", async () => {
-        setDiagnosisResult(null);
-        setFindingReviewResult(null);
-        setDiagnosisResult(await openDiagnosisReport(root, entry, offset));
-      });
-    },
-    [root, run],
-  );
-
-  const groupCases = useCallback(
-    async (request: GroupDiagnosesRequest) => {
-      if (!root) return;
-      await run("diagnosis-groups", async () => {
-        setDiagnosisGroupsResult(null);
-        setDiagnosisGroupsResult(await groupDiagnoses({ ...request, workspace: root }));
-      });
-    },
-    [root, run],
-  );
-
-  const openGroupsReport = useCallback(
-    async (entry: string, offset: number) => {
-      if (!root) return;
-      await run("diagnosis-groups-report", async () => {
-        setDiagnosisGroupsResult(null);
-        setDiagnosisGroupsResult(await openDiagnosisGroupsReport(root, entry, offset));
-      });
-    },
-    [root, run],
-  );
-
-  // A finding review joins the displayed diagnosis and the analyst's typed
-  // decisions. Previewing writes nothing; deciding persists the decisions
-  // document and the review directory and the listing is read again.
-  const reviewDiagnosisFindings = useCallback(
-    async (request: FindingReviewRequest, write: boolean) => {
-      const open = evidence?.case;
-      if (!root || !open) return;
-      await run("finding-review", async () => {
-        setFindingReviewResult(null);
-        setFindingReviewResult(
-          await (write ? decideFindings : reviewFindings)({
-            ...request,
-            workspace: root,
-            case: open.name,
-            identity: open.identity,
-          }),
-        );
-      });
-      if (write) {
-        await refreshListing();
-      }
-    },
-    [evidence, refreshListing, root, run],
-  );
 
   // A policy-scoped reading of the same comparison. It never edits the raw
   // comparison, which stays displayed above it, and never changes a source
@@ -1718,17 +1615,37 @@ export default function App() {
 
   // A confirmed finding opens the same editor with the review's messages and
   // its expectations as proposals, each undecided until the person decides.
-  const promoteFinding = (status: FindingStatus, reviewEntry: string, reportSHA256: string) => {
+  const promoteFinding = (status: FindingStatus, reviewEntry: string, reportSHA256: string, title?: string) => {
     const promotion = status.promotion;
     const caseRef = verified ? listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref : undefined;
     if (!promotion || !caseRef) return;
     void tests.startNew({
       case: caseRef,
       messages: promotion.messages,
+      ...(title ? { title } : {}),
       source: { kind: "finding", finding: status.finding, report_sha256: reportSHA256, ...(reviewEntry ? { review: reviewEntry } : {}) },
-      proposals: promotion.expectations.map((check, index) => ({ id: `finding-${index + 1}`, source: "finding", check })),
+      proposals: promotion.expectations.map((check: TestExpectation, index: number) => ({ id: `finding-${index + 1}`, source: "finding", check })),
     });
   };
+
+  // Findings reads under its own request scope, only while it is shown.
+  const findingsCase = verified ? (listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref ?? null) : null;
+  const findings = useFindings({
+    root,
+    caseRef: findingsCase,
+    identity: verified?.identity ?? "",
+    shown: place === "cases" && caseView === "findings" && verified !== null,
+    busy,
+    onViewMessages: (occurrences) => {
+      if (!root || !verified) return;
+      setEvidenceFocus(occurrences);
+      setView("messages");
+      void loadMessages(root, { case: verified.name, identity: verified.identity }, messageQuery, messageSort, 0, occurrences);
+    },
+    onSimilar: () => open({ destination: "similar-findings" }),
+    onCreateTest: (status, review, reportSHA256, title) => promoteFinding(status, review, reportSHA256, title),
+  });
+  const similar = useSimilarFindings({ root: place === "similar-findings" ? root : null, caseRef: findingsCase, busy });
 
   const environments = useEnvironments({
     root,
@@ -1900,7 +1817,8 @@ export default function App() {
   const shownCase = verified ? { case: verified.name, identity: verified.identity } : { case: "", identity: "" };
   const selectedRow = messages?.rows.find((row) => row.id === selectedOccurrence) ?? null;
   const fileSelection = place === "inspect-file" && fileReader.details !== null;
-  const detailsShown = (place === "cases" && verified !== null && subpage === null && inspecting) || fileSelection;
+  const findingShown = place === "cases" && verified !== null && subpage === null && caseView === "findings" && findings.selected !== null;
+  const detailsShown = (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting) || findingShown || fileSelection;
   const inspected =
     selectedOccurrence && inspectionResult?.inspection
       ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
@@ -1935,7 +1853,7 @@ export default function App() {
       }
     />
   );
-  const interruptible = running === "workspace" || running === "diagnosis-groups";
+  const interruptible = running === "workspace";
 
   // The window's own width decides the sidebar: a labelled 13rem sidebar where
   // there is room, an icon rail below that with the project switcher moved
@@ -2183,12 +2101,31 @@ export default function App() {
               <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setView} keepMounted>
                 <TaskPanel tabs="case-views" tab="messages" className="task-panel view-panel" shown={caseView === "messages"}>
                   <Report indicators={indicators} progress={running === "case" ? "Verifying the case." : null} result={null} />
+                  {evidenceFocus ? (
+                    <div className="chips" role="group" aria-label="Applied filters">
+                      <span className="chip">
+                        Finding evidence
+                        <IconButton
+                          icon="close"
+                          label="Remove Finding evidence"
+                          onClick={() => {
+                            setEvidenceFocus(null);
+                            if (root) void loadMessages(root, shownCase, messageQuery, messageSort, 0);
+                          }}
+                        />
+                      </span>
+                      <button type="button" className="quiet" onClick={() => setView("findings")}>
+                        Back to findings
+                      </button>
+                    </div>
+                  ) : null}
                   <MessageList
                     result={messages?.result ?? null}
                     rows={messages?.rows ?? []}
                     loading={readingMessages === "messages"}
                     query={messageQuery}
                     onQuery={(query) => {
+                      setEvidenceFocus(null);
                       setMessageQuery(query);
                       if (messageView && !views.some((saved) => saved.name === messageView && sameQuery(saved.query, query))) setMessageView("");
                       if (root) void loadMessages(root, shownCase, query, messageSort, 0);
@@ -2295,46 +2232,8 @@ export default function App() {
                   />
                 </TaskPanel>
                 <TaskPanel tabs="case-views" tab="findings" className="task-panel view-panel" shown={caseView === "findings"}>
-                  <Diagnosis
-                    workspace={root}
-                    caseName={verified.name}
-                    identity={verified.identity}
-                    configEntries={named("diagnose-config")}
-                    reportEntries={named("diagnosis")}
-                    groupsReportEntries={named("diagnosis-groups")}
-                    caseEntries={named("case")}
-                    decisionsEntries={named("finding-decisions")}
-                    result={diagnosisResult}
-                    groupsResult={diagnosisGroupsResult}
-                    reviewResult={findingReviewResult}
-                    busy={busy}
-                    progress={
-                      running === "diagnosis"
-                        ? "Running this diagnosis."
-                        : running === "diagnosis-report"
-                          ? "Opening this report."
-                          : running === "finding-review"
-                            ? "Reviewing these findings."
-                            : null
-                    }
-                    groupsProgress={
-                      running === "diagnosis-groups"
-                        ? "Grouping findings across these cases."
-                        : running === "diagnosis-groups-report"
-                          ? "Opening this grouping report."
-                          : null
-                    }
-                    indicators={indicators}
-                    onRun={(request) => void diagnose(request)}
-                    onOpen={(entry, offset) => void openReport(entry, offset)}
-                    onGroup={(request) => void groupCases(request)}
-                    onOpenGroups={(entry, offset) => void openGroupsReport(entry, offset)}
-                    onReview={(request, write) => void reviewDiagnosisFindings(request, write)}
-                    onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-                    onPromote={(status, reviewEntry, reportSHA256) => promoteFinding(status, reviewEntry, reportSHA256)}
-                    onManageProfiles={() => perform("manage-profiles")}
-                    onSaved={() => void refreshListing()}
-                  />
+                  {findings.toolbar}
+                  {findings.body}
                 </TaskPanel>
               </TaskTabs>
               </div>
@@ -2482,6 +2381,10 @@ export default function App() {
 
             </div>
           ) : null}
+        </Page>
+
+        <Page id="similar-findings" shown={place === "similar-findings"} title={similar.title} back={<BackLink label="Findings" onBack={back} />} actions={root ? similar.actions : null}>
+          {root ? similar.body : noProject("similar findings")}
         </Page>
 
         <Page
@@ -2961,6 +2864,8 @@ export default function App() {
       <>
         {fileReader.details}
       </>
+    ) : findingShown ? (
+      <>{findings.details}</>
     ) : (
       <>
         {verified ? (

@@ -232,7 +232,7 @@ func TestNoFindingsAndRenderingsShareExactReportModel(t *testing.T) {
 		}
 		md := string(diagnose.Markdown(r))
 		for _, f := range decoded.Findings {
-			for _, part := range []string{f.ID, f.RuleID, f.Classification, f.Profile, f.Ruleset, f.Summary, f.Window} {
+			for _, part := range []string{f.ID, f.RuleID, string(f.Classification), f.Profile, f.Ruleset, f.Summary, f.Window} {
 				if !strings.Contains(md, part) {
 					t.Fatalf("Markdown lacks JSON finding part %q", part)
 				}

@@ -29,14 +29,20 @@ const messageTypeField = "MSH[1]-9[1]"
 // query. Identity binds the read to the case the window displayed. Sort is
 // empty for evidence order, or time-ascending or time-descending, which list
 // occurrences with no recorded time last. A zero Limit is the facade's bound.
+//
+// Occurrences, when not empty, asks for exactly those messages instead of a
+// window: the messages a finding's evidence references, wherever they fall in
+// the list. They are read in evidence order, the query, sort and offset are
+// not applied, and they are never part of a saved query.
 type MessagesRequest struct {
-	Workspace string     `json:"workspace"`
-	Case      string     `json:"case"`
-	Identity  string     `json:"identity"`
-	Query     grid.Query `json:"query"`
-	Sort      grid.Order `json:"sort"`
-	Offset    int        `json:"offset"`
-	Limit     int        `json:"limit"`
+	Workspace   string     `json:"workspace"`
+	Case        string     `json:"case"`
+	Identity    string     `json:"identity"`
+	Query       grid.Query `json:"query"`
+	Sort        grid.Order `json:"sort"`
+	Offset      int        `json:"offset"`
+	Limit       int        `json:"limit"`
+	Occurrences []string   `json:"occurrences,omitzero"`
 }
 
 // MessageRow is one occurrence in the message list: where it is, what it is
@@ -136,6 +142,9 @@ func readMessages(ctx context.Context, request MessagesRequest) MessagesResult {
 	}
 	at := time.Now().UTC()
 	facts := readFacts(opened)
+	if len(request.Occurrences) > 0 {
+		return referencedMessages(ctx, opened, facts, request.Occurrences, at)
+	}
 	document, err := queryIndex(ctx, root, opened, request.Query, at)
 	if err != nil {
 		return refusedMessages(Failed, err.Error())
@@ -160,6 +169,47 @@ func readMessages(ctx context.Context, request MessagesRequest) MessagesResult {
 	if page.Total == 0 {
 		result.State, result.Reason = Empty, "this case holds no messages"
 	}
+	return result
+}
+
+// referencedMessages answers exactly the messages named, in evidence order.
+// A name the case does not hold is refused rather than left out, so a
+// reference never reads as a message that is not there.
+func referencedMessages(ctx context.Context, opened *bundle.Bundle, facts messageFacts, occurrences []string, at time.Time) MessagesResult {
+	if len(occurrences) > grid.MaxRows {
+		return refusedMessages(Failed, "at most "+strconv.Itoa(grid.MaxRows)+" referenced messages are read at once")
+	}
+	wanted := map[string]bool{}
+	for _, id := range occurrences {
+		if wanted[id] {
+			return refusedMessages(Failed, "each referenced message is named once")
+		}
+		wanted[id] = true
+	}
+	document, err := index.Build(ctx, opened, index.Policy{Fields: []string{messageTypeField}, Retention: index.RetainStates}, at)
+	if err != nil {
+		return refusedMessages(Failed, err.Error())
+	}
+	result := MessagesResult{State: Completed, Rows: make([]MessageRow, 0, len(occurrences)), Total: len(document.Records),
+		Complete: true, Scanned: len(document.Records), Facets: facts.facets(opened)}
+	for _, record := range document.Records {
+		if record.ParseError != "" {
+			result.Undecodable++
+		}
+		if !wanted[record.ID] {
+			continue
+		}
+		declared := facts.types[record.ID]
+		result.Rows = append(result.Rows, MessageRow{
+			ID: record.ID, SourceID: record.SourceID, Sequence: record.Sequence, Offset: record.Offset, Size: record.Size,
+			Kind: record.Kind, Direction: record.Direction, ObservedAt: record.ObservedAt, Decoded: record.ParseError == "",
+			MessageCode: declared.Code, TriggerEvent: declared.Trigger,
+		})
+	}
+	if len(result.Rows) != len(occurrences) {
+		return refusedMessages(Failed, "a referenced message is not in this case")
+	}
+	result.Matched = len(result.Rows)
 	return result
 }
 

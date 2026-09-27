@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
@@ -29,7 +30,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem}
+
+// savedKindsRule is the refusal of a kind this release does not save.
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings and finding reviews whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -63,6 +67,13 @@ type ItemDraft struct {
 	Observation  *ObservationDraft  `json:"observation,omitzero"`
 	Case         *CaseDraft         `json:"case,omitzero"`
 	Project      *ProjectDraft      `json:"project,omitzero"`
+	// AnalysisSettings is a named diagnosis configuration, saved as the
+	// readmit-diagnose-config/v1 document `readmit diagnose --config` reads.
+	AnalysisSettings *diagnose.Config `json:"analysis_settings,omitzero"`
+	// FindingReview is the decisions a person made about one analysis,
+	// saved as the readmit-finding-decisions/v1 document `readmit diagnose
+	// review` reads.
+	FindingReview *FindingReviewDraft `json:"finding_review,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -120,7 +131,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -204,7 +215,7 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 	return run(a, false, false, func(ctx context.Context) SaveItemResult {
 		result := SaveItemResult{Context: request.Context, Problems: []FieldProblem{}}
 		if !slices.Contains(savedKinds, request.Kind) {
-			result.refuse(Failed, "this release saves environments, tests, observations, case details and project settings whole")
+			result.refuse(Failed, savedKindsRule)
 			return result
 		}
 		if !sampleSave(request) {
@@ -399,8 +410,26 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 			normalized.Observation = &ObservationDraft{Source: draft.Observation.Source, Window: window}
 			staged = []catalog.Staged{{Role: "source", File: "source.json", Data: source}, {Role: "window", File: "window.json", Data: windowData}}
 		}
+	case AnalysisSettingsItem:
+		if draft.AnalysisSettings == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "analysis_settings", Problem: "analysis settings are one diagnosis configuration"})
+		}
+		members, config, found := validateAnalysisSettings(*draft.AnalysisSettings)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.AnalysisSettings = members, config
+		}
+	case FindingReviewItem:
+		if draft.FindingReview == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "finding_review", Problem: "a finding review is the decisions made about one analysis"})
+		}
+		members, review, found := validateFindingReview(scope, *draft.FindingReview)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.FindingReview = members, review
+		}
 	default:
-		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: "this release saves environments, tests, observations, case details and project settings whole"})
+		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: savedKindsRule})
 	}
 	if len(problems) > 0 {
 		return nil, nil, problems
@@ -447,6 +476,12 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return verifyTest(files)
 		case ObservationItem:
 			_, _, err := operation.ValidateObservationPair(files["source"], files["window"])
+			return err
+		case AnalysisSettingsItem:
+			_, err := readAnalysisSettingsFile(files["config"])
+			return err
+		case FindingReviewItem:
+			_, _, err := readDecisionsFile(files["decisions"])
 			return err
 		}
 		return errors.New("this release does not save this kind of object")

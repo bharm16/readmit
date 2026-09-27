@@ -100,4 +100,9 @@ var profiles = map[string]operationguard.Profile{
 	"VerifyCIGate":          {Name: ciGateVerifyOperation, Interruptible: true},
 	"CheckScenarioLibrary":  {Name: scenarioCheckOperation, Interruptible: true},
 	"AssessSuiteCoverage":   {Name: suiteCoverageOperation, Interruptible: true},
+
+	// The Findings view's analysis and comparison, which write into the
+	// project only when an analysis is made or a comparison saved.
+	"AnalyzeCase":         {Name: analysisOperation, Interruptible: true, Author: true},
+	"FindSimilarFindings": {Name: analysisOperation, Interruptible: true},
 }
