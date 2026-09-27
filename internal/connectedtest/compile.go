@@ -19,6 +19,7 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/localprofile"
+	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -154,6 +155,10 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			return nil, err
 		}
 		switch ref.Schema {
+		case profileeval.ProfileSchema:
+			_, err = profileeval.DecodeProfile(b)
+		case profileeval.PackSchema:
+			_, err = profileeval.DecodePack(b)
 		case localprofile.Schema:
 			_, err = localprofile.Decode(b)
 		case profilepack.Schema:

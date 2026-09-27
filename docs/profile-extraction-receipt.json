@@ -1,0 +1,52 @@
+{
+  "adaptations": [
+    "Group and segment additions become ordered cardinality nodes",
+    "Field metadata becomes required, repetition, datatype and length declarations",
+    "Upstream prose, code tables and composite component definitions are not copied",
+    "HL7apy supplies no extracted maximum length; zero records that absence",
+    "All source coverage remains unqualified pending independent fixtures and rights review"
+  ],
+  "extractor": "readmit-profile-extractor/v1",
+  "packs": {
+    "pack-2.3.1.json": {
+      "messages": 53,
+      "sha256": "dffcb7eeb25bb35cf1b2ac8267adc5b4765bf0960e9400fb68ff0bf664a397ba"
+    },
+    "pack-2.4.json": {
+      "messages": 27,
+      "sha256": "6c96468b5457f78839b203f84280769d5fa61fd228df403465432eb735bf92ba"
+    },
+    "pack-2.5.1.json": {
+      "messages": 29,
+      "sha256": "8e80ed7e441ff04259c63ca66c47d843582b81fa4cdb919e9024832f116861b1"
+    },
+    "pack-2.5.json": {
+      "messages": 29,
+      "sha256": "0493937d49990fa50936042a22a8aa5a18ffab77c1e98886984b48c079d8c916"
+    },
+    "pack-2.6.json": {
+      "messages": 29,
+      "sha256": "df9528e488dc01c33abf8c695200f6b5213e337a086494b0477374d8c8970a71"
+    },
+    "pack-2.7.1.json": {
+      "messages": 27,
+      "sha256": "ca8e130815bffedd334d19aefe65fabc1bb03ef87224f143f0b8534dc87f9d38"
+    },
+    "pack-2.8.2.json": {
+      "messages": 41,
+      "sha256": "5bf33667701a100306de4f22c61cd685ce8943a5ca27dafb0e6a3b092a6871f9"
+    }
+  },
+  "rights_review": "pending",
+  "schema": "readmit-profile-extraction/v1",
+  "sources": {
+    "hl7apy": {
+      "archive_sha256": "8b496e4e94221b8472a9df81be73d98b8726c1d6b386637a6f08264fc83ddb63",
+      "commit": "9550b6eca2c580e9615d756b294dbe5ea471667c"
+    },
+    "nhapi": {
+      "archive_sha256": "165a28565b88ba1a9a26f9be893639490af074a529774f8a8da77f0905330882",
+      "commit": "2495edd1e23a85ab9146cb03947c17d45120cf1f"
+    }
+  }
+}

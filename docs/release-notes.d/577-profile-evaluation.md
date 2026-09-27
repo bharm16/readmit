@@ -1,0 +1,1 @@
+- Added offline evaluation of pinned local v2 interface constraints, ordered groups and declared lifecycle transitions over retained messages. Findings preserve source offsets and unsupported states. New upstream profile packs remain unshipped pending rights review and complete qualification.

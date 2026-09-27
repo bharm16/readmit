@@ -1,0 +1,54 @@
+{
+  "schema": "readmit-local-profile/v2",
+  "definition": {
+    "schema": "readmit-local-profile/v1",
+    "profile": {
+      "id": "owned-identity-visit",
+      "version": "1"
+    },
+    "base": {
+      "pack": {
+        "id": "fixture-siu",
+        "version": "1"
+      },
+      "hl7_version": "2.5.1",
+      "family": "ADT"
+    },
+    "segments": [
+      {
+        "id": "ZEV",
+        "fields": [
+          {
+            "position": 1,
+            "usage": "R",
+            "type": "ST"
+          }
+        ]
+      }
+    ]
+  },
+  "structure": [],
+  "workflows": [
+    {
+      "id": "owned-identity-visit",
+      "version": "1",
+      "kind": "identity-visit",
+      "identity": [
+        "PID-3.1",
+        "PID-3.4.1",
+        "PV1-19.1",
+        "PV1-19.4.1"
+      ],
+      "status": "ZEV-1",
+      "initial": [
+        "ADMITTED"
+      ],
+      "transitions": [
+        {
+          "from": "ADMITTED",
+          "to": "DISCHARGED"
+        }
+      ]
+    }
+  ]
+}

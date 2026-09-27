@@ -1,0 +1,61 @@
+{
+  "schema": "readmit-local-profile/v2",
+  "definition": {
+    "schema": "readmit-local-profile/v1",
+    "profile": {
+      "id": "owned-order-result",
+      "version": "1"
+    },
+    "base": {
+      "pack": {
+        "id": "fixture-siu",
+        "version": "1"
+      },
+      "hl7_version": "2.5.1",
+      "family": "ORU"
+    },
+    "segments": [
+      {
+        "id": "OBX",
+        "fields": [
+          {
+            "position": 11,
+            "usage": "R",
+            "type": "ST"
+          }
+        ]
+      }
+    ]
+  },
+  "structure": [],
+  "workflows": [
+    {
+      "id": "owned-order-result",
+      "version": "1",
+      "kind": "order-result",
+      "identity": [
+        "OBR-2.1",
+        "OBR-2.2",
+        "OBR-3.1",
+        "OBR-3.2",
+        "OBX-3.1",
+        "OBX-4"
+      ],
+      "status": "OBX-11",
+      "initial": [
+        "P"
+      ],
+      "transitions": [
+        {
+          "from": "P",
+          "to": "F"
+        },
+        {
+          "from": "F",
+          "to": "C"
+        }
+      ],
+      "repeat_segment": "OBX"
+    }
+  ]
+}

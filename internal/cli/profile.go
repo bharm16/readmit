@@ -12,6 +12,7 @@ import (
 
 func profileCommand() *cobra.Command {
 	command := &cobra.Command{Use: "profile", Short: "Import and export reviewed reusable interface metadata"}
+	command.AddCommand(profileEvaluateCommand("evaluate"))
 	var pack, version, origin, output string
 	var reviewed bool
 	export := &cobra.Command{Use: "export PROFILE --pack PACK --version SEAL --origin ORIGIN --output PACKAGE --reviewed", Short: "Copy an existing sealed local profile and its pinned metadata into a package", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
