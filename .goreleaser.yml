@@ -69,6 +69,7 @@ archives:
       - docs/observation-intervals.md
       - docs/test-isolation.md
       - docs/fhir-r4.md
+      - docs/smart-backend.md
       - docs/durable-runs.md
       - docs/customer-runner.md
       - docs/customer-ci.md
