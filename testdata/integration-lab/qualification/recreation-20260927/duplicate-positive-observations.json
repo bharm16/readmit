@@ -1,0 +1,947 @@
+{
+  "schema": "readmit-independent-lab-acquisition/v1",
+  "receiver": {
+    "generation": "lab-388a45fbd84f53f7e658",
+    "messages": [
+      {
+        "sequence": 1,
+        "received_at_ns": 1790526098968537552,
+        "payload_base64": "TVNIfF5+XCZ8T0lFLUxBQnxMQUJ8T0lFfExBQnwyMDMwMDEwMTAwMDAwMCswMDAwfHxTSVVeUzEyfExBQi1TMTJ8UHwyLjUuMQ1QSUR8MXx8bGFiLXBhdGllbnQtMDFeTEFCfHxMYXJrXkZpY3Rpb25hbA1TQ0h8bGFiLWFwcG9pbnRtZW50LTAxXkxBQnx8fHx8fHx8fHxeXl4yMDMwMDEwMjA5MzAwMCswMDAwDUFJUHwxfHxsYWItcHJhY3RpdGlvbmVyLTAxDUFJTHwxfHxsYWItbG9jYXRpb24tMDENWkxHfGxhYi0zODhhNDVmYmQ4NGY1M2Y3ZTY1OA0="
+      },
+      {
+        "sequence": 2,
+        "received_at_ns": 1790526099007770261,
+        "payload_base64": "TVNIfF5+XCZ8T0lFLUxBQnxMQUJ8T0lFfExBQnwyMDMwMDEwMTAwMDAwMCswMDAwfHxTSVVeUzEzfExBQi1TMTN8UHwyLjUuMQ1QSUR8MXx8bGFiLXBhdGllbnQtMDFeTEFCfHxMYXJrXkZpY3Rpb25hbA1TQ0h8bGFiLWFwcG9pbnRtZW50LTAxXkxBQnx8fHx8fHx8fHxeXl4yMDMwMDEwMjEwMDAwMCswMDAwDUFJUHwxfHxsYWItcHJhY3RpdGlvbmVyLTAxDUFJTHwxfHxsYWItbG9jYXRpb24tMDENWkxHfGxhYi0zODhhNDVmYmQ4NGY1M2Y3ZTY1OA0="
+      }
+    ]
+  },
+  "fhir": {
+    "Appointment": {
+      "resourceType": "Bundle",
+      "id": "8fd5f1e0-436f-497d-9d10-f288a36231b9",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:44.707+00:00"
+      },
+      "type": "searchset",
+      "total": 2,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Appointment?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Appointment/lab-appointment-01",
+          "resource": {
+            "resourceType": "Appointment",
+            "id": "lab-appointment-01",
+            "meta": {
+              "versionId": "2",
+              "lastUpdated": "2026-09-27T16:21:40.366+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "identifier": [
+              {
+                "system": "urn:readmit:lab:appointment",
+                "value": "lab-appointment-01"
+              }
+            ],
+            "status": "booked",
+            "start": "2030-01-02T10:00:00Z",
+            "end": "2030-01-02T10:30:00Z",
+            "participant": [
+              {
+                "actor": {
+                  "reference": "Patient/lab-patient-01"
+                },
+                "status": "accepted"
+              },
+              {
+                "actor": {
+                  "reference": "Practitioner/lab-practitioner-01"
+                },
+                "status": "accepted"
+              },
+              {
+                "actor": {
+                  "reference": "Location/lab-location-01"
+                },
+                "status": "accepted"
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        },
+        {
+          "fullUrl": "http://hapi:8080/fhir/Appointment/lab-native-appointment-01",
+          "resource": {
+            "resourceType": "Appointment",
+            "id": "lab-native-appointment-01",
+            "meta": {
+              "versionId": "2",
+              "lastUpdated": "2026-09-27T16:21:41.860+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "identifier": [
+              {
+                "system": "urn:readmit:lab:appointment",
+                "value": "lab-native-appointment-01"
+              }
+            ],
+            "status": "booked",
+            "start": "2030-01-02T10:00:00Z",
+            "end": "2030-01-02T10:30:00Z",
+            "participant": [
+              {
+                "actor": {
+                  "reference": "Patient/lab-native-patient-01"
+                },
+                "status": "accepted"
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "DiagnosticReport": {
+      "resourceType": "Bundle",
+      "id": "a26d9f06-c876-4eb8-a11d-db9f1c9773a5",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:44.984+00:00"
+      },
+      "type": "searchset",
+      "total": 1,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/DiagnosticReport?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/DiagnosticReport/lab-report-01",
+          "resource": {
+            "resourceType": "DiagnosticReport",
+            "id": "lab-report-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:41.339+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "basedOn": [
+              {
+                "reference": "ServiceRequest/lab-order-01"
+              }
+            ],
+            "status": "final",
+            "code": {
+              "text": "Fictional chemistry panel"
+            },
+            "subject": {
+              "reference": "Patient/lab-patient-01"
+            },
+            "result": [
+              {
+                "reference": "Observation/lab-observation-1"
+              },
+              {
+                "reference": "Observation/lab-observation-2"
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "Encounter": {
+      "resourceType": "Bundle",
+      "id": "4bff692c-b6c0-4c5d-bf58-0cde834b1900",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:45.243+00:00"
+      },
+      "type": "searchset",
+      "total": 1,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Encounter?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Encounter/lab-encounter-01",
+          "resource": {
+            "resourceType": "Encounter",
+            "id": "lab-encounter-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:39.941+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "status": "in-progress",
+            "class": {
+              "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+              "code": "AMB"
+            },
+            "subject": {
+              "reference": "Patient/lab-patient-01"
+            }
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "Location": {
+      "resourceType": "Bundle",
+      "id": "5b3a562a-9ff7-4111-8a74-4238688d4506",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:45.531+00:00"
+      },
+      "type": "searchset",
+      "total": 1,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Location?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Location/lab-location-01",
+          "resource": {
+            "resourceType": "Location",
+            "id": "lab-location-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:37.191+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "status": "active",
+            "name": "Fictional lab room"
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "Observation": {
+      "resourceType": "Bundle",
+      "id": "e4ada190-f776-4382-a368-1f06ff7eaf1d",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:45.813+00:00"
+      },
+      "type": "searchset",
+      "total": 2,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Observation?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Observation/lab-observation-1",
+          "resource": {
+            "resourceType": "Observation",
+            "id": "lab-observation-1",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:41.016+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "basedOn": [
+              {
+                "reference": "ServiceRequest/lab-order-01"
+              }
+            ],
+            "status": "final",
+            "code": {
+              "text": "Fictional glucose"
+            },
+            "subject": {
+              "reference": "Patient/lab-patient-01"
+            },
+            "valueString": "100"
+          },
+          "search": {
+            "mode": "match"
+          }
+        },
+        {
+          "fullUrl": "http://hapi:8080/fhir/Observation/lab-observation-2",
+          "resource": {
+            "resourceType": "Observation",
+            "id": "lab-observation-2",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:41.188+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "basedOn": [
+              {
+                "reference": "ServiceRequest/lab-order-01"
+              }
+            ],
+            "status": "final",
+            "code": {
+              "text": "Fictional sodium"
+            },
+            "subject": {
+              "reference": "Patient/lab-patient-01"
+            },
+            "valueString": "140"
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "Patient": {
+      "resourceType": "Bundle",
+      "id": "544a636b-473a-4b0c-ba79-7ee581126a94",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:46.095+00:00"
+      },
+      "type": "searchset",
+      "total": 3,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Patient?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Patient/lab-wrong",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "lab-wrong",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:36.113+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "name": [
+              {
+                "family": "Wrong",
+                "given": [
+                  "Fictional"
+                ]
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        },
+        {
+          "fullUrl": "http://hapi:8080/fhir/Patient/lab-native-patient-01",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "lab-native-patient-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:36.474+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "name": [
+              {
+                "family": "Wren",
+                "given": [
+                  "Fictional"
+                ]
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        },
+        {
+          "fullUrl": "http://hapi:8080/fhir/Patient/lab-patient-01",
+          "resource": {
+            "resourceType": "Patient",
+            "id": "lab-patient-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:39.698+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "identifier": [
+              {
+                "system": "urn:readmit:lab:patient",
+                "value": "lab-patient-01"
+              }
+            ],
+            "name": [
+              {
+                "family": "Lark",
+                "given": [
+                  "Fictional"
+                ]
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "Practitioner": {
+      "resourceType": "Bundle",
+      "id": "31416459-036f-454c-87a0-3039a13f3c96",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:46.364+00:00"
+      },
+      "type": "searchset",
+      "total": 1,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Practitioner?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Practitioner/lab-practitioner-01",
+          "resource": {
+            "resourceType": "Practitioner",
+            "id": "lab-practitioner-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:36.784+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "name": [
+              {
+                "family": "Synthetic",
+                "given": [
+                  "Clinician"
+                ]
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "ServiceRequest": {
+      "resourceType": "Bundle",
+      "id": "96e8cbcd-086c-4176-9ed5-e8d7f9eadde7",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:46.622+00:00"
+      },
+      "type": "searchset",
+      "total": 2,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/ServiceRequest?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/ServiceRequest/lab-wrong-order",
+          "resource": {
+            "resourceType": "ServiceRequest",
+            "id": "lab-wrong-order",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:37.504+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "status": "active",
+            "intent": "order",
+            "code": {
+              "text": "Deliberately wrong synthetic order"
+            },
+            "subject": {
+              "reference": "Patient/lab-wrong"
+            }
+          },
+          "search": {
+            "mode": "match"
+          }
+        },
+        {
+          "fullUrl": "http://hapi:8080/fhir/ServiceRequest/lab-order-01",
+          "resource": {
+            "resourceType": "ServiceRequest",
+            "id": "lab-order-01",
+            "meta": {
+              "versionId": "1",
+              "lastUpdated": "2026-09-27T16:21:40.841+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "identifier": [
+              {
+                "system": "urn:readmit:lab:placer",
+                "value": "lab-order-01"
+              },
+              {
+                "system": "urn:readmit:lab:filler",
+                "value": "lab-report-01"
+              }
+            ],
+            "status": "active",
+            "intent": "order",
+            "code": {
+              "text": "Fictional chemistry panel"
+            },
+            "subject": {
+              "reference": "Patient/lab-patient-01"
+            }
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "AppointmentHistory": {
+      "lab-appointment-01": {
+        "resourceType": "Bundle",
+        "id": "6c9acc8c-7003-4d74-adb4-3b571e17f684",
+        "meta": {
+          "lastUpdated": "2026-09-27T16:21:46.897+00:00"
+        },
+        "type": "history",
+        "total": 2,
+        "link": [
+          {
+            "relation": "self",
+            "url": "http://hapi:8080/fhir/Appointment/lab-appointment-01/_history?_count=1000"
+          }
+        ],
+        "entry": [
+          {
+            "fullUrl": "http://hapi:8080/fhir/Appointment/lab-appointment-01",
+            "resource": {
+              "resourceType": "Appointment",
+              "id": "lab-appointment-01",
+              "meta": {
+                "versionId": "2",
+                "lastUpdated": "2026-09-27T16:21:40.366+00:00",
+                "tag": [
+                  {
+                    "system": "urn:readmit:independent-lab",
+                    "code": "lab-388a45fbd84f53f7e658"
+                  }
+                ]
+              },
+              "identifier": [
+                {
+                  "system": "urn:readmit:lab:appointment",
+                  "value": "lab-appointment-01"
+                }
+              ],
+              "status": "booked",
+              "start": "2030-01-02T10:00:00Z",
+              "end": "2030-01-02T10:30:00Z",
+              "participant": [
+                {
+                  "actor": {
+                    "reference": "Patient/lab-patient-01"
+                  },
+                  "status": "accepted"
+                },
+                {
+                  "actor": {
+                    "reference": "Practitioner/lab-practitioner-01"
+                  },
+                  "status": "accepted"
+                },
+                {
+                  "actor": {
+                    "reference": "Location/lab-location-01"
+                  },
+                  "status": "accepted"
+                }
+              ]
+            },
+            "request": {
+              "method": "PUT",
+              "url": "Appointment/lab-appointment-01/_history/2"
+            },
+            "response": {
+              "status": "200 OK",
+              "etag": "W/\"2\""
+            }
+          },
+          {
+            "fullUrl": "http://hapi:8080/fhir/Appointment/lab-appointment-01",
+            "resource": {
+              "resourceType": "Appointment",
+              "id": "lab-appointment-01",
+              "meta": {
+                "versionId": "1",
+                "lastUpdated": "2026-09-27T16:21:40.166+00:00",
+                "tag": [
+                  {
+                    "system": "urn:readmit:independent-lab",
+                    "code": "lab-388a45fbd84f53f7e658"
+                  }
+                ]
+              },
+              "identifier": [
+                {
+                  "system": "urn:readmit:lab:appointment",
+                  "value": "lab-appointment-01"
+                }
+              ],
+              "status": "booked",
+              "start": "2030-01-02T09:30:00Z",
+              "end": "2030-01-02T10:00:00Z",
+              "participant": [
+                {
+                  "actor": {
+                    "reference": "Patient/lab-patient-01"
+                  },
+                  "status": "accepted"
+                },
+                {
+                  "actor": {
+                    "reference": "Practitioner/lab-practitioner-01"
+                  },
+                  "status": "accepted"
+                },
+                {
+                  "actor": {
+                    "reference": "Location/lab-location-01"
+                  },
+                  "status": "accepted"
+                }
+              ]
+            },
+            "request": {
+              "method": "POST",
+              "url": "Appointment/lab-appointment-01/_history/1"
+            },
+            "response": {
+              "status": "201 Created",
+              "etag": "W/\"1\""
+            }
+          }
+        ]
+      },
+      "lab-native-appointment-01": {
+        "resourceType": "Bundle",
+        "id": "357f7987-9ac2-495a-ae37-116357ae2d46",
+        "meta": {
+          "lastUpdated": "2026-09-27T16:21:47.196+00:00"
+        },
+        "type": "history",
+        "total": 2,
+        "link": [
+          {
+            "relation": "self",
+            "url": "http://hapi:8080/fhir/Appointment/lab-native-appointment-01/_history?_count=1000"
+          }
+        ],
+        "entry": [
+          {
+            "fullUrl": "http://hapi:8080/fhir/Appointment/lab-native-appointment-01",
+            "resource": {
+              "resourceType": "Appointment",
+              "id": "lab-native-appointment-01",
+              "meta": {
+                "versionId": "2",
+                "lastUpdated": "2026-09-27T16:21:41.860+00:00",
+                "tag": [
+                  {
+                    "system": "urn:readmit:independent-lab",
+                    "code": "lab-388a45fbd84f53f7e658"
+                  }
+                ]
+              },
+              "identifier": [
+                {
+                  "system": "urn:readmit:lab:appointment",
+                  "value": "lab-native-appointment-01"
+                }
+              ],
+              "status": "booked",
+              "start": "2030-01-02T10:00:00Z",
+              "end": "2030-01-02T10:30:00Z",
+              "participant": [
+                {
+                  "actor": {
+                    "reference": "Patient/lab-native-patient-01"
+                  },
+                  "status": "accepted"
+                }
+              ]
+            },
+            "request": {
+              "method": "PUT",
+              "url": "Appointment/lab-native-appointment-01/_history/2"
+            },
+            "response": {
+              "status": "200 OK",
+              "etag": "W/\"2\""
+            }
+          },
+          {
+            "fullUrl": "http://hapi:8080/fhir/Appointment/lab-native-appointment-01",
+            "resource": {
+              "resourceType": "Appointment",
+              "id": "lab-native-appointment-01",
+              "meta": {
+                "versionId": "1",
+                "lastUpdated": "2026-09-27T16:21:41.601+00:00",
+                "tag": [
+                  {
+                    "system": "urn:readmit:independent-lab",
+                    "code": "lab-388a45fbd84f53f7e658"
+                  }
+                ]
+              },
+              "identifier": [
+                {
+                  "system": "urn:readmit:lab:appointment",
+                  "value": "lab-native-appointment-01"
+                }
+              ],
+              "status": "booked",
+              "start": "2030-01-02T09:30:00Z",
+              "end": "2030-01-02T10:00:00Z",
+              "participant": [
+                {
+                  "actor": {
+                    "reference": "Patient/lab-native-patient-01"
+                  },
+                  "status": "accepted"
+                }
+              ]
+            },
+            "request": {
+              "method": "POST",
+              "url": "Appointment/lab-native-appointment-01/_history/1"
+            },
+            "response": {
+              "status": "201 Created",
+              "etag": "W/\"1\""
+            }
+          }
+        ]
+      }
+    }
+  },
+  "initial": {
+    "receiver": {
+      "generation": "lab-388a45fbd84f53f7e658",
+      "messages": [
+        {
+          "sequence": 1,
+          "received_at_ns": 1790526098968537552,
+          "payload_base64": "TVNIfF5+XCZ8T0lFLUxBQnxMQUJ8T0lFfExBQnwyMDMwMDEwMTAwMDAwMCswMDAwfHxTSVVeUzEyfExBQi1TMTJ8UHwyLjUuMQ1QSUR8MXx8bGFiLXBhdGllbnQtMDFeTEFCfHxMYXJrXkZpY3Rpb25hbA1TQ0h8bGFiLWFwcG9pbnRtZW50LTAxXkxBQnx8fHx8fHx8fHxeXl4yMDMwMDEwMjA5MzAwMCswMDAwDUFJUHwxfHxsYWItcHJhY3RpdGlvbmVyLTAxDUFJTHwxfHxsYWItbG9jYXRpb24tMDENWkxHfGxhYi0zODhhNDVmYmQ4NGY1M2Y3ZTY1OA0="
+        },
+        {
+          "sequence": 2,
+          "received_at_ns": 1790526099007770261,
+          "payload_base64": "TVNIfF5+XCZ8T0lFLUxBQnxMQUJ8T0lFfExBQnwyMDMwMDEwMTAwMDAwMCswMDAwfHxTSVVeUzEzfExBQi1TMTN8UHwyLjUuMQ1QSUR8MXx8bGFiLXBhdGllbnQtMDFeTEFCfHxMYXJrXkZpY3Rpb25hbA1TQ0h8bGFiLWFwcG9pbnRtZW50LTAxXkxBQnx8fHx8fHx8fHxeXl4yMDMwMDEwMjEwMDAwMCswMDAwDUFJUHwxfHxsYWItcHJhY3RpdGlvbmVyLTAxDUFJTHwxfHxsYWItbG9jYXRpb24tMDENWkxHfGxhYi0zODhhNDVmYmQ4NGY1M2Y3ZTY1OA0="
+        }
+      ]
+    },
+    "v2-to-fhir": {
+      "resourceType": "Bundle",
+      "id": "013f1df3-2c01-4be7-8141-5d50bea78135",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:40.665+00:00"
+      },
+      "type": "searchset",
+      "total": 1,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Appointment?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658&identifier=urn%3Areadmit%3Alab%3Aappointment%7Clab-appointment-01"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Appointment/lab-appointment-01",
+          "resource": {
+            "resourceType": "Appointment",
+            "id": "lab-appointment-01",
+            "meta": {
+              "versionId": "2",
+              "lastUpdated": "2026-09-27T16:21:40.366+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "identifier": [
+              {
+                "system": "urn:readmit:lab:appointment",
+                "value": "lab-appointment-01"
+              }
+            ],
+            "status": "booked",
+            "start": "2030-01-02T10:00:00Z",
+            "end": "2030-01-02T10:30:00Z",
+            "participant": [
+              {
+                "actor": {
+                  "reference": "Patient/lab-patient-01"
+                },
+                "status": "accepted"
+              },
+              {
+                "actor": {
+                  "reference": "Practitioner/lab-practitioner-01"
+                },
+                "status": "accepted"
+              },
+              {
+                "actor": {
+                  "reference": "Location/lab-location-01"
+                },
+                "status": "accepted"
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    },
+    "fhir-native": {
+      "resourceType": "Bundle",
+      "id": "6ff069d1-58a7-40a0-985f-d21885336382",
+      "meta": {
+        "lastUpdated": "2026-09-27T16:21:42.130+00:00"
+      },
+      "type": "searchset",
+      "total": 1,
+      "link": [
+        {
+          "relation": "self",
+          "url": "http://hapi:8080/fhir/Appointment?_count=1000&_tag=urn%3Areadmit%3Aindependent-lab%7Clab-388a45fbd84f53f7e658&identifier=urn%3Areadmit%3Alab%3Aappointment%7Clab-native-appointment-01"
+        }
+      ],
+      "entry": [
+        {
+          "fullUrl": "http://hapi:8080/fhir/Appointment/lab-native-appointment-01",
+          "resource": {
+            "resourceType": "Appointment",
+            "id": "lab-native-appointment-01",
+            "meta": {
+              "versionId": "2",
+              "lastUpdated": "2026-09-27T16:21:41.860+00:00",
+              "tag": [
+                {
+                  "system": "urn:readmit:independent-lab",
+                  "code": "lab-388a45fbd84f53f7e658"
+                }
+              ]
+            },
+            "identifier": [
+              {
+                "system": "urn:readmit:lab:appointment",
+                "value": "lab-native-appointment-01"
+              }
+            ],
+            "status": "booked",
+            "start": "2030-01-02T10:00:00Z",
+            "end": "2030-01-02T10:30:00Z",
+            "participant": [
+              {
+                "actor": {
+                  "reference": "Patient/lab-native-patient-01"
+                },
+                "status": "accepted"
+              }
+            ]
+          },
+          "search": {
+            "mode": "match"
+          }
+        }
+      ]
+    }
+  }
+}

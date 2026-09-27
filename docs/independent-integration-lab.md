@@ -22,7 +22,8 @@ python3 tools/integration_lab.py down /absolute/new-lab-state
 python3 tools/integration_lab.py export /absolute/new-lab-state
 ```
 
-The state directory must be new. Each lab gets a random Compose project name,
+The state directory must be new and its parent directory must already exist.
+Each lab gets a random Compose project name,
 database/admin credentials, private CA, service/client certificates and separate
 SMART keys for setup, read-only observation and the engine. State and secrets
 are private local files. Never share the state directory; share only `export/`.
@@ -143,7 +144,12 @@ hashes sealed when the controller completed. Missing or changed acquisitions
 cannot retain a qualified status. A negative-control test confirms that an
 immediate FHIR duplicate cannot satisfy the delayed-duplicate proof.
 
-A separate developer's clean-environment recreation has not been demonstrated.
-That acceptance item keeps #590 open; the dispatch-only workflow is available
-for that additional evidence. No hosted/amd64 or native-product qualification is
-implied by the local linux/arm64 run.
+A [fresh recreation](../testdata/integration-lab/qualification/recreation-20260927.md)
+retains the complete credential-filtered acquisitions from a second isolated
+lab on September 27, 2026. It used a clean checkout, new credentials and new
+Compose project volumes, following the commands above. Its actual route
+revisions, observations, server versions, scoped resets and verified teardown
+can be reopened offline; the offline tooling test now checks that committed
+package by default rather than skipping acquisition integrity without a local
+lab directory. No hosted/amd64, separate human operator, or native-product
+qualification is implied by this Linux/arm64 reproduction.
