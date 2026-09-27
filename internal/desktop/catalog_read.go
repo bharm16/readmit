@@ -462,7 +462,7 @@ func (c *loadedCatalog) windowed(item catalog.Item) bool {
 func (c *loadedCatalog) incompleteSaves() []IncompleteSave {
 	saves := []IncompleteSave{}
 	for _, save := range c.incomplete {
-		incomplete := IncompleteSave{Operation: save.Operation, Name: save.Name, Reason: save.Reason}
+		incomplete := IncompleteSave{Operation: save.Operation, Kind: ItemKind(save.Kind), Name: save.Name, Reason: save.Reason}
 		if c.document.Find(save.Item) >= 0 {
 			incomplete.Item = &ItemRef{Kind: ItemKind(save.Kind), ID: save.Item}
 		}
@@ -782,7 +782,7 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 		if parent == nil {
 			parent = c.entryRef(VariantItem, revision.Operation.Parent)
 		}
-		read = view{summary: ItemSummary{Variant: &VariantSummary{Form: "revision", Parent: parent, Operation: revision.Operation.Name}}}
+		read = view{summary: ItemSummary{Variant: &VariantSummary{Form: "revision", Parent: parent, Operation: revision.Operation.Name, Entry: item.Entry}}}
 	}
 	c.identities[item.Entry] = facts.Identity
 	state := operation.EvidenceState(c.root, facts)
@@ -922,14 +922,15 @@ func readTest(c *loadedCatalog, item catalog.Item, paths map[string]string) (vie
 	}
 	summary := &TestSummary{SourceCase: c.specCase(spec), CurrentVersion: version, Assertions: len(spec.Assertions),
 		Boundary: spec.Observation.Boundary, Entry: c.entryOf(path)}
+	environment := ""
 	if links, held := paths["links"]; held {
 		read, err := readTestLinks(links)
 		if err != nil {
 			return view{}, err
 		}
-		summary.Tags = read.Tags
+		summary.Tags, environment = read.Tags, read.Environment
 	}
-	if latest := c.latestRun(spec); latest != nil {
+	if latest := c.latestRun(spec, environment); latest != nil {
 		summary.LatestRun = &ItemRef{Kind: RunItem, ID: latest.id}
 		summary.LatestResult = latest.outcome
 		if !latest.started.IsZero() {
@@ -985,11 +986,18 @@ func (c *loadedCatalog) runs() []runView {
 }
 
 // runsOf are the runs whose retained test is exactly this one, the most
-// recently started first.
-func (c *loadedCatalog) runsOf(spec testrunner.Spec) []runView {
+// recently started first. A test that follows the environment it names
+// executed exactly when its retained test differs from it in nothing but the
+// target, which is the target of a revision of that environment.
+func (c *loadedCatalog) runsOf(spec testrunner.Spec, environment string) []runView {
 	matched := []runView{}
+	targets := c.environmentTargets(environment)
 	for _, run := range c.runs() {
-		if reflect.DeepEqual(*run.spec, spec) {
+		retained := *run.spec
+		if targets[retained.Target] {
+			retained.Target = spec.Target
+		}
+		if reflect.DeepEqual(retained, spec) {
 			matched = append(matched, run)
 		}
 	}
@@ -1001,11 +1009,30 @@ func (c *loadedCatalog) runsOf(spec testrunner.Spec) []runView {
 
 // latestRun is the most recently started run whose retained test is exactly
 // this one.
-func (c *loadedCatalog) latestRun(spec testrunner.Spec) *runView {
-	if matched := c.runsOf(spec); len(matched) > 0 {
+func (c *loadedCatalog) latestRun(spec testrunner.Spec, environment string) *runView {
+	if matched := c.runsOf(spec, environment); len(matched) > 0 {
 		return &matched[0]
 	}
 	return nil
+}
+
+// environmentTargets are the targets every revision of an environment
+// declares, by their entries.
+func (c *loadedCatalog) environmentTargets(id string) map[string]bool {
+	targets := map[string]bool{}
+	index := c.document.Find(id)
+	if id == "" || index < 0 || c.document.Items[index].Kind != string(EnvironmentItem) {
+		return targets
+	}
+	item := c.document.Items[index]
+	for _, revision := range item.Revisions {
+		if paths, availability, _ := c.revisionBacking(item, strconv.Itoa(revision.Number)); availability == ItemAvailable {
+			if entry := c.entryOf(paths["target"]); entry != "" {
+				targets[entry] = true
+			}
+		}
+	}
+	return targets
 }
 
 func readSuite(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
@@ -1644,7 +1671,7 @@ func readVariant(c *loadedCatalog, item catalog.Item, paths map[string]string) (
 	if _, _, err := operation.VerifiedCase(c.root, item.Entry); err != nil {
 		return view{}, err
 	}
-	return view{summary: ItemSummary{Variant: &VariantSummary{Form: "derived-case"}}}, nil
+	return view{summary: ItemSummary{Variant: &VariantSummary{Form: "derived-case", Entry: item.Entry}}}, nil
 }
 
 func readBackup(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {

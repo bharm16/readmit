@@ -1,0 +1,8 @@
+- A test of appointment records reads a named observation, chosen by name in Setup; an observation a test run cannot read is listed with the reason. The run reads the receiver ledger fixed when the test was saved.
+- A test whose links name an environment runs against that environment's current version, and the run records the exact version it used. Suites and hub schedules still run the target saved with each test.
+- An unfinished test draft is kept when another page is shown and across a restart; Drafts to restore reopens it in the editor, marked Unsaved. Leaving an unsaved test asks Save changes? with Keep editing, Discard and Save.
+- Create test works from an open variant and records it as the test's source; Change case is offered when editing a saved test too.
+- Add ACK field offers the field inspected in the case first, never its value.
+- Suggest checks names each proposal's source run or finding, and a proposal can be edited before it is accepted without deciding it.
+- Run from a saved test opens its destination review already checked, locally; only Send sends.
+- A test save that an interruption left unfinished is listed on Tests with Discard, which removes only what it staged.

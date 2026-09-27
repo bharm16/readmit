@@ -454,7 +454,7 @@ test("Create test opens the test editor from a confirmed finding with its expect
       new: true,
       ref: { kind: "test", id: "" },
       draft: { name: "Unexpected acknowledgement", test: { schema: "readmit-test-draft/v1", case: { entry: CASE_ENTRY, identity: CASE_IDENTITY }, name: "Unexpected acknowledgement", messages: [GRID_OCCURRENCE], target: "", boundary: "", observation: "", reset: "", expectations: [] } },
-      test: { case: CASE.ref, case_name: CASE_ENTRY, messages: [], unsupported: [], proposals: request.from?.proposals ?? [], read_only: false },
+      test: { case: CASE.ref, case_name: CASE_ENTRY, messages: [], observations: [], unsupported: [], proposals: request.from?.proposals ?? [], read_only: false },
     }),
   });
   const table = await page().findByRole("table", { name: "Findings" });

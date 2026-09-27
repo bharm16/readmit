@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -439,6 +440,63 @@ func validateEditorDraft(draft EditorDraft) error {
 	}
 	if draft.ContentSchema == SuiteDraftSchema {
 		return validateSuiteDraft([]byte(draft.Content))
+	}
+	if draft.ContentSchema == TestEditorDraftSchema {
+		return validateTestEditorDraft(draft)
+	}
+	return nil
+}
+
+// TestEditorDraftSchema is the contract of the test editor's retained work,
+// kept under the draft kind TestEditorDraftKind.
+const (
+	TestEditorDraftSchema = "readmit-desktop-test-editor/v1"
+	TestEditorDraftKind   = "test-draft"
+)
+
+// TestEditorDraft is the test editor's retained work: whether it creates a
+// test or edits one, the step it was at, the case it was opened over, and the
+// whole test draft as the editor holds it — name, test draft or document, and
+// links — each member of which may still be unanswered. An edit names the
+// test and revision it began from in the draft's Item. It holds nothing of a
+// run: no preflight, identity, destination, admission or send consent, and a
+// retained draft carrying any other member is refused, so restoring one never
+// resumes or approves a send.
+type TestEditorDraft struct {
+	Schema string    `json:"schema"`
+	Mode   string    `json:"mode"`
+	Step   string    `json:"step"`
+	Case   *ItemRef  `json:"case,omitzero"`
+	Draft  ItemDraft `json:"draft"`
+}
+
+// validateTestEditorDraft holds retained test editor work to its contract: a
+// new test names no object, an edit names the test it began from, and the
+// draft holds only what a test carries.
+func validateTestEditorDraft(retained EditorDraft) error {
+	var draft TestEditorDraft
+	if err := json.Unmarshal(retained.Content, &draft, json.RejectUnknownMembers(true)); err != nil || draft.Schema != TestEditorDraftSchema {
+		return errors.New("invalid test editor draft content")
+	}
+	if retained.Kind != TestEditorDraftKind {
+		return errors.New("a test editor draft is retained as a " + TestEditorDraftKind)
+	}
+	switch {
+	case draft.Mode == "new" && retained.Item != nil,
+		draft.Mode == "edit" && (retained.Item == nil || retained.Item.Ref.Kind != TestItem || retained.Item.Ref.Revision == ""),
+		draft.Mode != "new" && draft.Mode != "edit":
+		return errors.New("a test editor draft creates a test, or edits the test and version it names")
+	}
+	if !slices.Contains([]string{"setup", "checks", "review"}, draft.Step) {
+		return errors.New("a test editor draft is at its setup, checks or review step")
+	}
+	if draft.Case != nil && (draft.Case.Kind != CaseItem && draft.Case.Kind != VariantItem || !catalog.ValidID(draft.Case.ID)) {
+		return errors.New("a test editor draft names the case it was opened over by its identity")
+	}
+	held := draft.Draft
+	held.Name, held.Test, held.TestLinks, held.TestDocument = "", nil, nil, ""
+	if !reflect.DeepEqual(held, ItemDraft{}) {
+		return errors.New("a test editor draft holds only a test's name, draft, document and links")
 	}
 	return nil
 }

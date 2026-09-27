@@ -6,7 +6,7 @@
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CatalogItem, CatalogQuery, ItemDraftResult, ItemRequest, SaveItemRequest, TestContext, TestDraftDocument, TestHistoryResult } from "./bindings";
+import type { CatalogItem, CatalogQuery, IncompleteSave, ItemDraftResult, ItemRequest, RunExplanation, SaveItemRequest, TestContext, TestDraftDocument, TestHistoryResult } from "./bindings";
 import { renderApp } from "./testkit/app";
 import { CASE_ENTRY, CASE_IDENTITY, caseCatalogItem, caseResult, catalogOfListing, folderWithCase, GRID_OCCURRENCE, messageRow, messagesResult, NEXT_OCCURRENCE, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { findCaseRow, goTo, page } from "./testkit/navigation";
@@ -63,8 +63,14 @@ function draft(overrides: Partial<TestDraftDocument> = {}): TestDraftDocument {
   };
 }
 
+/** The named observations a test can read, and one it cannot. */
+const OBSERVATIONS = [
+  { ref: { kind: "observation" as const, id: "obs-appointments", revision: "1" }, name: "Appointments", readable: true },
+  { ref: { kind: "observation" as const, id: "obs-archive", revision: "1" }, name: "Archive API", readable: false, reason: "a test run reads a receiver ledger" },
+];
+
 function testContext(overrides: Partial<TestContext> = {}): TestContext {
-  return { case: CASE.ref, case_name: CASE_ENTRY, messages: MESSAGES, unsupported: [], proposals: [], read_only: false, ...overrides };
+  return { case: CASE.ref, case_name: CASE_ENTRY, messages: MESSAGES, observations: OBSERVATIONS, unsupported: [], proposals: [], read_only: false, ...overrides };
 }
 
 function newDraftAnswer(request: ItemRequest, overrides: Partial<TestDraftDocument> = {}): ItemDraftResult {
@@ -100,7 +106,7 @@ function savedAnswer(request: ItemRequest, overrides: Partial<ItemDraftResult> =
     context: request.context,
     new: false,
     ref: { kind: "test", id: request.ref.id, revision: "2" },
-    draft: { name: "Reschedule keeps one appointment", test: SAVED_DRAFT, test_links: { environment: QA.ref.id, reset: "environment" } },
+    draft: { name: "Reschedule keeps one appointment", test: SAVED_DRAFT, test_links: { environment: QA.ref.id, observation: "obs-appointments", reset: "environment" } },
     test: testContext({ document: '{"schema":"readmit-test/v1"}' }),
     ...overrides,
   };
@@ -291,7 +297,6 @@ test("a downstream-record test needs an observation and a record check, and save
   const user = userEvent.setup();
   const { facade } = await openTests(user, [], {
     OpenItemDraft: (request) => newDraftAnswer(request),
-    ListReceiverSnapshots: (request) => ({ state: "completed", context: request.context, snapshots: [{ entry: "appointments-2026-01-02.json", collected_at: "2026-01-02T09:00:00Z" }] }),
     ValidateDraft: (request) => ({ state: "completed", context: request.context, problems: [] }),
     SaveItem: (request) => saved(request),
   });
@@ -304,8 +309,9 @@ test("a downstream-record test needs an observation and a record check, and save
   await user.selectOptions(page().getByRole("combobox", { name: "Environment" }), QA.ref.id);
   await user.click(page().getByRole("radio", { name: "Appointment records" }));
   const observation = await page().findByRole("combobox", { name: "Observation" });
-  await waitFor(() => expect(within(observation).getByRole("option", { name: /^Collected / })).toBeTruthy());
-  await user.selectOptions(observation, "appointments-2026-01-02.json");
+  // A named observation a test run cannot read is listed with its reason, and cannot be chosen.
+  expect(within(observation).getByRole("option", { name: /^Archive API \(/ })).toHaveProperty("disabled", true);
+  await user.selectOptions(observation, "obs-appointments");
   await user.selectOptions(page().getByRole("combobox", { name: "Reset" }), "environment");
   await user.click(page().getByRole("button", { name: "Next" }));
   await user.click(page().getByRole("button", { name: "Add check" }));
@@ -320,8 +326,8 @@ test("a downstream-record test needs an observation and a record check, and save
   await user.click(page().getByRole("button", { name: "Create test" }));
   await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
   const request = facade.oneCall("SaveItem")[0] as SaveItemRequest;
-  expect(request.draft.test).toMatchObject({ boundary: "appointment-ledger", observation: "appointments-2026-01-02.json", expectations: [{ id: "check-1", operator: "ledger_count", count: 0 }] });
-  expect(request.draft.test_links).toMatchObject({ environment: QA.ref.id, reset: "environment" });
+  expect(request.draft.test).toMatchObject({ boundary: "appointment-ledger", expectations: [{ id: "check-1", operator: "ledger_count", count: 0 }] });
+  expect(request.draft.test_links).toMatchObject({ environment: QA.ref.id, observation: "obs-appointments", reset: "environment" });
 });
 
 test("choosing Acknowledgements shows the record checks it affects before removing them", async () => {
@@ -452,7 +458,6 @@ test("a saved test opens on Setup with case, messages, environment, outcome, obs
   await openTests(user, [RESCHEDULE], {
     OpenItemDraft: (request) => savedAnswer(request),
     TestHistory: (request) => ({ state: "completed", context: request.context, versions: [], runs: [] }),
-    ListReceiverSnapshots: (request) => ({ state: "completed", context: request.context, snapshots: [{ entry: "appointments-2026-01-02.json", collected_at: "2026-01-02T09:00:00Z" }] }),
   });
   await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
   const setup = await page().findByLabelText("Setup", { selector: "dl" });
@@ -460,7 +465,7 @@ test("a saved test opens on Setup with case, messages, environment, outcome, obs
   expect(within(setup).getByText(CASE_ENTRY)).toBeTruthy();
   expect(within(setup).getByText("SIU · S12, SIU · S13")).toBeTruthy();
   expect(within(setup).getByText("Appointment records")).toBeTruthy();
-  expect(await within(setup).findByText(/^Collected /)).toBeTruthy();
+  expect(await within(setup).findByText("Appointments")).toBeTruthy();
   expect(within(setup).queryByText("appointments-2026-01-02.json")).toBeNull();
   expect(within(setup).getByText("Empty appointments")).toBeTruthy();
   expect(page().getByRole("tab", { name: "Setup", selected: true })).toBeTruthy();
@@ -514,6 +519,9 @@ test("Run on an edited test offers Save changes or Keep editing and opens run re
   await user.click(within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
   await user.click(await page().findByRole("button", { name: "Run" }));
   expect(await page().findByRole("heading", { level: 1, name: "Run test" })).toBeTruthy();
+  // The run page sends only through a durable start after its own Send.
+  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+  expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
@@ -668,4 +676,74 @@ test("a test whose outcome this window does not know reads Unsupported and canno
   const outcome = await page().findByText("Unsupported");
   expect(outcome.closest("details")?.querySelector("code")?.textContent).toBe("future-boundary");
   expect((page().getByRole("button", { name: "Run" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("a run of a test that links check groups shows each group decided against that run", async () => {
+  const user = userEvent.setup();
+  const GROUP = { kind: "check-group" as const, id: "cg-ledger", revision: "4" };
+  const BROKEN = { kind: "check-group" as const, id: "cg-broken", revision: "1" };
+  const history: TestHistoryResult = {
+    state: "completed",
+    context: { project: WORKSPACE_ROOT, generation: 0 },
+    versions: [{ revision: "2", published_at: "2026-01-03T09:00:00Z", author: "Avery QA", changes: [], current: true }],
+    runs: [{ run: { kind: "run", id: "run-1" }, revision: "1", started_at: "2026-01-03T10:00:00Z", outcome: "pass" }],
+  };
+  const explanation = { verdict: "pass", passed: 3, failed: 0, undecided: 0 } as RunExplanation;
+  const { facade } = await openTests(user, [RESCHEDULE], {
+    OpenItemDraft: (request) => {
+      const answer = savedAnswer(request);
+      return { ...answer, draft: { ...answer.draft!, test_links: { ...answer.draft!.test_links, checks: [GROUP, BROKEN] } } };
+    },
+    TestHistory: (request) => ({ ...history, context: request.context }),
+    TestRunChecks: (request) => ({
+      state: "completed",
+      context: request.context,
+      checks: [
+        { group: GROUP, name: "Ledger stays single", state: "completed", explanation },
+        { group: BROKEN, name: "Archive rules", state: "failed", reason: "the run kept no ledger evidence" },
+      ],
+    }),
+  });
+  await user.dblClick(await page().findByText("Reschedule keeps one appointment"));
+  await user.click(await page().findByRole("tab", { name: "History" }));
+  const runs = await page().findByRole("table", { name: "Runs" });
+  await waitFor(() => expect(rowsOf(runs)).toHaveLength(1));
+  await user.click(runs.querySelector('tr[data-row-id="run-1"]')!);
+  const groups = await page().findByRole("heading", { name: "Check groups" });
+  expect(groups).toBeTruthy();
+  expect(facade.oneCall("TestRunChecks")[0]).toMatchObject({ test: { kind: "test", id: RESCHEDULE.ref.id, revision: "1" }, run: { kind: "run", id: "run-1" } });
+  expect(await page().findByText("Ledger stays single")).toBeTruthy();
+  expect(page().getByText("Passed · 3 passed, 0 failed, 0 undecided")).toBeTruthy();
+  expect(page().getByText("Archive rules")).toBeTruthy();
+  expect(page().getByText("the run kept no ledger evidence")).toBeTruthy();
+});
+
+test("an interrupted save is listed with its reason and Discard drops only its staged files", async () => {
+  const user = userEvent.setup();
+  const INTERRUPTED: IncompleteSave = { operation: "op-7", kind: "test", item: RESCHEDULE.ref, name: "Reschedule keeps one appointment", reason: "The app closed while saving." };
+  const { facade } = await openTests(user, [RESCHEDULE], {
+    DiscardIncompleteSave: (request) => ({ state: "completed", context: request.context }),
+  });
+  let pending: IncompleteSave[] = [INTERRUPTED];
+  facade.reply({
+    ListCatalog: (query) => {
+      const answer = catalog([RESCHEDULE])(query, facade);
+      return query.kind === "test" && answer.page ? { ...answer, page: { ...answer.page, incomplete: pending } } : answer;
+    },
+    DiscardIncompleteSave: (request) => {
+      pending = [];
+      return { state: "completed", context: request.context };
+    },
+  });
+  await goTo(user, "Projects");
+  await goTo(user, "Tests");
+  const notice = await page().findByText(/Reschedule keeps one appointment: this save did not finish/);
+  expect(notice.textContent).toContain("The app closed while saving.");
+  const reads = facade.callsTo("ListCatalog").filter((call) => (call.args[0] as CatalogQuery).kind === "test").length;
+  await user.click(page().getByRole("button", { name: "Discard" }));
+  await waitFor(() => expect(page().queryByRole("button", { name: "Discard" })).toBeNull());
+  expect(facade.oneCall("DiscardIncompleteSave")[0]).toMatchObject({ operation: "op-7" });
+  expect(facade.oneCall("DiscardIncompleteSave")[0].context).toBeTruthy();
+  expect(facade.callsTo("ListCatalog").filter((call) => (call.args[0] as CatalogQuery).kind === "test").length).toBeGreaterThan(reads);
+  expect(page().getByRole("table", { name: "Tests" })).toBeTruthy();
 });

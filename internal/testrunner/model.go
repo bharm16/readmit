@@ -165,6 +165,7 @@ type Artifact struct {
 type Plan struct {
 	spec            Spec
 	raw             []byte
+	saved           []byte
 	specPath        string
 	sourcePath      string
 	sourceInfo      os.FileInfo

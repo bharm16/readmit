@@ -1082,15 +1082,29 @@ never rewritten: saving an object that was discovered in one publishes its
 first revision beside it.
 
 A test is saved from its whole draft over its case, with its links
-(`readmit-test-links/v1`): the environment it runs against by catalog
-identity, whether its reset follows that environment's named reset, its tags
-and the case, finding or variant it came from. The save resolves the
-environment to the target file of its current revision, which the
-`readmit-test/v1` spec names, so an environment edited later reaches the test
-when the test is saved again. `ValidateDraft` names every problem of a test at
-the field of its stage (`test.name`, `test.messages`, `test.environment`,
-`test.boundary`, `test.observation`, `test.reset`, `test.expectations`, and
-`test.expectations.N` for one check). A spec the editor cannot represent —
+(`readmit-test-links/v1`): the environment it runs against and the named
+observation it reads, each by catalog identity, whether its reset follows that
+environment's named reset, its tags, the check groups it links, each at the
+exact version it uses, and the case, finding or variant it came from. The save
+resolves the environment to the target file of its current revision, which the
+`readmit-test/v1` spec names, and the observation to the receiver ledger its
+file-export source reads, which the spec's observation path names; an
+observation whose source is not one readmit-observation/v1 ledger of the
+project is a `test.observation` problem, and `OpenItemDraft` lists every named
+observation with whether a run can read it. A run follows the environment: a
+preflight, send or resume of a saved test's spec executes against the target
+of the environment's current revision, names that revision and the test
+version in the preflight, and retains the spec as executed; saving the
+environment again changes the preflight identity, so an earlier preflight's
+send is refused. Suite runs and hub schedules still run the target
+each spec names. A test saved before it named its observation reopens naming
+the one that reads its ledger. `TestRunChecks` decides the check groups a test
+version links against one of its runs, as `readmit explain` decides each set.
+`ValidateDraft` names every problem of a test at the field of its stage
+(`test.name`, `test.messages`, `test.environment`, `test.boundary`,
+`test.observation`, `test.reset`, `test.expectations`, and
+`test.expectations.N` for one check, `test.checks.N` for one linked check
+group). A spec the editor cannot represent —
 a reference that is not one entry of the project, text over several lines, a
 test release — opens with each such clause named and read-only, and a save
 from the draft that would lose it is refused; its exact document is saved
@@ -1140,7 +1154,12 @@ last retained it, so recovery returns it to that object and lists it by
 object, time and project; the draft store is written as
 `readmit-desktop-drafts/v2` only while it holds such a draft. A draft never
 holds an action review, and restoring one resumes an editor, never a send,
-a reset or an approval.
+a reset or an approval. The test editor retains its work as a `test-draft`
+under `readmit-desktop-test-editor/v1`: whether it creates or edits a test, the
+step it was at, the case it was opened over and the draft's name, test, document
+and links, and nothing else; an edit names its test and base revision in
+`item`. An interrupted save is listed with the kind of object it was for, so
+a screen lists its own kind's, a creation included.
 
 ### Findings
 

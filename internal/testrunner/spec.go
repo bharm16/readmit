@@ -134,6 +134,21 @@ func Prepare(specPath string) (*Plan, error) {
 // PrepareWithDurability is Prepare for a plan that executes with the durability
 // its caller chose, as RunWithDurability does.
 func PrepareWithDurability(specPath string, durability artifactdir.Durability) (*Plan, error) {
+	return prepareFile(specPath, "", durability)
+}
+
+// PrepareAt is Prepare for the spec at specPath executed against target, a
+// reference resolved from the spec's own directory exactly as the one it
+// names is, in place of the target it names. The plan's spec is the spec as
+// executed, naming target: it is what the plan's identity seals and what a
+// run retains, so the evidence records the exact target used. The saved file
+// still decides whether the spec changed before execution. An empty target,
+// or the one the spec names, prepares the saved bytes exactly as Prepare does.
+func PrepareAt(specPath, target string) (*Plan, error) {
+	return prepareFile(specPath, target, artifactdir.Durable)
+}
+
+func prepareFile(specPath, target string, durability artifactdir.Durability) (*Plan, error) {
 	resolved, err := filepath.EvalSymlinks(specPath)
 	if err != nil {
 		return nil, errors.New("cannot resolve test spec")
@@ -146,11 +161,25 @@ func PrepareWithDurability(specPath string, durability artifactdir.Durability) (
 	if err != nil {
 		return nil, errors.New("cannot read test spec")
 	}
-	plan, err := prepareSpec(raw, filepath.Dir(resolved), durability)
+	executed := raw
+	if target != "" {
+		spec, err := DecodeSpec(raw)
+		if err != nil {
+			return nil, err
+		}
+		if spec.Target != target {
+			spec.Target = target
+			if executed, err = json.Marshal(spec, json.Deterministic(true)); err != nil {
+				return nil, errors.New("cannot encode test spec")
+			}
+			executed = append(executed, '\n')
+		}
+	}
+	plan, err := prepareSpec(executed, filepath.Dir(resolved), durability)
 	if err != nil {
 		return nil, err
 	}
-	plan.specPath = resolved
+	plan.specPath, plan.saved = resolved, raw
 	return plan, nil
 }
 

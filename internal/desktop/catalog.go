@@ -401,6 +401,9 @@ type VariantSummary struct {
 	Form      string   `json:"form"`
 	Parent    *ItemRef `json:"parent"`
 	Operation string   `json:"operation,omitzero"`
+	// Entry is the case bundle a revision or derived-case variant is, which
+	// the window opens it by; plans and reproducers are not cases yet.
+	Entry string `json:"entry,omitzero"`
 }
 
 type BackupSummary struct {
@@ -451,10 +454,12 @@ type CatalogQuery struct {
 // CatalogPageSize is the default page, and the largest a query may ask for.
 const CatalogPageSize = 200
 
-// IncompleteSave is one save an interruption left unpublished. The object's
-// previous revision is current; Operation retries or discards it.
+// IncompleteSave is one save an interruption left unpublished, of an object
+// of Kind. The object's previous revision is current; Operation retries or
+// discards it. Item is null for a save that was creating its object.
 type IncompleteSave struct {
 	Operation string   `json:"operation"`
+	Kind      ItemKind `json:"kind"`
 	Item      *ItemRef `json:"item"`
 	Name      string   `json:"name,omitzero"`
 	Reason    string   `json:"reason"`

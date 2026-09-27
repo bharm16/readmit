@@ -52,6 +52,7 @@ export function RunPanel({
   initialEnvironment,
   onConfigureEnvironment,
   onOpenLicense,
+  preflightOnArrival,
 }: {
   workspace: string | null;
   entries: Artifact[];
@@ -67,6 +68,10 @@ export function RunPanel({
    * opens the real configuration screen instead of restating the reason. */
   onConfigureEnvironment?: () => void;
   onOpenLicense?: () => void;
+  /** Changes each time a saved test's Run arrives here: its preflight is
+   * read at once, locally, so the review is the first thing shown and Send
+   * stays the only action that sends. */
+  preflightOnArrival?: number;
 }) {
   const specs = entries.filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name);
   const suites = entries.filter((artifact) => artifact.kind === "suite").map((artifact) => artifact.name);
@@ -101,6 +106,14 @@ export function RunPanel({
   }, [initialSpec]);
 
   useEffect(() => {
+    if (preflightOnArrival && initialSpec) {
+      invalidate();
+      void ask(initialSpec);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preflightOnArrival]);
+
+  useEffect(() => {
     if (initialEnvironment) {
       setEnvironment(initialEnvironment);
     }
@@ -121,10 +134,10 @@ export function RunPanel({
     setRevealed(false);
   }
 
-  async function ask() {
+  async function ask(spec: string = selected) {
     if (busy) return;
     await lifecycle.run("preflighting", async () => {
-      const request: RunPreflightRequest = { workspace: workspace ?? "", spec: selected };
+      const request: RunPreflightRequest = { workspace: workspace ?? "", spec };
       if (environment) request.environment = environment;
       if (output) request.output = output;
       const answer = await preflightRun(request);
