@@ -20,6 +20,30 @@ func OpenHTTP(directory string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	return VerifyHTTP(files)
+}
+
+// VerifyHTTP validates one retained byte snapshot without re-reading files.
+// It applies the same finite layout and semantic checks as OpenHTTP.
+func VerifyHTTP(files map[string][]byte) (Result, error) {
+	if len(files) > family.Layout.MaxFiles {
+		return Result{}, refused
+	}
+	total := 0
+	for name, raw := range files {
+		if !family.Layout.AllowFile(name) || len(raw) > family.Layout.MaxFileBytes {
+			return Result{}, refused
+		}
+		total += len(raw)
+	}
+	if total > family.Layout.MaxBytes {
+		return Result{}, refused
+	}
+	for _, name := range family.Layout.RequiredFiles {
+		if _, ok := files[name]; !ok {
+			return Result{}, refused
+		}
+	}
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(ResultSchema, files) {
 		return Result{}, refused
 	}

@@ -1,0 +1,1 @@
+- Added scoped synthetic test setup and cleanup through explicitly registered fixture adapters, with separate authority, deterministic identifiers, target leases, verified postconditions and retained effects. Interrupted work requires read-only reconciliation and a new cleanup approval; it never retries provisioning automatically.
