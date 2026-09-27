@@ -80,16 +80,38 @@ func TestGroupingReportsIsGroupingTheirCases(t *testing.T) {
 	}
 }
 
-// Every rule of every ruleset has a human name, and no rule claims a
-// severity nobody declared.
-func TestEveryRuleHasANameAndNoSeverity(t *testing.T) {
+// Every rule of every ruleset has a human name and exactly the severity this
+// release declares for it.
+func TestEveryRuleHasANameAndItsDeclaredSeverity(t *testing.T) {
+	declared := map[string]diagnose.Severity{
+		diagnose.RequiredField:              diagnose.SeverityError,
+		diagnose.LifecycleRequiredField:     diagnose.SeverityError,
+		diagnose.OrderRequiredField:         diagnose.SeverityError,
+		diagnose.EventTypeMismatch:          diagnose.SeverityError,
+		diagnose.ACKOutcome:                 diagnose.SeverityError,
+		diagnose.ACKError:                   diagnose.SeverityError,
+		diagnose.DuplicateControl:           diagnose.SeverityWarning,
+		diagnose.BookingNotObserved:         diagnose.SeverityWarning,
+		diagnose.VisitNotObserved:           diagnose.SeverityWarning,
+		diagnose.AppointmentNotObserved:     diagnose.SeverityWarning,
+		diagnose.MergeIdentifierNotObserved: diagnose.SeverityWarning,
+		diagnose.OrderNotObserved:           diagnose.SeverityWarning,
+		diagnose.ACKStageNotObserved:        diagnose.SeverityWarning,
+		diagnose.ACKErrorLocation:           diagnose.SeverityInfo,
+		diagnose.DuplicateOutput:            diagnose.SeverityWarning,
+		diagnose.StatusProgression:          diagnose.SeverityError,
+	}
 	rules := diagnose.Rules()
 	for _, config := range []diagnose.Config{diagnose.DefaultConfig(), diagnose.LifecycleConfig(), diagnose.OrderConfig()} {
 		for _, rule := range config.Rules {
+			want, known := declared[rule]
+			if !known {
+				t.Fatalf("%s of %s has no declared severity in this test", rule, config.Ruleset)
+			}
 			if !slices.ContainsFunc(rules, func(info diagnose.RuleInfo) bool {
-				return info.ID == rule && info.Ruleset == config.Ruleset && info.Name != "" && info.Severity == ""
+				return info.ID == rule && info.Ruleset == config.Ruleset && info.Name != "" && info.Severity == want && diagnose.RuleSeverity(rule) == want
 			}) {
-				t.Fatalf("%s of %s has no name, or a severity: %+v", rule, config.Ruleset, rules)
+				t.Fatalf("%s of %s has no name, or not severity %q: %+v", rule, config.Ruleset, want, rules)
 			}
 		}
 	}

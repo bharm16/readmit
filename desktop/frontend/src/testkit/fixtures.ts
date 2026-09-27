@@ -77,6 +77,7 @@ import type {
   Diagnosis,
   DiagnosisEvidence,
   DiagnosisFinding,
+  FindingRow,
   DiagnosisFindingGroup,
   DiagnosisGroupsResult,
   DiagnosisResult,
@@ -1539,6 +1540,21 @@ export function diagnosisFinding(
     ruleset: "readmit-siu-diagnosis/v1",
     summary: "The acknowledgement outcome is not what the ruleset expects.",
     evidence: [diagnosisEvidence()],
+    ...overrides,
+  };
+}
+
+/** One finding as the Findings view lists it: the finding, the severity its
+ * rule declares and its evidence field's label, never a field value. */
+export function findingRow(
+  id: string,
+  ruleId = "ack.msa-outcome",
+  overrides: Partial<FindingRow> = {},
+): FindingRow {
+  return {
+    ...diagnosisFinding(id, ruleId),
+    severity: ruleId === "message.duplicate-control-id" ? "warning" : "error",
+    labels: { "MSH-10": "Message Control ID" },
     ...overrides,
   };
 }

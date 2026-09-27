@@ -6,14 +6,18 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   analyzeCase,
+  exportAnalysisSettings,
   findingReviewHistory,
+  importAnalysisSettings,
   findSimilarFindings,
   listAnalysisProfiles,
   listWholeCatalog,
   newIntentId,
   openCaseFindings,
   openItemDraft,
+  openSimilarFindings,
   previewFindingReview,
+  readMessages,
   readPreferences,
   RequestScope,
   savePreferences,
@@ -23,24 +27,27 @@ import {
   type CatalogItem,
   type DiagnoseConfig,
   type DiagnoseConfigNamespace,
-  type DiagnosisFinding,
+  type DiagnosisSeverity,
   type FindingDecision,
   type FindingReviewHistoryResult,
+  type FindingRow,
   type FindingScope,
   type FindingStatus,
   type FindingVerdict,
   type FindingsResult,
   type ItemRef,
+  type MessageRow,
   type SimilarResult,
 } from "./bindings";
-import { DataTable, type Column } from "./DataTable";
+import { DataTable, firstShownRow, ReturnAnchor, type Column } from "./DataTable";
 import { IconButton } from "./IconButton";
-import { EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
+import { EmptyState, folderName, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { useLifecycle } from "./lifecycle";
 import { listDate } from "./Projects";
 import { saveProblem } from "./Environments";
 import { useVocabulary } from "./vocabulary";
-import { CLASSIFICATIONS, FIELD_STATES, FINDING_SCOPES, FINDING_VERDICTS as VERDICTS, SIMILAR_MEMBER_STATES as MEMBER_STATES } from "./display";
+import { CLASSIFICATIONS, FIELD_STATES, FINDING_SCOPES, FINDING_VERDICTS as VERDICTS, SEVERITIES, SIMILAR_MEMBER_STATES as MEMBER_STATES } from "./display";
+import { NO_QUERY, rowType, sourceLabel, timeOfDay } from "./Messages";
 import "./findings.css";
 
 const DECISIONS: { value: Exclude<FindingVerdict, "not_reviewed">; label: string }[] = [
@@ -49,8 +56,11 @@ const DECISIONS: { value: Exclude<FindingVerdict, "not_reviewed">; label: string
   { value: "suppressed", label: "Suppress" },
 ];
 
-type Filter = { verdicts: string[]; rules: string[] };
-const NO_FILTER: Filter = { verdicts: [], rules: [] };
+type Filter = { severities: DiagnosisSeverity[]; verdicts: string[]; rules: string[] };
+const NO_FILTER: Filter = { severities: [], verdicts: [], rules: [] };
+
+/** One piece of evidence: the message it is in and the field in it. */
+export type EvidenceRef = { occurrence: string; field: string };
 
 function profileRef(profile: AnalysisProfile): AnalysisProfileRef {
   return profile.settings ? { settings: profile.settings } : { builtin: profile.builtin ?? "" };
@@ -59,23 +69,30 @@ function profileRef(profile: AnalysisProfile): AnalysisProfileRef {
 export type FindingsProps = {
   root: string | null;
   caseRef: ItemRef | null;
+  /** The open case's name and its entry in the project, which its messages
+   * are read by. */
+  caseName: string;
+  caseEntry: string;
   identity: string;
   shown: boolean;
   busy: boolean;
-  /** Shows exactly these messages of the case, with the way back here. */
-  onViewMessages: (occurrences: string[]) => void;
+  /** Shows exactly these messages of the case with the first one's field
+   * selected, and the way back here. */
+  onViewMessages: (evidence: EvidenceRef[]) => void;
   onSimilar: () => void;
+  /** Opens a saved comparison of similar findings. */
+  onOpenComparison: (ref: ItemRef) => void;
   /** Opens the test editor from a confirmed finding: its messages, its
    * provenance, and its expectations as undecided proposals. */
   onCreateTest?: (status: FindingStatus, review: string, reportSHA256: string, title: string) => void;
 };
 
 /** The Findings view's toolbar, body and selected-finding details. */
-export function useFindings({ root, caseRef, identity, shown, busy, onViewMessages, onSimilar, onCreateTest }: FindingsProps) {
+export function useFindings({ root, caseRef, caseName, caseEntry, identity, shown, busy, onViewMessages, onSimilar, onOpenComparison, onCreateTest }: FindingsProps) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [result, setResult] = useState<FindingsResult | null>(null);
-  const [findings, setFindings] = useState<DiagnosisFinding[]>([]);
+  const [findings, setFindings] = useState<FindingRow[]>([]);
   const [review, setReview] = useState<FindingReviewHistoryResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>(NO_FILTER);
@@ -83,8 +100,24 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
   const [profiles, setProfiles] = useState<AnalysisProfile[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [unevaluated, setUnevaluated] = useState(false);
+  // Analyze found no profile this case can be analyzed under.
+  const [noProfile, setNoProfile] = useState(false);
+  // The messages the selected finding's evidence is in, read in the background.
+  const [evidenceRows, setEvidenceRows] = useState<{ finding: string; rows: MessageRow[]; reason?: string } | null>(null);
+  const evidenceReads = useLifecycle<"messages">({ background: true });
+  // Where the list was when View messages left it: the panel is mounted
+  // again on the way back, and scrolls to the same first row.
+  const listArea = useRef<HTMLDivElement | null>(null);
+  const [returnTo, setReturnTo] = useState<{ anchor?: string | undefined; at?: object }>({});
+  const viewMessages = (evidence: EvidenceRef[]) => {
+    const list = listArea.current?.querySelector<HTMLElement>(".table-view");
+    setReturnTo({ anchor: list ? firstShownRow(list) : undefined, at: {} });
+    onViewMessages(evidence);
+  };
   const analyzing = useLifecycle<"analyzing">({ names: { analyzing: "analysis" } });
   const reads = useLifecycle<"reading">({ background: true });
+  // The analysis last asked for: the current one, or one opened from History.
+  const requested = useRef<ItemRef | undefined>(undefined);
 
   const readReview = useCallback(
     async (answer: FindingsResult) => {
@@ -98,13 +131,21 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
   );
 
   const read = useCallback(
-    async (analysis?: ItemRef) => {
+    async (analysis?: ItemRef, severities: DiagnosisSeverity[] = []) => {
       if (!caseRef || !identity) return;
+      requested.current = analysis;
       await reads.run("reading", async (current) => {
-        const answer = await openCaseFindings({ context: context(), case: caseRef, identity, ...(analysis ? { analysis } : {}), offset: 0 });
+        const answer = await openCaseFindings({
+          context: context(),
+          case: caseRef,
+          identity,
+          ...(analysis ? { analysis } : {}),
+          offset: 0,
+          ...(severities.length > 0 ? { severities } : {}),
+        });
         if (!current()) return;
         setResult(answer);
-        setFindings(answer.analysis?.diagnosis.findings ?? []);
+        setFindings(answer.analysis?.findings ?? []);
         setSelected(null);
         await readReview(answer);
       });
@@ -122,17 +163,40 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     setFilter(NO_FILTER);
     setNotice(null);
     setUnevaluated(false);
+    setNoProfile(false);
+    setEvidenceRows(null);
   }, [caseRef?.id, identity]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (shown && result === null) void read();
   }, [shown, result, read]);
 
+  const loadingMore = useRef(false);
   const loadMore = async () => {
     const analysis = result?.analysis;
-    if (!analysis || !caseRef || findings.length >= analysis.diagnosis.total) return;
-    const answer = await openCaseFindings({ context: context(), case: caseRef, identity, analysis: analysis.ref, offset: findings.length });
-    if (scope.current.current(answer) && answer.analysis?.ref.id === analysis.ref.id) setFindings((held) => [...held, ...(answer.analysis?.diagnosis.findings ?? [])]);
+    if (!analysis || !caseRef || findings.length >= analysis.matching || loadingMore.current) return;
+    loadingMore.current = true;
+    try {
+      const answer = await openCaseFindings({
+        context: context(),
+        case: caseRef,
+        identity,
+        analysis: analysis.ref,
+        offset: findings.length,
+        ...(filter.severities.length > 0 ? { severities: filter.severities } : {}),
+      });
+      if (scope.current.current(answer) && answer.analysis?.ref.id === analysis.ref.id) setFindings((held) => [...held, ...(answer.analysis?.findings ?? [])]);
+    } finally {
+      loadingMore.current = false;
+    }
   };
+
+  // Review and Rule filter the rows read so far, so while either is applied
+  // the rest of the analysis is read too: a match beyond the first window is
+  // never reported as no match.
+  const clientFiltered = filter.rules.length > 0 || filter.verdicts.length > 0;
+  useEffect(() => {
+    if (clientFiltered && result?.analysis && findings.length < result.analysis.matching) void loadMore();
+  }, [clientFiltered, findings.length, result]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runAnalysis = async (profile: AnalysisProfile) => {
     if (!caseRef) return;
@@ -141,9 +205,12 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     await analyzing.run("analyzing", async (current) => {
       const answer = await analyzeCase({ context: context(), case: caseRef, identity, profile: profileRef(profile), intent_id: newIntentId() });
       if (!current()) return;
-      if (answer.state === "completed" || answer.state === "empty") {
+      if ((answer.state === "completed" || answer.state === "empty") && filter.severities.length > 0) {
+        // The new analysis is shown under the severities chosen.
+        await read(undefined, filter.severities);
+      } else if (answer.state === "completed" || answer.state === "empty") {
         setResult(answer);
-        setFindings(answer.analysis?.diagnosis.findings ?? []);
+        setFindings(answer.analysis?.findings ?? []);
         setSelected(null);
         await readReview(answer);
       } else if (answer.state === "cancelled") {
@@ -164,9 +231,30 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     const offered = answer.profiles;
     setProfiles(offered);
     const compatible = offered.filter((profile) => profile.compatible);
+    setNoProfile(compatible.length === 0);
     if (compatible.length === 1) await runAnalysis(compatible[0]!);
-    else setSheet("analyze");
+    else if (compatible.length > 1 || result?.analysis) setSheet("analyze");
   };
+
+  // The selected finding's messages, whether or not the grid has read them.
+  const selectedFinding = findings.find((entry) => entry.id === selected) ?? null;
+  useEffect(() => {
+    evidenceReads.withdraw();
+    if (!selectedFinding || !root || !caseEntry) {
+      setEvidenceRows(null);
+      return;
+    }
+    const id = selectedFinding.id;
+    const occurrences = [...new Set(selectedFinding.evidence.map((evidence) => evidence.occurrence).filter((occurrence) => occurrence !== ""))];
+    if (occurrences.length === 0) {
+      setEvidenceRows({ finding: id, rows: [] });
+      return;
+    }
+    void evidenceReads.run("messages", async (current) => {
+      const answer = await readMessages({ workspace: root, case: caseEntry, identity, query: NO_QUERY, sort: "", offset: 0, limit: 0, occurrences });
+      if (current()) setEvidenceRows({ finding: id, rows: answer.state === "completed" ? answer.rows : [], ...(answer.state === "completed" ? {} : { reason: answer.reason ?? "The messages could not be read." }) });
+    });
+  }, [selectedFinding?.id, root, caseEntry, identity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusOf = (id: string): FindingStatus | undefined => review?.statuses.find((status) => status.finding === id);
   const verdictOf = (id: string) => statusOf(id)?.verdict ?? "not_reviewed";
@@ -192,6 +280,14 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     return null;
   };
 
+  /** Applies a filter; a changed severity reads the analysis again, since the
+   * facade sorts and filters by severity across every finding. */
+  const applyFilter = (next: Filter) => {
+    const changed = JSON.stringify(next.severities) !== JSON.stringify(filter.severities);
+    setFilter(next);
+    if (changed) void read(result?.analysis && !result.analysis.current ? result.analysis.ref : undefined, next.severities);
+  };
+
   if (!root || !caseRef) return { toolbar: null, body: null, details: null, selected: null, close: () => undefined };
 
   const analysis = result?.analysis;
@@ -199,9 +295,9 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
   const shownRows = findings.filter(
     (finding) => (filter.verdicts.length === 0 || filter.verdicts.includes(verdictOf(finding.id))) && (filter.rules.length === 0 || filter.rules.includes(finding.rule_id)),
   );
-  const columns: Column<DiagnosisFinding>[] = [
+  const columns: Column<FindingRow>[] = [
     { key: "finding", header: "Finding", priority: 1, minWidth: 15, render: (finding) => ruleName(finding.rule_id) },
-    { key: "classification", header: "Classification", priority: 3, minWidth: 7, render: (finding) => CLASSIFICATIONS[finding.classification] ?? "—" },
+    { key: "severity", header: "Severity", priority: 2, minWidth: 7, render: (finding) => (finding.severity ? SEVERITIES[finding.severity] : "—") },
     { key: "review", header: "Review", priority: 1, minWidth: 8, render: (finding) => VERDICTS[verdictOf(finding.id)] ?? "—" },
   ];
 
@@ -211,11 +307,22 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
       <div className="empty-state" role="alert">
         <p className="empty-title">{result.reason ?? "The findings could not be read."}</p>
         <div className="empty-action">
-          <button type="button" onClick={() => void read()}>
+          <button type="button" onClick={() => void read(requested.current, filter.severities)}>
             Retry
           </button>
         </div>
       </div>
+    );
+  } else if (result && !analysis && noProfile) {
+    body = (
+      <EmptyState
+        title="No supported profile"
+        action={
+          <button type="button" onClick={() => setSheet("analyze")}>
+            Choose profile
+          </button>
+        }
+      />
     );
   } else if (result && !analysis) {
     body = (
@@ -228,7 +335,7 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
         }
       />
     );
-  } else if (analysis && (unevaluated || (findings.length === 0 && analysis.diagnosis.unsupported.length > 0))) {
+  } else if (analysis && (unevaluated || (analysis.diagnosis.total === 0 && analysis.diagnosis.unsupported.length > 0))) {
     body = (
       <DataTable
         label="Unevaluated evidence"
@@ -245,14 +352,14 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
         ]}
       />
     );
-  } else if (analysis && findings.length === 0) {
+  } else if (analysis && analysis.diagnosis.total === 0) {
     body = <EmptyState title="No findings" />;
   } else if (analysis && shownRows.length === 0) {
     body = (
       <EmptyState
         title="No matching findings"
         action={
-          <button type="button" onClick={() => setFilter(NO_FILTER)}>
+          <button type="button" onClick={() => applyFilter(NO_FILTER)}>
             Clear filters
           </button>
         }
@@ -300,17 +407,41 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
       </header>
       <ValueRows
         rows={[
+          ...(finding.severity ? [{ label: "Severity", value: SEVERITIES[finding.severity] }] : []),
           ...(CLASSIFICATIONS[finding.classification] ? [{ label: "Classification", value: CLASSIFICATIONS[finding.classification] }] : []),
           { label: "Review", value: VERDICTS[verdictOf(finding.id)] },
           ...finding.evidence.map((evidence, index) => ({
             label: `Evidence ${index + 1}`,
-            value: `${evidence.field || "Message"}${evidence.state ? ` · ${FIELD_STATES[evidence.state]}` : ""}`,
+            value: `${fieldName(evidence.field, finding.labels)}${evidence.state ? ` · ${FIELD_STATES[evidence.state]}` : ""}`,
           })),
         ]}
       />
       {finding.summary ? <p>{finding.summary}</p> : null}
+      {evidenceRows?.finding === finding.id && evidenceRows.reason ? <p className="row-reason">{evidenceRows.reason}</p> : null}
+      {evidenceRows?.finding === finding.id && evidenceRows.rows.length > 0 ? (
+        <>
+        <h3>Messages</h3>
+        <ul className="evidence-messages" aria-label="Messages">
+          {evidenceRows.rows.map((row) => (
+            <li key={row.id}>
+              <button
+                type="button"
+                className="link"
+                onClick={() => viewMessages(finding.evidence.filter((evidence) => evidence.occurrence === row.id).map(({ occurrence, field }) => ({ occurrence, field })))}
+              >
+                {[row.observed_at ? timeOfDay(row.observed_at) : "", rowType(row), sourceLabel(row)].filter((part) => part !== "").join(" · ")}
+              </button>
+            </li>
+          ))}
+        </ul>
+        </>
+      ) : null}
       <div className="row-actions">
-        <button type="button" disabled={finding.evidence.length === 0} onClick={() => onViewMessages([...new Set(finding.evidence.map((evidence) => evidence.occurrence))])}>
+        <button
+          type="button"
+          disabled={finding.evidence.length === 0}
+          onClick={() => viewMessages(finding.evidence.map(({ occurrence, field }) => ({ occurrence, field })))}
+        >
           View messages
         </button>
         <button type="button" className="primary" disabled={busy || running || !analysis?.current} onClick={() => setSheet("review")}>
@@ -370,7 +501,7 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
         {analysis && !analysis.current ? (
           <span className="chip">
             {listDate(analysis.created_at)} · {analysis.profile_name}
-            <button type="button" className="quiet" onClick={() => void read()}>
+            <button type="button" className="quiet" onClick={() => void read(undefined, filter.severities)}>
               Show current
             </button>
           </span>
@@ -409,11 +540,15 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
     body: (
       <>
         {notice ? <p role="alert">{notice}</p> : null}
-        <div aria-busy={running || undefined} className={running ? "historical" : undefined}>
-          {body}
+        <div ref={listArea} aria-busy={running || undefined} className={running ? "historical" : undefined}>
+          <ReturnAnchor.Provider value={returnTo}>{body}</ReturnAnchor.Provider>
         </div>
-        <FilterSheet open={sheet === "filter"} filter={filter} rules={[...new Map(findings.map((f) => [f.rule_id, ruleName(f.rule_id)])).entries()]} onClose={() => setSheet(null)} onApply={setFilter} />
-        <AnalyzeSheet open={sheet === "analyze"} profiles={profiles ?? []} current={analysis?.config_sha256 ?? ""} onClose={() => setSheet(null)} onAnalyze={(profile) => void runAnalysis(profile)} />
+        <FilterSheet open={sheet === "filter"} filter={filter} onApply={applyFilter} rules={[...new Map((result?.rules ?? []).filter((rule) => rule.ruleset === result?.analysis?.diagnosis.ruleset).map((rule) => [rule.id, rule.name])).entries()]} onClose={() => setSheet(null)} />
+        <AnalyzeSheet
+          open={sheet === "analyze"}
+          profiles={profiles ?? []}
+          current={analysis?.config_sha256 ?? ""}
+          version={`${caseName}${caseRef.revision ? ` · v${caseRef.revision}` : ""}`} onClose={() => setSheet(null)} onAnalyze={(profile) => void runAnalysis(profile)} />
         {sheet === "history" ? (
           <HistorySheet
             context={context}
@@ -421,7 +556,11 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
             onClose={() => setSheet(null)}
             onOpen={(ref) => {
               setSheet(null);
-              void read(ref);
+              void read(ref, filter.severities);
+            }}
+            onOpenComparison={(ref) => {
+              setSheet(null);
+              onOpenComparison(ref);
             }}
           />
         ) : null}
@@ -468,7 +607,10 @@ export function useFindings({ root, caseRef, identity, shown, busy, onViewMessag
                 { label: "Rule", value: finding.rule_id },
                 { label: "Ruleset", value: finding.ruleset },
                 { label: "Profile", value: finding.profile },
-                ...finding.evidence.map((evidence, index) => ({ label: `Evidence ${index + 1}`, value: `${evidence.occurrence} · ${evidence.field || "—"} · ${evidence.state}` })),
+                ...finding.evidence.map((evidence, index) => ({
+                  label: `Evidence ${index + 1}`,
+                  value: `${evidence.occurrence} · ${evidence.field || "—"}${evidence.state ? ` · ${FIELD_STATES[evidence.state]}` : ""}`,
+                })),
               ]}
             />
           ) : null}
@@ -497,6 +639,19 @@ function FilterSheet({ open, filter, rules, onClose, onApply }: { open: boolean;
       }}
     >
       <fieldset className="checks">
+        <legend>Severity</legend>
+        {(Object.keys(SEVERITIES) as DiagnosisSeverity[]).map((value) => (
+          <label key={value} className="check">
+            <input
+              type="checkbox"
+              checked={draft.severities.includes(value)}
+              onChange={() => setDraft({ ...draft, severities: draft.severities.includes(value) ? draft.severities.filter((v) => v !== value) : [...draft.severities, value] })}
+            />
+            {SEVERITIES[value]}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="checks">
         <legend>Review</legend>
         {Object.entries(VERDICTS).map(([value, label]) => (
           <label key={value} className="check">
@@ -520,7 +675,22 @@ function FilterSheet({ open, filter, rules, onClose, onApply }: { open: boolean;
   );
 }
 
-function AnalyzeSheet({ open, profiles, current, onClose, onAnalyze }: { open: boolean; profiles: AnalysisProfile[]; current: string; onClose: () => void; onAnalyze: (profile: AnalysisProfile) => void }) {
+function AnalyzeSheet({
+  open,
+  profiles,
+  current,
+  version,
+  onClose,
+  onAnalyze,
+}: {
+  open: boolean;
+  profiles: AnalysisProfile[];
+  current: string;
+  /** The case version analyzed, as a person reads it. */
+  version: string;
+  onClose: () => void;
+  onAnalyze: (profile: AnalysisProfile) => void;
+}) {
   const compatible = profiles.filter((profile) => profile.compatible);
   const [chosen, setChosen] = useState("");
   const keyOf = (profile: AnalysisProfile) => profile.settings?.id ?? `builtin:${profile.builtin ?? ""}`;
@@ -540,6 +710,7 @@ function AnalyzeSheet({ open, profiles, current, onClose, onAnalyze }: { open: b
         if (profile) onAnalyze(profile);
       }}
     >
+      <ValueRows rows={[{ label: "Case", value: version }]} />
       {compatible.length === 0 ? (
         <>
           <p className="empty-title">No supported profile</p>
@@ -568,13 +739,26 @@ function AnalyzeSheet({ open, profiles, current, onClose, onAnalyze }: { open: b
   );
 }
 
-function HistorySheet({ context, caseRef, onClose, onOpen }: { context: () => import("./bindings").RequestContext; caseRef: ItemRef; onClose: () => void; onOpen: (ref: ItemRef) => void }) {
+function HistorySheet({
+  context,
+  caseRef,
+  onClose,
+  onOpen,
+  onOpenComparison,
+}: {
+  context: () => import("./bindings").RequestContext;
+  caseRef: ItemRef;
+  onClose: () => void;
+  onOpen: (ref: ItemRef) => void;
+  onOpenComparison: (ref: ItemRef) => void;
+}) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const reads = useLifecycle<"reading">({ background: true });
   useEffect(() => {
-    let live = true;
-    void listWholeCatalog({ context: context(), kind: "analysis", filter: { related_case: caseRef }, sort: "created" }).then((answer) => {
-      if (!live) return;
+    void reads.run("reading", async (current) => {
+      const answer = await listWholeCatalog({ context: context(), kind: "analysis", filter: { related_case: caseRef }, sort: "created" });
+      if (!current()) return;
       if (answer.state !== "completed" && answer.state !== "empty") {
         setFailure(answer.reason ?? "The history could not be read.");
         setItems([]);
@@ -584,9 +768,6 @@ function HistorySheet({ context, caseRef, onClose, onOpen }: { context: () => im
       // Newest first, undated last.
       setItems([...listed].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? "")));
     });
-    return () => {
-      live = false;
-    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Modal
@@ -617,7 +798,9 @@ function HistorySheet({ context, caseRef, onClose, onOpen }: { context: () => im
           onSelect={() => {}}
           onOpen={(id) => {
             const item = items?.find((entry) => entry.ref.id === id);
-            if (item && item.summary.analysis?.form !== "grouping") onOpen(item.ref);
+            if (!item) return;
+            if (item.summary.analysis?.form === "grouping") onOpenComparison(item.ref);
+            else onOpen(item.ref);
           }}
           loading={items === null}
           columns={[
@@ -627,7 +810,7 @@ function HistorySheet({ context, caseRef, onClose, onOpen }: { context: () => im
               header: "Profile",
               priority: 1,
               minWidth: 8,
-              render: (item) => (item.summary.analysis?.form === "grouping" ? "Similar findings" : item.summary.analysis?.profile_name || "—"),
+              render: (item) => (item.summary.analysis?.form === "grouping" ? `Similar findings · ${item.name}` : item.summary.analysis?.profile_name || "—"),
             },
             { key: "findings", header: "Findings", priority: 2, minWidth: 6, render: (item) => String(item.summary.analysis?.findings ?? 0) },
           ]}
@@ -645,7 +828,7 @@ function ReviewSheet({
   onClose,
   onSave,
 }: {
-  finding: DiagnosisFinding;
+  finding: FindingRow;
   title: string;
   current: FindingDecision | undefined;
   preview: (decision: FindingDecision) => Promise<number | null>;
@@ -692,14 +875,14 @@ function ReviewSheet({
       }}
     >
       {reviewer ? (
-        <ValueRows rows={[{ label: "Reviewer", value: reviewer }]} />
+        <ValueRows rows={[{ label: "Reviewer", value: `${reviewer} · This computer` }]} />
       ) : reviewer === "" ? (
         <>
-          <label htmlFor="finding-reviewer">Reviewer</label>
+          <label htmlFor="finding-reviewer">Reviewer on this computer</label>
           <input id="finding-reviewer" type="text" maxLength={200} value={newReviewer} onChange={(event) => setNewReviewer(event.target.value)} />
         </>
       ) : null}
-      <fieldset>
+      <fieldset className="checks">
         <legend>Decision</legend>
         {DECISIONS.map((choice) => (
           <label key={choice.value} className="check">
@@ -736,13 +919,17 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
   const [name, setName] = useState("");
   const [config, setConfig] = useState<DiagnoseConfig | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const load = useCallback(async () => {
-    const answer = await listWholeCatalog({ context: context(), kind: "analysis-settings", filter: {} });
-    setItems(answer.page?.items ?? []);
-  }, [context]);
+  const [exported, setExported] = useState<string | null>(null);
+  const reads = useLifecycle<"reading">({ background: true });
+  // The saved settings are read once, when the sheet opens.
   useEffect(() => {
-    void load();
-  }, [load]);
+    void reads.run("reading", async (current) => {
+      const answer = await listWholeCatalog({ context: context(), kind: "analysis-settings", filter: {} });
+      if (!current()) return;
+      if (answer.state !== "completed" && answer.state !== "empty") setProblem(answer.reason ?? "The analysis settings could not be read.");
+      setItems(answer.page?.items ?? []);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const open = async (id: string) => {
     setChosen(id);
     setProblem(null);
@@ -757,6 +944,31 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
     setName(item?.name ?? "");
     setConfig(answer.draft.analysis_settings);
   };
+  // Import reads a settings file into this sheet as new, unsaved settings,
+  // exactly as written, supported or not.
+  const importSettings = async () => {
+    setProblem(null);
+    setExported(null);
+    const answer = await importAnalysisSettings(context());
+    if (answer.state === "cancelled") return;
+    if (answer.state !== "completed" || !answer.draft?.analysis_settings) {
+      setProblem(answer.reason ?? "The settings file cannot be read.");
+      return;
+    }
+    setChosen("new");
+    setRef(null);
+    setName(answer.draft.name ?? "");
+    setConfig(answer.draft.analysis_settings);
+  };
+  const exportSettings = async () => {
+    if (!ref) return;
+    setProblem(null);
+    setExported(null);
+    const answer = await exportAnalysisSettings({ context: context(), ref });
+    if (answer.state === "cancelled") return;
+    if (answer.state !== "completed") setProblem(answer.reason ?? "The settings were not exported.");
+    else if (answer.path) setExported(`Exported ${folderName(answer.path)}`);
+  };
   const builtin = config ? builtins.find((entry) => entry.profile === config.profile && entry.ruleset === config.ruleset) : undefined;
   const supported = config === null || builtin !== undefined;
   const rulesHere = rules.filter((rule) => rule.ruleset === config?.ruleset);
@@ -767,9 +979,9 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
       open
       title="Analysis settings"
       submitLabel="Save"
-      submitDisabled={!config || !supported || name.trim() === ""}
+      submitDisabled={!config || name.trim() === ""}
       onClose={onClose}
-      status={problem ? <p role="alert">{problem}</p> : null}
+      status={problem ? <p role="alert">{problem}</p> : exported ? <p role="status">{exported}</p> : null}
       onSubmit={async () => {
         if (!config) return { reason: "Choose settings." };
         const answer = await saveItem({
@@ -785,6 +997,7 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
       }}
     >
       <label htmlFor="analysis-settings-choice">Settings</label>
+      <div className="value-with-action">
       <select id="analysis-settings-choice" value={chosen} onChange={(event) => void open(event.target.value)}>
         <option value="" disabled>
           Choose settings
@@ -796,6 +1009,14 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
         ))}
         <option value="new">New settings</option>
       </select>
+      <Menu
+        label="More settings actions"
+        items={[
+          { label: "Import settings…", onSelect: () => void importSettings() },
+          { label: "Export settings…", onSelect: () => void exportSettings(), disabled: ref === null },
+        ]}
+      />
+      </div>
       {config ? (
         <>
           <label htmlFor="analysis-settings-name">Name</label>
@@ -875,7 +1096,21 @@ function SettingsSheet({ context, rules, onClose }: { context: () => import("./b
 // ---------- Similar findings ----------
 
 /** Similar findings: a project child page grouping the findings of chosen cases. */
-export function useSimilarFindings({ root, caseRef, busy }: { root: string | null; caseRef: ItemRef | null; busy: boolean }) {
+export function useSimilarFindings({
+  root,
+  caseRef,
+  saved: savedId,
+  busy,
+  onViewEvidence,
+}: {
+  root: string | null;
+  caseRef: ItemRef | null;
+  /** A saved comparison to show, by its identity. */
+  saved: string | undefined;
+  busy: boolean;
+  /** Opens a member case on exactly these messages. */
+  onViewEvidence: (caseRef: ItemRef, occurrences: string[]) => void;
+}) {
   const scope = useRef(new RequestScope());
   const context = useCallback(() => scope.current.enter(root ?? ""), [root]);
   const [cases, setCases] = useState<CatalogItem[]>([]);
@@ -884,31 +1119,50 @@ export function useSimilarFindings({ root, caseRef, busy }: { root: string | nul
   const [result, setResult] = useState<SimilarResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const comparing = useLifecycle<"comparing">({ names: { comparing: "analysis" } });
+  const [lastRequest, setLastRequest] = useState<{ cases: ItemRef[]; profile: AnalysisProfile } | null>(null);
+  const [naming, setNaming] = useState(false);
+
+  const reads = useLifecycle<"cases" | "profiles" | "saved">({ background: true });
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
+    reads.withdraw();
+    setFailure(null);
     if (!root) return;
-    let live = true;
-    void listWholeCatalog({ context: context(), kind: "case", filter: {} }).then((answer) => {
-      if (live) setCases(answer.page?.items ?? []);
+    void reads.run("cases", async (current) => {
+      const answer = await listWholeCatalog({ context: context(), kind: "case", filter: {} });
+      if (!current()) return;
+      if (answer.state !== "completed" && answer.state !== "empty") setFailure(answer.reason ?? "The project's cases could not be read.");
+      setCases(answer.page?.items ?? []);
     });
     if (caseRef)
-      void listAnalysisProfiles({ context: context(), ref: caseRef }).then((answer) => {
-        if (live) setProfiles(answer.profiles);
+      void reads.run("profiles", async (current) => {
+        const answer = await listAnalysisProfiles({ context: context(), ref: caseRef });
+        if (!current()) return;
+        if (answer.state !== "completed" && answer.state !== "empty") setFailure(answer.reason ?? "The analysis profiles could not be read.");
+        setProfiles(answer.profiles);
       });
-    return () => {
-      live = false;
-    };
   }, [root, caseRef?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A saved comparison opens as it was saved; nothing is compared again.
+  useEffect(() => {
+    if (!root || !savedId) return;
+    setSelected(null);
+    setLastRequest(null);
+    void reads.run("saved", async (current) => {
+      const answer = await openSimilarFindings({ context: context(), ref: { kind: "analysis", id: savedId } });
+      if (current()) setResult(answer);
+    });
+  }, [root, savedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nameOf = (ref: ItemRef) => cases.find((item) => item.ref.id === ref.id)?.name ?? ref.id;
   const group = result?.groups.find((entry) => entry.signature === selected) ?? null;
-  const unanalyzed = (result?.members ?? []).filter((member) => member.state !== "analyzed");
+  const members = result?.members ?? [];
+  const unanalyzed = members.map((member, at) => ({ ...member, at })).filter((member) => member.state !== "analyzed");
 
-  const [lastRequest, setLastRequest] = useState<{ cases: ItemRef[]; profile: AnalysisProfile } | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
   const body = (
     <>
-      {saved ? <p role="status">{saved}</p> : null}
+      {failure ? <p role="alert">{failure}</p> : null}
       {comparing.running ? (
         <p role="status">
           Comparing…{" "}
@@ -954,7 +1208,7 @@ export function useSimilarFindings({ root, caseRef, busy }: { root: string | nul
               label="Cases not compared"
               className="values-table"
               rows={unanalyzed}
-              rowId={(member) => member.case.id}
+              rowId={(member) => String(member.at)}
               rowLabel={(member) => member.name}
               selected={null}
               onSelect={() => {}}
@@ -978,13 +1232,33 @@ export function useSimilarFindings({ root, caseRef, busy }: { root: string | nul
           setChoosing(false);
           setSelected(null);
           setLastRequest({ cases: chosen, profile });
-          setSaved(null);
           await comparing.run("comparing", async (current) => {
             const answer = await findSimilarFindings({ context: context(), cases: chosen, profile: profileRef(profile), save: false });
             if (current()) setResult(answer);
           });
         }}
       />
+      {lastRequest ? (
+        <SaveComparisonSheet
+          open={naming}
+          uncompared={unanalyzed.length}
+          onClose={() => setNaming(false)}
+          onSave={async (name) => {
+            let failure: SubmitFailure | null = null;
+            await comparing.run("comparing", async (current) => {
+              const answer = await findSimilarFindings({ context: context(), cases: lastRequest.cases, profile: profileRef(lastRequest.profile), save: true, name });
+              if (!current()) return;
+              if (!answer.saved) {
+                failure = { reason: answer.reason ?? "Not saved.", field: "comparison-name" };
+                return;
+              }
+              setResult(answer);
+              setNaming(false);
+            });
+            return failure;
+          }}
+        />
+      ) : null}
       <Modal
         open={group !== null}
         title={group?.rule_name || "Group"}
@@ -997,27 +1271,36 @@ export function useSimilarFindings({ root, caseRef, busy }: { root: string | nul
           </div>
         }
       >
-        {group ? <ValueRows rows={group.cases.map((ref) => ({ label: nameOf(ref), value: String(group.members.filter((member) => member.case.id === ref.id).length) }))} /> : null}
+        {group
+          ? [...new Set(group.members.map((member) => member.member))].map((position) => {
+              const compared = members[position];
+              const found = group.members.filter((member) => member.member === position);
+              const occurrences = [...new Set(found.flatMap((member) => member.occurrences))];
+              const name = compared?.name || (compared ? nameOf(compared.case) : "");
+              return (
+                <section key={position} className="similar-member" aria-label={name}>
+                  <header className="section-header">
+                    <h3>{name}</h3>
+                    {compared?.state === "analyzed" ? (
+                      <button type="button" disabled={busy || occurrences.length === 0} onClick={() => onViewEvidence(compared.case, occurrences)}>
+                        View messages
+                      </button>
+                    ) : null}
+                  </header>
+                  <p className="row-reason">{compared?.state === "analyzed" ? (found.length === 1 ? "1 finding" : `${found.length} findings`) : (compared?.reason ?? "")}</p>
+                </section>
+              );
+            })
+          : null}
       </Modal>
     </>
   );
   return {
-    title: "Similar findings",
+    title: result?.name ? `Similar findings · ${result.name}` : "Similar findings",
     actions: (
       <>
-        {result && result.state === "completed" && lastRequest ? (
-          <button
-            type="button"
-            disabled={busy || comparing.running !== null}
-            onClick={() =>
-              void comparing.run("comparing", async (current) => {
-                const answer = await findSimilarFindings({ context: context(), cases: lastRequest.cases, profile: profileRef(lastRequest.profile), save: true });
-                if (!current()) return;
-                setResult(answer);
-                setSaved(answer.saved ? "Saved to each case's history." : (answer.reason ?? "Not saved."));
-              })
-            }
-          >
+        {result && result.state === "completed" && lastRequest && !result.saved ? (
+          <button type="button" disabled={busy || comparing.running !== null} onClick={() => setNaming(true)}>
             Save comparison
           </button>
         ) : null}
@@ -1094,6 +1377,49 @@ function ChooseCasesSheet({
           </option>
         ))}
       </select>
+    </FormDialog>
+  );
+}
+
+/** A field as the analysis names it: its label and path, or the path alone
+ * when no label applies, or Message for evidence about a whole message. */
+function fieldName(field: string, labels: Record<string, string>): string {
+  if (!field) return "Message";
+  const label = labels[field];
+  return label ? `${label} (${field})` : field;
+}
+
+/** Names a comparison before it is saved to each compared case's history. */
+function SaveComparisonSheet({
+  open,
+  uncompared,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  /** Cases chosen but not compared, which the saved comparison does not keep. */
+  uncompared: number;
+  onClose: () => void;
+  onSave: (name: string) => Promise<SubmitFailure | null>;
+}) {
+  const [name, setName] = useState("");
+  useEffect(() => {
+    if (open) setName("");
+  }, [open]);
+  return (
+    <FormDialog
+      open={open}
+      title="Save comparison"
+      size="small"
+      submitLabel="Save"
+      submitDisabled={name.trim() === ""}
+      dirty={name.trim() !== ""}
+      onClose={onClose}
+      onSubmit={() => onSave(name.trim())}
+    >
+      <label htmlFor="comparison-name">Name</label>
+      <input id="comparison-name" type="text" maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
+      {uncompared > 0 ? <p className="consequence">{uncompared === 1 ? "The case not compared is not saved with it." : `The ${uncompared} cases not compared are not saved with it.`}</p> : null}
     </FormDialog>
   );
 }

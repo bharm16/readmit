@@ -1171,6 +1171,66 @@ analyze as a row with its reason, and, saved, retains the grouping as a
 `grouping-NNN` analysis in each compared case's History. `ReadMessages` given
 `occurrences` reads exactly those messages, wherever they fall in the list.
 
+`OpenCaseFindings` lists an analysis's findings as rows: the engine's finding
+unchanged, the severity this release declares for its rule
+(`diagnose.RuleSeverity`: error, warning or info) and the bundled label of each evidence field where the labels apply to every
+message it is evidenced in. Rows are ordered error, warning, information, then
+no declared severity, each in the engine's order; `severities` lists only the
+findings of rules declaring one of them. Severity is display metadata: the
+report bytes, their identity and `readmit diagnose`'s output never carry it.
+An analysis run under saved analysis settings is named by those settings.
+`ImportAnalysisSettings` reads a chosen `readmit-diagnose-config/v1` file
+strictly into an unsaved draft exactly as read, including a profile or
+ruleset this release does not define, and `ExportAnalysisSettings` writes the
+current revision's saved bytes to a new file and reads them back. A saved
+comparison is named when it is saved; `OpenSimilarFindings` reopens it from
+History as the cases and groups it recorded, each member finding with the
+occurrences its evidence references, running nothing. A saved comparison
+records only the cases it compared, and a compared case the project no longer
+holds stays a row saying so.
+
+In the window, the findings list has the columns Finding, Severity and Review,
+most severe first. The Filter sheet chooses Severity (Error, Warning, Info),
+which reads the analysis again with `severities`, Review (New, Confirmed,
+Dismissed, Suppressed) and Rule (every rule of the analysis's ruleset). An
+analysis with no findings shows No findings; a filter that matches none of its
+findings shows No matching findings with Clear filters. A nonzero count of
+unevaluated evidence is a toolbar filter, Unevaluated N, and an analysis with
+no findings but unevaluated evidence shows that evidence rather than No
+findings. A failed read shows its reason with Retry. When no profile supports
+the case, Analyze shows No supported profile with Choose profile, which opens
+the Analyze sheet listing each profile's refusal and offers nothing to run.
+The Analyze sheet names the case version it analyzes, as the case name and
+`v` with its revision.
+
+The selected finding shows its severity, its classification when the engine
+supplies one, and each evidence field as its label and path with its state,
+for example "Message Control ID (MSH-10) · Present". Below the finding's
+explanation it lists the messages its evidence is in, read by their
+occurrences in the background whether or not the message list has loaded
+them; each opens that message. View messages opens Messages on exactly the
+referenced messages with the first evidence field selected in the inspector,
+and selecting another of those messages selects its evidence field. Back to
+findings returns to the list with the same finding selected, the same filter
+and the list scrolled back to the finding that was first on screen. Review
+shows the reviewer as the name set on this computer; when none
+is set it asks for a reviewer on this computer and saves the name to this
+computer's preferences before the decision. A refused save shows its reason
+and keeps the sheet open. Create test is offered for a confirmed finding and
+is disabled, with the reason, when the finding cannot become a test.
+
+Analysis settings has Import settings… and Export settings… in its More
+settings actions menu. Import opens the file as unsaved settings in the sheet;
+a profile and ruleset pair this release does not run stays read-only and can be
+saved under a name unchanged. Export, offered for saved settings only, writes
+them to a chosen file and says which. In Similar findings, Save comparison asks
+for a name, says when chosen cases were not compared and so are not saved with
+it, and the page is then titled with that name. History lists a saved
+comparison as "Similar findings · name", and opening it shows the saved
+comparison again. Selecting a group lists each member case with its number of
+findings and View messages, which opens that case on exactly the messages of
+its evidence; Back returns to Similar findings.
+
 ### Reviewed actions
 
 `PrepareAction` prepares the review of a send (`replay.send`), an export
@@ -1970,79 +2030,20 @@ what is shown.
 
 ## Diagnosis and finding review
 
-**Diagnosis** runs a supported fixture profile (`readmit-siu-v1`,
-`readmit-lifecycle-v1` or `readmit-order-v1`, or an authored
-`readmit-diagnose-config/v1`) over the verified case and writes a new report
-directory exactly as [`readmit diagnose`](diagnose.md) does, and like that
-command it needs no license term. Findings are
-grouped by signature without hiding individuals. Every fact, violation,
-hypothesis and unsupported item links to its evidence occurrence so the
-inspector can open the original bytes.
-
-**Reopening a retained report** reads its `report.json` with the reader
-`readmit diagnose review` applies and names it by the SHA-256 of those bytes,
-the identity a review must name; the window says "Opening this report." while
-it reads. A report directory whose `report.json` is gone is refused. The
-listing distinguishes a `readmit-diagnosis-groups/v1` directory from a single
-diagnosis. It is offered in the grouping report picker and opens through its
-own strict display reader; it cannot be used as one diagnosis for finding
-review. A report of another case opens for what it is: the
-panel names the case identity it was run over and opens none of its evidence in
-this case's inspector, and reviewing it over this case is refused by the engine,
-naming the case to open.
-
-**Recurring findings across cases** re-evaluates the checked cases of the
-workspace under the configuration chosen above and groups equal signatures
-exactly as [`readmit diagnose groups`](diagnose.md#comparing-recurring-failure-groups)
-does, writing nothing. The groups are shown 200 at a time with their total, and
-the next window is of the grouping on screen, whatever the form holds by then.
-A grouping reads several cases and is interruptible: while it runs the window
-says so, and its Cancel control and the window's **Stop** stop it; a cancelled grouping is
-shown as cancelled, with no groups. When the live grouping has already
-evaluated a case from the open workspace, each member names that case's entry
-beside its identity. A reopened grouping names identities from its retained
-report without re-reading cases to guess their workspace entries.
-
-**Finding review** records confirm, dismiss and scoped suppression decisions
-with a required rationale, writes `readmit-finding-decisions/v1` and a
-`readmit-finding-review/v1` directory the same way
-[`readmit diagnose review`](finding-review.md) does, and promotes only
-explicitly confirmed, expressible findings into the existing test-authoring
-draft with provenance. Unreviewed and unsupported findings remain visible and
-cannot become approved expectations. **Preview the review** joins the decisions
-on screen to the report and writes nothing; it is shown only while those are
-still the decisions on screen, and it offers no draft, because a draft names
-the review it was promoted from and a preview is not retained. A report changed
-on disk since the window showed it is refused rather than reviewed.
-
-The decisions can also be kept as their own `readmit-finding-decisions/v1`
-document, without recording a review. **Save these decisions as a new entry**
-writes the decisions on screen, bound to the report on screen by its identity,
-through the reader `readmit diagnose review` applies, and names the entry and
-the SHA-256 of the bytes written. **Open these decisions** reads a retained one
-and puts its decisions on the findings only when it names the report on screen:
-finding identifiers name other findings in any other report, so a document
-recorded against another report — or against this report before its bytes
-changed — is named for what it is and applied to nothing. Decisions about
-findings the current window of the report does not list are shown apart, and
-can be forgotten. Opening over decisions changed since they were last opened,
-saved or recorded asks first; **Keep these decisions** or `Escape` reads
-nothing. While a decisions document is opened or saved the panel says so and
-holds its controls.
-
-**Author a diagnose configuration** opens a retained configuration into its
-controls — the profile and ruleset, the rules and the authorities, as the
-reader `readmit diagnose --config` applies decoded them — and names the entry
-and the SHA-256 of its bytes, so a rule added next extends it. That digest names
-the file; a report records its own configuration identity, computed by the
-engine over the configuration it ran. A pair of profile and ruleset the engine
-does not bundle is shown as opened; its reader accepts it, and a diagnosis under
-it reports it unsupported. A configuration of a later contract version is listed
-but offered to no picker. Opening over changes not saved asks first, as the
-decisions do, and the editor holds its controls while it opens or saves.
-Local interface profiles continue to be
-authored in the profile editor; diagnosis selects a named diagnose profile or
-saved configuration rather than a local profile pack.
+Diagnosis in the window is the case's Findings view, described above. Analyze
+writes a managed analysis exactly as [`readmit diagnose`](diagnose.md) writes
+its report, and needs no license term; every finding links to its evidence
+occurrence. A review decision (confirm, dismiss or scoped suppression, with a
+required reason) is published as a new revision of the analysis's review,
+bound to the report by its SHA-256, and read as
+[`readmit diagnose review`](finding-review.md) reads decisions; only a
+confirmed finding the engine can express becomes a test proposal, never an
+accepted expectation. Similar findings groups the chosen cases' findings by
+signature as [`readmit diagnose groups`](diagnose.md#comparing-recurring-failure-groups)
+does, and a named saved comparison reopens from History. Analysis settings
+hold a profile and ruleset, rules and namespaces as a named
+`readmit-diagnose-config/v1`; one the engine does not bundle is imported and
+kept exactly as read, and a diagnosis under it reports it unsupported.
 
 ## The event sequence and source swimlanes
 

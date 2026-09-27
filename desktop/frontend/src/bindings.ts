@@ -341,6 +341,7 @@ import type {
   ProtectionExportResult,
   TestHistoryResult,
   ExportTestResult,
+  ExportSettingsResult,
   FindingsRequest,
   FindingsResult,
   AnalysisProfilesResult,
@@ -2039,4 +2040,19 @@ export function findingReviewHistory(request: ItemRequest): Promise<FindingRevie
 /** Groups the findings of the chosen cases under one profile. */
 export function findSimilarFindings(request: SimilarRequest): Promise<SimilarResult> {
   return guard(() => facade().FindSimilarFindings(request), { state: "failed", context: request.context, members: [], groups: [] });
+}
+
+/** Reopens a saved comparison from History as it was saved; nothing runs. */
+export function openSimilarFindings(request: ItemRequest): Promise<SimilarResult> {
+  return retryingRead(() => facade().OpenSimilarFindings(request), { state: "failed", context: request.context, members: [], groups: [] });
+}
+
+/** Reads an analysis settings file the person chooses into a new draft, exactly as read; nothing is saved. */
+export function importAnalysisSettings(context: RequestContext): Promise<ItemDraftResult> {
+  return guard(() => facade().ImportAnalysisSettings(context), { state: "failed", context, new: true });
+}
+
+/** Writes the saved analysis settings to a file the person names. */
+export function exportAnalysisSettings(request: ItemRequest): Promise<ExportSettingsResult> {
+  return guard(() => facade().ExportAnalysisSettings(request), { state: "failed", context: request.context });
 }

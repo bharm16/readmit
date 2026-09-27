@@ -20,9 +20,45 @@
   padding: var(--s2) 0;
 }
 
+/* Four fields and the remove button on one line where they fit; a narrow
+   sheet wraps them rather than scrolling sideways. */
 .namespace-row {
-  display: grid;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s2);
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   margin-bottom: var(--s2);
+}
+
+.namespace-row > input {
+  flex: 1 1 6rem;
+  min-width: 0;
+}
+
+/* The messages a selected finding's evidence is in, one per line. */
+.evidence-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.evidence-messages li + li {
+  margin-top: var(--s1);
+}
+
+/* A group's member cases, each with the way to its evidence. */
+.similar-member + .similar-member {
+  border-top: 1px solid var(--line);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+}
+
+.similar-member .row-reason {
+  margin: 0;
+}
+
+/* The settings chooser takes the row beside its menu. */
+.value-with-action > #analysis-settings-choice {
+  flex: 1;
+  min-width: 0;
 }

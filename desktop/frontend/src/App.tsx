@@ -137,7 +137,7 @@ import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
 import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { useTests, type TestsPlace } from "./Tests";
-import { useFindings, useSimilarFindings } from "./Findings";
+import { useFindings, useSimilarFindings, type EvidenceRef } from "./Findings";
 import { Report, Separator, Status } from "./shell";
 import { CommandPalette, isMac, shortcut, type PaletteEntry } from "./CommandPalette";
 import { ReturnAnchor, firstShownRow, type SortState } from "./DataTable";
@@ -324,7 +324,10 @@ export default function App() {
   const [views, setViews] = useState<GridView[]>([]);
   const [checkedMessages, setCheckedMessages] = useState<Set<string>>(new Set());
   // The messages a finding's evidence names, shown on their own until cleared.
-  const [evidenceFocus, setEvidenceFocus] = useState<string[] | null>(null);
+  const [evidenceFocus, setEvidenceFocus] = useState<EvidenceRef[] | null>(null);
+  // Where the evidence shown was opened from: this case's Findings, or a
+  // comparison of similar findings, which Back returns to.
+  const [evidenceFrom, setEvidenceFrom] = useState<"findings" | "similar">("findings");
   const [revealed, setRevealed] = useState(false);
   const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
   const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
@@ -1776,19 +1779,44 @@ export default function App() {
   const findings = useFindings({
     root,
     caseRef: findingsCase,
+    caseName: verified ? (cases.find((item) => item.summary.case?.entry === verified.name)?.name ?? verified.name) : "",
+    caseEntry: verified?.name ?? "",
     identity: verified?.identity ?? "",
     shown: place === "cases" && caseView === "findings" && verified !== null,
     busy,
-    onViewMessages: (occurrences) => {
+    onViewMessages: (evidence) => {
       if (!root || !verified) return;
-      setEvidenceFocus(occurrences);
+      const shown = { case: verified.name, identity: verified.identity };
+      setEvidenceFocus(evidence);
+      setEvidenceFrom("findings");
       setView("messages");
-      void loadMessages(root, { case: verified.name, identity: verified.identity }, messageQuery, messageSort, 0, occurrences);
+      // The first piece of evidence opens selected, at its field.
+      void loadMessages(root, shown, messageQuery, messageSort, 0, [...new Set(evidence.map((entry) => entry.occurrence))]).then(() => {
+        const first = evidence[0];
+        if (first) void inspect(first.occurrence, first.field, 0, -1, shown);
+      });
     },
     onSimilar: () => open({ destination: "similar-findings" }),
+    onOpenComparison: (ref) => open({ destination: "similar-findings", objectId: ref.id }),
     onCreateTest: (status, review, reportSHA256, title) => promoteFinding(status, review, reportSHA256, title),
   });
-  const similar = useSimilarFindings({ root: place === "similar-findings" ? root : null, caseRef: findingsCase, busy });
+  const similar = useSimilarFindings({
+    root: place === "similar-findings" ? root : null,
+    caseRef: findingsCase,
+    saved: place === "similar-findings" ? route.objectId : undefined,
+    busy,
+    // A member case opens on exactly its evidence, and Back returns here.
+    onViewEvidence: (ref, occurrences) => {
+      const entry = listedCases.current.find((item) => item.ref.id === ref.id)?.summary.case?.entry;
+      if (!root || !entry) return;
+      void verifyCase(root, entry, { skipAutoGrid: true }).then((opened) => {
+        if (!opened?.case) return;
+        setEvidenceFocus(occurrences.map((occurrence) => ({ occurrence, field: "" })));
+        setEvidenceFrom("similar");
+        void loadMessages(root, { case: entry, identity: opened.case.identity }, NO_QUERY, null, 0, occurrences);
+      });
+    },
+  });
 
   const environments = useEnvironments({
     root,
@@ -2300,9 +2328,15 @@ export default function App() {
                           }}
                         />
                       </span>
-                      <button type="button" className="quiet" onClick={() => setView("findings")}>
-                        Back to findings
-                      </button>
+                      {evidenceFrom === "similar" ? (
+                        <button type="button" className="quiet" onClick={() => back()}>
+                          Back to similar findings
+                        </button>
+                      ) : (
+                        <button type="button" className="quiet" onClick={() => setView("findings")}>
+                          Back to findings
+                        </button>
+                      )}
                     </div>
                   ) : null}
                   <MessageList
@@ -2355,7 +2389,7 @@ export default function App() {
                       return null;
                     }}
                     selected={selectedOccurrence}
-                    onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
+                    onInspect={(occurrence) => void inspect(occurrence, evidenceFocus?.find((entry) => entry.occurrence === occurrence)?.field ?? "", 0, -1)}
                     checked={checkedMessages}
                     onCheck={setCheckedMessages}
                     onCreateTest={() => createTest()}

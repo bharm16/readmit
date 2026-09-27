@@ -6451,6 +6451,54 @@
       "implemented": true
     },
     {
+      "id": "desktop.OpenSimilarFindings",
+      "source": "desktop.App.OpenSimilarFindings",
+      "kind": "desktop",
+      "capability": "reopen one saved comparison as the cases and groups it recorded, running nothing and writing nothing",
+      "owner": "bharm16/readmit#551",
+      "screen": "the Similar findings view opened from History",
+      "action": "open a named saved comparison from a case's History",
+      "backend": {"package": "internal/diagnose", "name": "OpenGroups"},
+      "inputs": ["readmit-diagnosis-groups/v1", "readmit-catalog/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/Findings.test.tsx", "name": "a saved comparison is named, listed in History and reopens as Similar findings"},
+      "parity_test": {"package": "internal/desktop", "name": "TestASavedComparisonReopensWithItsNameAndCases"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ImportAnalysisSettings",
+      "source": "desktop.App.ImportAnalysisSettings",
+      "kind": "desktop",
+      "capability": "open a chosen readmit-diagnose-config/v1 file as new analysis settings exactly as read, saving nothing",
+      "owner": "bharm16/readmit#551",
+      "screen": "Import settings in the Analysis settings sheet",
+      "action": "import an analysis settings file into an unsaved draft",
+      "backend": {"package": "internal/diagnose", "name": "ParseConfig"},
+      "inputs": ["readmit-diagnose-config/v1", "readmit-catalog/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/Findings.test.tsx", "name": "Import settings opens the file as an unsaved draft, an unsupported pair is saved unchanged, and Export writes the saved settings"},
+      "parity_test": {"package": "internal/desktop", "name": "TestImportedAnalysisSettingsStayAsReadAndExportWritesTheSavedBytes"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ExportAnalysisSettings",
+      "source": "desktop.App.ExportAnalysisSettings",
+      "kind": "desktop",
+      "capability": "write the saved analysis settings' exact bytes to a new file",
+      "owner": "bharm16/readmit#551",
+      "screen": "Export settings in the Analysis settings sheet",
+      "action": "export saved analysis settings through the save dialog",
+      "backend": {"package": "internal/diagnose", "name": "ParseConfig"},
+      "inputs": ["readmit-catalog/v1", "readmit-diagnose-config/v1"],
+      "outputs": ["readmit-diagnose-config/v1"],
+      "prerequisites": ["author"],
+      "gui_test": {"file": "desktop/frontend/src/Findings.test.tsx", "name": "Import settings opens the file as an unsaved draft, an unsupported pair is saved unchanged, and Export writes the saved settings"},
+      "parity_test": {"package": "internal/desktop", "name": "TestImportedAnalysisSettingsStayAsReadAndExportWritesTheSavedBytes"},
+      "implemented": true
+    },
+    {
       "id": "desktop.NormalizeCompare",
       "source": "desktop.App.NormalizeCompare",
       "kind": "desktop",
@@ -6506,7 +6554,7 @@
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: saved groupings are listed in the case's analysis history and compared through desktop.App.FindSimilarFindings", "successor": "desktop.App.FindSimilarFindings"}
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: saved groupings are listed in the case's analysis history and reopened through desktop.App.OpenSimilarFindings", "successor": "desktop.App.OpenSimilarFindings"}
     },
     {
       "id": "desktop.OpenDiagnosisReport",

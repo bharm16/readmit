@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/report"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
@@ -54,6 +55,16 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 	}
 	testFile := filepath.Join(t.TempDir(), "test.json")
 	writeDocument(t, filepath.Dir(testFile), filepath.Base(testFile), opened.Test.Document)
+	// And one saved analysis settings object, which Export writes and Import
+	// reads back.
+	config := diagnose.DefaultConfig()
+	settings := project.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.AnalysisSettingsItem, IntentID: "settings-1",
+		Draft: desktop.ItemDraft{Name: "Scheduling rules", AnalysisSettings: &config}})
+	if settings.Saved == nil {
+		t.Fatalf("the saved analysis settings: %+v", settings)
+	}
+	settingsFile := filepath.Join(t.TempDir(), "settings.json")
+	writeDocument(t, filepath.Dir(settingsFile), filepath.Base(settingsFile), `{"schema":"readmit-diagnose-config/v1","profile":"readmit-siu-v1","ruleset":"readmit-siu-diagnosis/v1","rules":["message.duplicate-control-id"],"namespaces":[]}`+"\n")
 
 	type dialog struct {
 		name string
@@ -124,6 +135,10 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseScenarioLibraryImport", call: func(a *desktop.App) any { return a.ChooseScenarioLibraryImport() }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 		{name: "ImportTestDraft", call: func(a *desktop.App) any { return a.ImportTestDraft(context) }, opens: "files", files: []string{testFile}, title: "Import test"},
 		{name: "ExportTestItem", call: func(a *desktop.App) any { return a.ExportTestItem(desktop.ItemRequest{Context: context, Ref: test}) }, opens: "save", destination: unnamed(), title: "Export test", writes: true},
+		{name: "ImportAnalysisSettings", call: func(a *desktop.App) any { return a.ImportAnalysisSettings(context) }, opens: "files", files: []string{settingsFile}, title: "Import analysis settings"},
+		{name: "ExportAnalysisSettings", call: func(a *desktop.App) any {
+			return a.ExportAnalysisSettings(desktop.ItemRequest{Context: context, Ref: *settings.Saved})
+		}, opens: "save", destination: unnamed(), title: "Export analysis settings", writes: true},
 	}
 	window := func(c *chooser) *desktop.App {
 		state := t.TempDir()
