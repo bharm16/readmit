@@ -186,7 +186,7 @@ async function captureFeeds(): Promise<void> {
 
 /** Opens the lab folder and verifies the case captured before the upgrade. */
 async function openBefore(user: UserEvent) {
-  await journey.chooseFolder(journey.path("lab"), "Open workspace");
+  await journey.chooseFolder(journey.path("lab"), "Open project");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(region("Workspace"));
   const listed = (await navigation.findByText("before", { selector: ".name" })).closest("li") as HTMLElement;

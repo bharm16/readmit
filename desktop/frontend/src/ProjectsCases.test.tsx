@@ -5,11 +5,11 @@
 import { expect, test, vi } from "vitest";
 import { useState } from "react";
 import type { SortState } from "./DataTable";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CatalogItem, CaseStatus } from "./bindings";
 import { listDate, NewProjectSheet, ProjectList, sortProjects, validProjectName } from "./Projects";
-import { applyView, CASE_STATUSES, CaseFilterSheet, CaseList, NO_VIEW, sortCases } from "./Cases";
+import { applyView, CASE_STATUSES, CaseFacts, CaseFilterSheet, CaseList, NO_VIEW, sortCases } from "./Cases";
 
 const project = (id: string, name: string, opened: string | null, availability: CatalogItem["availability"] = "available"): CatalogItem => ({
   ref: { kind: "project", id },
@@ -62,6 +62,7 @@ test("a row opens its project; a missing one stays listed with its reason and Lo
   const remove = vi.fn();
   render(
     <ProjectList
+      notices={{}}
       projects={[project("a", "Scheduling investigation", "2026-09-26T10:00:00Z"), project("m", "Moved away", null, "missing")]}
       busy={false}
       onOpen={open}
@@ -93,7 +94,7 @@ test("a row opens its project; a missing one stays listed with its reason and Lo
 test("no projects yet offers New project", async () => {
   const user = userEvent.setup();
   const onNew = vi.fn();
-  render(<ProjectList projects={[]} busy={false} onOpen={() => undefined} onLocate={() => undefined} onSettings={() => undefined} onReveal={() => undefined} onForget={() => undefined} onDelete={() => undefined} onNew={onNew} />);
+  render(<ProjectList projects={[]} notices={{}} busy={false} onOpen={() => undefined} onLocate={() => undefined} onSettings={() => undefined} onReveal={() => undefined} onForget={() => undefined} onDelete={() => undefined} onNew={onNew} />);
   expect(screen.getByText("No projects yet")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "New project" }));
   expect(onNew).toHaveBeenCalled();
@@ -136,12 +137,23 @@ test("cases sort by Updated newest first with unknown last, and search and filte
   expect(applyView(CASES, { ...NO_VIEW, owner: "Integration team", tags: ["scheduling"] }).map((c) => c.ref.id)).toEqual(["1"]);
 });
 
+test("search finds a case by incident reference and by its interface revision's name", () => {
+  const referenced = { ...kase("4", "Rejected ADT", "open", "", null), summary: { case: { registered: true, entry: "4", tags: [], incidents: ["INC-4821"], interface_revision: "siu-2.5.1-v1", evidence: "verified" } } };
+  const cases = [...CASES, referenced];
+  expect(applyView(cases, { ...NO_VIEW, query: "inc-4821" }).map((c) => c.ref.id)).toEqual(["4"]);
+  expect(applyView(cases, { ...NO_VIEW, query: "go-live" }, [{ id: "siu-2.5.1-v1", name: "Go-live build", default: true }]).map((c) => c.ref.id)).toEqual(["4"]);
+  expect(applyView(cases, { ...NO_VIEW, query: "go-live" })).toEqual([]);
+});
+
 function Cases({ view, onView = () => undefined, cases = CASES }: { view: typeof NO_VIEW; onView?: (v: typeof NO_VIEW) => void; cases?: CatalogItem[] }) {
   const [sort, setSort] = useState<SortState | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   return (
     <CaseList
       cases={cases}
+      revisions={[]}
+      notices={{}}
+      loading={false}
       view={view}
       onView={onView}
       selected={selected}
@@ -216,4 +228,106 @@ test("a thousand cases with long names stay one keyboard-operable table", async 
   await user.keyboard("{End}");
   expect(document.activeElement?.getAttribute("aria-label")).toMatch(/ 999$/);
   vi.restoreAllMocks();
+});
+
+test("at compact widths Updated then Owner drop and the case's Details still shows them", async () => {
+  const user = userEvent.setup();
+  let width = 700;
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("table-view") ? width : 0;
+  });
+  function WithDetails() {
+    const [facts, setFacts] = useState<CatalogItem | null>(null);
+    const [sort, setSort] = useState<SortState | null>(null);
+    return (
+      <>
+        <CaseList
+          cases={CASES}
+          revisions={[]}
+          notices={{}}
+          loading={false}
+          view={NO_VIEW}
+          onView={() => undefined}
+          selected={null}
+          onSelect={() => undefined}
+          onOpen={() => undefined}
+          onAction={(item, action) => action === "details" && setFacts(item)}
+          onRetry={() => undefined}
+          onLocate={() => undefined}
+          onImport={() => undefined}
+          sort={sort}
+          onSort={setSort}
+          busy={false}
+        />
+        <CaseFacts item={facts} revisions={[]} onClose={() => setFacts(null)} />
+      </>
+    );
+  }
+  try {
+    const headers = () => screen.getAllByRole("columnheader").map((header) => header.textContent).filter(Boolean);
+    const { rerender } = render(<WithDetails />);
+    expect(headers()).toEqual(["Case", "Status", "Owner"]);
+    width = 480;
+    rerender(<WithDetails />);
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(headers()).toEqual(["Case", "Status"]));
+    // The case's Details carries what the list has no room for.
+    await user.click(screen.getByRole("button", { name: "More actions for Duplicate appointment after reschedule" }));
+    await user.click(screen.getByRole("menuitem", { name: "Details" }));
+    const facts = await screen.findByRole("dialog", { name: "Case details" });
+    const rows = Object.fromEntries(Array.from(facts.querySelectorAll(".value-row")).map((row) => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]));
+    expect(rows).toMatchObject({ Name: "Duplicate appointment after reschedule", Status: "Investigating", Owner: "Integration team", Updated: listDate("2026-09-26T10:00:00Z") });
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+test("only synthetic or variant cases carry a marker", () => {
+  const provenanced = (id: string, name: string, provenance: string): CatalogItem => {
+    const item = kase(id, name, "open", "", null);
+    return { ...item, summary: { case: { ...item.summary.case!, provenance } } };
+  };
+  render(
+    <Cases
+      view={NO_VIEW}
+      cases={[
+        provenanced("s", "Generated scheduling burst", "synthetic"),
+        provenanced("v", "Reschedule variant", "variant"),
+        provenanced("i", "Imported feed", "imported"),
+        provenanced("g", "Captured feed", "generated"),
+        kase("n", "Plain case", "open", "", null),
+      ]}
+    />,
+  );
+  const badges = (name: string) => Array.from(screen.getByRole("row", { name }).querySelectorAll(".badge")).map((badge) => badge.textContent);
+  expect(badges("Generated scheduling burst")).toEqual(["Synthetic"]);
+  expect(badges("Reschedule variant")).toEqual(["Variant"]);
+  expect(badges("Imported feed")).toEqual([]);
+  expect(badges("Captured feed")).toEqual([]);
+  expect(badges("Plain case")).toEqual([]);
+});
+
+test("a thousand projects with long names stay one keyboard-operable list", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("table-view") ? 440 : 0;
+  });
+  const open = vi.fn();
+  try {
+    const many = Array.from({ length: 1000 }, (_, i) =>
+      project(`p${i}`, `${"Very long project name that keeps going past the column ".repeat(3)}${String(i).padStart(4, "0")}`, null),
+    );
+    render(<ProjectList projects={many} notices={{}} busy={false} onOpen={open} onLocate={() => undefined} onSettings={() => undefined} onReveal={() => undefined} onForget={() => undefined} onDelete={() => undefined} onNew={() => undefined} />);
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    const rows = () => screen.getAllByRole("row").filter((row) => row.hasAttribute("data-row-id"));
+    expect(rows().length).toBeLessThan(100);
+    rows()[0]!.focus();
+    await user.keyboard("{End}");
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/ 0999$/);
+    await user.keyboard("{Enter}");
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls[0]![0].ref.id).toBe("p999");
+  } finally {
+    vi.restoreAllMocks();
+  }
 });

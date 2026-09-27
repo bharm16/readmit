@@ -2,12 +2,13 @@
 // start — a new project, an existing one, or the demo — with nothing about
 // licensing, connections or what the build writes on it.
 import { expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
 import { page, sidebar } from "./testkit/navigation";
-import { editorDraft, folderChosen, folderWithCase, guideResult, projectOverviewResult, WORKSPACE_ROOT } from "./testkit/fixtures";
-import type { CatalogItem, CatalogQuery, CatalogResult } from "./bindings";
+import { CASE_ENTRY, caseCatalogItem, editorDraft, folderChosen, folderWithCase, guideResult, projectOverviewResult, WORKSPACE_ROOT } from "./testkit/fixtures";
+import type { FacadeHandlers } from "./testkit/wails";
+import type { CatalogItem, CatalogQuery, CatalogResult, EditorDraft } from "./bindings";
 
 test("a window with no project open offers new, open and the demo, and nothing else to set up", async () => {
   const { facade } = await renderApp();
@@ -99,7 +100,7 @@ test("a new project asks only for a name, goes into the remembered location, and
   expect(await sheet.findByText(WORKSPACE_ROOT)).toBeTruthy();
   await user.type(sheet.getByLabelText("Name"), "  Scheduling investigation ");
   await user.click(sheet.getByRole("button", { name: "Create" }));
-  expect(facade.oneCall("CreateNamedProject")).toEqual([{ name: "Scheduling investigation" }]);
+  expect(facade.oneCall("CreateNamedProject")).toEqual([{ name: "Scheduling investigation", location: WORKSPACE_ROOT }]);
   // No folder picker opens after Create.
   expect(facade.callsTo("ChooseProjectLocation")).toHaveLength(0);
   expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
@@ -170,7 +171,7 @@ test("projects this viewer opened are listed newest first; a row opens its proje
   expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
 });
 
-test("unsaved work is one compact item on Projects, reviewed in a sheet, resumed or discarded by hand", async () => {
+test("unsaved work is one compact item on Projects, reviewed in a sheet; a draft no editor takes back is offered only for Discard", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({
     EditorDrafts: () => ({
@@ -182,7 +183,8 @@ test("unsaved work is one compact item on Projects, reviewed in a sheet, resumed
   const item = await page().findByRole("group", { name: "Drafts to restore" });
   await user.click(within(item).getByRole("button", { name: "Review" }));
   const review = within(screen.getByRole("dialog", { name: "Drafts to restore" }));
-  expect(review.getByRole("button", { name: "Test · sample-case" })).toBeTruthy();
+  expect(review.getByRole("rowheader", { name: "Test · sample-case" })).toBeTruthy();
+  expect(review.queryByRole("button", { name: "Test · sample-case" })).toBeNull();
   await user.click(review.getByRole("button", { name: "Discard" }));
   expect(facade.oneCall("DiscardEditorDraft")).toEqual(["d1"]);
   // Nothing was resumed, sent or opened by merely listing it.
@@ -212,13 +214,292 @@ test("resuming a draft opens its project on the editor it belongs to, and sends 
   const { facade } = await renderApp({
     EditorDrafts: () => ({
       state: "completed",
-      drafts: [editorDraft("d1", "canonical-test", {}, { workspace: WORKSPACE_ROOT, case: "" })],
+      drafts: [editorDraft("d1", "suite-editor", {}, { workspace: WORKSPACE_ROOT, case: "" })],
     }),
     OpenWorkspace: () => folderWithCase(),
   });
   await user.click(await page().findByRole("button", { name: "Review" }));
-  await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Test" }));
+  await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Suite" }));
   expect(await page().findByRole("heading", { level: 1, name: "Tests" })).toBeTruthy();
+  expect(page().getByRole("tab", { name: "Suites" }).getAttribute("aria-selected")).toBe("true");
   expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
+  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+});
+
+test("a Locate the host answered with another folder says why on the row and keeps the entry", async () => {
+  const user = userEvent.setup();
+  const refusal = "that folder does not hold this project: the folder holds a different project than the one the window opened";
+  const { facade } = await renderApp({
+    ListCatalog: projectsCatalog([listedProject("gone", "Moved away", "/p/gone", null, "missing")]),
+    LocateItem: (request) => ({ state: "cancelled", context: request.context }),
+  });
+  const table = within(await page().findByRole("table", { name: "Projects" }));
+  // A cancelled dialog changes nothing and says nothing more.
+  await user.click(within(table.getByRole("row", { name: "Moved away" })).getByRole("button", { name: "Locate" }));
+  await waitFor(() => expect(facade.callsTo("LocateItem")).toHaveLength(1));
+  expect(within(table.getByRole("row", { name: "Moved away" })).getByText("The project folder is not where it was.")).toBeTruthy();
+  // A folder holding another project is refused with the facade's reason.
+  facade.reply({ LocateItem: (request) => ({ state: "failed", reason: refusal, context: request.context }) });
+  await user.click(within(table.getByRole("row", { name: "Moved away" })).getByRole("button", { name: "Locate" }));
+  const row = await table.findByRole("row", { name: "Moved away" });
+  expect(await within(row).findByText(refusal)).toBeTruthy();
+  // The entry stays, still offering Locate, and nothing was forgotten.
+  expect(within(row).getByRole("button", { name: "Locate" })).toBeTruthy();
+  expect(facade.callsTo("LocateItem")[1]?.args[0]).toMatchObject({ ref: { kind: "project", id: "gone" } });
+  expect(facade.callsTo("ForgetProject")).toHaveLength(0);
+});
+
+test("a refused Remove from recents says why on the row", async () => {
+  const user = userEvent.setup();
+  const refusal = "the remembered projects could not be replaced; they are left as they were";
+  const { facade } = await renderApp({
+    ListCatalog: projectsCatalog([listedProject("p1", "Scheduling investigation", WORKSPACE_ROOT, "2026-09-26T10:00:00Z")]),
+    ForgetProject: () => ({ state: "failed", reason: refusal }),
+  });
+  const table = within(await page().findByRole("table", { name: "Projects" }));
+  await user.click(table.getByRole("button", { name: "More actions for Scheduling investigation" }));
+  await user.click(screen.getByRole("menuitem", { name: "Remove from recents" }));
+  expect(facade.oneCall("ForgetProject")).toEqual(["p1"]);
+  const row = table.getByRole("row", { name: "Scheduling investigation" });
+  expect(await within(row).findByText(refusal)).toBeTruthy();
+});
+
+test("Create cannot be pressed twice while a create runs; the new folder's name never shows", async () => {
+  const user = userEvent.setup();
+  const created = `${WORKSPACE_ROOT}/scheduling-investigation-7f3a`;
+  const { facade } = await renderApp({
+    ProjectLocation: () => ({ state: "completed", location: WORKSPACE_ROOT }),
+    OpenWorkspace: () => folderChosen(created, [{ name: "project.json", kind: "project" }]),
+    OpenProjectOverview: () => projectOverviewResult([]),
+    OpenNamedProject: () => ({ state: "completed", context: noContext, recorded: true }),
+  });
+  const parked = facade.park("CreateNamedProject");
+  await user.click(page().getAllByRole("button", { name: "New project" })[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  await sheet.findByText(WORKSPACE_ROOT);
+  await user.type(sheet.getByLabelText("Name"), "Scheduling investigation");
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  expect(facade.callsTo("CreateNamedProject")).toHaveLength(1);
+  // While it runs the sheet and the name stay, and Create cannot be pressed.
+  expect(screen.getByRole("dialog", { name: "New project" })).toBeTruthy();
+  expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("Scheduling investigation");
+  expect((sheet.getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
+  parked.resolve({ state: "completed", context: noContext, recorded: true, project: listedProject("p1", "Scheduling investigation", created, null) });
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull());
+  expect(facade.callsTo("CreateNamedProject")).toHaveLength(1);
+  // The folder the facade generated is internal: its name is nowhere on screen.
+  expect(document.body.textContent).not.toContain("scheduling-investigation-7f3a");
+});
+
+test("choosing a location and cancelling leaves the remembered one", async () => {
+  const user = userEvent.setup();
+  const chosen = "/Users/someone/Projects";
+  const { facade } = await renderApp({
+    ProjectLocation: () => ({ state: "completed", location: WORKSPACE_ROOT }),
+    ChooseProjectLocation: () => ({ state: "completed", location: chosen }),
+    CreateNamedProject: () => ({ state: "failed", reason: "stop here", context: noContext, recorded: false }),
+  });
+  await user.click(page().getAllByRole("button", { name: "New project" })[0]!);
+  let sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  await sheet.findByText(WORKSPACE_ROOT);
+  await user.click(sheet.getByRole("button", { name: "Change" }));
+  expect(await sheet.findByText(chosen)).toBeTruthy();
+  await user.click(sheet.getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull());
+  expect(facade.callsTo("CreateNamedProject")).toHaveLength(0);
+  // Opened again, the sheet shows the remembered location, not the one chosen.
+  await user.click(page().getAllByRole("button", { name: "New project" })[0]!);
+  sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  expect(await sheet.findByText(WORKSPACE_ROOT)).toBeTruthy();
+  expect(sheet.queryByText(chosen)).toBeNull();
+  // A Change that is kept is where Create puts the project.
+  await user.click(sheet.getByRole("button", { name: "Change" }));
+  await sheet.findByText(chosen);
+  await user.type(sheet.getByLabelText("Name"), "Registration upgrade");
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  expect(facade.oneCall("CreateNamedProject")).toEqual([{ name: "Registration upgrade", location: chosen }]);
+});
+
+test("after a license refusal the projects list, opening a project and Try demo still work", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    ListCatalog: projectsCatalog([listedProject("p1", "Scheduling investigation", WORKSPACE_ROOT, "2026-09-26T10:00:00Z")]),
+    ProjectLocation: () => ({ state: "completed", location: WORKSPACE_ROOT }),
+    CreateNamedProject: () => ({ state: "permission_denied", reason: "this computer's license does not admit new work", context: noContext, recorded: false }),
+    OpenWorkspace: () => folderWithCase(),
+    OpenProjectOverview: () => projectOverviewResult([]),
+    OpenNamedProject: () => ({ state: "completed", context: noContext, recorded: true }),
+    CreateSampleWorkspace: () => ({ state: "completed", workspace: { root: WORKSPACE_ROOT, artifacts: [] } }),
+  });
+  await user.click(page().getAllByRole("button", { name: "New project" })[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  await sheet.findByText(WORKSPACE_ROOT);
+  await user.type(sheet.getByLabelText("Name"), "Registration upgrade");
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  expect(await sheet.findByText("this computer's license does not admit new work")).toBeTruthy();
+  await user.click(sheet.getByRole("button", { name: "Cancel" }));
+  await user.click(within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New project" })).toBeNull());
+  // The list is still there, and its row opens the project.
+  const table = within(await page().findByRole("table", { name: "Projects" }));
+  await user.click(table.getByRole("row", { name: "Scheduling investigation" }));
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
+  // Back on Projects, the demo still opens.
+  await user.click(sidebar().getByRole("button", { name: "Projects" }));
+  await user.click(await page().findByRole("button", { name: "Try demo" }));
+  await waitFor(() => expect(facade.callsTo("CreateSampleWorkspace")).toHaveLength(1));
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+}, 15_000);
+
+/** The open project, one case of it, and the answers opening it takes. */
+const CASE_REF = { kind: "case" as const, id: `case-${CASE_ENTRY}`, revision: "rev-case" };
+const OPEN_PROJECT: CatalogItem = {
+  ...listedProject("p1", "Scheduling investigation", WORKSPACE_ROOT, "2026-09-26T10:00:00Z"),
+  ref: { kind: "project", id: "p1", revision: "rev-project" },
+};
+const OPEN_CASE: CatalogItem = {
+  ...caseCatalogItem(CASE_ENTRY, "", "investigating"),
+  ref: CASE_REF,
+  name: "Duplicate appointment after reschedule",
+};
+
+function openingProject(): FacadeHandlers {
+  return {
+    ListCatalog: (query) => {
+      const items = query.kind === "project" ? [OPEN_PROJECT] : query.kind === "case" ? [OPEN_CASE] : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+    },
+    OpenWorkspace: () => folderWithCase(),
+    OpenProjectOverview: () => projectOverviewResult([]),
+    OpenNamedProject: () => ({ state: "completed", context: noContext, recorded: true }),
+    ListNotes: (request) => ({ state: "completed", context: request.context, notes: [] }),
+  };
+}
+
+const SHEET_DRAFTS: { draft: EditorDraft; object: string; sheet: string; fields: Record<string, string> }[] = [
+  {
+    draft: editorDraft(
+      "dc",
+      "case",
+      { name: "Duplicate appointment, second look", status: "resolved", owner: "Scheduling desk", tags: ["scheduling"], revision: "", incidents: [], sources: [] },
+      { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-case-details-draft/v1", item: { project_id: "p1", ref: CASE_REF } },
+    ),
+    object: "Case details · Duplicate appointment, second look",
+    sheet: "Edit details",
+    fields: { Name: "Duplicate appointment, second look", Status: "resolved", Owner: "Scheduling desk" },
+  },
+  {
+    draft: editorDraft(
+      "dp",
+      "project",
+      { name: "Scheduling go-live", owner: "Integration desk", tags: [], revisions: [] },
+      { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-project-settings-draft/v1", item: { project_id: "p1", ref: { kind: "project", id: "p1" } } },
+    ),
+    object: "Project settings",
+    sheet: "Project settings",
+    fields: { Name: "Scheduling go-live", Owner: "Integration desk" },
+  },
+  {
+    draft: editorDraft(
+      "dn",
+      "note",
+      { schema: "readmit-note-draft/v1", name: "", subject: "", title: "Hypothesis", body: "The receiver keys on SCH-1 only." },
+      { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-note-draft/v1", item: { project_id: "p1", ref: CASE_REF } },
+    ),
+    object: "Note · Hypothesis",
+    sheet: "New note",
+    fields: { Name: "Hypothesis", Content: "The receiver keys on SCH-1 only." },
+  },
+];
+
+test("each retained sheet draft resumes in its sheet with the draft and the unsaved marker", async () => {
+  for (const { draft, object, sheet: title, fields } of SHEET_DRAFTS) {
+    cleanup();
+    const user = userEvent.setup();
+    const { facade } = await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [draft] }) });
+    await user.click(await page().findByRole("button", { name: "Review" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: object }));
+    const sheet = within(await screen.findByRole("dialog", { name: title }));
+    for (const [label, value] of Object.entries(fields)) {
+      expect((sheet.getByLabelText(label) as HTMLInputElement).value).toBe(value);
+    }
+    expect(sheet.getByText("Unsaved")).toBeTruthy();
+    expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
+    // Resuming restores the work; it saves, sends and runs nothing.
+    expect(facade.callsTo("SaveItem")).toHaveLength(0);
+    expect(facade.callsTo("SaveNoteItem")).toHaveLength(0);
+    expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+  }
+}, 15_000);
+
+test("a draft of a library or suite editor resumes on that editor's page", async () => {
+  const suite = { schema: "readmit-suite/v1", id: "scheduling-regression", owner: "Integration desk", tags: [], parallelism: 1, environments: [], tables: [], tests: [] };
+  const scenario = '{"schema":"readmit-scenario/v1","name":"restored-reschedule-scenario"}';
+  const plan = '{"schema":"readmit-scenario-generator/v1","name":"restored-generator-plan"}';
+  const editors = [
+    {
+      draft: editorDraft("d1", "scenario", scenario, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-scenario-draft/v1" }),
+      object: "Scenario",
+      heading: "Library",
+      tab: "Scenarios",
+      shown: scenario,
+    },
+    {
+      draft: editorDraft("d2", "generator-plan", plan, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-generator-plan-draft/v1" }),
+      object: "Scenario plan",
+      heading: "Library",
+      tab: "Scenarios",
+      shown: plan,
+      // The plan is edited on the scenario editor's own Generate view.
+      view: "Generate",
+    },
+    {
+      draft: editorDraft(
+        "d3",
+        "suite-editor",
+        { schema: "readmit-suite-draft/v1", entry: "", document: JSON.stringify(suite), expected: {} },
+        { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-suite-draft/v1" },
+      ),
+      object: "Suite",
+      heading: "Tests",
+      tab: "Suites",
+      shown: "scheduling-regression",
+    },
+  ];
+  for (const { draft, object, heading, tab, shown, view } of editors as { draft: EditorDraft; object: string; heading: string; tab: string; shown: string; view?: string }[]) {
+    cleanup();
+    const user = userEvent.setup();
+    const { facade } = await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [draft] }) });
+    await user.click(await page().findByRole("button", { name: "Review" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: object }));
+    expect(await page().findByRole("heading", { level: 1, name: heading })).toBeTruthy();
+    expect(page().getByRole("tab", { name: tab }).getAttribute("aria-selected")).toBe("true");
+    if (view) await user.click(within(page().getByRole("navigation", { name: "Scenario authoring tabs" })).getByRole("button", { name: view }));
+    // The editor holds the draft itself, as it was left.
+    expect(await page().findByDisplayValue(shown)).toBeTruthy();
+    expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+  }
+}, 15_000);
+
+test("a draft whose case is gone says so on Cases and opens nothing", async () => {
+  const user = userEvent.setup();
+  const gone = editorDraft(
+    "dg",
+    "case",
+    { name: "Removed meanwhile", status: "open", owner: "", tags: [], revision: "", incidents: [], sources: [] },
+    { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-case-details-draft/v1", item: { project_id: "p1", ref: { kind: "case", id: "case-removed", revision: "r" } } },
+  );
+  const { facade } = await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [gone] }) });
+  await user.click(await page().findByRole("button", { name: "Review" }));
+  await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Case details · Removed meanwhile" }));
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  expect(await page().findByText("The case this draft edits is no longer in the project.")).toBeTruthy();
+  // No sheet opens, and nothing is saved, discarded or sent.
+  expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull();
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+  expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
 });

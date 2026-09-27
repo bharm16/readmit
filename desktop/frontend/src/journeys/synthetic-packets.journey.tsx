@@ -51,7 +51,7 @@ test("a synthetic demonstration packet is generated into a new folder, verified 
   const user = userEvent.setup();
   journey.makeFolder("demo");
   await journey.launch();
-  await journey.chooseFolder(journey.path("demo"), "Open workspace");
+  await journey.chooseFolder(journey.path("demo"), "Open project");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const panel = synthetic();
 

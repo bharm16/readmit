@@ -502,7 +502,9 @@ test("a retained test draft comes back only for the evidence it was authored aga
   // The stale draft is still offered as retained work, discardable by hand.
   await goTo(user, "Projects");
   await user.click(screen.getByRole("button", { name: "Review" }));
-  expect(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Test · sample-case" })).toBeTruthy();
+  const review = within(screen.getByRole("dialog", { name: "Drafts to restore" }));
+  expect(review.getByRole("rowheader", { name: "Test · sample-case" })).toBeTruthy();
+  expect(review.getByRole("button", { name: "Discard" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Close drafts to restore" }));
   // Once the store holds a draft bound to exactly this evidence, it comes back.
   facade.reply({

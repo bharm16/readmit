@@ -10576,8 +10576,8 @@
    "current": "Open a readmit workspace folder",
    "proposed": "Open a readmit workspace folder",
    "decision": "rename",
-   "final": "Open workspace",
-   "reason": "SelectWorkspace: choose an existing folder in the folder dialog; do not create or import a project. [#525; test: internal/desktop/dialogs_test.go TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice]",
+   "final": "Open project",
+   "reason": "SelectWorkspace: choose an existing folder in the folder dialog; do not create or import a project. The header's Open names the dialog after what it opens. [#525, #548; test: internal/desktop/dialogs_test.go TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice]",
    "status": "implemented"
   },
   {
@@ -12208,6 +12208,36 @@
    "decision": "rename",
    "final": "Samples",
    "reason": "#522: synthetic sample operations remain a separate Samples section. The section stays its own labelled region, and its opening paragraph keeps the synthetic scope: every identifier is invented and establishes nothing about a production receiver. Supersedes L119.1's Synthetic sample packets.",
+   "status": "implemented"
+  },
+  {
+   "id": "RD03.1",
+   "path": "desktop/frontend/src/CaseSheets.tsx",
+   "current": "Unsaved",
+   "proposed": "Unsaved",
+   "decision": "keep",
+   "final": "Unsaved",
+   "reason": "#548: the marker a sheet reopened from a retained draft shows while it holds that draft's unsaved values.",
+   "status": "implemented"
+  },
+  {
+   "id": "RD03.2",
+   "path": "desktop/frontend/src/CaseSheets.tsx",
+   "current": "Change",
+   "proposed": "Change",
+   "decision": "keep",
+   "final": "Change",
+   "reason": "#548: a note's About is a value with Change, offered only when the project has another subject.",
+   "status": "implemented"
+  },
+  {
+   "id": "RD03.3",
+   "path": "desktop/frontend/src/Cases.tsx",
+   "current": "Case details",
+   "proposed": "Case details",
+   "decision": "keep",
+   "final": "Case details",
+   "reason": "#548: a case's Details sheet, holding the recorded values a narrow list drops.",
    "status": "implemented"
   }
  ],

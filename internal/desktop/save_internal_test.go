@@ -68,8 +68,8 @@ func TestAnInterruptedSaveNeverExposesAMixedObservation(t *testing.T) {
 				return app
 			}
 			app := window()
-			app.ChooseProjectLocation()
-			created := app.CreateNamedProject(NewProjectRequest{Name: "Faults"})
+			chosen := app.ChooseProjectLocation()
+			created := app.CreateNamedProject(NewProjectRequest{Name: "Faults", Location: chosen.Location})
 			if created.State != Completed {
 				t.Fatalf("%+v", created)
 			}
@@ -214,8 +214,8 @@ func TestAnInterruptedVariantSaveNeverPublishesAnUnassociatedCase(t *testing.T) 
 				return app
 			}
 			app := window()
-			app.ChooseProjectLocation()
-			created := app.CreateNamedProject(NewProjectRequest{Name: "Variant faults"})
+			chosen := app.ChooseProjectLocation()
+			created := app.CreateNamedProject(NewProjectRequest{Name: "Variant faults", Location: chosen.Location})
 			if created.State != Completed {
 				t.Fatalf("%+v", created)
 			}
@@ -361,8 +361,8 @@ func TestAnInterruptedSaveNeverPublishesAProfileWithoutItsSeal(t *testing.T) {
 				return app
 			}
 			app := window()
-			app.ChooseProjectLocation()
-			created := app.CreateNamedProject(NewProjectRequest{Name: "Profile faults"})
+			chosen := app.ChooseProjectLocation()
+			created := app.CreateNamedProject(NewProjectRequest{Name: "Profile faults", Location: chosen.Location})
 			if created.State != Completed {
 				t.Fatalf("%+v", created)
 			}
@@ -430,5 +430,16 @@ func TestAnInterruptedSaveNeverPublishesAProfileWithoutItsSeal(t *testing.T) {
 				t.Fatalf("the same click did not finish the save: %+v", retried)
 			}
 		})
+	}
+}
+
+// A save refused before it read its draft, busy included, still answers an
+// empty list of problems rather than none: the window reads the list.
+func TestARefusedSaveAnswersAnEmptyListOfProblems(t *testing.T) {
+	var answer SaveItemResult
+	answer.refuse(Busy, "another operation is already running")
+	encoded, err := json.Marshal(answer)
+	if err != nil || !bytes.Contains(encoded, []byte(`"problems":[]`)) {
+		t.Fatalf("a busy save answered %s %v", encoded, err)
 	}
 }

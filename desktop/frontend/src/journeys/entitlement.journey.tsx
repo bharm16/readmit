@@ -14,7 +14,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
-import { createProject, submitProject } from "./steps";
+import { goToView, sidebar } from "../testkit/navigation";
+import { createProject, pressServed, submitProject } from "./steps";
 
 let journey: Journey;
 
@@ -36,9 +37,17 @@ async function status(pattern: RegExp): Promise<string> {
   return (await access().findByText(byContent(pattern))).textContent ?? "";
 }
 
-/** Opens the license pane from the first-run guidance. */
+/** Opens the license pane in Settings. */
 async function openLicensing(user: UserEvent) {
-  await press(user, screen.getByRole("button", { name: "License" }));
+  await goToView(user, "Settings", "License");
+}
+
+/** Opens the open project's settings sheet from its switcher. */
+async function projectSettings(user: UserEvent) {
+  await journey.settled();
+  await press(user, await sidebar().findByRole("button", { name: /^Project: / }));
+  await press(user, screen.getByRole("menuitem", { name: "Project settings" }));
+  return within(await screen.findByRole("dialog", { name: "Project settings" }));
 }
 
 test("a delivered license is verified, installed and activated without hand-written configuration, and once released admits no new work", async () => {
@@ -80,21 +89,25 @@ test("a delivered license is verified, installed and activated without hand-writ
   );
 
   // Licensed work is admitted: a new project, and a change to its settings
-  // that retitles it and declares a further interface version, which the
-  // command line reads back. The settings stay open for the next change.
-  await createProject(user, journey, "investigations", "licensed-work", "Licensed work");
-  const evidence = within(region("Evidence"));
-  await press(user, evidence.getByRole("button", { name: "Edit settings…" }));
-  await enter(user, evidence.getByLabelText("Title", { selector: "#settings-title" }), "Licensed handover");
-  await enter(user, evidence.getByLabelText("Add interface version"), "siu-2.5.1-v2");
-  await press(user, evidence.getByRole("button", { name: "Save settings" }));
-  expect(await evidence.findByRole("heading", { name: "Licensed handover" })).toBeTruthy();
-  const settled = await journey.commandLine(["project", "show", "investigations/licensed-work"]);
+  // that renames it and declares an interface revision, which the command
+  // line reads back.
+  const project = await createProject(user, journey, "investigations", "licensed-work", "Licensed work");
+  const settings = await projectSettings(user);
+  await enter(user, settings.getByLabelText("Name", { selector: "#project-name" }), "Licensed handover");
+  await press(user, settings.getByRole("button", { name: "Add revision" }));
+  await enter(user, settings.getByLabelText("Revision name", { selector: "#revision-0" }), "siu-2.5.1-v2");
+  await pressServed(user, journey, settings.getByRole("button", { name: "Save" }), "SaveItem");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).toBeNull());
+  expect(await sidebar().findByRole("button", { name: "Project: Licensed handover" })).toBeTruthy();
+  const settled = await journey.commandLine(["project", "show", project]);
   expect(settled.stdout).toMatch(/^Project: Licensed handover\n/);
-  expect(settled.stdout).toContain("Interface versions: siu-2.5.1-v1, siu-2.5.1-v2\n");
+  const revisions = await projectSettings(user);
+  expect((revisions.getByLabelText("Revision name", { selector: "#revision-0" }) as HTMLInputElement).value).toBe("siu-2.5.1-v2");
+  await press(user, revisions.getByRole("button", { name: "Cancel" }));
 
   // The same issue offered as a renewal is refused, and the installed
   // document exports byte for byte as it was received.
+  await openLicensing(user);
   await journey.chooseFiles([journey.path("vendor-delivery/entitlement.json")], "Choose the later-issue entitlement document");
   await press(user, access().getByRole("button", { name: "Renew activation…" }));
   expect(await access().findByText("installed entitlement is already at this issue sequence or a later one")).toBeTruthy();
@@ -111,23 +124,29 @@ test("a delivered license is verified, installed and activated without hand-writ
   await press(user, access().getByRole("button", { name: "Refresh activation" }));
   await press(user, access().getByRole("button", { name: "Release activation" }));
   expect(await status(/This activation is released\.$/)).toMatch(/No unresolved clock rollback\. This activation is released\.$/);
-  await enter(user, evidence.getByLabelText("Title", { selector: "#settings-title" }), "Licensed work, renamed");
-  await press(user, evidence.getByRole("button", { name: "Save settings" }));
-  expect(await evidence.findByText("this device released its entitlement activation")).toBeTruthy();
+  const renaming = await projectSettings(user);
+  await enter(user, renaming.getByLabelText("Name", { selector: "#project-name" }), "Licensed work, renamed");
+  await pressServed(user, journey, renaming.getByRole("button", { name: "Save" }), "SaveItem");
+  expect(await renaming.findByText("this device released its entitlement activation")).toBeTruthy();
+  // The refused sheet keeps the name typed until it is thrown away.
+  expect((renaming.getByLabelText("Name", { selector: "#project-name" }) as HTMLInputElement).value).toBe("Licensed work, renamed");
+  await press(user, renaming.getByRole("button", { name: "Cancel" }));
+  await press(user, within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
   const refused = await journey.commandLine([
     "--operation-policy",
     journey.path("license-activation", "operation-policy.json"),
     "project",
     "settings",
-    "investigations/licensed-work",
+    project,
     "--title",
     "Renamed by hand",
   ]);
   expect(refused.code).not.toBe(0);
   expect(refused.stderr).toContain("this device released its entitlement activation");
-  expect((await journey.commandLine(["project", "show", "investigations/licensed-work"])).stdout).toMatch(/^Project: Licensed handover\n/);
+  expect((await journey.commandLine(["project", "show", project])).stdout).toMatch(/^Project: Licensed handover\n/);
   // The refusal leaves the project, and its maintenance, on the screen.
-  expect(evidence.getByRole("heading", { name: "Licensed handover" })).toBeTruthy();
+  expect(sidebar().getByRole("button", { name: "Project: Licensed handover" })).toBeTruthy();
+  const evidence = within(region("Evidence"));
 
   // What exists stays readable and can still be backed up, offline.
   journey.makeFolder("backups");
@@ -206,25 +225,27 @@ test("the commercial portal is an operator-supplied destination: stated as missi
 /** Selects one supplied activation folder in the license pane and returns
  * the status the pane then reads. */
 async function selectActivation(user: UserEvent, folder: string): Promise<string> {
+  // A project just opened finishes its reads before the folder is chosen.
+  await journey.settled();
   await journey.chooseFolder(journey.path(folder), "Choose the license activation folder");
   await press(user, access().getByRole("button", { name: "Choose activation folder…" }));
   await press(user, access().getByRole("button", { name: "Refresh activation" }));
   return status(/^License: \w+\. Organization: test-organization\./);
 }
 
-/** Opens a parent folder and submits a new project in it, returning the
- * facade's answer. The project form stays open in this window after an
- * attempt, so it is opened only when the scenario left it closed. */
-async function tryProject(user: UserEvent, parent: string, name: string, title: string, admitted: boolean, formOpen: boolean) {
+/** Submits a new project from the New project sheet, in a parent folder
+ * chosen with Change, and returns the facade's answer. A refused create
+ * stays in the sheet with its reason, which is read and then thrown away. */
+async function tryProject(user: UserEvent, parent: string, name: string, title: string) {
   journey.makeFolder(parent);
-  await journey.chooseFolder(journey.path(parent), "Open workspace");
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  expect(await within(region("Workspace")).findByText(journey.path(parent), { selector: ".root" })).toBeTruthy();
-  if (!formOpen) {
-    await press(user, await within(region("Evidence")).findByRole("button", { name: "Create a project…" }));
+  const answer = await submitProject(user, journey, parent, name, title, true);
+  if (answer.state !== "completed") {
+    const sheet = within(screen.getByRole("dialog", { name: "New project" }));
+    expect(await sheet.findByText(answer.reason!)).toBeTruthy();
+    await press(user, sheet.getByRole("button", { name: "Cancel" }));
+    await press(user, within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
   }
-  await within(region("Evidence")).findByLabelText("Project folder");
-  return submitProject(user, journey, parent, name, title, admitted);
+  return answer;
 }
 
 test("an expired term refuses new work until the later issue the vendor signs is installed, and a term in its grace period still admits it", async () => {
@@ -246,8 +267,7 @@ test("an expired term refuses new work until the later issue the vendor signs is
   await press(user, access().getByText("Administrator setup"));
   expect(await selectActivation(user, "vendor-expired")).toMatch(/^License: expired\. /);
   const reason = "entitlement expired and its grace period has ended";
-  expect(await tryProject(user, "investigations", "expired-work", "Expired work", false, false)).toEqual({ state: "permission_denied", reason });
-  expect(await within(region("Evidence")).findByText(reason)).toBeTruthy();
+  expect(await tryProject(user, "investigations", "expired-work", "Expired work")).toMatchObject({ state: "permission_denied", reason });
   const byHand = await journey.commandLine([
     "--operation-policy",
     journey.path("vendor-expired", "operation-policy.json"),
@@ -262,18 +282,21 @@ test("an expired term refuses new work until the later issue the vendor signs is
   ]);
   expect(byHand.code).not.toBe(0);
   expect(byHand.stderr).toContain(reason);
-  expect((await journey.commandLine(["project", "show", "investigations/expired-work"])).code).not.toBe(0);
+  expect(journey.callsTo("CreateNamedProject").every((call) => !(call.result as { project?: unknown }).project)).toBe(true);
 
   // The later issue installs over the expired term as its renewal, and the
   // same work is admitted.
+  await openLicensing(user);
   await journey.chooseFiles([journey.path("vendor-renewal/entitlement.json")], "Choose the later-issue entitlement document");
   await press(user, access().getByRole("button", { name: "Renew activation…" }));
   expect(await status(/^License: active\. /)).toMatch(/Expires: \S+\. Grace ends: \S+\.$/);
-  expect(await tryProject(user, "investigations", "renewed-work", "Renewed work", true, true)).toMatchObject({ state: "completed" });
-  expect((await journey.commandLine(["project", "show", "investigations/renewed-work"])).stdout).toMatch(/^Project: Renewed work\n/);
+  const renewed = (await tryProject(user, "investigations", "renewed-work", "Renewed work")) as { state: string; project?: { summary: { project?: { folder: string } } } };
+  expect(renewed).toMatchObject({ state: "completed" });
+  expect((await journey.commandLine(["project", "show", renewed.project!.summary.project!.folder])).stdout).toMatch(/^Project: Renewed work\n/);
 
   // In its grace period, a term still admits new work, and says it is in
   // grace.
+  await openLicensing(user);
   expect(await selectActivation(user, "vendor-grace")).toMatch(/^License: grace\. /);
-  expect(await tryProject(user, "investigations", "grace-work", "Grace work", true, true)).toMatchObject({ state: "completed" });
+  expect(await tryProject(user, "investigations", "grace-work", "Grace work")).toMatchObject({ state: "completed" });
 });

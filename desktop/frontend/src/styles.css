@@ -571,9 +571,23 @@ body {
 }
 
 .back-link {
-  flex: none;
+  flex: 0 1 auto;
   margin-left: calc(-1 * var(--s2));
+  max-width: 40%;
+  min-width: 0;
   padding: 0 var(--s2);
+}
+
+/* A long name to go back to gives way to the page's own title. */
+.back-link svg {
+  flex-shrink: 0;
+}
+
+.back-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-body {
@@ -994,6 +1008,14 @@ details > summary {
   transform: translateX(-50%);
   width: max-content;
   z-index: 30;
+}
+
+/* A sheet's close button sits at its right edge: its tooltip opens leftward
+   so the sheet never cuts it off. */
+.modal-header .icon-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .icon-button:not(:hover):not(:focus-within) .icon-tooltip {
@@ -2592,6 +2614,7 @@ button.row-link:hover:not(:disabled) {
 .dialog-fields {
   display: grid;
   gap: var(--label-gap);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .dialog-fields > label:not(:first-child),
@@ -2900,7 +2923,34 @@ h2 .count {
   align-items: baseline;
   display: inline-flex;
   gap: var(--s2);
+  max-width: 100%;
   min-width: 0;
+}
+
+/* The name gives way with an ellipsis; a marker stays whole, and a reason
+   keeps at least as much room as the name. */
+.row-problem > span:first-child,
+.case-name > span:first-child,
+.row-reason {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-problem > span:first-child,
+.case-name > span:first-child {
+  flex: 0 0 auto;
+  max-width: 50%;
+}
+
+.case-name > span:first-child:only-child,
+.case-name > span:first-child:has(+ .badge:last-child) {
+  flex-shrink: 1;
+  max-width: none;
+}
+
+.case-name > .badge {
+  flex-shrink: 0;
 }
 
 .row-reason {
@@ -2923,10 +2973,13 @@ h2 .count {
 }
 
 .location-value {
+  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.value-with-action > button {
+  flex-shrink: 0;
 }
 
 .drafts-to-restore {

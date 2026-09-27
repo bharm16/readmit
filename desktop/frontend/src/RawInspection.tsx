@@ -134,6 +134,20 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
     });
   }, [run]);
 
+  // A file named elsewhere, such as a project's own file, is read without
+  // asking the host for one.
+  const openPath = useCallback(
+    (path: string) => {
+      setChosen(null);
+      setFraming("auto");
+      setTerminator("auto");
+      setRevealed(false);
+      if (path === file) void list(path, "auto", "auto");
+      else setFile(path);
+    },
+    [file, list],
+  );
+
   // A new file is read as soon as it is chosen.
   useEffect(() => {
     if (file) void list(file, framing, terminator);
@@ -266,6 +280,7 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
   const status = chosen ?? (copied && copied.state !== "completed" ? copied.reason ?? "The copy was not saved." : null);
 
   return {
+    openPath,
     title: file ? (listing?.name || fileName(file)) : "Inspect file",
     actions: (
       <>

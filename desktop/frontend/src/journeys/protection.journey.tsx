@@ -57,7 +57,7 @@ test("a control is retired only once the person confirms it, writes no new packa
 
   await journey.launch();
   await activateLicense(user, journey);
-  await journey.chooseFolder(journey.path("lab"), "Open workspace");
+  await journey.chooseFolder(journey.path("lab"), "Open project");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   // The panel is drawn once the folder is open.
   await within(region("Privacy")).findByRole("region", { name: "Protection" });

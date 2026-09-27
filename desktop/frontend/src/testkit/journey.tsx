@@ -43,6 +43,7 @@ import {
   digestInRoot,
   linkInRoot,
   makeFolderInRoot,
+  moveFolderInRoot,
   pathInRoot,
   provisionInRoot,
   provisionIssuesInRoot,
@@ -307,6 +308,13 @@ export class Journey {
    * will choose to keep a new project in. */
   makeFolder(relative: string): string {
     return makeFolderInRoot(this.root, relative);
+  }
+
+  /** Moves a folder on this person's machine to a new place, as they drag it
+   * elsewhere in their file browser while the application is closed or
+   * looking elsewhere. Returns the folder's new path. */
+  moveFolder(from: string, to: string): string {
+    return moveFolderInRoot(this.root, from, to);
   }
 
   /** Creates a symbolic link to a folder inside the root: a shortcut a person

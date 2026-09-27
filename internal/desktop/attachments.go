@@ -28,7 +28,9 @@ type Attachment struct {
 	AddedAt *string `json:"added_at"`
 }
 
-// AttachmentsResult carries the attachments of one case as they stand.
+// AttachmentsResult carries the attachments of one case as they stand. A
+// refused or cancelled add or remove still carries them, so the window keeps
+// the list it shows beside the reason.
 type AttachmentsResult struct {
 	State       State          `json:"state"`
 	Reason      string         `json:"reason,omitzero"`
@@ -72,27 +74,29 @@ func (a *App) AddAttachments(request ItemRequest) AttachmentsResult {
 			result.refuse(refused.state, refused.reason)
 			return result
 		}
+		// A refusal answers the attachments the case still holds.
+		refuse := func(state State, reason string) AttachmentsResult {
+			held := loaded.attachments(result, request.Ref.ID)
+			held.refuse(state, reason)
+			return held
+		}
 		chosen, declined := a.chooseFiles(ctx, "Add attachment", "All files", "*")
 		if chosen == nil {
-			result.refuse(declined.state, declined.reason)
-			return result
+			return refuse(declined.state, declined.reason)
 		}
 		if len(chosen) > MaxAttachmentsAdded {
-			result.refuse(Failed, "at most "+strconv.Itoa(MaxAttachmentsAdded)+" files are attached at once")
-			return result
+			return refuse(Failed, "at most "+strconv.Itoa(MaxAttachmentsAdded)+" files are attached at once")
 		}
 		files := make([]catalog.NewAttachment, 0, len(chosen))
 		var total int64
 		for _, path := range chosen {
 			if ctx.Err() != nil {
-				result.refuse(cancelledRefusal.state, cancelledRefusal.reason)
-				return result
+				return refuse(cancelledRefusal.state, cancelledRefusal.reason)
 			}
 			data, err := attachmentSource.Read(path)
 			if err != nil {
-				result.refuse(Failed, "a chosen file is not a regular file of at most "+strconv.Itoa(catalog.MaxAttachmentBytes>>20)+
+				return refuse(Failed, "a chosen file is not a regular file of at most "+strconv.Itoa(catalog.MaxAttachmentBytes>>20)+
 					" MiB that this account can read; nothing was attached")
-				return result
 			}
 			name := filepath.Base(path)
 			if !catalog.ValidName(name) {
@@ -107,20 +111,16 @@ func (a *App) AddAttachments(request ItemRequest) AttachmentsResult {
 		if _, err := loaded.store.Attach(request.Ref.ID, files, a.now(), admit); err != nil {
 			switch {
 			case errors.Is(err, errQuotaUnreadable):
-				result.refuse(Failed, "the project's quota cannot be read; nothing was attached")
-				return result
+				return refuse(Failed, "the project's quota cannot be read; nothing was attached")
 			case errors.Is(err, project.ErrQuota):
-				result.refuse(Failed, "the project's quota does not leave room for these files; nothing was attached")
-				return result
+				return refuse(Failed, "the project's quota does not leave room for these files; nothing was attached")
 			}
 			if errors.Is(err, catalog.ErrTooManyAttachments) {
-				result.refuse(Failed, "the project holds as many attachments as this release keeps; nothing was attached")
-				return result
+				return refuse(Failed, "the project holds as many attachments as this release keeps; nothing was attached")
 			}
 			declined := probeWriteFailure(loaded.root, "this account cannot write to the project folder",
 				"the files could not be stored in the project; nothing was attached")
-			result.refuse(declined.state, declined.reason)
-			return result
+			return refuse(declined.state, declined.reason)
 		}
 		return loaded.attachments(result, request.Ref.ID)
 	})
@@ -136,12 +136,16 @@ func (a *App) RemoveAttachment(request AttachmentRemoveRequest) AttachmentsResul
 			result.refuse(refused.state, refused.reason)
 			return result
 		}
+		// A refusal answers the attachments the case still holds.
+		refuse := func(state State, reason string) AttachmentsResult {
+			held := loaded.attachments(result, request.Case.ID)
+			held.refuse(state, reason)
+			return held
+		}
 		if err := loaded.store.Detach(request.Case.ID, request.ID); errors.Is(err, catalog.ErrNoAttachment) {
-			result.refuse(Failed, "the case holds no such attachment")
-			return result
+			return refuse(Failed, "the case holds no such attachment")
 		} else if err != nil {
-			result.refuse(Failed, "the project's attachments could not be replaced; they are left as they were")
-			return result
+			return refuse(Failed, "the project's attachments could not be replaced; they are left as they were")
 		}
 		return loaded.attachments(result, request.Case.ID)
 	})

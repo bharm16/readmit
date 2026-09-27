@@ -7,7 +7,7 @@
 // declarations; bridge-process.d.ts states its interface.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline";
@@ -93,6 +93,23 @@ export function backdateInRoot(root, path, milliseconds) {
 export function makeFolderInRoot(root, path, mode = 0o777) {
   const target = inside(root, path);
   mkdirSync(target, { recursive: true, mode });
+  return target;
+}
+
+/** Moves an existing folder inside root to a new place inside root, the way
+ * a person drags it elsewhere in their file browser. The destination must not
+ * exist yet; the folders above it are created. */
+export function moveFolderInRoot(root, from, to) {
+  const source = inside(root, from);
+  const target = inside(root, to);
+  if (!statSync(source, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error(`only an existing folder can be moved: ${from}`);
+  }
+  if (statSync(target, { throwIfNoEntry: false })) {
+    throw new Error(`a folder is not moved over something that exists: ${to}`);
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  renameSync(source, target);
   return target;
 }
 

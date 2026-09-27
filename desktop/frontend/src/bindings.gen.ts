@@ -3918,6 +3918,7 @@ export interface MigrationPreviewResult {
 /** internal/desktop.NewProjectRequest */
 export interface NewProjectRequest {
   name: string;
+  location?: string;
 }
 
 /** internal/desktop.Normalization */

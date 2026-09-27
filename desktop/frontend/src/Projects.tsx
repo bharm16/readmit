@@ -42,6 +42,7 @@ const REVEAL = /Mac|iPhone|iPad/.test(typeof navigator === "undefined" ? "" : na
 
 export function ProjectList({
   projects,
+  notices,
   busy,
   onOpen,
   onLocate,
@@ -52,6 +53,8 @@ export function ProjectList({
   onNew,
 }: {
   projects: CatalogItem[];
+  /** Why a row's last Locate or Remove was refused, by project identity. */
+  notices: Record<string, string>;
   busy: boolean;
   onOpen: (project: CatalogItem) => void;
   onLocate: (project: CatalogItem) => void;
@@ -81,15 +84,16 @@ export function ProjectList({
       header: "Project",
       priority: 1,
       minWidth: 15,
-      render: (project) =>
-        project.availability === "available" ? (
-          project.name
-        ) : (
+      render: (project) => {
+        const notice = notices[project.ref.id];
+        if (project.availability === "available" && !notice) return project.name;
+        return (
           <span className="row-problem">
             <span>{project.name}</span>
-            <span className="row-reason">{project.reason ?? "Not found"}</span>
+            <span className="row-reason" title={notice ?? project.reason ?? "Not found"}>{notice ?? project.reason ?? "Not found"}</span>
           </span>
-        ),
+        );
+      },
     },
     { key: "opened", header: "Last opened", priority: 2, minWidth: 8, render: (project) => listDate(project.last_opened_at) },
     {
@@ -229,22 +233,41 @@ const DRAFT_OBJECTS: Record<string, string> = {
   "redact-inventory": "Original inventory",
   target: "Environment",
   suite: "Suite",
+  "suite-editor": "Suite",
+  scenario: "Scenario",
+  "generator-plan": "Scenario plan",
+  "hub-revision": "Team revision",
+  case: "Case details",
+  project: "Project settings",
 };
+
+/** The name a draft's own values give its object, when they carry one. */
+function draftName(draft: EditorDraft): string {
+  const content = typeof draft.content === "object" && draft.content !== null ? (draft.content as Record<string, unknown>) : {};
+  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : undefined;
+  if (typeof named === "string" && named.trim() !== "") return named.trim();
+  return draft.case;
+}
 
 export function draftObject(draft: EditorDraft): string {
   const object = DRAFT_OBJECTS[draft.kind] ?? "Draft";
-  return draft.case ? `${object} · ${draft.case}` : object;
+  const name = draftName(draft);
+  return name ? `${object} · ${name}` : object;
 }
 
 /** At most one compact item on Projects when work was left unsaved. */
 export function DraftsToRestore({
   drafts,
   projectName,
+  resumable,
   onResume,
   onDiscard,
 }: {
   drafts: EditorDraft[];
   projectName: (draft: EditorDraft) => string;
+  /** Whether an editor this window has takes the draft back; one no editor
+   * takes is offered only for Discard. */
+  resumable: (draft: EditorDraft) => boolean;
   onResume: (draft: EditorDraft) => void;
   onDiscard: (draft: EditorDraft) => void;
 }) {
@@ -274,16 +297,20 @@ export function DraftsToRestore({
             {drafts.map((draft) => (
               <tr key={draft.id}>
                 <th scope="row">
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => {
-                      setReviewing(false);
-                      onResume(draft);
-                    }}
-                  >
-                    {draftObject(draft)}
-                  </button>
+                  {resumable(draft) ? (
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => {
+                        setReviewing(false);
+                        onResume(draft);
+                      }}
+                    >
+                      {draftObject(draft)}
+                    </button>
+                  ) : (
+                    draftObject(draft)
+                  )}
                 </th>
                 <td>{listDate(draft.saved_at)}</td>
                 <td>{projectName(draft)}</td>

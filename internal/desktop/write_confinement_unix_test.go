@@ -93,7 +93,8 @@ func TestANewProjectIsOneNewFolderOfTheChosenFolder(t *testing.T) {
 	}
 	dialog := &chooser{folder: root}
 	app := newApp(t, dialog)
-	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed {
+	chosen := app.ChooseProjectLocation()
+	if chosen.State != desktop.Completed {
 		t.Fatalf("choose: %+v", chosen)
 	}
 	before := bytesUnder(t, outside)
@@ -107,7 +108,7 @@ func TestANewProjectIsOneNewFolderOfTheChosenFolder(t *testing.T) {
 		"a name through a symbolic link out of it":           filepath.Join("link-folder", "fresh"),
 		"a name through a symbolic link, back to the folder": filepath.Join("link-folder", "..", "workspace", "fresh"),
 	} {
-		result := app.CreateNamedProject(desktop.NewProjectRequest{Name: name})
+		result := app.CreateNamedProject(desktop.NewProjectRequest{Name: name, Location: chosen.Location})
 		if result.State != desktop.Completed || result.Project == nil || result.Project.Name != name {
 			t.Errorf("CreateNamedProject with %s: %+v", how, result)
 			continue

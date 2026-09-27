@@ -452,7 +452,7 @@ test(
     journey.makeFolder("downloads");
     await journey.launch();
     await activateLicense(user, journey);
-    await journey.chooseFolder(journey.path("support-work"), "Open workspace");
+    await journey.chooseFolder(journey.path("support-work"), "Open project");
     await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
     expect(await within(region("Workspace")).findByText("published-support")).toBeTruthy();
     await openHub(user, hub);
