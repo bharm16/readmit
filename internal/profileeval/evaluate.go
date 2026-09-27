@@ -2,7 +2,6 @@ package profileeval
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -41,18 +40,15 @@ func Evaluate(ctx context.Context, profileBytes, packBytes []byte, inputs []Occu
 	if len(inputs) < 1 || len(inputs) > 1024 {
 		return Report{}, invalid
 	}
-	canonical, err := json.Marshal(p.Definition, json.Deterministic(true))
+	canonical, err := profileCanonical(p)
 	if err != nil {
 		return Report{}, err
 	}
-	if p.Schema == ProfileSchema {
-		canonical, err = json.Marshal(p, json.Deterministic(true))
-		if err != nil {
-			return Report{}, err
-		}
-	}
 	e := evaluator{ctx: ctx, remaining: 1000000, profile: p, pack: pack, report: Report{Schema: Schema, Operator: OperatorVersion, Profile: Pin{Schema: p.Schema, ID: p.Definition.Identity.ID, Version: p.Definition.Identity.Version, SHA256: digest(canonical)}, Pack: Pin{Schema: pack.Schema, ID: pack.Metadata.Identity.ID, Version: pack.Metadata.Identity.Version, SHA256: digest(packBytes)}, Inputs: map[string]string{}, CompleteCapture: options.CompleteCapture, LocalVerdict: "pass", BaseSupport: "unsupported", WorkflowSupport: "undeclared", Findings: []Finding{}}}
-	if pack.Schema == PackSchema {
+	if p.Schema == ProfileSchemaV3 || pack.Schema == PackSchemaV3 {
+		e.report.Operator = ComponentOperatorVersion
+	}
+	if pack.Schema == PackSchema || pack.Schema == PackSchemaV3 {
 		e.report.BaseSupport = "evaluated"
 	}
 	total := 0
@@ -282,10 +278,7 @@ func (e *evaluator) condition(c localprofile.Condition) int {
 func (e *evaluator) field(f localprofile.Field, sel string, r hl7.Reading, origin string) {
 	value := string(r.Decoded)
 	if f.Type != "" {
-		outcome := datatype(string(f.Type), value)
-		if outcome != "pass" {
-			e.add("datatype-"+string(f.Type), origin, outcome, sel, r)
-		}
+		e.evaluateDatatype(string(f.Type), sel, origin, r, 0)
 	}
 	if f.Terminology != "" {
 		for _, set := range e.profile.Definition.Terminology {
@@ -310,7 +303,11 @@ func (e *evaluator) field(f localprofile.Field, sel string, r hl7.Reading, origi
 			if date.ID == f.Date {
 				dateValue := value
 				if f.Type == "TS" {
-					dateValue = strings.Split(value, "^")[0]
+					if e.report.Operator == ComponentOperatorVersion {
+						dateValue = string(e.read(sel + ".1").Decoded)
+					} else {
+						dateValue = strings.Split(value, "^")[0]
+					}
 				}
 				if !dateMatches(dateValue, string(f.Type), date) {
 					e.add("date-rule", "local", "fail", sel, r)

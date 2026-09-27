@@ -30,6 +30,23 @@ func decodeProfile(raw []byte) (ProfileV2, error) {
 			return p, err
 		}
 		p = ProfileV2{Schema: localprofile.Schema, Definition: d}
+	case ProfileSchemaV3:
+		var v ProfileV3
+		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes) != nil {
+			return p, invalid
+		}
+		p = ProfileV2{Schema: v.Schema, Definition: v.Definition, Structure: v.Structure, datatypes: v.Datatypes}
+		for _, w := range v.Workflows {
+			w.Workflow.parents = w.ParentSegments
+			p.Workflows = append(p.Workflows, w.Workflow)
+		}
+		b, err := json.Marshal(v.Definition)
+		if err != nil {
+			return p, err
+		}
+		if _, err = localprofile.Decode(b); err != nil {
+			return p, err
+		}
 	case ProfileSchema:
 		if json.Unmarshal(raw, &p, json.RejectUnknownMembers(true)) != nil {
 			return p, invalid
@@ -59,6 +76,17 @@ func decodeProfile(raw []byte) (ProfileV2, error) {
 			return p, invalid
 		}
 		seen[w.ID] = true
+		if len(w.parents) > 8 || len(w.parents) > 0 && w.RepeatSegment == "" {
+			return p, invalid
+		}
+		parents := map[string]bool{}
+		for _, parent := range w.parents {
+			if !segment.MatchString(parent) || parents[parent] || parent == w.RepeatSegment {
+				return p, invalid
+			}
+			parents[parent] = true
+		}
+
 		for _, s := range append(slices.Clone(w.Identity), w.Status) {
 			if _, err := hl7.ParseSelector(s); err != nil {
 				return p, err
@@ -95,6 +123,19 @@ func decodePack(raw []byte) (PackV2, error) {
 			return p, err
 		}
 		p = PackV2{Schema: profilepack.Schema, Metadata: d}
+	case PackSchemaV3:
+		var v PackV3
+		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes) != nil {
+			return p, invalid
+		}
+		p = PackV2{Schema: v.Schema, Metadata: v.Metadata, Messages: v.Messages, datatypes: v.Datatypes}
+		b, err := json.Marshal(v.Metadata)
+		if err != nil {
+			return p, err
+		}
+		if _, err = profilepack.Decode(b); err != nil {
+			return p, err
+		}
 	case PackSchema:
 		if json.Unmarshal(raw, &p, json.RejectUnknownMembers(true)) != nil {
 			return p, invalid

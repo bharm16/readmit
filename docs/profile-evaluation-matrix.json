@@ -1,341 +1,817 @@
 {
-  "schema": "readmit-profile-evaluation-matrix/v1",
+  "schema": "readmit-profile-evaluation-matrix/v2",
   "rows": [
     {
       "hl7_version": "2.3.1",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.3.1/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "dffcb7eeb25bb35cf1b2ac8267adc5b4765bf0960e9400fb68ff0bf664a397ba",
+      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ADT-positive.hl7",
+          "sha256": "577f656449ad587b49d86f1c1eca82bd22eff1834d8a475027243bade46e9edc"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ADT-negative.hl7",
+          "sha256": "6f0749f865bb326ee326de0ceb4efd43fd49f20c96bd31c0c6c0cd111ba527ff"
+        }
+      }
     },
     {
       "hl7_version": "2.3.1",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.3.1/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "dffcb7eeb25bb35cf1b2ac8267adc5b4765bf0960e9400fb68ff0bf664a397ba",
+      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/SIU-positive.hl7",
+          "sha256": "531f2939f976cd7a29e8eb61ec997e4968c038aea8956861d86d57648b49244d"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/SIU-negative.hl7",
+          "sha256": "8ce8f1bd910d0454ddfe1c866c6e8ec5539bf14a2e49c28ceccb3b424755a6d3"
+        }
+      }
     },
     {
       "hl7_version": "2.3.1",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.3.1/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "dffcb7eeb25bb35cf1b2ac8267adc5b4765bf0960e9400fb68ff0bf664a397ba",
+      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORM",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-positive.hl7",
+          "sha256": "f4ea63ad47475df10fced62d63547e2f10f1a76979f9239871b4641e262ce382"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-negative.hl7",
+          "sha256": "04578520fd3c39e4f979eb29e23fae7b5d16fbf35948d3ab0122c1b13552de2b"
+        }
+      }
     },
     {
       "hl7_version": "2.3.1",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.3.1/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "dffcb7eeb25bb35cf1b2ac8267adc5b4765bf0960e9400fb68ff0bf664a397ba",
+      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORU-positive.hl7",
+          "sha256": "369e8e18e2ff912a2c78c7681290b5618a858f483078c92cd40d4d616a6ed275"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORU-negative.hl7",
+          "sha256": "d241c0308ea3f5be85aff474331f6d469d67142a4a1e291b8140798c91b6ea62"
+        }
+      }
     },
     {
       "hl7_version": "2.4",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.4/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6c96468b5457f78839b203f84280769d5fa61fd228df403465432eb735bf92ba",
+      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ADT-positive.hl7",
+          "sha256": "37734a2a466cf6fc0d900f481c6d3b72c21aca0e79110aeb1041ee3f12af0383"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ADT-negative.hl7",
+          "sha256": "7bfe4ee4495de895d2c3cb0ed412b98609829856e8bb3c14af04c329a87308e0"
+        }
+      }
     },
     {
       "hl7_version": "2.4",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.4/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6c96468b5457f78839b203f84280769d5fa61fd228df403465432eb735bf92ba",
+      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/SIU-positive.hl7",
+          "sha256": "97b0d2c7b8b3191a59248a1d7ee8dca1a47830fe6097046d576a89e4027afeb8"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/SIU-negative.hl7",
+          "sha256": "9d37214d7c4dfa4f649c2ccaa0f1d8179037a8e5ab888b3041be012faec1571c"
+        }
+      }
     },
     {
       "hl7_version": "2.4",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.4/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6c96468b5457f78839b203f84280769d5fa61fd228df403465432eb735bf92ba",
+      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORM",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-positive.hl7",
+          "sha256": "2ba4e8000b4f18ba4c64640554ea55fe9907e0f815505ca5fe6c7e5daaa1be99"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-negative.hl7",
+          "sha256": "816406fd84d494bd2800931bda293487885bc87efc2fbdd2c02f75d4f786003d"
+        }
+      }
     },
     {
       "hl7_version": "2.4",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.4/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6c96468b5457f78839b203f84280769d5fa61fd228df403465432eb735bf92ba",
+      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORU-positive.hl7",
+          "sha256": "42b9e22bf5ba1a74cae7de307135c032bae00ece087a23f9a6a550f71117bcb7"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORU-negative.hl7",
+          "sha256": "1aa8bf5a8cca6078bf18d2157c8c8713e7f8b344c631f4796da8284d1f15f4ff"
+        }
+      }
     },
     {
       "hl7_version": "2.5",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "0493937d49990fa50936042a22a8aa5a18ffab77c1e98886984b48c079d8c916",
+      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ADT-positive.hl7",
+          "sha256": "139b4f53af368f75069d440642f62008c7b5f6db1be5d5c283c5390dff5a3d62"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ADT-negative.hl7",
+          "sha256": "dcf110482dff78f60f84ea7546a83f4863ff4fc3820ae9ffb85102b1c1f73bce"
+        }
+      }
     },
     {
       "hl7_version": "2.5",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "0493937d49990fa50936042a22a8aa5a18ffab77c1e98886984b48c079d8c916",
+      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/SIU-positive.hl7",
+          "sha256": "f786edefef074ad48da78365623bd3a6a81fe6fe91b2d37486dbfbf95ae7bc98"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/SIU-negative.hl7",
+          "sha256": "a14f4a96757a4735921b5577073937b88fccdd1df03925ce44f17078c3310a23"
+        }
+      }
     },
     {
       "hl7_version": "2.5",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "0493937d49990fa50936042a22a8aa5a18ffab77c1e98886984b48c079d8c916",
+      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORM",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-positive.hl7",
+          "sha256": "79403c1a5801597e7786b315fc4540418f3c47644656e90721e4c6345c9f4cc4"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-negative.hl7",
+          "sha256": "c3ef7519ca9e68667df01d7ea0da1e23350efa00020c05d5866589c54cafc233"
+        }
+      }
     },
     {
       "hl7_version": "2.5",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "0493937d49990fa50936042a22a8aa5a18ffab77c1e98886984b48c079d8c916",
+      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORU-positive.hl7",
+          "sha256": "adf32a7d3e1f0f0bde1e41d13d20f75dc9a72427c7081a971e6caa34bba7818c"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORU-negative.hl7",
+          "sha256": "a3447895f562df9c328c2b33ee82bc5259101d46665c8a0233cc64c6f0b9a75d"
+        }
+      }
     },
     {
       "hl7_version": "2.5.1",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5.1/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "8e80ed7e441ff04259c63ca66c47d843582b81fa4cdb919e9024832f116861b1",
+      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ADT-positive.hl7",
+          "sha256": "6a9de92986961707792330be40c3dd8b073beeff7442873017ee67902b0ddf98"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ADT-negative.hl7",
+          "sha256": "5994cd3fb0b36c952fffc3ca3117ce6b7a04d7ca38e79c6e1b4c550e60926804"
+        }
+      }
     },
     {
       "hl7_version": "2.5.1",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5.1/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "8e80ed7e441ff04259c63ca66c47d843582b81fa4cdb919e9024832f116861b1",
+      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/SIU-positive.hl7",
+          "sha256": "7d34443465a5675a76dfd71c741e68b6099b368d66ee1c289f84206f4040094e"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/SIU-negative.hl7",
+          "sha256": "755849ffb3bc4d6e0a3565696c2f102aba06a3e73a7d2cc98d9f74479d736065"
+        }
+      }
     },
     {
       "hl7_version": "2.5.1",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5.1/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "8e80ed7e441ff04259c63ca66c47d843582b81fa4cdb919e9024832f116861b1",
+      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORM",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-positive.hl7",
+          "sha256": "c0ce055e1d2c2317c87fa0d9e4968a0d8bbce5b7254bd0e16f37f47adf984cb5"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-negative.hl7",
+          "sha256": "1a142aa8991b84c0c180a6782ee3f8e759a834efe2213c23ab83e47c59991d4d"
+        }
+      }
     },
     {
       "hl7_version": "2.5.1",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.5.1/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "8e80ed7e441ff04259c63ca66c47d843582b81fa4cdb919e9024832f116861b1",
+      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORU-positive.hl7",
+          "sha256": "61da9ff5bd0ecc8af26c09e25b3bcad7add91195263ca710ae40990daf691052"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORU-negative.hl7",
+          "sha256": "2c4a610e92cc52d453062998946a14836e3015380cf5dc293a3dce306b31a9f3"
+        }
+      }
     },
     {
       "hl7_version": "2.6",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.6/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "df9528e488dc01c33abf8c695200f6b5213e337a086494b0477374d8c8970a71",
+      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ADT-positive.hl7",
+          "sha256": "74add334a27aa3e5ffa55c7984b47e13eab969441d6051cc580c5d7bac243ef3"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ADT-negative.hl7",
+          "sha256": "f6e670c573f4f18ba602432c1cc6a2c6ab85ff2d5b289f2d790e462ddeb3a043"
+        }
+      }
     },
     {
       "hl7_version": "2.6",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.6/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "df9528e488dc01c33abf8c695200f6b5213e337a086494b0477374d8c8970a71",
+      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/SIU-positive.hl7",
+          "sha256": "5bbe7e78f0d547747171140f2583ada1d6fdd2a04c38e7235428e979349f2512"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/SIU-negative.hl7",
+          "sha256": "a4b92f8ae44ba015e069d2cfa7caee67f8f296b91444fd109f9fc2bd7f7ecae9"
+        }
+      }
     },
     {
       "hl7_version": "2.6",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.6/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "df9528e488dc01c33abf8c695200f6b5213e337a086494b0477374d8c8970a71",
+      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORM",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-positive.hl7",
+          "sha256": "714da89c10816071304f1761793f71efd280cd7860feacf79859213af460dab0"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-negative.hl7",
+          "sha256": "b41a13ac9e328eebf586246b2912cf2572c3480a1ad3df0f80bd3447c3cc1c76"
+        }
+      }
     },
     {
       "hl7_version": "2.6",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.6/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "df9528e488dc01c33abf8c695200f6b5213e337a086494b0477374d8c8970a71",
+      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORU-positive.hl7",
+          "sha256": "eb05e61fe7f3fed3f99c57641aa1c3951e6a77297522034dd5735d267ef988c0"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORU-negative.hl7",
+          "sha256": "834a5dcaf10954b8d2f588e5838a848701f846160a598628cbe1fcf33fb2c260"
+        }
+      }
     },
     {
       "hl7_version": "2.7.1",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.7.1/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ca8e130815bffedd334d19aefe65fabc1bb03ef87224f143f0b8534dc87f9d38",
+      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ADT-positive.hl7",
+          "sha256": "84e7f0d13128ee130c7168f1f6ea0d7d72347265b7db18e67d846b02a795d64a"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ADT-negative.hl7",
+          "sha256": "60c401efb939d55703df14bc250f637404f7d7cbcf26b8df4908385dbec8ccc5"
+        }
+      }
     },
     {
       "hl7_version": "2.7.1",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.7.1/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ca8e130815bffedd334d19aefe65fabc1bb03ef87224f143f0b8534dc87f9d38",
+      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/SIU-positive.hl7",
+          "sha256": "c4d5728955f966a0f9a19c4759c403c0b28eff7b60949e11fa91a28b1d04e74a"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/SIU-negative.hl7",
+          "sha256": "dbbebfc3b7bcc6458dc931c27f547a8d31769b6d6fa1d567cd4938a8d311ffb6"
+        }
+      }
     },
     {
       "hl7_version": "2.7.1",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.7.1/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ca8e130815bffedd334d19aefe65fabc1bb03ef87224f143f0b8534dc87f9d38",
+      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORM",
+      "upstream_grouping_support": "schema-absent",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ORM-positive.hl7",
+          "sha256": "66b3dea08e59b71ac0adb0794cd7532b4589713822d60f278ecf4fa5be516dab"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ORM-negative.hl7",
+          "sha256": "38dc9abd0e9b6d95b443a6a363060c1ab8def2fe64e2b33e4513730ba2b92092"
+        }
+      }
     },
     {
       "hl7_version": "2.7.1",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.7.1/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ca8e130815bffedd334d19aefe65fabc1bb03ef87224f143f0b8534dc87f9d38",
+      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ORU-positive.hl7",
+          "sha256": "47cd323d8df0621a2c2a9365e875a34212c4e01870f09ef2fcdccd81b36fa3e0"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ORU-negative.hl7",
+          "sha256": "20c12b25552571d100a76967a9ec8568f262b4429e488b1b5e6877ea4e9b7be7"
+        }
+      }
     },
     {
       "hl7_version": "2.8.2",
       "family": "ADT",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.8.2/ADT",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "5bf33667701a100306de4f22c61cd685ce8943a5ca27dafb0e6a3b092a6871f9",
+      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/ADT",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ADT",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ADT_A01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ADT-positive.hl7",
+          "sha256": "4283f023b5e80ebf63f796ee43fb96498b654ee87e06db56a37e66f45a6f3a8c"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ADT-negative.hl7",
+          "sha256": "5b703af608c34af3379ddd5a3cb359d86baf9770fd2fabda04f7da08e1286bc8"
+        }
+      }
     },
     {
       "hl7_version": "2.8.2",
       "family": "SIU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.8.2/SIU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "5bf33667701a100306de4f22c61cd685ce8943a5ca27dafb0e6a3b092a6871f9",
+      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/SIU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/SIU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "SIU_S12",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/SIU-positive.hl7",
+          "sha256": "f37f275f741013a6879366d461d1ba104d64e05f8bea31e21a2cbe1f153b4136"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/SIU-negative.hl7",
+          "sha256": "03799c206d6761adcfe18984d743a599c0e5c2e1ebe34c587978b559ea347b8e"
+        }
+      }
     },
     {
       "hl7_version": "2.8.2",
       "family": "ORM",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.8.2/ORM",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "5bf33667701a100306de4f22c61cd685ce8943a5ca27dafb0e6a3b092a6871f9",
+      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/ORM",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORM",
+      "upstream_grouping_support": "schema-absent",
+      "upstream_structure": "ORM_O01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ORM-positive.hl7",
+          "sha256": "625f6202665a371129a0817bb6bc6721cd0e6ab4a5a96358ef10181be616a699"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ORM-negative.hl7",
+          "sha256": "e8e398d74df3c46553dcd9e9ac1ef6a96d3cf802d1c2593fbecac6482d10675a"
+        }
+      }
     },
     {
       "hl7_version": "2.8.2",
       "family": "ORU",
       "local_required_field_test": "TestLocalEvaluatorMatrixHasIndependentPositiveAndNegativeCases/2.8.2/ORU",
-      "local_constraint_support": "tested-owned-fixture-only",
+      "local_constraint_support": "tested-owned-v3-interface",
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "5bf33667701a100306de4f22c61cd685ce8943a5ca27dafb0e6a3b092a6871f9",
+      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
       "rights_review": "pending",
-      "shipped": false
+      "shipped": false,
+      "pack_schema": "readmit-profile-pack/v3",
+      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/ORU",
+      "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
+      "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORU",
+      "upstream_grouping_support": "tested-minimum-order-cardinality-only",
+      "upstream_structure": "ORU_R01",
+      "upstream_grouping_fixtures": {
+        "positive": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ORU-positive.hl7",
+          "sha256": "324c08c32264125dc0dea39c21e6760789952fb3e4c6ec1171e052b41d51973f"
+        },
+        "negative": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ORU-negative.hl7",
+          "sha256": "58bdc02fb9cb109dfa94690c597028729785a9a2f996cb043a148fe2962e5022"
+        }
+      }
     }
   ]
 }

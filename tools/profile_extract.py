@@ -13,7 +13,7 @@ PINS = {
 }
 VERSIONS = {"2.3.1": "V231", "2.4": "V24", "2.5": "V25", "2.5.1": "V251", "2.6": "V26", "2.7.1": "V271"}
 FAMILIES = ("ADT", "SIU", "ORM", "ORU")
-EXTRACTOR = "readmit-profile-extractor/v1"
+EXTRACTOR = "readmit-profile-extractor/v2"
 
 
 def encoded(value):
@@ -109,13 +109,14 @@ def literal(node):
         return {literal(k): literal(v) for k, v in zip(node.keys, node.values)}
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
         return -literal(node.operand)
-    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in {"FIELDS", "SEGMENTS", "GROUPS", "DATATYPES_STRUCTS"}:
+    if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id in {"FIELDS", "SEGMENTS", "GROUPS", "DATATYPES_STRUCTS", "DATATYPES"}:
         return {"reference": node.value.id, "key": literal(node.slice)}
     raise ValueError("upstream metadata uses nonliteral syntax")
 
 
 def table(files, name):
-    tree = ast.parse(files["hl7apy/v2_8_2/" + name.lower() + ".py"])
+    filename = "datatypes" if name == "DATATYPES_STRUCTS" else name.lower()
+    tree = ast.parse(files["hl7apy/v2_8_2/" + filename + ".py"])
     values = [n.value for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets)]
     if len(values) != 1:
         raise ValueError("upstream metadata table not unique")
@@ -160,16 +161,66 @@ def hl7apy(files):
     return result
 
 
-def pack(source, version, messages):
-    digest = hashlib.sha256(encoded(messages)).hexdigest()
-    identity = {"id": source + "-" + version.replace(".", "-"), "version": "1"}
+
+COMPONENT_ADD = re.compile(r'data\[(\d+)\] = new (\w+)\(message(?:,\s*(\d+))?,\s*"[^"]*"\);')
+
+
+def nhapi_datatypes(files, model):
+    root = "src/NHapi.Model." + model + "/Datatype/"
+    result = []
+    for path, text in sorted(files.items()):
+        if not path.startswith(root) or "IComposite" not in text:
+            continue
+        components = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not re.match(r"data\[\d+\]\s*=", line):
+                continue
+            match = COMPONENT_ADD.fullmatch(line)
+            if not match:
+                raise ValueError("unrecognized component declaration: " + path)
+            index, datatype, code_table = match.groups()
+            component = {"position": int(index) + 1, "datatype": "DTM" if datatype == "TSComponentOne" else datatype,
+                         "required": False, "max_length": 0, "codes": []}
+            if code_table and int(code_table):
+                component["table"] = "HL7" + code_table.zfill(4)
+            components.append(component)
+        size = re.findall(r"data = new IType\[(\d+)\];", text)
+        if len(size) != 1 or len(components) != int(size[0]) or [c["position"] for c in components] != list(range(1, len(components) + 1)):
+            raise ValueError("component declarations incomplete: " + path)
+        result.append({"name": Path(path).stem, "usage_known": False, "components": components})
+    return result
+
+
+def hl7apy_datatypes(files):
+    declarations, structures = table(files, "DATATYPES"), table(files, "DATATYPES_STRUCTS")
+    result = []
+    for name, children in sorted(structures.items()):
+        components = []
+        for child, reference, cardinality, kind in children:
+            if kind != "CMP" or cardinality not in ([0, 0], [0, 1], [1, 1]) or reference != {"reference": "DATATYPES", "key": child}:
+                raise ValueError("unrecognized datatype component")
+            decl = declarations[child]
+            component = {"position": int(child.rsplit("_", 1)[1]), "datatype": decl[2], "required": cardinality[0] == 1,
+                         "max_length": 0, "codes": []}
+            if cardinality[1] == 0:
+                component["prohibited"] = True
+            if decl[4]:
+                component["table"] = decl[4]
+            components.append(component)
+        result.append({"name": name, "usage_known": True, "components": components})
+    return result
+
+def pack(source, version, messages, datatypes=None):
+    digest = hashlib.sha256(encoded({"messages": messages, "datatypes": datatypes or []})).hexdigest()
+    identity = {"id": source + "-" + version.replace(".", "-"), "version": "2"}
     metadata = {"schema": "readmit-profile-pack/v1", "pack": identity, "provenance": {
         "source": {"name": source, "location": "https://github.com/" + ("nHapiNET/nHapi" if source == "nhapi" else "crs4/hl7apy"), "revision": PINS[source][0]},
         "extraction": {"method": EXTRACTOR, "content_digest": "sha256:" + digest},
         "license": {"spdx": "MPL-2.0" if source == "nhapi" else "MIT", "notice": "licenses/" + source + ".txt"},
         "rights_review": {"status": "pending", "reference": ""}},
         "coverage": [{"hl7_version": version, "family": f, "parse": "untested", "labels": "unsupported", "structural": "unsupported", "workflow": "unsupported"} for f in FAMILIES]}
-    return {"schema": "readmit-profile-pack/v2", "metadata": metadata, "messages": messages}
+    return {"schema": "readmit-profile-pack/v3", "metadata": metadata, "messages": messages, "datatypes": datatypes or []}
 
 
 def main():
@@ -179,8 +230,8 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     n, h = archive(args.nhapi, "nhapi"), archive(args.hl7apy, "hl7apy")
-    outputs = {"pack-" + v + ".json": pack("nhapi", v, nhapi(n, v, m)) for v, m in VERSIONS.items()}
-    outputs["pack-2.8.2.json"] = pack("hl7apy", "2.8.2", hl7apy(h))
+    outputs = {"pack-" + v + ".json": pack("nhapi", v, nhapi(n, v, m), nhapi_datatypes(n, m)) for v, m in VERSIONS.items()}
+    outputs["pack-2.8.2.json"] = pack("hl7apy", "2.8.2", hl7apy(h), hl7apy_datatypes(h))
     # Publish only after all extractions succeed. Never replace prior review work.
     destination = args.output.parent.resolve() / args.output.name
     for parent in [destination.parent, *destination.parent.parents]:
@@ -195,7 +246,7 @@ def main():
     for name, content in outputs.items():
         with (args.output / name).open("xb") as stream:
             stream.write(encoded(content) + b"\n")
-    receipt = {"schema": "readmit-profile-extraction/v1", "extractor": EXTRACTOR, "sources": {name: {"commit": pin[0], "archive_sha256": pin[1]} for name, pin in PINS.items()}, "rights_review": "pending", "packs": {name: {"sha256": hashlib.sha256(encoded(content) + b"\n").hexdigest(), "messages": len(content["messages"])} for name, content in outputs.items()}, "adaptations": ["Group and segment additions become ordered cardinality nodes", "Field metadata becomes required, repetition, datatype and length declarations", "Upstream prose, code tables and composite component definitions are not copied", "HL7apy supplies no extracted maximum length; zero records that absence", "All source coverage remains unqualified pending independent fixtures and rights review"]}
+    receipt = {"schema": "readmit-profile-extraction/v2", "extractor": EXTRACTOR, "sources": {name: {"commit": pin[0], "archive_sha256": pin[1]} for name, pin in PINS.items()}, "rights_review": "pending", "packs": {name: {"sha256": hashlib.sha256(encoded(content) + b"\n").hexdigest(), "messages": len(content["messages"]), "datatypes": len(content["datatypes"])} for name, content in outputs.items()}, "adaptations": ["Group and segment additions become ordered cardinality nodes", "Field metadata becomes required, repetition, datatype and length declarations", "Composite positions, datatype references and code-table identifiers are extracted; code-table values and upstream prose are not copied", "nHapi has no extracted component usage; usage_known false remains an unsupported requirement", "TSComponentOne is normalized to DTM lexical syntax; no timezone is inferred", "HL7apy supplies no extracted maximum length; zero records that absence", "All source coverage remains unqualified pending independent fixtures and rights review"]}
     with (args.output / "extraction.json").open("xb") as stream:
         stream.write(encoded(receipt) + b"\n")
     print(json.dumps({"extractor": EXTRACTOR, "packs": len(outputs), "rights_review": "pending", "messages": {n: len(p["messages"]) for n, p in outputs.items()}}, sort_keys=True))

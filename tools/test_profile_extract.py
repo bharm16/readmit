@@ -42,3 +42,33 @@ class ProfileExtractionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ComponentExtractionTests(unittest.TestCase):
+    def test_component_metadata_keeps_unknown_usage_and_table_binding(self):
+        root = "src/NHapi.Model.V251/Datatype/"
+        files = {root + "EI.cs": 'public class EI : AbstractType, IComposite{\ndata = new IType[2];\ndata[0] = new ST(message,"Identifier");\ndata[1] = new ID(message, 301,"Type");'}
+        got = extract.nhapi_datatypes(files, "V251")
+        self.assertEqual(got, [{"name": "EI", "usage_known": False, "components": [
+            {"position": 1, "datatype": "ST", "required": False, "max_length": 0, "codes": []},
+            {"position": 2, "datatype": "ID", "required": False, "max_length": 0, "codes": [], "table": "HL70301"}]}])
+        files[root + "EI.cs"] += '\ndata[2] = SomeNewSyntax();'
+        with self.assertRaises(ValueError):
+            extract.nhapi_datatypes(files, "V251")
+
+    def test_hl7apy_components_preserve_required_and_withdrawn_usage(self):
+        files = {"hl7apy/v2_8_2/datatypes.py": """
+DATATYPES = {'CX_1': ['leaf', None, 'ST', 'OWNED_NAME', None, -1], 'CX_2': ['leaf', None, 'ID', 'OWNED_NAME', 'HL70301', -1]}
+DATATYPES_STRUCTS = {'CX': (('CX_1', DATATYPES['CX_1'], (1, 1), 'CMP'), ('CX_2', DATATYPES['CX_2'], (0, 0), 'CMP'))}
+"""}
+        result = extract.hl7apy_datatypes(files)
+        self.assertTrue(result[0]["usage_known"])
+        self.assertTrue(result[0]["components"][0]["required"])
+        self.assertTrue(result[0]["components"][1]["prohibited"])
+        self.assertEqual(result[0]["components"][1]["table"], "HL70301")
+        self.assertEqual(result[0]["components"][1]["codes"], [])
+
+    def test_component_metadata_changes_exact_content_pin(self):
+        first = extract.pack("nhapi", "2.5.1", [], [{"name": "OWNED", "components": []}])
+        second = extract.pack("nhapi", "2.5.1", [], [{"name": "OTHER", "components": []}])
+        self.assertNotEqual(first["metadata"]["provenance"]["extraction"]["content_digest"], second["metadata"]["provenance"]["extraction"]["content_digest"])
+        self.assertEqual(first["schema"], "readmit-profile-pack/v3")

@@ -1,0 +1,234 @@
+{
+  "schema": "readmit-local-profile/v3",
+  "definition": {
+    "schema": "readmit-local-profile/v1",
+    "profile": {
+      "id": "owned-siu-2-3-1",
+      "version": "1"
+    },
+    "base": {
+      "pack": {
+        "id": "owned-siu-2-3-1",
+        "version": "1"
+      },
+      "hl7_version": "2.3.1",
+      "family": "SIU"
+    },
+    "terminology": [],
+    "authorities": [],
+    "dates": [
+      {
+        "id": "instant",
+        "description": "Owned fixture requires minute precision with explicit timezone.",
+        "precision": "minute",
+        "timezone": "required"
+      }
+    ],
+    "segments": [
+      {
+        "id": "SCH",
+        "fields": [
+          {
+            "position": 1,
+            "usage": "R",
+            "type": "EI"
+          },
+          {
+            "position": 2,
+            "usage": "R",
+            "type": "EI"
+          }
+        ]
+      },
+      {
+        "id": "ZTM",
+        "fields": [
+          {
+            "position": 1,
+            "usage": "R",
+            "type": "TS",
+            "date": "instant"
+          }
+        ]
+      }
+    ]
+  },
+  "structure": [
+    {
+      "name": "header",
+      "segment": "MSH",
+      "min": 1,
+      "max": "1"
+    },
+    {
+      "name": "appointment",
+      "segment": "SCH",
+      "min": 1,
+      "max": "1"
+    },
+    {
+      "name": "declared-time",
+      "segment": "ZTM",
+      "min": 1,
+      "max": "1"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "owned-siu-2-3-1-lifecycle",
+      "version": "1",
+      "kind": "scheduling",
+      "identity": [
+        "SCH-1.1",
+        "SCH-1.2",
+        "SCH-2.1",
+        "SCH-2.2"
+      ],
+      "status": "MSH-9.2",
+      "initial": [
+        "S12"
+      ],
+      "transitions": [
+        {
+          "from": "S12",
+          "to": "S13"
+        },
+        {
+          "from": "S13",
+          "to": "S15"
+        }
+      ],
+      "parent_segments": []
+    }
+  ],
+  "datatypes": [
+    {
+      "name": "HD",
+      "usage_known": true,
+      "components": [
+        {
+          "position": 1,
+          "datatype": "IS",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 2,
+          "datatype": "ST",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 3,
+          "datatype": "ID",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        }
+      ]
+    },
+    {
+      "name": "CX",
+      "usage_known": true,
+      "components": [
+        {
+          "position": 1,
+          "datatype": "ST",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 4,
+          "datatype": "HD",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        }
+      ]
+    },
+    {
+      "name": "EI",
+      "usage_known": true,
+      "components": [
+        {
+          "position": 1,
+          "datatype": "ST",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 2,
+          "datatype": "IS",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 3,
+          "datatype": "ST",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 4,
+          "datatype": "ID",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        }
+      ]
+    },
+    {
+      "name": "CE",
+      "usage_known": true,
+      "components": [
+        {
+          "position": 1,
+          "datatype": "ST",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 2,
+          "datatype": "ST",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 3,
+          "datatype": "ID",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        }
+      ]
+    },
+    {
+      "name": "TS",
+      "usage_known": true,
+      "components": [
+        {
+          "position": 1,
+          "datatype": "DTM",
+          "required": true,
+          "max_length": 0,
+          "codes": []
+        },
+        {
+          "position": 2,
+          "datatype": "ID",
+          "required": false,
+          "max_length": 0,
+          "codes": []
+        }
+      ]
+    }
+  ]
+}

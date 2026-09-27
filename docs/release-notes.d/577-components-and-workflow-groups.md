@@ -1,0 +1,1 @@
+- Explicit v3 local profiles evaluate composite components and bind repeated results to their declared order groups, preserving source offsets, namespaces and capture gaps. Existing profile/diagnose/connected check workflows use the same pinned evaluator; historical v1/v2 meanings stay unchanged. Upstream definition distribution remains pending its exact-content rights review.

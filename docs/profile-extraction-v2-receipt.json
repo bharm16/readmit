@@ -1,0 +1,71 @@
+{
+  "adaptations": [
+    "Group and segment additions become ordered cardinality nodes",
+    "Field metadata becomes required, repetition, datatype and length declarations",
+    "Composite positions, datatype references and code-table identifiers are extracted; code-table values and upstream prose are not copied",
+    "nHapi has no extracted component usage; usage_known false remains an unsupported requirement",
+    "TSComponentOne is normalized to DTM lexical syntax; no timezone is inferred",
+    "HL7apy supplies no extracted maximum length; zero records that absence",
+    "All source coverage remains unqualified pending independent fixtures and rights review"
+  ],
+  "extractor": "readmit-profile-extractor/v2",
+  "packs": {
+    "pack-2.3.1.json": {
+      "datatypes": 78,
+      "messages": 53,
+      "sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811"
+    },
+    "pack-2.4.json": {
+      "datatypes": 80,
+      "messages": 27,
+      "sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0"
+    },
+    "pack-2.5.1.json": {
+      "datatypes": 78,
+      "messages": 29,
+      "sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c"
+    },
+    "pack-2.5.json": {
+      "datatypes": 78,
+      "messages": 29,
+      "sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa"
+    },
+    "pack-2.6.json": {
+      "datatypes": 78,
+      "messages": 29,
+      "sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983"
+    },
+    "pack-2.7.1.json": {
+      "datatypes": 72,
+      "messages": 27,
+      "sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5"
+    },
+    "pack-2.8.2.json": {
+      "datatypes": 71,
+      "messages": 41,
+      "sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e"
+    }
+  },
+  "rights_review": "pending",
+  "schema": "readmit-profile-extraction/v2",
+  "sources": {
+    "hl7apy": {
+      "archive_sha256": "8b496e4e94221b8472a9df81be73d98b8726c1d6b386637a6f08264fc83ddb63",
+      "commit": "9550b6eca2c580e9615d756b294dbe5ea471667c"
+    },
+    "nhapi": {
+      "archive_sha256": "165a28565b88ba1a9a26f9be893639490af074a529774f8a8da77f0905330882",
+      "commit": "2495edd1e23a85ab9146cb03947c17d45120cf1f"
+    }
+  },
+  "notices": {
+    "licenses/hl7apy.txt": {
+      "sha256": "5656ff729ec3a0de702317f3032912904d88553a9d1a2ea27d6db1529a9d4989",
+      "bytes": 1054
+    },
+    "licenses/nhapi.txt": {
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+      "bytes": 16725
+    }
+  }
+}

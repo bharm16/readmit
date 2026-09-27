@@ -1,0 +1,82 @@
+{
+  "schema": "readmit-profile-pack/v3",
+  "metadata": {
+    "schema": "readmit-profile-pack/v1",
+    "pack": {
+      "id": "owned-orm-2-5-1",
+      "version": "1"
+    },
+    "provenance": {
+      "source": {
+        "name": "Readmit owned fixture authors",
+        "location": "testdata/profile-evaluation/v3/2.5.1/ORM",
+        "revision": "1"
+      },
+      "extraction": {
+        "method": "Hand-authored finite fictional interface; no upstream metadata copied.",
+        "content_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "license": {
+        "spdx": "LicenseRef-readmit-fixture",
+        "notice": "testdata/README.md"
+      },
+      "rights_review": {
+        "status": "approved",
+        "reference": "testdata/README.md"
+      }
+    },
+    "coverage": [
+      {
+        "hl7_version": "2.5.1",
+        "family": "ORM",
+        "parse": "supported",
+        "labels": "unsupported",
+        "structural": "unsupported",
+        "workflow": "unsupported"
+      }
+    ],
+    "labels": []
+  },
+  "messages": [
+    {
+      "hl7_version": "2.5.1",
+      "family": "ORM",
+      "structure": "ORM_O01",
+      "sequence": [
+        {
+          "name": "header",
+          "segment": "MSH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "orders",
+          "min": 1,
+          "max": "*",
+          "children": [
+            {
+              "name": "order",
+              "segment": "ORC",
+              "min": 1,
+              "max": "1"
+            },
+            {
+              "name": "request",
+              "segment": "OBR",
+              "min": 1,
+              "max": "1"
+            }
+          ]
+        },
+        {
+          "name": "declared-time",
+          "segment": "ZTM",
+          "min": 1,
+          "max": "1"
+        }
+      ],
+      "segments": []
+    }
+  ],
+  "datatypes": []
+}

@@ -34,6 +34,9 @@ func (e *evaluator) evaluateBase() {
 	m := e.baseRule()
 	if m == nil {
 		e.report.BaseSupport = "unsupported"
+		if e.report.Operator == ComponentOperatorVersion {
+			e.add("base-message-structure-unavailable", "profile", "unsupported", "MSH-9", e.read("MSH-9"))
+		}
 		return
 	}
 	e.structure(m.Sequence, "profile")
@@ -82,8 +85,8 @@ func (e *evaluator) evaluateBase() {
 					if f.MaxLength > 0 && len(r.Decoded) > f.MaxLength {
 						e.add("field-length", "profile", "fail", s, r)
 					}
-					if outcome := datatype(f.DataType, string(r.Decoded)); (override == nil || override.Type == "") && outcome != "pass" {
-						e.add("datatype-"+f.DataType, "profile", outcome, s, r)
+					if override == nil || override.Type == "" {
+						e.evaluateDatatype(f.DataType, s, "profile", r, 0)
 					}
 				}
 			}

@@ -1,0 +1,537 @@
+{
+  "schema": "readmit-profile-semantic-fixtures/v1",
+  "rows": [
+    {
+      "hl7_version": "2.3.1",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.3.1/ADT",
+      "test": "TestOwnedSemanticMatrix/2.3.1/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "675f82b879c1dee8f7e12df22057aca787e9d5f7138373b37e0c01a4ffa455cc",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "8515574de7a5e7a1dffdd41d978dc7cdf48b3383131e522c846b993d1077a50a",
+        "invalid-time.hl7": "bf95c6e247a4e62313bab2bf793db838bac652f15edcb3efe6d758d8f014b665",
+        "pack.json": "a7edb23cda50e1c46a61fc9b59c7777500920bba719e78782b66d636d9e822ba",
+        "profile.json": "a6c47aee947aef36b64bb296972270b8937b0054e4b0351bb03b31d03a9dd62e",
+        "step-1.hl7": "9772a32a947005e862df6e1b7a509f867879d8eb01cd64513b1d01d31a3e90aa",
+        "step-2.hl7": "bc1e3070d8f97b6357470d0d85732b49d5680d1da210ffb13ca3f2e2c4f9a169",
+        "step-3.hl7": "7a3ca285c3c79f10b5db6f56d655e26c7f76aea8a7db4d24bba8f91e1c340686"
+      }
+    },
+    {
+      "hl7_version": "2.3.1",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.3.1/SIU",
+      "test": "TestOwnedSemanticMatrix/2.3.1/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "5d6b39f0686fa0717977feb0c8793bc3c52df484f5e53798a215d328eeb28bb4",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "8ce5de1ec5d036c6b62b2c123dcbec65570f67612595bbf4d1da87e9b419eefe",
+        "invalid-time.hl7": "cc82cc9949c42476833ea0770f66a0a0038297814d2e068ab521d4db6ace84f0",
+        "pack.json": "855be5e8b22ab356fc4475712e1c2469e665e3f0f5e15f2b236d6e7c3c25c859",
+        "profile.json": "dd92857c331672fc67de413a74a4358d27c18acffe97ce5108be6b7ee1d99292",
+        "step-1.hl7": "a92160813ded94caf1a20fe4ea50afe5912a3e081fc4e868625184b566224292",
+        "step-2.hl7": "feb678929f1f9c3eb059c10921817da4f5611e78190dc1562ec70e6a86080c7f",
+        "step-3.hl7": "14ea993f7e65d3753bcf778c2da0a0f6c52eeff73d69a354f141e575761032b2"
+      }
+    },
+    {
+      "hl7_version": "2.3.1",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.3.1/ORM",
+      "test": "TestOwnedSemanticMatrix/2.3.1/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "69cbb3d721b13e9ef58f47fb56613175f705cf976bf90e94bce7c711372e5232",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "734e7899fc36b99395941f734eba3427982bd3d389d78562f80f215e734569f7",
+        "invalid-time.hl7": "dc182aec9432578a3f2fa46933d63fa27b3d9dc90d9d11dee26b4adf1d984def",
+        "pack.json": "4cfeda2d20ec7b54bf8fe31160632b997664c3e94320792a9df71942f55f52fa",
+        "profile.json": "9da37beb75a26b9e602b414a8fe7cea87f0189bf8a710d03ec8dba2da5a20991",
+        "step-1.hl7": "edf634afd7999d3ecb2795a2ac66b6dd9ab91db71630816097c125fd22d91c4e",
+        "step-2.hl7": "b3ced10e276c22cbda862a8ffef26d1428750adcf34aedd80519b6529c6ac52e",
+        "step-3.hl7": "4c2f47e7f83447e28c42d4ba39048ef2c402d30082ce1c1880c6eaf57ddc0650"
+      }
+    },
+    {
+      "hl7_version": "2.3.1",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.3.1/ORU",
+      "test": "TestOwnedSemanticMatrix/2.3.1/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "0e2cf2a6700d9086f03bf392a98ea44c16c4e13fed550e936f3b16d693497432",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "e38bd2f570cf85744c24646aa15ecfa007073833fb8e4d04eaefcab033f8c3f3",
+        "invalid-time.hl7": "462026b873c1bde485a0e21c78cc5dddd0508d9713f53554a062b0dc7b53172b",
+        "pack.json": "cf1fcbbb0b0fb053893a8f8e908f1a08f645954b8fbe460449866ec6ab97e64e",
+        "profile.json": "16af9548735a484f7acd764d1235b6d058448bbcbf47364540ca2afcd5b20753",
+        "step-1.hl7": "1e54354f9fcfe09f1f61358b69918b7820c1758c147610b45bda17f267599ff7",
+        "step-2.hl7": "472f7c1d7c89f800344b3cc704df9736424a8f8e4b8ca296385dd7add98c1cc1",
+        "step-3.hl7": "f49231324a3d0c96ba13d44b74d62d3ee5fb3b82f9550de368d462b298645d3f"
+      }
+    },
+    {
+      "hl7_version": "2.4",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.4/ADT",
+      "test": "TestOwnedSemanticMatrix/2.4/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "2674a81693a5aecb9593908015b43e6d30a0f17207a003015f5eba6a53b60bb0",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "1cc2399dcb4e79c38106fbd1b5a18a2c68cf779673ce65522b0c8a022865e6ab",
+        "invalid-time.hl7": "5ae076d0b70cc13808a681d8847c8b9141dc79afec5c5371e66cf459a6c48136",
+        "pack.json": "19aad9aa319c3a3d09559543648beb7b29a68761d98423bcc9aafbdb3a3c3c94",
+        "profile.json": "13f58eaa16d885dcbf4544fffcdf09e960fc94812e7775bfe5b4f20f07bf3e96",
+        "step-1.hl7": "43de8f50b4f91b9dcd318354ae4fc62dba602b548b91c175db24deef67b2a3c4",
+        "step-2.hl7": "bf67d4f4801de17c980635f2134cd09bb5e4dc51d53e4287a894d59456939b8e",
+        "step-3.hl7": "f66610935f12c22ac60352e5340e7ff2ea6dcbcb63eeb587909779ad35a98967"
+      }
+    },
+    {
+      "hl7_version": "2.4",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.4/SIU",
+      "test": "TestOwnedSemanticMatrix/2.4/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "5968a8899d9c778fc9661fe8a9a3fb3b2a67df6104cf9509420f3db6c27afa4b",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "303608a7ab753f1c4d727df5cae656d12a6b66f9838f8bd17654622cd3cf2dff",
+        "invalid-time.hl7": "508a1bc175b36d738da148119bf62ee0c07e0098ade291496b45cd69e113c98a",
+        "pack.json": "4dfc0cd2d3c4a75f71dbe676a3ac1f396c9b6f4ebe1a9114f7eaaef19a6ca06c",
+        "profile.json": "514955533c0679a9df3bf447e7c8c145bf9d26c3c9cba34ae7a8f985c1ce736a",
+        "step-1.hl7": "486ff86117082e0a0a420b60b431266a5590d1b0260c15c18eb82bf8313e8243",
+        "step-2.hl7": "4d796b1913516be4ed13e0cf98869fab5467f5af7dc6cd332240edee18721d8f",
+        "step-3.hl7": "9439299d4b0f4d2a8ae7fcb2d57dcfcbce79c3a05fb877d9065b059ae8f1ca91"
+      }
+    },
+    {
+      "hl7_version": "2.4",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.4/ORM",
+      "test": "TestOwnedSemanticMatrix/2.4/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "941184363f29cc99cd862c03804cfc9ae9b3668ee6844f8e432a6f9dc693e8fc",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "045e9113a7a3b86d548856f8aa4fd69d41238bb37636d5ea00c6a5fa63e560d8",
+        "invalid-time.hl7": "c248f40547f5df041f5787b4b6938a4d497431834859535664e666fbd79379b0",
+        "pack.json": "0d70bc07c46eb20dbf1c17094957fdc417b2f5339aa2fc2c615b1b7d2884de77",
+        "profile.json": "63b676b7dbca893c1ce355eaa1afa1631632184d8c374f99129cc0ad8c2a450f",
+        "step-1.hl7": "3cc11312f4558d17c320596de5cd8dd29499524ff848c6ee47b865de309fe6dd",
+        "step-2.hl7": "1391d40ec1996fb52dfe8c431feedc140eaa69a8e5c2e3c79976861c4f04e3ea",
+        "step-3.hl7": "29c4b65d242422dbe8dab10f31b8ffb9075bbcbd92650f648f4473af01efeb0f"
+      }
+    },
+    {
+      "hl7_version": "2.4",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.4/ORU",
+      "test": "TestOwnedSemanticMatrix/2.4/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "3ee605401eb7f6fd308cb9d7500a137b1a54d5f3a8ac3416313c3c484140f52d",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "6c6cf2037929e04e5651ded28302edf010861849cb1ae5ab8d414df9620213af",
+        "invalid-time.hl7": "f0dacb096981df57269ef6c94fe8581fe89d89111dd85a6cd4ad501be952eeee",
+        "pack.json": "755ece8c2c4e42fb33c1bfd7a233031f74bd9fe3f2cc1efe30ec374694135392",
+        "profile.json": "6d01e3cb962f5b65905c9d7400551c837d7006fa2689c0be2ea0109d63d238cd",
+        "step-1.hl7": "e32c226fd3e17b59eef395630c6574d9ac5dd001081a41657e50c1b008143a12",
+        "step-2.hl7": "fedbf907766901ee9921d311de0d38307ab4ab3bd6bba39cbf4dd1e5a40bb8d1",
+        "step-3.hl7": "3ece920d95d8caf78f729f3048acd4add772ebd0beb48128aa8c880df16a8cf8"
+      }
+    },
+    {
+      "hl7_version": "2.5",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.5/ADT",
+      "test": "TestOwnedSemanticMatrix/2.5/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "67da3b7928400baad56196d575fb0f445ef1c1423bb47a5a80fef0196ccceadb",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "4ff43e6111b20dc2f52dc9814511582ee80b871a14061c74434a2816dfe421e5",
+        "invalid-time.hl7": "55c173467b35abd521dc0a53b7d2896d789db5d06f5f8ff1fdf2dd214bd06516",
+        "pack.json": "0a8604ee542bc8071e6e5ad5b50b04a96e1a5d253b3424abe79a9147a6b03dac",
+        "profile.json": "44bd3f4b7ed4bc1d4a90bd5807f12e551905a1c5889e0ba3e97e3b6ac59753f2",
+        "step-1.hl7": "ea311b105a0b423ea0b629c326d833b96e7843157d5ddf101844459e79081047",
+        "step-2.hl7": "6ebedb781c6cebd40a8d463f25902a2451945c43dc73474729ca2157c62d36de",
+        "step-3.hl7": "bd3214be7844a2f88df1848fa36eb4ed4e2a5f508206eeb49d7de8b43a44b484"
+      }
+    },
+    {
+      "hl7_version": "2.5",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.5/SIU",
+      "test": "TestOwnedSemanticMatrix/2.5/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "b4af4bf720662fd178fa9ccf9c1aa71a43182c7fac31b78792f44468bcb5ae73",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "afa716c6d89f626916d7bf9b4cf134461fdcc48201be410295c3b5630e83c5a2",
+        "invalid-time.hl7": "42d0201d64a66c7835c812af3a4c7fffad72c49806ff3bc733e8ff1705d721c3",
+        "pack.json": "21484b27ee94a209bd8fffacf5213ea059aaa8f8f8d133658cb4f5ce36ea6ef0",
+        "profile.json": "964eeb3358d33124ac88e186c857cea86296a68c6c12f5f06db31ff38e67bbdb",
+        "step-1.hl7": "44790a08f00adc2530f6ba0bd6b16728b34442fbe3ffb7da396f645d358e62c1",
+        "step-2.hl7": "b367942fd4fbe0a95bc3c85b3972d966b4054fcce72b3d4a942f0d616a5a4db6",
+        "step-3.hl7": "2c1beae9f8a1cdf509fced05482cee078a1bee1403472f65416ce668d866c2d5"
+      }
+    },
+    {
+      "hl7_version": "2.5",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.5/ORM",
+      "test": "TestOwnedSemanticMatrix/2.5/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "ef383be0dc9b5ea383ef326455625c9d3c4305e2be9ae367d5441dfecbd56b53",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "1609077b0d55e673299d31f811abb298ab10f97c1a60fd6146cebb46a7600aeb",
+        "invalid-time.hl7": "110ed8690db8796b31dc8c47e56ff9c7783c508d39c7fbe07229f57186ee0fa3",
+        "pack.json": "970aa24dca22853a41188b372ca10f83c14516f7ce1b1385dd23e990b281eaed",
+        "profile.json": "7b4c667916a884a16e361379f4abc406073015d40f902f0c5e93510e59443326",
+        "step-1.hl7": "acaacdeb1dd8969dda44a710893a97d45f96c46f93358e416a87046fecd0dadd",
+        "step-2.hl7": "89615f511c1f1a4488884fd9fd81457e8b980b9c5ec4b8e25d079373409fbe60",
+        "step-3.hl7": "b92521f41f312bf4f37b788da59efe0db09ac3261ef5faf1919fadb877fafe9d"
+      }
+    },
+    {
+      "hl7_version": "2.5",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.5/ORU",
+      "test": "TestOwnedSemanticMatrix/2.5/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "af6608e587d89b33c3ddd6ba81827b46b1cab3a13f8887718ca37cc3c7dd38d4",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "6a33cbdb24d5159e69683594744b43296cc96ba8313384628f87e6f15db2b76d",
+        "invalid-time.hl7": "6c6d13ca8a07263fecdec156138a91434e6b167d438151af452c4272ad65ac01",
+        "pack.json": "0b9e7065fb25258635a632b90986cabc43c4a7ec4e327160d6ca5f86de5083da",
+        "profile.json": "1ec8edbcca7827035e69f81b9aa8f4b742f2268d14a581b01bb34a5d40d24e6e",
+        "step-1.hl7": "00702207d1dc7b54cff5723c0ba7787ac57f037b6b13b3480ff08e2ec54260e9",
+        "step-2.hl7": "2cb73c0d2524dc023290942f12e07496644b04aa75a5ae060f8cfc93a6eab8d2",
+        "step-3.hl7": "cf9f906e1824d4838db5fe1953f299063019a2c1af80d31eef6cd740b33c8c1e"
+      }
+    },
+    {
+      "hl7_version": "2.5.1",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.5.1/ADT",
+      "test": "TestOwnedSemanticMatrix/2.5.1/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "1de298f83b07b0848568bd48fe75b1aa764f5c080bd6a1a595a531d5bf9f3f04",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "d9b6343bc16a874d24f1a015eb323b27ef59b7f741aab2bed74e6a5e643acc79",
+        "invalid-time.hl7": "ff35c6474f80ed384e74dcd2a48c7d212ab1f6328f03f9c020d319464073e723",
+        "pack.json": "56978be844917a3a2da7b786a32ee85df139a94521875f960291b2265576a0de",
+        "profile.json": "934fd42036aab01c2d77b14fc5da574271c4c392bb0cf9102082791a563e00fd",
+        "step-1.hl7": "e888aec0cba65c95082629f4217bab14dd573db6aa8982954838aba781fabc89",
+        "step-2.hl7": "e3bafbb3f16a9c44a112db9504bdf44f00e963e4d307ea6d8989e85f41a2e282",
+        "step-3.hl7": "dfaab035ea71440f3dc3681504930ed54515ffbefb628358ab44ee41ac423c14"
+      }
+    },
+    {
+      "hl7_version": "2.5.1",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.5.1/SIU",
+      "test": "TestOwnedSemanticMatrix/2.5.1/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "89e1cbc0642ea4f34eeb87351ab5339caae0da27e2f2f3ab0eb1dfd942be6851",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "fdacda4efa95bca1c49bc5b21b25f5382ec039c8f6082cffa906354df1b4c216",
+        "invalid-time.hl7": "ed79161cab5a4dcbbed677ec2210a1201b90999912d380a432cec22d7fb76523",
+        "pack.json": "11582e04211b99f801b37a2994c6eba8c05e449b0335a70d97b4b9b02d4272de",
+        "profile.json": "5ccfca4363cc49aa1b8cb19f036c609d912703378524dfd42fa603214032d1b7",
+        "step-1.hl7": "553bb849c8cb70366275479ca25aa570a9ad8c14f4d1f3286765ba4db561ad93",
+        "step-2.hl7": "9576762d3cd7e7dc87239fe57af6da21b1e98b21d6e1d41d408ec9210448450e",
+        "step-3.hl7": "385b551622fda36858abe7b1021670a06aa372c1e077f2eb4409b94c71bfd58f"
+      }
+    },
+    {
+      "hl7_version": "2.5.1",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.5.1/ORM",
+      "test": "TestOwnedSemanticMatrix/2.5.1/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "7ca5c2fc7ca2fa92e5073cd2b2f5821e25b34a7000b2d557a6459eab47637437",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "e08ccda4ab87a145c5318a4a3764a26820c9dc74bdcc43fde7e7bdb49e51cb33",
+        "invalid-time.hl7": "511954edb90f95d7e72a0e635a5c86c2f6f534995fec909a1c7011f1ab9afc41",
+        "pack.json": "70c8c4026506c1d49465e73e142ce7df31c3ec845566ead5de1aea64bce582e4",
+        "profile.json": "4336c1787d5c849ae4f6ef7400091c48ad0458cf04e628853d94c34c99259086",
+        "step-1.hl7": "60c0171f1e7d6b008990b2e221c58179f6438252f8587932ba9d598353c82426",
+        "step-2.hl7": "1065c25091dda8c2fcf290d9cb4ba6538bf345ae1801419081c64e0d24d8c66d",
+        "step-3.hl7": "d09f96ea47b920edb31a34cdf50df20aa157280ee4479de094754a046bc262c8"
+      }
+    },
+    {
+      "hl7_version": "2.5.1",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.5.1/ORU",
+      "test": "TestOwnedSemanticMatrix/2.5.1/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "f7ead4917d1398a56cc5a3aed4e59d51c7787dfdd1f86e7a19fe33a3ad86cd73",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "15b385f0d2fd2f1b8ea9e9724ab7f94d33b0ae4cff3e5def1ecf46c2957a3f15",
+        "invalid-time.hl7": "11cc1a3512bba182eb69b9776a40399daac90ae698aca8b91e57c25fe4394997",
+        "pack.json": "3a879852ebbf022de723cdc21e5929c4d8773b6f61c34ecfe7385c14587d9f44",
+        "profile.json": "45bf7ab19190b663baa63be46129f811f7b7db58d82376695e64c3e5114e8550",
+        "step-1.hl7": "4c73d02db48b3126e017dcc69b31a760dcd699339bd3a7ea401c2feb89fa8ad0",
+        "step-2.hl7": "8d99462b85d090897b6f4abb64001d9b45dfaf5e946b0bc72818daec044b4bca",
+        "step-3.hl7": "be682f7b66c5b126ddcbf97ab3a33d824f2e40fb8ed193e28ae08017e570550d"
+      }
+    },
+    {
+      "hl7_version": "2.6",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.6/ADT",
+      "test": "TestOwnedSemanticMatrix/2.6/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "cd76900cec7e0f4112b8359b43b5ff230a8181927fde58f1deff301397fc5e5b",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "80cac8a4bee837796b7ae8207f6a35904df2522c832db22d829a96a22e46ce0c",
+        "invalid-time.hl7": "e21685a966b4033101efebe3b33c6859df577249b18f8dcb5374d6ccb304d8ad",
+        "pack.json": "0911ef48d5695991a928f5dd24653c63460f43f3d8f8b722c653f9be1ff4a399",
+        "profile.json": "da29f2f859b323018b3c2271e52ca646dbbd86524653d6d1e45baa36420a2554",
+        "step-1.hl7": "da0bfaa1c4252a44b4aae47b098746d0793a13c913c0c319f27e376a3c230fd7",
+        "step-2.hl7": "b47b2830cbc11bc506e8488d64635d4df6747d889a1dce4830519df0c59b7fb2",
+        "step-3.hl7": "c4abd83e5674a72fc633b90480231a555863b71e8be834b655ecc41a167da9d8"
+      }
+    },
+    {
+      "hl7_version": "2.6",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.6/SIU",
+      "test": "TestOwnedSemanticMatrix/2.6/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "b0a7d0fd578e16081f9206b6bb75fb9cdac5e294b01b54e9d6e1d4a0c5437868",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "727853e5ffc06232e0574f7289073ebe9289f85e861e969e37c98dde38f594b9",
+        "invalid-time.hl7": "f0de3cfd8de1dfde99f80a67e2c14a028dea0496a896425704904945eae557a1",
+        "pack.json": "22d584d70bf78d27c78c9e5ae3c95063959d7d86410891b02a9a12af76026b6f",
+        "profile.json": "4be01e25a8e0a82ce8036649915bc044d25bd07fb3a9878af2fa58948191a3bf",
+        "step-1.hl7": "ab84eab4fc1c9d511b9b018504d5047b5721a613595314e12b21b92727561c5c",
+        "step-2.hl7": "aa1e89ecadf1cd08551e49e63ea37ea3ff356ebf07324a9981a5f4cc52c7968a",
+        "step-3.hl7": "e5fc636bf6182fe049156b8fcf94be10b6c4d5e811e811e00e08ac870ae8a7c8"
+      }
+    },
+    {
+      "hl7_version": "2.6",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.6/ORM",
+      "test": "TestOwnedSemanticMatrix/2.6/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "2322fba1e1fa81cc9b93cf631964ccdd9438d653176f6582e4ffd10d73a4e208",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "d443eb8fbecddfd732bd83b84926ab949293e52851d04b0c30e1dde61fe1abd8",
+        "invalid-time.hl7": "06ae408c348f050cbd405a623867c04a85987d0ef8b9794c6aeac317015f3053",
+        "pack.json": "a55ea087367da2565552ede53572db08faa1b4da606ccfb91b960f1e2004243b",
+        "profile.json": "584b1bfa5eb7ee830eac7927ed9d7904d51396bcebaed92307df549db071f238",
+        "step-1.hl7": "500a3b609198cb166ba847ecc1c2a82d5d7f4d6370f152ed38cb96cd8e3878f2",
+        "step-2.hl7": "6b521c56d1281ced625eb3b3329febc7656379d7f00405529a572a7791676ea5",
+        "step-3.hl7": "0caad5eb90738c6520ced1fdaca16fa1ea4e59142f42dbc7c5c6cf1370bae346"
+      }
+    },
+    {
+      "hl7_version": "2.6",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.6/ORU",
+      "test": "TestOwnedSemanticMatrix/2.6/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "a0154bbe34d8da6eaf062b0b8ca0b806896c40b4a2438df6138f2d3344f3711d",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "41b1486b3b853c06a8b0a5a65b961e454fa278bb580d90662b791e55e31b6fd6",
+        "invalid-time.hl7": "63019cedf45390d4b4cccaa7d6b2203597796c07d7dd124a5f9ebe63a38383ee",
+        "pack.json": "512df6660da2d857c5bfb32116759935249f005810279560ec70ca1143fe4bc8",
+        "profile.json": "20b1acd975d626128ce0228076ba17d3ad168866207e10916e4ef903cda67997",
+        "step-1.hl7": "f63c7bf7f66efdebd1a4f87e80e28e0782656263ce514eb218163d6135cff7bd",
+        "step-2.hl7": "0684c3e5c59d326ea3c92df3ddd568e73e439ccc737b42042232b67fed68cd0d",
+        "step-3.hl7": "7fd907c14066511a6b152ffb67eca46d258669c10f7458cda23b40562e0e4281"
+      }
+    },
+    {
+      "hl7_version": "2.7.1",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.7.1/ADT",
+      "test": "TestOwnedSemanticMatrix/2.7.1/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "62258449932f86356b237985a51ce75c25725411c18f0c4604770ad4c07a5af1",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "841eaffc6ba4837f42d6ad3ff5837389fd06e116fd683fc33837d4f9b27f3170",
+        "invalid-time.hl7": "de19bd1c20ebaa8e511d49ab8d478e581283efea69836a61b646e5259a39348f",
+        "pack.json": "6e28eef9399ab5276b5b79d854793c3d1af1846658641be49811737276b4e58b",
+        "profile.json": "0f4c53afb08e7564e1f7968fe2175eacadce4e493b60b13ba4f7c65e0c2b1205",
+        "step-1.hl7": "087501bb9328900ed0a835f0f1be0f01c87c3baf6deaecea63deb2881896f804",
+        "step-2.hl7": "7b29fc3cafb423390958b2745ec92a451e370357e4dfd3fc896024ad13bad9ba",
+        "step-3.hl7": "7cbd141e1c5b53a2707a0627f1a04b4c77443a32ced69c79d6685b728c0d156d"
+      }
+    },
+    {
+      "hl7_version": "2.7.1",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.7.1/SIU",
+      "test": "TestOwnedSemanticMatrix/2.7.1/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "6ab18ca48c0ea7f852b8aa613bd02b6562aa13f90a207347584e88f3ed4d244b",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "a62c83bf370e962e534dd418ec42f77ffad59492deee55f47a88785f7ee17ee3",
+        "invalid-time.hl7": "aebb4ce000f7d3f0d8b3d2484a4028a293607ff26f2321247e7cc28549e761fb",
+        "pack.json": "a2704900fba35a342d9d1521ebdbb61d9af77c313a5ce29aec6d31b12f988fab",
+        "profile.json": "39b43b1cf7418ae012670eabf97f22e091ccbc7da104f82109728a2f030da12e",
+        "step-1.hl7": "f8b3ea1609c7690b1badaba4d0492b30712af0568a98983ceee2a669a51c16c7",
+        "step-2.hl7": "584979f76b915379b55a1f861a7f5db247db708739fb362bb55877667254b51f",
+        "step-3.hl7": "3991d7b698362b36ef1c8d5af5ec31e017fdbad4ea087b2a97ae9d51684fff48"
+      }
+    },
+    {
+      "hl7_version": "2.7.1",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.7.1/ORM",
+      "test": "TestOwnedSemanticMatrix/2.7.1/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "5d414a99d83761efbee9996dc2e3541629a7aec944d8e50872d0179b164992d5",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "a42363c47d496e9e1a5a85cea0cb2ad96c45a46a3ed64d1369fcb7ef6ab6daf0",
+        "invalid-time.hl7": "1e675171e17a811d98a839ac7d1c4eb8a7eb2f96764163a58db358444615c0dd",
+        "pack.json": "847ba9183ac283daa10e46bd85d10035e993f4f625f175ecb0972e4101aeb13d",
+        "profile.json": "71d2b59045bf7a8db1f8ddbf92cdab52bc5e1e72fe2aadb5d99e49049a7f8c57",
+        "step-1.hl7": "e19cc9019fe5212a60cf1d50278752ba93b8134e98d0c8ef99fb2000941b0b52",
+        "step-2.hl7": "636624b4f324d771b697190a7a189e3d4960642a99aa838d399e7e250a5422ab",
+        "step-3.hl7": "9bbcd982527264ec58aaab08cd0094d01d0c73a788824a3fb00d1639bc2759a4"
+      }
+    },
+    {
+      "hl7_version": "2.7.1",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.7.1/ORU",
+      "test": "TestOwnedSemanticMatrix/2.7.1/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "14e484ecd4f74dd67b77ea5711fef04a48dc6d010ac5b1f96223cfcd2c4e611b",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "14740ce0bc8b61be79d2321b2d594c5254adc233316fac52fae18664b9d8d723",
+        "invalid-time.hl7": "4e4a83e60bbbc19ba607985902bcc2b2770047e8e7f6fda156510bfb8df28e2c",
+        "pack.json": "dcdba338d2bad600c0361c1025a038113479d4a8820e9afba7ec6b4a10a5363c",
+        "profile.json": "3e077c9e2771551097fce82a7f73772171701549fb32928c04d24a9f848d8234",
+        "step-1.hl7": "07f3d4dd365c424f65ac0be03d21d53de254e9c620a446afef7b25cb44717179",
+        "step-2.hl7": "98a9b24233acf5984c35b25c2fc44596d3d25f4421afe75164bd09621ce080f5",
+        "step-3.hl7": "e58a92ce40b4e76a04c8365f816633c009b72dd615c18386aa9ca94b124fee15"
+      }
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "ADT",
+      "fixture": "testdata/profile-evaluation/v3/2.8.2/ADT",
+      "test": "TestOwnedSemanticMatrix/2.8.2/ADT",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "7ce64c99cb36749ae4ff2b21cb936dec0d5acf917ae8d0310326c48361edc867",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "58a18b33ec3f372ffce0e8fedd93ded6df41f8257c8cce08ee907f0b9481fcc5",
+        "invalid-time.hl7": "f2e64511ec64805679d4ba032f85caf373ad3bfc2941e7f907af01d1f3e022f3",
+        "pack.json": "7040142c29c0971373f3788965802121c20ca246deb4a452ca8ac0755600b951",
+        "profile.json": "f7bd34f6a37f445188234ebc06d3154b725d495b05848e2f6dc62c6878d7c483",
+        "step-1.hl7": "5b1e69f6e77312be54b52089952e8c5567162fb3490e7ad6e2821571df864e97",
+        "step-2.hl7": "d17ef4458c1bdf1f29c55348c67c388f15c35c694a1a4923dee8bad6e9c9d138",
+        "step-3.hl7": "89734a468e01561444797dfd2159bcd977609939004d5dae0a4829a611092b78"
+      }
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "SIU",
+      "fixture": "testdata/profile-evaluation/v3/2.8.2/SIU",
+      "test": "TestOwnedSemanticMatrix/2.8.2/SIU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "dcee546c48cf27a4ccd931a9f79db01e5144211650ee7170151caee27f07aca6",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "84d06fac1cd445c0613ac6fda0b89fa430f74452eea4921f4a3fcb2307586bd6",
+        "invalid-time.hl7": "f1792901985a209b67b9c1984766f409ea50e6b88338820a146a1118575755a5",
+        "pack.json": "407d0064c8f6ae6dff69767178cdef06a5d35219f190ca4f8d9a4020793af132",
+        "profile.json": "f8bbe938fa2b6f28d8828621fa592e5e14887dbb67397837840e2e2e9a4443dd",
+        "step-1.hl7": "aa3246bde25942f9ce8875d4b58c953426bed888a95989cc3cb10449440ffcc0",
+        "step-2.hl7": "1bafaf4ca665b7f12a7886bd233f13c4c7450e1ae96f9a853d08dd8ba68a41f9",
+        "step-3.hl7": "3b2b56682e6c584ea4d5627a79643c15dace69e826f6a2930852073c52b264a8"
+      }
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "ORM",
+      "fixture": "testdata/profile-evaluation/v3/2.8.2/ORM",
+      "test": "TestOwnedSemanticMatrix/2.8.2/ORM",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "2b0a4f0221eaaf844cc85f3282399aa0d33642968f28665e88a2b3c9053b41a2",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "fbb2b4fbc510bf233698df98ae24a44053333001d6d9f0ce7160c059e1420151",
+        "invalid-time.hl7": "3a1ea26d9e59dc73b0d499dbff0d903828f6fe234d2d5dbe575e606b8f8e1285",
+        "pack.json": "d41664176a41fc180a688d16f298f3ee8fb24c5f3942cdc470beb9c2c2d0b314",
+        "profile.json": "038a0af2b024b36aa8cdd016624a8e37d3bf34181c269021496bdf0500da4b6d",
+        "step-1.hl7": "62d3fb1844ebdee8e8af158ec9c8c4b77a3dc90245f11de0aaa58b50787c68c7",
+        "step-2.hl7": "42ddce69a80bae9453603f70ca5f8e42e56f0bf67520ff82e38b5c9cc1f9b55c",
+        "step-3.hl7": "fdf31a99a5ffec345b4b9c132f3536fa6f7af2b79ea4c39c593badbdd0b75777"
+      }
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "ORU",
+      "fixture": "testdata/profile-evaluation/v3/2.8.2/ORU",
+      "test": "TestOwnedSemanticMatrix/2.8.2/ORU",
+      "level": "owned-interface-v3-structure-components-lifecycle",
+      "qualification": "independent-fictional-interface-only",
+      "artifacts": {
+        "changed-namespace.hl7": "87b6fdcbcf14d3f7bc2cc9accd05825bdc154faa77193f739991cef94ffbdf50",
+        "expectations.json": "65d887fc6054d27de888a12c43e3d4dc66fb68bc136c298de8a8d1c0a554b9a1",
+        "invalid-group.hl7": "26bf0f3c48dcbc372a35f5d1d80dd842d0597773df3a5e0ef1d0b8e55868bfce",
+        "invalid-time.hl7": "01c0ae9b4b73dc663abbcfe65adc7c85797bc8fece77a17fb96c4d5c5e0dae08",
+        "pack.json": "a29dcc9cf45889f29de8cb7c498b5992c1a77b91dacc2864f82de25add14ae2f",
+        "profile.json": "bd47b4c713350b55fcddd16668a24e2459f63bee5d03899d5b254fab08f5ea44",
+        "step-1.hl7": "71ac147d71267181f89e0324ba13a4999e26779fcaa372f53c6b5331c08e558c",
+        "step-2.hl7": "6b0a40234082eec999e0d9c29d93f0631467b442ee0fdcfca3010f8fef29e5e8",
+        "step-3.hl7": "7e8eee7af5c8b63f94d53f87ca35ffc6e5e58c6537e813386ba26d40a714240a"
+      }
+    }
+  ]
+}

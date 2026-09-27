@@ -22,6 +22,7 @@ const (
 // ProfileV2 embeds the exact existing local constraint vocabulary, adding only
 // explicit ordered groups and reviewed workflow declarations under a new schema.
 type ProfileV2 struct {
+	datatypes  []DatatypeRule
 	Schema     string               `json:"schema"`
 	Definition localprofile.Profile `json:"definition"`
 	Structure  []Node               `json:"structure"`
@@ -39,6 +40,7 @@ type Transition struct {
 	To   string `json:"to"`
 }
 type Workflow struct {
+	parents       []string
 	ID            string       `json:"id"`
 	Version       string       `json:"version"`
 	Kind          string       `json:"kind"`
@@ -53,9 +55,10 @@ type Workflow struct {
 // support declarations retain their meaning; actual rule evaluation is reported
 // independently and never upgrades a labels-only pack.
 type PackV2 struct {
-	Schema   string           `json:"schema"`
-	Metadata profilepack.Pack `json:"metadata"`
-	Messages []MessageRule    `json:"messages"`
+	datatypes []DatatypeRule
+	Schema    string           `json:"schema"`
+	Metadata  profilepack.Pack `json:"metadata"`
+	Messages  []MessageRule    `json:"messages"`
 }
 type MessageRule struct {
 	HL7Version string        `json:"hl7_version"`

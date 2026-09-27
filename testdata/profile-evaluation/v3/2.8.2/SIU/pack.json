@@ -1,0 +1,121 @@
+{
+  "schema": "readmit-profile-pack/v3",
+  "metadata": {
+    "schema": "readmit-profile-pack/v1",
+    "pack": {
+      "id": "owned-siu-2-8-2",
+      "version": "1"
+    },
+    "provenance": {
+      "source": {
+        "name": "Readmit owned fixture authors",
+        "location": "testdata/profile-evaluation/v3/2.8.2/SIU",
+        "revision": "1"
+      },
+      "extraction": {
+        "method": "Hand-authored finite fictional interface; no upstream metadata copied.",
+        "content_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "license": {
+        "spdx": "LicenseRef-readmit-fixture",
+        "notice": "testdata/README.md"
+      },
+      "rights_review": {
+        "status": "approved",
+        "reference": "testdata/README.md"
+      }
+    },
+    "coverage": [
+      {
+        "hl7_version": "2.8.2",
+        "family": "SIU",
+        "parse": "supported",
+        "labels": "unsupported",
+        "structural": "unsupported",
+        "workflow": "unsupported"
+      }
+    ],
+    "labels": []
+  },
+  "messages": [
+    {
+      "hl7_version": "2.8.2",
+      "family": "SIU",
+      "structure": "SIU_S12",
+      "sequence": [
+        {
+          "name": "header",
+          "segment": "MSH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "appointment",
+          "segment": "SCH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "declared-time",
+          "segment": "ZTM",
+          "min": 1,
+          "max": "1"
+        }
+      ],
+      "segments": []
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "SIU",
+      "structure": "SIU_S13",
+      "sequence": [
+        {
+          "name": "header",
+          "segment": "MSH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "appointment",
+          "segment": "SCH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "declared-time",
+          "segment": "ZTM",
+          "min": 1,
+          "max": "1"
+        }
+      ],
+      "segments": []
+    },
+    {
+      "hl7_version": "2.8.2",
+      "family": "SIU",
+      "structure": "SIU_S15",
+      "sequence": [
+        {
+          "name": "header",
+          "segment": "MSH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "appointment",
+          "segment": "SCH",
+          "min": 1,
+          "max": "1"
+        },
+        {
+          "name": "declared-time",
+          "segment": "ZTM",
+          "min": 1,
+          "max": "1"
+        }
+      ],
+      "segments": []
+    }
+  ],
+  "datatypes": []
+}
