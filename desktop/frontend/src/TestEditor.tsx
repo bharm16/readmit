@@ -4,10 +4,10 @@
 // Checks are a list; each is edited in its own sheet. Nothing here sends,
 // runs or saves until the final button, and a refused save keeps every input.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { RetentionStatus, useRetainer } from "./drafting";
 import {
   approveExpectations,
   listWholeCatalog,
-  listReceiverSnapshots,
   newIntentId,
   saveItem,
   suggestExpectations,
@@ -22,13 +22,14 @@ import {
   type SaveItemResult,
   type TestBoundary,
   type TestContext,
+  type EditorDraft,
   type TestDraftDocument,
   type TestExpectation,
   type TestExpectationOperator,
   type TestLinks,
   type TestMessage,
   type TestProposal,
-  type ReceiverSnapshot,
+  type TestObservation,
   type TestReset,
 } from "./bindings";
 import { FIELD_STATES, TEST_BOUNDARIES, TEST_CHECKS } from "./display";
@@ -51,6 +52,21 @@ export type EditorStart = {
   ref?: ItemRef;
   /** Notices the facade gave when opening, such as dropped selections. */
   notices?: FieldProblem[];
+  /** The retained draft this editor was reopened from, if any. */
+  retained?: EditorDraft;
+  /** What is saved, which a reopened draft is compared with. */
+  baseline?: TestWork | null;
+};
+
+/** A test editor's unsaved work as the drafts store keeps it: the whole
+ * draft and where the editor was, and nothing about a run or a send. */
+export const TEST_EDITOR_DRAFT = "readmit-desktop-test-editor/v1";
+export type TestEditorContent = {
+  schema: typeof TEST_EDITOR_DRAFT;
+  mode: "new" | "edit";
+  step: "setup" | "checks" | "review";
+  case?: ItemRef;
+  draft: { name: string; test: TestDraftDocument; test_links: TestLinks };
 };
 
 type Step = "setup" | "checks" | "review";
@@ -152,8 +168,11 @@ export function useTestEditor({
   checkGroups = [],
   addCheckGroup = null,
   onCheckGroupAdded,
+  inspectedField,
 }: {
   start: EditorStart | null;
+  /** The field inspected in the open case, which Add ACK field offers first. */
+  inspectedField?: string | undefined;
   context: () => RequestContext;
   cases: CatalogItem[];
   environments: CatalogItem[];
@@ -189,10 +208,10 @@ export function useTestEditor({
     | { kind: "run" }
   >(null);
   const [removed, setRemoved] = useState<{ check: TestExpectation; index: number } | null>(null);
-  const [snapshots, setSnapshots] = useState<ReceiverSnapshot[] | null>(null);
   const [inspecting, setInspecting] = useState<TestExpectation | null>(null);
   const [intent, setIntent] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const retainer = useRetainer();
 
   useEffect(() => {
     // Use in test adds its group as an unsaved change of this draft.
@@ -200,10 +219,13 @@ export function useTestEditor({
     const adding = start?.work && addCheckGroup && !linked.some((ref) => ref.id === addCheckGroup.id);
     setWork(start?.work ? (adding ? { ...start.work, links: { ...start.work.links, checks: [...linked, addCheckGroup!] } } : start.work) : null);
     if (start?.work && addCheckGroup) onCheckGroupAdded?.();
-    setOriginal(start?.work ? JSON.stringify(start.work) : "");
+    // A reopened draft differs from what is saved, so it reads as unsaved.
+    setOriginal(start?.retained ? JSON.stringify(start.baseline ?? null) : start?.work ? JSON.stringify(start.work) : "");
     setTestContext(start?.context ?? null);
     setNotices(start?.notices ?? []);
-    setStep("setup");
+    setStep(start?.retained ? ((start.retained.content as TestEditorContent).step ?? "setup") : "setup");
+    if (start?.retained) retainer.keepId(start.retained.id);
+    else retainer.clear();
     setProblems([]);
     setFailure(null);
     setSheet(null);
@@ -216,25 +238,49 @@ export function useTestEditor({
   const boundary = (work?.test.boundary ?? "") as TestBoundary | "";
   const ledger = boundary === "appointment-ledger";
 
-  useEffect(() => {
-    setSnapshots(null);
-    if (!environment || !ledger) return;
-    let live = true;
-    void listReceiverSnapshots({ context: context(), ref: environment.ref }).then((answer) => {
-      if (live) setSnapshots(answer.snapshots);
-    });
-    return () => {
-      live = false;
-    };
-  }, [environment?.ref.id, ledger]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const dirty = work !== null && JSON.stringify(work) !== original;
+
+  // Unsaved work is retained as it changes, so a restart returns it; saving
+  // or discarding it drops the retained copy.
+  const retained = JSON.stringify(work);
+  useEffect(() => {
+    const scope = context();
+    if (!start || !work || !scope.project) return;
+    if (!dirty) {
+      if (retainer.currentId() !== "") void retainer.dropCurrent();
+      return;
+    }
+    const content: TestEditorContent = {
+      schema: TEST_EDITOR_DRAFT,
+      mode: start.mode,
+      step,
+      ...(testContext?.case ? { case: testContext.case } : {}),
+      draft: { name: work.name, test: work.test, test_links: work.links },
+    };
+    retainer.save({
+      id: "",
+      kind: "test-draft",
+      workspace: scope.project,
+      case: "",
+      identity: "",
+      content_schema: TEST_EDITOR_DRAFT,
+      content,
+      ...(start.mode === "edit" && start.ref && scope.project_id ? { item: { project_id: scope.project_id, ref: start.ref } } : {}),
+    });
+  }, [retained, step, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
   const messages = testContext?.messages ?? [];
+  const observations = testContext?.observations ?? [];
   const checks = work?.test.expectations ?? [];
   const readOnly = testContext?.read_only === true;
   const mode = start?.mode ?? "new";
 
   // Any change to the draft makes the next submit a new intent.
+  // Acknowledgements read no observation: the test and its link drop it together.
+  const withoutObservation = (test: TestWork["test"]) => {
+    if (!work) return;
+    const { observation: _dropped, ...links } = work.links;
+    change({ ...work, test, links });
+  };
   const change = (next: TestWork) => {
     setWork(next);
     setIntent(null);
@@ -257,6 +303,7 @@ export function useTestEditor({
       });
       if (answer.outcome === "saved" && answer.saved) {
         setOriginal(JSON.stringify(work));
+        await retainer.dropCurrent();
         onSaved(answer.saved);
         return true;
       }
@@ -312,7 +359,7 @@ export function useTestEditor({
       <div className="value-with-action">
         <span className="field-label">Case</span>
         <span>{testContext?.case_name || caseItem?.name || "—"}</span>
-        {mode === "new" && !readOnly ? (
+        {!readOnly ? (
           <button type="button" onClick={() => setSheet({ kind: "case" })}>
             Change
           </button>
@@ -367,7 +414,8 @@ export function useTestEditor({
               onChange={() => {
                 const affected = checks.filter(recordCheck);
                 if (choice === "ack-contract" && affected.length > 0) setSheet({ kind: "boundary", next: choice });
-                else changeTest({ boundary: choice, ...(choice === "ack-contract" ? { observation: "" } : {}) });
+                else if (choice === "ack-contract") withoutObservation({ ...work.test, boundary: choice, observation: "" });
+                else changeTest({ boundary: choice });
               }}
             />
             {TEST_BOUNDARIES[choice]}
@@ -381,20 +429,20 @@ export function useTestEditor({
           <label htmlFor="test-observation">Observation</label>
           <select
             id="test-observation"
-            value={work.test.observation}
-            disabled={readOnly || !environment}
+            value={work.links.observation ?? ""}
+            disabled={readOnly}
             aria-invalid={problemsAt(problems, "test.observation").length > 0 || undefined}
-            onChange={(event) => changeTest({ observation: event.target.value })}
+            onChange={(event) => {
+              const { observation: _dropped, ...links } = work.links;
+              change({ ...work, links: event.target.value ? { ...links, observation: event.target.value } : links });
+            }}
           >
-            <option value="">{environment ? (snapshots && snapshots.length === 0 ? "No saved observations" : "Choose an observation") : "Choose an environment first"}</option>
-            {(snapshots ?? []).map((snapshot) => (
-              <option key={snapshot.entry} value={snapshot.entry}>
-                {snapshotLabel(snapshot)}
+            <option value="">{observations.length === 0 ? "No observations" : "Choose an observation"}</option>
+            {observations.map((observation) => (
+              <option key={observation.ref.id} value={observation.ref.id} disabled={!observation.readable}>
+                {observation.readable ? observation.name : `${observation.name} (${observation.reason ?? "not readable by a test"})`}
               </option>
             ))}
-            {work.test.observation && !(snapshots ?? []).some((snapshot) => snapshot.entry === work.test.observation) ? (
-              <option value={work.test.observation}>Saved observation</option>
-            ) : null}
           </select>
           <FieldProblems problems={problems} field="test.observation" />
         </>
@@ -606,7 +654,7 @@ export function useTestEditor({
           { label: "Messages", value: selected.map((id) => messageLabel(messages.find((m) => m.id === id), id)).join(", ") || "—" },
           { label: "Environment", value: environment?.name ?? "—" },
           { label: "Outcome", value: boundary ? TEST_BOUNDARIES[boundary] : "—" },
-          ...(ledger ? [{ label: "Observation", value: observationLabel(work.test.observation, snapshots) }] : []),
+          ...(ledger ? [{ label: "Observation", value: observationName(work.links.observation, observations) }] : []),
           { label: "Reset", value: resetValue },
         ]}
       />
@@ -708,6 +756,11 @@ export function useTestEditor({
           {failure}
         </p>
       ) : null}
+      {retainer.retention.state === "not-retained" || retainer.retention.state === "conflict" ? (
+        <RetentionStatus retention={retainer.retention} onRetry={retainer.retry} onKeepAsNew={retainer.keepAsNew} />
+      ) : start.retained && dirty ? (
+        <span className="badge">Unsaved</span>
+      ) : null}
       {readOnly && (testContext?.unsupported.length ?? 0) > 0 ? (
         <ul className="problem-list" aria-label="Clauses this editor cannot change">
           {testContext!.unsupported.map((clause) => (
@@ -772,6 +825,7 @@ export function useTestEditor({
           operator={sheet.operator}
           check={sheet.index === null ? null : (checks[sheet.index] ?? null)}
           sentMessages={selected.map((id) => ({ id, label: messageLabel(messages.find((m) => m.id === id), id) }))}
+          inspectedField={inspectedField}
           onClose={() => setSheet(null)}
           onApply={(check) => {
             const next = [...checks];
@@ -797,7 +851,7 @@ export function useTestEditor({
               className="primary"
               onClick={() => {
                 if (sheet?.kind !== "boundary") return;
-                changeTest({ boundary: sheet.next, observation: "", expectations: checks.filter((check) => !recordCheck(check)) });
+                if (work) withoutObservation({ ...work.test, boundary: sheet.next, observation: "", expectations: checks.filter((check) => !recordCheck(check)) });
                 setSheet(null);
               }}
             >
@@ -832,7 +886,7 @@ export function useTestEditor({
       ) : null}
       <Modal
         open={sheet?.kind === "leave"}
-        title={mode === "new" ? "Discard this test?" : "Save changes?"}
+        title="Save changes?"
         size="small"
         onClose={() => setSheet(null)}
         footer={
@@ -844,28 +898,27 @@ export function useTestEditor({
               type="button"
               onClick={() => {
                 setSheet(null);
+                void retainer.dropCurrent();
                 onClose();
               }}
             >
               Discard
             </button>
-            {mode === "edit" ? (
-              <button
-                type="button"
-                className="primary"
-                disabled={busy || saving}
-                onClick={async () => {
-                  setSheet(null);
-                  await save();
-                }}
-              >
-                Save
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || saving}
+              onClick={async () => {
+                setSheet(null);
+                await save();
+              }}
+            >
+              Save
+            </button>
           </div>
         }
       >
-        <p>{mode === "new" ? "The draft is not kept." : `${work?.name || "This test"} has unsaved changes.`}</p>
+        <p>{`${work?.name || "This test"} has unsaved changes.`}</p>
       </Modal>
       <CheckDetails check={inspecting} messages={messages} onClose={() => setInspecting(null)} />
       <Modal
@@ -911,15 +964,10 @@ export function useTestEditor({
   };
 }
 
-/** A snapshot as a person names it: when it was collected. */
-export function snapshotLabel(snapshot: ReceiverSnapshot): string {
-  return snapshot.collected_at ? `Collected ${new Date(snapshot.collected_at).toLocaleString()}` : "Undated observation";
-}
-
-export function observationLabel(entry: string, snapshots: ReceiverSnapshot[] | null): string {
-  if (!entry) return "—";
-  const snapshot = snapshots?.find((candidate) => candidate.entry === entry);
-  return snapshot ? snapshotLabel(snapshot) : "Saved observation";
+/** The named observation a test reads, by its name. */
+export function observationName(id: string | undefined, observations: TestObservation[]): string {
+  if (!id) return "—";
+  return observations.find((observation) => observation.ref.id === id)?.name ?? "Removed observation";
 }
 
 /** A test's checks as rows that open their full read-only details. */
@@ -1115,6 +1163,7 @@ export function CheckSheet({
   operator,
   check,
   sentMessages,
+  inspectedField,
   onClose,
   onApply,
 }: {
@@ -1122,13 +1171,17 @@ export function CheckSheet({
   operator: TestExpectationOperator;
   check: TestExpectation | null;
   sentMessages: { id: string; label: string }[];
+  /** The field inspected in the case, offered first when it is a supported
+   * acknowledgement position; never its value. */
+  inspectedField?: string | undefined;
   onClose: () => void;
   onApply: (check: TestExpectation) => void;
 }) {
   // Read inside the window's tree: the positions the facade supports.
   const positions = useVocabulary()?.ack_positions ?? [];
   const [message, setMessage] = useState(check?.message ?? sentMessages[0]?.id ?? "");
-  const [selector, setSelector] = useState(check?.selector ?? positions[0] ?? "");
+  const inspectedPosition = inspectedField?.replace(/\[\d+\]/g, "");
+  const [selector, setSelector] = useState(check?.selector ?? (inspectedPosition && positions.includes(inspectedPosition) ? inspectedPosition : positions[0]) ?? "");
   const [state, setState] = useState<Exclude<FieldState, "">>((check?.field?.state || "present") as Exclude<FieldState, "">);
   const [text, setText] = useState(check?.field?.text ?? "");
   const [count, setCount] = useState(check?.count !== undefined ? String(check.count) : "");
@@ -1295,7 +1348,12 @@ function SuggestSheet({
   const [proposals, setProposals] = useState<TestProposal[]>(originProposals);
   const [identity, setIdentity] = useState("");
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  // Edits a person made to a proposal; an edit is not a decision about it.
+  const [edits, setEdits] = useState<Record<string, TestExpectation>>({});
+  const [editing, setEditing] = useState<TestProposal | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // The run the shown proposals came from, whichever run is chosen now.
+  const [previewed, setPreviewed] = useState<CatalogItem | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -1324,9 +1382,11 @@ function SuggestSheet({
       setProblem(answer.reason ?? "No checks were suggested.");
       return;
     }
+    setPreviewed(byRef);
     setIdentity(answer.test.suggestions?.origin.identity ?? "");
     setProposals(answer.test.proposals ?? []);
     setDecisions({});
+    setEdits({});
   };
 
   return (
@@ -1340,26 +1400,31 @@ function SuggestSheet({
       onSubmit={async (): Promise<SubmitFailure | null> => {
         const existing = work.test.expectations;
         if (!fromRun) {
-          const added = accepted.map((proposal, index) => ({ ...proposal.check, id: nextId([...existing, ...accepted.slice(0, index).map((entry) => entry.check)]) }));
+          const added = accepted.map((proposal, index) => ({ ...(edits[proposal.id] ?? proposal.check), id: nextId([...existing, ...accepted.slice(0, index).map((entry) => entry.check)]) }));
           onApply([...existing, ...added]);
           return null;
         }
-        if (!byRef) return { reason: "Choose a run." };
+        if (!previewed) return { reason: "Choose a run." };
+        // An edited proposal is added as the person wrote it, not as approved.
+        const edited = accepted.filter((proposal) => edits[proposal.id]);
         const answer = await approveExpectations({
           workspace: "",
           case: "",
           identity: "",
           context: context(),
-          run: byRef.ref,
+          run: previewed.ref,
           draft: work.test,
           review: {
             result: "",
             identity,
-            decisions: proposals.filter((proposal) => decisions[proposal.id] && decisions[proposal.id] !== "undecided").map((proposal) => ({ suggestion: proposal.id, approved: decisions[proposal.id] === "accept" })),
+            decisions: proposals
+              .filter((proposal) => decisions[proposal.id] && decisions[proposal.id] !== "undecided" && !edited.includes(proposal))
+              .map((proposal) => ({ suggestion: proposal.id, approved: decisions[proposal.id] === "accept" })),
           },
         });
         if (answer.state !== "completed" || !answer.test) return { reason: answer.reason ?? "The checks were not added." };
-        onApply(answer.test.draft.expectations);
+        const approved = answer.test.draft.expectations;
+        onApply([...approved, ...edited.map((proposal, index) => ({ ...edits[proposal.id]!, id: nextId([...approved, ...edited.slice(0, index).map((entry) => edits[entry.id]!)]) }))]);
         return null;
       }}
     >
@@ -1385,13 +1450,20 @@ function SuggestSheet({
       {proposals.length > 0 ? (
         <ul className="proposal-list" aria-label="Proposed checks">
           {proposals.map((proposal) => {
-            const title = checkTitle(proposal.check, messages);
+            const shown = edits[proposal.id] ?? proposal.check;
+            const title = checkTitle(shown, messages);
             return (
               <li key={proposal.id}>
                 <span>
                   {title}
-                  {proposal.reason ? <span className="row-reason">{proposal.reason}</span> : <span className="row-reason">{checkExpected(proposal.check)}</span>}
+                  {proposal.reason ? <span className="row-reason">{proposal.reason}</span> : <span className="row-reason">{checkExpected(shown)}{edits[proposal.id] ? " · Edited" : ""}</span>}
+                  <span className="row-reason">{proposal.source === "run" ? `From run ${previewed?.name ?? ""}` : "From the finding"}</span>
                 </span>
+                {proposal.reason ? null : (
+                  <button type="button" className="quiet" onClick={() => setEditing(proposal)}>
+                    Edit
+                  </button>
+                )}
                 <span role="radiogroup" aria-label={`Decision for ${title}`}>
                   {(["accept", "reject"] as const).map((choice) => (
                     <label key={choice} className="check">
@@ -1410,6 +1482,19 @@ function SuggestSheet({
             );
           })}
         </ul>
+      ) : null}
+      {editing ? (
+        <CheckSheet
+          open
+          operator={editing.check.operator as TestExpectationOperator}
+          check={edits[editing.id] ?? editing.check}
+          sentMessages={work.test.messages.map((id) => ({ id, label: messageLabel(messages.find((m) => m.id === id), id) }))}
+          onClose={() => setEditing(null)}
+          onApply={(check) => {
+            setEdits((held) => ({ ...held, [editing.id]: check }));
+            setEditing(null);
+          }}
+        />
       ) : null}
     </FormDialog>
   );

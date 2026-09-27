@@ -214,6 +214,17 @@ nothing into the project. A reviewed derivation of an export review requires
 a specific decision in its final click: the inventory it showed, declared
 complete by its digest.
 
+The #553 follow-up adds `observation` to the links before any release carried
+it: the catalog identity of the named observation a test of appointment
+records reads. A save fixes the receiver ledger the
+observation's file-export source names into the spec's `observation.path`,
+and a run reads that. A run of a test whose links name its environment
+follows that environment: the spec's target is the revision it was saved
+against, and the run executes against the target of the environment's current
+revision, retaining the spec as executed so its evidence names the exact
+target used. A test that names no environment runs the target its spec names.
+Suite runs and hub schedules still run the target their specs name.
+
 #565 adds one more shell document, `readmit-desktop-storage/v1`: the folder
 backups are kept in, and each backup, archive copy and rollback copy the
 application wrote there — its folder, the identity its completion marker

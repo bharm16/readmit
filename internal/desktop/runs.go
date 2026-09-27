@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
@@ -85,9 +88,13 @@ func (a *App) ResumeDurableRun(request ResumeRunRequest) ResumeRunResult {
 		if err != nil {
 			return ResumeRunResult{State: Failed, Reason: "the new run folder must be one entry of the open workspace"}
 		}
+		saved, declined := runOfEntry(root, request.Spec)
+		if declined.state != "" {
+			return ResumeRunResult{State: declined.state, Reason: declined.reason}
+		}
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
-		resumed, err := durablerun.Resume(ctx, job, spec, output)
+		resumed, err := durablerun.ResumeAt(ctx, job, spec, saved.target, output)
 		if err != nil {
 			if resumed.Schema != "" {
 				return ResumeRunResult{State: Failed, Reason: "the resumed run could not finish; recover its new output before any further execution", Resume: &resumed}
@@ -189,7 +196,11 @@ func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
 		if err != nil {
 			return DurableRunResult{State: Failed, Reason: "the run folder must be one new entry of the open workspace"}
 		}
-		prepared, err := durablerun.Prepare(specPath)
+		saved, declined := runOfEntry(root, request.Spec)
+		if declined.state != "" {
+			return DurableRunResult{State: declined.state, Reason: declined.reason + "; nothing was sent"}
+		}
+		prepared, err := durablerun.PrepareAt(specPath, saved.target)
 		if err != nil {
 			return DurableRunResult{State: Failed, Reason: "the saved test could not be prepared; nothing was sent"}
 		}
@@ -272,9 +283,17 @@ func (r *RunPreflightResult) refuse(state State, reason string) { r.State, r.Rea
 // document's identity — and is what execution pins itself to, so a changed
 // input is refused by the send rather than read as the input that was
 // preflighted.
+//
+// Test names the saved test and the version of it the spec entry is, when it
+// is one the project's catalog holds; Environment names the environment that
+// version runs against and the exact revision of it this execution follows,
+// whose target is Target. Saving the environment again changes the identity,
+// so the send refuses until the test is preflighted again.
 type RunPreflight struct {
 	Kind         string          `json:"kind"` // "test" or "suite"
 	Spec         string          `json:"spec"`
+	Test         *ItemRef        `json:"test,omitzero"`
+	Environment  *ItemRef        `json:"environment,omitzero"`
 	Name         string          `json:"name"`
 	Schema       string          `json:"schema"`
 	Identity     string          `json:"identity"`
@@ -389,12 +408,81 @@ func (a *App) PreflightRun(request RunPreflightRequest) RunPreflightResult {
 		if kind := declaredEntryKind(root, request.Spec); kind != SpecArtifact {
 			return RunPreflightResult{State: Failed, Reason: "that entry does not declare a saved test this release executes"}
 		}
-		return a.preflightTest(ctx, root, request, path)
+		saved, declined := runOfEntry(root, request.Spec)
+		if declined.state != "" {
+			return RunPreflightResult{State: declined.state, Reason: declined.reason}
+		}
+		return a.preflightTest(ctx, root, request, path, saved)
 	})
 }
 
-func (a *App) preflightTest(ctx context.Context, root string, request RunPreflightRequest, specPath string) RunPreflightResult {
-	prepared, err := durablerun.Prepare(specPath)
+// savedRun is what one spec entry is as a saved test of the project: the test
+// and the revision of it the entry holds and, when that revision names the
+// environment it runs against, that environment's current revision and the
+// project entry its target is, which a run executes against in place of the
+// target the spec was saved naming. A spec the project's catalog holds as no
+// test runs exactly as it names.
+type savedRun struct {
+	test        *ItemRef
+	environment *ItemRef
+	target      string
+}
+
+// runOfEntry resolves the saved test a spec entry is, and the environment it
+// follows, from the project's catalog. It reads and never writes.
+func runOfEntry(root, entry string) (savedRun, refusal) {
+	store, err := catalog.Open(root)
+	if err != nil {
+		return savedRun{}, refusal{}
+	}
+	document, present, err := store.Read()
+	if err != nil {
+		return savedRun{}, refusal{Failed, "the project's catalog cannot be read, so the environment this test follows is unknown"}
+	}
+	if !present {
+		return savedRun{}, refusal{}
+	}
+	loaded := &loadedCatalog{root: root, store: store, document: document}
+	for _, item := range document.Items {
+		if item.Kind != string(TestItem) {
+			continue
+		}
+		for _, revision := range item.Revisions {
+			if !slices.ContainsFunc(revision.Members, func(member catalog.Member) bool {
+				return member.Role == primaryRole(TestItem) && member.Path == entry
+			}) {
+				continue
+			}
+			label := strconv.Itoa(revision.Number)
+			run := savedRun{test: &ItemRef{Kind: TestItem, ID: item.ID, Revision: label}}
+			saved, err := loaded.testOf(item, label)
+			if err != nil {
+				return savedRun{}, refusal{Failed, "this test cannot be read: " + err.Error()}
+			}
+			if saved.links == nil || saved.links.Environment == "" {
+				return run, refusal{}
+			}
+			index := document.Find(saved.links.Environment)
+			if index < 0 || document.Items[index].Kind != string(EnvironmentItem) || loaded.removed(document.Items[index]) {
+				return savedRun{}, refusal{Failed, "the environment this test runs against is no longer in the project; choose another in the test's Setup"}
+			}
+			environment := document.Items[index]
+			members, err := loaded.environmentOf(environment)
+			if err != nil {
+				return savedRun{}, refusal{Failed, "the environment this test runs against cannot be read: " + err.Error()}
+			}
+			if run.target = loaded.entryOf(members.paths["target"]); run.target == "" {
+				return savedRun{}, refusal{Failed, "the environment this test runs against has no target in the project"}
+			}
+			run.environment = &ItemRef{Kind: EnvironmentItem, ID: environment.ID, Revision: environment.RevisionLabel()}
+			return run, refusal{}
+		}
+	}
+	return savedRun{}, refusal{}
+}
+
+func (a *App) preflightTest(ctx context.Context, root string, request RunPreflightRequest, specPath string, saved savedRun) RunPreflightResult {
+	prepared, err := durablerun.PrepareAt(specPath, saved.target)
 	if err != nil {
 		return RunPreflightResult{State: Failed, Reason: "the saved test could not be prepared: its case, target or selection did not verify"}
 	}
@@ -414,6 +502,8 @@ func (a *App) preflightTest(ctx context.Context, root string, request RunPreflig
 	preflight := RunPreflight{
 		Kind:         "test",
 		Spec:         request.Spec,
+		Test:         saved.test,
+		Environment:  saved.environment,
 		Name:         spec.Name,
 		Schema:       spec.Schema,
 		Identity:     identity,

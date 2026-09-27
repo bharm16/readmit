@@ -84,7 +84,7 @@ func ExecuteObserved(ctx context.Context, plan *Plan, output string, observer re
 	result.ObservationBoundary = plan.Boundary()
 	result.Assertions = pending(plan.spec)
 	currentSpec, err := readLocal(plan.specPath, MaxSpecBytes)
-	if err != nil || !bytes.Equal(currentSpec, plan.raw) {
+	if err != nil || !bytes.Equal(currentSpec, plan.saved) {
 		result.ErrorClass = "configuration_changed"
 		return plan.named(finish(writer, result))
 	}

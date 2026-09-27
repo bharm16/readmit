@@ -244,7 +244,8 @@ const DRAFT_OBJECTS: Record<string, string> = {
 /** The name a draft's own values give its object, when they carry one. */
 function draftName(draft: EditorDraft): string {
   const content = typeof draft.content === "object" && draft.content !== null ? (draft.content as Record<string, unknown>) : {};
-  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : undefined;
+  const inner = typeof content.draft === "object" && content.draft !== null ? (content.draft as Record<string, unknown>) : {};
+  const named = draft.kind === "note" ? content.title : draft.kind === "case" ? content.name : draft.kind === "test-draft" ? inner.name : undefined;
   if (typeof named === "string" && named.trim() !== "") return named.trim();
   return draft.case;
 }

@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -639,5 +640,38 @@ func TestEmptyNullAndOmittedExpectedValuesAreDistinct(t *testing.T) {
 				t.Fatal("field state comparison collapsed null, empty, or omitted")
 			}
 		})
+	}
+}
+
+// A spec prepared at another target executes against that target and seals
+// the spec as executed, naming it; the target it names prepares the saved
+// bytes exactly. The saved file still decides whether the spec changed.
+func TestASpecPreparedAtAnotherTargetSealsTheSpecAsExecuted(t *testing.T) {
+	dir, path, spec := setup(t)
+	target(t, dir, "127.0.0.1:2575")
+	write(t, filepath.Join(dir, "moved-target.json"), jsonBytes(t, replay.Target{Schema: replay.TargetSchema, TestEndpoint: true, Address: "127.0.0.1:2576", Transport: "plain", ConnectTimeout: "100ms", MessageTimeout: "300ms", MaxACKBytes: 4096}))
+	named, err := testrunner.Prepare(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := testrunner.PrepareAt(path, spec.Target)
+	if err != nil || same.SpecIdentity() != named.SpecIdentity() {
+		t.Fatalf("the target the spec names did not prepare the saved bytes: %v", err)
+	}
+	moved, err := testrunner.PrepareAt(path, "moved-target.json")
+	if err != nil || moved.Target().Address != "127.0.0.1:2576" || moved.SpecIdentity() == named.SpecIdentity() {
+		t.Fatalf("the spec was not prepared at the other target: %+v %v", moved, err)
+	}
+	executed, err := testrunner.DecodeSpec(moved.PinnedInputs().Spec)
+	if err != nil || executed.Target != "moved-target.json" || executed.Name != spec.Name || !reflect.DeepEqual(executed.Assertions, spec.Assertions) {
+		t.Fatalf("the sealed spec: %+v %v", executed, err)
+	}
+	if _, err := testrunner.PrepareAt(path, "absent-target.json"); err == nil {
+		t.Fatal("a target that is not there was prepared")
+	}
+	write(t, path, []byte("invalid"))
+	artifact, err := testrunner.Execute(context.Background(), moved, filepath.Join(dir, "changed-result"))
+	if err != nil || artifact.Result.ErrorClass != "configuration_changed" || artifact.Run != nil {
+		t.Fatal("a changed saved spec was executed at another target")
 	}
 }

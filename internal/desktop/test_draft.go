@@ -19,6 +19,8 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/guide"
+	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/testauthor"
@@ -31,13 +33,18 @@ import (
 // as one draft over its case, and one Save validates and publishes both
 // members in one revision through the catalog, or neither.
 //
-// A test pins the target of the environment revision it was saved against:
-// its spec names that revision's target file, as every readmit-test/v1 spec
-// names a file, so a later edit of the environment reaches the test when the
-// test is saved again.
+// A test follows its environment: its spec names the target of the
+// environment revision it was saved against, as every readmit-test/v1 spec
+// names a file, and a run of it executes against the target of that
+// environment's current revision instead, recording the exact target it used
+// in the spec it retains. A test that names no environment runs the target
+// its spec names.
 //
-// A test may also link reusable check groups, each by the exact version it
-// uses, which are decided against the retained evidence of each of its runs.
+// A test reads the named observation it links: the receiver ledger that
+// observation's source names is fixed into its spec when it is saved, and a
+// run reads that ledger. A test may also link reusable check groups, each by
+// the exact version it uses, which are decided against the retained evidence
+// of each of its runs.
 
 // TestLinksSchema is the contract of a test's links member.
 const TestLinksSchema = "readmit-test-links/v1"
@@ -91,12 +98,13 @@ const maxSourceBytes = 256
 const maxLinkedCheckGroups = 16
 
 // TestLinks is what a test names beside its spec: the catalog identity of the
-// environment it runs against, how its reset is decided, the tags a person
-// gave it, sorted, the check groups it links, each at the exact version it
-// uses, and where it was created from.
+// environment it runs against and of the observation it reads, how its reset
+// is decided, the tags a person gave it, sorted, the check groups it links,
+// each at the exact version it uses, and where it was created from.
 type TestLinks struct {
 	Schema      string      `json:"schema,omitzero"`
 	Environment string      `json:"environment,omitzero"`
+	Observation string      `json:"observation,omitzero"`
 	Reset       TestReset   `json:"reset,omitzero"`
 	Tags        []string    `json:"tags,omitzero"`
 	Checks      []ItemRef   `json:"checks,omitzero"`
@@ -136,17 +144,31 @@ type TestProposal struct {
 
 // TestContext is what a test editor shows beside the draft: the case it
 // sends, every occurrence of that case in source order with whether a test
-// can send it, the clauses of the saved spec the editor cannot represent,
-// the checks proposed and undecided, the exact bytes of the revision opened,
-// and whether it opens read-only: a historical revision or a test release.
+// can send it, the project's named observations with whether a test can read
+// each, the clauses of the saved spec the editor cannot represent, the checks
+// proposed and undecided, the exact bytes of the revision opened, and whether
+// it opens read-only: a historical revision or a test release.
 type TestContext struct {
-	Case        *ItemRef       `json:"case"`
-	CaseName    string         `json:"case_name"`
-	Messages    []TestMessage  `json:"messages"`
-	Unsupported []TestClause   `json:"unsupported"`
-	Proposals   []TestProposal `json:"proposals"`
-	Document    string         `json:"document,omitzero"`
-	ReadOnly    bool           `json:"read_only"`
+	Case         *ItemRef          `json:"case"`
+	CaseName     string            `json:"case_name"`
+	Messages     []TestMessage     `json:"messages"`
+	Observations []TestObservation `json:"observations"`
+	Unsupported  []TestClause      `json:"unsupported"`
+	Proposals    []TestProposal    `json:"proposals"`
+	Document     string            `json:"document,omitzero"`
+	ReadOnly     bool              `json:"read_only"`
+}
+
+// TestObservation is one named observation of the project, by its current
+// revision and name, and whether a test run can read it. A run reads a
+// receiver ledger, so an observation is readable when its source is a file
+// export of one readmit-observation/v1 ledger of the project; Reason says why
+// another one is not.
+type TestObservation struct {
+	Ref      ItemRef `json:"ref"`
+	Name     string  `json:"name"`
+	Readable bool    `json:"readable"`
+	Reason   string  `json:"reason,omitzero"`
 }
 
 // TestMessage is one occurrence of the case a test sends: its identity, its
@@ -207,6 +229,14 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		}
 		environment, target = members, entry
 	}
+	ledger := ""
+	if links.Observation != "" {
+		entry, problem := scope.observationOfTest(links.Observation)
+		if problem != "" {
+			problems = append(problems, FieldProblem{Field: "test.observation", Problem: problem})
+		}
+		ledger = entry
+	}
 	for i, ref := range links.Checks {
 		if problem := scope.checkGroupOfTest(ref); problem != "" {
 			problems = append(problems, FieldProblem{Field: testField("checks", i), Problem: problem})
@@ -218,6 +248,11 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		test := *draft.Test
 		if target != "" {
 			test.Target = target
+		}
+		if links.Observation != "" && test.Boundary != testrunner.LedgerBoundary {
+			problems = append(problems, FieldProblem{Field: "test.observation", Problem: "only a test of appointment records reads an observation"})
+		} else if ledger != "" {
+			test.Observation = ledger
 		}
 		if links.Reset == ResetFromEnvironment && environment != nil {
 			reset, err := environmentReset(environment)
@@ -233,7 +268,8 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		}
 		named := testNameProblem(test.Name)
 		for _, problem := range testauthor.Problems(scope.root, source, test) {
-			if source == nil && problem.Stage == testauthor.StageCase || named != nil && problem.Stage == testauthor.StageName {
+			if source == nil && problem.Stage == testauthor.StageCase || named != nil && problem.Stage == testauthor.StageName ||
+				links.Observation != "" && ledger == "" && problem.Stage == testauthor.StageObservation {
 				continue
 			}
 			if named != nil && problem.Stage != testauthor.StageCase {
@@ -266,6 +302,8 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 			problems = append(problems, FieldProblem{Field: "test_document", Problem: err.Error()})
 		case target != "" && spec.Target != target:
 			problems = append(problems, FieldProblem{Field: "test.environment", Problem: "the document names another target than the environment this test runs against"})
+		case links.Observation != "" && spec.Observation.Path != ledger:
+			problems = append(problems, FieldProblem{Field: "test.observation", Problem: "the document reads another ledger than the observation this test reads"})
 		default:
 			if named := testNameProblem(spec.Name); named != nil {
 				problems = append(problems, *named)
@@ -283,7 +321,7 @@ func validateTestDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, Ite
 		return nil, normalized, problems
 	}
 	staged := []catalog.Staged{{Role: "test", File: "test.json", Data: data}}
-	if links.Environment != "" || links.Reset != "" || len(links.Tags) > 0 || len(links.Checks) > 0 || links.Source != nil {
+	if links.Environment != "" || links.Observation != "" || links.Reset != "" || len(links.Tags) > 0 || len(links.Checks) > 0 || links.Source != nil {
 		encoded, err := encodeMember(links)
 		if err != nil {
 			return nil, normalized, append(problems, FieldProblem{Field: "test_links", Problem: err.Error()})
@@ -315,6 +353,9 @@ func checkTestLinks(links TestLinks) []FieldProblem {
 	problems := []FieldProblem{}
 	if links.Environment != "" && !catalog.ValidID(links.Environment) {
 		problems = append(problems, FieldProblem{Field: "test.environment", Problem: "an environment is named by its identity in the project"})
+	}
+	if links.Observation != "" && !catalog.ValidID(links.Observation) {
+		problems = append(problems, FieldProblem{Field: "test.observation", Problem: "an observation is named by its identity in the project"})
 	}
 	if len(links.Checks) > maxLinkedCheckGroups {
 		problems = append(problems, FieldProblem{Field: "test.checks", Problem: "a test links at most " + strconv.Itoa(maxLinkedCheckGroups) + " check groups"})
@@ -411,6 +452,89 @@ func (s draftScope) environmentOfTest(id string) (*environmentMembers, string, s
 		return nil, "", "that environment's target is not one entry of the project"
 	}
 	return members, entry, ""
+}
+
+// errNoLedger is why a named observation cannot be read by a test run.
+var errNoLedger = errors.New("only a receiver ledger saved as a file can be read by a test")
+
+// observationOfTest resolves an observation a test names to the project entry
+// of the receiver ledger its source reads, which the test's spec names.
+func (s draftScope) observationOfTest(id string) (string, string) {
+	if s.loaded == nil {
+		return "", "the project holds no such observation"
+	}
+	index := s.loaded.document.Find(id)
+	if index < 0 || s.loaded.document.Items[index].Kind != string(ObservationItem) || s.loaded.removed(s.loaded.document.Items[index]) {
+		return "", "the project holds no such observation"
+	}
+	entry, err := s.loaded.ledgerOf(s.loaded.document.Items[index])
+	if err != nil {
+		return "", err.Error()
+	}
+	return entry, ""
+}
+
+// ledgerOf is the project entry of the receiver ledger an observation's
+// current source reads: a file export whose file is one entry of the project
+// declaring and holding a readmit-observation/v1 ledger.
+func (c *loadedCatalog) ledgerOf(item catalog.Item) (string, error) {
+	paths, availability, reason := c.backing(item)
+	if availability != ItemAvailable {
+		return "", errors.New(reason)
+	}
+	source, _, err := operation.ValidateObservationSource(paths[primaryRole(ObservationItem)])
+	if err != nil {
+		return "", errors.New("that observation cannot be read: " + err.Error())
+	}
+	if source.Observes.Kind != observesource.FileExport || source.File == nil {
+		return "", errNoLedger
+	}
+	entry := c.entryOf(artifactpath.JoinReference(filepath.Dir(paths[primaryRole(ObservationItem)]), source.File.Path))
+	if entry == "" {
+		return "", errNoLedger
+	}
+	data, err := boundedFile(filepath.Join(c.root, entry), observation.MaxBytes)
+	if err != nil {
+		return "", errNoLedger
+	}
+	if _, err := observation.Decode(data); err != nil {
+		return "", errNoLedger
+	}
+	return entry, nil
+}
+
+// observationByLedger is the observation whose current source reads the
+// ledger a spec names, for a test saved before it recorded its observation.
+func (c *loadedCatalog) observationByLedger(entry string) string {
+	for _, item := range c.document.Items {
+		if item.Kind != string(ObservationItem) || c.removed(item) {
+			continue
+		}
+		if ledger, err := c.ledgerOf(item); err == nil && ledger == entry {
+			return item.ID
+		}
+	}
+	return ""
+}
+
+// testObservations are the project's named observations, each with whether a
+// test run can read it.
+func (c *loadedCatalog) testObservations() []TestObservation {
+	observations := []TestObservation{}
+	for _, item := range c.document.Items {
+		if item.Kind != string(ObservationItem) || c.removed(item) {
+			continue
+		}
+		shown := TestObservation{Ref: ItemRef{Kind: ObservationItem, ID: item.ID, Revision: item.RevisionLabel()}, Name: c.read(item).Name, Readable: true}
+		if _, err := c.ledgerOf(item); err != nil {
+			shown.Readable, shown.Reason = false, err.Error()
+		}
+		observations = append(observations, shown)
+	}
+	slices.SortStableFunc(observations, func(x, y TestObservation) int {
+		return cmp.Or(cmp.Compare(x.Name, y.Name), cmp.Compare(x.Ref.ID, y.Ref.ID))
+	})
+	return observations
 }
 
 // checkGroupOfTest reads the exact version of a check group a test links, as
@@ -663,6 +787,18 @@ func (a *App) openTestDraft(ctx context.Context, request ItemRequest) ItemDraftR
 			draft.TestLinks = &TestLinks{Schema: TestLinksSchema, Environment: environment}
 		}
 	}
+	// A test saved before it recorded its observation reopens naming the
+	// observation that reads the ledger its spec names, when one does.
+	if saved.spec.Observation.Boundary == testrunner.LedgerBoundary && (draft.TestLinks == nil || draft.TestLinks.Observation == "") {
+		if observed := loaded.observationByLedger(saved.spec.Observation.Path); observed != "" {
+			links := TestLinks{Schema: TestLinksSchema}
+			if draft.TestLinks != nil {
+				links = *draft.TestLinks
+			}
+			links.Observation = observed
+			draft.TestLinks = &links
+		}
+	}
 	ref := ItemRef{Kind: TestItem, ID: record.ID, Revision: cmp.Or(request.Ref.Revision, record.RevisionLabel())}
 	result.State, result.Ref, result.Draft, result.Test = Completed, &ref, &draft, shown
 	return result
@@ -671,7 +807,7 @@ func (a *App) openTestDraft(ctx context.Context, request ItemRequest) ItemDraftR
 // testDraftOf is the draft a saved spec reopens as, over the project's case
 // it names, and what the editor shows beside it.
 func (c *loadedCatalog) testDraftOf(saved *savedTest) (*testauthor.Draft, *TestContext) {
-	context := &TestContext{Messages: []TestMessage{}, Unsupported: []TestClause{}, Proposals: []TestProposal{}, Document: string(saved.data)}
+	context := &TestContext{Messages: []TestMessage{}, Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Document: string(saved.data)}
 	identity := ""
 	if artifactpath.EntryName(saved.spec.Input.Case) == nil {
 		ref, name, source := c.caseOf(saved.spec.Input.Case)
@@ -707,8 +843,11 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 		result.refuse(Failed, "the project holds no such case")
 		return result
 	}
+	// The case is the object the origin names, so a variant stays the
+	// variant even where its entry is also discovered as a case.
 	entry := c.document.Items[index].Entry
-	ref, name, source := c.caseOf(entry)
+	_, _, source := c.caseOf(entry)
+	ref, name := &ItemRef{Kind: origin.Case.Kind, ID: origin.Case.ID}, c.read(c.document.Items[index]).Name
 	if source == nil {
 		result.refuse(Failed, "the case this test sends cannot be verified")
 		return result
@@ -722,7 +861,7 @@ func (c *loadedCatalog) newTestDraft(result ItemDraftResult, origin *TestOrigin)
 	for _, id := range origin.Messages {
 		selected[id] = true
 	}
-	context := &TestContext{Case: ref, CaseName: name, Messages: caseMessages(source), Unsupported: []TestClause{}, Proposals: []TestProposal{}}
+	context := &TestContext{Case: ref, CaseName: name, Messages: caseMessages(source), Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}}
 	all := len(origin.Messages) == 0
 	for _, message := range context.Messages {
 		if (all || selected[message.ID]) && message.Sendable {
@@ -825,7 +964,7 @@ func (a *App) TestHistory(request ItemRequest) TestHistoryResult {
 				continue
 			}
 			previous = saved
-			for _, matched := range loaded.runsOf(saved.spec) {
+			for _, matched := range loaded.runsOf(saved.spec, linkedEnvironment(saved.links)) {
 				row := TestRunRow{Run: ItemRef{Kind: RunItem, ID: matched.id}, Revision: label, Outcome: matched.outcome}
 				if !matched.started.IsZero() {
 					row.StartedAt = stampedTime(matched.started)
@@ -863,9 +1002,12 @@ func testChanges(before, after *savedTest) []TestChange {
 		{ChangeName, x.Name != y.Name},
 		{ChangeCase, x.Input.Case != y.Input.Case},
 		{ChangeMessages, !slices.Equal(x.Input.Messages, y.Input.Messages)},
-		{ChangeEnvironment, x.Target != y.Target || lx.Environment != ly.Environment},
+		// A test that follows its environment changed environment only when
+		// it names another one: its spec's target is the revision it was
+		// saved against, which its runs do not use.
+		{ChangeEnvironment, lx.Environment != ly.Environment || (lx.Environment == "" || ly.Environment == "") && x.Target != y.Target},
 		{ChangeBoundary, x.Observation.Boundary != y.Observation.Boundary},
-		{ChangeObservation, x.Observation.Path != y.Observation.Path},
+		{ChangeObservation, x.Observation.Path != y.Observation.Path || lx.Observation != ly.Observation},
 		{ChangeReset, x.Setup.ResetInstructions != y.Setup.ResetInstructions || lx.Reset != ly.Reset},
 		{ChangeChecks, !reflect.DeepEqual(x.Assertions, y.Assertions) || !slices.Equal(lx.Checks, ly.Checks)},
 		{ChangeTags, !slices.Equal(lx.Tags, ly.Tags)},
@@ -931,7 +1073,7 @@ func (a *App) TestRunChecks(request TestRunChecksRequest) TestRunChecksResult {
 			result.refuse(Failed, "this test cannot be read: "+err.Error())
 			return result
 		}
-		if !slices.ContainsFunc(loaded.runsOf(saved.spec), func(run runView) bool { return run.id == request.Run.ID }) {
+		if !slices.ContainsFunc(loaded.runsOf(saved.spec, linkedEnvironment(saved.links)), func(run runView) bool { return run.id == request.Run.ID }) {
 			result.refuse(Failed, "that run did not execute this version of the test")
 			return result
 		}
@@ -1065,7 +1207,7 @@ func (a *App) ImportTestDraft(request RequestContext) ItemDraftResult {
 // entries of this project.
 func (c *loadedCatalog) importedTest(result ItemDraftResult, spec testrunner.Spec, data []byte, folder string) ItemDraftResult {
 	result.New, result.Ref, result.Problems = true, &ItemRef{Kind: TestItem}, []FieldProblem{}
-	context := &TestContext{Messages: []TestMessage{}, Unsupported: []TestClause{}, Proposals: []TestProposal{}, Document: string(data)}
+	context := &TestContext{Messages: []TestMessage{}, Observations: c.testObservations(), Unsupported: []TestClause{}, Proposals: []TestProposal{}, Document: string(data)}
 	identity, entry := "", ""
 	if source, err := bundle.Open(artifactpath.JoinReference(folder, spec.Input.Case)); err == nil {
 		identity = source.Identity
@@ -1101,7 +1243,10 @@ func (c *loadedCatalog) importedTest(result ItemDraftResult, spec testrunner.Spe
 		draft.Target = ""
 		result.Problems = append(result.Problems, FieldProblem{Field: "test.environment", Problem: "choose the environment this test runs against in this project"})
 	}
-	if spec.Observation.Boundary == testrunner.LedgerBoundary && (draft.Observation == "" || !here) {
+	if spec.Observation.Boundary == testrunner.LedgerBoundary && draft.Observation != "" && here {
+		links.Observation = c.observationByLedger(draft.Observation)
+	}
+	if spec.Observation.Boundary == testrunner.LedgerBoundary && links.Observation == "" {
 		draft.Observation = ""
 		result.Problems = append(result.Problems, FieldProblem{Field: "test.observation", Problem: "choose the observation this test reads in this project"})
 	}
@@ -1114,7 +1259,7 @@ func (c *loadedCatalog) importedTest(result ItemDraftResult, spec testrunner.Spe
 	if catalog.ValidName(spec.Name) {
 		item.Name = spec.Name
 	}
-	if links.Environment != "" {
+	if links.Environment != "" || links.Observation != "" {
 		item.TestLinks = links
 	}
 	result.State, result.Draft, result.Test = Completed, &item, context
@@ -1179,4 +1324,12 @@ func (a *App) ExportTestItem(request ItemRequest) ExportTestResult {
 		result.State, result.Path = Completed, written.Output
 		return result
 	})
+}
+
+// linkedEnvironment is the environment a test's links name, if any.
+func linkedEnvironment(links *TestLinks) string {
+	if links == nil {
+		return ""
+	}
+	return links.Environment
 }

@@ -303,7 +303,7 @@ test("Use in test opens the chosen test's editor with the group linked at its ve
               test: { schema: "readmit-test-draft/v1", case: { entry: "sample-case", identity: "case-identity-fixed-for-tests" }, name: TEST.name, messages: ["occ-000001"], target: "", boundary: "ack-contract", observation: "", reset: "", expectations: [{ id: "check-1", operator: "ack_field_equals", message: "occ-000001", selector: "MSA-1", field: { state: "present", text: "AA" } }] },
               test_links: {},
             },
-            test: { case: { kind: "case", id: "case-sample-case" }, case_name: "sample-case", messages: [{ id: "occ-000001", kind: "message", message_code: "SIU", trigger_event: "S12", sendable: true }], unsupported: [], proposals: [], read_only: false },
+            test: { case: { kind: "case", id: "case-sample-case" }, case_name: "sample-case", messages: [{ id: "occ-000001", kind: "message", message_code: "SIU", trigger_event: "S12", sendable: true }], observations: [], unsupported: [], proposals: [], read_only: false },
           },
   });
   await user.click(page().getByRole("tab", { name: "Checks" }));

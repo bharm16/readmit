@@ -141,6 +141,7 @@ import { useScenario } from "./ScenarioLibrary";
 import { SampleFixture, ScenarioLibraryCheck, SyntheticFamilies } from "./SampleData";
 import { SyntheticPackets } from "./SyntheticPackets";
 import { useTests, type TestsPlace } from "./Tests";
+import { TEST_EDITOR_DRAFT } from "./TestEditor";
 import { useFindings, useSimilarFindings, type EvidenceRef } from "./Findings";
 import { Report, Separator, Status } from "./shell";
 import { CommandPalette, isMac, shortcut, type PaletteEntry } from "./CommandPalette";
@@ -338,6 +339,8 @@ export default function App() {
   const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
   const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
   const [runEnvironment, setRunEnvironment] = useState<string | undefined>(undefined);
+  // Counts each saved test's Run, which the run view preflights on arrival.
+  const [runArrival, setRunArrival] = useState(0);
   // The suite handoff the run view was last seeded from, with the folder it
   // names: shown beside the run view so the person sees which prepared
   // result and release pins they came from, and that the run view applies
@@ -483,6 +486,8 @@ export default function App() {
   const [restored, setRestored] = useState<EditorDraft | null>(null);
   // Why a draft chosen to resume found nothing to reopen.
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
+  // A retained test editor draft the Tests editor reopens.
+  const [restoringTest, setRestoringTest] = useState<EditorDraft | null>(null);
   const [searching, setSearching] = useState(false);
   const regionElements = useRef<Partial<Record<RegionId, HTMLElement | null>>>({});
   const searchField = useRef<HTMLInputElement | null>(null);
@@ -968,6 +973,11 @@ export default function App() {
       if (SHEET_DRAFTS.has(draft.kind)) {
         setResumeNotice(null);
         setResuming(draft);
+        return;
+      }
+      if (draft.kind === "test-draft" && draft.content_schema === TEST_EDITOR_DRAFT) {
+        setResumeNotice(null);
+        setRestoringTest(draft);
         return;
       }
       const place = DRAFT_PLACES[draft.kind];
@@ -1731,6 +1741,12 @@ export default function App() {
     root,
     addCheckGroup: pendingCheckGroup,
     onCheckGroupAdded: () => setPendingCheckGroup(null),
+    restoreDraft: restoringTest,
+    inspectedField: inspectionResult?.inspection?.selected.path,
+    onRestored: (reason) => {
+      setRestoringTest(null);
+      if (reason) setResumeNotice(reason);
+    },
     shown: sidebarOf(place) === "tests" && place !== "library" && place !== "baselines",
     place: testsPlace,
     go: (to) => {
@@ -1756,6 +1772,7 @@ export default function App() {
       setRunSpecPath(entry);
       setRunEnvironment(undefined);
       setSuiteHandoff(null);
+      setRunArrival((count) => count + 1);
       open({ destination: "run-test" });
     },
     onLibrary: () => open({ destination: "library" }),
@@ -1763,25 +1780,35 @@ export default function App() {
 
   /** Create test: the case open now and its chosen messages (all of them
    * when none is chosen) go to the one test editor. */
-  const createTest = () => {
-    const caseRef = verified ? listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref : undefined;
-    if (!caseRef) {
+  // The object the open case is: a project case, or a variant of one.
+  const openCaseObject = async (): Promise<{ ref: ItemRef; variant: boolean } | null> => {
+    if (!verified) return null;
+    // A variant's file can also be listed as a case; it is still the variant.
+    const variants = await listWholeCatalog({ context: projectContext(), kind: "variant", filter: {} });
+    const variant = variants.page?.items.find((item) => item.summary.variant?.entry === verified.name)?.ref;
+    if (variant) return { ref: variant, variant: true };
+    const listed = listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref;
+    return listed ? { ref: listed, variant: false } : null;
+  };
+  const createTest = async () => {
+    const origin = await openCaseObject();
+    if (!origin) {
       void tests.startNew();
       return;
     }
     // With nothing chosen, the facade selects every message of the case a test can send.
     const chosen = messages ? messages.rows.filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id) : [];
-    void tests.startNew({ case: caseRef, messages: chosen });
+    void tests.startNew({ case: origin.ref, messages: chosen, ...(origin.variant ? { source: { kind: "variant", variant: origin.ref } } : {}) });
   };
 
   // A confirmed finding opens the same editor with the review's messages and
   // its expectations as proposals, each undecided until the person decides.
-  const promoteFinding = (status: FindingStatus, reviewEntry: string, reportSHA256: string, title?: string) => {
+  const promoteFinding = async (status: FindingStatus, reviewEntry: string, reportSHA256: string, title?: string) => {
     const promotion = status.promotion;
-    const caseRef = verified ? listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref : undefined;
-    if (!promotion || !caseRef) return;
+    const origin = await openCaseObject();
+    if (!promotion || !origin) return;
     void tests.startNew({
-      case: caseRef,
+      case: origin.ref,
       messages: promotion.messages,
       ...(title ? { title } : {}),
       source: { kind: "finding", finding: status.finding, report_sha256: reportSHA256, ...(reviewEntry ? { review: reviewEntry } : {}) },
@@ -1813,7 +1840,7 @@ export default function App() {
     },
     onSimilar: () => open({ destination: "similar-findings" }),
     onOpenComparison: (ref) => open({ destination: "similar-findings", objectId: ref.id }),
-    onCreateTest: (status, review, reportSHA256, title) => promoteFinding(status, review, reportSHA256, title),
+    onCreateTest: (status, review, reportSHA256, title) => void promoteFinding(status, review, reportSHA256, title),
   });
   const similar = useSimilarFindings({
     root: place === "similar-findings" ? root : null,
@@ -1979,7 +2006,7 @@ export default function App() {
     "open-workspace": () => void openFolder(selectWorkspace),
     "create-sample-workspace": () => void openFolder(createSampleWorkspace),
     "open-project": () => setEditingProject(true),
-    "create-test": () => createTest(),
+    "create-test": () => void createTest(),
     "create-report": () => go("reports"),
     "manage-profiles": () => open({ destination: "library", view: "profiles" }),
     "maintain-workspace": () => openStorage(),
@@ -2081,7 +2108,7 @@ export default function App() {
   // The open case's own menu, which the palette also lists while the case is
   // on screen.
   const caseMenu: MenuItem[] = [
-    { label: "Create test", onSelect: () => createTest() },
+    { label: "Create test", onSelect: () => void createTest() },
     { label: "Replay", onSelect: () => setCaseFlow("replay") },
     { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
     { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
@@ -2482,7 +2509,7 @@ export default function App() {
                     onInspect={(occurrence) => void inspect(occurrence, evidenceFocus?.find((entry) => entry.occurrence === occurrence)?.field ?? "", 0, -1)}
                     checked={checkedMessages}
                     onCheck={setCheckedMessages}
-                    onCreateTest={() => createTest()}
+                    onCreateTest={() => void createTest()}
                     onSendSelected={() => setCaseFlow("replay")}
                     onCreateVariant={() => void seedVariant(chosenRows.map((row) => row.id))}
                     onLoadMore={() => {
@@ -2854,6 +2881,7 @@ export default function App() {
                 onConfigureEnvironment={() => go("environments")}
                 onOpenLicense={() => openSettings("license")}
                 {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
+                preflightOnArrival={runArrival}
                 {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
               />
             </>
@@ -3773,6 +3801,9 @@ const SHEET_DRAFTS = new Set(["case", "project", "note"]);
  * offered only for Discard. */
 function resumable(draft: EditorDraft): boolean {
   if (SHEET_DRAFTS.has(draft.kind)) return draft.item !== undefined;
+  // A test draft reopens only in the editor that wrote it; an earlier
+  // release's test drafts are offered for Discard.
+  if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT;
   return draft.kind in DRAFT_PLACES;
 }
 

@@ -7,16 +7,19 @@ import {
   exportTestItem,
   importTestDraft,
   listWholeCatalog,
-  listReceiverSnapshots,
   newIntentId,
+  discardIncompleteSave,
+  testRunChecks,
   openItemDraft,
   RequestScope,
   saveItem,
   testHistory,
   type CatalogItem,
   type ItemDraftResult,
+  type EditorDraft,
+  type IncompleteSave,
+  type TestRunChecksResult,
   type ItemRef,
-  type ReceiverSnapshot,
   type TestExpectation,
   type TestHistoryResult,
   type TestOrigin,
@@ -29,7 +32,7 @@ import { fileName } from "./Environments";
 import { IconButton } from "./IconButton";
 import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem, type SubmitFailure } from "./layout";
 import { listDate } from "./Projects";
-import { CheckDetails, CheckRows, messageLabel, observationLabel, useTestEditor, type EditorStart, type TestWork } from "./TestEditor";
+import { CheckDetails, CheckRows, messageLabel, observationName, useTestEditor, type EditorStart, type TestEditorContent, type TestWork } from "./TestEditor";
 import { TaskTabs } from "./TaskTabs";
 import "./tests.css";
 
@@ -117,10 +120,15 @@ export type TestsProps = {
   /** A check group Use in test adds to the next edit that opens. */
   addCheckGroup?: ItemRef | null;
   onCheckGroupAdded?: () => void;
+  /** A retained editor draft to reopen, once, in the editor it came from. */
+  restoreDraft?: EditorDraft | null;
+  onRestored?: (reason?: string) => void;
+  /** The field inspected in the open case, offered first for an ACK check. */
+  inspectedField?: string | undefined;
 };
 
 /** Tests supplies its pages' titles, ways back, actions and bodies. */
-export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded }: TestsProps) {
+export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded, restoreDraft = null, onRestored, inspectedField }: TestsProps) {
   // Tests reads under its own request scope, so its reads never make another
   // list's answer look stale.
   const scope = useRef(new RequestScope());
@@ -129,6 +137,10 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const [cases, setCases] = useState<CatalogItem[]>([]);
   const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   const [checkGroups, setCheckGroups] = useState<CatalogItem[]>([]);
+  // Saves of a test that did not finish, from an interruption.
+  const [incomplete, setIncomplete] = useState<IncompleteSave[]>([]);
+  const [discarding, setDiscarding] = useState<string | null>(null);
+  const [undiscarded, setUndiscarded] = useState<{ operation: string; reason: string } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [view, setView] = useState<TestsView>(NO_TESTS_VIEW);
   const [sort, setSort] = useState<SortState | null>(null);
@@ -147,6 +159,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     if (groupList.state === "completed" || groupList.state === "empty") setCheckGroups(groupList.page?.items ?? []);
     if (tests.state === "completed" || tests.state === "empty") {
       setItems(tests.page?.items ?? []);
+      setIncomplete((tests.page?.incomplete ?? []).filter((save) => save.kind === "test"));
       setFailure(null);
     } else {
       setFailure(tests.reason ?? "The tests could not be read.");
@@ -171,7 +184,8 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
   const startNew = useCallback(
     async (origin?: TestOrigin) => {
       if (!origin) {
-        setStart({ mode: "new", work: null, context: null });
+        // A new test left unfinished is still the new test to return to.
+        setStart((held) => (held?.mode === "new" && held.work ? held : { mode: "new", work: null, context: null }));
         go({ kind: "new" });
         return;
       }
@@ -197,8 +211,13 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
 
   // An edit opens the saved test's whole draft.
   const editId = place.kind === "edit" ? place.id : null;
+  const held = useRef(start);
+  held.current = start;
+  const editDirty = useRef(false);
   useEffect(() => {
     if (!editId) return;
+    // Returning to an edit left unsaved keeps it; only another test reopens.
+    if (editDirty.current && held.current?.mode === "edit" && held.current.ref?.id === editId) return;
     let live = true;
     setStart(null);
     void openItemDraft({ context: context(), ref: { kind: "test", id: editId } }).then((answer) => {
@@ -209,9 +228,34 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     };
   }, [editId, context]);
 
+  // Reopening a retained draft: the saved test (or the new test's case) is
+  // read again for its current messages, and the draft's values replace its
+  // own, marked unsaved. Nothing is run or sent.
+  useEffect(() => {
+    if (!restoreDraft) return;
+    const content = restoreDraft.content as TestEditorContent;
+    void (async () => {
+      const editing = content.mode === "edit" && restoreDraft.item?.ref.kind === "test";
+      const answer = editing
+        ? await openItemDraft({ context: context(), ref: { kind: "test", id: restoreDraft.item!.ref.id } })
+        : await openItemDraft({ context: context(), ref: { kind: "test", id: "" }, ...(content.case ? { from: { case: content.case, messages: content.draft.test.messages ?? [] } } : {}) });
+      if (answer.state !== "completed") {
+        onRestored?.(answer.reason ?? "The test this draft edits cannot be opened.");
+        return;
+      }
+      const base = startOf(editing ? "edit" : "new", answer);
+      // An edit keeps the version it was based on, so a newer save is refused as a conflict.
+      setStart({ ...base, ...(editing ? { ref: restoreDraft.item!.ref } : {}), baseline: editing ? base.work : null, work: { name: content.draft.name, test: content.draft.test, links: content.draft.test_links }, retained: restoreDraft });
+      go(editing ? { kind: "edit", id: restoreDraft.item!.ref.id } : { kind: "new" });
+      onRestored?.();
+    })();
+  }, [restoreDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const editingItem = editId ? (items?.find((item) => item.ref.id === editId) ?? null) : null;
   const editor = useTestEditor({
-    start: place.kind === "new" || place.kind === "edit" ? start : null,
+    // The editor keeps its draft while another page is shown.
+    start,
+    inspectedField,
     context,
     cases,
     environments,
@@ -233,6 +277,7 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     },
     ...(editingItem && summaryOf(editingItem).entry ? { onRun: () => onRun(summaryOf(editingItem).entry!) } : {}),
   });
+  editDirty.current = editor.dirty;
 
   const detail = useTestDetail({
     item: place.kind === "test" ? (items?.find((entry) => entry.ref.id === place.id) ?? null) : null,
@@ -382,6 +427,28 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
     ),
     body: (
       <>
+        {incomplete.map((save) => (
+          <div key={save.operation} className="notice danger" role="alert">
+            <span>
+              {save.name ? `${save.name}: ` : ""}this save did not finish, and the version before it is current. {save.reason}
+              {undiscarded?.operation === save.operation ? ` ${undiscarded.reason}` : ""}
+            </span>
+            <button
+              type="button"
+              disabled={busy || discarding !== null}
+              onClick={() => {
+                setDiscarding(save.operation);
+                void discardIncompleteSave({ context: context(), operation: save.operation }).then(async (answer) => {
+                  setDiscarding(null);
+                  await refresh();
+                  setUndiscarded(answer.state === "completed" ? null : { operation: save.operation, reason: answer.reason ?? "This save could not be discarded." });
+                });
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        ))}
         {chips.length > 0 ? (
           <div className="chips" role="group" aria-label="Applied filters">
             {chips.map((chip) => (
@@ -531,26 +598,20 @@ function useTestDetail({
   const [history, setHistory] = useState<TestHistoryResult | null>(null);
   const [sheet, setSheet] = useState<null | "duplicate" | "json" | "details">(null);
   const [notice, setNotice] = useState<{ text: string; problem?: boolean } | null>(null);
-  const [snapshots, setSnapshots] = useState<ReceiverSnapshot[] | null>(null);
   const [inspecting, setInspecting] = useState<TestExpectation | null>(null);
+  const [chosenRun, setChosenRun] = useState<string | null>(null);
+  const [runChecks, setRunChecks] = useState<TestRunChecksResult | null>(null);
   const ref = item?.ref ?? null;
-  const linkedEnvironment = environments.find((entry) => entry.ref.id === opened?.draft?.test_links?.environment) ?? null;
-  useEffect(() => {
-    setSnapshots(null);
-    if (!linkedEnvironment) return;
-    let live = true;
-    void listReceiverSnapshots({ context: context(), ref: linkedEnvironment.ref }).then((answer) => {
-      if (live) setSnapshots(answer.snapshots);
-    });
-    return () => {
-      live = false;
-    };
-  }, [linkedEnvironment?.ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only the latest run chosen may show its groups' results.
+  const runRequest = useRef(0);
 
   useEffect(() => {
     setOpened(null);
     setHistory(null);
     setNotice(null);
+    setChosenRun(null);
+    setRunChecks(null);
+    runRequest.current += 1;
     if (!ref) return;
     let live = true;
     void Promise.all([openItemDraft({ context: context(), ref: { kind: "test", id: ref.id } }), testHistory({ context: context(), ref: { kind: "test", id: ref.id } })]).then(([draft, versions]) => {
@@ -584,7 +645,7 @@ function useTestDetail({
         { label: "Messages", value: (test?.messages ?? []).map((id) => messageLabel(messages.find((m) => m.id === id), id)).join(", ") || "—" },
         { label: "Environment", value: environment?.name ?? (links.environment ? "Removed environment" : "—") },
         { label: "Outcome", value: test?.boundary ? <DisplayTerm map={TEST_BOUNDARIES} code={test.boundary} /> : "—" },
-        ...(ledger ? [{ label: "Observation", value: observationLabel(test?.observation ?? "", snapshots) }] : []),
+        ...(ledger ? [{ label: "Observation", value: observationName(links.observation, opened?.test?.observations ?? []) }] : []),
         {
           label: "Reset",
           value: links.reset === "environment" ? (environment?.summary.environment?.reset_name ?? "Environment reset") : test?.reset || "—",
@@ -595,6 +656,16 @@ function useTestDetail({
   const checks =
     (test?.expectations.length ?? 0) === 0 ? <p>No checks</p> : <CheckRows checks={test?.expectations ?? []} messages={messages} onInspect={setInspecting} />;
   const runs = history?.runs ?? [];
+  // The groups this test links, decided against the chosen run's evidence.
+  const decideChecks = async (runId: string) => {
+    const entry = runs.find((row) => row.run.id === runId);
+    if (!entry) return;
+    const request = ++runRequest.current;
+    setChosenRun(runId);
+    setRunChecks(null);
+    const answer = await testRunChecks({ context: context(), test: { kind: "test", id: ref.id, ...(entry.revision ? { revision: entry.revision } : {}) }, run: entry.run });
+    if (request === runRequest.current) setRunChecks(answer);
+  };
   const historyBody = (
     <>
       <h2>Versions</h2>
@@ -633,10 +704,10 @@ function useTestDetail({
           className="values-table"
           rows={runs}
           rowId={(entry) => entry.run.id}
-          rowLabel={(entry) => entry.run.id}
-          selected={null}
-          onSelect={() => {}}
-          onOpen={() => {}}
+          rowLabel={(entry) => `Run ${listDate(entry.started_at)}`}
+          selected={(links.checks ?? []).length > 0 ? chosenRun : null}
+          onSelect={(id) => (links.checks ?? []).length > 0 && void decideChecks(id)}
+          onOpen={() => undefined}
           loading={history === null}
           columns={[
             { key: "started", header: "Started", priority: 1, minWidth: 8, render: (entry) => listDate(entry.started_at) },
@@ -645,6 +716,24 @@ function useTestDetail({
           ]}
         />
       )}
+      {runChecks ? (
+        <>
+          <h2>Check groups</h2>
+          {runChecks.state === "completed" ? (
+            <ValueRows
+              label="Check groups"
+              rows={runChecks.checks.map((set) => ({
+                label: set.name,
+                value: set.explanation
+                  ? `${VERDICT_WORDS[set.explanation.verdict ?? ""] ?? "Undecided"} · ${set.explanation.passed} passed, ${set.explanation.failed} failed, ${set.explanation.undecided} undecided`
+                  : (set.reason ?? "Not decided"),
+              }))}
+            />
+          ) : (
+            <p role="alert">{runChecks.reason ?? "The check groups were not decided."}</p>
+          )}
+        </>
+      ) : null}
     </>
   );
 
@@ -815,3 +904,6 @@ function JsonSheet({ open, document, onClose, onSave }: { open: boolean; documen
     </FormDialog>
   );
 }
+
+/** A check group's verdict against one run, as the explanation words it. */
+const VERDICT_WORDS: Record<string, string> = { pass: "Passed", fail: "Failed", undecided: "Undecided" };

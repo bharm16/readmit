@@ -3171,6 +3171,7 @@ export interface ImportTotals {
 /** internal/desktop.IncompleteSave */
 export interface IncompleteSave {
   operation: string;
+  kind: ItemKind;
   item: ItemRef | null;
   name?: string;
   reason: string;
@@ -6943,6 +6944,8 @@ export interface RunMessageEvidence {
 export interface RunPreflight {
   kind: string;
   spec: string;
+  test?: ItemRef;
+  environment?: ItemRef;
   name: string;
   schema: string;
   identity: string;
@@ -8950,6 +8953,7 @@ export interface TestContext {
   case: ItemRef | null;
   case_name: string;
   messages: TestMessage[];
+  observations: TestObservation[];
   unsupported: TestClause[];
   proposals: TestProposal[];
   document?: string;
@@ -9046,6 +9050,7 @@ export interface TestLink {
 export interface TestLinks {
   schema?: string;
   environment?: string;
+  observation?: string;
   reset?: TestReset;
   tags?: string[];
   checks?: ItemRef[];
@@ -9065,6 +9070,14 @@ export interface TestMessage {
 export interface TestMessageCoverage {
   message: string;
   positions: string[];
+}
+
+/** internal/desktop.TestObservation */
+export interface TestObservation {
+  ref: ItemRef;
+  name: string;
+  readable: boolean;
+  reason?: string;
 }
 
 /** internal/desktop.TestOrigin */
@@ -9518,6 +9531,7 @@ export interface VariantSummary {
   form: string;
   parent: ItemRef | null;
   operation?: string;
+  entry?: string;
 }
 
 /** internal/desktop.View */

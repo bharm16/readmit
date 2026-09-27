@@ -240,6 +240,16 @@ func Prepare(specPath string) (*Prepared, error) {
 	return &Prepared{plan: plan}, nil
 }
 
+// PrepareAt is Prepare for the spec at specPath executed against target in
+// place of the target it names, as testrunner.PrepareAt prepares it.
+func PrepareAt(specPath, target string) (*Prepared, error) {
+	plan, err := testrunner.PrepareAt(specPath, target)
+	if err != nil {
+		return nil, err
+	}
+	return &Prepared{plan: plan}, nil
+}
+
 // PinnedInputs returns copies of the exact inputs this prepared job will execute.
 // Admission gates can validate these without reopening or substituting its plan.
 func (p *Prepared) PinnedInputs() testrunner.PinnedInputs { return p.plan.PinnedInputs() }
@@ -567,6 +577,13 @@ type Resumption struct {
 // at specPath no longer prepares the exact plan the job retained. An uncertain
 // send is never replayed by this or any other path.
 func Resume(ctx context.Context, job, specPath, output string) (Resumption, error) {
+	return ResumeAt(ctx, job, specPath, "", output)
+}
+
+// ResumeAt is Resume for a spec executed against target in place of the
+// target it names, as PrepareAt prepares it: the retained plan repeats only
+// when the spec prepared against target is exactly the plan the job retained.
+func ResumeAt(ctx context.Context, job, specPath, target, output string) (Resumption, error) {
 	recovery, doc, err := readJob(job)
 	if err != nil {
 		return Resumption{}, err
@@ -574,7 +591,7 @@ func Resume(ctx context.Context, job, specPath, output string) (Resumption, erro
 	if !recovery.SafeToRepeat {
 		return Resumption{}, errors.New("resume refused: " + recovery.ResumeRefusal)
 	}
-	plan, err := testrunner.Prepare(specPath)
+	plan, err := testrunner.PrepareAt(specPath, target)
 	if err != nil {
 		return Resumption{}, err
 	}

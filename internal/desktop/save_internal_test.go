@@ -443,3 +443,93 @@ func TestARefusedSaveAnswersAnEmptyListOfProblems(t *testing.T) {
 		t.Fatalf("a busy save answered %s %v", encoded, err)
 	}
 }
+
+// An interrupted save is listed with the kind of object it was for — an edit
+// with its object, a creation with none — and discarding it removes exactly
+// the files it staged and its pending record: the current revision and every
+// file it names stay, and the other interrupted save is still listed.
+func TestDiscardIncompleteSaveDropsOnlyTheStagedFiles(t *testing.T) {
+	policy := testlicense.New(t)
+	state := t.TempDir()
+	window := func() *App {
+		app := New(folderAnswer(t.TempDir()), ShellDocuments{Folder: state})
+		if selected := app.SelectOperationPolicy(policy); selected.State != Completed {
+			t.Fatal(selected)
+		}
+		return app
+	}
+	app := window()
+	chosen := app.ChooseProjectLocation()
+	created := app.CreateNamedProject(NewProjectRequest{Name: "Discards", Location: chosen.Location})
+	if created.State != Completed {
+		t.Fatalf("%+v", created)
+	}
+	context := created.Context
+	first := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "appointments"), IntentID: "first"})
+	if first.Outcome != SavedOutcome {
+		t.Fatalf("%+v", first)
+	}
+	files := func() map[string]bool {
+		entries, err := os.ReadDir(context.Project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := map[string]bool{}
+		for _, entry := range entries {
+			held[entry.Name()] = true
+		}
+		return held
+	}
+	saved := files()
+	app.saveFault = func(at string) error {
+		if at == catalog.PointMember+"window" {
+			return errors.New("crash")
+		}
+		return nil
+	}
+	edit := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1", Draft: faultDraft(t, "cancellations"), IntentID: "edit"})
+	staged := []string{}
+	for name := range files() {
+		if !saved[name] {
+			staged = append(staged, name)
+		}
+	}
+	creation := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "arrivals"), IntentID: "creation"})
+	app.saveFault = nil
+	if edit.Operation != "edit" || creation.Operation != "creation" || len(staged) == 0 {
+		t.Fatalf("interrupted saves: %+v %+v staged %v", edit, creation, staged)
+	}
+
+	restarted := window()
+	listing := restarted.ListCatalog(CatalogQuery{Context: context, Kind: ObservationItem})
+	if listing.Page == nil || len(listing.Page.Incomplete) != 2 {
+		t.Fatalf("the interrupted saves are not listed: %+v", listing)
+	}
+	for _, incomplete := range listing.Page.Incomplete {
+		if incomplete.Kind != ObservationItem || (incomplete.Operation == "edit") != (incomplete.Item != nil) {
+			t.Fatalf("an interrupted save: %+v", incomplete)
+		}
+	}
+	if discarded := restarted.DiscardIncompleteSave(IncompleteSaveRequest{Context: context, Operation: "edit"}); discarded.State != Completed {
+		t.Fatalf("discard: %+v", discarded)
+	}
+	after := files()
+	for _, name := range staged {
+		if after[name] {
+			t.Fatalf("a staged file of the discarded save is still there: %s", name)
+		}
+	}
+	for name := range saved {
+		if !after[name] {
+			t.Fatalf("a file the current revision names was removed: %s", name)
+		}
+	}
+	listing = restarted.ListCatalog(CatalogQuery{Context: context, Kind: ObservationItem})
+	if len(listing.Page.Incomplete) != 1 || listing.Page.Incomplete[0].Operation != "creation" || listing.Page.Items[0].Ref.Revision != "1" ||
+		scopeOf(t, context.Project, listing.Page.Items[0])["window"] != "appointments" {
+		t.Fatalf("after the discard: %+v", listing.Page)
+	}
+	if again := restarted.DiscardIncompleteSave(IncompleteSaveRequest{Context: context, Operation: "edit"}); again.State != Failed {
+		t.Fatalf("a discarded save was discarded again: %+v", again)
+	}
+}
