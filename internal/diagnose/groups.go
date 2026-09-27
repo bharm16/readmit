@@ -51,13 +51,13 @@ type fieldState struct {
 }
 
 type findingSignature struct {
-	Config         string       `json:"config"`
-	Rule           string       `json:"rule"`
-	Profile        string       `json:"profile"`
-	Ruleset        string       `json:"ruleset"`
-	Classification string       `json:"classification"`
-	Summary        string       `json:"summary"`
-	Evidence       []fieldState `json:"evidence"`
+	Config         string         `json:"config"`
+	Rule           string         `json:"rule"`
+	Profile        string         `json:"profile"`
+	Ruleset        string         `json:"ruleset"`
+	Classification Classification `json:"classification"`
+	Summary        string         `json:"summary"`
+	Evidence       []fieldState   `json:"evidence"`
 }
 
 type groupAccumulator struct {
@@ -82,14 +82,14 @@ func GroupCasesWithIdentities(ctx context.Context, paths []string, config Config
 	if len(paths) == 0 || len(paths) > MaxGroupCases {
 		return GroupsReport{}, nil, errors.New("diagnosis grouping requires 1 to 16 cases")
 	}
-	result := GroupsReport{Schema: GroupsSchema, Scope: "Counts describe findings and distinct case-local occurrences in these selected captures only, never population-wide rates. Equal signatures describe diagnostic shape, not a shared root cause. Representatives are the first finding in each case for that signature; every finding and unsupported item remains in Cases. Windows can overlap, and identical occurrences in different cases are not independent events.", Cases: []Report{}, Groups: []FindingGroup{}}
+	reports := make([]Report, 0, len(paths))
 	identities := make([]string, 0, len(paths))
 	seen := map[string]bool{}
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return GroupsReport{}, nil, err
 		}
-		report, err := Run(path, config)
+		report, err := RunContext(ctx, path, config)
 		if err != nil {
 			return GroupsReport{}, nil, err
 		}
@@ -98,14 +98,38 @@ func GroupCasesWithIdentities(ctx context.Context, paths []string, config Config
 		}
 		seen[report.CaseIdentity] = true
 		identities = append(identities, report.CaseIdentity)
-		result.Cases = append(result.Cases, report)
+		reports = append(reports, report)
+	}
+	result, err := GroupReports(ctx, reports)
+	if err != nil {
+		return GroupsReport{}, nil, err
+	}
+	return result, identities, nil
+}
+
+// GroupReports groups the findings of diagnoses already made, one per case,
+// by signature. It is the grouping GroupCases makes after running each case:
+// a caller that evaluated the cases itself, and kept the ones it could not
+// evaluate apart, groups exactly what it evaluated. Cases are ordered by
+// identity; every report stays whole in Cases.
+func GroupReports(ctx context.Context, reports []Report) (GroupsReport, error) {
+	if len(reports) == 0 || len(reports) > MaxGroupCases {
+		return GroupsReport{}, errors.New("diagnosis grouping requires 1 to 16 cases")
+	}
+	result := GroupsReport{Schema: GroupsSchema, Scope: "Counts describe findings and distinct case-local occurrences in these selected captures only, never population-wide rates. Equal signatures describe diagnostic shape, not a shared root cause. Representatives are the first finding in each case for that signature; every finding and unsupported item remains in Cases. Windows can overlap, and identical occurrences in different cases are not independent events.", Cases: slices.Clone(reports), Groups: []FindingGroup{}}
+	seen := map[string]bool{}
+	for _, report := range reports {
+		if seen[report.CaseIdentity] {
+			return GroupsReport{}, errors.New("diagnosis grouping refuses duplicate case identities")
+		}
+		seen[report.CaseIdentity] = true
 	}
 	slices.SortFunc(result.Cases, func(a, b Report) int { return cmp.Compare(a.CaseIdentity, b.CaseIdentity) })
 	groups := map[string]*groupAccumulator{}
 	for _, report := range result.Cases {
 		for _, finding := range report.Findings {
 			if err := ctx.Err(); err != nil {
-				return GroupsReport{}, nil, err
+				return GroupsReport{}, err
 			}
 			shape := findingSignature{Config: report.ConfigSHA256, Rule: finding.RuleID, Profile: finding.Profile, Ruleset: finding.Ruleset, Classification: finding.Classification, Summary: finding.Summary, Evidence: []fieldState{}}
 			for _, e := range finding.Evidence {
@@ -113,7 +137,7 @@ func GroupCasesWithIdentities(ctx context.Context, paths []string, config Config
 			}
 			encoded, err := json.Marshal(shape, json.Deterministic(true))
 			if err != nil {
-				return GroupsReport{}, nil, errors.New("cannot encode diagnosis signature")
+				return GroupsReport{}, errors.New("cannot encode diagnosis signature")
 			}
 			digest := sha256.Sum256(encoded)
 			signature := hex.EncodeToString(digest[:])
@@ -140,9 +164,9 @@ func GroupCasesWithIdentities(ctx context.Context, paths []string, config Config
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return GroupsReport{}, nil, err
+		return GroupsReport{}, err
 	}
-	return result, identities, nil
+	return result, nil
 }
 
 func GroupsJSON(report GroupsReport) ([]byte, error) {

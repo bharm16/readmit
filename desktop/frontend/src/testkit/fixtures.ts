@@ -253,9 +253,9 @@ export function shellResult(): ShellResult {
 export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): Vocabulary {
   return {
     diagnosis_builtins: [
-      { id: "siu", profile: "readmit-siu-v1", ruleset: "readmit-siu-diagnosis/v1" },
-      { id: "lifecycle", profile: "readmit-lifecycle-v1", ruleset: "readmit-lifecycle-diagnosis/v1" },
-      { id: "order", profile: "readmit-order-v1", ruleset: "readmit-order-diagnosis/v1" },
+      { id: "siu", name: "SIU", profile: "readmit-siu-v1", ruleset: "readmit-siu-diagnosis/v1" },
+      { id: "lifecycle", name: "Lifecycle", profile: "readmit-lifecycle-v1", ruleset: "readmit-lifecycle-diagnosis/v1" },
+      { id: "order", name: "Orders", profile: "readmit-order-v1", ruleset: "readmit-order-diagnosis/v1" },
     ],
     import_plan: {
       framings: ["raw", "mllp", "batch"],
@@ -1528,7 +1528,7 @@ export function diagnosisFinding(
   return {
     id,
     rule_id: ruleId,
-    classification: "protocol",
+    classification: "observed_fact",
     profile: "readmit-siu-v1",
     ruleset: "readmit-siu-diagnosis/v1",
     summary: "The acknowledgement outcome is not what the ruleset expects.",
@@ -1610,13 +1610,13 @@ export function findingPromotion(messages: string[] = [GRID_OCCURRENCE]): Findin
 /** One finding as a review leaves it: verdict, basis and what it promotes to. */
 export function findingStatus(
   finding: string,
-  verdict: string,
+  verdict: import("../bindings").FindingVerdict,
   overrides: Partial<FindingStatus> = {},
 ): FindingStatus {
   return {
     finding,
     rule_id: "ack.msa-outcome",
-    classification: "protocol",
+    classification: "observed_fact",
     verdict,
     basis: verdict === "not_reviewed" ? "unreviewed" : "decision",
     next_evidence: "Capture the acknowledgement the case does not hold.",

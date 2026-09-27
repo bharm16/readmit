@@ -67,6 +67,11 @@ type loadedCatalog struct {
 	doneRead    bool
 	identities  map[string]string
 	packets     *relations
+	// analyses are the retained diagnoses read during this load, by entry.
+	analyses map[string]diagnose.Retained
+	// configNames are the names a person reads for the configurations the
+	// project offers now, by configuration identity, read once per load.
+	configNames map[string]string
 }
 
 // loadCatalog opens the project the request names and discovers what it
@@ -89,7 +94,7 @@ func (a *App) loadCatalog(ctx context.Context, request RequestContext, record bo
 	if err != nil {
 		return nil, refusal{Failed, "a project must be an existing folder that is not a symbolic link"}
 	}
-	loaded := &loadedCatalog{ctx: ctx, root: opened.Root, project: opened, revisions: *revisions, store: store, identities: map[string]string{}}
+	loaded := &loadedCatalog{ctx: ctx, root: opened.Root, project: opened, revisions: *revisions, store: store, identities: map[string]string{}, analyses: map[string]diagnose.Retained{}}
 	document, present, err := store.Read()
 	if errors.Is(err, catalog.ErrUnsupportedVersion) {
 		return nil, refusal{Failed, "the project's catalog was written by a version this release cannot read"}
@@ -196,6 +201,7 @@ var familyKinds = map[string]ItemKind{
 	"readmit-transform-plan/":     VariantItem,
 	"readmit-runner/":             RunnerItem,
 	"readmit-hub-schedules/":      ScheduleItem,
+	"readmit-diagnose-config/":    AnalysisSettingsItem,
 }
 
 // entryKind names the kind of object one entry declares. The project's own
@@ -232,7 +238,7 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 		return EnvironmentItem, true
 	case PacketArtifact, PortableReviewArtifact, SyntheticPacketArtifact:
 		return ReportItem, true
-	case DiagnosisArtifact, AnalysisArtifact:
+	case DiagnosisArtifact, DiagnosisGroupsArtifact, AnalysisArtifact:
 		return AnalysisItem, true
 	case ProfileArtifact, PackArtifact, PackageArtifact:
 		return ProfileItem, true
@@ -449,6 +455,10 @@ func primaryRole(kind ItemKind) string {
 		return "target"
 	case ObservationItem:
 		return "source"
+	case AnalysisSettingsItem:
+		return "config"
+	case FindingReviewItem:
+		return "decisions"
 	}
 	return string(kind)
 }
@@ -677,6 +687,9 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	BackupItem:      readBackup,
 	RunnerItem:      readRunner,
 	ScheduleItem:    readSchedule,
+
+	AnalysisSettingsItem: readAnalysisSettings,
+	FindingReviewItem:    readFindingReview,
 }
 
 // readCase verifies a case the project has not registered.
@@ -1081,12 +1094,32 @@ func readScenario(c *loadedCatalog, item catalog.Item, paths map[string]string) 
 func readAnalysis(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(AnalysisItem)]
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
-		retained, err := diagnose.OpenReport(path, diagnose.Reading{})
+		if declares(filepath.Join(path, diagnose.ReportName), diagnose.GroupsSchema) {
+			grouping, err := diagnose.OpenGroups(path)
+			if err != nil {
+				return view{}, err
+			}
+			summary := &AnalysisSummary{Form: "grouping", Cases: []ItemRef{}}
+			if len(grouping.Cases) > 0 {
+				summary.ProfileName = c.configName(grouping.Cases[0].ConfigSHA256)
+			}
+			for _, report := range grouping.Cases {
+				summary.Findings += len(report.Findings)
+				summary.Unsupported += len(report.Unsupported)
+				if ref := c.caseByIdentity(report.CaseIdentity); ref != nil {
+					summary.Cases = append(summary.Cases, *ref)
+				}
+			}
+			return view{summary: ItemSummary{Analysis: summary}}, nil
+		}
+		retained, err := c.retainedAnalysis(item.Entry, path)
 		if err != nil {
 			return view{}, err
 		}
-		return view{summary: ItemSummary{Analysis: &AnalysisSummary{Form: "diagnosis", RelatedCase: c.caseByIdentity(retained.Report.CaseIdentity),
-			Findings: len(retained.Report.Findings)}}}, nil
+		report := retained.Report
+		return view{summary: ItemSummary{Analysis: &AnalysisSummary{Form: "diagnosis", RelatedCase: c.caseByIdentity(report.CaseIdentity), Cases: []ItemRef{},
+			Findings: len(report.Findings), CaseIdentity: report.CaseIdentity, Profile: report.Profile, ProfileName: c.configName(report.ConfigSHA256), Ruleset: report.Ruleset,
+			ConfigSHA256: report.ConfigSHA256, Unsupported: len(report.Unsupported)}}}, nil
 	}
 	data, err := boundedFile(path, 4<<20)
 	if err != nil {
@@ -1096,7 +1129,7 @@ func readAnalysis(c *loadedCatalog, item catalog.Item, paths map[string]string) 
 	if err != nil {
 		return view{}, err
 	}
-	return view{summary: ItemSummary{Analysis: &AnalysisSummary{Form: "sequence-analysis", RelatedCase: c.caseByIdentity(declaration.CaseIdentity)}}}, nil
+	return view{summary: ItemSummary{Analysis: &AnalysisSummary{Form: "sequence-analysis", RelatedCase: c.caseByIdentity(declaration.CaseIdentity), Cases: []ItemRef{}}}}, nil
 }
 
 func readVariant(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {

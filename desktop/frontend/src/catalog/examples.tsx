@@ -11,7 +11,6 @@ import { ComputerLicense } from "../ComputerLicense";
 import { StateHelp, HelpTopics } from "../ContextHelp";
 import { ControlledDetails } from "../ControlledDetails";
 import { CorrelationReview } from "../CorrelationReview";
-import { Diagnosis } from "../Diagnosis";
 import { EnvironmentBanner } from "../EnvironmentBanner";
 import { GuidedSample } from "../GuidedSample";
 import { HubAdministration } from "../HubAdministration";
@@ -39,7 +38,6 @@ import {
   CorrelationRulesEditor,
   SequenceAnalysisEditor,
   NormalizationPolicyEditor,
-  DiagnoseConfigEditor,
 } from "../RulesEditor";
 import { RunComparison } from "../RunComparison";
 import { RunExplanation } from "../RunExplanation";
@@ -167,27 +165,6 @@ export const examples: Example[] = [
       onReview={empty}
     />
   )),
-  e("Diagnosis", () => (
-    <Diagnosis
-      {...common}
-      caseName={f.CASE_ENTRY}
-      identity={f.CASE_IDENTITY}
-      configEntries={list}
-      reportEntries={list}
-      groupsReportEntries={list}
-      caseEntries={[f.CASE_ENTRY]}
-      result={f.diagnosisResult([f.diagnosisFinding("finding-1")])}
-      groupsResult={null}
-      reviewResult={null}
-      onRun={noop}
-      onOpen={noop}
-      onGroup={noop}
-      onOpenGroups={noop}
-      onReview={noop}
-      onSelect={noop}
-      onPromote={noop}
-    />
-  )),
   e("EnvironmentBanner", () => <EnvironmentBanner />),
   e("GuidedSample", () => (
     <GuidedSample
@@ -300,9 +277,6 @@ export const examples: Example[] = [
   )),
   e("NormalizationPolicyEditor", () => (
     <NormalizationPolicyEditor {...common} entries={list} />
-  )),
-  e("DiagnoseConfigEditor", () => (
-    <DiagnoseConfigEditor {...common} entries={list} />
   )),
   e("RunComparison", () => <RunComparison {...common} />),
   e("RunExplanation", () => <RunExplanation {...common} />),

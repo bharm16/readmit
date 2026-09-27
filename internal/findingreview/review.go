@@ -25,6 +25,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -40,20 +41,24 @@ const (
 // The verdicts a person may record. There is no "accepted by default": a
 // finding nobody decided is NotReviewed, which is not a decision and never
 // promotes anything.
+type Verdict string
+
 const (
-	NotReviewed = "not_reviewed"
-	Confirmed   = "confirmed"
-	Dismissed   = "dismissed"
-	Suppressed  = "suppressed"
+	NotReviewed Verdict = "not_reviewed"
+	Confirmed   Verdict = "confirmed"
+	Dismissed   Verdict = "dismissed"
+	Suppressed  Verdict = "suppressed"
 )
 
 // The scopes a suppression may be recorded at. Every one of them is inside the
 // case the diagnosis was run over, because a review is made over exactly that
 // evidence and cannot speak for a case nobody read.
+type Scope string
+
 const (
-	ScopeFinding    = "finding"
-	ScopeOccurrence = "occurrence"
-	ScopeCase       = "case"
+	ScopeFinding    Scope = "finding"
+	ScopeOccurrence Scope = "occurrence"
+	ScopeCase       Scope = "case"
 )
 
 // How a finding came by its verdict: nobody decided it, a person decided that
@@ -85,10 +90,10 @@ const Statement = "A review records what a person decided about findings that we
 // required for every verdict, including a confirmation: recording a judgment
 // without saying why is how a review becomes a rubber stamp.
 type Decision struct {
-	Finding   string `json:"finding"`
-	Verdict   string `json:"verdict"`
-	Scope     string `json:"scope,omitzero"`
-	Rationale string `json:"rationale"`
+	Finding   string  `json:"finding"`
+	Verdict   Verdict `json:"verdict"`
+	Scope     Scope   `json:"scope,omitzero"`
+	Rationale string  `json:"rationale"`
 }
 
 // Decisions is what one analyst recorded about one diagnosis report.
@@ -203,16 +208,16 @@ type Provenance struct {
 // person decided, how it came by that verdict, what evidence would settle it,
 // and what it promotes to.
 type Status struct {
-	Finding        string     `json:"finding"`
-	RuleID         string     `json:"rule_id"`
-	Classification string     `json:"classification"`
-	Verdict        string     `json:"verdict"`
-	Basis          string     `json:"basis"`
-	Scope          string     `json:"scope,omitzero"`
-	SuppressedBy   string     `json:"suppressed_by,omitzero"`
-	Rationale      string     `json:"rationale,omitzero"`
-	NextEvidence   string     `json:"next_evidence"`
-	Promotion      *Promotion `json:"promotion,omitzero"`
+	Finding        string                  `json:"finding"`
+	RuleID         string                  `json:"rule_id"`
+	Classification diagnose.Classification `json:"classification"`
+	Verdict        Verdict                 `json:"verdict"`
+	Basis          string                  `json:"basis"`
+	Scope          Scope                   `json:"scope,omitzero"`
+	SuppressedBy   string                  `json:"suppressed_by,omitzero"`
+	Rationale      string                  `json:"rationale,omitzero"`
+	NextEvidence   string                  `json:"next_evidence"`
+	Promotion      *Promotion              `json:"promotion,omitzero"`
 }
 
 // Record is the review: the machine's findings and one person's judgment of

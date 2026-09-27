@@ -36,7 +36,8 @@ export type ChildDestination =
   | "benchmarks"
   | "encryption"
   | "new-test"
-  | "edit-test";
+  | "edit-test"
+  | "similar-findings";
 
 export const CHILD_OF: Record<ChildDestination, Destination> = {
   library: "tests",
@@ -55,6 +56,7 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   encryption: "settings",
   "new-test": "tests",
   "edit-test": "tests",
+  "similar-findings": "cases",
 };
 
 export type Place = Destination | ChildDestination;

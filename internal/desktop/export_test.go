@@ -148,3 +148,18 @@ func SetClockForTest(a *App, clock func() time.Time) {
 func BackupProjectWithinForTest(a *App, ctx context.Context, request StorageBackupRequest) StorageBackupResult {
 	return a.backupProject(ctx, request)
 }
+
+// AnalyzeCaseWithinForTest is AnalyzeCase's work under a context the test
+// controls, so a test can stop it where the window's Stop would.
+func AnalyzeCaseWithinForTest(a *App, ctx context.Context, request AnalyzeRequest) FindingsResult {
+	return a.analyzeCase(ctx, request)
+}
+
+// FindSimilarFindingsWithinForTest is FindSimilarFindings's work under a
+// context the test controls.
+func FindSimilarFindingsWithinForTest(a *App, ctx context.Context, request SimilarRequest) SimilarResult {
+	return a.findSimilarFindings(ctx, request)
+}
+
+// AnalysisOperationForTest is the name an analysis holds the slot under.
+const AnalysisOperationForTest = analysisOperation

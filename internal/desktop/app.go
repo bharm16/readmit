@@ -311,6 +311,9 @@ type App struct {
 	// commercialRestoreRefusal remains visible until destinations are chosen again.
 	commercialRestoreRefusal string
 
+	// analyses remembers the analysis each Analyze press made.
+	analyses analysisIntents
+
 	mu sync.Mutex
 	// running, operation and runOutput are the identity of the one operation
 	// that holds the slot. operation names the operation the way the panel

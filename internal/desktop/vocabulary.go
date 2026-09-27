@@ -45,9 +45,11 @@ type ReceiverFaultVocabulary struct {
 }
 
 // DiagnosisBuiltin is one built-in diagnosis configuration: the selection
-// that names it and the profile and ruleset it runs.
+// that names it, the name a person reads for it, and the profile and ruleset
+// it runs.
 type DiagnosisBuiltin struct {
 	ID      string `json:"id"`
+	Name    string `json:"name"`
 	Profile string `json:"profile"`
 	Ruleset string `json:"ruleset"`
 }
@@ -98,7 +100,7 @@ func vocabulary() Vocabulary {
 	builtins := make([]DiagnosisBuiltin, 0, len(diagnosisBuiltins))
 	for _, builtin := range diagnosisBuiltins {
 		config := builtin.config()
-		builtins = append(builtins, DiagnosisBuiltin{ID: builtin.id, Profile: config.Profile, Ruleset: config.Ruleset})
+		builtins = append(builtins, DiagnosisBuiltin{ID: builtin.id, Name: profileName(config.Profile), Profile: config.Profile, Ruleset: config.Ruleset})
 	}
 	return Vocabulary{
 		DiagnosisBuiltins: builtins,

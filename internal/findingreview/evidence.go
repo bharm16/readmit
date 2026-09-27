@@ -26,10 +26,10 @@ var ruleEvidence = map[string]string{
 
 // evidenceByClassification is the fallback, keyed by the three classifications
 // readmit-diagnosis/v1 records.
-var evidenceByClassification = map[string]string{
-	"observed_fact":     "The capture already establishes this fact. What is left is the decision whether it should hold again, which is what promoting it to a regression test records.",
-	"profile_violation": "Read the named field of the original occurrence with readmit timeline CASE --show-values where you are authorized to, and confirm with the sending system what it intended to send.",
-	"hypothesis":        "Capture a wider window from the same source and diagnose the new case with the same configuration. This finding relates identities inside one observed window; an earlier or uncaptured occurrence may exist.",
+var evidenceByClassification = map[diagnose.Classification]string{
+	diagnose.ObservedFact:     "The capture already establishes this fact. What is left is the decision whether it should hold again, which is what promoting it to a regression test records.",
+	diagnose.ProfileViolation: "Read the named field of the original occurrence with readmit timeline CASE --show-values where you are authorized to, and confirm with the sending system what it intended to send.",
+	diagnose.Hypothesis:       "Capture a wider window from the same source and diagnose the new case with the same configuration. This finding relates identities inside one observed window; an earlier or uncaptured occurrence may exist.",
 }
 
 // nextEvidence reports what would settle one finding.

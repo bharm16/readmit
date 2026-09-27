@@ -120,12 +120,6 @@
     "line": 339
   },
   {
-    "name": "Diagnosis",
-    "source": "desktop/frontend/src/Diagnosis.tsx",
-    "exported": true,
-    "line": 106
-  },
-  {
     "name": "GuidedSample",
     "source": "desktop/frontend/src/GuidedSample.tsx",
     "exported": true,
@@ -454,12 +448,6 @@
     "source": "desktop/frontend/src/RulesEditor.tsx",
     "exported": true,
     "line": 1045
-  },
-  {
-    "name": "DiagnoseConfigEditor",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": true,
-    "line": 1323
   },
   {
     "name": "RunComparison",

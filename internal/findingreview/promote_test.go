@@ -185,7 +185,7 @@ func TestSuppressionReachesOnlyAsFarAsItsScope(t *testing.T) {
 		t.Fatalf("the fixture produced %d acknowledgement outcomes, not two", len(outcomes))
 	}
 	first, other := outcomes[0], outcomes[1]
-	for name, scope := range map[string]string{"finding": findingreview.ScopeFinding, "occurrence": findingreview.ScopeOccurrence} {
+	for name, scope := range map[string]findingreview.Scope{"finding": findingreview.ScopeFinding, "occurrence": findingreview.ScopeOccurrence} {
 		record := review(t, report, identity, source,
 			findingreview.Decision{Finding: first, Verdict: findingreview.Suppressed, Scope: scope, Rationale: "accepted for this one"})
 		if reported := status(t, record, other); reported.Verdict != findingreview.NotReviewed {

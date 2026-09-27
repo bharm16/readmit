@@ -341,7 +341,8 @@ it or the revisions the application saved of it, and the application's own
 record of when it created, changed and last opened it. It never restates
 what evidence contains: an object is read through its own reader every time
 it is listed. Each saved revision names the files it consists of — new
-entries of the project the application named — with their SHA-256, and a
+entries of the project the application named — with their SHA-256, and, as
+`author`, the name of the person who saved it when the save named one; a
 `readmit-catalog-pending/v1` record under `.readmit/pending` holds a save
 until it is published or discarded. An object a person removed from the
 project keeps its item with `removed_at`, when it was removed, so its entry
