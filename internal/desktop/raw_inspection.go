@@ -170,6 +170,7 @@ type FileInspectRequest struct {
 	Path       string `json:"path"`
 	NodeOffset int    `json:"node_offset"`
 	ByteOffset int    `json:"byte_offset"`
+	RawOffset  int    `json:"raw_offset"`
 	Reveal     bool   `json:"reveal"`
 }
 
@@ -181,7 +182,7 @@ func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
 		fail := func(state State, reason string) InspectionResult {
 			return InspectionResult{State: state, Reason: reason}
 		}
-		if request.NodeOffset < 0 || request.ByteOffset < -1 {
+		if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
 			return fail(Failed, "inspector offsets must be in range")
 		}
 		data, declined := expectedFile(request.File, request.Expect)
@@ -197,7 +198,7 @@ func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
 			return fail(Failed, err.Error())
 		}
 		view, reason := inspectDocument(data, document, request.Message, inspectorWindow{
-			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal,
+			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, RawOffset: request.RawOffset, Reveal: request.Reveal,
 		})
 		if view == nil {
 			return fail(Failed, reason)

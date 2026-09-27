@@ -148,9 +148,9 @@ func orNotes(notes []project.Note) []project.Note {
 	return notes
 }
 
-func orEmpty(values []string) []string {
+func orEmpty[T any](values []T) []T {
 	if values == nil {
-		return []string{}
+		return []T{}
 	}
 	return values
 }

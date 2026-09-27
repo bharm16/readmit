@@ -32,7 +32,10 @@ interface version unassigned. Before any release carried v2, it also gained
 two optional members only v2 holds (#548) — the project's tags and the names
 people give its interface versions, whose identifiers never change — and
 takes owners, tags and incident references as bounded text a person typed
-rather than identifiers. A v1 project becomes v2 only when a person
+rather than identifiers. It then gained a third optional member only v2 holds
+(#549), still before any release carried v2: a case's `sources`, the names
+people give its sources by the source IDs the case declares, which never
+change. A v1 project becomes v2 only when a person
 explicitly asks (`MigrateProjectDocument` in the desktop): the conversion
 changes the declared contract and nothing else, is written through the
 project's atomic replacement, and retains the exact v1 bytes as the

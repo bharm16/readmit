@@ -83,27 +83,28 @@ func Select(document index.Document, at time.Time, filter *Filter, window Window
 }
 
 // answered asks the index every value and state question the filter carries and
-// returns the occurrences that satisfied all of them. asked reports whether any
-// question was asked at all, so "no question" is told apart from "no answer":
-// an empty set of occurrences is a real, empty answer.
-func answered(document index.Document, at time.Time, filter *Filter, page *Page) (map[string]bool, bool, error) {
+// returns the occurrences that satisfied all of them, and the occurrences no
+// question excluded: each satisfied it or could not be settled by it. asked
+// reports whether any question was asked at all, so "no question" is told
+// apart from "no answer": an empty set of occurrences is a real, empty answer.
+func answered(document index.Document, at time.Time, filter *Filter, page *Page) (map[string]bool, map[string]bool, bool, error) {
 	if filter == nil {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
-	var kept map[string]bool
+	var kept, open map[string]bool
 	asked := false
 	for _, predicate := range filter.Fields {
-		found, undecided, err := ask(document, at, index.Query{
+		found, unsettled, undecided, err := ask(document, at, index.Query{
 			Field: predicate.Selector,
 			Match: predicate.Match,
 			Term:  []byte(predicate.Term),
 			State: predicate.State,
 		})
 		if err != nil {
-			return nil, false, err
+			return nil, nil, false, err
 		}
 		page.Undecided += undecided
-		kept, asked = intersect(kept, found, asked), true
+		kept, open, asked = intersect(kept, found, asked), intersect(open, union(found, unsettled), asked), true
 	}
 	if len(filter.AckCodes) > 0 {
 		// The declared outcomes are alternatives: an occurrence carrying any
@@ -111,39 +112,58 @@ func answered(document index.Document, at time.Time, filter *Filter, page *Page)
 		// index could not settle about that field is counted once rather than
 		// once per alternative, which would report the same value several
 		// times over.
-		either, unsettled := make(map[string]bool), 0
+		either, unsure, unsettled := make(map[string]bool), make(map[string]bool), 0
 		for _, code := range filter.AckCodes {
-			found, undecided, err := ask(document, at, index.Query{
+			found, maybe, undecided, err := ask(document, at, index.Query{
 				Field: AckCodeSelector, Match: index.Equals, Term: []byte(code),
 			})
 			if err != nil {
-				return nil, false, err
+				return nil, nil, false, err
 			}
 			unsettled = max(unsettled, undecided)
 			for id := range found {
 				either[id] = true
 			}
+			for id := range maybe {
+				unsure[id] = true
+			}
 		}
 		page.Undecided += unsettled
-		kept, asked = intersect(kept, either, asked), true
+		kept, open, asked = intersect(kept, either, asked), intersect(open, union(either, unsure), asked), true
 	}
-	return kept, asked, nil
+	return kept, open, asked, nil
 }
 
 // ask puts one question to the index and returns the occurrences that answered
-// it, with the retained values it could not settle. Retention, the retained
-// form and whether the field is indexed at all are the index's own decisions,
-// made inside Search.
-func ask(document index.Document, at time.Time, query index.Query) (map[string]bool, int, error) {
+// it and those it could not settle, with the count of retained values it could
+// not settle. Retention, the retained form and whether the field is indexed at
+// all are the index's own decisions, made inside Search.
+func ask(document index.Document, at time.Time, query index.Query) (map[string]bool, map[string]bool, int, error) {
 	result, err := document.Search(at, query)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	found := make(map[string]bool, len(result.Hits))
 	for _, hit := range result.Hits {
 		found[hit.Record.ID] = true
 	}
-	return found, result.Undecided, nil
+	unsettled := make(map[string]bool, len(result.UndecidedIDs))
+	for _, id := range result.UndecidedIDs {
+		unsettled[id] = true
+	}
+	return found, unsettled, result.Undecided, nil
+}
+
+// union is every occurrence in either set.
+func union(a, b map[string]bool) map[string]bool {
+	both := make(map[string]bool, len(a)+len(b))
+	for id := range a {
+		both[id] = true
+	}
+	for id := range b {
+		both[id] = true
+	}
+	return both
 }
 
 // intersect narrows the occurrences kept so far by one more answered question.

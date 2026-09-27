@@ -1,6 +1,7 @@
 package desktop_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,7 +95,7 @@ func TestReadMessagesListsActualTypesKindsAndFacetsWithoutAnIndex(t *testing.T) 
 			{Kind: bundle.Message, Code: "SIU", Trigger: "S13"},
 			{Kind: bundle.Unparsed},
 		},
-		Sources:  []string{"s0001"},
+		Sources:  []desktop.SourceFacet{{ID: "s0001"}},
 		AckCodes: []string{"AA", "AE"},
 	}
 	if !reflect.DeepEqual(result.Facets, facets) {
@@ -165,40 +166,57 @@ func TestReadMessagesSortsByTimeWithUnknownLastAndPagesWithinTheBound(t *testing
 
 // No index, a foreign index, an expired one and a corrupt one all leave the
 // case readable with the same complete answer, and none is chosen by name.
+// Search settings are offered only for the case's own index that has expired
+// or cannot answer the applied query.
 func TestReadMessagesReadsTheSameAnswerWhateverIndexLiesBesideTheCase(t *testing.T) {
 	query := grid.Query{Fields: []grid.FieldPredicate{{Selector: patientField, Match: index.Equals, Term: "MRN-1^^^READMIT^MR"}}}
 	ended := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	for name, arrange := range map[string]func(t *testing.T, root string, opened *bundle.Bundle){
-		"no index": func(*testing.T, string, *bundle.Bundle) {},
-		"own index": func(t *testing.T, root string, opened *bundle.Bundle) {
+	for name, arrangement := range map[string]struct {
+		arrange        func(t *testing.T, root string, opened *bundle.Bundle)
+		asked, unasked desktop.SearchIndexState
+	}{
+		"no index": {func(*testing.T, string, *bundle.Bundle) {}, desktop.SearchIndexFine, desktop.SearchIndexFine},
+		"own index": {func(t *testing.T, root string, opened *bundle.Bundle) {
 			writeIndex(t, root, "incident.index.json", opened, nil)
-		},
-		"foreign index": func(t *testing.T, root string, _ *bundle.Bundle) {
+		}, desktop.SearchIndexFine, desktop.SearchIndexFine},
+		"own index retaining too little": {func(t *testing.T, root string, opened *bundle.Bundle) {
+			document, err := index.Build(context.Background(), opened, index.Policy{Fields: []string{grid.AckCodeSelector}, Retention: index.RetainStates}, indexedAt())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := index.Write(filepath.Join(root, "incident.index.json"), document); err != nil {
+				t.Fatal(err)
+			}
+		}, desktop.SearchIndexInsufficient, desktop.SearchIndexFine},
+		"foreign index": {func(t *testing.T, root string, _ *bundle.Bundle) {
 			followup, err := bundle.Open(filepath.Join(root, "followup"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			writeIndex(t, root, "incident.index.json", followup, nil)
-		},
-		"expired index": func(t *testing.T, root string, opened *bundle.Bundle) {
+		}, desktop.SearchIndexFine, desktop.SearchIndexFine},
+		"expired index": {func(t *testing.T, root string, opened *bundle.Bundle) {
 			writeIndex(t, root, "incident.index.json", opened, &ended)
-		},
-		"corrupt index": func(t *testing.T, root string, opened *bundle.Bundle) {
+		}, desktop.SearchIndexExpired, desktop.SearchIndexExpired},
+		"corrupt index": {func(t *testing.T, root string, opened *bundle.Bundle) {
 			writeIndex(t, root, "incident.index.json", opened, nil)
 			path := filepath.Join(root, "incident.index.json")
 			data, _ := os.ReadFile(path)
 			if err := os.WriteFile(path, data[:len(data)/2], 0o600); err != nil {
 				t.Fatal(err)
 			}
-		},
+		}, desktop.SearchIndexFine, desktop.SearchIndexFine},
 	} {
 		app, root, state, opened := messagesWorkspace(t)
-		arrange(t, root, opened)
+		arrangement.arrange(t, root, opened)
 		evidence, viewer := bytesUnder(t, root), bytesUnder(t, state)
 		result := readMessages(t, app, root, opened, query)
 		if result.State != desktop.Completed || !result.Complete || result.Total != 5 ||
-			!reflect.DeepEqual(rowIDs(result.Rows), []string{"s0001-e000001"}) {
+			!reflect.DeepEqual(rowIDs(result.Rows), []string{"s0001-e000001"}) || result.SearchIndex != arrangement.asked {
 			t.Fatalf("%s: %+v", name, result)
+		}
+		if unasked := readMessages(t, app, root, opened, grid.Query{}); unasked.SearchIndex != arrangement.unasked {
+			t.Fatalf("%s: a query that asks the index nothing offers %q", name, unasked.SearchIndex)
 		}
 		if !reflect.DeepEqual(bytesUnder(t, root), evidence) || !reflect.DeepEqual(bytesUnder(t, state), viewer) {
 			t.Fatalf("%s: reading messages wrote, replaced or extended a file", name)

@@ -13,6 +13,8 @@ import type {
   GridView,
   IndexRetention,
   MessageFacets,
+  MessageField,
+  MessageFieldsResult,
   MessageRow,
   MessagesResult,
   OccurrenceKind,
@@ -51,7 +53,8 @@ export function isEmptyQuery(query: GridQuery): boolean {
     query.observed_until === null &&
     query.ack_codes.length === 0 &&
     query.fields.length === 0 &&
-    query.search === null
+    query.search === null &&
+    !query.scope
   );
 }
 
@@ -67,6 +70,11 @@ export function typeLabel(type: { kind: OccurrenceKind; code: string; trigger: s
   if (type.kind === "unparsed") return "Unparsed";
   if (type.code && type.trigger) return `${type.code} · ${type.trigger}`;
   return type.code || "Message";
+}
+
+/** A source as the case names it: its declared name, else its exact ID. */
+export function sourceLabel(row: { source_id: string; source_name?: string }): string {
+  return row.source_name || row.source_id;
 }
 
 export function rowType(row: MessageRow): string {
@@ -109,6 +117,8 @@ type Rule = {
   when: string;
   zone: "utc" | "local";
   selector: string;
+  /** The field is typed as an exact path rather than picked from the list. */
+  typed: boolean;
   term: string;
   state: Exclude<FieldState, "">;
 };
@@ -155,6 +165,7 @@ function newRule(field: RuleField = ""): Rule {
     when: "",
     zone: "utc",
     selector: "",
+    typed: false,
     term: "",
     state: "present",
   };
@@ -214,8 +225,8 @@ type RuleProblem = { id: number; field: string; reason: string };
 
 /** Builds the query the rules state, keeping the search already applied; a
  * partly filled rule is a problem on its own field. */
-function compose(rules: Rule[], search: GridQuery["search"]): { query: GridQuery } | { problem: RuleProblem } {
-  const query: GridQuery = { ...NO_QUERY, kinds: [], types: [], not_types: [], sources: [], not_sources: [], directions: [], ack_codes: [], fields: [], search };
+function compose(rules: Rule[], search: GridQuery["search"], scope: GridQuery["scope"]): { query: GridQuery } | { problem: RuleProblem } {
+  const query: GridQuery = { ...NO_QUERY, kinds: [], types: [], not_types: [], sources: [], not_sources: [], directions: [], ack_codes: [], fields: [], search, ...(scope ? { scope } : {}) };
   for (const rule of rules) {
     if (blank(rule)) continue;
     const at = (field: string, reason: string) => ({ problem: { id: rule.id, field: `rule-${rule.id}-${field}`, reason } });
@@ -248,7 +259,7 @@ function compose(rules: Rule[], search: GridQuery["search"]): { query: GridQuery
       }
       case "field": {
         const selector = rule.selector.trim();
-        if (selector === "") return at("selector", "Enter a field path.");
+        if (selector === "") return at("selector", "Choose a field.");
         const predicate: GridFieldPredicate =
           rule.operator === "state"
             ? { selector, match: "state", term: "", state: rule.state }
@@ -267,15 +278,17 @@ function compose(rules: Rule[], search: GridQuery["search"]): { query: GridQuery
 }
 
 /** The applied criteria as chips, each removable on its own. */
-function chipsOf(query: GridQuery, onQuery: (query: GridQuery) => void): { label: string; remove: () => void }[] {
+function chipsOf(query: GridQuery, onQuery: (query: GridQuery) => void, sourceName: (id: string) => string): { label: string; remove: () => void }[] {
   const chips: { label: string; remove: () => void }[] = [];
   const list = (items: string[]) => items.join(", ");
+  if (query.scope === "undecided") chips.push({ label: "Could not be matched", remove: () => onQuery({ ...query, scope: "" }) });
+  if (query.scope === "undecodable") chips.push({ label: "Not decoded", remove: () => onQuery({ ...query, scope: "" }) });
   const types = [...query.types, ...query.kinds.map((kind) => ({ kind, code: "", trigger: "" }))];
   if (query.search) chips.push({ label: `“${query.search.text}”${query.search.scope === "content" ? " in content" : ""}`, remove: () => onQuery({ ...query, search: null }) });
   if (types.length > 0) chips.push({ label: `Type is ${list(types.map(typeLabel))}`, remove: () => onQuery({ ...query, types: [], kinds: [] }) });
   if (query.not_types.length > 0) chips.push({ label: `Type is not ${list(query.not_types.map(typeLabel))}`, remove: () => onQuery({ ...query, not_types: [] }) });
-  if (query.sources.length > 0) chips.push({ label: `Source is ${list(query.sources)}`, remove: () => onQuery({ ...query, sources: [] }) });
-  if (query.not_sources.length > 0) chips.push({ label: `Source is not ${list(query.not_sources)}`, remove: () => onQuery({ ...query, not_sources: [] }) });
+  if (query.sources.length > 0) chips.push({ label: `Source is ${list(query.sources.map(sourceName))}`, remove: () => onQuery({ ...query, sources: [] }) });
+  if (query.not_sources.length > 0) chips.push({ label: `Source is not ${list(query.not_sources.map(sourceName))}`, remove: () => onQuery({ ...query, not_sources: [] }) });
   if (query.directions.length > 0) chips.push({ label: `Direction is ${list(query.directions.map((d) => DIRECTION_NAMES[d]))}`, remove: () => onQuery({ ...query, directions: [] }) });
   if (query.observed_from) chips.push({ label: `On or after ${observedInstant(query.observed_from)}`, remove: () => onQuery({ ...query, observed_from: null }) });
   if (query.observed_until) chips.push({ label: `Before ${observedInstant(query.observed_until)}`, remove: () => onQuery({ ...query, observed_until: null }) });
@@ -317,9 +330,11 @@ export function MessageList({
   onSendSelected,
   onCreateVariant,
   onLoadMore,
+  more = null,
   onRetry,
   onImport,
   onSearchSettings,
+  onFields,
   seed,
   onSeedUsed,
   busy,
@@ -346,9 +361,13 @@ export function MessageList({
   onSendSelected: () => void;
   onCreateVariant: () => void;
   onLoadMore: () => void;
+  /** Why the next page could not be read, below the rows already shown. */
+  more?: string | null;
   onRetry: () => void;
   onImport: () => void;
   onSearchSettings: () => void;
+  /** The fields present in this case, for the field picker. */
+  onFields: () => Promise<MessageFieldsResult>;
   seed: FilterSeed | null;
   onSeedUsed: () => void;
   busy: boolean;
@@ -358,8 +377,10 @@ export function MessageList({
   const [saving, setSaving] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const [showKind, setShowKind] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [shownColumns, setShownColumns] = useState({ kind: false, direction: true });
   const facets: MessageFacets = result?.facets ?? { types: [], sources: [], ack_codes: [] };
+  const sourceName = (id: string) => facets.sources.find((source) => source.id === id)?.name || id;
 
   useEffect(() => {
     if (seed) setFiltering(true);
@@ -368,21 +389,17 @@ export function MessageList({
   const applied = !isEmptyQuery(query);
   const current = views.find((candidate) => candidate.name === view) ?? null;
   const unsaved = applied && (current === null || !sameQuery(current.query, query));
-  const chips = chipsOf(query, onQuery);
+  const chips = chipsOf(query, onQuery, sourceName);
   const sendable = rows.filter((row) => checked.has(row.id) && row.kind === "message").length;
 
   const columns: Column<MessageRow>[] = [
     { key: "time", header: "Time", priority: 1, minWidth: 7.5, sortable: true, render: (row) => timeOfDay(row.observed_at) },
     { key: "type", header: "Type", priority: 1, minWidth: 7, render: rowType },
-    ...(showKind ? [{ key: "kind", header: "Kind", priority: 4, minWidth: 6.5, render: (row: MessageRow) => KINDS[row.kind] }] : []),
-    { key: "source", header: "Source", priority: 2, minWidth: 10, flex: true, render: (row) => row.source_id },
-    {
-      key: "direction",
-      header: "Direction",
-      priority: 3,
-      minWidth: 6.5,
-      render: (row) => (row.direction === "unknown" ? "—" : DIRECTION_NAMES[row.direction]),
-    },
+    ...(shownColumns.kind ? [{ key: "kind", header: "Kind", priority: 4, minWidth: 6.5, render: (row: MessageRow) => KINDS[row.kind] }] : []),
+    { key: "source", header: "Source", priority: 2, minWidth: 10, flex: true, render: sourceLabel },
+    ...(shownColumns.direction
+      ? [{ key: "direction", header: "Direction", priority: 3, minWidth: 6.5, render: (row: MessageRow) => (row.direction === "unknown" ? "—" : DIRECTION_NAMES[row.direction]) }]
+      : []),
   ];
 
   const viewItems: MenuItem[] = [
@@ -440,7 +457,7 @@ export function MessageList({
         className={checked.size > 0 ? "page-table messages-table has-checked" : "page-table messages-table"}
         rows={rows}
         rowId={(row) => row.id}
-        rowLabel={(row) => `${timeOfDay(row.observed_at)} · ${rowType(row)} · ${row.source_id}`}
+        rowLabel={(row) => `${timeOfDay(row.observed_at)} · ${rowType(row)} · ${sourceLabel(row)}`}
         columns={columns}
         selected={selected}
         onSelect={(id) => {
@@ -452,9 +469,22 @@ export function MessageList({
         checked={checked}
         onCheck={onCheck}
         loading={loading}
-        {...(rows.length < result.matched ? { onNearEnd: onLoadMore } : {})}
+        {...(rows.length < result.matched && !more ? { onNearEnd: onLoadMore } : {})}
       />
     );
+    if (more) {
+      body = (
+        <>
+          {body}
+          <div className="list-problem" role="alert">
+            <span>{more}</span>
+            <button type="button" disabled={busy} onClick={onLoadMore}>
+              Retry
+            </button>
+          </div>
+        </>
+      );
+    }
   }
 
   return (
@@ -487,8 +517,10 @@ export function MessageList({
           <Menu
             label="More message list actions"
             items={[
-              { label: showKind ? "Hide Kind column" : "Show Kind column", onSelect: () => setShowKind(!showKind) },
-              { label: "Search settings…", onSelect: onSearchSettings },
+              { label: "Columns…", onSelect: () => setColumnsOpen(true) },
+              // Offered only when the case's own index has expired or cannot
+              // answer; reading needs no setup.
+              ...(result?.search_index ? [{ label: "Search settings…", onSelect: onSearchSettings }] : []),
             ]}
           />
         </div>
@@ -505,8 +537,16 @@ export function MessageList({
               </button>
             </span>
           ))}
-          {result && result.undecided > 0 ? <span className="chip chip-status">{result.undecided} could not be matched</span> : null}
-          {result && result.undecodable > 0 ? <span className="chip chip-status">{result.undecodable} not decoded</span> : null}
+          {result && result.undecided > 0 && query.scope !== "undecided" ? (
+            <button type="button" className="chip chip-status" onClick={() => onQuery({ ...query, scope: "undecided" })}>
+              {result.undecided} could not be matched
+            </button>
+          ) : null}
+          {result && result.undecodable > 0 && query.scope !== "undecodable" ? (
+            <button type="button" className="chip chip-status" onClick={() => onQuery({ ...query, scope: "undecodable" })}>
+              {result.undecodable} not decoded
+            </button>
+          ) : null}
           {chips.length > 0 ? (
             <button type="button" className="quiet" onClick={() => onQuery(NO_QUERY)}>
               Clear filters
@@ -516,10 +556,20 @@ export function MessageList({
       ) : null}
       {body}
 
+      <ColumnsSheet
+        open={columnsOpen}
+        shown={shownColumns}
+        onClose={() => setColumnsOpen(false)}
+        onApply={(next) => {
+          setShownColumns(next);
+          setColumnsOpen(false);
+        }}
+      />
       <FilterSheet
         open={filtering}
         query={query}
         facets={facets}
+        onFields={onFields}
         seed={seed}
         onApply={(next) => {
           onQuery(next);
@@ -675,6 +725,7 @@ function FilterSheet({
   open,
   query,
   facets,
+  onFields,
   seed,
   onApply,
   onClose,
@@ -682,12 +733,33 @@ function FilterSheet({
   open: boolean;
   query: GridQuery;
   facets: MessageFacets;
+  onFields: () => Promise<MessageFieldsResult>;
   seed: FilterSeed | null;
   onApply: (query: GridQuery) => void;
   onClose: () => void;
 }) {
   const [rules, setRules] = useState<Rule[]>(() => rulesOf(query));
   const [problem, setProblem] = useState<RuleProblem | null>(null);
+  const [fields, setFields] = useState<MessageField[] | null>(null);
+  const [allFields, setAllFields] = useState(true);
+  const [fieldsProblem, setFieldsProblem] = useState<string | null>(null);
+  // The fields present in this case are read once the sheet opens; nothing
+  // about their values is read.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    void onFields().then((answer) => {
+      if (!live) return;
+      setFields(answer.fields);
+      setAllFields(answer.complete);
+      setFieldsProblem(answer.state === "completed" || answer.state === "empty" ? null : (answer.reason ?? "The fields could not be read."));
+    });
+    return () => {
+      live = false;
+    };
+    // Read when the sheet opens; the case does not change under an open sheet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const held = rulesOf(query).filter((rule) => !blank(rule));
@@ -703,9 +775,16 @@ function FilterSheet({
     setProblem(null);
   }, [open, query, seed]);
 
+  // A path from the case's list, or one typed that the list does not hold.
+  const listed = (selector: string) => selector === "" || (fields ?? []).some((field) => field.selector === selector);
   const update = (id: number, change: Partial<Rule>) => setRules((held) => held.map((rule) => (rule.id === id ? { ...rule, ...change } : rule)));
+  // Within one rule several values combine with OR, so a field takes one rule
+  // per operator: Type is and Type is not can both be set, not two of either.
+  const perOperator = (field: RuleField) => field === "time" || field === "type" || field === "source";
   const used = (field: RuleField, operator: string, except: number) =>
-    rules.some((rule) => rule.id !== except && rule.field === field && (field !== "time" || rule.operator === operator));
+    rules.some((rule) => rule.id !== except && rule.field === field && (!perOperator(field) || rule.operator === operator));
+  const exhausted = (field: Exclude<RuleField, "">, except: number) =>
+    perOperator(field) ? OPERATORS[field].every((operator) => used(field, operator.value, except)) : used(field, "", except);
 
   const typeChoices = facets.types.map((type) => ({ value: typeKey(type), label: typeLabel(type) }));
   const choices = (rule: Rule): { value: string; label: string }[] => {
@@ -713,7 +792,7 @@ function FilterSheet({
       case "type":
         return typeChoices;
       case "source":
-        return facets.sources.map((source) => ({ value: source, label: source }));
+        return facets.sources.map((source) => ({ value: source.id, label: source.name || source.id }));
       case "direction":
         return (Object.keys(DIRECTION_NAMES) as BundleDirection[]).map((direction) => ({ value: direction, label: DIRECTION_NAMES[direction] }));
       case "ack":
@@ -730,7 +809,7 @@ function FilterSheet({
       submitLabel="Apply"
       onClose={onClose}
       onSubmit={() => {
-        const answer = compose(rules, query.search);
+        const answer = compose(rules, query.search, query.scope);
         if ("problem" in answer) {
           setProblem(answer.problem);
           return { reason: answer.problem.reason, field: answer.problem.field };
@@ -751,20 +830,23 @@ function FilterSheet({
                 value={rule.field}
                 onChange={(event) => {
                   const field = event.target.value as RuleField;
-                  update(rule.id, { ...newRule(field), id: rule.id });
+                  const fresh = newRule(field);
+                  // A field with one rule already starts on the operator still free.
+                  const operator = field ? (OPERATORS[field].find((choice) => !used(field, choice.value, rule.id))?.value ?? fresh.operator) : "";
+                  update(rule.id, { ...fresh, id: rule.id, operator });
                 }}
               >
                 <option value="">Choose a field</option>
                 {FIELD_CHOICES.map((choice) => (
-                  <option key={choice.value} value={choice.value} disabled={choice.value !== "field" && choice.value !== "time" && used(choice.value, "", rule.id)}>
-                    {choice.label}
+                  <option key={choice.value} value={choice.value} disabled={choice.value !== "field" && exhausted(choice.value, rule.id)}>
+                    {choice.value !== "field" && exhausted(choice.value, rule.id) ? `${choice.label} · already in a rule` : choice.label}
                   </option>
                 ))}
               </select>
               {rule.field ? (
                 <select aria-label={`Operator of rule ${index + 1}`} value={rule.operator} onChange={(event) => update(rule.id, { operator: event.target.value })}>
                   {OPERATORS[rule.field].map((operator) => (
-                    <option key={operator.value} value={operator.value} disabled={rule.field === "time" && used("time", operator.value, rule.id)}>
+                    <option key={operator.value} value={operator.value} disabled={perOperator(rule.field) && used(rule.field, operator.value, rule.id)}>
                       {operator.label}
                     </option>
                   ))}
@@ -813,15 +895,37 @@ function FilterSheet({
             ) : null}
             {rule.field === "field" ? (
               <div className="filter-rule-row">
-                <input
-                  id={`rule-${rule.id}-selector`}
-                  type="text"
-                  aria-label={`Field path of rule ${index + 1}`}
-                  aria-invalid={invalid("selector")}
-                  spellCheck={false}
-                  value={rule.selector}
-                  onChange={(event) => update(rule.id, { selector: event.target.value })}
-                />
+                <select
+                  id={rule.typed || !listed(rule.selector) ? undefined : `rule-${rule.id}-selector`}
+                  aria-label={`Message field of rule ${index + 1}`}
+                  aria-invalid={invalid("selector") ?? (fieldsProblem ? true : undefined)}
+                  value={rule.typed || !listed(rule.selector) ? OTHER_FIELD : rule.selector}
+                  disabled={fields === null}
+                  onChange={(event) =>
+                    update(rule.id, event.target.value === OTHER_FIELD ? { typed: true, selector: "" } : { typed: false, selector: event.target.value })
+                  }
+                >
+                  <option value="">{fields === null ? "Loading" : "Choose a field"}</option>
+                  {(fields ?? []).map((field) => (
+                    <option key={field.selector} value={field.selector}>
+                      {fieldPosition(field)}
+                      {field.label ? ` · ${field.label}` : ""}
+                    </option>
+                  ))}
+                  {allFields ? null : <option disabled>Only the first 2000 fields are listed</option>}
+                  <option value={OTHER_FIELD}>Other field…</option>
+                </select>
+                {rule.typed || !listed(rule.selector) ? (
+                  <input
+                    id={`rule-${rule.id}-selector`}
+                    type="text"
+                    aria-label={`Field path of rule ${index + 1}`}
+                    aria-invalid={invalid("selector")}
+                    spellCheck={false}
+                    value={rule.selector}
+                    onChange={(event) => update(rule.id, { selector: event.target.value })}
+                  />
+                ) : null}
                 {rule.operator === "state" ? (
                   <select aria-label={`State of rule ${index + 1}`} value={rule.state} onChange={(event) => update(rule.id, { state: event.target.value as Exclude<FieldState, ""> })}>
                     {(Object.keys(FIELD_STATES) as Exclude<FieldState, "">[]).map((state) => (
@@ -845,11 +949,50 @@ function FilterSheet({
           </fieldset>
         );
       })}
+      {fieldsProblem ? <p role="alert">{fieldsProblem}</p> : null}
       <div>
         <button type="button" className="quiet" onClick={() => setRules((held) => [...held, newRule()])}>
           Add rule
         </button>
       </div>
+    </FormDialog>
+  );
+}
+
+/** The picker's choice that opens a typed exact path. */
+const OTHER_FIELD = "\u0000other";
+
+/** A field's position as HL7 names it: PID-3, or MSH-9 of a segment. */
+function fieldPosition(field: MessageField): string {
+  return `${field.segment}-${field.field}`;
+}
+
+/** Which optional columns the list shows. */
+function ColumnsSheet({
+  open,
+  shown,
+  onClose,
+  onApply,
+}: {
+  open: boolean;
+  shown: { kind: boolean; direction: boolean };
+  onClose: () => void;
+  onApply: (shown: { kind: boolean; direction: boolean }) => void;
+}) {
+  const [draft, setDraft] = useState(shown);
+  useEffect(() => {
+    if (open) setDraft(shown);
+  }, [open, shown]);
+  return (
+    <FormDialog open={open} title="Columns" size="small" submitLabel="Apply" onClose={onClose} onSubmit={() => onApply(draft)}>
+      <label className="check">
+        <input type="checkbox" checked={draft.kind} onChange={() => setDraft({ ...draft, kind: !draft.kind })} />
+        Kind
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={draft.direction} onChange={() => setDraft({ ...draft, direction: !draft.direction })} />
+        Direction
+      </label>
     </FormDialog>
   );
 }

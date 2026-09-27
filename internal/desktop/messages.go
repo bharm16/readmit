@@ -49,10 +49,13 @@ type MessagesRequest struct {
 // and when it was observed. MessageCode and TriggerEvent are the parsed MSH-9
 // components, escaped and bounded, and are empty where the occurrence declares
 // none or could not be decoded; nothing is invented in their place. ObservedAt
-// is present only where the case recorded one. No field value is here.
+// is present only where the case recorded one. SourceName is the name declared
+// for the source (sourceNames), empty when nothing names it and the row reads
+// by SourceID. No field value is here.
 type MessageRow struct {
 	ID           string           `json:"id"`
 	SourceID     string           `json:"source_id"`
+	SourceName   string           `json:"source_name"`
 	Sequence     int              `json:"sequence"`
 	Offset       int              `json:"offset"`
 	Size         int              `json:"size"`
@@ -65,14 +68,27 @@ type MessageRow struct {
 }
 
 // MessageFacets are the choices the filter sheet offers for this case: the
-// message types it actually holds, in the order they first occur, its source
-// IDs in the order the case declares them, and the acknowledgement codes its
+// message types it actually holds, in the order they first occur, its
+// sources in the order the case declares them, each with the name it reads by
+// while a query names it by ID, and the acknowledgement codes its
 // acknowledgements carry.
 type MessageFacets struct {
 	Types    []grid.MessageType `json:"types"`
-	Sources  []string           `json:"sources"`
+	Sources  []SourceFacet      `json:"sources"`
 	AckCodes []string           `json:"ack_codes"`
 }
+
+// SearchIndexState says whether this case's own persistent search index is a
+// reason to offer Search settings: it is offered only when that index has
+// expired or cannot answer the applied query. A case with no index of its own,
+// or whose index answered, has nothing to offer.
+type SearchIndexState string
+
+const (
+	SearchIndexFine         SearchIndexState = ""
+	SearchIndexExpired      SearchIndexState = "expired"
+	SearchIndexInsufficient SearchIndexState = "insufficient"
+)
 
 // MessagesResult is one window of a case's messages and what is not in it.
 //
@@ -83,25 +99,27 @@ type MessageFacets struct {
 // Undecodable are what grid.Page says they are. Complete says every occurrence
 // was examined, and Scanned how many were: a case is bounded to
 // bundle.MaxEvents occurrences held in memory by the verified reader, so no
-// bound of this reader stops a scan short of it.
+// bound of this reader stops a scan short of it. SearchIndex is what the case's
+// own persistent index was to this read.
 type MessagesResult struct {
-	State       State         `json:"state"`
-	Reason      string        `json:"reason,omitzero"`
-	Rows        []MessageRow  `json:"rows"`
-	Total       int           `json:"total"`
-	Matched     int           `json:"matched"`
-	Undecided   int           `json:"undecided"`
-	Undecodable int           `json:"undecodable"`
-	Complete    bool          `json:"complete"`
-	Scanned     int           `json:"scanned"`
-	Facets      MessageFacets `json:"facets"`
+	State       State            `json:"state"`
+	Reason      string           `json:"reason,omitzero"`
+	Rows        []MessageRow     `json:"rows"`
+	Total       int              `json:"total"`
+	Matched     int              `json:"matched"`
+	Undecided   int              `json:"undecided"`
+	Undecodable int              `json:"undecodable"`
+	Complete    bool             `json:"complete"`
+	Scanned     int              `json:"scanned"`
+	Facets      MessageFacets    `json:"facets"`
+	SearchIndex SearchIndexState `json:"search_index"`
 }
 
 func (r *MessagesResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 func refusedMessages(state State, reason string) MessagesResult {
 	return MessagesResult{State: state, Reason: reason, Rows: []MessageRow{},
-		Facets: MessageFacets{Types: []grid.MessageType{}, Sources: []string{}, AckCodes: []string{}}}
+		Facets: MessageFacets{Types: []grid.MessageType{}, Sources: []SourceFacet{}, AckCodes: []string{}}}
 }
 
 // ReadMessages reads one window of one verified case under a transient query.
@@ -142,10 +160,12 @@ func readMessages(ctx context.Context, request MessagesRequest) MessagesResult {
 	}
 	at := time.Now().UTC()
 	facts := readFacts(opened)
+	names := sourceNames(root, request.Case, opened)
+	facts.names = names
 	if len(request.Occurrences) > 0 {
-		return referencedMessages(ctx, opened, facts, request.Occurrences, at)
+		return referencedMessages(ctx, opened, facts, names, request.Occurrences, at)
 	}
-	document, err := queryIndex(ctx, root, opened, request.Query, at)
+	document, own, err := queryIndex(ctx, root, opened, request.Query, at)
 	if err != nil {
 		return refusedMessages(Failed, err.Error())
 	}
@@ -156,12 +176,12 @@ func readMessages(ctx context.Context, request MessagesRequest) MessagesResult {
 	result := MessagesResult{
 		State: Completed, Rows: make([]MessageRow, 0, len(page.Rows)),
 		Total: page.Total, Matched: page.Matched, Undecided: page.Undecided, Undecodable: page.Undecodable,
-		Complete: true, Scanned: page.Total, Facets: facts.facets(opened),
+		Complete: true, Scanned: page.Total, Facets: facts.facets(opened, names), SearchIndex: own,
 	}
 	for _, record := range page.Rows {
 		declared := facts.types[record.ID]
 		result.Rows = append(result.Rows, MessageRow{
-			ID: record.ID, SourceID: record.SourceID, Sequence: record.Sequence, Offset: record.Offset, Size: record.Size,
+			ID: record.ID, SourceID: record.SourceID, SourceName: names[record.SourceID], Sequence: record.Sequence, Offset: record.Offset, Size: record.Size,
 			Kind: record.Kind, Direction: record.Direction, ObservedAt: record.ObservedAt, Decoded: record.ParseError == "",
 			MessageCode: declared.Code, TriggerEvent: declared.Trigger,
 		})
@@ -175,7 +195,7 @@ func readMessages(ctx context.Context, request MessagesRequest) MessagesResult {
 // referencedMessages answers exactly the messages named, in evidence order.
 // A name the case does not hold is refused rather than left out, so a
 // reference never reads as a message that is not there.
-func referencedMessages(ctx context.Context, opened *bundle.Bundle, facts messageFacts, occurrences []string, at time.Time) MessagesResult {
+func referencedMessages(ctx context.Context, opened *bundle.Bundle, facts messageFacts, names map[string]string, occurrences []string, at time.Time) MessagesResult {
 	if len(occurrences) > grid.MaxRows {
 		return refusedMessages(Failed, "at most "+strconv.Itoa(grid.MaxRows)+" referenced messages are read at once")
 	}
@@ -191,7 +211,7 @@ func referencedMessages(ctx context.Context, opened *bundle.Bundle, facts messag
 		return refusedMessages(Failed, err.Error())
 	}
 	result := MessagesResult{State: Completed, Rows: make([]MessageRow, 0, len(occurrences)), Total: len(document.Records),
-		Complete: true, Scanned: len(document.Records), Facets: facts.facets(opened)}
+		Complete: true, Scanned: len(document.Records), Facets: facts.facets(opened, names)}
 	for _, record := range document.Records {
 		if record.ParseError != "" {
 			result.Undecodable++
@@ -201,7 +221,7 @@ func referencedMessages(ctx context.Context, opened *bundle.Bundle, facts messag
 		}
 		declared := facts.types[record.ID]
 		result.Rows = append(result.Rows, MessageRow{
-			ID: record.ID, SourceID: record.SourceID, Sequence: record.Sequence, Offset: record.Offset, Size: record.Size,
+			ID: record.ID, SourceID: record.SourceID, SourceName: names[record.SourceID], Sequence: record.Sequence, Offset: record.Offset, Size: record.Size,
 			Kind: record.Kind, Direction: record.Direction, ObservedAt: record.ObservedAt, Decoded: record.ParseError == "",
 			MessageCode: declared.Code, TriggerEvent: declared.Trigger,
 		})
@@ -217,13 +237,12 @@ func referencedMessages(ctx context.Context, opened *bundle.Bundle, facts messag
 // exact case beside it that can answer every question the query asks, or one
 // built in memory. The in-memory index retains only the fields the query asks
 // about, as values when a value is asked and as states otherwise, and is never
-// written.
-func queryIndex(ctx context.Context, root string, opened *bundle.Bundle, query grid.Query, at time.Time) (index.Document, error) {
+// written. It also says what the case's own persistent index was to this read.
+func queryIndex(ctx context.Context, root string, opened *bundle.Bundle, query grid.Query, at time.Time) (index.Document, SearchIndexState, error) {
 	fields := query.IndexedFields()
-	if len(fields) > 0 {
-		if reused, ok := reusableIndex(root, opened, query, at); ok {
-			return reused, nil
-		}
+	reused, own := reusableIndex(root, opened, query, at)
+	if reused != nil {
+		return *reused, own, nil
 	}
 	policy := index.Policy{Fields: fields, Retention: index.RetainStates}
 	if len(fields) == 0 {
@@ -232,19 +251,26 @@ func queryIndex(ctx context.Context, root string, opened *bundle.Bundle, query g
 	if len(query.AckCodes) > 0 || slices.ContainsFunc(query.Fields, func(p grid.FieldPredicate) bool { return p.Match != index.State }) {
 		policy.Retention = index.RetainValues
 	}
-	return index.Build(ctx, opened, policy, at)
+	document, err := index.Build(ctx, opened, policy, at)
+	return document, own, err
 }
 
 // reusableIndex finds an index in the workspace that describes this exact
 // case, whose declared retention still covers now and which retains what the
-// query asks, in the form it asks it. A file name is not ownership: every
-// candidate is read and checked against the verified case, and one that is
-// foreign, damaged, unsupported or expired is passed over without a word.
-func reusableIndex(root string, opened *bundle.Bundle, query grid.Query, at time.Time) (index.Document, bool) {
+// query asks, in the form it asks it; a query that asks the index nothing
+// reuses none. A file name is not ownership: every candidate is read and
+// checked against the verified case, and one that is foreign, damaged,
+// unsupported or expired is passed over without a word. What it answers
+// beside is what the case's own indexes were to this query: fine when one
+// answered or the case has none, insufficient when one is current but
+// retains too little, and expired when every one has expired.
+func reusableIndex(root string, opened *bundle.Bundle, query grid.Query, at time.Time) (*index.Document, SearchIndexState) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return index.Document{}, false
+		return nil, SearchIndexFine
 	}
+	asks := len(query.IndexedFields()) > 0
+	own := SearchIndexFine
 	for _, entry := range entries {
 		if !entry.Type().IsRegular() {
 			continue
@@ -256,20 +282,33 @@ func reusableIndex(root string, opened *bundle.Bundle, query grid.Query, at time
 			continue
 		}
 		document, err := index.Open(artifactpath.JoinReference(root, entry.Name()))
-		if err != nil || document.Case.Identity != opened.Identity || document.Describes(opened) != nil ||
-			document.Usable(at) != nil || !query.Answerable(document.Policy) {
+		if err != nil || document.Case.Identity != opened.Identity || document.Describes(opened) != nil {
 			continue
 		}
-		return document, true
+		switch {
+		case document.Usable(at) != nil:
+			if own == SearchIndexFine {
+				own = SearchIndexExpired
+			}
+		case !asks:
+			// A current index of its own, asked nothing: the case is read
+			// directly, and there is nothing to offer.
+			return nil, SearchIndexFine
+		case query.Answerable(document.Policy):
+			return &document, SearchIndexFine
+		default:
+			own = SearchIndexInsufficient
+		}
 	}
-	return index.Document{}, false
+	return nil, own
 }
 
 // messageFacts is what the list reads from the verified case beside the
-// index: the parsed type and control ID of every occurrence and its original
-// bytes. It implements grid.Facts.
+// index: the parsed type and control ID of every occurrence, its original
+// bytes, and the name declared for each source. It implements grid.Facts.
 type messageFacts struct {
 	opened   *bundle.Bundle
+	names    map[string]string
 	types    map[string]grid.MessageType
 	controls map[string][]byte
 	ackCodes []string
@@ -322,6 +361,8 @@ func (f messageFacts) Type(record index.Record) grid.MessageType { return f.type
 
 func (f messageFacts) ControlID(record index.Record) []byte { return f.controls[record.ID] }
 
+func (f messageFacts) SourceName(record index.Record) string { return f.names[record.SourceID] }
+
 func (f messageFacts) Content(record index.Record) []byte {
 	raw, err := f.opened.Raw(record.ID)
 	if err != nil {
@@ -334,11 +375,8 @@ func (f messageFacts) Content(record index.Record) []byte {
 // type is listed as the type rule compares it: ACK and Unparsed as whole kinds.
 // A declaration no type rule can name, one too long to name exactly, is left
 // out of the choices; its rows still show it.
-func (f messageFacts) facets(opened *bundle.Bundle) MessageFacets {
-	facets := MessageFacets{Types: []grid.MessageType{}, Sources: []string{}, AckCodes: f.ackCodes}
-	for _, source := range opened.Manifest.Sources {
-		facets.Sources = append(facets.Sources, source.ID)
-	}
+func (f messageFacts) facets(opened *bundle.Bundle, names map[string]string) MessageFacets {
+	facets := MessageFacets{Types: []grid.MessageType{}, Sources: sourceFacets(opened, names), AckCodes: f.ackCodes}
 	for _, event := range opened.Events {
 		declared := grid.MessageType{Kind: event.Kind}
 		if event.Kind == bundle.Message {

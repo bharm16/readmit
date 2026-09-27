@@ -100,6 +100,8 @@ unanswered is rejected. The kit's verbs:
   pins and whose `manifest({engine, sha256, signed})` is the
   `readmit-runner-update/v1` document it signs over a staged candidate's
   bytes for this machine's platform, or leaves unsigned.
+- `settled()` waits until the window holds no operation, for a step that
+  needs the operation slot right after background reads.
 - `close()` waits for the window to settle, then ends the process as closing
   the window does; `crash()` ends it at once and abandons what was running;
   `launch()` again reopens over the same files.

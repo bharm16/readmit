@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
@@ -90,6 +91,10 @@ type ImportCommitRequest struct {
 	CaseTitle         string             `json:"case_title,omitzero"`
 	CaseOwner         string             `json:"case_owner,omitzero"`
 	CaseVersion       string             `json:"case_version,omitzero"`
+	// SourceNames are names a person gave the sources the import writes,
+	// by the source ID the case declares for each, recorded on the case's
+	// project entry when it is registered in a readmit-project/v2 project.
+	SourceNames []project.Source `json:"source_names,omitzero"`
 }
 
 // ImportCommitResult carries the verified case bundle facts, written paths, and registration status.
@@ -258,6 +263,7 @@ func (a *App) CommitImport(request ImportCommitRequest) ImportCommitResult {
 			workspace: request.Workspace, project: request.Project,
 			outputName: request.OutputName, receiptName: request.ReceiptName,
 			register: request.RegisterInProject, title: request.CaseTitle, owner: request.CaseOwner, version: request.CaseVersion,
+			sources: request.SourceNames,
 		}
 		return a.commitImport(ctx, into, func(casePath, receiptPath string) (*bundle.Bundle, error) {
 			switch request.Mode {
@@ -295,6 +301,18 @@ type importCommit struct {
 	outputName, receiptName string
 	register                bool
 	title, owner, version   string
+	sources                 []project.Source
+}
+
+// undeclaredSource refuses a source name for a source the case does not
+// declare.
+func undeclaredSource(b *bundle.Bundle, named []project.Source) error {
+	for _, source := range named {
+		if !slices.ContainsFunc(b.Manifest.Sources, func(declared bundle.Source) bool { return declared.ID == source.ID }) {
+			return errors.New("a named source is not one this case declares")
+		}
+	}
+	return nil
 }
 
 // commitImport is the one import-and-register flow every import screen goes
@@ -346,11 +364,16 @@ func (a *App) commitImport(ctx context.Context, into importCommit, write func(ca
 	if title == "" {
 		title = into.outputName
 	}
-	if _, err := operation.RegisterCase(into.project, into.outputName, operation.CaseRegistration{
-		Title:            title,
-		Owner:            into.owner,
-		InterfaceVersion: into.version,
-	}); err != nil {
+	err = undeclaredSource(b, into.sources)
+	if err == nil {
+		_, err = operation.RegisterCase(into.project, into.outputName, operation.CaseRegistration{
+			Title:            title,
+			Owner:            into.owner,
+			InterfaceVersion: into.version,
+			Sources:          into.sources,
+		})
+	}
+	if err != nil {
 		return ImportCommitResult{
 			State:       Completed,
 			Reason:      "the case and receipt were written, but the case was not registered: " + err.Error(),

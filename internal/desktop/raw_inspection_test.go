@@ -163,6 +163,13 @@ func TestInspectFileMessageIsTheCaseInspectorOverOneMessageOfAFile(t *testing.T)
 		shown.Selected.Start != len(framed(gridAccepted))+caseView.Selected.Start || shown.Identity != listed.SHA256 {
 		t.Fatalf("the file and the case inspector disagree:\nfile %+v\ncase %+v", shown, caseView)
 	}
+	// Raw is that one message's text at the file's offsets, the selection
+	// marked as it is in the case.
+	raw := shown.RawWindow
+	if raw == nil || caseView.RawWindow == nil || raw.MessageStart != len(framed(gridAccepted))+1 || raw.MessageEnd != raw.MessageStart+len(gridRebooked) ||
+		raw.Before+raw.Selected+raw.After != escapedText(gridRebooked) || raw.Selected != "ROE" || *raw != shiftedWindow(*caseView.RawWindow, len(framed(gridAccepted))) {
+		t.Fatalf("the file's Raw window %+v, the case's %+v", raw, caseView.RawWindow)
+	}
 	request.Message = 2
 	if outside := app.InspectFileMessage(request); outside.State != desktop.Failed {
 		t.Fatalf("a message past the file: %+v", outside)
@@ -172,6 +179,12 @@ func TestInspectFileMessageIsTheCaseInspectorOverOneMessageOfAFile(t *testing.T)
 		len(bytesView.Rows) != (bytesView.Bytes-16+desktop.HexRowBytes-1)/desktop.HexRowBytes || bytesView.Rows[0].Text != "" {
 		t.Fatalf("a byte window: %+v", bytesView)
 	}
+}
+
+// shiftedWindow is a Raw window as it reads further into a file.
+func shiftedWindow(window desktop.RawWindow, by int) desktop.RawWindow {
+	window.Offset, window.End, window.MessageStart, window.MessageEnd = window.Offset+by, window.End+by, window.MessageStart+by, window.MessageEnd+by
+	return window
 }
 
 // A file that changed since it was listed is refused by every later read and

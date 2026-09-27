@@ -199,9 +199,10 @@ type View struct {
 	Query Query  `json:"query"`
 }
 
-// ProjectViews are the views saved for one project, keyed by the project's
-// resolved root folder, so a project's views are listed with that project and
-// no other.
+// ProjectViews are the views saved for one project, keyed by the stable
+// identity the application gave the project, or by its resolved root folder
+// while it has none, so a project's views are listed with that project and no
+// other.
 type ProjectViews struct {
 	Project string `json:"project"`
 	Views   []View `json:"views"`
@@ -306,7 +307,7 @@ func Validate(document Document) error {
 	}
 	for i, saved := range document.Views {
 		if !printable(saved.Project, 4096) || len(saved.Views) == 0 || len(saved.Views) > MaxViews {
-			return errors.New("each project saves between 1 and " + strconv.Itoa(MaxViews) + " views under its folder")
+			return errors.New("each project saves between 1 and " + strconv.Itoa(MaxViews) + " views")
 		}
 		for _, earlier := range document.Views[:i] {
 			if earlier.Project == saved.Project {

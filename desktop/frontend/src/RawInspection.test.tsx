@@ -65,6 +65,7 @@ test("the standalone file opens natively into the shared reader and a refused pa
     path: "",
     node_offset: 0,
     byte_offset: -1,
+    raw_offset: -1,
     reveal: false,
   });
   const details = await screen.findByRole("region", { name: "Message details" });

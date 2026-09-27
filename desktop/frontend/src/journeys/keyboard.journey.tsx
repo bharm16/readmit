@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { Journey, region, whenEnabled } from "../testkit/journey";
+import { openedCase } from "./steps";
 
 let journey: Journey;
 
@@ -91,15 +92,19 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
   await activate(user, screen.getByRole("button", { name: "Explore sample" }));
   const guided = within(region("Guided sample"));
   await activate(user, await guided.findByRole("button", { name: "Open case" }));
-  const inspector = within(region("Inspector"));
-  expect(await inspector.findByText(/^regression · regression\.index\.json · verified [0-9a-f]{64}/)).toBeTruthy();
+  const messages = await openedCase();
 
-  // An occurrence of the verified case is inspected from the keyboard.
-  const rows = await inspector.findAllByRole("button", { name: /^Inspect s\d+-e\d+$/ });
-  const first = (rows[0]!.textContent ?? "").replace(/^Inspect /, "");
-  await activate(user, rows[0]!);
-  const occurrence = within(inspector.getByRole("region", { name: "Message inspector" }));
-  expect(await occurrence.findByText(new RegExp(`^Occurrence ${first} · `))).toBeTruthy();
+  // A message of the verified case is inspected from the keyboard: its row in
+  // the Messages list, then Enter.
+  const table = await messages.findByRole("table", { name: "Messages" });
+  const row = await waitFor(() => {
+    const first = table.querySelector<HTMLElement>("tr[data-row-id]");
+    if (!first) throw new Error("the Messages table shows no message");
+    return first;
+  });
+  await activate(user, row);
+  const occurrence = within(await screen.findByRole("region", { name: "Message details" }));
+  expect(await occurrence.findByRole("tablist", { name: "Message views" })).toBeTruthy();
 
   // F6 moves through every region in the order the facade declares, and
   // Shift+F6 walks back; the order is the window's own description.

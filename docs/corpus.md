@@ -866,9 +866,10 @@ the description a verified case opens with) refuse the next read through the
 facade; `TestAWindowDescribesTheIndexItsOwnReadChecked` holds the details a
 window carries to what `DescribeIndex` reports, in every state an index can be
 in. `desktop/frontend/src/journeys/grid-paging.journey.tsx` runs with every
-`npm run test:journeys`: it pages a 250-occurrence case through the window,
-checks each page makes the one `OpenGrid` call, then changes one payload on
-disk and checks the next page is refused with no row drawn.
+`npm run test:journeys`: it scrolls a 10,000-message case to its end, checks
+the list reads exactly fifty 200-row windows in evidence order and asks for
+nothing more once everything is read, then changes one payload on disk and
+checks the next read is refused with no table drawn.
 
 A CPU profile of the baseline — a program making 20 `OpenGrid` calls over the
 10,000-occurrence fixture under `runtime/pprof`, read with

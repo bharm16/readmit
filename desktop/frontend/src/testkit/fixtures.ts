@@ -473,9 +473,13 @@ export function messagesResult(rows: MessageRow[], overrides: Partial<MessagesRe
         { kind: "message", code: "SIU", trigger: "S12" },
         { kind: "ack", code: "", trigger: "" },
       ],
-      sources: ["s0001", "s0002"],
+      sources: [
+        { id: "s0001", name: "" },
+        { id: "s0002", name: "" },
+      ],
       ack_codes: ["AA", "AE"],
     },
+    search_index: "",
     ...overrides,
   };
 }
@@ -488,6 +492,7 @@ export function messageRow(
 ): MessageRow {
   return {
     ...gridRow(id, kind),
+    source_name: "",
     sequence: 0,
     message_code: kind === "message" ? "SIU" : "",
     trigger_event: kind === "message" ? "S12" : "",
@@ -526,6 +531,7 @@ export function inspectionResult(
       occurrence,
       message: 0,
       source_id: "s0001",
+      source_name: "",
       source_offset: 0,
       size: 256,
       message_code: "SIU",

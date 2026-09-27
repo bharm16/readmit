@@ -1,7 +1,7 @@
 // Untrusted content renders as inert text through the real application. A
 // person's evidence carries markup in a patient name, an observation and a
 // note, and a file beside it is named with markup; the window lists the folder,
-// verifies the case, indexes and inspects it, and searches for the hostile
+// verifies the case, reads and inspects it, and searches for the hostile
 // value, all against the real facade over real files. Every hostile string is
 // shown as text where it is shown at all, no element is created from it and no
 // planted script runs.
@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Journey, press, region } from "../testkit/journey";
+import { openedCase, selectMessage } from "./steps";
 
 let journey: Journey;
 
@@ -58,7 +59,7 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   observer.observe(document.body, { childList: true, subtree: true, attributes: true });
   await journey.launch();
 
-  // Indexing is licensed work, so the person selects their activation first.
+  // The person selects their activation first.
   await press(user, screen.getByRole("button", { name: "License" }));
   const access = within(region("License"));
   await journey.chooseFolder(license, "Choose the license activation folder");
@@ -72,20 +73,14 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   const navigation = within(region("Workspace"));
   expect(await navigation.findByText(HOSTILE_NAME)).toBeTruthy();
 
-  // Verify the case and index it, as a person investigating it would.
+  // Verify the case and read it, as a person investigating it would.
   const listed = (await navigation.findByText("hostile-case")).closest("li")!;
   await press(user, within(listed).getByRole("button", { name: "Open case" }));
-  const inspector = within(region("Inspector"));
-  await press(user, await inspector.findByRole("button", { name: "Set up index" }));
-  const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-  await user.click(form.getByRole("radio", { name: /SHA-256 digests/ }));
-  await press(user, form.getByRole("button", { name: "Build index" }));
-  expect(await inspector.findByText(/Showing 1 of 1 matching/)).toBeTruthy();
+  await openedCase();
 
   // The occurrence's original bytes are shown as escaped text: every angle
   // bracket the content carried is spelled as its byte value.
-  await press(user, (await inspector.findAllByRole("button", { name: /^Inspect s\d+-e\d+$/ }))[0]!);
-  const occurrence = within(inspector.getByRole("region", { name: "Message inspector" }));
+  const occurrence = await selectMessage(user);
   const raw = (await occurrence.findByText(/^MSH\|/, { selector: "code" })).textContent ?? "";
   for (const shown of [
     '\\x3cimg src=x onerror="window.PLANTED=1"\\x3e',

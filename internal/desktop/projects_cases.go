@@ -7,11 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
@@ -26,14 +28,19 @@ import (
 // Status is one of open, investigating, resolved and closed. Owner and
 // InterfaceRevision may be empty: an owner is local metadata, not an
 // authenticated reviewer, and a readmit-project/v2 case may leave its
-// revision unassigned. Tags and Incidents are sets.
+// revision unassigned. Tags and Incidents are sets. Sources are the names a
+// person gives the case's sources, by the source ID the case declares: a
+// source with a blank name has none and reads by what its evidence declares.
+// Left out, the names the project records are kept; present, they are
+// replaced whole. Only a readmit-project/v2 project names sources.
 type CaseDraft struct {
-	Name              string         `json:"name"`
-	Status            project.Status `json:"status"`
-	Owner             string         `json:"owner,omitzero"`
-	Tags              []string       `json:"tags"`
-	InterfaceRevision string         `json:"interface_revision,omitzero"`
-	Incidents         []string       `json:"incidents"`
+	Name              string           `json:"name"`
+	Status            project.Status   `json:"status"`
+	Owner             string           `json:"owner,omitzero"`
+	Tags              []string         `json:"tags"`
+	InterfaceRevision string           `json:"interface_revision,omitzero"`
+	Incidents         []string         `json:"incidents"`
+	Sources           []project.Source `json:"sources,omitzero"`
 }
 
 // ProjectDraft is the whole of a project's settings. Revisions are the
@@ -144,7 +151,7 @@ func submissionOf(parts ...any) string {
 // any change of either is a new revision.
 func caseRevision(registered project.Case, name string) string {
 	return submissionOf(registered.Name, registered.Identity, registered.Title, string(registered.Status), registered.Owner,
-		registered.InterfaceVersion, orEmpty(registered.Tags), orEmpty(registered.Incidents), name)[:16]
+		registered.InterfaceVersion, orEmpty(registered.Tags), orEmpty(registered.Incidents), orEmpty(registered.Sources), name)[:16]
 }
 
 // projectRevision is the revision of a project's settings.
@@ -284,6 +291,21 @@ func planCase(document project.Document, submitted *CaseDraft) (CaseDraft, []Fie
 		problems = append(problems, FieldProblem{Field: "case.interface_revision",
 			Problem: "a readmit-project/v1 project assigns every case a revision; convert the project to leave one unassigned"})
 	}
+	if submitted.Sources != nil {
+		named := []project.Source{}
+		for _, source := range submitted.Sources {
+			if name := strings.TrimSpace(source.Name); name != "" {
+				named = append(named, project.Source{ID: source.ID, Name: name})
+			}
+		}
+		draft.Sources = orEmpty(project.SortedSources(named))
+		switch {
+		case len(draft.Sources) > 0 && document.Schema == project.Schema:
+			problems = append(problems, FieldProblem{Field: "case.sources", Problem: "a readmit-project/v1 project names no sources; convert the project to name them"})
+		case project.CheckSourceNames(document.Schema, draft.Sources) != nil:
+			problems = append(problems, FieldProblem{Field: "case.sources", Problem: "each source is named once, with 1 to 64 characters of text with no control characters"})
+		}
+	}
 	return draft, problems
 }
 
@@ -299,6 +321,14 @@ func (a *App) saveCaseDetails(loaded *loadedCatalog, request SaveItemRequest) Sa
 		return result
 	}
 	draft, problems := planCase(loaded.project.Document, request.Draft.Case)
+	if len(problems) == 0 && len(draft.Sources) > 0 {
+		manifest, err := bundle.Describe(filepath.Join(loaded.root, item.Entry))
+		if err != nil || slices.ContainsFunc(draft.Sources, func(named project.Source) bool {
+			return !slices.ContainsFunc(manifest.Sources, func(declared bundle.Source) bool { return declared.ID == named.ID })
+		}) {
+			problems = append(problems, FieldProblem{Field: "case.sources", Problem: "a named source is not one this case declares"})
+		}
+	}
 	if len(problems) > 0 {
 		return result.invalid(problems)
 	}
@@ -356,11 +386,15 @@ func (c *loadedCatalog) listedItem(kind ItemKind, id string) *catalog.Item {
 func (a *App) writeCaseDetails(loaded *loadedCatalog, item catalog.Item, registered *project.Case, draft CaseDraft) (bool, error) {
 	var err error
 	if registered != nil {
-		_, err = operation.UpdateRegisteredCase(loaded.root, registered.Name, operation.CaseChange{Title: &draft.Name, Owner: &draft.Owner,
-			Status: &draft.Status, InterfaceVersion: &draft.InterfaceRevision, Tags: &draft.Tags, Incidents: &draft.Incidents})
+		change := operation.CaseChange{Title: &draft.Name, Owner: &draft.Owner,
+			Status: &draft.Status, InterfaceVersion: &draft.InterfaceRevision, Tags: &draft.Tags, Incidents: &draft.Incidents}
+		if draft.Sources != nil {
+			change.Sources = &draft.Sources
+		}
+		_, err = operation.UpdateRegisteredCase(loaded.root, registered.Name, change)
 	} else {
 		_, err = operation.RegisterCase(loaded.root, item.Entry, operation.CaseRegistration{Title: draft.Name, Owner: draft.Owner,
-			Status: draft.Status, InterfaceVersion: draft.InterfaceRevision, Tags: draft.Tags, Incidents: draft.Incidents})
+			Status: draft.Status, InterfaceVersion: draft.InterfaceRevision, Tags: draft.Tags, Incidents: draft.Incidents, Sources: draft.Sources})
 	}
 	if err != nil {
 		return false, err
@@ -390,6 +424,7 @@ func savedCase(result SaveItemResult, root, id, entry string, draft CaseDraft) S
 	}
 	projection := draft
 	projection.Owner, projection.InterfaceRevision = opened.Document.Cases[stored].Owner, opened.Document.Cases[stored].InterfaceVersion
+	projection.Sources = orEmpty(opened.Document.Cases[stored].Sources)
 	result.State, result.Outcome, result.Projection = Completed, SavedOutcome, &ItemDraft{Case: &projection}
 	result.Saved = &ItemRef{Kind: CaseItem, ID: id, Revision: caseRevision(opened.Document.Cases[stored], "")}
 	return result
@@ -399,6 +434,9 @@ func savedCase(result SaveItemResult, root, id, entry string, draft CaseDraft) S
 func withDetails(registered project.Case, draft CaseDraft) project.Case {
 	registered.Title, registered.Status, registered.Owner, registered.InterfaceVersion = draft.Name, draft.Status, draft.Owner, draft.InterfaceRevision
 	registered.Tags, registered.Incidents = draft.Tags, draft.Incidents
+	if draft.Sources != nil {
+		registered.Sources = project.SortedSources(draft.Sources)
+	}
 	return registered
 }
 

@@ -819,6 +819,13 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
   min-height: var(--input);
 }
 
+/* WebKit draws a plain select as a fixed-height popup that ignores the
+   field height; as a menu button it keeps its arrow and takes the token. */
+select {
+  -webkit-appearance: menulist-button;
+  appearance: menulist-button;
+}
+
 textarea {
   line-height: var(--line-body);
   min-height: 5rem;

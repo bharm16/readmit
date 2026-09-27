@@ -433,3 +433,71 @@ func TestInspectorChildRowsCarryValuesOnlyWhenRevealed(t *testing.T) {
 		t.Fatalf("revealed child values: %q", values)
 	}
 }
+
+// escapedText is the escaped form the reader shows original bytes in: printable
+// ASCII other than a backslash or an HTML metacharacter stands for itself, and
+// every other byte is \xNN.
+func escapedText(raw string) string {
+	var out strings.Builder
+	for _, b := range []byte(raw) {
+		if b >= 32 && b < 127 && b != '\\' && b != '<' && b != '>' && b != '&' {
+			out.WriteByte(b)
+		} else {
+			fmt.Fprintf(&out, `\x%02x`, b)
+		}
+	}
+	return out.String()
+}
+
+// Raw is the whole message's escaped original text, in windows of whole bytes
+// that together are exactly the message, with the selected field marked where
+// it falls; an occurrence nothing could parse has its whole text too, and
+// nothing is shown until values are revealed.
+func TestInspectorRawWindowShowsTheWholeOccurrenceIncludingUnparsedAndLarge(t *testing.T) {
+	app, root, _ := gridWorkspace(t)
+	message := "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|id|P|2.5.1\rPID|1||" + strings.Repeat("x", 5000) + "||DOE^JANE\r" + strings.Repeat("NTE|one\\T\\two\r", 300)
+	b := writeCase(t, root, "large", framed(message))
+	request := desktop.InspectRequest{Workspace: root, Case: "large", Identity: b.Identity, Occurrence: b.Events[0].ID, ByteOffset: -1, RawOffset: 0, Reveal: true}
+	var text strings.Builder
+	offset := 0
+	for pages := 0; ; pages++ {
+		request.RawOffset = offset
+		window := app.InspectOccurrence(request).Inspection.RawWindow
+		if window == nil || window.MessageStart != 1 || window.MessageEnd != 1+len(message) || window.End-window.Offset > desktop.InspectorRawWindow ||
+			window.Offset != 1+pages*desktop.InspectorRawWindow || window.Selected != "" {
+			t.Fatalf("window %d: %+v", pages, window)
+		}
+		text.WriteString(window.Before + window.Selected + window.After)
+		if window.End == window.MessageEnd {
+			break
+		}
+		offset = window.End
+	}
+	if text.String() != escapedText(message) {
+		t.Fatal("the Raw windows are not exactly the whole message's escaped text")
+	}
+
+	// A field in a later window: -1 opens the window holding it, marked.
+	request.Path, request.RawOffset = "PID[1]-5", -1
+	field := app.InspectOccurrence(request).Inspection
+	if field == nil || field.RawWindow == nil || field.RawWindow.Selected != "DOE^JANE" || field.Raw != "DOE^JANE" ||
+		field.RawWindow.Offset != 1+desktop.InspectorRawWindow || !strings.HasSuffix(field.RawWindow.Before, "x||") ||
+		!strings.HasPrefix(field.RawWindow.After, `\x0dNTE|one\x5cT\x5ctwo`) {
+		t.Fatalf("the selected field's window: %+v", field)
+	}
+	if past := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "large", Identity: b.Identity, Occurrence: b.Events[0].ID,
+		ByteOffset: -1, RawOffset: len(framed(message)) + 1, Reveal: true}); past.State != desktop.Failed {
+		t.Fatalf("a Raw window past the message: %+v", past)
+	}
+	request.Reveal = false
+	if hidden := app.InspectOccurrence(request).Inspection; hidden.RawWindow != nil || hidden.Raw != "" {
+		t.Fatalf("Raw text without a reveal: %+v", hidden.RawWindow)
+	}
+
+	grid := openGrid(t, app, root, "incident", 0, 50).Grid
+	unparsed := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "incident", Identity: grid.Identity, Occurrence: grid.Rows[4].ID,
+		ByteOffset: -1, RawOffset: -1, Reveal: true}).Inspection
+	if unparsed == nil || unparsed.RawWindow == nil || unparsed.RawWindow.Before != escapedText(framed(gridGarbage)) || unparsed.RawWindow.Selected != "" {
+		t.Fatalf("an unparsed occurrence's Raw text: %+v", unparsed.RawWindow)
+	}
+}

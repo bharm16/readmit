@@ -744,6 +744,12 @@ func (c *loadedCatalog) readRegistered(item catalog.Item) (view, Availability, s
 	if manifest, err := bundle.Describe(filepath.Join(c.root, item.Entry)); err == nil {
 		read.createdAt = provenanceTime(manifest.Provenance)
 		read.updatedAt = read.createdAt
+		if registered != nil {
+			read.summary.Case.Sources = []project.Source{}
+			for _, source := range manifest.Sources {
+				read.summary.Case.Sources = append(read.summary.Case.Sources, project.Source{ID: source.ID, Name: registered.SourceNamed(source.ID)})
+			}
+		}
 	}
 	switch state {
 	case operation.EvidenceVerified:

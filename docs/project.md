@@ -293,6 +293,17 @@ its name, and a version without a name is named by its identifier. Both
 members were added before any release carried v2, so v2 was never read
 without them.
 
+A v2 case may also hold `sources`: the name a person gave each source of the
+case, such as `Front desk feed`, by the source ID the case's manifest declares,
+sorted by ID and each once, a name being 1–64 characters with no control
+character and no leading or trailing space. The ID never changes; naming a
+source changes only this name, and a source without one reads by the name its
+evidence declares, or by its ID. This member too was added before any release
+carried v2, and a v1 case holds none: converting the project is what lets its
+cases name sources. Which IDs a case declares is the case's own to say, so the
+desktop checks a name against the verified case when it is saved, and every
+reader checks it again against the case it reads.
+
 ```json
 {"schema":"readmit-project/v2","settings":{"title":"Scheduling QA"},"interface_versions":[],"cases":[]}
 {"schema":"readmit-project/v2","settings":{"title":"Scheduling QA","default_interface_version":"upgrade-2027","tags":["siu"]},

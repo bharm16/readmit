@@ -19,6 +19,10 @@ const InspectorByteWindow = 256
 const InspectorNodeWindow = 100
 const inspectorValueLimit = 4096
 
+// InspectorRawWindow is how many original bytes of the whole message one Raw
+// window shows as escaped text.
+const InspectorRawWindow = 4096
+
 // HexRowBytes is the width of one hex row everywhere the window shows original
 // bytes.
 const HexRowBytes = 16
@@ -26,9 +30,12 @@ const HexRowBytes = 16
 // InspectRequest inspects one occurrence in a verified case. Identity binds the
 // list selection to the evidence it displayed. Negative ByteOffset means jump
 // to the selected part; a nonnegative one pages original bytes and is read
-// from the start of the hex row that holds it. Reveal asks for the selected
-// value and the printable column of the hex rows; without it, the inspection
-// carries positions, states, labels and hex but no value text.
+// from the start of the hex row that holds it. RawOffset pages the Raw text
+// the same way: -1 is the window holding the start of the selected part, and
+// a nonnegative one is read from the start of the Raw window that holds it.
+// Reveal asks for the selected value, the Raw text and the printable column of
+// the hex rows; without it, the inspection carries positions, states, labels
+// and hex but no value text.
 type InspectRequest struct {
 	Workspace  string `json:"workspace"`
 	Case       string `json:"case"`
@@ -37,7 +44,27 @@ type InspectRequest struct {
 	Path       string `json:"path"`
 	NodeOffset int    `json:"node_offset"`
 	ByteOffset int    `json:"byte_offset"`
+	RawOffset  int    `json:"raw_offset"`
 	Reveal     bool   `json:"reveal"`
+}
+
+// RawWindow is one window of the whole message's original bytes as escaped
+// text: bytes [Offset, End) of the occurrence (or file), within the message's
+// own bytes [MessageStart, MessageEnd), which for an occurrence nothing could
+// parse are all of its bytes. Windows begin every InspectorRawWindow bytes
+// from MessageStart, and a byte is escaped whole, so a window never splits an
+// escape. The text is divided where the selected part begins and ends within
+// the window, so Selected is exactly the part to mark; it is empty, and the
+// window is all Before, when the selection is the whole message, has no bytes
+// or lies outside the window.
+type RawWindow struct {
+	Offset       int    `json:"offset"`
+	End          int    `json:"end"`
+	MessageStart int    `json:"message_start"`
+	MessageEnd   int    `json:"message_end"`
+	Before       string `json:"before"`
+	Selected     string `json:"selected"`
+	After        string `json:"after"`
 }
 
 // HexRow is one row of original bytes: its offset, up to HexRowBytes bytes as
@@ -82,32 +109,40 @@ const InspectorChildValueLimit = 128
 // zero-based half-open ranges within the original occurrence (or file),
 // including MLLP. Add SourceOffset to locate the same byte in the captured
 // source. Values are escaped in Go before entering the webview; original bytes
-// remain untouched. Raw and Decoded are present only when values were revealed.
+// remain untouched. Raw, Decoded and RawWindow are present only when values
+// were revealed: Raw is the selected part's own escaped bytes, which Copy
+// value copies, and RawWindow the whole message's. SourceName is the name
+// declared for the occurrence's source, empty when nothing names it, and
+// Direction the direction the case recorded for it; a standalone file has
+// neither.
 type Inspection struct {
-	Metadata     FieldMetadata   `json:"metadata"`
-	Identity     string          `json:"identity"`
-	Occurrence   string          `json:"occurrence"`
-	Message      int             `json:"message"`
-	SourceID     string          `json:"source_id"`
-	SourceOffset int             `json:"source_offset"`
-	Size         int             `json:"size"`
-	MessageCode  string          `json:"message_code"`
-	TriggerEvent string          `json:"trigger_event"`
-	ObservedAt   *time.Time      `json:"observed_at"`
-	Selected     hl7.Node        `json:"selected"`
-	Selector     string          `json:"selector"`
-	SegmentName  string          `json:"segment_name"`
-	Children     []InspectorNode `json:"children"`
-	NodeOffset   int             `json:"node_offset"`
-	ChildCount   int             `json:"child_count"`
-	Bytes        []HexRow        `json:"bytes"`
-	ByteOffset   int             `json:"byte_offset"`
-	Revealed     bool            `json:"revealed"`
-	Raw          string          `json:"raw"`
-	Decoded      string          `json:"decoded"`
-	Encoding     string          `json:"encoding"`
-	DecodeState  string          `json:"decode_state"`
-	Notice       string          `json:"notice"`
+	Metadata     FieldMetadata    `json:"metadata"`
+	Identity     string           `json:"identity"`
+	Occurrence   string           `json:"occurrence"`
+	Message      int              `json:"message"`
+	SourceID     string           `json:"source_id"`
+	SourceName   string           `json:"source_name"`
+	Direction    bundle.Direction `json:"direction,omitzero"`
+	SourceOffset int              `json:"source_offset"`
+	Size         int              `json:"size"`
+	MessageCode  string           `json:"message_code"`
+	TriggerEvent string           `json:"trigger_event"`
+	ObservedAt   *time.Time       `json:"observed_at"`
+	Selected     hl7.Node         `json:"selected"`
+	Selector     string           `json:"selector"`
+	SegmentName  string           `json:"segment_name"`
+	Children     []InspectorNode  `json:"children"`
+	NodeOffset   int              `json:"node_offset"`
+	ChildCount   int              `json:"child_count"`
+	Bytes        []HexRow         `json:"bytes"`
+	ByteOffset   int              `json:"byte_offset"`
+	Revealed     bool             `json:"revealed"`
+	Raw          string           `json:"raw"`
+	RawWindow    *RawWindow       `json:"raw_window,omitzero"`
+	Decoded      string           `json:"decoded"`
+	Encoding     string           `json:"encoding"`
+	DecodeState  string           `json:"decode_state"`
+	Notice       string           `json:"notice"`
 }
 
 type InspectionResult struct {
@@ -130,7 +165,7 @@ func (a *App) InspectOccurrence(request InspectRequest) InspectionResult {
 
 func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 	fail := func(reason string) InspectionResult { return InspectionResult{State: Failed, Reason: reason} }
-	if request.NodeOffset < 0 || request.ByteOffset < -1 {
+	if request.NodeOffset < 0 || request.ByteOffset < -1 || request.RawOffset < -1 {
 		return fail("inspector offsets must be in range")
 	}
 	root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
@@ -164,22 +199,25 @@ func (a *App) inspectOccurrence(request InspectRequest) InspectionResult {
 			return fail("the occurrence could not be parsed consistently with its case")
 		}
 	}
-	view, reason := inspectDocument(raw, doc, 0, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal})
+	view, reason := inspectDocument(raw, doc, 0, inspectorWindow{Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset,
+		RawOffset: request.RawOffset, Reveal: request.Reveal})
 	if view == nil {
 		return fail(reason)
 	}
 	view.Identity, view.Occurrence, view.SourceID, view.SourceOffset = opened.Identity, event.ID, event.SourceID, event.Offset
+	view.SourceName, view.Direction = sourceNames(root, request.Case, opened)[event.SourceID], event.Direction
 	view.ObservedAt = event.ObservedAt
 	return InspectionResult{State: Completed, Inspection: view}
 }
 
 // inspectorWindow is the part of an inspection request that selects within
-// one parsed message: the tree path, the child and byte windows, and whether
-// values are revealed.
+// one parsed message: the tree path, the child, byte and Raw windows, and
+// whether values are revealed.
 type inspectorWindow struct {
 	Path       string
 	NodeOffset int
 	ByteOffset int
+	RawOffset  int
 	Reveal     bool
 }
 
@@ -234,7 +272,43 @@ func inspectDocument(raw []byte, doc *hl7.Document, message int, window inspecto
 	}
 	view.ByteOffset = offset - offset%HexRowBytes
 	view.Bytes = hexRows(raw, view.ByteOffset, InspectorByteWindow, window.Reveal)
+	bounds := hl7.Span{End: len(raw)}
+	if doc != nil {
+		bounds = doc.Messages[message].Span
+	}
+	if window.Reveal {
+		shown, ok := rawWindow(raw, bounds, view.Selected, window.RawOffset)
+		if !ok {
+			return nil, "the Raw window is outside the message"
+		}
+		view.RawWindow = shown
+	}
 	return view, ""
+}
+
+// rawWindow is the Raw window of the message's bytes that offset asks for:
+// the one holding the selection's start for -1, else the one holding offset,
+// where an offset before the message, such as its MLLP start block, is its
+// first window.
+func rawWindow(raw []byte, message hl7.Span, selected hl7.Node, offset int) (*RawWindow, bool) {
+	if offset == -1 {
+		offset = min(max(selected.Start, message.Start), message.End)
+	}
+	if offset > message.End {
+		return nil, false
+	}
+	offset = max(offset, message.Start)
+	start := message.Start + (offset-message.Start)/InspectorRawWindow*InspectorRawWindow
+	end := min(message.End, start+InspectorRawWindow)
+	markFrom, markTo := end, end
+	if selected.Kind != "message" && selected.Kind != "occurrence" && selected.End > selected.Start {
+		markFrom, markTo = min(max(selected.Start, start), end), min(max(selected.End, start), end)
+	}
+	if markFrom == markTo {
+		markFrom, markTo = end, end
+	}
+	return &RawWindow{Offset: start, End: end, MessageStart: message.Start, MessageEnd: message.End,
+		Before: escapeBytes(raw[start:markFrom]), Selected: escapeBytes(raw[markFrom:markTo]), After: escapeBytes(raw[markTo:end])}, true
 }
 
 // hexRows renders at most limit original bytes from offset, which is the

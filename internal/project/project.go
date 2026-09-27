@@ -59,6 +59,8 @@ const (
 	MaxCases             = 256
 	MaxTags              = 32
 	MaxIncidents         = 32
+	// MaxSources is as many sources as one case declares.
+	MaxSources = 128
 
 	maxTitleBytes     = 200
 	maxTitleRunes     = 200
@@ -113,14 +115,27 @@ type VersionName struct {
 	Name    string `json:"name"`
 }
 
+// Source is the name a person gave one source of a case, such as
+// "Front desk feed". ID is the source identifier the case's manifest
+// declares, which never changes: naming a source changes only this name.
+// Only a readmit-project/v2 document holds source names; a source without one
+// reads by the name its evidence declares, or by its identifier.
+type Source struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // Case registers one case bundle in the project.
 //
 // Name, Identity, Schema and Provenance are recorded from a bundle the caller
 // already verified through the shared reader: they are facts about evidence and
 // are never edited afterwards. Provenance is the mode the bundle's own manifest
 // declares, so it can never be inferred from a file name or set by hand.
-// InterfaceVersion, Title, Status, Owner, Tags and Incidents are project
-// metadata a person maintains; they live here, never inside finalized evidence.
+// InterfaceVersion, Title, Status, Owner, Tags, Incidents and Sources are
+// project metadata a person maintains; they live here, never inside finalized
+// evidence. Sources are held sorted by ID, each once; which IDs the case
+// declares is the bundle reader's to say, so a reader of a name checks it
+// against the verified case.
 type Case struct {
 	Name             string   `json:"name"`
 	Identity         string   `json:"identity"`
@@ -132,6 +147,7 @@ type Case struct {
 	Owner            string   `json:"owner,omitzero"`
 	Tags             []string `json:"tags"`
 	Incidents        []string `json:"incidents"`
+	Sources          []Source `json:"sources,omitzero"`
 }
 
 // Document is the complete project document.
@@ -319,6 +335,32 @@ func validateCase(entry Case, declared map[string]bool, unassignable bool) error
 	}
 	if err := set(entry.Incidents, MaxIncidents, unassignable); err != nil {
 		return errors.New("linked incidents: " + err.Error())
+	}
+	if err := sources(entry.Sources, unassignable); err != nil {
+		return errors.New("source names: " + err.Error())
+	}
+	return nil
+}
+
+// sources checks a case's source names: v2 only, bounded, sorted by
+// identifier with each once, and each name a label.
+func sources(values []Source, v2 bool) error {
+	if len(values) > 0 && !v2 {
+		return errors.New("source names are members of readmit-project/v2")
+	}
+	if len(values) > MaxSources {
+		return errors.New("more entries than this release stores")
+	}
+	for i, source := range values {
+		if err := name(source.ID); err != nil {
+			return errors.New("source identifier " + err.Error())
+		}
+		if i > 0 && values[i-1].ID >= source.ID {
+			return errors.New("entries must name each source once, sorted by identifier")
+		}
+		if err := label(source.Name, maxLabelRunes); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -533,6 +575,7 @@ func AddCase(document Document, revisions Revisions, entry Case) (Document, Case
 	}
 	entry.Tags = sorted(entry.Tags)
 	entry.Incidents = sorted(entry.Incidents)
+	entry.Sources = SortedSources(entry.Sources)
 	updated := document
 	updated.Cases = append(slices.Clip(slices.Clone(document.Cases)), entry)
 	if err := Validate(updated); err != nil {
@@ -551,6 +594,7 @@ type Change struct {
 	InterfaceVersion *string
 	Tags             *[]string
 	Incidents        *[]string
+	Sources          *[]Source
 }
 
 // Empty reports whether an update would change nothing. Every member is a
@@ -587,6 +631,9 @@ func UpdateCase(document Document, entry string, change Change) (Document, Case,
 	if change.Incidents != nil {
 		target.Incidents = sorted(*change.Incidents)
 	}
+	if change.Sources != nil {
+		target.Sources = SortedSources(*change.Sources)
+	}
 	updated.Cases[index] = target
 	if err := Validate(updated); err != nil {
 		return Document{}, Case{}, err
@@ -601,6 +648,26 @@ func sorted(values []string) []string {
 		return nil
 	}
 	return slices.Sorted(slices.Values(values))
+}
+
+// SortedSources holds source names in their one canonical order, by
+// identifier. A repeated identifier is left in place so validation reports it.
+func SortedSources(values []Source) []Source {
+	if len(values) == 0 {
+		return nil
+	}
+	return slices.SortedFunc(slices.Values(values), func(a, b Source) int { return strings.Compare(a.ID, b.ID) })
+}
+
+// SourceNamed is the name a person gave one source of a registered case, or
+// "" when it has none.
+func (c Case) SourceNamed(id string) string {
+	for _, source := range c.Sources {
+		if source.ID == id {
+			return source.Name
+		}
+	}
+	return ""
 }
 
 // Create writes a new project directory holding its first document. The
@@ -767,6 +834,12 @@ func CheckTitle(schema, value string) error { return titleOf(value, schema == Sc
 // CheckTags is the rule a case's or a project's tags are held to in a
 // document of schema, once sorted.
 func CheckTags(schema string, values []string) error { return set(values, MaxTags, schema == SchemaV2) }
+
+// CheckSourceNames is the rule a case's source names are held to in a
+// document of schema, once sorted.
+func CheckSourceNames(schema string, values []Source) error {
+	return sources(values, schema == SchemaV2)
+}
 
 // CheckIncidents is the rule a case's linked incidents are held to in a
 // document of schema, once sorted.

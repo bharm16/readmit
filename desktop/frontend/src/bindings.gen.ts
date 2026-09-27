@@ -695,6 +695,7 @@ export interface CaseDraft {
   tags: string[];
   interface_revision?: string;
   incidents: string[];
+  sources?: ProjectSource[];
 }
 
 /** internal/desktop.Case */
@@ -740,6 +741,7 @@ export interface CaseSummary {
   interface_revision?: string;
   evidence: string;
   provenance?: string;
+  sources?: ProjectSource[];
 }
 
 /** internal/desktop.CatalogFilter */
@@ -2156,6 +2158,7 @@ export interface FileInspectRequest {
   path: string;
   node_offset: number;
   byte_offset: number;
+  raw_offset: number;
   reveal: boolean;
 }
 
@@ -2505,6 +2508,7 @@ export interface GridQuery {
   ack_codes: string[];
   fields: GridFieldPredicate[];
   search: GridTextSearch | null;
+  scope?: GridScope;
 }
 
 /** internal/desktop.GridResult */
@@ -2526,6 +2530,9 @@ export interface GridRow {
   observed_at: string | null;
   decoded: boolean;
 }
+
+/** internal/grid.Scope */
+export type GridScope = "" | "undecided" | "undecodable";
 
 /** internal/grid.SearchScope */
 export type GridSearchScope = "metadata" | "content";
@@ -2890,6 +2897,7 @@ export interface ImportCommitRequest {
   case_title?: string;
   case_owner?: string;
   case_version?: string;
+  source_names?: ProjectSource[];
 }
 
 /** internal/desktop.ImportCommitResult */
@@ -3186,6 +3194,7 @@ export interface InspectRequest {
   path: string;
   node_offset: number;
   byte_offset: number;
+  raw_offset: number;
   reveal: boolean;
 }
 
@@ -3199,6 +3208,8 @@ export interface Inspection {
   occurrence: string;
   message: number;
   source_id: string;
+  source_name: string;
+  direction?: BundleDirection;
   source_offset: number;
   size: number;
   message_code: string;
@@ -3214,6 +3225,7 @@ export interface Inspection {
   byte_offset: number;
   revealed: boolean;
   raw: string;
+  raw_window?: RawWindow;
   decoded: string;
   encoding: string;
   decode_state: string;
@@ -3822,14 +3834,39 @@ export type MatchKind = "artifact" | "registered_case" | "content";
 /** internal/desktop.MessageFacets */
 export interface MessageFacets {
   types: GridMessageType[];
-  sources: string[];
+  sources: SourceFacet[];
   ack_codes: string[];
+}
+
+/** internal/desktop.MessageField */
+export interface MessageField {
+  segment: string;
+  segment_name: string;
+  field: number;
+  label: string;
+  selector: string;
+}
+
+/** internal/desktop.MessageFieldsRequest */
+export interface MessageFieldsRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+}
+
+/** internal/desktop.MessageFieldsResult */
+export interface MessageFieldsResult {
+  state: State;
+  reason?: string;
+  fields: MessageField[];
+  complete: boolean;
 }
 
 /** internal/desktop.MessageRow */
 export interface MessageRow {
   id: string;
   source_id: string;
+  source_name: string;
   sequence: number;
   offset: number;
   size: number;
@@ -3865,6 +3902,7 @@ export interface MessagesResult {
   complete: boolean;
   scanned: number;
   facets: MessageFacets;
+  search_index: SearchIndexState;
 }
 
 /** internal/desktop.MigrationPreviewResult */
@@ -5149,6 +5187,7 @@ export interface ProjectCase {
   owner?: string;
   tags: string[];
   incidents: string[];
+  sources?: ProjectSource[];
 }
 
 /** internal/project.Document */
@@ -5301,6 +5340,12 @@ export interface ProjectSettings {
   default_owner?: string;
   default_interface_version?: string;
   tags?: string[];
+}
+
+/** internal/project.Source */
+export interface ProjectSource {
+  id: string;
+  name: string;
 }
 
 /** internal/desktop.ProjectSummary */
@@ -5495,6 +5540,17 @@ export interface ProtectionUpdateResult {
   entry?: string;
   rotated: boolean;
   document?: ProtectionDocument;
+}
+
+/** internal/desktop.RawWindow */
+export interface RawWindow {
+  offset: number;
+  end: number;
+  message_start: number;
+  message_end: number;
+  before: string;
+  selected: string;
+  after: string;
 }
 
 /** internal/desktop.Reassignment */
@@ -7418,6 +7474,9 @@ export type SearchField =
   | "interface version"
   | "content";
 
+/** internal/desktop.SearchIndexState */
+export type SearchIndexState = "" | "expired" | "insufficient";
+
 /** internal/desktop.SearchResult */
 export interface SearchResult {
   state: State;
@@ -7889,6 +7948,12 @@ export interface SourceCollectionSummary {
   bytes: number;
   records: number;
   occurrences: number;
+}
+
+/** internal/desktop.SourceFacet */
+export interface SourceFacet {
+  id: string;
+  name: string;
 }
 
 /** internal/desktop.SourceRegistrationRequest */
@@ -9441,6 +9506,7 @@ export interface Facade {
   ListSearchSettings(workspace: string): Promise<SearchSettingsListResult>;
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
+  MessageFields(request: MessageFieldsRequest): Promise<MessageFieldsResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
   NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;

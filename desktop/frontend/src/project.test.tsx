@@ -20,7 +20,7 @@ import {
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { findCaseRow, page, readCaseIdentity, sidebar } from "./testkit/navigation";
-import type { CatalogItem, CatalogQuery, CatalogResult } from "./bindings";
+import type { CatalogItem, CatalogQuery, CatalogResult, SaveItemRequest } from "./bindings";
 import type { FacadeHandlers } from "./testkit/wails";
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -370,4 +370,26 @@ test("Back from a case keeps the list's applied filter", async () => {
   await user.click(page().getByRole("button", { name: "Back to cases" }));
   expect(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Investigating" })).toBeTruthy();
   expect(page().getByRole("row", { name: "Duplicate appointment after reschedule" })).toBeTruthy();
+});
+
+test("Edit details names the case's sources, and a cleared name reads by its ID again", async () => {
+  const user = userEvent.setup();
+  const item = registered(CASE_ENTRY);
+  const named = { ...item, summary: { case: { ...item.summary.case!, sources: [{ id: "s0001", name: "Scheduler" }, { id: "s0002", name: "" }] } } };
+  const { facade } = await openProject(
+    user,
+    { SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", replayed: false, problems: [], saved: { kind: "case", id: `case-${CASE_ENTRY}` } }) as never },
+    [named],
+  );
+  await caseMenu(user, "Duplicate appointment after reschedule", "Edit details");
+  const sheet = within(await screen.findByRole("dialog", { name: "Edit details" }));
+  expect((sheet.getByRole("textbox", { name: "Name of source s0001" }) as HTMLInputElement).value).toBe("Scheduler");
+  await user.clear(sheet.getByRole("textbox", { name: "Name of source s0001" }));
+  await user.type(sheet.getByRole("textbox", { name: "Name of source s0002" }), "Lab feed");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  const [request] = facade.oneCall("SaveItem") as [SaveItemRequest];
+  expect(request.draft.case?.sources).toEqual([
+    { id: "s0001", name: "" },
+    { id: "s0002", name: "Lab feed" },
+  ]);
 });

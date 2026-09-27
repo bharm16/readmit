@@ -121,6 +121,7 @@ import {
   type Shell,
   type State,
   type WorkspaceResult,
+  messageFields
 } from "./bindings";
 import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
@@ -313,7 +314,8 @@ export default function App() {
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
   // The open case's messages: the transient query and order they were read
   // under, and the rows read so far, window by window.
-  const [messages, setMessages] = useState<{ case: string; identity: string; result: MessagesResult; rows: MessageRow[] } | null>(null);
+  // `more` is why a later page could not be read, while the rows before it stay.
+  const [messages, setMessages] = useState<{ case: string; identity: string; result: MessagesResult; rows: MessageRow[]; more?: string } | null>(null);
   const [messageQuery, setMessageQuery] = useState<GridQuery>(NO_QUERY);
   const [messageSort, setMessageSort] = useState<SortState | null>(null);
   const [messageView, setMessageView] = useState("");
@@ -739,6 +741,12 @@ export default function App() {
           ...(occurrences ? { occurrences } : {}),
         });
         if (!current()) return;
+        // A later page that is refused leaves the rows already read on
+        // screen, with the reason and a way to ask again.
+        if (offset > 0 && result.state !== "completed") {
+          setMessages((held) => (held ? { ...held, more: result.reason ?? "The rest of the messages could not be read." } : held));
+          return;
+        }
         setMessages((held) => ({
           ...open,
           result,
@@ -806,6 +814,7 @@ export default function App() {
       byteOffset: number,
       targetCase?: { case: string; identity: string },
       reveal: boolean = revealed,
+      rawOffset = -1,
     ): Promise<InspectionResult | null> => {
       const grid = messages;
       const open =
@@ -829,6 +838,7 @@ export default function App() {
           path,
           node_offset: nodeOffset,
           byte_offset: byteOffset,
+          raw_offset: rawOffset,
           reveal,
         });
         answer = result;
@@ -1491,6 +1501,29 @@ export default function App() {
       });
     },
     [dropReproducerDraft, messages, keepReproducerDraft, reproducerResult, root, run],
+  );
+
+  // Create variant from checked messages: a new plan that selects exactly
+  // them, opened in the reproducer. Nothing is kept as a draft until the
+  // person edits it there.
+  const seedVariant = useCallback(
+    async (occurrences: string[]) => {
+      const open = messages;
+      if (!root || !open || occurrences.length === 0) return;
+      let plan: ReproducerPlan = { schema: "", case: "", steps: [] };
+      let last: ReproducerResult | null = null;
+      await run("reproducer", async () => {
+        for (const occurrence of occurrences) {
+          last = await editReproducer({ workspace: root, case: open.case, identity: open.identity, plan, step: { operator: "select-occurrence/v1", occurrence } });
+          if (!last.reproducer) break;
+          plan = last.reproducer.plan;
+        }
+      });
+      if (!last) return;
+      setReproducerResult(last);
+      setCaseFlow("reproduce");
+    },
+    [messages, root, run],
   );
 
   // The reproducer plan comes back the same way, and under the same rule.
@@ -2217,14 +2250,16 @@ export default function App() {
                     onCheck={setCheckedMessages}
                     onCreateTest={() => createTest()}
                     onSendSelected={() => setCaseFlow("replay")}
-                    onCreateVariant={() => setCaseFlow("reproduce")}
+                    onCreateVariant={() => void seedVariant(chosenRows.map((row) => row.id))}
                     onLoadMore={() => {
                       if (root && messages) void loadMessages(root, shownCase, messageQuery, messageSort, messages.rows.length);
                     }}
+                    more={messages?.more ?? null}
                     onRetry={() => {
                       if (root) void loadMessages(root, shownCase, messageQuery, messageSort, 0);
                     }}
                     onImport={() => setImporting(true)}
+                    onFields={() => messageFields({ workspace: root ?? "", ...shownCase })}
                     onSearchSettings={() => {
                       setSearchSettings(undefined);
                       if (root) void describeSearchSettings(root, verified.name, verified.identity).then((answer) => setSearchSettings(answer.settings ?? null));
@@ -2933,10 +2968,10 @@ export default function App() {
         {verified ? (
           <MessageReader
             result={inspectionResult}
-            {...(selectedRow ? { kind: selectedRow.kind, source: selectedRow.source_id } : {})}
+            {...(selectedRow ? { kind: selectedRow.kind, source: selectedRow.source_name || selectedRow.source_id } : {})}
             loading={running === "inspect"}
             busy={busy}
-            onInspect={(path, nodeOffset, byteOffset) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset) : Promise.resolve(null))}
+            onInspect={(path, nodeOffset, byteOffset, rawOffset) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset, undefined, revealed, rawOffset) : Promise.resolve(null))}
             onReveal={(next) => {
               setRevealed(next);
               const at = inspectionResult?.inspection;
@@ -3246,6 +3281,7 @@ export default function App() {
               tags: caseTask.item.summary.case?.tags ?? [],
               revision: caseTask.item.summary.case?.interface_revision ?? "",
               incidents: caseTask.item.summary.case?.incidents ?? [],
+              sources: caseTask.item.summary.case?.sources ?? [],
             }}
             revisions={currentProject?.summary.project?.revisions ?? []}
             onSave={async (details) => {
@@ -3263,6 +3299,7 @@ export default function App() {
                     tags: details.tags,
                     ...(details.revision ? { interface_revision: details.revision } : {}),
                     incidents: details.incidents,
+                    ...(details.sources.length > 0 ? { sources: details.sources } : {}),
                   },
                 },
               });
@@ -3271,7 +3308,7 @@ export default function App() {
                 await refreshCases();
                 return;
               }
-              return saveFailure(answer, { name: "case-name", owner: "case-owner", status: "case-status" });
+              return saveFailure(answer, { name: "case-name", owner: "case-owner", status: "case-status", "case.sources": "case-sources" });
             }}
             onClose={() => setCaseTask(null)}
           />

@@ -198,6 +198,7 @@ type CaseRegistration struct {
 	InterfaceVersion string
 	Tags             []string
 	Incidents        []string
+	Sources          []project.Source
 }
 
 // RegisterCase verifies one case bundle of the project through the shared
@@ -225,6 +226,7 @@ func RegisterCase(path, name string, registration CaseRegistration) (project.Cas
 		Status:           registration.Status,
 		Tags:             registration.Tags,
 		Incidents:        registration.Incidents,
+		Sources:          registration.Sources,
 	}
 	updated, stored, err := project.AddCase(document, revisions, entry)
 	if err != nil {
@@ -285,6 +287,7 @@ type CaseChange struct {
 	InterfaceVersion *string
 	Tags             *[]string
 	Incidents        *[]string
+	Sources          *[]project.Source
 }
 
 // Empty reports whether the change would change nothing.
@@ -308,6 +311,7 @@ func UpdateRegisteredCase(path, name string, change CaseChange) (project.Case, e
 		InterfaceVersion: change.InterfaceVersion,
 		Tags:             change.Tags,
 		Incidents:        change.Incidents,
+		Sources:          change.Sources,
 	})
 	if err != nil {
 		return project.Case{}, invalidChange(err)

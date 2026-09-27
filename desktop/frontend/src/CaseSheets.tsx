@@ -56,6 +56,8 @@ export type CaseDetails = {
   tags: string[];
   revision: string;
   incidents: string[];
+  /** Each source the case declares, with the name it reads by ("" for its ID). */
+  sources: { id: string; name: string }[];
 };
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -88,7 +90,7 @@ export function CaseDetailsSheet({
       submitDisabled={draft.name.trim() === ""}
       dirty={!same(draft, details)}
       onClose={onClose}
-      onSubmit={() => onSave({ ...draft, name: draft.name.trim(), owner: draft.owner.trim() })}
+      onSubmit={() => onSave({ ...draft, name: draft.name.trim(), owner: draft.owner.trim(), sources: draft.sources.map((source) => ({ ...source, name: source.name.trim() })) })}
     >
       <label htmlFor="case-name">Name</label>
       <input id="case-name" type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -113,6 +115,25 @@ export function CaseDetailsSheet({
         ))}
       </select>
       <ChipsInput id="case-incidents" label="Incidents" values={draft.incidents} onChange={(incidents) => setDraft({ ...draft, incidents })} />
+      {draft.sources.length > 0 ? (
+        <fieldset className="source-names" id="case-sources" tabIndex={-1}>
+          <legend>Sources</legend>
+          {draft.sources.map((source, index) => (
+            <div key={source.id} className="value-with-action">
+              <label htmlFor={`case-source-${index}`}>
+                <code>{source.id}</code>
+              </label>
+              <input
+                id={`case-source-${index}`}
+                type="text"
+                aria-label={`Name of source ${source.id}`}
+                value={source.name}
+                onChange={(event) => setDraft({ ...draft, sources: draft.sources.map((entry, at) => (at === index ? { ...entry, name: event.target.value } : entry)) })}
+              />
+            </div>
+          ))}
+        </fieldset>
+      ) : null}
     </FormDialog>
   );
 }
