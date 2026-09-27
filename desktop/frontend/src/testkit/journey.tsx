@@ -431,8 +431,9 @@ export class Journey {
   }
 
   /** Waits until every call the window made has settled and none has
-   * followed for QUIET_MS, or fails naming the calls still running. */
-  private async settled(): Promise<void> {
+   * followed for QUIET_MS, or fails naming the calls still running: the
+   * window has finished what it was doing, as a person sees before acting. */
+  async settled(): Promise<void> {
     const deadline = Date.now() + SETTLE_MS;
     let quietSince = Date.now();
     for (;;) {

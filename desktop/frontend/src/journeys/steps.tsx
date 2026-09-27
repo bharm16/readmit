@@ -10,10 +10,11 @@ import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, press, region, whenEnabled } from "../testkit/journey";
 import type { Journey } from "../testkit/journey";
 import type { Downstream, DownstreamMode } from "../testkit/downstream.js";
+import { findMessageRow, goToView, page } from "../testkit/navigation";
 import { hostLoad } from "./probes.js";
 
-/** How many occurrences one window of the grid shows: the facade's own bound
- * on one grid window, a fact of the product the window publishes. */
+/** How many messages one read of a case's Messages list returns: the
+ * facade's own bound on one window, a fact of the product it publishes. */
 export const GRID_WINDOW = 200;
 
 /** Synthetic MLLP-framed booking; every value is synthetic. */
@@ -58,7 +59,7 @@ export const EXPORTED_RESCHEDULE =
 /** Selects the activation folder the vendor delivered and sees it active. */
 export async function activateLicense(user: UserEvent, journey: Journey): Promise<void> {
   const license = journey.provisionLicense("vendor-delivered-license");
-  await press(user, screen.getByRole("button", { name: "License" }));
+  await goToView(user, "Settings", "License");
   const access = within(region("License"));
   await journey.chooseFolder(license, "Choose the license activation folder");
   // The supplied-folder workflow lives in the License page's Administrator
@@ -103,7 +104,7 @@ export async function submitProject(user: UserEvent, journey: Journey, parent: s
 
 /** A licensed project over the person's own export, with the downstream
  * system started in the given mode and configured as the project's
- * environment, and the imported case open with its index built. */
+ * environment, and the imported case open. */
 export async function investigation(user: UserEvent, journey: Journey, mode: DownstreamMode) {
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   const downstream = await journey.startDownstream("downstream/appointments.csv", mode);
@@ -112,7 +113,6 @@ export async function investigation(user: UserEvent, journey: Journey, mode: Dow
   const project = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
   await configureTarget(user, downstream.address);
-  await buildIndex(user);
   return { downstream, project };
 }
 
@@ -125,12 +125,20 @@ export async function savedAckTest(user: UserEvent, journey: Journey, mode: Down
   return investigated;
 }
 
+/** Opens the import of the open project's Cases page, once the reads that
+ * opening it starts have been answered. The page header and the empty list
+ * both offer Import; either opens it. */
+async function openImport(user: UserEvent, journey: Journey): Promise<void> {
+  await press(user, (await page().findAllByRole("button", { name: "Import" }))[0]!);
+  await screen.findByRole("region", { name: "Declared sources" });
+  await journey.settled();
+}
+
 /** Opens an import of an MLLP-framed export already on this person's machine
  * into the open project and declares its framing, up to its preview: what a
  * person has done before they preview, commit or cancel it. */
 export async function declareMllpImport(user: UserEvent, journey: Journey, file: string): Promise<void> {
-  const evidence = within(region("Evidence"));
-  await press(user, await evidence.findByRole("button", { name: "Import" }));
+  await openImport(user, journey);
   await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
   await press(user, await screen.findByRole("button", { name: "Select Files…" }));
   await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
@@ -140,8 +148,7 @@ export async function declareMllpImport(user: UserEvent, journey: Journey, file:
 /** Imports an export of back-to-back messages into the open project as a
  * registered case, then opens that case. */
 export async function importExport(user: UserEvent, journey: Journey, file: string, caseName: string, title: string): Promise<void> {
-  const evidence = within(region("Evidence"));
-  await press(user, evidence.getByRole("button", { name: "Import" }));
+  await openImport(user, journey);
   await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
   await press(user, await screen.findByRole("button", { name: "Select Files…" }));
   await within(screen.getByRole("region", { name: "Declared sources" })).findByText(new RegExp(file.split("/").pop() ?? file));
@@ -160,7 +167,12 @@ export async function importExport(user: UserEvent, journey: Journey, file: stri
   await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
   await press(user, commit.getByRole("button", { name: "Open case" }));
-  expect(await within(region("Inspector")).findByText(caseName, { selector: "dd" })).toBeTruthy();
+  await openedCase();
+}
+
+/** Waits for the case just opened to show its Messages list, and returns it. */
+export async function openedCase() {
+  return within(await screen.findByRole("region", { name: "Messages" }, { timeout: 10_000 }));
 }
 
 /** The panel a heading names, such as the environment or durable-run panel
@@ -199,15 +211,16 @@ export async function configureTarget(user: UserEvent, address: string): Promise
   expect(value("Outcome:")).toBe("reachable");
 }
 
-/** Builds an index of the open case, so its grid offers occurrences: its
- * first window of the case's occurrences, by default the two messages of the
- * scheduling export the investigation imports. */
-export async function buildIndex(user: UserEvent, occurrences = 2): Promise<void> {
-  const inspector = within(region("Inspector"));
-  await press(user, await inspector.findByRole("button", { name: "Set up index" }));
-  const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-  await press(user, form.getByRole("button", { name: "Build index" }));
-  expect(await inspector.findByText(`Showing ${Math.min(occurrences, GRID_WINDOW)} of ${occurrences} matching`)).toBeTruthy();
+/** Selects one message of the open case's Messages list, by default its
+ * first, as a person clicks its row, and returns the reader that then shows
+ * it. */
+export async function selectMessage(user: UserEvent, occurrence?: string) {
+  const row = occurrence
+    ? await findMessageRow(occurrence)
+    : ((await screen.findByRole("table", { name: "Messages" })).querySelector<HTMLElement>("tr[data-row-id]") ?? undefined);
+  if (!row) throw new Error("the Messages table shows no message");
+  await press(user, row);
+  return within(await screen.findByRole("region", { name: "Message details" }));
 }
 
 /** The test authoring panel beside the open case. */

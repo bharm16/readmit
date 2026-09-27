@@ -31,7 +31,7 @@ import { exists, filesUnder, namesIn } from "./probes.js";
 import {
   activateLicense,
   authoring,
-  buildIndex,
+  openedCase,
   configureTarget,
   createProject,
   declareMllpImport,
@@ -91,7 +91,7 @@ async function importIncident(user: UserEvent): Promise<void> {
   await press(user, commit.getByRole("button", { name: "Import" }));
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
   expect(commit.getByText("Registered into project.")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Set up index" }));
+  await press(user, commit.getByRole("button", { name: "Open case" }));
 }
 
 function reproducerPanel() {
@@ -160,7 +160,7 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
   await licensedProject(journey, user);
   journey.makeFolder(`${PROJECT}/handover`);
   await importIncident(user);
-  await buildIndex(user);
+  await openedCase();
   const panel = reproducerPanel();
   const incidentIdentity = journey.readFile(`${PROJECT}/incident/identity.sha256`).trim();
 
@@ -324,7 +324,7 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   await createProject(user, journey, "investigations", "interface", "Scheduling interface");
   await importIncident(user);
   await configureTarget(user, downstream.address);
-  await buildIndex(user);
+  await openedCase();
   const panel = reproducerPanel();
   const revisions = within(screen.getByRole("region", { name: "Reproducer revisions" }));
 
@@ -359,21 +359,8 @@ test("built revisions are compared by lineage, by what they retain and edit, and
   await register(user, panel, "edited-case");
   expect(await panel.findByText(/^Registered as edited-case\./)).toBeTruthy();
   await press(user, panel.getByRole("button", { name: "Create test" }));
-  const inspector = within(region("Inspector"));
-  expect(await inspector.findByText("edited-case", { selector: "dd" })).toBeTruthy();
-  // The project already holds the incident's index. The new revision has no
-  // index of its own, so the window offers a new file and leaves the incident's
-  // index untouched.
-  const incidentIndex = journey.digest(`${PROJECT}/incident.index.json`);
-  expect(await inspector.findByText("Case is unindexed")).toBeTruthy();
-  expect(inspector.queryByRole("button", { name: "Set up rebuild" })).toBeNull();
-  await press(user, inspector.getByRole("button", { name: "Set up index" }));
-  const indexing = within(await inspector.findByRole("form", { name: "Build index form" }));
-  expect((indexing.getByLabelText("Index file") as HTMLInputElement).value).toBe("edited-case.index.json");
-  expect(indexing.queryByLabelText("Replace selected index")).toBeNull();
-  await press(user, indexing.getByRole("button", { name: "Build index" }));
-  expect(await inspector.findByText("Showing 2 of 2 matching")).toBeTruthy();
-  expect(journey.digest(`${PROJECT}/incident.index.json`)).toBe(incidentIndex);
+  // The new revision opens on its own messages, read with no index set up.
+  await openedCase();
   await authorRescheduleTest(user, "edited-test.json");
 
   // The same test, bound to the first revision's derived case — a person's

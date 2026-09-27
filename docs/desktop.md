@@ -482,7 +482,8 @@ artifacts are never reported as completed.
 | `ForgetProject` | Removes one project from the projects this viewer remembers and leaves the project itself untouched. |
 | `Search` | Finds what one open workspace declares and what its project registers. |
 | `ReadMessages` | Reads one bounded window of a verified case's messages under a transient query and sort, through an applicable index of that case or one built in memory, and writes nothing. |
-| `InspectOccurrence` | Verifies the list identity again and inspects one selected occurrence: its labelled tree, canonical selectors and hex rows, and its escaped raw/decoded value only when revealed. |
+| `InspectOccurrence` | Verifies the list identity again and inspects one selected occurrence: its labelled tree, canonical selectors and hex rows, its declared source name and direction, and its escaped raw/decoded value and whole-message Raw window only when revealed. |
+| `MessageFields` | Lists the field positions a verified case's parsed messages hold, with their bundled labels and canonical selectors and no value, for the Filter sheet's field picker. |
 | `OpenGrid` | Renders one bounded window of one case through one index of it, and describes that index as `DescribeIndex` does, from the same read. |
 | `BuildIndex` | Builds an index of declared fields and retention choices for a verified case bundle into a new derived artifact, re-reads the workspace and returns the outcome. |
 | `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
@@ -865,6 +866,22 @@ Selecting a part jumps to its bytes, and moving through byte pages preserves
 the selected range. Unparsed occurrences have no field tree but retain every
 byte. A selected value larger than 4096 bytes reports `too_large` rather than
 showing a truncated value; all original bytes remain available through pages.
+
+With `reveal`, `raw_window` is the whole message's original text, escaped,
+4096 bytes at a time: windows begin every 4096 bytes from the message's first
+byte (after an MLLP start block; an unparsed occurrence's whole bytes), and a
+byte is escaped whole, so a window never splits an escape and the windows
+together are exactly the message. `raw_offset` pages it as `byte_offset` pages
+hex rows: `-1` is the window holding the start of the selected part, and an
+offset before the message is its first window. The window's text is divided at
+the selected part, so `selected` is exactly the text to mark, empty when the
+selection is the whole message or lies outside the window. `raw` stays the
+selected part's own escaped bytes, the value Copy value copies. A standalone
+file's message is windowed within that message, at the file's offsets.
+
+An occurrence's `source_name` is the name declared for its source, empty when
+nothing names it and it reads by `source_id`; `direction` is the direction the
+case recorded. A standalone file has neither.
 
 The inspector resolves the parser's standard HL7 escapes for selected values.
 It displays ASCII (including an omitted/empty MSH-18 default) and explicitly
@@ -1298,8 +1315,19 @@ See [interface investigation projects](project.md).
 Opening a case reads its messages at once: `ReadMessages` verifies the case
 against the identity the window displayed and returns one window of at most 200
 rows, with the counts around it and the choices the filter sheet offers for this
-case (its actual message types, its source IDs and the acknowledgement codes it
+case (its actual message types, its sources and the acknowledgement codes it
 carries). No index has to exist, be chosen or be built first.
+
+A source reads by the name declared for it, and otherwise by its exact source
+ID; a file name is never a source's name. The first of these that names a
+source is its name: the name a person gave it on the project's entry for this
+exact case (`sources` of a `readmit-project/v2` case, set in Edit details or at
+import), the label its collection session declared in a collected case, and the
+source a mapping recipe declared for it in the case's own receipt beside it,
+`CASE-receipt.json`, read only when it reads strictly, names this exact case and
+maps only sources the case declares. A row carries `source_name`, empty when
+nothing names it; each filter choice is `{id, name}`, and a query still names a
+source by its ID.
 
 A row is the occurrence's ID, source, sequence, byte span, kind, direction,
 recorded observed time, whether it decoded, and its parsed MSH-9 message code
@@ -1341,7 +1369,8 @@ combine with AND; the values within one axis are alternatives.
 | `observed_from` / `observed_until` | Recorded observed time, from one instant up to but not including another; no recorded time never passes a bound |
 | `ack_codes` | A literal `MSA-1` code |
 | `fields` | A canonical selector that `equals` or `contains` a value, or has a `present`, `empty`, `null` or `omitted` state |
-| `search` | A literal `metadata` search (type, source ID, MSH-10 control ID) or `content` search (the original bytes of each occurrence of this case) |
+| `search` | A literal `metadata` search (type, source ID or declared source name, MSH-10 control ID) or `content` search (the original bytes of each occurrence of this case) |
+| `scope` | Empty for every row the query answers; `undecided` for the rows its field questions could neither keep nor exclude because a retained value was shortened; `undecodable` for the occurrences the case could not decode. The other axes still apply, so the `undecided` and `undecodable` counts lead to exactly those rows |
 
 A combination this release cannot answer, such as a type both required and
 excluded, is refused with its reason rather than run as another question.
@@ -1357,12 +1386,22 @@ Applying a query writes no file. The persistent index is not repaired
 automatically: a same-identity index always describes its case, so there is
 nothing a silent rebuild could prove, and the in-memory path answers instead.
 
+`search_index` says whether the case's own persistent index is a reason to
+offer Search settings: `expired` when every index of its own has passed its
+declared retention, `insufficient` when one is current but retains too little
+to answer the applied query, and empty otherwise — no index of its own, one that
+answered, or a query that asks an index nothing. Search settings are offered
+only when it is not empty; creating a persistent policy stays in Settings.
+
 ### Saved views
 
 A view is a name of 1 to 200 printable characters and a query, saved only when
 the person chooses Save view. Views are listed per project — keyed by the
-project's folder — in the viewer's own `readmit-filters/v2` document, outside
-evidence, beside the saved filters. `readmit-filters/v1` is still read, as a v2
+stable identity the application gave the project once its catalog records one,
+so a renamed or moved project keeps them, and by its folder until then — in the
+viewer's own `readmit-filters/v2` document, outside evidence, beside the saved
+filters. Views saved under a project's folder before it had an identity are
+read there, and the next change saves them under the identity. `readmit-filters/v1` is still read, as a v2
 document with no views, and is written as v2 the next time anything is saved.
 Renaming a view onto another view's name is refused; removing a view removes
 only the saved query, never evidence.

@@ -20,7 +20,7 @@ import { byContent, enter, Journey, press, region } from "../testkit/journey";
 import {
   activateLicense,
   beginAckTest,
-  buildIndex,
+  openedCase,
   configureTarget,
   createProject,
   EXPORTED_BOOKING,
@@ -153,7 +153,7 @@ test("a test of an independent downstream system fails on its defect, passes onc
 
   // The test: both messages, at that target, decided by the acknowledgement
   // of the reschedule.
-  await buildIndex(user);
+  await openedCase();
   await beginAckTest(user, "reschedule-acknowledged");
   await finishAckTest(user, "reschedule-ack-test.json");
 

@@ -13,10 +13,11 @@
 // the window, then reads the project and the index the window wrote and must
 // agree.
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Journey, press, region } from "../testkit/journey";
-import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE } from "./steps";
+import { findMessageRow } from "../testkit/navigation";
+import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE, openedCase, selectMessage } from "./steps";
 
 let journey: Journey;
 
@@ -84,36 +85,21 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   expect(dropped[0]?.settled).toBe(true);
   expect(commit.getByText("Registered into project.")).toBeTruthy();
   expect(commit.getByText(/^Case:/).parentElement?.textContent).toMatch(/Case: reschedule-feed \([0-9a-f]{64}\)/);
-  await press(user, commit.getByRole("button", { name: "Set up index" }));
+  await press(user, commit.getByRole("button", { name: "Open case" }));
 
   // Leaving the import re-reads the project: the case it registered is listed
-  // as verified evidence, and the case opens verified in the inspector.
+  // as verified evidence, and the case opens on its messages with no index
+  // set up.
   expect(await evidence.findByText("Reschedule leaves a duplicate")).toBeTruthy();
   expect(evidence.getByText(/1 registered case/)).toBeTruthy();
-  const inspector = within(region("Inspector"));
-  expect(await inspector.findByText("Case is unindexed")).toBeTruthy();
-  expect(inspector.getByText("imported")).toBeTruthy();
-
-  // Build an index under a declared retention: digests, so a value can be
-  // found exactly without being stored in plain text.
-  await press(user, inspector.getByRole("button", { name: "Set up index" }));
-  const form = within(await inspector.findByRole("form", { name: "Build index form" }));
-  const trigger = form.getByLabelText("Trigger event (MSH-9.2)") as HTMLInputElement;
-  expect(trigger.checked).toBe(false);
-  await user.click(trigger);
-  await user.click(form.getByRole("radio", { name: /SHA-256 digests/ }));
-  expect(form.getByText("Indexed fields (3 of 16 selected)")).toBeTruthy();
-  await press(user, form.getByRole("button", { name: "Build index" }));
-  expect(await inspector.findByText(/Showing 2 of 2 matching/)).toBeTruthy();
-  expect(inspector.getByText("Retention: digests (active)", { exact: false })).toBeTruthy();
+  const messages = await openedCase();
 
   // Inspect the second occurrence: its original bytes are exactly the second
   // message the person exported, in the order they exported it.
-  const rows = await inspector.findAllByRole("button", { name: /^Inspect s\d+-e\d+$/ });
-  expect(rows).toHaveLength(2);
-  const [booked, moved] = rows.map((row) => (row.textContent ?? "").replace(/^Inspect /, ""));
-  await press(user, rows[1]!);
-  const occurrence = within(inspector.getByRole("region", { name: "Message inspector" }));
+  const table = await messages.findByRole("table", { name: "Messages" });
+  await waitFor(() => expect(table.querySelectorAll("tr[data-row-id]")).toHaveLength(2));
+  const [booked, moved] = Array.from(table.querySelectorAll("tr[data-row-id]"), (row) => row.getAttribute("data-row-id") ?? "");
+  const occurrence = await selectMessage(user, moved!);
   const header = await occurrence.findByText(new RegExp(`^Occurrence ${moved} · `));
   expect(header.textContent).toContain(`${EXPORTED_RESCHEDULE.length} original bytes`);
   expect(occurrence.getByText(escaped(EXPORTED_RESCHEDULE))).toBeTruthy();
@@ -136,9 +122,10 @@ test("a person's own export becomes a registered, indexed, searchable case in a 
   expect(screen.queryByText("Unsaved drafts")).toBeNull();
   const reopened = within(region("Workspace"));
   expect(await reopened.findByText(project, { selector: ".root" })).toBeTruthy();
-  // Reopening verifies the case again and reopens its index; it is not a
-  // copy of what the window showed before it closed.
-  expect(await within(region("Inspector")).findByText(/Showing 2 of 2 matching/)).toBeTruthy();
+  // Reopening verifies the case again and reads its messages again; it is
+  // not a copy of what the window showed before it closed.
+  await openedCase();
+  await findMessageRow(moved!);
   expect(journey.callsTo("OpenCase").at(-1)?.args).toEqual([project, "reschedule-feed"]);
   await press(user, reopened.getByRole("button", { name: "Open project" }));
   const overview = within(region("Evidence"));

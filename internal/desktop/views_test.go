@@ -1,6 +1,7 @@
 package desktop_test
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -127,5 +128,44 @@ func TestClearViewsRemovesOnlyThisProjectsSavedQueries(t *testing.T) {
 	}
 	if again := app.ClearViews(root); again.State != desktop.Empty {
 		t.Fatalf("clearing a project with no view: %+v", again)
+	}
+}
+
+// A project's views are saved under the stable identity the application
+// gave the project, so they follow it when its folder moves. Views saved
+// under its folder before it had one are read there, and the next change
+// moves them under the identity.
+func TestSavedViewsFollowTheProjectsIdentityAndMoveFromItsFolder(t *testing.T) {
+	dialogs := &chooser{folder: t.TempDir()}
+	state := t.TempDir()
+	app := activatedApp(t, dialogs, state)
+	root := sample(t, app).Workspace.Root
+	writeDocument(t, root, "project.json", `{"schema":"readmit-project/v2","settings":{"title":"Scheduling QA"},"interface_versions":[],"cases":[]}`+"\n")
+	if saved := app.SaveView(root, "Before", grid.Query{}); saved.State != desktop.Completed {
+		t.Fatalf("a view of a folder with no identity yet: %+v", saved)
+	}
+	opened := app.OpenNamedProject(root)
+	if opened.State != desktop.Completed || !opened.Recorded || opened.Context.ProjectID == "" {
+		t.Fatalf("open: %+v", opened)
+	}
+	if listed := app.ListViews(root); !reflect.DeepEqual(viewNames(listed), []string{"Before"}) {
+		t.Fatalf("the folder's views under the project's identity: %+v", listed)
+	}
+	if saved := app.SaveView(root, "After", grid.Query{}); !reflect.DeepEqual(viewNames(saved), []string{"Before", "After"}) {
+		t.Fatalf("save: %+v", saved)
+	}
+	var stored strings.Builder
+	for _, data := range bytesUnder(t, state) {
+		stored.Write(data)
+	}
+	if !strings.Contains(stored.String(), `"project":"`+opened.Context.ProjectID+`"`) || strings.Count(stored.String(), `"project":`) != 1 {
+		t.Fatalf("the views were not moved under the project's identity: %s", stored.String())
+	}
+	moved := root + "-moved"
+	if err := os.Rename(root, moved); err != nil {
+		t.Fatal(err)
+	}
+	if listed := app.ListViews(moved); !reflect.DeepEqual(viewNames(listed), []string{"Before", "After"}) {
+		t.Fatalf("a moved project lost its views: %+v", listed)
 	}
 }

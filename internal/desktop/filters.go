@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"slices"
 
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/grid"
 )
 
@@ -177,7 +178,8 @@ func (r refusal) views() ViewsResult {
 }
 
 // ListViews reports the views saved for the project open at workspace. Like
-// Filters it reads one small local file and does not claim the operation slot.
+// Filters it reads one small local file, and the project's catalog for the
+// identity its views are saved under, and does not claim the operation slot.
 func (a *App) ListViews(workspace string) ViewsResult {
 	root, declined := resolveFolder(workspace)
 	if root == "" {
@@ -187,7 +189,30 @@ func (a *App) ListViews(workspace string) ViewsResult {
 	if declined.state != "" {
 		return declined.views()
 	}
-	return listedViews(document.ProjectViews(root))
+	return listedViews(projectViews(document, root))
+}
+
+// viewsKey is what a project's views are saved under: the stable identity the
+// application gave the project (#547) once its catalog records one, so a
+// project that is renamed or moved keeps its views, and otherwise its resolved
+// folder. Views saved under the folder before the project had an identity are
+// read under it until a change saves them under the identity.
+func viewsKey(root string) (key, folder string) {
+	if store, err := catalog.Open(root); err == nil {
+		if document, present, err := store.Read(); err == nil && present && document.Project.ID != "" {
+			return document.Project.ID, root
+		}
+	}
+	return root, root
+}
+
+// projectViews are the views saved for the project at root.
+func projectViews(document grid.Document, root string) []grid.View {
+	key, folder := viewsKey(root)
+	if views := document.ProjectViews(key); len(views) > 0 || key == folder {
+		return views
+	}
+	return document.ProjectViews(folder)
 }
 
 // SaveView stores one named query as a view of the project open at
@@ -278,14 +303,18 @@ func (a *App) changeViews(workspace string, change func([]grid.View) ([]grid.Vie
 	if declined.state != "" {
 		return declined.views()
 	}
-	current := document.ProjectViews(root)
+	current := projectViews(document, root)
 	changed, declined := change(slices.Clone(current))
 	if declined.state != "" {
 		result := listedViews(current)
 		result.State, result.Reason = declined.state, declined.reason
 		return result
 	}
-	document = document.WithProjectViews(root, changed)
+	if key, folder := viewsKey(root); key != folder {
+		document = document.WithProjectViews(folder, nil).WithProjectViews(key, changed)
+	} else {
+		document = document.WithProjectViews(root, changed)
+	}
 	if len(document.Views) > grid.MaxViewProjects {
 		result := listedViews(current)
 		result.State, result.Reason = Failed, "views are already saved for as many projects as this release stores"

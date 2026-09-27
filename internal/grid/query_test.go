@@ -44,6 +44,8 @@ func (f caseFacts) Type(record index.Record) grid.MessageType {
 
 func (f caseFacts) ControlID(record index.Record) []byte { return []byte(f.part(record, "MSH-10")) }
 
+func (f caseFacts) SourceName(index.Record) string { return "" }
+
 func (f caseFacts) Content(record index.Record) []byte {
 	raw, _ := f.opened.Raw(record.ID)
 	return raw
@@ -215,6 +217,44 @@ func TestAnswerableNamesTheIndexesThatCanAnswerAQuery(t *testing.T) {
 	} {
 		if got := expected.query.Answerable(expected.policy); got != expected.want {
 			t.Fatalf("%s: answerable %v, want %v", name, got, expected.want)
+		}
+	}
+}
+
+// A count of what a query could not settle, or of what the case could not
+// decode, leads to exactly those rows: a scope lists them under the query's
+// other rules, and nothing else.
+func TestAScopeListsExactlyTheRowsThePageCounted(t *testing.T) {
+	long := strings.Repeat("A", index.MaxValueBytes) + "TAIL"
+	message := "MSH|^~\\&|READMIT|TEST|RECV|LAB|20260101120000||SIU^S12|CTL-9|P|2.5.1\rPID|1||" + long + "\r"
+	opened := caseOf(t, source{frame(booking) + frame(message) + frame(accepted) + frame(garbage), observed(0, 1, 2, 3)})
+	document, facts := indexOf(t, opened, policy(index.RetainValues, nil, patient)), caseFacts{opened}
+	tail := grid.Query{Fields: []grid.FieldPredicate{{Selector: patient, Match: index.Contains, Term: "TAIL"}}}
+
+	counted := queried(t, document, facts, tail, grid.EvidenceOrder)
+	if counted.Matched != 0 || counted.Undecided != 1 || counted.Undecodable != 1 {
+		t.Fatalf("the query's counts: %+v", counted)
+	}
+	undecided := tail
+	undecided.Scope = grid.UndecidedRows
+	scoped := queried(t, document, facts, undecided, grid.EvidenceOrder)
+	if scoped.Matched != counted.Undecided || !equal(ids(scoped), []string{opened.Events[1].ID}) {
+		t.Fatalf("the rows it could not settle are %v, want the shortened value's occurrence", ids(scoped))
+	}
+	undecodable := queried(t, document, facts, grid.Query{Scope: grid.UndecodableRows}, grid.EvidenceOrder)
+	if undecodable.Matched != counted.Undecodable || !equal(ids(undecodable), []string{opened.Events[3].ID}) {
+		t.Fatalf("the rows that could not be decoded are %v", ids(undecodable))
+	}
+
+	// The query's other rules still apply to a scope.
+	acknowledged := undecided
+	acknowledged.Kinds = []bundle.EventKind{bundle.Acknowledgement}
+	if narrowed := queried(t, document, facts, acknowledged, grid.EvidenceOrder); narrowed.Matched != 0 {
+		t.Fatalf("a scope ignored the query's type rule: %v", ids(narrowed))
+	}
+	for _, refused := range []grid.Query{{Scope: grid.UndecidedRows}, {Scope: "everything"}} {
+		if err := grid.ValidateQuery(refused); err == nil {
+			t.Fatalf("accepted scope %q", refused.Scope)
 		}
 	}
 }

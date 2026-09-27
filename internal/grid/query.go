@@ -42,7 +42,8 @@ type SearchScope string
 
 const (
 	// SearchMetadata looks at what the list already shows or holds about an
-	// occurrence: its message type, source ID and MSH-10 control ID.
+	// occurrence: its message type, source ID and declared source name, and
+	// MSH-10 control ID.
 	SearchMetadata SearchScope = "metadata"
 	// SearchContent looks at the original bytes of each occurrence of the
 	// selected case.
@@ -55,6 +56,22 @@ type TextSearch struct {
 	Scope SearchScope `json:"scope"`
 	Text  string      `json:"text"`
 }
+
+// Scope narrows a query to the rows its own counts describe, so a count of
+// what it could not settle or decode leads to exactly those rows.
+type Scope string
+
+const (
+	// AllRows is every row the query answers.
+	AllRows Scope = ""
+	// UndecidedRows are the rows the query's field questions could neither keep
+	// nor exclude, because a value the index kept was shortened: no question
+	// excluded them, and at least one could not settle them.
+	UndecidedRows Scope = "undecided"
+	// UndecodableRows are the occurrences the case could not decode, which no
+	// field question can answer; the query's other rules still apply to them.
+	UndecodableRows Scope = "undecodable"
+)
 
 // Query is one transient question about one case. Every axis is a list or a
 // bound, and an empty one constrains nothing. Within an axis the values are
@@ -75,6 +92,7 @@ type Query struct {
 	AckCodes      []string           `json:"ack_codes"`
 	Fields        []FieldPredicate   `json:"fields"`
 	Search        *TextSearch        `json:"search"`
+	Scope         Scope              `json:"scope,omitzero"`
 }
 
 // Query is the saved filter as a transient query, so a v1 filter narrows a
@@ -184,6 +202,15 @@ func ValidateQuery(query Query) error {
 			return errors.New("a query names each direction at most once")
 		}
 	}
+	switch query.Scope {
+	case AllRows, UndecodableRows:
+	case UndecidedRows:
+		if len(query.IndexedFields()) == 0 {
+			return errors.New("only a query that asks about a field has rows it could not settle")
+		}
+	default:
+		return errors.New("a query lists all its rows, the rows it could not settle, or the rows that could not be decoded")
+	}
 	if query.Search != nil {
 		switch query.Search.Scope {
 		case SearchMetadata, SearchContent:
@@ -218,12 +245,14 @@ func validateType(declared MessageType) error {
 }
 
 // Facts supplies what an index record does not carry: the parsed message type
-// the list shows, the MSH-10 control ID, and the original occurrence bytes. It
+// the list shows, the MSH-10 control ID, the name declared for the record's
+// source (empty when nothing names it), and the original occurrence bytes. It
 // is read from the verified case the index was checked against. A query that
 // asks nothing of them never calls it, so a nil Facts is valid for one.
 type Facts interface {
 	Type(record index.Record) MessageType
 	ControlID(record index.Record) []byte
+	SourceName(record index.Record) string
 	Content(record index.Record) []byte
 }
 
@@ -273,7 +302,7 @@ func selectQuery(document index.Document, at time.Time, query Query, facts Facts
 	}
 	page := Page{Rows: []index.Record{}, Offset: window.Offset, Limit: window.Limit, Total: len(document.Records)}
 	filter := Filter{AckCodes: query.AckCodes, Fields: query.Fields}
-	kept, asked, err := answered(document, at, &filter, &page)
+	kept, open, asked, err := answered(document, at, &filter, &page)
 	if err != nil {
 		return Page{}, err
 	}
@@ -282,8 +311,22 @@ func selectQuery(document index.Document, at time.Time, query Query, facts Facts
 		if record.ParseError != "" {
 			page.Undecodable++
 		}
-		if !keeps(query, facts, record) || (asked && !kept[record.ID]) {
+		if !keeps(query, facts, record) {
 			continue
+		}
+		switch query.Scope {
+		case UndecidedRows:
+			if !open[record.ID] || kept[record.ID] {
+				continue
+			}
+		case UndecodableRows:
+			if record.ParseError == "" {
+				continue
+			}
+		default:
+			if asked && !kept[record.ID] {
+				continue
+			}
 		}
 		page.Matched++
 		if order != EvidenceOrder {
@@ -349,7 +392,8 @@ func keeps(query Query, facts Facts, record index.Record) bool {
 	declared := facts.Type(record)
 	return strings.Contains(declared.Code, query.Search.Text) || strings.Contains(declared.Trigger, query.Search.Text) ||
 		declared.Code != "" && strings.Contains(declared.Code+"^"+declared.Trigger, query.Search.Text) ||
-		strings.Contains(record.SourceID, query.Search.Text) || bytes.Contains(facts.ControlID(record), text)
+		strings.Contains(record.SourceID, query.Search.Text) || strings.Contains(facts.SourceName(record), query.Search.Text) ||
+		bytes.Contains(facts.ControlID(record), text)
 }
 
 // typeOf is the type a type rule compares: the whole kind for an

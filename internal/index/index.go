@@ -682,11 +682,14 @@ type Hit struct {
 // present values whose retained prefix was shortened and therefore cannot
 // settle the query either way; Undecodable counts occurrences the case itself
 // could not decode and which carry no indexed fields. Neither is a miss, and
-// neither is silently dropped.
+// neither is silently dropped. UndecidedIDs are the occurrences those
+// undecided values belong to, each once, in evidence order: identities, never
+// values.
 type Result struct {
-	Hits        []Hit
-	Undecided   int
-	Undecodable int
+	Hits         []Hit
+	Undecided    int
+	UndecidedIDs []string
+	Undecodable  int
 }
 
 // Search answers one query from what was retained, and refuses a question this
@@ -739,6 +742,9 @@ func (d Document) Search(at time.Time, query Query) (Result, error) {
 				result.Hits = append(result.Hits, Hit{Record: record, Value: value})
 			case undecided:
 				result.Undecided++
+				if n := len(result.UndecidedIDs); n == 0 || result.UndecidedIDs[n-1] != record.ID {
+					result.UndecidedIDs = append(result.UndecidedIDs, record.ID)
+				}
 			}
 		}
 	}

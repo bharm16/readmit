@@ -90,7 +90,7 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
   );
 
   const inspect = useCallback(
-    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean): Promise<InspectionResult | null> => {
+    async (message: number, path: string, nodeOffset: number, byteOffset: number, reveal: boolean, rawOffset = -1): Promise<InspectionResult | null> => {
       if (!listing?.sha256) return null;
       let answer: InspectionResult | null = null;
       await run("inspecting", async (current) => {
@@ -103,6 +103,7 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
           path,
           node_offset: nodeOffset,
           byte_offset: byteOffset,
+          raw_offset: rawOffset,
           reveal,
         });
         answer = result;
@@ -181,7 +182,7 @@ export function useFileReader({ busy, request }: { busy: boolean; request: numbe
       result={inspection}
       loading={running === "inspecting"}
       busy={disabled}
-      onInspect={(path, nodeOffset, byteOffset) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed))}
+      onInspect={(path, nodeOffset, byteOffset, rawOffset) => (selected === null ? Promise.resolve(null) : inspect(selected, path, nodeOffset, byteOffset, revealed, rawOffset))}
       onReveal={reveal}
       {...(single ? {} : { onClose: () => { setSelected(null); setInspection(null); } })}
     />

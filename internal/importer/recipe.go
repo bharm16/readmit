@@ -568,6 +568,10 @@ func separatorByte(value string, record Separator) error {
 	return nil
 }
 
+// IsLabel is the label rule, for a reader that checks a receipt it did not
+// write.
+func IsLabel(value string) bool { return label(value) }
+
 // label reports whether a value is one bounded, single-line printable label.
 // Mapped source and channel values, declared names and locator elements are all
 // held to it, so nothing that reaches a receipt can carry a control byte, an

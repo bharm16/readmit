@@ -16,7 +16,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import { enter, Journey, press } from "../testkit/journey";
 import {
   activateLicense,
-  buildIndex,
+  openedCase,
   configureTarget,
   createProject,
   EXPORTED_BOOKING,
@@ -147,7 +147,7 @@ test("selected case messages are previewed as readmit replay previews them and s
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
   await configureTarget(user, downstream.address);
   await configureRefusals(user, downstream.address);
-  await buildIndex(user);
+  await openedCase();
 
   // Both messages, the named downstream environment under its policy, rebased
   // and shifted a day, previewed.
@@ -271,7 +271,7 @@ test("a replay cancelled while its acknowledgement is held leaves that delivery 
   await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
   await configureTarget(user, downstream.address);
-  await buildIndex(user);
+  await openedCase();
 
   // Every message of the case, as captured, from the keyboard.
   await aimAt(user, "downstream-target.json", "send-policy.json");

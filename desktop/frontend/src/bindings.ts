@@ -299,6 +299,8 @@ import type {
   WorkspaceResult,
   MessagesRequest,
   MessagesResult,
+  MessageFieldsRequest,
+  MessageFieldsResult,
   GridQuery,
   ViewsResult,
   FileMessagesRequest,
@@ -392,7 +394,8 @@ async function guard<T extends { state: State; reason?: string }>(
  * project a folder holds and the session to restore. The panels read as they
  * open: the environment's target, credential references, send policy and
  * reset plan, the scenario catalog, the observation source and window, and
- * the hub, commercial and disclosure states. The facade runs one operation at
+ * the hub, commercial and disclosure states. The message reader reads the
+ * occurrence or file message it shows as a row is chosen. The facade runs one operation at
  * a time and answers a call that arrives while another holds the slot busy,
  * having read nothing, and these reads go out together, each on its own as
  * Wails dispatches them, so one can meet another. A read changes nothing, so
@@ -498,12 +501,18 @@ export function buildIndex(request: BuildIndexRequest): Promise<BuildIndexResult
   return guard(() => facade().BuildIndex(request), { state: "failed" });
 }
 
-const NO_MESSAGES = { rows: [], total: 0, matched: 0, undecided: 0, undecodable: 0, complete: true, scanned: 0, facets: { types: [], sources: [], ack_codes: [] } };
+const NO_MESSAGES = { rows: [], total: 0, matched: 0, undecided: 0, undecodable: 0, complete: true, scanned: 0, facets: { types: [], sources: [], ack_codes: [] }, search_index: "" as const };
 
 /** One window of a case's messages under a transient query. Nothing is saved:
  * the facade reuses the case's own index or reads the case directly. */
 export function readMessages(request: MessagesRequest): Promise<MessagesResult> {
   return retryingRead(() => facade().ReadMessages(request), { state: "failed", ...NO_MESSAGES });
+}
+
+/** The field positions a case's messages hold, for the field picker. No value
+ * is read into the answer. */
+export function messageFields(request: MessageFieldsRequest): Promise<MessageFieldsResult> {
+  return retryingRead(() => facade().MessageFields(request), { state: "failed", fields: [], complete: false });
 }
 
 /** The saved views of one project. */
@@ -660,7 +669,7 @@ export function prepareSyntheticRerun(request: SyntheticRerunRequest): Promise<S
 
 /** Deliberately reveals one occurrence, with values escaped by the Go engine. */
 export function inspectOccurrence(request: InspectRequest): Promise<InspectionResult> {
-  return guard(() => facade().InspectOccurrence(request), { state: "failed" });
+  return retryingRead(() => facade().InspectOccurrence(request), { state: "failed" });
 }
 
 /** Retains where this viewer is, so an interruption does not also lose it. */
@@ -1552,17 +1561,17 @@ const NO_FILE = { name: "", bytes: 0, sha256: "", format: "", terminator: "", fo
 
 /** The messages one file holds, read with the chosen framing. */
 export function listFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult> {
-  return guard(() => facade().ListFileMessages(request), { state: "failed", ...NO_FILE });
+  return retryingRead(() => facade().ListFileMessages(request), { state: "failed", ...NO_FILE });
 }
 
 /** One message of a file in the shared reader, refused if the file changed. */
 export function inspectFileMessage(request: FileInspectRequest): Promise<InspectionResult> {
-  return guard(() => facade().InspectFileMessage(request), { state: "failed" });
+  return retryingRead(() => facade().InspectFileMessage(request), { state: "failed" });
 }
 
 /** A window of a file's original bytes, for a file that did not parse. */
 export function readFileBytes(request: FileBytesRequest): Promise<FileBytesResult> {
-  return guard(() => facade().ReadFileBytes(request), { state: "failed", bytes: 0, offset: 0, rows: [] });
+  return retryingRead(() => facade().ReadFileBytes(request), { state: "failed", bytes: 0, offset: 0, rows: [] });
 }
 
 /** Writes a byte-identical copy of the file to a new destination. */

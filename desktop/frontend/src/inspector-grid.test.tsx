@@ -29,6 +29,12 @@ import { findCaseRow, findMessageRow, goTo, page } from "./testkit/navigation";
 type User = ReturnType<typeof userEvent.setup>;
 
 /** A MessageList holding its own query and selection, as the window does. */
+const FIELDS = [
+  { segment: "MSH", segment_name: "Message header", field: 10, label: "Message Control ID", selector: "MSH[1]-10[1]" },
+  { segment: "SCH", segment_name: "Scheduling activity information", field: 11, label: "Appointment timing quantity", selector: "SCH[1]-11[1]" },
+  { segment: "PID", segment_name: "Patient identification", field: 8, label: "Administrative Sex", selector: "PID[1]-8[1]" },
+];
+
 function List({
   result,
   onQuery = () => undefined,
@@ -73,6 +79,7 @@ function List({
       onRetry={() => onAction("retry")}
       onImport={() => onAction("import")}
       onSearchSettings={() => undefined}
+      onFields={async () => ({ state: "completed", fields: FIELDS, complete: true })}
       seed={heldSeed}
       onSeedUsed={() => setSeed(null)}
       busy={false}
@@ -173,7 +180,11 @@ test("search settings prefill from the case index and save without naming a file
     }),
     SaveSearchSettings: () => ({ state: "completed" }),
   });
-  await openCase(facade, user, [messageRow(GRID_OCCURRENCE)]);
+  facade.reply({ SelectWorkspace: () => folderWithCase(), OpenCase: () => caseResult(), ReadMessages: () => ({ ...messagesResult([messageRow(GRID_OCCURRENCE)]), search_index: "expired" }) });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(await findCaseRow());
+  await findMessageRow(GRID_OCCURRENCE);
   await user.click(screen.getByRole("button", { name: "More message list actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Search settings…" }));
   const sheet = await screen.findByRole("dialog", { name: "Search settings" });
@@ -260,8 +271,7 @@ test("a partly filled rule blocks Apply at its field, an end time is exclusive i
   await user.click(within(sheet).getByRole("button", { name: "Add rule" }));
   await user.selectOptions(within(sheet).getByRole("combobox", { name: "Field of rule 2" }), "Message field");
   await user.selectOptions(within(sheet).getByRole("combobox", { name: "Operator of rule 2" }), "has state");
-  await user.click(within(sheet).getByRole("textbox", { name: "Field path of rule 2" }));
-  await user.paste("PID[1]-8[1]");
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Message field of rule 2" }), "PID-8 · Administrative Sex");
   await user.selectOptions(within(sheet).getByRole("combobox", { name: "State of rule 2" }), "Null");
   // A blank third rule is simply left out.
   await user.click(within(sheet).getByRole("button", { name: "Add rule" }));
@@ -292,7 +302,7 @@ test("Filter by this field opens Filter with the selected field's rule, and appl
   const applied: GridQuery[] = [];
   render(<List result={messagesResult([messageRow("m1")])} seed={{ selector: "SCH[1]-11[1]", value: null, state: "present" }} onQuery={(query) => applied.push(query)} />);
   const sheet = await screen.findByRole("dialog", { name: "Filter" });
-  expect((within(sheet).getByRole("textbox", { name: "Field path of rule 1" }) as HTMLInputElement).value).toBe("SCH[1]-11[1]");
+  await waitFor(() => expect((within(sheet).getByRole("combobox", { name: "Message field of rule 1" }) as HTMLSelectElement).value).toBe("SCH[1]-11[1]"));
   expect((within(sheet).getByRole("combobox", { name: "State of rule 1" }) as HTMLSelectElement).value).toBe("present");
   expect(applied).toEqual([]);
 });
@@ -374,6 +384,7 @@ test("selecting a message reads it through the shared reader bound to the displa
     path: "",
     node_offset: 0,
     byte_offset: -1,
+    raw_offset: -1,
     reveal: false,
   });
   const details = await screen.findByRole("region", { name: "Message details" });
@@ -396,4 +407,338 @@ test("reading a case's messages never holds the window, so what a person types e
   expect(document.querySelector(".sidebar .operation")).toBeNull();
   reading.resolve(messagesResult([messageRow(GRID_OCCURRENCE)]));
   await findMessageRow(GRID_OCCURRENCE);
+});
+
+test("a busy answer while the list is still reading is asked again", async () => {
+  const user = userEvent.setup();
+  let asked = 0;
+  const { facade } = await renderApp({
+    InspectOccurrence: () => (++asked === 1 ? { state: "busy", reason: "another operation is running" } : inspectionResult()),
+  });
+  await openCase(facade, user, [messageRow(GRID_OCCURRENCE)]);
+  await user.click(await findMessageRow(GRID_OCCURRENCE));
+  const details = await screen.findByRole("region", { name: "Message details" });
+  expect(await within(details).findByRole("heading", { name: "SIU · S12" })).toBeTruthy();
+  expect(facade.callsTo("InspectOccurrence")).toHaveLength(2);
+  expect(within(details).queryByText("another operation is running")).toBeNull();
+});
+
+test("Search settings is offered only when this case's own index has expired or cannot answer", async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(<List result={messagesResult([messageRow("m1")])} />);
+  await user.click(screen.getByRole("button", { name: "More message list actions" }));
+  expect(screen.queryByRole("menuitem", { name: "Search settings…" })).toBeNull();
+  await user.keyboard("{Escape}");
+  rerender(<List result={{ ...messagesResult([messageRow("m1")]), search_index: "insufficient" }} />);
+  await user.click(screen.getByRole("button", { name: "More message list actions" }));
+  expect(screen.getByRole("menuitem", { name: "Search settings…" })).toBeTruthy();
+});
+
+test("a source reads by its declared name and filters by its exact ID", async () => {
+  const user = userEvent.setup();
+  const applied: GridQuery[] = [];
+  const named = { ...messageRow("m1"), source_id: "s0002", source_name: "Scheduler" };
+  const result = { ...messagesResult([named, messageRow("m2")]), facets: { types: [], ack_codes: [], sources: [{ id: "s0001", name: "" }, { id: "s0002", name: "Scheduler" }] } };
+  render(<List result={result} onQuery={(query) => applied.push(query)} />);
+  const table = screen.getByRole("table", { name: "Messages" });
+  expect(within(table).getByText("Scheduler")).toBeTruthy();
+  expect(within(table).getByText("s0001")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Filter messages" }));
+  const sheet = await screen.findByRole("dialog", { name: "Filter" });
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Field of rule 1" }), "Source");
+  await user.click(within(sheet).getByRole("checkbox", { name: "Scheduler" }));
+  await user.click(within(sheet).getByRole("button", { name: "Apply" }));
+  expect(applied.at(-1)).toEqual({ ...NO_QUERY, sources: ["s0002"] });
+  expect(screen.getByText("Source is Scheduler")).toBeTruthy();
+});
+
+test("the Message field rule picks a field by name and applies its exact path", async () => {
+  const user = userEvent.setup();
+  const applied: GridQuery[] = [];
+  render(<List result={messagesResult([messageRow("m1")])} onQuery={(query) => applied.push(query)} />);
+  await user.click(screen.getByRole("button", { name: "Filter messages" }));
+  const sheet = await screen.findByRole("dialog", { name: "Filter" });
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Field of rule 1" }), "Message field");
+  const picker = within(sheet).getByRole("combobox", { name: "Message field of rule 1" });
+  await waitFor(() => expect((picker as HTMLSelectElement).disabled).toBe(false));
+  expect(within(picker).getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "Choose a field",
+    "MSH-10 · Message Control ID",
+    "SCH-11 · Appointment timing quantity",
+    "PID-8 · Administrative Sex",
+    "Other field…",
+  ]);
+  // A listed field is picked; no path box shows until another is asked for.
+  expect(within(sheet).queryByRole("textbox", { name: /Field path/ })).toBeNull();
+  await user.selectOptions(picker, "MSH-10 · Message Control ID");
+  await user.type(within(sheet).getByRole("textbox", { name: "Value of rule 1" }), "CTRL");
+  // A component the list does not hold is typed as its exact path.
+  await user.click(within(sheet).getByRole("button", { name: "Add rule" }));
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Field of rule 2" }), "Message field");
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Operator of rule 2" }), "has state");
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Message field of rule 2" }), "Other field…");
+  await user.click(within(sheet).getByRole("textbox", { name: "Field path of rule 2" }));
+  await user.paste("PID[1]-3[1].1");
+  await user.click(within(sheet).getByRole("button", { name: "Apply" }));
+  expect(applied.at(-1)).toEqual({
+    ...NO_QUERY,
+    fields: [
+      { selector: "MSH[1]-10[1]", match: "equals", term: "CTRL", state: "" },
+      { selector: "PID[1]-3[1].1", match: "state", term: "", state: "present" },
+    ],
+  });
+});
+
+test("Type is and Type is not can both be set, but not two rules of either", async () => {
+  const user = userEvent.setup();
+  const applied: GridQuery[] = [];
+  const result = { ...messagesResult([messageRow("m1")]), facets: { sources: [], ack_codes: [], types: [{ kind: "message" as const, code: "SIU", trigger: "S12" }, { kind: "message" as const, code: "SIU", trigger: "S13" }] } };
+  render(<List result={result} onQuery={(query) => applied.push(query)} />);
+  await user.click(screen.getByRole("button", { name: "Filter messages" }));
+  const sheet = await screen.findByRole("dialog", { name: "Filter" });
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Field of rule 1" }), "Type");
+  await user.click(within(within(sheet).getByRole("group", { name: "Values of rule 1" })).getByRole("checkbox", { name: "SIU · S12" }));
+  await user.click(within(sheet).getByRole("button", { name: "Add rule" }));
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Field of rule 2" }), "Type");
+  // The second Type rule starts on the operator still free, and the used one is not offered.
+  expect((within(sheet).getByRole("combobox", { name: "Operator of rule 2" }) as HTMLSelectElement).value).toBe("is-not");
+  expect((within(within(sheet).getByRole("combobox", { name: "Operator of rule 2" })).getByRole("option", { name: "is" }) as HTMLOptionElement).disabled).toBe(true);
+  await user.click(within(within(sheet).getByRole("group", { name: "Values of rule 2" })).getByRole("checkbox", { name: "SIU · S13" }));
+  await user.click(within(sheet).getByRole("button", { name: "Add rule" }));
+  const used = within(within(sheet).getByRole("combobox", { name: "Field of rule 3" })).getByRole("option", { name: "Type · already in a rule" }) as HTMLOptionElement;
+  expect(used.disabled).toBe(true);
+  await user.click(within(sheet).getByRole("button", { name: "Apply" }));
+  expect(applied.at(-1)).toMatchObject({ types: [{ kind: "message", code: "SIU", trigger: "S12" }], not_types: [{ kind: "message", code: "SIU", trigger: "S13" }] });
+});
+
+test("the could-not-be-matched and not-decoded counts open exactly those rows as a removable filter", async () => {
+  const user = userEvent.setup();
+  const applied: GridQuery[] = [];
+  const result = { ...messagesResult([messageRow("m1")]), undecided: 2, undecodable: 1 };
+  render(<List result={result} onQuery={(query) => applied.push(query)} />);
+  await user.click(screen.getByRole("button", { name: "2 could not be matched" }));
+  expect(applied.at(-1)).toEqual({ ...NO_QUERY, scope: "undecided" });
+  await user.click(screen.getByRole("button", { name: "Remove Could not be matched" }));
+  expect(applied.at(-1)).toEqual({ ...NO_QUERY, scope: "" });
+  await user.click(screen.getByRole("button", { name: "1 not decoded" }));
+  expect(applied.at(-1)).toEqual({ ...NO_QUERY, scope: "undecodable" });
+});
+
+test("Columns shows Kind and hides Direction from the list's own menu", async () => {
+  const user = userEvent.setup();
+  render(<List result={messagesResult([messageRow("m1"), messageRow("m2", "ack")])} />);
+  const headers = () => within(screen.getByRole("table", { name: "Messages" })).getAllByRole("columnheader").map((cell) => cell.textContent);
+  expect(headers()).not.toContain("Kind");
+  await user.click(screen.getByRole("button", { name: "More message list actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Columns…" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Columns" }));
+  await user.click(sheet.getByRole("checkbox", { name: "Kind" }));
+  await user.click(sheet.getByRole("checkbox", { name: "Direction" }));
+  await user.click(sheet.getByRole("button", { name: "Apply" }));
+  expect(headers()).toContain("Kind");
+  expect(headers()).not.toContain("Direction");
+  const table = screen.getByRole("table", { name: "Messages" });
+  expect(within(table).getByText("Message")).toBeTruthy();
+  expect(within(table).getAllByText("ACK").length).toBeGreaterThan(0);
+});
+
+test("Raw shows the whole message with the selected field marked, a window at a time, and the reader names direction", async () => {
+  const user = userEvent.setup();
+  const selected = { path: "SCH[1]-11", kind: "field", parent: "SCH[1]", segment: "SCH", field: 11, state: "present" as const, start: 10, end: 24 };
+  const window = (offset: number) => ({ offset, end: Math.min(offset + 4096, 9000), message_start: 0, message_end: 9000, before: `text ${offset} `, selected: offset === 0 ? "FIELD" : "", after: " more" });
+  const hidden = inspectionResult(GRID_OCCURRENCE, { selected, direction: "outbound" });
+  const pages: number[] = [];
+  function Paged() {
+    const [result, setResult] = useState(hidden);
+    return (
+      <MessageReader
+        result={result}
+        loading={false}
+        busy={false}
+        onInspect={async (_path, _node, _byte, raw = -1) => {
+          pages.push(raw);
+          const next = inspectionResult(GRID_OCCURRENCE, { selected, direction: "outbound", revealed: true, raw_window: window(raw < 0 ? 0 : raw) });
+          setResult(next);
+          return next;
+        }}
+        onReveal={(next) => setResult(next ? inspectionResult(GRID_OCCURRENCE, { selected, direction: "outbound", revealed: true, raw_window: window(0) }) : hidden)}
+      />
+    );
+  }
+  render(<Paged />);
+  expect(screen.getByText(/Outbound/)).toBeTruthy();
+  await user.click(screen.getByRole("tab", { name: "Raw" }));
+  expect(screen.getByText("Hidden")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Show values" }));
+  expect(screen.getByText("FIELD").tagName).toBe("MARK");
+  expect(screen.getByText("1–4096 of 9000 bytes")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Next raw text" }));
+  expect(pages).toEqual([4096]);
+  expect(await screen.findByText("4097–8192 of 9000 bytes")).toBeTruthy();
+});
+
+test("a slow read of one message answered after the next was chosen never shows its fields under the next", async () => {
+  const user = userEvent.setup();
+  const first = new Parked();
+  const { facade } = await renderApp({
+    InspectOccurrence: (request) =>
+      request.occurrence === GRID_OCCURRENCE ? (first.arrive() as Promise<InspectionResult>) : inspectionResult(NEXT_OCCURRENCE, { message_code: "ACK", trigger_event: "", source_id: "s0002" }),
+  });
+  await openCase(facade, user, [messageRow(GRID_OCCURRENCE), messageRow(NEXT_OCCURRENCE)]);
+  await user.click(await findMessageRow(GRID_OCCURRENCE));
+  await waitFor(() => expect(first.size).toBe(1));
+  await user.click(await findMessageRow(NEXT_OCCURRENCE));
+  const details = await screen.findByRole("region", { name: "Message details" });
+  expect(await within(details).findByRole("heading", { name: "ACK" })).toBeTruthy();
+  // The first read answers late: the reader stays on the message now chosen.
+  first.resolve(inspectionResult(GRID_OCCURRENCE));
+  await new Promise((settle) => setTimeout(settle, 50));
+  expect(within(details).queryByRole("heading", { name: "SIU · S12" })).toBeNull();
+  expect(within(details).getByRole("heading", { name: "ACK" })).toBeTruthy();
+});
+
+test("every part of a message is reached from the keyboard, and Raw and Hex stay on the occurrence chosen", async () => {
+  const user = userEvent.setup();
+  const segments = inspectionResult(GRID_OCCURRENCE, {
+    children: [
+      { node: { path: "MSH[1]", kind: "segment", parent: "", segment: "MSH", field: 0, state: "present", start: 0, end: 40 }, label: "", selector: "", segment_name: "Message header", value: "", truncated: false },
+      { node: { path: "SCH[1]", kind: "segment", parent: "", segment: "SCH", field: 0, state: "present", start: 41, end: 90 }, label: "", selector: "", segment_name: "Scheduling activity information", value: "", truncated: false },
+    ],
+    child_count: 2,
+  });
+  const { facade } = await renderApp({ InspectOccurrence: (request) => (request.path === "" ? segments : inspectionResult(GRID_OCCURRENCE, { selected: { path: request.path, kind: "segment", parent: "", segment: "SCH", field: 0, state: "present", start: 41, end: 90 } })) });
+  await openCase(facade, user, [messageRow(GRID_OCCURRENCE)]);
+  const row = await findMessageRow(GRID_OCCURRENCE);
+  row.focus();
+  await user.keyboard("{Enter}");
+  const details = await screen.findByRole("region", { name: "Message details" });
+  const sch = await within(details).findByRole("button", { name: /SCH/ });
+  // Tab reaches each part in order; Enter opens it.
+  while (document.activeElement !== sch) await user.tab();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(facade.callsTo("InspectOccurrence").at(-1)?.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE, path: "SCH[1]" }));
+  // The views are keyboard tabs over the same occurrence.
+  await user.click(within(details).getByRole("tab", { name: "Fields" }));
+  await user.keyboard("{ArrowRight}");
+  expect(within(details).getByRole("tab", { name: "Raw", selected: true })).toBeTruthy();
+  await user.keyboard("{ArrowRight}");
+  expect(within(details).getByRole("tab", { name: "Hex", selected: true })).toBeTruthy();
+  for (const call of facade.callsTo("InspectOccurrence")) expect(call.args[0]).toMatchObject({ occurrence: GRID_OCCURRENCE });
+});
+
+test("Create variant from checked messages opens the reproducer with exactly them selected", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    EditReproducer: (request) => ({
+      state: "completed",
+      reproducer: { plan: { ...request.plan, schema: "readmit-reproducer-plan/v1", case: CASE_ENTRY, steps: [...request.plan.steps, request.step] }, resolution: null, output: "" } as never,
+    }),
+  });
+  await openCase(facade, user, [messageRow(GRID_OCCURRENCE), messageRow(NEXT_OCCURRENCE)]);
+  for (const id of [GRID_OCCURRENCE, NEXT_OCCURRENCE]) {
+    await user.click(within(await findMessageRow(id)).getByRole("checkbox"));
+  }
+  await user.click(screen.getByRole("button", { name: "Create variant" }));
+  await waitFor(() => expect(facade.callsTo("EditReproducer")).toHaveLength(2));
+  expect(facade.callsTo("EditReproducer").map((call) => (call.args[0] as { step: { occurrence: string } }).step)).toEqual([
+    { operator: "select-occurrence/v1", occurrence: GRID_OCCURRENCE },
+    { operator: "select-occurrence/v1", occurrence: NEXT_OCCURRENCE },
+  ]);
+  // A new plan, not the steps of an earlier draft, and nothing kept as a draft yet.
+  expect((facade.callsTo("EditReproducer")[0]!.args[0] as { plan: { steps: unknown[] } }).plan.steps).toEqual([]);
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(0);
+  expect(await screen.findByRole("region", { name: "Reproducer editor" })).toBeTruthy();
+});
+
+test("Go to field validates the path against the selected message and keeps it when it is not there", async () => {
+  const user = userEvent.setup();
+  const asked: string[] = [];
+  render(
+    <MessageReader
+      result={inspectionResult(GRID_OCCURRENCE)}
+      loading={false}
+      busy={false}
+      onInspect={async (path) => {
+        asked.push(path);
+        return path === "PID-3" ? inspectionResult(GRID_OCCURRENCE) : { state: "failed", reason: "PID-99 is not in this message" };
+      }}
+      onReveal={() => undefined}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "More message actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Go to field…" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Go to field" }));
+  await user.type(sheet.getByLabelText("Field path"), "PID-99{Enter}");
+  expect(await sheet.findByText("PID-99 is not in this message")).toBeTruthy();
+  expect((sheet.getByLabelText("Field path") as HTMLInputElement).value).toBe("PID-99");
+  await user.clear(sheet.getByLabelText("Field path"));
+  await user.type(sheet.getByLabelText("Field path"), "PID-3{Enter}");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Go to field" })).toBeNull());
+  expect(asked).toEqual(["PID-99", "PID-3"]);
+});
+
+test("a later page answered busy is asked again and never replaces the rows already read", async () => {
+  const user = userEvent.setup();
+  const first = Array.from({ length: 10 }, (_, at) => messageRow(`m${at}`));
+  const next = Array.from({ length: 10 }, (_, at) => messageRow(`n${at}`));
+  let later = 0;
+  const { facade } = await renderApp();
+  facade.reply({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+    ReadMessages: (request) =>
+      request.offset === 0
+        ? { ...messagesResult(first), total: 20, matched: 20 }
+        : ++later <= 2
+          ? ({ state: "busy", reason: "another operation is running", rows: null } as unknown as MessagesResult)
+          : { ...messagesResult(next), total: 20, matched: 20 },
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(await findCaseRow());
+  await findMessageRow("m0");
+  // The list asked for its next window as its last rows were drawn.
+  await waitFor(() => expect(document.querySelector('[data-row-id="n0"]')).toBeTruthy(), { timeout: 10_000 });
+  expect(await findMessageRow("m0")).toBeTruthy();
+  expect(later).toBeGreaterThanOrEqual(3);
+}, 15_000);
+
+test("a later page that is refused keeps the rows read, says why and asks again from Retry", async () => {
+  const user = userEvent.setup();
+  const first = Array.from({ length: 10 }, (_, at) => messageRow(`m${at}`));
+  const next = Array.from({ length: 10 }, (_, at) => messageRow(`n${at}`));
+  let later = 0;
+  const { facade } = await renderApp();
+  facade.reply({
+    SelectWorkspace: () => folderWithCase(),
+    OpenCase: () => caseResult(),
+    ReadMessages: (request) =>
+      request.offset === 0
+        ? { ...messagesResult(first), total: 20, matched: 20 }
+        : ++later === 1
+          ? { ...messagesResult([]), state: "failed", reason: "the case changed on disk since it was opened" }
+          : { ...messagesResult(next), total: 20, matched: 20 },
+  });
+  await goTo(user, "Projects");
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.click(await findCaseRow());
+  await findMessageRow("m0");
+  expect(await screen.findByText("the case changed on disk since it was opened")).toBeTruthy();
+  expect(document.querySelector('[data-row-id="m9"]')).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(document.querySelector('[data-row-id="n0"]')).toBeTruthy());
+  expect(screen.queryByText("the case changed on disk since it was opened")).toBeNull();
+});
+
+test("Send selected hands over exactly the checked message rows, and a row's checkbox is reached from the keyboard", async () => {
+  const user = userEvent.setup();
+  const actions: string[] = [];
+  render(<List result={messagesResult([messageRow("m1"), messageRow("m2"), messageRow("a1", "ack")])} onAction={(action) => actions.push(action)} />);
+  const table = screen.getByRole("table", { name: "Messages" });
+  const row = within(table).getAllByRole("row")[1]!;
+  row.focus();
+  await user.keyboard(" ");
+  expect((within(row).getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+  await user.click(screen.getByRole("button", { name: "Send selected" }));
+  expect(actions).toEqual(["send"]);
 });

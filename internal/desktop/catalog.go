@@ -210,6 +210,10 @@ type CaseSummary struct {
 	InterfaceRevision string         `json:"interface_revision,omitzero"`
 	Evidence          string         `json:"evidence"`
 	Provenance        string         `json:"provenance,omitzero"`
+	// Sources are a registered case's sources in the order its manifest
+	// declares them, each with the name the project records for it, empty
+	// when it has none: what Edit details opens with.
+	Sources []project.Source `json:"sources,omitzero"`
 }
 
 // provenanceMarker is the one provenance a case row shows: synthetic for

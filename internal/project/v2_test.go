@@ -162,3 +162,47 @@ func TestAVersionTwoProjectTakesOwnersAndTagsAsText(t *testing.T) {
 		t.Fatal("a v1 project took an owner that is not an identifier")
 	}
 }
+
+// A v2 case entry holds the names a person gave its sources, sorted by the
+// source ID the case declares, each once; an update replaces them whole and
+// a v1 document holds none.
+func TestAVersionTwoCaseNamesItsSources(t *testing.T) {
+	entry := project.Case{Name: "incident", Identity: "7d266d0a09e92d3322d6346cf16c9dd37c768c02a11f8ea6c41870adc44915df",
+		Schema: "readmit-case/v1", Provenance: "imported", Title: "Duplicate appointment", Status: project.StatusOpen}
+	v2 := project.Document{Schema: project.SchemaV2, Settings: project.Settings{Title: "Scheduling QA"}, Cases: []project.Case{entry}}
+	named := project.SortedSources([]project.Source{{ID: "s0002", Name: "Lab feed"}, {ID: "s0001", Name: "Front desk"}})
+	updated, stored, err := project.UpdateCase(v2, "incident", project.Change{Sources: &named})
+	if err != nil || stored.SourceNamed("s0001") != "Front desk" || stored.SourceNamed("s0003") != "" {
+		t.Fatalf("update: %+v %v", stored, err)
+	}
+	data, err := project.Encode(updated)
+	if err != nil || !strings.Contains(string(data), `"sources":[{"id":"s0001","name":"Front desk"},{"id":"s0002","name":"Lab feed"}]`) {
+		t.Fatalf("encoded %s: %v", data, err)
+	}
+	if decoded, err := project.Decode(data); err != nil || decoded.Cases[0].SourceNamed("s0002") != "Lab feed" {
+		t.Fatalf("decoded: %+v %v", decoded, err)
+	}
+	if unnamed, err := project.Encode(v2); err != nil || strings.Contains(string(unnamed), "sources") {
+		t.Fatalf("a case with no source names wrote them: %s %v", unnamed, err)
+	}
+	for _, refused := range [][]project.Source{
+		{{ID: "s0002", Name: "b"}, {ID: "s0001", Name: "a"}},
+		{{ID: "s0001", Name: "a"}, {ID: "s0001", Name: "b"}},
+		{{ID: "s0001", Name: " padded"}},
+		{{ID: "s0001", Name: ""}},
+		{{ID: "s/1", Name: "a"}},
+		{{ID: "s0001", Name: strings.Repeat("ó", 65)}},
+	} {
+		document := v2
+		document.Cases = []project.Case{entry}
+		document.Cases[0].Sources = refused
+		if _, err := project.Encode(document); err == nil {
+			t.Fatalf("accepted %+v", refused)
+		}
+	}
+	v1 := document()
+	v1.Cases[0].Sources = []project.Source{{ID: "s0001", Name: "Front desk"}}
+	if _, err := project.Encode(v1); err == nil {
+		t.Fatal("a readmit-project/v1 document named a source")
+	}
+}

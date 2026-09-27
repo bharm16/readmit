@@ -104,3 +104,11 @@
 .messages-table .check-column {
   text-overflow: clip;
 }
+
+/* A later page that could not be read, below the rows already shown. */
+.list-problem {
+  align-items: center;
+  display: flex;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+}

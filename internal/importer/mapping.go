@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
 	"strconv"
 	"strings"
@@ -450,6 +451,19 @@ func EncodeMappingPreview(preview MappingPreview) ([]byte, error) {
 		return nil, ErrUnsupportedRecipe
 	}
 	return encodeDocument(preview)
+}
+
+// DecodeMappingReceipt reads a mapping receipt strictly: unknown members, an
+// unknown version and a document past its bound are errors. It says what the
+// document declares; whether it describes the case beside it is the caller's
+// to check against the verified case.
+func DecodeMappingReceipt(data []byte) (MappingReceipt, error) {
+	var receipt MappingReceipt
+	if len(data) > MaxDocumentBytes || json.Unmarshal(data, &receipt, json.RejectUnknownMembers(true)) != nil ||
+		receipt.Schema != MappingReceiptSchema {
+		return MappingReceipt{}, errors.New("invalid mapping receipt")
+	}
+	return receipt, nil
 }
 
 func EncodeMappingReceipt(receipt MappingReceipt) ([]byte, error) {

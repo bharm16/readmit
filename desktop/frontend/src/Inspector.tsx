@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import type { FieldState, InspectionResult, InspectorNode } from "./bindings";
+import type { FieldState, InspectionResult, InspectorNode, RawWindow } from "./bindings";
 import { FIELD_STATES, HIDDEN_VALUE } from "./display";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
 import { BackLink, FormDialog, Menu, Modal, Reveal, ValueRows, type SubmitFailure } from "./layout";
 import { IconButton } from "./IconButton";
-import { observedInstant, typeLabel } from "./Messages";
+import { DIRECTION_NAMES, observedInstant, typeLabel } from "./Messages";
 import "./inspector.css";
 
 type ReaderView = "fields" | "raw" | "hex";
@@ -56,7 +56,7 @@ export function MessageReader({
   source?: string;
   loading: boolean;
   busy: boolean;
-  onInspect: (path: string, nodeOffset: number, byteOffset: number) => Promise<InspectionResult | null>;
+  onInspect: (path: string, nodeOffset: number, byteOffset: number, rawOffset?: number) => Promise<InspectionResult | null>;
   onReveal: (revealed: boolean) => void;
   /** Opens Filter with a rule for the selected field; absent where there is no list to filter. */
   onFilterByField?: ((selector: string, value: string | null, state: FieldState) => void) | undefined;
@@ -78,7 +78,13 @@ export function MessageReader({
   const title = inspection
     ? typeLabel({ kind: kind ?? (inspection.decode_state === "unparsed" ? "unparsed" : "message"), code: inspection.message_code, trigger: inspection.trigger_event })
     : "Message";
-  const facts = inspection ? [inspection.observed_at ? observedInstant(inspection.observed_at) : null, source ?? inspection.source_id].filter(Boolean) : [];
+  const facts = inspection
+    ? [
+        inspection.observed_at ? observedInstant(inspection.observed_at) : null,
+        source ?? (inspection.source_name || inspection.source_id),
+        inspection.direction && inspection.direction !== "unknown" ? DIRECTION_NAMES[inspection.direction] : null,
+      ].filter(Boolean)
+    : [];
   const atRoot = !selected || selected.path === "";
   const field = selected && selected.kind !== "segment" && selected.kind !== "message" && selected.kind !== "occurrence";
 
@@ -228,8 +234,8 @@ export function MessageReader({
               )}
             </TaskPanel>
             <TaskPanel tabs="reader-views" tab="raw" shown={view === "raw"}>
-              {revealed ? (
-                <pre className="value raw">{inspection.raw || (selected.state === "omitted" || selected.start === selected.end ? "No bytes" : "—")}</pre>
+              {revealed && inspection.raw_window ? (
+                <RawText window={inspection.raw_window} busy={busy} onPage={(offset) => void onInspect(selected.path, inspection.node_offset, inspection.byte_offset, offset)} />
               ) : (
                 <p className="reader-hidden">{HIDDEN_VALUE}</p>
               )}
@@ -282,7 +288,9 @@ export function MessageReader({
               { label: "HL7 version", value: inspection.metadata.hl7_version || "—" },
               { label: "Field labels", value: inspection.metadata.provenance || "—" },
               { label: "Observed", value: observedInstant(inspection.observed_at) },
-              { label: "Source", value: inspection.source_id || "—" },
+              ...(inspection.source_name ? [{ label: "Source", value: inspection.source_name }] : []),
+              { label: inspection.source_name ? "Source ID" : "Source", value: inspection.source_id || "—" },
+              ...(inspection.direction ? [{ label: "Direction", value: DIRECTION_NAMES[inspection.direction] }] : []),
               { label: "Occurrence", value: <code>{inspection.occurrence || `Message ${inspection.message + 1}`}</code> },
               ...(inspection.identity ? [{ label: "Evidence", value: <code>{inspection.identity}</code> }] : []),
               ...(inspection.source_offset ? [{ label: "In the source", value: `From byte ${inspection.source_offset}` }] : []),
@@ -356,3 +364,31 @@ export function HexTable({
     </>
   );
 }
+
+/** The whole message as escaped original text, a window at a time, with the
+ * selected part marked. It pages only when the message is longer than one
+ * window. */
+function RawText({ window: raw, busy, onPage }: { window: RawWindow; busy: boolean; onPage: (offset: number) => void }) {
+  const paged = raw.message_end - raw.message_start > RAW_WINDOW;
+  return (
+    <>
+      <pre className="value raw">
+        {raw.before}
+        {raw.selected ? <mark>{raw.selected}</mark> : null}
+        {raw.after}
+      </pre>
+      {paged ? (
+        <nav aria-label="Raw pages" className="pager">
+          <IconButton icon="previous" label="Previous raw text" disabled={busy || raw.offset <= raw.message_start} onClick={() => onPage(Math.max(raw.message_start, raw.offset - RAW_WINDOW))} />
+          <span>
+            {raw.offset - raw.message_start + 1}–{raw.end - raw.message_start} of {raw.message_end - raw.message_start} bytes
+          </span>
+          <IconButton icon="next" label="Next raw text" disabled={busy || raw.end >= raw.message_end} onClick={() => onPage(raw.end)} />
+        </nav>
+      ) : null}
+    </>
+  );
+}
+
+/** The bytes one Raw window holds. */
+const RAW_WINDOW = 4096;
