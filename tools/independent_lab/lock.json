@@ -1,0 +1,65 @@
+{
+  "schema": "readmit-independent-lab-lock/v1",
+  "engine": {
+    "version": "4.6.0",
+    "source_commit": "cd1110e304aa2fbd0bc3de966af8a920d9fc6150",
+    "archive_url": "https://github.com/OpenIntegrationEngine/engine/releases/download/v4.6.0/oie_unix_4_6_0.tar.gz",
+    "archive_sha256": "7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea",
+    "java": "17.0.17+10",
+    "base_image": "eclipse-temurin:17.0.17_10-jdk-jammy@sha256:73c73439d25b953b34e0065172ad8ce01bea5bc8fc25158f0eeecb4c06d14fed",
+    "license": "MPL-2.0",
+    "license_url": "https://github.com/OpenIntegrationEngine/engine/blob/cd1110e304aa2fbd0bc3de966af8a920d9fc6150/LICENSE"
+  },
+  "hapi": {
+    "version": "8.6.0",
+    "fhir_version": "4.0.1",
+    "image": "hapiproject/hapi:v8.6.0-1@sha256:7611e4d6601f35dd8c223ed2ed47a2807be06976f71b2e5990e6541bbc90c16f",
+    "source": "https://github.com/hapifhir/hapi-fhir-jpaserver-starter/tree/image/v8.6.0-1",
+    "license": "Apache-2.0"
+  },
+  "postgres": {
+    "version": "16.11",
+    "image": "postgres:16.11-alpine@sha256:4327b9fd295502f326f44153a1045a7170ddbfffed1c3829798328556cfd09e2",
+    "license": "PostgreSQL",
+    "license_url": "https://github.com/postgres/postgres/blob/REL_16_11/COPYRIGHT"
+  },
+  "fixture": {
+    "version": "readmit-independent-target/v1",
+    "base_image": "python:3.13.7-slim@sha256:5f55cdf0c5d9dc1a415637a5ccc4a9e18663ad203673173b8cda8f8dcacef689",
+    "python_license": "PSF-2.0",
+    "cryptography": "46.0.5",
+    "cryptography_license": "Apache-2.0 OR BSD-3-Clause",
+    "cffi": "2.0.0",
+    "cffi_license": "MIT",
+    "pycparser": "2.23",
+    "pycparser_license": "BSD-3-Clause"
+  },
+  "config_sha256": {
+    "testdata/integration-lab/.gitattributes": "0d05565b16566d9b2970af55a612a36ce9ca83cd3523f952f41f97afcbb631f3",
+    "testdata/integration-lab/adt-a01.hl7": "72a9814da9086c660ac0509c276a5ab6ed582670bffd8c025730cc4a79762961",
+    "testdata/integration-lab/baseline.json": "facad33ff26d65699380c1b8be2731c5e0c29cefff3cfbab88085391187c3f15",
+    "testdata/integration-lab/expected.json": "df158933896b0fd7e0cf003a9fb31cbad0ce7883c93c1367ae5fa0e87026aca2",
+    "testdata/integration-lab/native-appointment.json": "5048cbaaeaec929bf804ea5c9cc6c165e55ef7e7bf7578ac473cab1f7476dd01",
+    "testdata/integration-lab/orm-o01.hl7": "0ad725919e34beaff30ce9da71e7baf549372dd4a7a69f737fccb35fae72a255",
+    "testdata/integration-lab/oru-r01.hl7": "7e4b9eb0dc226362edd62c5058e6dec06bb2a99de4caf83aef9bb66ad9cf1d23",
+    "testdata/integration-lab/siu-s12.hl7": "7325965926d2bac80e0042813fd67ba5d7944c11dc1c764598e0d5dbce6db255",
+    "testdata/integration-lab/siu-s13.hl7": "5c3467c44f7320e5325da3cb3757747b2a32e34b9dea2b7f621f0f8bd03f9e2d",
+    "tools/independent_lab/ChannelFactory.java": "1e73e7efdfd620df85f0935d5013b8b4693ff3a778d599c9fdad1655b5612dd0",
+    "tools/independent_lab/Dockerfile.engine": "3d54139e0221ae799a6bf4e2a070e8963cbe785ef476063a532c0300fc4620a2",
+    "tools/independent_lab/Dockerfile.fixture": "d5cd9d58809fd95fab9afe4414af38ce3b88246f6d6ac452b8a890212e33cf87",
+    "tools/independent_lab/LabHttp.java": "f4c3caa2a2e6261e3c652322f2db9232a16899afdc5f965ea4ab8d9a87b576cc",
+    "tools/independent_lab/__init__.py": "bdf242822bd11c60fcb1a1e8eaf100116be09bb8b2e77ccd9089efb1bdd76330",
+    "tools/independent_lab/channel.js": "2d0e8d677f12cfe3159c5bbd0168981ceaef106e9c310326db3ce109dcd0f54c",
+    "tools/independent_lab/compose.yaml": "9b65454af34735789f5c5d5764419f1b0dd206e9b282eb13c77dc7254f23b126",
+    "tools/independent_lab/engine-entrypoint.sh": "5ef9998d1994dc7b8a6c913ccbc6a2e096093c21f0050dd3631298b0da2912b2",
+    "tools/independent_lab/evidence.py": "eac1a4132b4d96e4f4fdc957578414736f5949cb3a02d0d75f4f65669da497c5",
+    "tools/independent_lab/licenses/HAPI-Apache-2.0.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "tools/independent_lab/licenses/OIE-MPL-2.0.txt": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+    "tools/independent_lab/licenses/PostgreSQL.txt": "5ed3ce5c9373dff7f98b1fae7a6c7ccd98df7d734d46d24c1bcebf1240be8307",
+    "tools/independent_lab/qualify.py": "30cc417e743c2231d3cec35fd277c14f8f8365d7417c8397f8b6744574b2930e",
+    "tools/independent_lab/requirements.lock": "e2b5c3a01e4295324b0214b0dbe3c4364619c92879189be8ada3d9ccac8f6fec",
+    "tools/independent_lab/runtime.py": "f47bc89e06379e2e378ba438a22a077e157db889118a6bc4514a256531aa78b8",
+    "tools/independent_lab/security.py": "b612a5f3e635df04fa5e612b968b8748758930018934fc24c1412daf0dc9c2d4",
+    "tools/integration_lab.py": "bb5d396a7e87488b2f2663863b474bb906ec8cc5a54e0b468cd290ff7e35d810"
+  }
+}

@@ -1,0 +1,36 @@
+name: Independent OIE and HAPI reference lab
+
+# Opt-in only under ADR-0011. No PR, push, tag, schedule or required gate.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Create isolated credentials and reference targets
+        run: |
+          python3 tools/integration_lab.py init "$RUNNER_TEMP/independent-lab"
+          python3 tools/integration_lab.py up "$RUNNER_TEMP/independent-lab"
+      - name: Qualify actual routes, defect revisions, auth and reset
+        run: python3 tools/integration_lab.py qualify "$RUNNER_TEMP/independent-lab"
+      - name: Remove only the owned lab and verify teardown
+        if: always()
+        run: python3 tools/integration_lab.py down "$RUNNER_TEMP/independent-lab"
+      - name: Package credential-free synthetic evidence
+        if: always()
+        run: python3 tools/integration_lab.py export "$RUNNER_TEMP/independent-lab"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: independent-oie-hapi-reference-evidence
+          path: ${{ runner.temp }}/independent-lab/export
+          if-no-files-found: warn
+          retention-days: 30

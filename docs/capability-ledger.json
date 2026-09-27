@@ -3,6 +3,18 @@
   "program": "bharm16/readmit#244",
   "rows": [
     {
+      "id": "tooling.tools.integration-lab",
+      "source": "tools/integration_lab.py",
+      "kind": "tooling",
+      "capability": "Qualify isolated independent OIE and HAPI routes against synthetic defect fixtures",
+      "owner": "bharm16/readmit#590",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "opt-in independent reference lab; creates scoped local containers and exports credential-checked synthetic evidence"}
+    },
+    {
       "id": "cli.profile.evaluate",
       "source": "readmit profile evaluate",
       "kind": "cli",

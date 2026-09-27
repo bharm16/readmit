@@ -1,0 +1,21 @@
+{
+  "resourceType": "Appointment",
+  "id": "lab-native-appointment-01",
+  "identifier": [
+    {
+      "system": "urn:readmit:lab:appointment",
+      "value": "lab-native-appointment-01"
+    }
+  ],
+  "status": "booked",
+  "start": "2030-01-02T09:30:00Z",
+  "end": "2030-01-02T10:00:00Z",
+  "participant": [
+    {
+      "actor": {
+        "reference": "Patient/lab-native-patient-01"
+      },
+      "status": "accepted"
+    }
+  ]
+}

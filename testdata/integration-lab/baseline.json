@@ -1,0 +1,56 @@
+[
+  {
+    "resourceType": "Patient",
+    "id": "lab-wrong",
+    "name": [
+      {
+        "family": "Wrong",
+        "given": [
+          "Fictional"
+        ]
+      }
+    ]
+  },
+  {
+    "resourceType": "Patient",
+    "id": "lab-native-patient-01",
+    "name": [
+      {
+        "family": "Wren",
+        "given": [
+          "Fictional"
+        ]
+      }
+    ]
+  },
+  {
+    "resourceType": "Practitioner",
+    "id": "lab-practitioner-01",
+    "name": [
+      {
+        "family": "Synthetic",
+        "given": [
+          "Clinician"
+        ]
+      }
+    ]
+  },
+  {
+    "resourceType": "Location",
+    "id": "lab-location-01",
+    "status": "active",
+    "name": "Fictional lab room"
+  },
+  {
+    "resourceType": "ServiceRequest",
+    "id": "lab-wrong-order",
+    "status": "active",
+    "intent": "order",
+    "subject": {
+      "reference": "Patient/lab-wrong"
+    },
+    "code": {
+      "text": "Deliberately wrong synthetic order"
+    }
+  }
+]
