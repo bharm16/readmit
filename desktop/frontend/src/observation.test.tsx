@@ -340,11 +340,13 @@ async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLEleme
   expect(document.activeElement).toBe(target);
 }
 
-/** The file-level observation setup is a started task, reached from the
- * Security page; the Environments page lists named observations instead. */
+/** The file-level observation setup is a started task, reached from
+ * Security's Add connection; the Environments page lists named observations
+ * instead. */
 async function startObservationSetup(user: ReturnType<typeof userEvent.setup>) {
   await goToView(user, "Settings", "Security");
-  await user.click(screen.getByRole("button", { name: "Observations" }));
+  await user.click((await screen.findAllByRole("button", { name: "Add connection" }))[0]!);
+  await user.click(await screen.findByRole("menuitem", { name: "Source" }));
 }
 
 async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {

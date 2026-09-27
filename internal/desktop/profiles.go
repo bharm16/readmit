@@ -80,6 +80,8 @@ var profiles = map[string]operationguard.Profile{
 	"RotateSecretReference":    {Name: secretRotationOperation, Interruptible: true, Author: true},
 	"ScanSecrets":              {Name: secretScanOperation, Interruptible: true},
 	"RotateProtectionControl":  {Name: protectOperation, Interruptible: true, Author: true},
+	"UpdateProtectionControl":  {Name: protectOperation, Interruptible: true, Author: true},
+	"CheckProtectionControl":   {Name: protectOperation, Interruptible: true},
 	"PackProtectedPackage":     {Name: protectOperation, Interruptible: true},
 	"OpenProtectedPackage":     {Name: protectOperation, Interruptible: true},
 

@@ -12,12 +12,6 @@
     "line": 3327
   },
   {
-    "name": "GeneralEditor",
-    "source": "desktop/frontend/src/App.tsx",
-    "exported": false,
-    "line": 3347
-  },
-  {
     "name": "FieldInputs",
     "source": "desktop/frontend/src/AssertionSetAuthoring.tsx",
     "exported": false,
@@ -264,14 +258,8 @@
     "line": 285
   },
   {
-    "name": "PrivacyDisclosure",
-    "source": "desktop/frontend/src/PrivacyDisclosure.tsx",
-    "exported": true,
-    "line": 29
-  },
-  {
     "name": "SupportGuidance",
-    "source": "desktop/frontend/src/PrivacyDisclosure.tsx",
+    "source": "desktop/frontend/src/SupportGuidance.tsx",
     "exported": true,
     "line": 177
   },
@@ -340,12 +328,6 @@
     "source": "desktop/frontend/src/ProtectionPanel.tsx",
     "exported": true,
     "line": 36
-  },
-  {
-    "name": "ControlChange",
-    "source": "desktop/frontend/src/ProtectionPanel.tsx",
-    "exported": false,
-    "line": 545
   },
   {
     "name": "PackageView",

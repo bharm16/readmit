@@ -2838,6 +2838,12 @@ h2 .count {
   min-height: var(--input);
 }
 
+.inline-fields {
+  display: grid;
+  gap: var(--s2);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
 .location-value {
   min-width: 0;
   overflow: hidden;

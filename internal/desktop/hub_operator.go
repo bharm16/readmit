@@ -81,6 +81,7 @@ func (a *App) ConnectOperatorHub() HubResult {
 		a.hubOperatorMu.Lock()
 		a.hubOperatorClient = client
 		a.hubOperatorMu.Unlock()
+		a.markSession("hub:operator", false)
 		return HubResult{State: Completed, Connected: true, ConfigPath: path, HubURL: cfg.Hub, CustodyWarning: custodyNotice}
 	})
 }
@@ -90,6 +91,9 @@ func (a *App) ConnectOperatorHub() HubResult {
 func (a *App) DisconnectOperatorHub() HubResult {
 	return run(a, false, false, func(context.Context) HubResult {
 		a.hubOperatorMu.Lock()
+		if a.hubOperatorClient != nil {
+			defer a.markSession("hub:operator", true)
+		}
 		a.hubOperatorClient = nil
 		path, hubURL := a.hubOperatorConfigPath, ""
 		if a.hubOperatorConfig != nil {

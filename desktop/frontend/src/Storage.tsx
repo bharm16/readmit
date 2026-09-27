@@ -92,6 +92,8 @@ export function StorageView({
   context,
   busy,
   onOpenProject,
+  startUpdate = false,
+  onUpdateStarted,
 }: {
   root: string;
   projectName: string;
@@ -99,6 +101,9 @@ export function StorageView({
   busy: boolean;
   /** Opens a project a restore or a move wrote, at its Cases. */
   onOpenProject: (folder: string) => void;
+  /** Settings → General → Check update asked for the staged update task. */
+  startUpdate?: boolean;
+  onUpdateStarted?: () => void;
 }) {
   const [listed, setListed] = useState<StorageBackupsResult | null>(null);
   const [location, setLocation] = useState<string | null>(null);
@@ -134,6 +139,15 @@ export function StorageView({
     if (answer.state === "completed" && answer.path) then(answer.path);
     else if (answer.state !== "cancelled") setProblem(answer.reason ?? "No folder was chosen.");
   };
+
+  useEffect(() => {
+    if (!startUpdate) return;
+    onUpdateStarted?.();
+    void withFolder("upgrade-candidate", (path) => {
+      setOptions({ candidate: path });
+      setTask("update");
+    });
+  }, [startUpdate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const backups = [...(listed?.backups ?? [])];
   const troubled = backups.some((backup) => backup.availability !== "available");

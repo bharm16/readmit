@@ -62,3 +62,35 @@ func TestSaveSearchSettingsChoosesItsOwnDestinationAndReplacesOnlyThisCasesIndex
 		t.Fatalf("an unstated retention end was accepted: %+v", refused)
 	}
 }
+
+// Every case of the project is listed with its own index's declarations, an
+// explicitly indefinite retention as no end, and a case without an index as
+// read directly. Listing extends and writes nothing.
+func TestListSearchSettingsDescribesEveryCaseIncludingIndefiniteRetention(t *testing.T) {
+	_, root, _, opened := messagesWorkspace(t)
+	app := activatedApp(t, &chooser{}, t.TempDir())
+	if saved := app.SaveSearchSettings(desktop.SearchSettingsRequest{Workspace: root, Case: "incident", Identity: opened.Identity,
+		Fields: []string{"PID-3"}, Retention: index.RetainStates, RetainUntil: "indefinite"}); saved.State != desktop.Completed {
+		t.Fatalf("save: %+v", saved)
+	}
+	before := bytesUnder(t, root)
+	listed := app.ListSearchSettings(root)
+	if listed.State != desktop.Completed || len(listed.Cases) != 2 {
+		t.Fatalf("list: %+v", listed)
+	}
+	cases := map[string]desktop.CaseSearchSettings{}
+	for _, row := range listed.Cases {
+		cases[row.Case] = row
+	}
+	incident := cases["incident"]
+	if incident.Identity != opened.Identity || incident.Settings == nil || incident.Settings.RetainUntil != nil ||
+		incident.Settings.Expired || incident.Settings.Retention != index.RetainStates {
+		t.Fatalf("the indexed case: %+v %+v", incident, incident.Settings)
+	}
+	if followup := cases["followup"]; followup.Identity == "" || followup.Settings != nil || followup.Reason != "" {
+		t.Fatalf("the case without an index: %+v", followup)
+	}
+	if !reflect.DeepEqual(bytesUnder(t, root), before) {
+		t.Fatal("listing the search settings changed the project")
+	}
+}

@@ -162,7 +162,7 @@ function newRule(field: RuleField = ""): Rule {
 
 /** A local date and time field's value as the instant it names in the chosen
  * zone, or undefined when it is not a complete date and time. */
-function instantOf(when: string, zone: "utc" | "local"): string | undefined {
+export function instantOf(when: string, zone: "utc" | "local"): string | undefined {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(when)) return undefined;
   const withSeconds = when.length === 16 ? `${when}:00` : when;
   if (zone === "utc") return `${withSeconds}Z`;
@@ -171,7 +171,7 @@ function instantOf(when: string, zone: "utc" | "local"): string | undefined {
 }
 
 /** The field value of an instant, shown in UTC. */
-function whenOf(instant: string): string {
+export function whenOf(instant: string): string {
   return instant.replace(/Z$/, "").replace(/\.\d+$/, "").slice(0, 19);
 }
 

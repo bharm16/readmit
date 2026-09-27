@@ -659,6 +659,14 @@ export interface CaseResult {
   case?: CaseEvidence;
 }
 
+/** internal/desktop.CaseSearchSettings */
+export interface CaseSearchSettings {
+  case: string;
+  identity?: string;
+  settings: SearchSettings | null;
+  reason?: string;
+}
+
 /** internal/project.Status */
 export type CaseStatus = "open" | "investigating" | "resolved" | "closed";
 
@@ -950,6 +958,83 @@ export interface Condition {
   position: number;
   operator: LocalProfileConditionOperator;
   values?: string[];
+}
+
+/** internal/desktop.ConnectionAction */
+export type ConnectionAction = "edit" | "disconnect";
+
+/** internal/desktop.ConnectionDetail */
+export interface ConnectionDetail {
+  transport?: string;
+  classification?: string;
+  source_type?: string;
+  outcome?: string;
+  revision?: string;
+  config_path?: string;
+  signed_in: boolean;
+  operation?: string;
+}
+
+/** internal/desktop.ConnectionKind */
+export type ConnectionKind =
+  | "environment"
+  | "source"
+  | "team"
+  | "runner"
+  | "portal"
+  | "run"
+  | "program";
+
+/** internal/desktop.ConnectionOwner */
+export interface ConnectionOwner {
+  kind: ConnectionOwnerKind;
+  object_id?: string;
+}
+
+/** internal/desktop.ConnectionOwnerKind */
+export type ConnectionOwnerKind =
+  | "environment"
+  | "observation"
+  | "team"
+  | "license"
+  | "source"
+  | "runner"
+  | "run"
+  | "portal"
+  | "program";
+
+/** internal/desktop.ConnectionRow */
+export interface ConnectionRow {
+  ref: string;
+  name: string;
+  kind: ConnectionKind;
+  destination: string;
+  state: ConnectionState;
+  reason?: string;
+  checked_at: string | null;
+  last_seen: string | null;
+  owner: ConnectionOwner;
+  disclosure: string;
+  actions: ConnectionAction[];
+  detail: ConnectionDetail;
+}
+
+/** internal/desktop.ConnectionState */
+export type ConnectionState =
+  | "active"
+  | "connected"
+  | "disconnected"
+  | "checked"
+  | "not-checked"
+  | "unavailable";
+
+/** internal/desktop.ConnectionsResult */
+export interface ConnectionsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  rows: ConnectionRow[];
+  project_reason?: string;
 }
 
 /** internal/desktop.Consent */
@@ -3297,6 +3382,12 @@ export interface LifecyclePlan {
 /** internal/lifecycle.RetireState */
 export type LifecycleRetireState = "retained" | "deleted" | "removal-incomplete";
 
+/** internal/desktop.ListedProtectionControl */
+export interface ListedProtectionControl {
+  entry: string;
+  control: ProtectionControl;
+}
+
 /** internal/localprofile.Profile */
 export interface LocalProfile {
   schema: string;
@@ -4421,6 +4512,20 @@ export interface PracticeResult {
   practice?: Practice;
 }
 
+/** internal/desktop.Preferences */
+export interface Preferences {
+  theme: Theme;
+  text_scale: number;
+  reviewer?: string;
+}
+
+/** internal/desktop.PreferencesResult */
+export interface PreferencesResult {
+  state: State;
+  reason?: string;
+  preferences: Preferences;
+}
+
 /** internal/desktop.PrepareActionRequest */
 export interface PrepareActionRequest {
   context: RequestContext;
@@ -4995,14 +5100,32 @@ export interface PromotionApproval {
   output: string;
 }
 
+/** internal/protect.RotationState */
+export type ProtectRotationState = "current" | "overdue" | "not-declared";
+
+/** internal/protect.State */
+export type ProtectState = "active" | "retired";
+
+/** internal/protect.Storage */
+export type ProtectStorage = "os-volume-encryption" | "customer-key" | "none-declared";
+
+/** internal/desktop.ProtectionCheckResult */
+export interface ProtectionCheckResult {
+  state: State;
+  reason?: string;
+  name: string;
+  generation?: number;
+  checked_at?: string;
+}
+
 /** internal/desktop.ProtectionControl */
 export interface ProtectionControl {
   name: string;
-  storage: string;
-  state: string;
+  storage: ProtectStorage;
+  state: ProtectState;
   generation: number;
   rotated_at: string;
-  rotation: string;
+  rotation: ProtectRotationState;
   max_age?: string;
   retain?: string;
   command: string;
@@ -5018,6 +5141,18 @@ export interface ProtectionControlRequest {
   storage: string;
   command: string;
   arguments: string[];
+  max_age?: string;
+  retain?: string;
+}
+
+/** internal/desktop.ProtectionControlUpdate */
+export interface ProtectionControlUpdate {
+  workspace: string;
+  entry: string;
+  name: string;
+  storage: string;
+  command: string;
+  arguments?: string[];
   max_age?: string;
   retain?: string;
 }
@@ -5044,6 +5179,29 @@ export interface ProtectionDocument {
   entry: string;
   schema: string;
   controls: ProtectionControl[];
+  limitations: string[];
+}
+
+/** internal/desktop.ProtectionEntryProblem */
+export interface ProtectionEntryProblem {
+  entry: string;
+  reason: string;
+}
+
+/** internal/desktop.ProtectionExportResult */
+export interface ProtectionExportResult {
+  state: State;
+  reason?: string;
+  path?: string;
+}
+
+/** internal/desktop.ProtectionListResult */
+export interface ProtectionListResult {
+  state: State;
+  reason?: string;
+  controls: ListedProtectionControl[];
+  unreadable: ProtectionEntryProblem[];
+  add_entry?: string;
   limitations: string[];
 }
 
@@ -5094,6 +5252,15 @@ export interface ProtectionResult {
   state: State;
   reason?: string;
   entry?: string;
+  document?: ProtectionDocument;
+}
+
+/** internal/desktop.ProtectionUpdateResult */
+export interface ProtectionUpdateResult {
+  state: State;
+  reason?: string;
+  entry?: string;
+  rotated: boolean;
   document?: ProtectionDocument;
 }
 
@@ -7014,6 +7181,13 @@ export interface SearchSettings {
   expired: boolean;
 }
 
+/** internal/desktop.SearchSettingsListResult */
+export interface SearchSettingsListResult {
+  state: State;
+  reason?: string;
+  cases: CaseSearchSettings[];
+}
+
 /** internal/desktop.SearchSettingsRequest */
 export interface SearchSettingsRequest {
   workspace: string;
@@ -7359,6 +7533,7 @@ export interface Shell {
   commands: Command[];
   themes: Theme[];
   text_scales: number[];
+  version: string;
   privacy: Privacy;
   support: Support;
   vocabulary: Vocabulary;
@@ -8715,6 +8890,7 @@ export interface Facade {
   CheckCredential(request: CredentialRequest): Promise<CredentialCheckResult>;
   CheckEnvironment(request: ItemRequest): Promise<EnvironmentCheckResult>;
   CheckEnvironmentDestination(request: DestinationCheckRequest): Promise<SendPolicyEvalResult>;
+  CheckProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionCheckResult>;
   CheckScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   CheckStagedUpgrade(request: UpgradeCheckRequest): Promise<UpgradeResult>;
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
@@ -8739,6 +8915,7 @@ export interface Facade {
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
   CleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult>;
+  ClearViews(workspace: string): Promise<ViewsResult>;
   CollectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult>;
   CollectSource(request: SourceWorkRequest): Promise<SourceCollectionResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
@@ -8789,6 +8966,7 @@ export interface Facade {
   ExportLicenseDocument(): Promise<LicenseExportResult>;
   ExportPacketReview(request: PacketExportRequest): Promise<PacketExportResult>;
   ExportProfilePackage(request: ProfilePackageExportRequest): Promise<ProfilePackageResult>;
+  ExportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult>;
   ExportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   Filters(): Promise<FiltersResult>;
@@ -8820,6 +8998,7 @@ export interface Facade {
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListBackups(): Promise<StorageBackupsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
+  ListConnections(request: RequestContext): Promise<ConnectionsResult>;
   ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
   ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
@@ -8828,7 +9007,9 @@ export interface Facade {
   ListHubReviews(project: string): Promise<HubReviewsResult>;
   ListNotes(request: NotesRequest): Promise<NotesResult>;
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
+  ListProtectionControls(workspace: string): Promise<ProtectionListResult>;
   ListReceiverSnapshots(request: ItemRequest): Promise<ReceiverSnapshotsResult>;
+  ListSearchSettings(workspace: string): Promise<SearchSettingsListResult>;
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
@@ -8901,6 +9082,7 @@ export interface Facade {
   ReadFileBytes(request: FileBytesRequest): Promise<FileBytesResult>;
   ReadMessages(request: MessagesRequest): Promise<MessagesResult>;
   ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
+  ReadPreferences(): Promise<PreferencesResult>;
   ReadProtection(workspace: string, entry: string): Promise<ProtectionResult>;
   ReadReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult>;
   ReadRedactInventory(workspace: string, entry: string): Promise<RedactInventoryResult>;
@@ -8962,6 +9144,7 @@ export interface Facade {
   SaveNoteItem(request: NoteSaveRequest): Promise<NotesResult>;
   SaveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult>;
   SaveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult>;
+  SavePreferences(p: Preferences): Promise<PreferencesResult>;
   SaveProfile(request: ProfileSaveRequest): Promise<LocalProfileResult>;
   SaveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult>;
   SaveReceiverPolicy(request: ReceiverPolicyRequest): Promise<ReceiverPolicyResult>;
@@ -9012,6 +9195,7 @@ export interface Facade {
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
   TestSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretTestResult>;
   UndoReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
+  UpdateProtectionControl(request: ProtectionControlUpdate): Promise<ProtectionUpdateResult>;
   UpgradeProfilePin(request: ProfileUpgradePinRequest): Promise<ProfileUpgradePinResult>;
   UploadHubArtifact(request: HubUploadRequest): Promise<HubTransferResult>;
   ValidateAssertionSet(document: string): Promise<CanonicalAssertionResult>;

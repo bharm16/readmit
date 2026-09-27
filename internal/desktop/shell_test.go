@@ -262,6 +262,14 @@ func TestTextScalesAndThemesAreOfferedAsChoices(t *testing.T) {
 	if described.TextScales[len(described.TextScales)-1] < 200 {
 		t.Fatalf("text does not scale to twice its size: %v", described.TextScales)
 	}
+	for _, offered := range []int{100, 125, 150, 175, 200} {
+		if !slices.Contains(described.TextScales, offered) {
+			t.Fatalf("text size %d%% is not offered: %v", offered, described.TextScales)
+		}
+	}
+	if described.Version == "" {
+		t.Fatal("the window does not carry the build's version for About")
+	}
 
 	styles := read(t, stylesFile)
 	for _, token := range []string{"--text-scale", `[data-theme="light"]`, `[data-theme="dark"]`, "color-scheme: light dark"} {
@@ -304,7 +312,7 @@ func TestPrivacyStatusNamesWhatIsAbsentAndWhatIsKept(t *testing.T) {
 	// them hold what a person typed — a filter term and an unstored note — which
 	// is the same patient data the evidence beside them holds, so leaving either
 	// unnamed would be the reassurance this status exists to avoid.
-	for _, document := range []string{"readmit-attachments/v1", "readmit-filters/v2", desktop.SessionSchema, desktop.DraftsSchema, desktop.DraftsSchemaV2, "readmit-desktop-projects/v1", "readmit-desktop-storage/v1", "readmit-catalog/v1", desktop.EnvironmentCheckSchema, "readmit-desktop-commercial-selection/v1", "readmit-desktop-hub-selection/v1", "readmit-correlation-review/v1"} {
+	for _, document := range []string{"readmit-attachments/v1", "readmit-filters/v2", desktop.SessionSchema, desktop.DraftsSchema, desktop.DraftsSchemaV2, "readmit-desktop-projects/v1", "readmit-desktop-storage/v1", "readmit-desktop-preferences/v1", "readmit-catalog/v1", desktop.EnvironmentCheckSchema, "readmit-desktop-commercial-selection/v1", "readmit-desktop-hub-selection/v1", "readmit-correlation-review/v1"} {
 		if !strings.Contains(kept, strings.ToLower(document)) {
 			t.Errorf("the privacy status does not name %s, which the shell keeps: %v", document, privacy.Kept)
 		}

@@ -80,11 +80,6 @@ export const privateExamples: Example[] = [
     statusRequired: true,
     onChange: noop,
   }),
-  p("ProtectionPanel", "ControlChange", {
-    action: "retire",
-    name: "Synthetic key",
-    result: f.protectionResult(),
-  }),
   p("ProtectionPanel", "PackageView", {
     view: f.protectionPackageResult().package,
     limitations: f.protectionPackageResult().limitations ?? [],

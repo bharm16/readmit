@@ -176,7 +176,8 @@ export function shellResult(): ShellResult {
       { id: "cancel-operation", title: "Cancel operation" },
     ],
     themes: ["system", "light", "dark"],
-    text_scales: [100, 125, 150],
+    text_scales: [100, 125, 150, 175, 200],
+    version: "0.0.0-test",
     privacy: {
       statement: "Nothing leaves this machine.",
       absent: ["No telemetry, crash reporting or update check."],

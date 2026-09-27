@@ -258,6 +258,7 @@ func (a *App) ConnectHub() HubResult {
 		if err := a.hub.Connect(ctx); err != nil {
 			return HubResult{State: Failed, Reason: err.Error()}
 		}
+		a.markSession("hub:client", false)
 		return a.hubStatus(ctx)
 	})
 }
@@ -265,6 +266,9 @@ func (a *App) ConnectHub() HubResult {
 // DisconnectHub disconnects from the hub, clears all in-memory credentials, and displays the custody notice.
 func (a *App) DisconnectHub() HubResult {
 	return run(a, false, false, func(ctx context.Context) HubResult {
+		if a.hub.Status().Client != nil {
+			a.markSession("hub:client", true)
+		}
 		a.hub.Disconnect()
 		a.forgetHubAudit()
 		status := a.hub.Status()
