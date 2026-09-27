@@ -29,8 +29,6 @@ import type {
   CIInspectResult,
   CanonicalAssertionRequest,
   CanonicalAssertionResult,
-  CanonicalTestRequest,
-  CanonicalTestResult,
   CaptureJournalResult,
   CapturePreviewResult,
   CaptureProgressResult,
@@ -343,6 +341,8 @@ import type {
   ProtectionControlUpdate,
   ProtectionUpdateResult,
   ProtectionExportResult,
+  TestHistoryResult,
+  ExportTestResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -713,18 +713,7 @@ export function compareReproducers(
   return guard(() => facade().CompareReproducers(request), { state: "failed" });
 }
 
-/** Answers one stage and reports what the draft now means over the verified
- * case. An answer the evidence or the chosen boundary does not support leaves
- * the draft exactly as it was. */
-export function authorTest(request: TestRequest): Promise<TestResult> {
-  return guard(() => facade().AuthorTest(request), { state: "failed" });
-}
 
-/** Writes the generated spec into one new entry of the open workspace. It
- * writes a document, never evidence: the case it names is not touched. */
-export function saveTest(request: TestRequest): Promise<TestResult> {
-  return guard(() => facade().SaveTest(request), { state: "failed" });
-}
 
 /** Proposes expectations from one run somebody has already reviewed, and
  * records nothing. The draft comes back unchanged: a proposal becomes an
@@ -1004,24 +993,8 @@ export function openBaseline(request: BaselineRequest): Promise<BaselineResult> 
   return guard(() => facade().OpenBaseline(request), { state: "failed" });
 }
 
-export function importTest(
-  workspace: string,
-  entry: string,
-): Promise<CanonicalTestResult> {
-  return guard(() => facade().ImportTest(workspace, entry), {
-    state: "failed",
-  });
-}
 
-export function validateTest(document: string): Promise<CanonicalTestResult> {
-  return guard(() => facade().ValidateTest(document), { state: "failed" });
-}
 
-export function exportTest(
-  request: CanonicalTestRequest,
-): Promise<CanonicalTestResult> {
-  return guard(() => facade().ExportTest(request), { state: "failed" });
-}
 
 // ---------------------------------------------------------------------------
 // Suite management
@@ -2007,4 +1980,22 @@ export function updateProtectionControl(request: ProtectionControlUpdate): Promi
 /** Writes one control's reference to a file the person names. */
 export function exportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult> {
   return guard(() => facade().ExportProtectionControl(workspace, entry, name), { state: "failed" });
+}
+
+// Tests (#553): a saved test's versions and runs, and importing and exporting
+// a test through the native dialogs.
+
+/** A saved test's versions, newest first, and the runs of each. */
+export function testHistory(request: ItemRequest): Promise<TestHistoryResult> {
+  return retryingRead(() => facade().TestHistory(request), { state: "failed", context: request.context, versions: [], runs: [] });
+}
+
+/** Reads a test file the person chooses into a new draft; nothing is saved. */
+export function importTestDraft(context: RequestContext): Promise<ItemDraftResult> {
+  return guard(() => facade().ImportTestDraft(context), { state: "failed", context, new: true });
+}
+
+/** Writes one version of a saved test to a file the person names. */
+export function exportTestItem(request: ItemRequest): Promise<ExportTestResult> {
+  return guard(() => facade().ExportTestItem(request), { state: "failed", context: request.context });
 }

@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestRunnerStatus } from "./bindings";
+import type { FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -68,6 +68,26 @@ export const RESET_REASONS: DisplayMap<ResetReason> = {
 export const TEST_BOUNDARIES: DisplayMap<TestBoundary> = {
   "appointment-ledger": "Appointment records",
   "ack-contract": "Acknowledgements",
+};
+
+/** The checks a test holds, by the operator each is written as. */
+export const TEST_CHECKS: DisplayMap<TestExpectationOperator> = {
+  ack_field_equals: "ACK field",
+  ledger_count: "Record count",
+  ledger_equals: "Exact records",
+};
+
+/** What changed between two versions of a test. */
+export const TEST_CHANGES: DisplayMap<TestChange> = {
+  name: "Name",
+  case: "Case",
+  messages: "Messages",
+  environment: "Environment",
+  boundary: "Outcome",
+  observation: "Observation",
+  reset: "Reset",
+  checks: "Checks",
+  tags: "Tags",
 };
 
 /** A field's state. "" is how Go writes a state it did not record, which is

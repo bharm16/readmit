@@ -281,6 +281,26 @@ export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): V
       default_delay_ms: 50,
     },
     bounds: { grid: 200, comparison: 200, review: 200, sequence: 200, diagnosis: 200, ...bounds },
+    ack_positions: [
+      "MSA-1",
+      "MSA-2",
+      "MSA-3",
+      "MSA-4",
+      "MSA-5",
+      "MSA-6",
+      "ERR-1",
+      "ERR-2",
+      "ERR-3",
+      "ERR-4",
+      "ERR-5",
+      "ERR-6",
+      "ERR-7",
+      "ERR-8",
+      "ERR-9",
+      "ERR-10",
+      "ERR-11",
+      "ERR-12",
+    ],
   };
 }
 

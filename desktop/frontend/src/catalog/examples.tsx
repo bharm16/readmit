@@ -5,7 +5,6 @@ import { VocabularyContext } from "../vocabulary";
 import { IndicatorsContext, Outcome } from "../lifecycle";
 import { AssertionSetAuthoring } from "../AssertionSetAuthoring";
 import { Baseline } from "../Baseline";
-import { CanonicalTestEditor } from "../CanonicalTestEditor";
 import { CapturePanel } from "../CapturePanel";
 import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
@@ -52,7 +51,6 @@ import { SuitePanel } from "../SuitePanel";
 import { SyntheticPackets } from "../SyntheticPackets";
 import { TaskTabs, TaskPanel } from "../TaskTabs";
 import { TeamCollaboration, OfflineRevisionDraft } from "../TeamCollaboration";
-import { TestAuthoring } from "../TestAuthoring";
 import { RetentionStatus } from "../drafting";
 import {
   Page,
@@ -138,7 +136,6 @@ export const examples: Example[] = [
     ["Structured", "Advanced JSON"],
   ),
   e("Baseline", () => <Baseline {...common} />),
-  e("CanonicalTestEditor", () => <CanonicalTestEditor {...common} />),
   e("CapturePanel", () => <CapturePanel {...common} />),
   e("Comparison", () => (
     <Comparison
@@ -360,18 +357,6 @@ export const examples: Example[] = [
         tips: ["revision-1"],
         head: 1,
       }}
-    />
-  )),
-  e("TestAuthoring", () => (
-    <TestAuthoring
-      {...resultProps}
-      rows={catalogRows}
-      result={f.testResult(f.EMPTY_DRAFT, [])}
-      inspected={null}
-      onAnswer={noop}
-      onSave={noop}
-      onSuggest={noop}
-      onApprove={noop}
     />
   )),
   e(

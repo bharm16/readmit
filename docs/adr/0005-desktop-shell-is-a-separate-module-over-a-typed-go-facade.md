@@ -187,6 +187,17 @@ application stores under `.readmit/attachments` with names it generates. The
 attachments are metadata and files a person added, beside evidence and never
 inside it; nothing opens or runs them.
 
+#553 extends the catalog once more, before any release carried it: a
+revision records `author`, the account name of the person whose window saved
+it, and the pending record carries it until the revision is published; a
+revision saved before names none. A saved test may also publish a second
+member, `readmit-test-links/v1`, in the same revision as its spec: the catalog
+identity of the environment it runs against, whether its reset follows that
+environment's, its tags and the case, finding or variant it was created from.
+The spec stays an ordinary `readmit-test/v1` document and names the target
+file of the environment revision it was saved against, as every spec names a
+file; the links name no file and grant nothing.
+
 #565 adds one more shell document, `readmit-desktop-storage/v1`: the folder
 backups are kept in, and each backup, archive copy and rollback copy the
 application wrote there — its folder, the identity its completion marker

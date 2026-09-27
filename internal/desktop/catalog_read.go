@@ -697,21 +697,38 @@ func readCase(c *loadedCatalog, item catalog.Item, paths map[string]string) (vie
 
 func readTest(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(TestItem)]
+	var spec testrunner.Spec
+	version := item.RevisionLabel()
 	if declares(path, "readmit-test-release/v1") {
 		release, err := expectation.Read(path)
 		if err != nil {
 			return view{}, err
 		}
-		spec := release.Baseline.Spec
-		return view{name: spec.Name, summary: ItemSummary{Test: &TestSummary{SourceCase: c.specCase(spec),
-			CurrentVersion: revisionLabel(release.Baseline.Revision), LatestRun: c.latestRun(spec), Assertions: len(spec.Assertions)}}}, nil
+		spec, version = release.Baseline.Spec, revisionLabel(release.Baseline.Revision)
+	} else {
+		read, err := testrunner.ReadSpec(path)
+		if err != nil {
+			return view{}, err
+		}
+		spec = read
 	}
-	spec, err := testrunner.ReadSpec(path)
-	if err != nil {
-		return view{}, err
+	summary := &TestSummary{SourceCase: c.specCase(spec), CurrentVersion: version, Assertions: len(spec.Assertions),
+		Boundary: spec.Observation.Boundary, Entry: c.entryOf(path)}
+	if links, held := paths["links"]; held {
+		read, err := readTestLinks(links)
+		if err != nil {
+			return view{}, err
+		}
+		summary.Tags = read.Tags
 	}
-	return view{name: spec.Name, summary: ItemSummary{Test: &TestSummary{SourceCase: c.specCase(spec),
-		CurrentVersion: item.RevisionLabel(), LatestRun: c.latestRun(spec), Assertions: len(spec.Assertions)}}}, nil
+	if latest := c.latestRun(spec); latest != nil {
+		summary.LatestRun = &ItemRef{Kind: RunItem, ID: latest.id}
+		summary.LatestResult = latest.outcome
+		if !latest.started.IsZero() {
+			summary.LatestRunAt = stampedTime(latest.started)
+		}
+	}
+	return view{name: spec.Name, summary: ItemSummary{Test: summary}}, nil
 }
 
 // specCase is the project's case a test names, when it names one entry of
@@ -726,17 +743,18 @@ func (c *loadedCatalog) specCase(spec testrunner.Spec) *ItemRef {
 	return nil
 }
 
-// runView is one retained run's retained test and start, for finding a
-// test's latest run.
+// runView is one retained run's retained test, its start and the status its
+// result records, for finding a test's runs. Only a run with a result retains
+// its test: a durable run with none is not one of any test's runs.
 type runView struct {
 	id      string
 	spec    *testrunner.Spec
 	started time.Time
+	outcome testrunner.Status
 }
 
-// latestRun is the most recently started run whose retained test is exactly
-// this one.
-func (c *loadedCatalog) latestRun(spec testrunner.Spec) *ItemRef {
+// runs reads every retained run's test once per load.
+func (c *loadedCatalog) runs() []runView {
 	if !c.runsRead {
 		c.runsRead = true
 		for _, item := range c.document.Items {
@@ -747,23 +765,39 @@ func (c *loadedCatalog) latestRun(spec testrunner.Spec) *ItemRef {
 			if err != nil || opened.Spec == nil {
 				continue
 			}
-			started := time.Time{}
+			view := runView{id: item.ID, spec: opened.Spec}
 			if opened.Run != nil {
-				started = opened.Run.Manifest.StartedAt
+				view.started = opened.Run.Manifest.StartedAt
 			}
-			c.runViews = append(c.runViews, runView{id: item.ID, spec: opened.Spec, started: started})
+			view.outcome = opened.Artifact.Result.Status
+			c.runViews = append(c.runViews, view)
 		}
 	}
-	var latest *runView
-	for i, run := range c.runViews {
-		if reflect.DeepEqual(*run.spec, spec) && (latest == nil || run.started.After(latest.started)) {
-			latest = &c.runViews[i]
+	return c.runViews
+}
+
+// runsOf are the runs whose retained test is exactly this one, the most
+// recently started first.
+func (c *loadedCatalog) runsOf(spec testrunner.Spec) []runView {
+	matched := []runView{}
+	for _, run := range c.runs() {
+		if reflect.DeepEqual(*run.spec, spec) {
+			matched = append(matched, run)
 		}
 	}
-	if latest == nil {
-		return nil
+	slices.SortStableFunc(matched, func(x, y runView) int {
+		return cmp.Or(y.started.Compare(x.started), cmp.Compare(x.id, y.id))
+	})
+	return matched
+}
+
+// latestRun is the most recently started run whose retained test is exactly
+// this one.
+func (c *loadedCatalog) latestRun(spec testrunner.Spec) *runView {
+	if matched := c.runsOf(spec); len(matched) > 0 {
+		return &matched[0]
 	}
-	return &ItemRef{Kind: RunItem, ID: latest.id}
+	return nil
 }
 
 func readSuite(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
@@ -809,6 +843,8 @@ func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view
 			if opened.Artifact.Result.Target != nil {
 				summary.Target = opened.Artifact.Result.Target.Address
 			}
+			summary.Boundary = opened.Artifact.Result.ObservationBoundary
+			summary.SourceCase = c.caseByIdentity(opened.Artifact.Result.InputBundleIdentity)
 		case opened.Durable:
 			summary.Outcome = string(opened.Lifecycle.State)
 		}

@@ -8,6 +8,7 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/testauthor"
 )
 
 // Vocabulary is what the window offers a person to choose among, and the
@@ -30,6 +31,9 @@ type Vocabulary struct {
 	// Bounds are how many rows one window of each paged view asks for: the
 	// most the facade answers in one window.
 	Bounds WindowBounds `json:"bounds"`
+	// ACKPositions are the acknowledgement positions an ACK field check
+	// addresses, in the order a picker offers them.
+	ACKPositions []string `json:"ack_positions"`
 }
 
 // ReceiverFaultVocabulary is every fault action a step can declare, whether
@@ -105,5 +109,6 @@ func vocabulary() Vocabulary {
 			Grid: grid.MaxRows, Comparison: MaxComparisonRows, Review: MaxReviewFindings,
 			Sequence: MaxSequenceEvents, Diagnosis: MaxDiagnosisFindings,
 		},
+		ACKPositions: testauthor.ACKPositions(),
 	}
 }

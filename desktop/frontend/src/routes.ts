@@ -34,7 +34,9 @@ export type ChildDestination =
   | "inspect-file"
   | "sample-data"
   | "benchmarks"
-  | "encryption";
+  | "encryption"
+  | "new-test"
+  | "edit-test";
 
 export const CHILD_OF: Record<ChildDestination, Destination> = {
   library: "tests",
@@ -51,6 +53,8 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   "sample-data": "tools",
   benchmarks: "tools",
   encryption: "settings",
+  "new-test": "tests",
+  "edit-test": "tests",
 };
 
 export type Place = Destination | ChildDestination;

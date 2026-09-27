@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/catalog"
@@ -195,9 +197,13 @@ func (a *App) CheckEnvironmentDestination(request DestinationCheckRequest) SendP
 }
 
 // ReceiverSnapshot is one receiver observation of the project, the file a
-// reset's empty-observation check reads.
+// reset's empty-observation check reads, and when the receiver last wrote it.
+// A readmit-observation/v1 document records no time of its own, so
+// CollectedAt is the file's modification time, which each snapshot the
+// receiver installs replaces; it is null when the file cannot say.
 type ReceiverSnapshot struct {
-	Entry string `json:"entry"`
+	Entry       string  `json:"entry"`
+	CollectedAt *string `json:"collected_at"`
 }
 
 // ReceiverSnapshotsResult lists the project's receiver observations.
@@ -213,8 +219,8 @@ func (r *ReceiverSnapshotsResult) refuse(state State, reason string) {
 }
 
 // ListReceiverSnapshots lists the entries of the open project that read as a
-// receiver's readmit-observation/v1 ledger snapshot, by name, for choosing
-// the one a reset checks is empty. It is a read.
+// receiver's readmit-observation/v1 ledger snapshot, most recently written
+// first, for choosing the one a reset checks is empty. It is a read.
 func (a *App) ListReceiverSnapshots(request ItemRequest) ReceiverSnapshotsResult {
 	return run(a, false, false, func(ctx context.Context) ReceiverSnapshotsResult {
 		result := ReceiverSnapshotsResult{Context: request.Context, Snapshots: []ReceiverSnapshot{}}
@@ -232,6 +238,7 @@ func (a *App) ListReceiverSnapshots(request ItemRequest) ReceiverSnapshotsResult
 			result.refuse(Failed, "the project folder cannot be read")
 			return result
 		}
+		written := map[string]time.Time{}
 		for _, entry := range entries {
 			path := filepath.Join(root, entry.Name())
 			if !entry.Type().IsRegular() || !declares(path, observation.Schema) {
@@ -242,9 +249,17 @@ func (a *App) ListReceiverSnapshots(request ItemRequest) ReceiverSnapshotsResult
 				continue
 			}
 			if _, err := observation.Decode(data); err == nil {
-				result.Snapshots = append(result.Snapshots, ReceiverSnapshot{Entry: entry.Name()})
+				snapshot := ReceiverSnapshot{Entry: entry.Name()}
+				if info, err := entry.Info(); err == nil {
+					written[entry.Name()] = info.ModTime()
+					snapshot.CollectedAt = stampedTime(info.ModTime())
+				}
+				result.Snapshots = append(result.Snapshots, snapshot)
 			}
 		}
+		slices.SortStableFunc(result.Snapshots, func(x, y ReceiverSnapshot) int {
+			return cmp.Or(written[y.Entry].Compare(written[x.Entry]), cmp.Compare(x.Entry, y.Entry))
+		})
 		result.State = Completed
 		if len(result.Snapshots) == 0 {
 			result.State = Empty

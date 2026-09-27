@@ -30,12 +30,6 @@
     "line": 11
   },
   {
-    "name": "CanonicalTestEditor",
-    "source": "desktop/frontend/src/CanonicalTestEditor.tsx",
-    "exported": true,
-    "line": 18
-  },
-  {
     "name": "PolicyReview",
     "source": "desktop/frontend/src/CapturePanel.tsx",
     "exported": false,
@@ -676,12 +670,6 @@
     "source": "desktop/frontend/src/TeamCollaboration.tsx",
     "exported": true,
     "line": 971
-  },
-  {
-    "name": "TestAuthoring",
-    "source": "desktop/frontend/src/TestAuthoring.tsx",
-    "exported": true,
-    "line": 115
   },
   {
     "name": "DisplayTerm",

@@ -221,7 +221,6 @@ export function ObservationPanel({
   indicators,
   drafts,
   captureBinding,
-  onBindToTest,
   onClose,
 }: {
   workspace: string;
@@ -229,7 +228,6 @@ export function ObservationPanel({
   indicators: Indicators;
   drafts: EditorDraft[];
   captureBinding?: CaptureObservationBinding | null;
-  onBindToTest?: (observationFile: string) => void;
   onClose: () => void;
 }) {
   const [support, setSupport] = useState<ObservationAdapterSupport[]>([]);
@@ -508,11 +506,6 @@ export function ObservationPanel({
     authorizedPair !== null &&
     sameDocument(authorizedPair.source, reviewedPair.source) &&
     sameDocument(authorizedPair.window, reviewedPair.window);
-
-  // A test binds only the saved window, and only while it is what the editor
-  // shows: an edit or another document withdraws the handoff.
-  const windowBindable =
-    !blocked && !windowRefused && !windowDirty && savedWindow !== null && windowFileEntry === savedWindow.file && windowFile === savedWindow.file;
 
   const scopeCurrent =
     scoped !== null &&
@@ -1412,18 +1405,6 @@ export function ObservationPanel({
               </div>
             ) : null}
 
-            {onBindToTest ? (
-              <>
-                <button type="button" disabled={busy || !windowBindable} onClick={() => savedWindow && onBindToTest(savedWindow.file)}>
-                  Use saved window in test
-                </button>
-                <p className="hint">
-                  {windowBindable
-                    ? `Binds the saved window ${savedWindow?.file ?? ""} into the test draft. No test is run.`
-                    : "Save the window first: only a saved window without unsaved edits binds into a test. No test is run."}
-                </p>
-              </>
-            ) : null}
           </>
         )}
       </TaskTabs>

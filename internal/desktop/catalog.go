@@ -20,6 +20,7 @@ import (
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // A screen receives named objects and their current readable state; the
@@ -214,12 +215,21 @@ func provenanceMarker(mode string) string {
 }
 
 // TestSummary is a test's source case, its current version and the latest
-// run whose retained test is exactly this one.
+// run whose retained test is exactly this one: the status its result records
+// (pass, assertion_failure or execution_error) and when it started. A test
+// no run has executed has none, never a manufactured result. Boundary is the
+// outcome boundary the test decides at, Tags the tags a person gave it, and
+// Entry the project entry its current revision's spec is, which a run names.
 type TestSummary struct {
-	SourceCase     *ItemRef `json:"source_case"`
-	CurrentVersion string   `json:"current_version,omitzero"`
-	LatestRun      *ItemRef `json:"latest_run"`
-	Assertions     int      `json:"assertions"`
+	SourceCase     *ItemRef          `json:"source_case"`
+	CurrentVersion string            `json:"current_version,omitzero"`
+	LatestRun      *ItemRef          `json:"latest_run"`
+	LatestResult   testrunner.Status `json:"latest_result,omitzero"`
+	LatestRunAt    *string           `json:"latest_run_at,omitzero"`
+	Assertions     int               `json:"assertions"`
+	Boundary       string            `json:"boundary,omitzero"`
+	Tags           []string          `json:"tags,omitzero"`
+	Entry          string            `json:"entry,omitzero"`
 }
 
 // SuiteSummary is how many tests a suite includes and the environments it
@@ -233,14 +243,18 @@ type SuiteSummary struct {
 
 // RunSummary is what one run actually did: the address it reached, when it
 // started and finished, its outcome, and how many deliveries no
-// acknowledgement settled.
+// acknowledgement settled. A test run also names the boundary it was
+// observed at and the project's case whose evidence it replayed, when the
+// project holds it.
 type RunSummary struct {
-	Target            string  `json:"target,omitzero"`
-	StartedAt         *string `json:"started_at"`
-	CompletedAt       *string `json:"completed_at"`
-	Outcome           string  `json:"outcome,omitzero"`
-	Uncertain         int     `json:"uncertain"`
-	DeliveryUncertain bool    `json:"delivery_uncertain"`
+	Target            string   `json:"target,omitzero"`
+	StartedAt         *string  `json:"started_at"`
+	CompletedAt       *string  `json:"completed_at"`
+	Outcome           string   `json:"outcome,omitzero"`
+	Uncertain         int      `json:"uncertain"`
+	DeliveryUncertain bool     `json:"delivery_uncertain"`
+	Boundary          string   `json:"boundary,omitzero"`
+	SourceCase        *ItemRef `json:"source_case,omitzero"`
 }
 
 // EnvironmentSummary is an environment's declared classification, address
@@ -526,10 +540,12 @@ func queryKey(query CatalogQuery) string {
 	return string(data)
 }
 
-// ItemRequest names one object of the open project.
+// ItemRequest names one object of the open project. From is where a new
+// test starts from, read by OpenItemDraft alone.
 type ItemRequest struct {
 	Context RequestContext `json:"context"`
 	Ref     ItemRef        `json:"ref"`
+	From    *TestOrigin    `json:"from,omitzero"`
 }
 
 // ItemResult carries one object as it reads now, and the context it answers.

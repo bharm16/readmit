@@ -7,8 +7,6 @@ import { expect, test } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Baseline } from "./Baseline";
-import { TestAuthoring } from "./TestAuthoring";
-import { CanonicalTestEditor } from "./CanonicalTestEditor";
 import { Comparison } from "./Comparison";
 import { GuidedSample } from "./GuidedSample";
 import { Reproducer } from "./Reproducer";
@@ -17,7 +15,6 @@ import {
   CASE_ENTRY,
   GRID_OCCURRENCE,
   WORKSPACE_ROOT,
-  canonicalResult,
   comparisonRow,
   compareResult,
   gridRow,
@@ -26,7 +23,6 @@ import {
   normalizationDifference,
   normalizationRuleReport,
   normalizeResult,
-  refused,
   reproducerResult,
 } from "./testkit/fixtures";
 
@@ -74,54 +70,6 @@ test("the run steps offer a new folder and never an existing one by default", as
   await user.click(screen.getByRole("button", { name: "Run failing example" }));
   // The panel supplies its suggested name; the window delegates actual output naming to the facade.
   expect(runs).toEqual(["baseline:baseline-run"]);
-});
-
-test("the canonical editor shows expected values on import and exports exact bytes", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade({
-    ImportTest: () => canonicalResult({ document: "COMPLETE-CANONICAL-SPEC", identity: "imported-identity" }),
-    ValidateTest: () => canonicalResult({ identity: "validated-identity" }),
-    ExportTest: (request) =>
-      canonicalResult({ output: request.output, identity: "exported-spec-identity" }),
-  });
-  render(<CanonicalTestEditor workspace={WORKSPACE_ROOT} drafts={null} busy={false} />);
-  await user.type(screen.getByLabelText("Test file in this workspace"), "saved-test.json");
-  await user.click(screen.getByRole("button", { name: "Import and show values" }));
-  expect(facade.oneCall("ImportTest")).toEqual([WORKSPACE_ROOT, "saved-test.json"]);
-  expect(
-    (screen.getByLabelText("Complete test spec") as HTMLTextAreaElement).value,
-  ).toBe("COMPLETE-CANONICAL-SPEC");
-  await user.click(screen.getByRole("button", { name: "Validate" }));
-  expect(await screen.findByText("Accepted by the shared test reader.")).toBeTruthy();
-  await user.type(screen.getByLabelText("New test file in this workspace"), "exported-test.json");
-  await user.click(screen.getByRole("button", { name: "Export test" }));
-  expect(facade.oneCall("ExportTest")[0]).toEqual({
-    workspace: WORKSPACE_ROOT,
-    document: "COMPLETE-CANONICAL-SPEC",
-    output: "exported-test.json",
-  });
-  expect(await screen.findByText(/Written to exported-test\.json · spec identity/)).toBeTruthy();
-});
-
-test("a refused export keeps the edit in the window and says why", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade({
-    ImportTest: () => canonicalResult({ document: "COMPLETE-CANONICAL-SPEC" }),
-    ExportTest: () => refused("That name is already an entry of this workspace."),
-  });
-  render(<CanonicalTestEditor workspace={WORKSPACE_ROOT} drafts={null} busy={false} />);
-  await user.type(screen.getByLabelText("Test file in this workspace"), "saved-test.json");
-  await user.click(screen.getByRole("button", { name: "Import and show values" }));
-  await user.type(screen.getByLabelText("New test file in this workspace"), "exported-test.json");
-  await user.click(screen.getByRole("button", { name: "Export test" }));
-  expect(
-    await screen.findByText("That name is already an entry of this workspace."),
-  ).toBeTruthy();
-  // The refusal leaves the document exactly as it was, for correction.
-  expect((screen.getByLabelText("Complete test spec") as HTMLTextAreaElement).value).toBe(
-    "COMPLETE-CANONICAL-SPEC",
-  );
-  expect(facade.callsTo("ExportTest")).toHaveLength(1);
 });
 
 test("baseline review hides values until they are deliberately revealed", async () => {
@@ -465,73 +413,6 @@ test("after a build the reproducer offers register and handoff actions", async (
   expect(screen.queryByLabelText("New project entry for the derived case")).toBeNull();
 });
 
-test("TestAuthoring authors ledger_equals and exact_ledger suggestions", async () => {
-  const user = userEvent.setup();
-  const answers: unknown[] = [];
-  const suggests: unknown[] = [];
-  render(
-    <TestAuthoring
-      rows={[gridRow(GRID_OCCURRENCE, "message")]}
-      result={{
-        state: "completed",
-        test: {
-          draft: {
-            schema: "readmit-test-draft/v1",
-            case: { entry: CASE_ENTRY, identity: "case-identity" },
-            name: "Ledger regression",
-            messages: [GRID_OCCURRENCE],
-            target: "test-target.json",
-            boundary: "appointment-ledger",
-            observation: "ledger.json",
-            reset: "Restart fixture",
-            expectations: [],
-          },
-          resolution: {
-            stage: "",
-            missing: [],
-            messages: [GRID_OCCURRENCE],
-            targets: [],
-            coverage: {
-              ledger: { applies: true, covered: false },
-              messages: [],
-              uncovered: [],
-            },
-          },
-        },
-      }}
-      inspected={null}
-      busy={false}
-      progress={null}
-      indicators={indicatorTable()}
-      onAnswer={(answer) => answers.push(answer)}
-      onSave={() => undefined}
-      onSuggest={(request) => suggests.push(request)}
-      onApprove={() => undefined}
-    />,
-  );
-
-  await user.selectOptions(screen.getByLabelText("Ledger operator"), "ledger_equals");
-  await user.click(screen.getByRole("button", { name: "Expect empty ledger" }));
-  await user.type(screen.getByLabelText("Expectation name"), "exact-empty");
-  await user.click(screen.getByRole("button", { name: "Expect exact ledger" }));
-  expect(answers.at(-1)).toEqual({
-    stage: "expectations",
-    expectations: [{ id: "exact-empty", operator: "ledger_equals", records: [] }],
-  });
-
-  await user.type(screen.getByLabelText("Entry holding the reviewed run result"), "baseline-result");
-  await user.click(screen.getByLabelText("Suggest exact ledger"));
-  await user.click(screen.getByRole("button", { name: "Review suggestions" }));
-  expect(suggests.at(-1)).toMatchObject({
-    result: "baseline-result",
-    exact_ledger: true,
-  });
-});
-
-// Releasing a test version is the same deliberate local review with profile
-// pins: the release id is required, the review names the exact commitment,
-// and saving writes one new immutable file. A passing run is never the
-// approver.
 test("releasing a test version pins profiles and saves one immutable revision", async () => {
   const user = userEvent.setup();
   const facade = installFacade({

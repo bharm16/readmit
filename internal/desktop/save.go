@@ -18,7 +18,6 @@ import (
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/testauthor"
-	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // One editor Save validates and publishes one logical revision. An object
@@ -47,16 +46,23 @@ var documentKinds = []ItemKind{CaseItem, ProjectItem}
 // An environment may also carry the send policy its destinations are decided
 // under, its reset plan and its links; every member it carries is published
 // in the same revision as its target, or none is.
+//
+// A test may carry its links — the environment it runs against, how its
+// reset is decided, its tags and where it came from — beside its draft. A
+// test the editor cannot represent whole is saved from TestDocument, the
+// exact readmit-test/v1 bytes, instead of Test.
 type ItemDraft struct {
-	Name        string             `json:"name,omitzero"`
-	Environment *replay.Target     `json:"environment,omitzero"`
-	SendPolicy  *sendpolicy.Policy `json:"policy,omitzero"`
-	ResetPlan   *fixturereset.Plan `json:"reset,omitzero"`
-	Links       *EnvironmentLinks  `json:"links,omitzero"`
-	Test        *testauthor.Draft  `json:"test,omitzero"`
-	Observation *ObservationDraft  `json:"observation,omitzero"`
-	Case        *CaseDraft         `json:"case,omitzero"`
-	Project     *ProjectDraft      `json:"project,omitzero"`
+	Name         string             `json:"name,omitzero"`
+	Environment  *replay.Target     `json:"environment,omitzero"`
+	SendPolicy   *sendpolicy.Policy `json:"policy,omitzero"`
+	ResetPlan    *fixturereset.Plan `json:"reset,omitzero"`
+	Links        *EnvironmentLinks  `json:"links,omitzero"`
+	Test         *testauthor.Draft  `json:"test,omitzero"`
+	TestLinks    *TestLinks         `json:"test_links,omitzero"`
+	TestDocument string             `json:"test_document,omitzero"`
+	Observation  *ObservationDraft  `json:"observation,omitzero"`
+	Case         *CaseDraft         `json:"case,omitzero"`
+	Project      *ProjectDraft      `json:"project,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -114,7 +120,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -191,13 +197,21 @@ func (r *SaveItemResult) refuse(state State, reason string) {
 // SaveItem publishes one whole draft as one revision, or nothing. The draft
 // is validated first; a base that is not current is a conflict; a submission
 // already published is answered with its revision and written nowhere again;
-// and a different submission under the same identity is refused.
+// and a different submission under the same identity is refused. Saving is
+// authoring, admitted as authoring, except the guided sample's own test, which
+// the sample walks through without a license.
 func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
-	return run(a, false, true, func(ctx context.Context) SaveItemResult {
+	return run(a, false, false, func(ctx context.Context) SaveItemResult {
 		result := SaveItemResult{Context: request.Context, Problems: []FieldProblem{}}
 		if !slices.Contains(savedKinds, request.Kind) {
 			result.refuse(Failed, "this release saves environments, tests, observations, case details and project settings whole")
 			return result
+		}
+		if !sampleSave(request) {
+			if err := a.admitAuthor(); err != nil {
+				result.refuse(PermissionDenied, err.Error())
+				return result
+			}
 		}
 		if slices.Contains(documentKinds, request.Kind) {
 			return a.saveDocumentItem(ctx, request)
@@ -217,8 +231,8 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 			return result
 		}
 		saved, err := store.Save(catalog.Draft{
-			Kind: string(request.Kind), ItemID: request.Item, Name: request.Draft.Name, Base: request.BaseRevision,
-			Intent: request.IntentID, Digest: submissionDigest(request, staged), Members: staged,
+			Kind: string(request.Kind), ItemID: request.Item, Name: projection.Name, Base: request.BaseRevision,
+			Intent: request.IntentID, Digest: submissionDigest(request, staged), Author: a.reviewerName(), Members: staged,
 		}, verifierFor(request.Kind), catalog.Options{Now: a.now, Fault: a.saveFault})
 		var conflict *catalog.Conflict
 		switch {
@@ -328,13 +342,15 @@ type draftScope struct {
 // validateItemDraft validates a whole draft of kind and answers the files a save
 // stages and the normalized draft, or every problem found.
 func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]catalog.Staged, *ItemDraft, []FieldProblem) {
-	root := scope.root
 	problems := []FieldProblem{}
 	if draft.Name != "" && !catalog.ValidName(draft.Name) {
 		problems = append(problems, FieldProblem{Field: "name", Problem: nameRule})
 	}
 	if kind != EnvironmentItem && (draft.SendPolicy != nil || draft.ResetPlan != nil || draft.Links != nil) {
 		problems = append(problems, FieldProblem{Field: "kind", Problem: "only an environment carries a send policy, a reset plan or links"})
+	}
+	if kind != TestItem && (draft.TestLinks != nil || draft.TestDocument != "") {
+		problems = append(problems, FieldProblem{Field: "kind", Problem: "only a test carries test links or a test document"})
 	}
 	var staged []catalog.Staged
 	normalized := ItemDraft{Name: draft.Name}
@@ -349,31 +365,11 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 			staged, normalized = members, environment
 		}
 	case TestItem:
-		if draft.Test == nil {
-			return nil, nil, append(problems, FieldProblem{Field: "test", Problem: "a test is answered from its source case"})
+		members, test, found := validateTestDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized = members, test
 		}
-		_, source, declined := openedCase(root, draft.Test.Case.Entry, draft.Test.Case.Identity)
-		if source == nil {
-			problems = append(problems, FieldProblem{Field: "test.case", Problem: declined.reason})
-			break
-		}
-		if _, err := testauthor.Resolve(root, source, *draft.Test); err != nil {
-			problems = append(problems, FieldProblem{Field: "test", Problem: err.Error()})
-			break
-		}
-		data, err := testauthor.Generate(*draft.Test)
-		if err != nil {
-			problems = append(problems, FieldProblem{Field: "test", Problem: err.Error()})
-			for i, stage := range testauthor.Missing(*draft.Test) {
-				if i > 0 {
-					problems = append(problems, FieldProblem{Field: "test." + stage, Problem: "not answered yet"})
-				}
-			}
-			break
-		}
-		test := *draft.Test
-		normalized.Test = &test
-		staged = []catalog.Staged{{Role: "test", File: "test.json", Data: data}}
 	case ObservationItem:
 		if draft.Observation == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "observation", Problem: "an observation is a source and its window"})
@@ -448,8 +444,7 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 		case EnvironmentItem:
 			return verifyEnvironment(files)
 		case TestItem:
-			_, err := testrunner.ReadSpec(files["test"])
-			return err
+			return verifyTest(files)
 		case ObservationItem:
 			_, _, err := operation.ValidateObservationPair(files["source"], files["window"])
 			return err

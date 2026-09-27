@@ -14,8 +14,12 @@ answer one stage at a time over a case the shell has already verified, and the
 engine writes the [`readmit-test/v1`](test-spec.md) spec that
 [`readmit test`](test-runner.md) executes.
 
-It is part of [the desktop shell](desktop.md) in this release. There is no
-`readmit test author` command and no flag that reads a draft.
+It is part of [the desktop shell](desktop.md) in this release: Tests › New test,
+a case's Create test and a confirmed finding all open the same editor — Setup,
+Checks and Review, then one Create test that saves the whole draft as a named
+test through `SaveItem`. A saved test is edited in the same editor with one
+Save that publishes a new version. There is no `readmit test author` command
+and no flag that reads a draft.
 
 > A saved test is a **document**, not evidence. It is written beside the case,
 > never inside it, and the case it names is not touched. Its expected values are
@@ -401,19 +405,15 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
   what it recorded is investigated rather than approved.
 - The guided draft authors all three test operators; scenario handoff opens the case by reference without inventing expectations.
   It is authored against one case this shell verified.
-- The guided draft does not import existing specs. The separate
-  [canonical editor](#round-tripping-canonical-specs) imports and edits all
-  supported clauses without translating them into a draft. Both save paths
-  create new entries and never replace an existing spec.
+- A saved test reopens in the editor (`OpenItemDraft`, the inverse of
+  generation). A clause the editor cannot represent keeps the test read-only
+  there; it is edited through Edit JSON, and a lossy save from the editor is
+  refused. Every save creates a new version and never replaces the old one.
 - No environment placeholder, deadline or cleanup member. `readmit-test/v1`
   declares none, it gains no member here, and a draft never invents one.
-- No reading a saved spec back into a draft. The
-  [canonical editor](#round-tripping-canonical-specs) imports and edits saved
-  specs; the draft flow starts from questions. The draft itself is retained
-  while it is being answered: the shell's editor draft store
-  ([the shell](desktop.md#recovering-after-an-interruption)) keeps the answers
-  under an internal identity until the spec is saved, so an interruption
-  returns the draft instead of the questions.
+- Import test reads a test file into a new draft ([round-tripping
+  canonical specs](#round-tripping-canonical-specs)); nothing is saved until
+  Create test.
 - No cancelling an answer or a save. Each runs to completion under the case
   reader's own bounds once it starts, so the window does not offer Cancel for
   them; a refused answer changed nothing and a refused save wrote nothing, so
@@ -434,13 +434,12 @@ to, so a draft cannot be answered into a spec its own reader would refuse.
 
 ## Round-tripping canonical specs
 
-The desktop's **Import and edit a saved test** panel is an advanced JSON editor
-beside the guided questions. Choose an existing test file in the open workspace
-and explicitly import/show its values. Edit the complete document, validate it
-with the shared test reader, then export to a new filename in that same folder.
-The guided draft remains limited to the two operators described above; the
-canonical editor also preserves and edits `ledger_equals`, including an explicit
-empty record collection. It never translates through the guided draft.
+A saved test's **Edit JSON** is the advanced editor for the same object: its
+exact bytes, validated by the shared test reader and saved as a new version of
+that test (`SaveItem` with the document). **Import test** opens a test file the
+person chooses in the native dialog as a new draft (`ImportTestDraft`), and
+**Export test** writes the saved version's exact bytes to a destination chosen
+in the native save dialog (`ExportTestItem`).
 
 Import, validation and export all call `testrunner.DecodeSpec`, the reader used
 by headless execution. Unknown schema versions, operator names or versions,

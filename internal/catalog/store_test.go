@@ -320,3 +320,32 @@ func TestInspectingWritesNothingAndARetryMustBeTheSameSubmission(t *testing.T) {
 		t.Fatalf("a retry with other bytes: %v", err)
 	}
 }
+
+// A revision records who saved it, when the saving window names them, and a
+// save that names nobody records no author. The author is not part of the
+// submission: the same click from another reader is the same revision.
+func TestARevisionRecordsItsAuthor(t *testing.T) {
+	s := newStore(t)
+	draft := pair("", "", "intent-1", "source", "window")
+	draft.Author = "alice"
+	first, err := s.Save(draft, accept, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if revision, _ := current(t, s, first.Item.ID); revision.Author != "alice" {
+		t.Fatalf("the author was not recorded: %+v", revision)
+	}
+	anonymous := pair(first.Item.ID, "1", "intent-2", "source-2", "window")
+	second, err := s.Save(anonymous, accept, clock)
+	if err != nil || second.Item.Revisions[0].Author != "alice" || second.Item.Revisions[1].Author != "" {
+		t.Fatalf("an unnamed save: %+v %v", second, err)
+	}
+	draft.Author = "bob"
+	if again, err := s.Save(draft, accept, clock); err != nil || !again.Replayed || again.Revision != 1 {
+		t.Fatalf("a repeated click under another name: %+v %v", again, err)
+	}
+	draft.Intent, draft.Author = "intent-3", "line\nbreak"
+	if _, err := s.Save(draft, accept, clock); err == nil {
+		t.Fatal("an author that is not printable text was recorded")
+	}
+}

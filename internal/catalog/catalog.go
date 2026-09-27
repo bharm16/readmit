@@ -137,12 +137,14 @@ func (i Item) RevisionLabel() string {
 }
 
 // Revision is one published revision: every member file it consists of, when
-// it was published, and the submission that published it.
+// it was published, the submission that published it and, when the saving
+// window named one, the person who saved it.
 type Revision struct {
 	Number      int      `json:"number"`
 	Members     []Member `json:"members"`
 	PublishedAt string   `json:"published_at"`
 	Intent      string   `json:"intent"`
+	Author      string   `json:"author,omitzero"`
 }
 
 // Member is one immutable file of a revision, named relative to the project
@@ -276,6 +278,9 @@ func validateItem(item Item) error {
 		}
 		if !stamp(revision.PublishedAt) || !token(revision.Intent) {
 			return errors.New("a catalog revision records when and by which submission it was published")
+		}
+		if revision.Author != "" && !ValidName(revision.Author) {
+			return errors.New("a catalog revision's author is bounded printable text")
 		}
 		if err := validateMembers(item, revision.Members); err != nil {
 			return err

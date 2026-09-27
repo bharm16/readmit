@@ -337,7 +337,7 @@ test("A Check empty observation action chooses one of the project's receiver sna
   const user = userEvent.setup();
   const { facade } = await renderApp(
     handlers({
-      ListReceiverSnapshots: (request) => ({ state: "completed", context: request.context, snapshots: [{ entry: "receiver-ledger.json" }] }),
+      ListReceiverSnapshots: (request) => ({ state: "completed", context: request.context, snapshots: [{ entry: "receiver-ledger.json", collected_at: null }] }),
       SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: QA.ref, replayed: false, problems: [] }),
     }),
   );
