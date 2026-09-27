@@ -24,7 +24,7 @@ be declared, and database return order does not establish business order.
 
 Connected tests/plans gain v2 for typed dataset definitions and pinned
 projections. V1's member set and operators remain frozen, as do legacy key-only
-source, completion and result contracts. The connected engine provides direct
-acquisition, evaluation and retained-result APIs for IG06. That orchestrator still
-owns horizon and execution completion; one successful source snapshot cannot
-settle the whole run. Desktop integration remains with its existing owners.
+source, completion and result contracts. The IG06 connected runtime consumes the acquisition, evaluation and retention
+APIs through the existing test workflow. It owns final-state horizon and execution
+completion; one successful source snapshot cannot settle the whole run. Broader
+protocol/step scheduling remains with the later orchestration work. Desktop integration remains with its existing owners.

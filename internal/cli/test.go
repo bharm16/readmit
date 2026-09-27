@@ -15,12 +15,19 @@ const testRerun = "Rerun: reset the declared initial state, then readmit test SP
 
 func testCommand() *cobra.Command {
 	var output string
+	var connectedConfig, instance string
 	var send bool
 	command := &cobra.Command{
 		Use: "test SPEC", Short: "Evaluate a declarative regression test against an explicit test target", Annotations: declareInterruptible(capabilityExecuteIfSend),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if send && output == "" || !send && output != "" {
 				return usage("test requires --send and --output together; omit both for local validation")
+			}
+			if instance != "" && connectedConfig == "" {
+				return usage("--instance requires --connected-config")
+			}
+			if connectedConfig != "" {
+				return runConnectedTest(cmd, args[0], connectedConfig, instance, output, send)
 			}
 			if !send {
 				plan, err := testrunner.Prepare(args[0])
@@ -69,6 +76,8 @@ func testCommand() *cobra.Command {
 			return nil
 		},
 	}
+	command.Flags().StringVar(&connectedConfig, "connected-config", "", "Explicit local execution configuration for a versioned connected plan")
+	command.Flags().StringVar(&instance, "instance", "", "New connected execution instance identifier")
 	command.Flags().BoolVar(&send, "send", false, "Explicitly connect and execute; default performs local-only validation")
 	command.Flags().StringVar(&output, "output", "", "New customer-local test result directory, including replay and observations")
 	return command
