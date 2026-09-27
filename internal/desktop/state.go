@@ -34,8 +34,7 @@ type ShellDocuments struct {
 
 // The ten file names. The store owns them: nothing the shell is wired up
 // with names a document, only the folder they all live in. An earlier
-// release's recent-folder list, recent.json, may still be there; nothing
-// reads or writes it.
+// release's recent-folder list may still be there beside them.
 const (
 	filtersName             = "filters.json"
 	sessionName             = "session.json"
@@ -48,6 +47,11 @@ const (
 	preferencesName         = "preferences.json"
 	openedName              = "opened.json"
 )
+
+// recentName is an earlier release's recent-folder list. It is read only
+// before there is a projects document, to list the projects it names, and
+// it is never written.
+const recentName = "recent.json"
 
 // DefaultShellDocuments is the store over this account's own configuration
 // folder, where the shell keeps its documents beside each other.

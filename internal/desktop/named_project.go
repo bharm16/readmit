@@ -47,26 +47,72 @@ type knownProject struct {
 }
 
 func (a *App) readProjects() (projectsDocument, error) {
+	document, _, err := a.projectsOrRecent()
+	return document, err
+}
+
+// projectsOrRecent reads the remembered projects. Before this viewer has a
+// projects document they are the projects an earlier release's recent-folder
+// list names, and imported says so.
+func (a *App) projectsOrRecent() (document projectsDocument, imported bool, err error) {
 	data, err := a.documents.read(projectsName, maxProjectsBytes)
 	if errors.Is(err, fs.ErrNotExist) {
-		return projectsDocument{Schema: projectsSchema, Projects: []knownProject{}}, nil
+		projects, found := a.recentProjects()
+		return projectsDocument{Schema: projectsSchema, Projects: projects}, found, nil
 	}
 	if err != nil {
-		return projectsDocument{}, err
+		return projectsDocument{}, false, err
 	}
-	var document projectsDocument
 	if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil || document.Schema != projectsSchema {
-		return projectsDocument{}, errNotADocument
+		return projectsDocument{}, false, errNotADocument
 	}
 	if document.Location != "" && !filepath.IsAbs(document.Location) || len(document.Projects) > MaxKnownProjects {
-		return projectsDocument{}, errNotADocument
+		return projectsDocument{}, false, errNotADocument
 	}
 	for _, known := range document.Projects {
 		if !catalog.ValidID(known.ID) || !filepath.IsAbs(known.Folder) || !printable(known.Folder, maxRootBytes) || !catalog.ValidName(known.Name) {
-			return projectsDocument{}, errNotADocument
+			return projectsDocument{}, false, errNotADocument
 		}
 	}
-	return document, nil
+	return document, false, nil
+}
+
+// recentSchema is the contract of an earlier release's recent-folder list:
+// at most ten absolute folder paths, most recent first.
+const recentSchema = "readmit-desktop-recent/v1"
+
+const maxRecentBytes = 1 << 16
+
+// recentProjects is the projects an earlier release's recent-folder list
+// names whose catalog has recorded their identity, never opened by this
+// release, so they list after every project that has been. The list is read
+// and left as it is; a folder that holds no recorded project is skipped, and
+// nothing is written into any folder. A list this release cannot read names
+// none.
+func (a *App) recentProjects() (projects []knownProject, found bool) {
+	projects = []knownProject{}
+	data, err := a.documents.read(recentName, maxRecentBytes)
+	if err != nil {
+		return projects, false
+	}
+	var list struct {
+		Schema string   `json:"schema"`
+		Roots  []string `json:"roots"`
+	}
+	if json.Unmarshal(data, &list, json.RejectUnknownMembers(true)) != nil || list.Schema != recentSchema || len(list.Roots) > 10 {
+		return projects, true
+	}
+	for _, root := range list.Roots {
+		if !filepath.IsAbs(root) {
+			continue
+		}
+		if known, ok := recordedProjectAt(root); ok && !slices.ContainsFunc(projects, func(other knownProject) bool {
+			return other.ID == known.ID || other.Folder == known.Folder
+		}) {
+			projects = append(projects, known)
+		}
+	}
+	return projects, true
 }
 
 func (a *App) writeProjects(document projectsDocument) error {
@@ -131,24 +177,42 @@ func (a *App) remember(entry knownProject, opened bool) {
 // project, or one whose identity is not recorded yet, is remembered nowhere:
 // opening it writes nothing into it.
 func (a *App) rememberProjectAt(folder string) {
+	if known, ok := recordedProjectAt(folder); ok {
+		a.rememberOpened(known.ID, known.Folder, known.Name)
+	}
+}
+
+// recordedProjectAt reads, and only reads, the project a folder holds when
+// its catalog has recorded the project's identity.
+func recordedProjectAt(folder string) (knownProject, bool) {
 	opened, err := project.Open(folder)
 	if err != nil {
-		return
+		return knownProject{}, false
 	}
 	store, err := catalog.Open(opened.Root)
 	if err != nil {
-		return
+		return knownProject{}, false
 	}
-	if document, present, err := store.Read(); err == nil && present {
-		a.rememberOpened(document.Project.ID, opened.Root, opened.Document.Settings.Title)
+	document, present, err := store.Read()
+	if err != nil || !present {
+		return knownProject{}, false
 	}
+	known := knownProject{ID: document.Project.ID, Folder: opened.Root, Name: opened.Document.Settings.Title}
+	return known, catalog.ValidID(known.ID) && printable(known.Folder, maxRootBytes) && catalog.ValidName(known.Name)
 }
 
 // knownProjects reads every remembered project where it was last opened:
 // its project document and the identity its catalog records, and nothing
 // else, so the list of projects stays cheap however large each one is.
 func (a *App) knownProjects(ctx context.Context) []CatalogItem {
-	document, err := a.readProjects()
+	// The first list that reads an earlier release's recent folders keeps
+	// what it found, even nothing, so they are read once.
+	a.projectsMu.Lock()
+	document, imported, err := a.projectsOrRecent()
+	if err == nil && imported {
+		a.writeProjects(document)
+	}
+	a.projectsMu.Unlock()
 	if err != nil {
 		return []CatalogItem{}
 	}
@@ -243,10 +307,11 @@ func isMissing(path string) bool {
 }
 
 // NewProjectRequest names a new project. The name is all a person gives:
-// its folder is generated in the remembered projects folder, which
-// ChooseProjectLocation chose beforehand.
+// its folder is generated in the projects folder — Location, the one
+// ChooseProjectLocation answered, or when that is empty the remembered one.
 type NewProjectRequest struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	Location string `json:"location,omitzero"`
 }
 
 // ProjectOpenResult carries one project as the catalog lists it, and the
@@ -266,8 +331,9 @@ func (r *ProjectOpenResult) refuse(state State, reason string) { r.State, r.Reas
 // invented, in a new folder the application names in the remembered projects
 // folder, and the project's catalog with its new identity. Two projects may
 // share a name; they never share a folder or an identity. No dialog opens:
-// a projects folder that is not remembered, no longer there, or not
-// writable is refused with that reason, and it is never created.
+// a projects folder that is not chosen or remembered, no longer there, or
+// not writable is refused with that reason, and it is never created. A
+// chosen folder is remembered once a project is created in it.
 func (a *App) CreateNamedProject(request NewProjectRequest) ProjectOpenResult {
 	return run(a, true, true, func(ctx context.Context) ProjectOpenResult {
 		name := strings.TrimSpace(request.Name)
@@ -275,6 +341,9 @@ func (a *App) CreateNamedProject(request NewProjectRequest) ProjectOpenResult {
 			return ProjectOpenResult{State: Failed, Reason: nameRule}
 		}
 		parent, declined := a.usableLocation()
+		if request.Location != "" {
+			parent, declined = usableFolder(request.Location)
+		}
 		if parent == "" {
 			return ProjectOpenResult{State: declined.state, Reason: declined.reason}
 		}
@@ -287,6 +356,9 @@ func (a *App) CreateNamedProject(request NewProjectRequest) ProjectOpenResult {
 			return probeWriteFailure(parent,
 				"this account cannot create a folder in the projects folder",
 				"the project could not be created in the projects folder").namedProject()
+		}
+		if request.Location != "" {
+			a.rememberLocation(parent)
 		}
 		return a.openNamed(ctx, created.Root, true)
 	})
@@ -359,15 +431,24 @@ func (a *App) usableLocation() (string, refusal) {
 	if document.Location == "" {
 		return "", refusal{Failed, "no folder is chosen to keep projects in; choose one first"}
 	}
-	if info, err := os.Lstat(document.Location); err != nil || !info.IsDir() {
+	return usableFolder(document.Location)
+}
+
+// usableFolder is folder when it is an existing folder, not a link, that
+// this account can write in; anything else is refused with its reason.
+func usableFolder(folder string) (string, refusal) {
+	if !filepath.IsAbs(folder) || !printable(folder, maxRootBytes) {
+		return "", refusal{Failed, "no folder is chosen to keep projects in; choose one first"}
+	}
+	if info, err := os.Lstat(folder); err != nil || !info.IsDir() {
 		return "", refusal{Failed, "the folder projects are kept in is no longer there; choose one again"}
 	}
-	probe, err := os.MkdirTemp(document.Location, ".readmit-access-")
+	probe, err := os.MkdirTemp(folder, ".readmit-access-")
 	if err != nil {
 		return "", refusal{PermissionDenied, "this account cannot create a folder in the folder projects are kept in; choose another"}
 	}
 	os.Remove(probe)
-	return document.Location, refusal{}
+	return folder, refusal{}
 }
 
 func (a *App) rememberLocation(folder string) error {
@@ -391,15 +472,14 @@ type ProjectLocationResult struct {
 func (r *ProjectLocationResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // ChooseProjectLocation asks the host for the folder new projects are
-// created in and remembers it. Nothing is created or moved.
+// created in and answers it. Nothing is created, moved or remembered: the
+// folder is remembered once CreateNamedProject creates a project in it, so
+// choosing one and cancelling leaves the remembered folder as it was.
 func (a *App) ChooseProjectLocation() ProjectLocationResult {
 	return run(a, true, false, func(ctx context.Context) ProjectLocationResult {
 		folder, declined := a.chooseFolder(ctx, "Choose where projects are kept")
 		if folder == "" {
 			return ProjectLocationResult{State: declined.state, Reason: declined.reason}
-		}
-		if err := a.rememberLocation(folder); err != nil {
-			return ProjectLocationResult{State: Failed, Reason: "the projects folder could not be remembered"}
 		}
 		return ProjectLocationResult{State: Completed, Location: folder}
 	})

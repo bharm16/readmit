@@ -1036,12 +1036,15 @@ sees none of it, and a document this release cannot read is left as it is.
 
 `CreateNamedProject` creates a project from a name alone: a
 `readmit-project/v2` document with no interface revision declared, in a new
-folder the application names inside the remembered projects folder
-(`ChooseProjectLocation`, `ProjectLocation`). Create opens no dialog: the
+folder the application names inside the projects folder: the one
+`ChooseProjectLocation` just answered, passed as the request's `location`,
+or else the remembered one (`ProjectLocation`). Create opens no dialog: the
 folder is chosen beforehand, `ProjectLocation` offers it only while it is
 still there, a folder and writable (the remembered value is kept otherwise),
 and a create without such a folder is refused with its reason. The folder is
-never created. A name is 1 to 200 characters of printable text in any script
+never created. Choosing a folder remembers nothing; a chosen folder is
+remembered once a project is created in it, so choosing one and cancelling
+leaves the remembered folder as it was. A name is 1 to 200 characters of printable text in any script
 (at most 800 bytes). Two projects may share a
 name; they never share a folder or an identity. `OpenNamedProject` opens a
 project in any folder under the identity its catalog recorded, so a moved
@@ -1274,7 +1277,9 @@ the desktop shell performs beside its dialogs, so the facade itself starts no
 program — and never answers the path to the window; an object that is not where it was recorded
 is refused with that reason. `LocateItem` with no place named asks the
 host's folder dialog for it ("Locate project", "Locate case"), and records
-only a folder that is that object; a dismissed dialog changes nothing.
+only a folder that is that object; a dismissed dialog changes nothing, and a
+folder that is not the object is refused with the reason, for the row to
+show, leaving the remembered projects and the catalog as they were.
 `ProjectFiles` lists by name the entries of a project that are none of its
 objects — the loose files an older release or a person left there — for the
 project's Files list.
@@ -2761,17 +2766,23 @@ searches command names only, never message content. Nothing matching reads
 
 The window opens on Projects: the projects this viewer opened, newest first,
 each named by the title its project records and opened by its row; a project
-that moved stays listed with its reason and *Locate*. A row's menu holds
+that moved stays listed with its reason and *Locate*, and a folder *Locate*
+is answered with that is not the project says why on the row and changes
+nothing. A row's menu holds
 *Project settings*, *Show in Finder* (*Show in folder* elsewhere) and *Remove
-from recents*, which forgets the entry and touches no file. *New project* asks
-for a name only; it goes into the remembered parent folder, which *Change*
-chooses in the host's own dialog while the sheet stays open, and the new
-project opens on its empty Cases. *Open* opens a folder that already holds a
+from recents*, which forgets the entry and touches no file; a refusal of
+either says why on the row. *New project* asks for a name only; it goes into
+the remembered parent folder, which *Change* chooses in the host's own dialog
+while the sheet stays open and which is remembered only once a project is
+created there, and the new project opens on its empty Cases. *Open* opens a folder that already holds a
 project or evidence, and the quiet *Try demo* opens the synthetic demo, whose
 guided steps are in Tools › Sample data. Unsaved editor work is one compact
 *Drafts to restore* item: *Review* lists each draft's object, when it was last
 edited and its project, opens its project to continue it, or discards it;
-nothing is resent or reapplied by restoring. Licensing and connections are
+nothing is resent or reapplied by restoring. Unsaved edits in *Edit details*,
+*Project settings* and a note are kept as drafts of their object and reopen
+in that sheet marked *Unsaved*; a draft no editor of this release takes back
+is listed for *Discard* only. Licensing and connections are
 Settings, never the first screen.
 
 Cases is the open project's cases as one table: Case, Status, Owner and
@@ -2779,14 +2790,21 @@ Updated, newest first, with *Synthetic* or *Variant* marked only on the cases
 they describe. Status is the investigation's — Open, Investigating, Resolved
 or Closed — never a test result. *Search cases* and *Filter cases* (status,
 owner, tags) narrow the list without saving anything, and each applied term
-is a chip that removes it. A row opens its case on Messages, and Back returns
-to the list with that case selected. A row's menu holds *Edit details*,
-*Notes*, *Attachments*, *Create variant*, *Compare*, *Details* and *Remove
-from project*, whose one consequence line says the files stay on this
-computer. The project switcher's *Project settings* edits the name, owner,
+is a chip that removes it; search matches a case's name, owner, tags,
+incidents and interface revision. A row opens its case on Messages, and Back
+returns to the list with that case selected, its filters, sort and scroll
+position as they were. Opening another project shows none of the previous
+project's cases while its own are read. A row's menu holds *Edit details*,
+*Notes*, *Attachments*, *Create variant*, *Compare*, *Details* — the case's
+status, owner, update date, tags, interface revision and incidents, whichever
+columns a narrow window drops — and *Remove from project*, whose one
+consequence line says the files stay on this computer. A note's *About* is
+the project or one of its cases, changed with *Change*. A refused attachment
+says why above the case's attachments, which stay as they were. The project switcher's *Project settings* edits the name, owner,
 tags and named interface revisions in one sheet and opens the project's
 notes; removing a revision cases still use names those cases and asks where
-they move. The switcher's *Files* lists the project's other files, read-only.
+they move. The switcher's *Files* lists the project's other files, read-only, and *Open
+file* opens one in the file reader.
 Observations are in Environments.
 
 `Search` navigates one open workspace. It is not the grid: it finds the things a
@@ -2918,7 +2936,12 @@ identity; a folder that holds no project is remembered nowhere. **Remove from
 recents** is `ForgetProject`: it forgets that one entry, and the project, its
 folder and everything in it stay where they are. An earlier release's
 recent-folder list, `recent.json` (`readmit-desktop-recent/v1`), may still be
-in the configuration directory; this release neither reads nor writes it.
+in the configuration directory. Until this viewer has a projects list, the
+projects it names whose catalog records their identity are listed, never
+opened here, so after every project that has been; the first list that finds
+any keeps them, so they are imported once. The earlier list is never written,
+a folder that holds no recorded project is skipped, and nothing is written
+into any project folder.
 
 ## Privacy
 

@@ -120,6 +120,7 @@ import {
   type SearchResult,
   type Shell,
   type State,
+  type AttachmentsResult,
   type WorkspaceResult,
   messageFields,
   type RequestContext,
@@ -166,7 +167,7 @@ import { IconButton } from "./IconButton";
 import { DraftsToRestore, NewProjectSheet, ProjectList } from "./Projects";
 import { CaseDetailsSheet, NoteSheet, ProjectSettingsSheet, RemoveCaseSheet, type ProjectSaveFailure } from "./CaseSheets";
 import { AttachmentsList, FilesList, NotesList } from "./CaseContext";
-import { CaseFilterSheet, CaseList, CaseSearchSheet, caseChoices, NO_VIEW, type CaseAction, type CaseView as CaseListView } from "./Cases";
+import { CaseFacts, CaseFilterSheet, CaseList, CaseSearchSheet, caseChoices, NO_VIEW, type CaseAction, type CaseView as CaseListView } from "./Cases";
 import {
   BackLink,
   Categories,
@@ -451,6 +452,21 @@ export default function App() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [noteEditing, setNoteEditing] = useState<{ note: NoteItem | null } | null>(null);
+  // Why a row's last Locate or Remove from recents was refused, by identity,
+  // and why an attachment was not added or removed.
+  const [projectNotices, setProjectNotices] = useState<Record<string, string>>({});
+  const [caseNotices, setCaseNotices] = useState<Record<string, string>>({});
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  // The project's cases are being read after it was opened.
+  const [casesLoading, setCasesLoading] = useState(false);
+  // The case whose recorded details are shown.
+  const [caseFacts, setCaseFacts] = useState<CatalogItem | null>(null);
+  // A retained draft being resumed: once its project is open, the sheet it
+  // belongs to opens with it.
+  const [resuming, setResuming] = useState<EditorDraft | null>(null);
+  const [restored, setRestored] = useState<EditorDraft | null>(null);
+  // Why a draft chosen to resume found nothing to reopen.
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const regionElements = useRef<Partial<Record<RegionId, HTMLElement | null>>>({});
   const searchField = useRef<HTMLInputElement | null>(null);
@@ -484,9 +500,12 @@ export default function App() {
     setGuideResult(folder ? await readGuide(folder) : null);
   }, []);
 
+  // Projects is read again each time it is shown, so a project moved or
+  // removed meanwhile is listed as it is now.
+  const onProjects = place === "home";
   useEffect(() => {
-    void refreshRecent();
-  }, [refreshRecent]);
+    if (onProjects) void refreshRecent();
+  }, [onProjects, refreshRecent]);
 
   // The saved filters and the selected one live in the facade, not here, so the
   // view a person set up survives navigating to another case and reopening the
@@ -910,7 +929,7 @@ export default function App() {
   // view; a refusal keeps the sheet and what was typed.
   const createProjectNamed = useCallback(
     async (name: string) => {
-      const answer = await createNamedProject({ name });
+      const answer = await createNamedProject({ name, ...(newProjectParent ? { location: newProjectParent } : {}) });
       const folder = answer.project?.summary.project?.folder;
       if (!folder) {
         // A refusal the license decides offers the way to activate one.
@@ -921,7 +940,7 @@ export default function App() {
       await openFolder(() => openWorkspace(folder));
       return undefined;
     },
-    [openFolder],
+    [newProjectParent, openFolder],
   );
 
   // Continuing a retained draft opens its project and then the editor it
@@ -930,6 +949,11 @@ export default function App() {
   const resumeDraft = useCallback(
     async (draft: EditorDraft) => {
       if (draft.workspace !== root && !(await openFolder(() => openWorkspace(draft.workspace)))) return;
+      if (SHEET_DRAFTS.has(draft.kind)) {
+        setResumeNotice(null);
+        setResuming(draft);
+        return;
+      }
       const place = DRAFT_PLACES[draft.kind];
       if (!place) return;
       if (place.case && draft.case) {
@@ -1082,6 +1106,7 @@ export default function App() {
     if (!projectScope.current.current(listed)) return;
     setCases(listed.page?.items ?? []);
     listedCases.current = listed.page?.items ?? [];
+    setCasesLoading(false);
   }, [projectContext, root]);
 
   // A case task from a row's menu. Those that belong to the open case's own
@@ -1093,8 +1118,8 @@ export default function App() {
         void verifyCase(root, entry).then(() => setCaseFlow(action === "variant" ? "reproduce" : "compare"));
         return;
       }
-      if (action === "details" && root && entry) {
-        void verifyCase(root, entry).then(() => setFileDetails(true));
+      if (action === "details") {
+        setCaseFacts(item);
         return;
       }
       if (action === "delete") {
@@ -1134,9 +1159,18 @@ export default function App() {
 
   const refreshAttachments = useCallback(async () => {
     if (!contextCase) return;
+    setAttachmentNotice(null);
     const answer = await listAttachments({ context: projectContext(), ref: contextCase.ref });
     if (projectScope.current.current(answer)) setAttachments(answer.attachments);
   }, [contextCase, projectContext]);
+
+  // An add or remove answers the case's attachments as they are now, with
+  // the reason when it was refused.
+  const attached = useCallback((answer: AttachmentsResult) => {
+    if (answer.state === "cancelled") return;
+    setAttachments(answer.attachments);
+    setAttachmentNotice(answer.state === "completed" || answer.state === "empty" ? null : (answer.reason ?? null));
+  }, []);
 
   useEffect(() => {
     if (place === "notes" || place === "case-notes") void refreshNotes();
@@ -1148,12 +1182,54 @@ export default function App() {
     }
   }, [currentProject, place, projectContext, refreshAttachments, refreshNotes, root]);
 
+  // Another project opened: nothing of the one before is shown while its own
+  // cases are read.
   useEffect(() => {
     setCaseListView(NO_VIEW);
     setCaseListSort(null);
     setCaseTask(null);
+    setCases([]);
+    listedCases.current = [];
+    setSelectedCase(null);
+    setNotes([]);
+    setAttachments([]);
+    setFiles([]);
+    setCaseNotices({});
+    setAttachmentNotice(null);
+    setResumeNotice(null);
+    setCasesLoading(true);
     void refreshCases();
   }, [refreshCases]);
+
+  // A retained sheet draft reopens its sheet once its project is open and its
+  // object is listed. One whose object is gone stays among the drafts.
+  useEffect(() => {
+    if (!resuming || root !== resuming.workspace || casesLoading) return;
+    const ref = resuming.item?.ref;
+    setResuming(null);
+    if (!currentProject || currentProject.ref.id !== resuming.item?.project_id) {
+      setResumeNotice("This folder no longer holds the project this draft was written in.");
+      return;
+    }
+    if (resuming.kind === "project") {
+      setRestored(resuming);
+      setEditingProject(true);
+      return;
+    }
+    const subject = ref?.kind === "case" ? cases.find((item) => item.ref.id === ref.id) : undefined;
+    if (resuming.kind === "case") {
+      if (!subject) {
+        setResumeNotice("The case this draft edits is no longer in the project.");
+        return;
+      }
+      setRestored(resuming);
+      setCaseTask({ item: subject, action: "edit" });
+      return;
+    }
+    routeTo({ type: "go", to: subject ? { destination: "case-notes", objectId: subject.ref.id } : { destination: "notes" } });
+    setRestored(resuming);
+    setNoteEditing({ note: null });
+  }, [cases, casesLoading, currentProject, resuming, root, routeTo]);
 
   const refreshListing = useCallback(async () => {
     if (!root) return;
@@ -2021,6 +2097,7 @@ export default function App() {
           <DraftsToRestore
             drafts={drafts ?? []}
             projectName={(draft) => projects.find((item) => item.summary.project?.folder === draft.workspace)?.name ?? folderName(draft.workspace)}
+            resumable={resumable}
             onResume={(draft) => void resumeDraft(draft)}
             onDiscard={(draft) => dropDraft(draft.id)}
           />
@@ -2034,14 +2111,25 @@ export default function App() {
           ) : null}
           <ProjectList
             projects={projects}
+            notices={projectNotices}
             busy={busy}
             onOpen={(item) => void openListedProject(item)}
-            onLocate={(item) => void locateItem({ context: { project: "", generation: 0 }, ref: item.ref }).then(refreshRecent)}
+            onLocate={(item) =>
+              void locateItem({ context: { project: "", generation: 0 }, ref: item.ref }).then((answer) => {
+                setProjectNotices((held) => withNotice(held, item.ref.id, answer));
+                return refreshRecent();
+              })
+            }
             onSettings={(item) => void openListedProject(item).then(() => setEditingProject(true))}
             onReveal={(item) => void revealItem({ context: { project: "", generation: 0 }, ref: item.ref })}
-            onForget={(item) => void forgetProject(item.ref.id).then(refreshRecent)}
+            onForget={(item) =>
+              void forgetProject(item.ref.id).then((answer) => {
+                setProjectNotices((held) => withNotice(held, item.ref.id, answer));
+                return refreshRecent();
+              })
+            }
             onDelete={(item) => setDeleting({ item, context: { project: item.summary.project?.folder ?? "", project_id: item.ref.id, generation: 0 } })}
-            onNew={() => setCreatingProject(true)}
+            onNew={() => perform("new-project")}
           />
           <div className="quiet-action">
             <button type="button" className="quiet" disabled={busy} onClick={() => perform("create-sample-workspace")}>
@@ -2141,6 +2229,11 @@ export default function App() {
 
           {root && subpage === null && verified === null ? (
             <>
+              {resumeNotice ? (
+                <div className="notice danger" role="alert">
+                  {resumeNotice}
+                </div>
+              ) : null}
               {caseNotice ? (
                 <div className="notice danger">
                   <Report indicators={indicators} progress={null} result={caseNotice} />
@@ -2152,6 +2245,9 @@ export default function App() {
               </div>
               <CaseList
                 cases={cases}
+                revisions={currentProject?.summary.project?.revisions ?? []}
+                notices={caseNotices}
+                loading={casesLoading}
                 view={caseListView}
                 onView={setCaseListView}
                 selected={selectedCase}
@@ -2162,7 +2258,12 @@ export default function App() {
                 }}
                 onAction={caseAction}
                 onRetry={() => void refreshCases()}
-                onLocate={(item) => void locateItem({ context: projectContext(), ref: item.ref }).then(refreshCases)}
+                onLocate={(item) =>
+                  void locateItem({ context: projectContext(), ref: item.ref }).then((answer) => {
+                    setCaseNotices((held) => withNotice(held, item.ref.id, answer));
+                    return refreshCases();
+                  })
+                }
                 onImport={() => setImporting(true)}
                 sort={caseListSort}
                 onSort={setCaseListSort}
@@ -2765,7 +2866,7 @@ export default function App() {
                 type="button"
                 className="primary"
                 disabled={busy}
-                onClick={() => void addAttachments({ context: projectContext(), ref: contextCase.ref }).then((answer) => answer.state !== "cancelled" && setAttachments(answer.attachments))}
+                onClick={() => void addAttachments({ context: projectContext(), ref: contextCase.ref }).then(attached)}
               >
                 Add attachment
               </button>
@@ -2773,12 +2874,19 @@ export default function App() {
           }
         >
           {root && contextCase ? (
-            <AttachmentsList
-              attachments={attachments}
-              busy={busy}
-              onAdd={() => void addAttachments({ context: projectContext(), ref: contextCase.ref }).then((answer) => answer.state !== "cancelled" && setAttachments(answer.attachments))}
-              onRemove={(file) => void removeAttachment({ context: projectContext(), case: contextCase.ref, id: file.id }).then((answer) => setAttachments(answer.attachments))}
-            />
+            <>
+              {attachmentNotice ? (
+                <div className="notice danger" role="alert">
+                  {attachmentNotice}
+                </div>
+              ) : null}
+              <AttachmentsList
+                attachments={attachments}
+                busy={busy}
+                onAdd={() => void addAttachments({ context: projectContext(), ref: contextCase.ref }).then(attached)}
+                onRemove={(file) => void removeAttachment({ context: projectContext(), case: contextCase.ref, id: file.id }).then(attached)}
+              />
+            </>
           ) : (
             noProject("attachments")
           )}
@@ -2788,9 +2896,9 @@ export default function App() {
           {root ? (
             <FilesList
               files={files}
-              onOpen={() => {
+              onOpen={(file) => {
                 open({ destination: "inspect-file" });
-                setRawRequest((count) => count + 1);
+                fileReader.openPath(childPath(root, file.name));
               }}
             />
           ) : (
@@ -3219,6 +3327,7 @@ export default function App() {
           ) : null}
         </Modal>
 
+        <CaseFacts item={caseFacts} revisions={currentProject?.summary.project?.revisions ?? []} onClose={() => setCaseFacts(null)} />
         <CaseSearchSheet
           open={searchingCases}
           query={caseListView.query}
@@ -3243,6 +3352,7 @@ export default function App() {
               revisions: currentProject.summary.project?.revisions ?? [],
             }}
             folder={currentProject.summary.project?.folder ?? ""}
+            retain={{ workspace: root ?? "", item: { project_id: currentProject.ref.id, ref: currentProject.ref }, restored: restored?.kind === "project" ? restored : null }}
             onReveal={() => void revealItem({ context: projectContext(), ref: currentProject.ref })}
             onNotes={() => {
               setEditingProject(false);
@@ -3267,7 +3377,10 @@ export default function App() {
               });
               if (answer.outcome === "saved") {
                 setEditingProject(false);
+                setRestored(null);
                 await refreshRecent();
+                // The switcher and every heading name the project as it now reads.
+                if (root) setInvestigation(await openProjectOverview(root));
                 return;
               }
               const referring = answer.problems
@@ -3275,7 +3388,10 @@ export default function App() {
                 .map((problem) => ({ revision: problem.field.replace(/^revisions\./, ""), cases: problem.referring!.map((entry) => entry.name) }));
               return { ...saveFailure(answer, { name: "project-name", owner: "project-owner" }), ...(referring.length > 0 ? { referring } : {}) };
             }}
-            onClose={() => setEditingProject(false)}
+            onClose={() => {
+              setEditingProject(false);
+              setRestored(null);
+            }}
           />
         ) : null}
 
@@ -3292,6 +3408,11 @@ export default function App() {
               sources: caseTask.item.summary.case?.sources ?? [],
             }}
             revisions={currentProject?.summary.project?.revisions ?? []}
+            retain={{
+              workspace: root ?? "",
+              item: currentProject ? { project_id: currentProject.ref.id, ref: caseTask.item.ref } : undefined,
+              restored: restored?.kind === "case" ? restored : null,
+            }}
             onSave={async (details) => {
               const answer = await saveItem({
                 context: projectContext(),
@@ -3313,12 +3434,16 @@ export default function App() {
               });
               if (answer.outcome === "saved") {
                 setCaseTask(null);
+                setRestored(null);
                 await refreshCases();
                 return;
               }
               return saveFailure(answer, { name: "case-name", owner: "case-owner", status: "case-status", "case.sources": "case-sources" });
             }}
-            onClose={() => setCaseTask(null)}
+            onClose={() => {
+              setCaseTask(null);
+              setRestored(null);
+            }}
           />
         ) : null}
 
@@ -3350,10 +3475,29 @@ export default function App() {
         {noteEditing ? (
           <NoteSheet
             open
-            note={noteEditing.note ? { id: noteEditing.note.id, name: noteEditing.note.name, content: noteEditing.note.content } : { name: "", content: "" }}
-            related={place === "case-notes" && contextCase ? contextCase.name : currentProject?.name ?? "This project"}
+            note={
+              noteEditing.note
+                ? { id: noteEditing.note.id, name: noteEditing.note.name, content: noteEditing.note.content, about: noteEditing.note.case?.id ?? "" }
+                : { name: "", content: "", about: place === "case-notes" && contextCase ? contextCase.ref.id : "" }
+            }
+            subjects={[
+              { id: "", name: currentProject?.name ?? "This project" },
+              // The case a note is about stays its subject even when it cannot be read now.
+              ...cases
+                .filter((item) => item.availability === "available" || item.ref.id === noteEditing.note?.case?.id || item.ref.id === restored?.item?.ref.id)
+                .map((item) => ({ id: item.ref.id, name: item.name })),
+            ]}
+            retain={{
+              workspace: root ?? "",
+              item: (about) => {
+                if (!currentProject) return undefined;
+                const subject = cases.find((item) => item.ref.id === about)?.ref;
+                return { project_id: currentProject.ref.id, ref: subject ?? currentProject.ref };
+              },
+              restored: restored?.kind === "note" ? restored : null,
+            }}
             onSave={async (note) => {
-              const caseRef = place === "case-notes" ? contextCase?.ref : noteEditing.note?.case;
+              const caseRef = note.about !== "" ? (cases.find((item) => item.ref.id === note.about)?.ref ?? noteEditing.note?.case) : undefined;
               const answer = await saveNoteItem({
                 context: projectContext(),
                 intent_id: newIntentId(),
@@ -3361,9 +3505,13 @@ export default function App() {
               });
               if (answer.state !== "completed") return { reason: answer.reason ?? "The note was not saved.", field: "note-name" };
               setNoteEditing(null);
+              setRestored(null);
               await refreshNotes();
             }}
-            onClose={() => setNoteEditing(null)}
+            onClose={() => {
+              setNoteEditing(null);
+              setRestored(null);
+            }}
           />
         ) : null}
 
@@ -3432,17 +3580,41 @@ function caseEntry(item: CatalogItem): string | undefined {
 
 /** Where each kind of retained draft is continued. */
 const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: true; observe?: true }> = {
-  "canonical-test": { route: { destination: "tests", view: "tests" } },
-  suite: { route: { destination: "tests", view: "suites" } },
+  "suite-editor": { route: { destination: "tests", view: "suites" } },
+  scenario: { route: { destination: "library", view: "scenarios" } },
+  "generator-plan": { route: { destination: "library", view: "scenarios" } },
   "assertion-set-draft": { route: { destination: "library", view: "checks" } },
   "local-profile": { route: { destination: "library", view: "profiles" } },
-  note: { route: { destination: "notes" } },
   "redact-policy": { route: { destination: "share-report" } },
   "redact-inventory": { route: { destination: "share-report" } },
-  target: { route: { destination: "environments" } },
-  "test-draft": { route: { destination: "tests", view: "tests" } },
   "reproducer-plan": { case: "reproduce" },
   import: { import: true },
   "observation-source": { observe: true },
   "observation-window": { observe: true },
 };
+
+/** The sheets a retained draft of their object reopens with it. */
+const SHEET_DRAFTS = new Set(["case", "project", "note"]);
+
+/** Whether an editor of this window takes a retained draft back. A draft of
+ * an earlier release's editor, or a note that names nothing it is about, is
+ * offered only for Discard. */
+function resumable(draft: EditorDraft): boolean {
+  if (SHEET_DRAFTS.has(draft.kind)) return draft.item !== undefined;
+  return draft.kind in DRAFT_PLACES;
+}
+
+/** A row's notices once an answer about it came back: its reason when it was
+ * refused, and nothing once it was done or cancelled. */
+function withNotice(held: Record<string, string>, id: string, answer: { state: State; reason?: string }): Record<string, string> {
+  const next = { ...held };
+  if (answer.state === "cancelled" || answer.state === "completed" || answer.state === "empty") delete next[id];
+  else if (answer.reason) next[id] = answer.reason;
+  return next;
+}
+
+/** One entry of a folder, joined as the folder's own paths are written. */
+function childPath(folder: string, name: string): string {
+  const separator = folder.includes("\\") && !folder.includes("/") ? "\\" : "/";
+  return folder.replace(/[\\/]+$/, "") + separator + name;
+}

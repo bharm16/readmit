@@ -57,7 +57,7 @@ async function receivedPackage(): Promise<string> {
 
 /** Opens the workspace the packages arrived in, through the host's dialog. */
 async function openInterfaces(user: UserEvent): Promise<ReturnType<typeof within>> {
-  await journey.chooseFolder(journey.path("interfaces"), "Open workspace");
+  await journey.chooseFolder(journey.path("interfaces"), "Open project");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   return within(await screen.findByRole("region", { name: "Profiles" }));
 }

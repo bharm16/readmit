@@ -209,6 +209,11 @@ type SaveItemResult struct {
 
 func (r *SaveItemResult) refuse(state State, reason string) {
 	r.State, r.Reason, r.Outcome = state, reason, FailedOutcome
+	// A refusal before any validation, busy included, still answers the
+	// list of problems it declares, empty.
+	if r.Problems == nil {
+		r.Problems = []FieldProblem{}
+	}
 }
 
 // SaveItem publishes one whole draft as one revision, or nothing. The draft

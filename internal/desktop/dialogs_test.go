@@ -84,7 +84,7 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		return func(a *desktop.App) any { return a.ChooseSyntheticPacketPath(kind) }
 	}
 	dialogs := []dialog{
-		{name: "SelectWorkspace", call: func(a *desktop.App) any { return a.SelectWorkspace() }, opens: "folder", folder: workspace, title: "Open workspace"},
+		{name: "SelectWorkspace", call: func(a *desktop.App) any { return a.SelectWorkspace() }, opens: "folder", folder: workspace, title: "Open project"},
 		{name: "CreateSampleWorkspace", call: func(a *desktop.App) any { return a.CreateSampleWorkspace() }, opens: "folder", folder: fresh(), title: "Choose sample location"},
 		{name: "ChooseProjectLocation", call: func(a *desktop.App) any { return a.ChooseProjectLocation() }, opens: "folder", folder: fresh(), title: "Choose where projects are kept"},
 		{name: "ChooseBackupLocation", call: func(a *desktop.App) any { return a.ChooseBackupLocation() }, opens: "folder", folder: fresh(), title: "Choose where backups are kept"},

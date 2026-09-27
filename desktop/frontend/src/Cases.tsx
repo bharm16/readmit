@@ -4,9 +4,9 @@
 // case's rarer tasks are in its menu. Status describes the investigation,
 // never a test result.
 import { useEffect, useState } from "react";
-import type { CaseStatus, CatalogItem } from "./bindings";
+import type { CaseStatus, CatalogItem, InterfaceRevision } from "./bindings";
 import { DataTable, type Column, type SortState } from "./DataTable";
-import { EmptyState, FormDialog, Menu, usePaletteActions, type MenuItem } from "./layout";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows, usePaletteActions, type MenuItem } from "./layout";
 import { listDate } from "./Projects";
 
 export const CASE_STATUSES: { value: CaseStatus; label: string }[] = [
@@ -29,12 +29,15 @@ function fields(item: CatalogItem): Partial<NonNullable<CatalogItem["summary"]["
 export type CaseView = { query: string; statuses: CaseStatus[]; owner: string; tags: string[] };
 export const NO_VIEW: CaseView = { query: "", statuses: [], owner: "", tags: [] };
 
-export function applyView(items: CatalogItem[], view: CaseView): CatalogItem[] {
+/** Search matches a case's name and its authored metadata: owner, tags,
+ * incidents and the name of its interface revision among the project's. */
+export function applyView(items: CatalogItem[], view: CaseView, revisions: InterfaceRevision[] = []): CatalogItem[] {
   const query = view.query.trim().toLowerCase();
   return items.filter((item) => {
     const f = fields(item);
     if (query !== "") {
-      const haystack = [item.name, f.owner ?? "", ...(f.tags ?? [])].join(" ").toLowerCase();
+      const revision = revisions.find((r) => r.id === f.interface_revision)?.name ?? "";
+      const haystack = [item.name, f.owner ?? "", ...(f.tags ?? []), ...(f.incidents ?? []), revision].join(" ").toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     if (view.statuses.length > 0 && (!f.status || !view.statuses.includes(f.status))) return false;
@@ -84,6 +87,8 @@ const CASE_ACTIONS: { action: CaseAction; label: string; separated?: boolean; to
 
 export function CaseList({
   cases,
+  revisions,
+  notices,
   view,
   onView,
   selected,
@@ -96,8 +101,13 @@ export function CaseList({
   sort,
   onSort,
   busy,
+  loading,
 }: {
   cases: CatalogItem[];
+  /** The project's interface revisions, which search matches by name. */
+  revisions: InterfaceRevision[];
+  /** Why a row's last Locate was refused, by case identity. */
+  notices: Record<string, string>;
   view: CaseView;
   onView: (view: CaseView) => void;
   selected: string | null;
@@ -111,9 +121,16 @@ export function CaseList({
   sort: SortState | null;
   onSort: (sort: SortState) => void;
   busy: boolean;
+  /** The project's cases are being read: no rows are known yet. */
+  loading: boolean;
 }) {
-  const shown = sortCases(applyView(cases, view), sort);
+  const shown = sortCases(applyView(cases, view, revisions), sort);
   const filtered = view.query !== "" || view.statuses.length > 0 || view.owner !== "" || view.tags.length > 0;
+  const chosen = cases.find((item) => item.ref.id === selected) ?? null;
+  usePaletteActions(chosen?.name ?? null, chosen ? actionsFor(chosen) : []);
+  if (loading && cases.length === 0) {
+    return <DataTable label="Cases" className="page-table" rows={[]} rowId={() => ""} rowLabel={() => ""} columns={[]} selected={null} onSelect={() => {}} onOpen={() => {}} loading />;
+  }
   if (cases.length === 0) {
     return (
       <EmptyState
@@ -126,14 +143,15 @@ export function CaseList({
       />
     );
   }
-  const actionsFor = (item: CatalogItem): MenuItem[] =>
-    CASE_ACTIONS.map((entry) => ({
+  function actionsFor(item: CatalogItem): MenuItem[] {
+    return CASE_ACTIONS.map((entry) => ({
       label: entry.label,
       onSelect: () => onAction(item, entry.action),
       disabled: busy || (entry.action !== "remove" && entry.action !== "details" && item.availability !== "available"),
       ...(entry.separated ? { separated: true } : {}),
       ...(entry.tone ? { tone: entry.tone } : {}),
     }));
+  }
   const columns: Column<CatalogItem>[] = [
     {
       key: "case",
@@ -148,7 +166,11 @@ export function CaseList({
           <span className="case-name">
             <span>{item.name}</span>
             {marker ? <span className="badge">{marker}</span> : null}
-            {item.availability === "available" ? null : <span className="row-reason">{item.reason ?? "Cannot be read"}</span>}
+            {notices[item.ref.id] ? (
+              <span className="row-reason" title={notices[item.ref.id]}>{notices[item.ref.id]}</span>
+            ) : item.availability === "available" ? null : (
+              <span className="row-reason" title={item.reason ?? "Cannot be read"}>{item.reason ?? "Cannot be read"}</span>
+            )}
           </span>
         );
       },
@@ -177,8 +199,6 @@ export function CaseList({
       ),
     },
   ];
-  const chosen = cases.find((item) => item.ref.id === selected) ?? null;
-  usePaletteActions(chosen?.name ?? null, chosen ? actionsFor(chosen) : []);
   return (
     <>
       <ViewChips view={view} onView={onView} />
@@ -356,4 +376,25 @@ export function caseChoices(cases: CatalogItem[]): { owners: string[]; tags: str
     for (const tag of f.tags ?? []) tags.add(tag);
   }
   return { owners: [...owners].sort(), tags: [...tags].sort() };
+}
+
+/** A case's recorded details, whichever columns the list has room for. */
+export function CaseFacts({ item, revisions, onClose }: { item: CatalogItem | null; revisions: InterfaceRevision[]; onClose: () => void }) {
+  const f = item ? fields(item) : {};
+  const revision = revisions.find((r) => r.id === f.interface_revision)?.name;
+  return (
+    <Modal open={item !== null} title="Case details" size="small" onClose={onClose}>
+      <ValueRows
+        rows={[
+          { label: "Name", value: item?.name ?? "" },
+          { label: "Status", value: statusLabel(f.status) },
+          { label: "Owner", value: f.owner || "Unassigned" },
+          { label: "Updated", value: listDate(item?.updated_at) },
+          ...((f.tags ?? []).length > 0 ? [{ label: "Tags", value: (f.tags ?? []).join(", ") }] : []),
+          { label: "Interface revision", value: revision ?? "Unassigned" },
+          ...((f.incidents ?? []).length > 0 ? [{ label: "Incidents", value: (f.incidents ?? []).join(", ") }] : []),
+        ]}
+      />
+    </Modal>
+  );
 }

@@ -2,10 +2,48 @@
 // with one Save, prefilled with what is recorded, and each keeps everything
 // typed when its save is refused. Removing a case from its project leaves its
 // files on this computer.
-import { useEffect, useState } from "react";
-import type { CaseStatus } from "./bindings";
+import { useEffect, useRef, useState } from "react";
+import type { CaseStatus, DraftItem, EditorDraft } from "./bindings";
 import { CASE_STATUSES } from "./Cases";
+import { noteContent, RetentionStatus, useSheetDraft } from "./drafting";
 import { FormDialog, ValueRows, type SubmitFailure } from "./layout";
+
+/** Where a sheet keeps its unsaved values: the project folder, the object it
+ * edits, and the retained draft it was opened from, if any. */
+export type SheetDraft = { workspace: string; item?: DraftItem | undefined; restored?: EditorDraft | null | undefined };
+
+export const CASE_DRAFT = "readmit-case-details-draft/v1";
+export const PROJECT_DRAFT = "readmit-project-settings-draft/v1";
+export const NOTE_DRAFT = "readmit-note-draft/v1";
+
+/** A retained sheet's marker: Unsaved while it holds a restored draft, or why
+ * the last change could not be kept. */
+function DraftStatus({ held, restored }: { held: ReturnType<typeof useSheetDraft>; restored: boolean }) {
+  if (held.retention.state === "not-retained" || held.retention.state === "conflict") {
+    return <RetentionStatus retention={held.retention} onRetry={held.retry} onKeepAsNew={held.keepAsNew} />;
+  }
+  return restored ? <span className="badge">Unsaved</span> : null;
+}
+
+/** The values a retained draft holds, when they are the shape this sheet
+ * wrote; anything else starts from what is recorded. */
+function restoredValues<T extends object>(draft: EditorDraft | null | undefined, schema: string, recorded: T): T {
+  if (!draft || draft.content_schema !== schema || typeof draft.content !== "object" || draft.content === null) return recorded;
+  const held = draft.content as Record<string, unknown>;
+  const base = recorded as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...base };
+  for (const key of Object.keys(base)) {
+    if (key in held && typeof held[key] === typeof base[key]) merged[key] = held[key];
+  }
+  return merged as T;
+}
+
+/** Saves once, and once saved the draft of it is dropped. */
+async function saving(held: ReturnType<typeof useSheetDraft>, save: () => Promise<SubmitFailure | void>): Promise<SubmitFailure | void> {
+  const failure = await save();
+  if (!failure) await held.stored();
+  return failure;
+}
 
 /** Comma-free entry of a short list: one value per chip, added with Enter. */
 export function ChipsInput({ id, label, values, onChange }: { id: string; label: string; values: string[]; onChange: (values: string[]) => void }) {
@@ -66,6 +104,7 @@ export function CaseDetailsSheet({
   open,
   details,
   revisions,
+  retain,
   onSave,
   onClose,
 }: {
@@ -73,24 +112,41 @@ export function CaseDetailsSheet({
   /** What the project records now; the sheet opens with it. */
   details: CaseDetails;
   revisions: Revision[];
+  retain: SheetDraft;
   onSave: (details: CaseDetails) => Promise<SubmitFailure | void>;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState(details);
+  const [draft, setDraft] = useState(() => restoredValues(retain.restored, CASE_DRAFT, details));
   useEffect(() => {
-    if (open) setDraft(details);
-    // Opening again starts from what is recorded then.
+    if (open) setDraft(restoredValues(retain.restored, CASE_DRAFT, details));
+    // Opening again starts from what is recorded then, or the draft restored.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  const dirty = !same(draft, details);
+  const held = useSheetDraft({
+    open,
+    kind: "case",
+    schema: CASE_DRAFT,
+    workspace: retain.workspace,
+    item: retain.item,
+    values: draft,
+    dirty,
+    restored: retain.restored,
+    restoredValues: retain.restored ? restoredValues(retain.restored, CASE_DRAFT, details) : undefined,
+  });
   return (
     <FormDialog
       open={open}
       title="Edit details"
       submitLabel="Save"
       submitDisabled={draft.name.trim() === ""}
-      dirty={!same(draft, details)}
+      dirty={dirty}
+      onDiscard={held.discard}
+      status={<DraftStatus held={held} restored={Boolean(retain.restored) && dirty} />}
       onClose={onClose}
-      onSubmit={() => onSave({ ...draft, name: draft.name.trim(), owner: draft.owner.trim(), sources: draft.sources.map((source) => ({ ...source, name: source.name.trim() })) })}
+      onSubmit={() =>
+        saving(held, () => onSave({ ...draft, name: draft.name.trim(), owner: draft.owner.trim(), sources: draft.sources.map((source) => ({ ...source, name: source.name.trim() })) }))
+      }
     >
       <label htmlFor="case-name">Name</label>
       <input id="case-name" type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -152,6 +208,7 @@ export function ProjectSettingsSheet({
   open,
   details,
   folder,
+  retain,
   onReveal,
   onNotes,
   onSave,
@@ -161,17 +218,30 @@ export function ProjectSettingsSheet({
   details: ProjectDetails;
   /** Where the project is; renaming never moves it. */
   folder: string;
+  retain: SheetDraft;
   onReveal: () => void;
   onNotes: () => void;
   onSave: (details: ProjectDetails, reassign: Reassign) => Promise<ProjectSaveFailure | void>;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState(details);
+  const [draft, setDraft] = useState(() => restoredValues(retain.restored, PROJECT_DRAFT, details));
   const [referring, setReferring] = useState<{ revision: string; cases: string[] }[]>([]);
   const [reassign, setReassign] = useState<Reassign>({});
+  const dirty = !same(draft, details);
+  const held = useSheetDraft({
+    open,
+    kind: "project",
+    schema: PROJECT_DRAFT,
+    workspace: retain.workspace,
+    item: retain.item,
+    values: draft,
+    dirty,
+    restored: retain.restored,
+    restoredValues: retain.restored ? restoredValues(retain.restored, PROJECT_DRAFT, details) : undefined,
+  });
   useEffect(() => {
     if (open) {
-      setDraft(details);
+      setDraft(restoredValues(retain.restored, PROJECT_DRAFT, details));
       setReferring([]);
       setReassign({});
     }
@@ -191,16 +261,20 @@ export function ProjectSettingsSheet({
       title="Project settings"
       submitLabel="Save"
       submitDisabled={draft.name.trim() === "" || draft.revisions.some((revision) => revision.name.trim() === "")}
-      dirty={!same(draft, details)}
+      dirty={dirty}
+      onDiscard={held.discard}
+      status={<DraftStatus held={held} restored={Boolean(retain.restored) && dirty} />}
       onClose={onClose}
-      onSubmit={async () => {
-        const answer = await onSave(
-          { ...draft, name: draft.name.trim(), owner: draft.owner.trim(), revisions: draft.revisions.map((r) => ({ ...r, name: r.name.trim() })) },
-          reassign,
-        );
-        if (answer?.referring) setReferring(answer.referring);
-        return answer;
-      }}
+      onSubmit={() =>
+        saving(held, async () => {
+          const answer = await onSave(
+            { ...draft, name: draft.name.trim(), owner: draft.owner.trim(), revisions: draft.revisions.map((r) => ({ ...r, name: r.name.trim() })) },
+            reassign,
+          );
+          if (answer?.referring) setReferring(answer.referring);
+          return answer;
+        })
+      }
     >
       <label htmlFor="project-name">Name</label>
       <input id="project-name" type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -304,42 +378,110 @@ export function RemoveCaseSheet({
   );
 }
 
-export type NoteValue = { id?: string; name: string; content: string };
+/** A note, and what it is about: "" for the project, or a case's identity. */
+export type NoteValue = { id?: string; name: string; content: string; about: string };
+
+/** The note's working text in the draft contract notes are retained in. */
+function noteDraft(note: NoteValue) {
+  return { schema: NOTE_DRAFT, name: note.id ?? "", subject: "", title: note.name, body: note.content };
+}
+
+function restoredNote(draft: EditorDraft | null | undefined, recorded: NoteValue): NoteValue {
+  if (!draft || draft.content_schema !== NOTE_DRAFT || typeof draft.content !== "object" || draft.content === null) return recorded;
+  const held = noteContent(draft);
+  const about = draft.item && draft.item.ref.kind === "case" ? draft.item.ref.id : "";
+  return { ...(held.name ? { id: held.name } : {}), name: held.title, content: held.body, about };
+}
 
 export function NoteSheet({
   open,
   note,
-  related,
+  subjects,
+  retain,
   onSave,
   onClose,
 }: {
   open: boolean;
   note: NoteValue;
-  /** What the note is about, shown as a value. */
-  related: string;
+  /** What a note can be about: the project ("") and its cases, by name. */
+  subjects: { id: string; name: string }[];
+  retain: Omit<SheetDraft, "item"> & { item: (about: string) => DraftItem | undefined };
   onSave: (note: NoteValue) => Promise<SubmitFailure | void>;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState(note);
+  const [draft, setDraft] = useState(() => restoredNote(retain.restored, note));
+  const [changing, setChanging] = useState(false);
+  const picker = useRef<HTMLSelectElement | null>(null);
   useEffect(() => {
-    if (open) setDraft(note);
+    if (open) {
+      setDraft(restoredNote(retain.restored, note));
+      setChanging(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  useEffect(() => {
+    if (changing) picker.current?.focus();
+  }, [changing]);
+  const dirty = !same(draft, note);
+  const held = useSheetDraft({
+    open,
+    kind: "note",
+    schema: NOTE_DRAFT,
+    workspace: retain.workspace,
+    item: retain.item(draft.about),
+    values: noteDraft(draft),
+    dirty,
+    restored: retain.restored,
+    restoredValues: retain.restored ? noteDraft(restoredNote(retain.restored, note)) : undefined,
+  });
+  const aboutName = subjects.find((subject) => subject.id === draft.about)?.name ?? "";
   return (
     <FormDialog
       open={open}
-      title={note.id ? "Edit note" : "New note"}
+      title={note.id || draft.id ? "Edit note" : "New note"}
       submitLabel="Save"
       submitDisabled={draft.name.trim() === ""}
-      dirty={!same(draft, note)}
+      dirty={dirty}
+      onDiscard={held.discard}
+      status={<DraftStatus held={held} restored={Boolean(retain.restored) && dirty} />}
       onClose={onClose}
-      onSubmit={() => onSave({ ...draft, name: draft.name.trim() })}
+      onSubmit={() => saving(held, () => onSave({ ...draft, name: draft.name.trim() }))}
     >
       <label htmlFor="note-name">Name</label>
       <input id="note-name" type="text" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
       <label htmlFor="note-content">Content</label>
       <textarea id="note-content" rows={10} value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
-      <ValueRows rows={[{ label: "About", value: related }]} />
+      {changing ? (
+        <>
+          <label htmlFor="note-about">About</label>
+          <select id="note-about" ref={picker} value={draft.about} onChange={(event) => setDraft({ ...draft, about: event.target.value })}>
+            {subjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <ValueRows
+          rows={[
+            {
+              label: "About",
+              value:
+                subjects.length > 1 ? (
+                  <span className="value-with-action">
+                    <span>{aboutName}</span>
+                    <button type="button" onClick={() => setChanging(true)}>
+                      Change
+                    </button>
+                  </span>
+                ) : (
+                  aboutName
+                ),
+            },
+          ]}
+        />
+      )}
     </FormDialog>
   );
 }

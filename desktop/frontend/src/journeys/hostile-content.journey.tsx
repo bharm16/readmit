@@ -68,7 +68,7 @@ test("markup in evidence, file names and searches is shown as inert text and nev
   expect(await access.findByText(/^License: active\./)).toBeTruthy();
 
   // The folder lists the hostile file name as the text it is.
-  await journey.chooseFolder(journey.path("work"), "Open workspace");
+  await journey.chooseFolder(journey.path("work"), "Open project");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   const navigation = within(region("Workspace"));
   expect(await navigation.findByText(HOSTILE_NAME)).toBeTruthy();

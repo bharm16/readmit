@@ -28,10 +28,11 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 	if unset := app.ProjectLocation(); unset.State != desktop.Empty {
 		t.Fatalf("location before one was chosen: %+v", unset)
 	}
-	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed || len(dialogs.titles) != 1 {
+	chosen := app.ChooseProjectLocation()
+	if chosen.State != desktop.Completed || len(dialogs.titles) != 1 {
 		t.Fatalf("choose: %+v", chosen)
 	}
-	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: chosen.Location})
 	if created.State != desktop.Completed || created.Project == nil || created.Project.Name != "Scheduling QA" {
 		t.Fatalf("create: %+v", created)
 	}
@@ -73,8 +74,16 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 		t.Fatal(err)
 	}
 	dialogs.folder = gone
-	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed {
+	chosen = app.ChooseProjectLocation()
+	if chosen.State != desktop.Completed {
 		t.Fatalf("choose: %+v", chosen)
+	}
+	kept := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Kept", Location: chosen.Location})
+	if kept.State != desktop.Completed {
+		t.Fatalf("create in the chosen folder: %+v", kept)
+	}
+	if err := os.Rename(kept.Context.Project, filepath.Join(t.TempDir(), "kept")); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.Remove(gone); err != nil {
 		t.Fatal(err)
@@ -106,14 +115,57 @@ func TestANewProjectNeedsOnlyAName(t *testing.T) {
 	}
 }
 
+// Choosing where projects are kept remembers nothing: the folder is
+// remembered once a project is created in it, so choosing one and then not
+// creating leaves the remembered folder as it was, and a create refused in
+// the chosen folder remembers nothing either.
+func TestANewProjectRemembersItsFolderOnlyOnceCreated(t *testing.T) {
+	first, other := t.TempDir(), t.TempDir()
+	dialogs := &chooser{folder: first}
+	app := newApp(t, dialogs)
+	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed || chosen.Location != first {
+		t.Fatalf("choose: %+v", chosen)
+	}
+	if unset := app.ProjectLocation(); unset.State != desktop.Empty {
+		t.Fatalf("a folder chosen with nothing created was remembered: %+v", unset)
+	}
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: first})
+	if created.State != desktop.Completed || filepath.Dir(created.Context.Project) != resolved(t, first) {
+		t.Fatalf("create: %+v", created)
+	}
+	if remembered := app.ProjectLocation(); remembered.State != desktop.Completed || remembered.Location != first {
+		t.Fatalf("location after create: %+v", remembered)
+	}
+	dialogs.folder = other
+	if chosen := app.ChooseProjectLocation(); chosen.State != desktop.Completed || chosen.Location != other {
+		t.Fatalf("choose again: %+v", chosen)
+	}
+	if kept := app.ProjectLocation(); kept.Location != first {
+		t.Fatalf("choosing and cancelling changed the remembered folder: %+v", kept)
+	}
+	if refused := app.CreateNamedProject(desktop.NewProjectRequest{Name: "", Location: other}); refused.State != desktop.Failed {
+		t.Fatalf("a nameless project was created: %+v", refused)
+	}
+	gone := filepath.Join(other, "gone")
+	if refused := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Order interface", Location: gone}); refused.State != desktop.Failed || refused.Reason == "" {
+		t.Fatalf("a missing chosen folder was not refused: %+v", refused)
+	}
+	if kept := app.ProjectLocation(); kept.Location != first {
+		t.Fatalf("a refused create changed the remembered folder: %+v", kept)
+	}
+	if _, err := os.Lstat(gone); !os.IsNotExist(err) {
+		t.Fatal("a chosen projects folder that was not there was created")
+	}
+}
+
 // Two projects may share a name; renaming one changes its title alone, and
 // moving its folder keeps its identity, its cases, its tests and its history
 // — without a byte of evidence rewritten.
 func TestAProjectIsRenamedAndMovedWithoutRewritingEvidence(t *testing.T) {
 	location := t.TempDir()
 	app := newApp(t, &chooser{folder: location})
-	app.ChooseProjectLocation()
-	first := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
+	chosen := app.ChooseProjectLocation()
+	first := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: chosen.Location})
 	second := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
 	if first.State != desktop.Completed || second.State != desktop.Completed {
 		t.Fatalf("%+v %+v", first, second)

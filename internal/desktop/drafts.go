@@ -428,8 +428,10 @@ func validateEditorDraft(draft EditorDraft) error {
 			return errors.New("a draft records when it was retained as an RFC 3339 time")
 		}
 	}
+	// A project's own settings are an edit of the project: its reference is
+	// the project's identity.
 	if item := draft.Item; item != nil && (!catalog.ValidID(item.ProjectID) || !slices.Contains(itemKinds, item.Ref.Kind) ||
-		item.Ref.Kind == ProjectItem || !catalog.ValidID(item.Ref.ID) || len(item.Ref.Revision) > 16) {
+		item.Ref.Kind == ProjectItem && item.Ref.ID != item.ProjectID || !catalog.ValidID(item.Ref.ID) || len(item.Ref.Revision) > 16) {
 		return errors.New("a draft names the object it edits by its project, kind, identity and revision")
 	}
 	if draft.ContentSchema == NoteDraftSchema {

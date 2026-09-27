@@ -57,8 +57,9 @@ static build stand unchanged. Nothing here is added to the release archives.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
 - The shell keeps ten bounded, versioned local documents (the recent folder
-  paths of `readmit-desktop-recent/v1` were retired by #548 and are no longer
-  read or written): saved filters with the active selection and each project's saved views
+  paths of `readmit-desktop-recent/v1` were retired by #548: they are never
+  written, and are read once, only before a projects list exists, to list the
+  recorded projects they name): saved filters with the active selection and each project's saved views
   (`readmit-filters/v2`, which also reads `/v1`), the working session a viewer has not stored
   (`readmit-desktop-session/v1`) — the workspace, case, region and run they had
   open (a session written before #548 may also carry note drafts, which are

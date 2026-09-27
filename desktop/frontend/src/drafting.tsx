@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   discardEditorDraft,
   saveEditorDraft,
+  type DraftItem,
   type EditorDraft,
   type EditorDraftsResult,
 } from "./bindings";
@@ -114,7 +115,9 @@ export function useRetainer(): {
     // A refusal either left the draft retained or found the identity stale.
     // A stale identity is a conflict: this edit raced a discard, and silently
     // writing a new draft over it would resurrect work a person dropped.
-    if (saved.id !== "" && !drafts.some((entry) => entry.id === saved.id)) {
+    // A refusal that read nothing (busy, or a write this account may not
+    // make) lists no drafts, and says nothing about whether this one is kept.
+    if (saved.id !== "" && result.state !== "busy" && result.state !== "permission_denied" && !drafts.some((entry) => entry.id === saved.id)) {
       knownId.current = "";
       conflicted.current = true;
       setRetention(
@@ -388,4 +391,71 @@ export function savedId(
     return previous;
   }
   return (result.drafts ?? []).find((draft) => draft.kind === kind && draft.workspace === workspace)?.id ?? "";
+}
+
+/** One sheet's unsaved values, kept as a draft of the object it edits from the
+ * first change until they are saved or thrown away. A sheet opened from a
+ * retained draft continues that draft rather than starting another. */
+export function useSheetDraft({
+  open,
+  kind,
+  schema,
+  workspace,
+  item,
+  values,
+  dirty,
+  restored,
+  restoredValues,
+}: {
+  open: boolean;
+  kind: string;
+  schema: string;
+  workspace: string;
+  item?: DraftItem | undefined;
+  /** What the draft holds: the sheet's values, in the content contract. */
+  values: unknown;
+  dirty: boolean;
+  restored?: EditorDraft | null | undefined;
+  /** The values the sheet shows from the restored draft, in the contract
+   * `values` is written in. */
+  restoredValues?: unknown;
+}): { retention: Retention; retry: () => void; keepAsNew: () => void; stored: () => Promise<boolean>; discard: () => void } {
+  const retainer = useRetainer();
+  const { keepId, clear, save, currentId, dropCurrent } = retainer;
+  useEffect(() => {
+    if (!open) return;
+    if (restored) keepId(restored.id);
+    else clear();
+  }, [open, restored, keepId, clear]);
+  const content = JSON.stringify(values);
+  const about = JSON.stringify(item ?? null);
+  // A sheet opened from a retained draft writes nothing until it shows that
+  // draft's values and they then change: reopening one writes nothing, and a
+  // render from before the values were restored never discards it.
+  const restoredContent = restored ? JSON.stringify(restoredValues ?? restored.content) : null;
+  const settled = useRef(true);
+  useEffect(() => {
+    settled.current = restoredContent === null;
+  }, [open, restoredContent]);
+  useEffect(() => {
+    if (!open || workspace === "") return;
+    if (!settled.current) {
+      if (content === restoredContent) settled.current = true;
+      return;
+    }
+    if (dirty) {
+      const named = JSON.parse(about) as DraftItem | null;
+      save({ id: "", kind, workspace, case: "", identity: "", content_schema: schema, content: JSON.parse(content) as unknown, ...(named ? { item: named } : {}) });
+    } else if (currentId() !== "") {
+      // Back to what is recorded: nothing is left to restore.
+      void dropCurrent();
+    }
+  }, [open, dirty, content, about, kind, schema, workspace, save, currentId, dropCurrent]);
+  return {
+    retention: retainer.retention,
+    retry: retainer.retry,
+    keepAsNew: retainer.keepAsNew,
+    stored: dropCurrent,
+    discard: () => void dropCurrent(),
+  };
 }

@@ -1,0 +1,10 @@
+- Projects listed by an earlier release's recent folders now appear in Projects the first time this release lists them, after the projects you have opened here. Only folders whose project already has a recorded identity are listed, and nothing is written into them.
+- New project remembers a folder chosen with Change only once a project is created there. Choosing a folder and then cancelling keeps the folder you had before.
+- The host's folder dialog behind Open is now titled "Open project".
+- Case search also matches incident references and the name of a case's interface revision.
+- A Locate or Remove from recents that is refused says why on that project's or case's row, and a refused attachment says why above the case's attachments while the list stays as it was.
+- Opening another project no longer shows the previous project's cases while its own are read.
+- Unsaved edits in Edit details, Project settings and a note come back from Drafts to restore in that sheet, marked Unsaved. Drafts of suite and scenario editors reopen their editor; a draft no editor of this release takes back is offered only for Discard.
+- A note's About can be changed to the project or another of its cases before it is saved.
+- A case's Details shows its status, owner, update date, tags, interface revision and incidents, whichever columns the list has room for.
+- Files > Open file opens that file in the file reader instead of asking for one.

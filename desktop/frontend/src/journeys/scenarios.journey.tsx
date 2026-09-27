@@ -56,7 +56,7 @@ function licensedCommandLine(args: string[]) {
 
 /** Opens a folder of this machine as the workspace, from the window. */
 async function openWorkspace(user: UserEvent, folder: string): Promise<void> {
-  await journey.chooseFolder(journey.path(folder), "Open workspace");
+  await journey.chooseFolder(journey.path(folder), "Open project");
   await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
   expect(await screen.findByRole("region", { name: "Synthetic scenario authoring" })).toBeTruthy();
 }

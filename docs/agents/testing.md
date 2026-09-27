@@ -84,7 +84,9 @@ unanswered is rejected. The kit's verbs:
 - `writeFile`, `makeFolder`, `makeLink` and `provisionLicense` prepare what a
   person or their vendor put on the machine before the application saw it:
   exported evidence, a folder for a project, a symbolic link to a folder, a
-  signed activation folder. A file is private to this account unless
+  signed activation folder. `moveFolder(from, to)` moves a folder inside the
+  root as a person drags it elsewhere, such as a project the window must then
+  locate. A file is private to this account unless
   `writeFile` is given a mode, such as `0o700` for a program an administrator
   staged.
   `provisionLicenseIssues(issues)` provisions several activation folders, each

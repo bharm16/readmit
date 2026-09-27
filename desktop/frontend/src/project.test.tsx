@@ -5,8 +5,8 @@
 // typed facade stubbed; what a save or removal means is decided on the Go
 // side, and these tests prove the window sends exactly what was edited and
 // keeps what was typed when it is refused.
-import { expect, test } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   CASE_ENTRY,
@@ -20,7 +20,7 @@ import {
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { findCaseRow, page, readCaseIdentity, sidebar } from "./testkit/navigation";
-import type { CatalogItem, CatalogQuery, CatalogResult, SaveItemRequest } from "./bindings";
+import type { CatalogItem, CatalogQuery, CatalogResult, RequestContext, SaveItemRequest, SaveItemResult } from "./bindings";
 import type { FacadeHandlers } from "./testkit/wails";
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -502,4 +502,314 @@ test("Delete from this computer on a case row reviews that case against its arch
   expect((await within(await screen.findByRole("dialog", { name: "Delete from this computer" })).findByRole("status")).textContent).toBe("Deleted from this computer. The archive remains.");
   // Cases is read again, so the deleted case leaves the list.
   await waitFor(() => expect(facade.callsTo("ListCatalog").length).toBeGreaterThan(before));
+});
+
+// ——— RD03 follow-up: return, project switch, parked saves, recovery, notes, files, attachments ———
+
+/** A case of the list, registered at a status, by name. */
+function listedCase(entry: string, name: string, status: "open" | "investigating" = "open"): CatalogItem {
+  const item = caseCatalogItem(entry, "", status);
+  return { ...item, ref: { ...item.ref, revision: `rev-${entry}` }, name };
+}
+
+async function projectSettings(user: User) {
+  await user.click(sidebar().getByRole("button", { name: "Project: Scheduling investigation" }));
+  await user.click(screen.getByRole("menuitem", { name: "Project settings" }));
+  return within(await screen.findByRole("dialog", { name: "Project settings" }));
+}
+
+const saved = (request: { context: RequestContext }, kind: "case" | "project", id: string): SaveItemResult => ({
+  state: "completed",
+  context: request.context,
+  outcome: "saved",
+  replayed: false,
+  problems: [],
+  saved: { kind, id },
+});
+
+test("Back from Messages restores the filter, sort, selection and scroll of the case list", async () => {
+  const user = userEvent.setup();
+  const ROW = 44;
+  // The list's measured height and each drawn row's place in it, which a real
+  // layout gives them and jsdom does not.
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("table-view") ? 440 : 0;
+  });
+  const measured = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const view = this.closest<HTMLElement>(".table-view");
+    const rect = (top: number, height: number) => ({ top, bottom: top + height, height, left: 0, right: 800, width: 800, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    if (view && this.tagName === "THEAD") return rect(0, ROW);
+    if (view && this.tagName === "TR" && this.dataset.rowId !== undefined) return rect((Number(this.getAttribute("aria-rowindex")) - 1) * ROW - view.scrollTop, ROW);
+    if (this.classList.contains("table-view")) return rect(0, 440);
+    return measured.call(this);
+  });
+  try {
+    const many = Array.from({ length: 1000 }, (_, i) => listedCase(`case-${String(i).padStart(4, "0")}`, `Case ${String(i).padStart(4, "0")}`));
+    await openProject(user, { OpenCase: () => caseResult() }, [...many, listedCase("elsewhere", "Already investigated", "investigating")]);
+    await findCaseRow("Case 0000");
+    await user.click(page().getByRole("button", { name: "Filter cases" }));
+    const sheet = within(await screen.findByRole("dialog", { name: "Filter cases" }));
+    await user.click(sheet.getByRole("checkbox", { name: "Open" }));
+    await user.click(sheet.getByRole("button", { name: "Apply" }));
+    await user.click(page().getByRole("button", { name: "Case" }));
+    const view = page().getByRole("table", { name: "Cases" }).closest<HTMLElement>(".table-view")!;
+    view.scrollTop = 880;
+    fireEvent.scroll(view);
+    await user.click(await findCaseRow("Case 0025"));
+    expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
+    await user.click(page().getByRole("button", { name: "Back to cases" }));
+    const returned = await findCaseRow("Case 0025");
+    expect(returned.getAttribute("aria-selected")).toBe("true");
+    expect(within(page().getByRole("group", { name: "Applied filters" })).getByRole("button", { name: "Remove Open" })).toBeTruthy();
+    expect(page().queryByRole("row", { name: "Already investigated" })).toBeNull();
+    expect(page().getByRole("columnheader", { name: /Case/ }).getAttribute("aria-sort")).toBe("ascending");
+    const back = page().getByRole("table", { name: "Cases" }).closest<HTMLElement>(".table-view")!;
+    expect(back).not.toBe(view);
+    expect(back.scrollTop).toBe(880);
+  } finally {
+    vi.restoreAllMocks();
+  }
+}, 15_000);
+
+test("switching project never shows the previous project's cases", async () => {
+  const user = userEvent.setup();
+  const OTHER_ROOT = "/other-project-under-test";
+  const other: CatalogItem = { ...PROJECT, ref: { kind: "project", id: "p2", revision: "rev-project-2" }, name: "Registration upgrade", last_opened_at: "2026-09-20T10:00:00Z", summary: { project: { ...PROJECT.summary.project!, folder: OTHER_ROOT } } };
+  const waiting: (() => void)[] = [];
+  const page_ = (query: CatalogQuery, items: CatalogItem[]): CatalogResult => ({ state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } });
+  const { facade } = await openProject(user, {
+    ListCatalog: (query) => {
+      if (query.kind === "project") return page_(query, [PROJECT, other]);
+      if (query.kind !== "case") return page_(query, []);
+      if (query.context.project !== OTHER_ROOT) return page_(query, [registered(CASE_ENTRY)]);
+      return new Promise<CatalogResult>((resolve) => waiting.push(() => resolve(page_(query, [listedCase("registration", "Registration message rejected")]))));
+    },
+    OpenWorkspace: (folder) => folderChosen(folder, [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]),
+  });
+  await findCaseRow("Duplicate appointment after reschedule");
+  await user.click(sidebar().getByRole("button", { name: "Projects" }));
+  await user.click(within(await page().findByRole("table", { name: "Projects" })).getByRole("row", { name: "Registration upgrade" }));
+  expect(await page().findByRole("heading", { level: 1, name: "Cases" })).toBeTruthy();
+  await waitFor(() => expect(waiting.length).toBeGreaterThan(0));
+  expect(facade.callsTo("OpenWorkspace").at(-1)?.args).toEqual([OTHER_ROOT]);
+  // While the other project's cases are read, none of the first one's show.
+  expect(page().queryByRole("row", { name: "Duplicate appointment after reschedule" })).toBeNull();
+  expect(page().queryByText("No cases yet")).toBeNull();
+  for (const release of waiting.splice(0)) release();
+  expect(await findCaseRow("Registration message rejected")).toBeTruthy();
+  expect(page().queryByRole("row", { name: "Duplicate appointment after reschedule" })).toBeNull();
+}, 15_000);
+
+test("a parked Edit details save keeps the sheet, and a second click sends nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const parked = facade.park("SaveItem");
+  await caseMenu(user, "Duplicate appointment after reschedule", "Edit details");
+  const sheet = within(await screen.findByRole("dialog", { name: "Edit details" }));
+  await user.clear(sheet.getByLabelText("Owner"));
+  await user.type(sheet.getByLabelText("Owner"), "Scheduling desk");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: "Edit details" })).toBeTruthy();
+  expect((sheet.getByLabelText("Owner") as HTMLInputElement).value).toBe("Scheduling desk");
+  expect((sheet.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  parked.resolve(saved(facade.callsTo("SaveItem")[0]!.args[0] as SaveItemRequest, "case", `case-${CASE_ENTRY}`));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull());
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+});
+
+test("a parked Project settings save keeps the sheet, and a second click sends nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user);
+  const parked = facade.park("SaveItem");
+  const sheet = await projectSettings(user);
+  await user.clear(sheet.getByLabelText("Name"));
+  await user.type(sheet.getByLabelText("Name"), "Scheduling go-live");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: "Project settings" })).toBeTruthy();
+  expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("Scheduling go-live");
+  expect((sheet.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  parked.resolve(saved(facade.callsTo("SaveItem")[0]!.args[0] as SaveItemRequest, "project", "p1"));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Project settings" })).toBeNull());
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+});
+
+test("a parked note save keeps the sheet, and a second click sends nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, { ListNotes: (request) => ({ state: "completed", context: request.context, notes: [] }) });
+  const parked = facade.park("SaveNoteItem");
+  await caseMenu(user, "Duplicate appointment after reschedule", "Notes");
+  await user.click((await page().findAllByRole("button", { name: "New note" }))[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "New note" }));
+  await user.type(sheet.getByLabelText("Name"), "Hypothesis");
+  await user.type(sheet.getByLabelText("Content"), "The receiver keys on SCH-1 only.");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.callsTo("SaveNoteItem")).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: "New note" })).toBeTruthy();
+  expect((sheet.getByLabelText("Content") as HTMLTextAreaElement).value).toBe("The receiver keys on SCH-1 only.");
+  expect((sheet.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  parked.resolve({ state: "completed", context: { project: WORKSPACE_ROOT, generation: 0 }, notes: [], saved: { id: "n1", name: "Hypothesis", content: "The receiver keys on SCH-1 only.", updated_at: null } });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New note" })).toBeNull());
+  expect(facade.callsTo("SaveNoteItem")).toHaveLength(1);
+});
+
+test("an unreadable case stays listed with its reason and Retry; a missing one with Locate, whose refusal shows on the row", async () => {
+  const user = userEvent.setup();
+  const unreadable: CatalogItem = { ...listedCase("locked", "Locked case"), availability: "unreadable", reason: "this account cannot read the case folder" };
+  const missing: CatalogItem = { ...listedCase("moved", "Moved case"), availability: "missing", reason: "The case folder is not where it was." };
+  const refusal = "the folder chosen is not an entry of this project's folder";
+  const { facade } = await openProject(
+    user,
+    { LocateItem: (request) => ({ state: "failed", reason: refusal, context: request.context }) },
+    [registered(CASE_ENTRY), unreadable, missing],
+  );
+  const locked = await findCaseRow("Locked case");
+  expect(within(locked).getByText("this account cannot read the case folder")).toBeTruthy();
+  const before = facade.callsTo("ListCatalog").length;
+  await user.click(within(locked).getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(facade.callsTo("ListCatalog").length).toBeGreaterThan(before));
+  expect(await findCaseRow("Locked case")).toBeTruthy();
+  const moved = await findCaseRow("Moved case");
+  expect(within(moved).getByText("The case folder is not where it was.")).toBeTruthy();
+  await user.click(within(moved).getByRole("button", { name: "Locate" }));
+  expect(facade.oneCall("LocateItem")[0]).toMatchObject({ ref: { kind: "case", id: "case-moved" } });
+  const refused = await findCaseRow("Moved case");
+  expect(await within(refused).findByText(refusal)).toBeTruthy();
+  expect(within(refused).getByRole("button", { name: "Locate" })).toBeTruthy();
+});
+
+test("Project settings > Open notes lists the project's own notes, older ones included", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    ListNotes: (request) => ({
+      state: "completed",
+      context: request.context,
+      notes: request.case
+        ? []
+        : [
+            { id: "n2", name: "Go-live checklist", content: "Confirm the receiver build.", updated_at: "2026-09-26T10:00:00Z" },
+            { id: "n1", name: "Kickoff notes", content: "Written before notes had dates.", updated_at: null },
+          ],
+    }),
+  });
+  const sheet = await projectSettings(user);
+  await user.click(sheet.getByRole("button", { name: "Open notes" }));
+  expect(await page().findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
+  const table = within(page().getByRole("table", { name: "Notes" }));
+  expect(await table.findByRole("row", { name: "Go-live checklist" })).toBeTruthy();
+  expect(table.getByRole("row", { name: "Kickoff notes" })).toBeTruthy();
+  // The project's own notes are read without a case.
+  expect(facade.callsTo("ListNotes").at(-1)?.args[0]).not.toHaveProperty("case");
+});
+
+test("a note's subject changes with Change and saves under the new case", async () => {
+  const user = userEvent.setup();
+  const other = listedCase(OTHER_CASE_ENTRY, "Cancellation rejected");
+  const { facade } = await openProject(
+    user,
+    {
+      ListNotes: (request) => ({ state: "completed", context: request.context, notes: [] }),
+      SaveNoteItem: (request) => ({ state: "completed", context: request.context, notes: [], saved: { id: "n2", name: request.note.name, content: request.note.content, updated_at: null } }),
+    },
+    [registered(CASE_ENTRY), other],
+  );
+  await caseMenu(user, "Duplicate appointment after reschedule", "Notes");
+  await user.click((await page().findAllByRole("button", { name: "New note" }))[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "New note" }));
+  expect(sheet.getByText("Duplicate appointment after reschedule")).toBeTruthy();
+  await user.type(sheet.getByLabelText("Name"), "Same cause");
+  await user.click(sheet.getByRole("button", { name: "Change" }));
+  const about = sheet.getByLabelText("About") as HTMLSelectElement;
+  expect(within(about).getAllByRole("option").map((option) => option.textContent)).toEqual(["Scheduling investigation", "Duplicate appointment after reschedule", "Cancellation rejected"]);
+  await user.selectOptions(about, other.ref.id);
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  expect(facade.oneCall("SaveNoteItem")[0]).toMatchObject({ note: { name: "Same cause", case: { kind: "case", id: other.ref.id } } });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New note" })).toBeNull());
+});
+
+test("Files > Open file reads that file", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    ProjectFiles: (request) => ({ state: "completed", context: request.context, files: [{ name: "legacy-feed.hl7", kind: "unsupported" }] }),
+    ListFileMessages: (request) => ({
+      state: "completed",
+      name: "legacy-feed.hl7",
+      bytes: 0,
+      sha256: "0".repeat(64),
+      format: "raw",
+      terminator: "cr",
+      format_selection: "detected",
+      terminator_selection: "detected",
+      total: 0,
+      offset: request.offset,
+      rows: [],
+    }),
+  });
+  await user.click(sidebar().getByRole("button", { name: "Project: Scheduling investigation" }));
+  await user.click(screen.getByRole("menuitem", { name: "Files" }));
+  const row = await within(await page().findByRole("table", { name: "Files" })).findByRole("row", { name: "legacy-feed.hl7" });
+  await user.click(within(row).getByRole("button", { name: "More actions for legacy-feed.hl7" }));
+  await user.click(screen.getByRole("menuitem", { name: "Open file" }));
+  expect(await page().findByRole("heading", { name: "legacy-feed.hl7" })).toBeTruthy();
+  expect(facade.oneCall("ListFileMessages")[0]).toMatchObject({ file: `${WORKSPACE_ROOT}/legacy-feed.hl7` });
+  // The file is named by the project; the host is never asked for one.
+  expect(facade.callsTo("ChooseInspectionPath")).toHaveLength(0);
+});
+
+test("a refused attachment add or remove keeps the list and shows the reason", async () => {
+  const user = userEvent.setup();
+  const file = { id: "a1", name: "receiver-log.txt", type: "Text", added_at: null };
+  const quota = "the project's quota does not leave room for these files; nothing was attached";
+  const unknown = "the case holds no such attachment";
+  const { facade } = await openProject(user, {
+    ListAttachments: (request) => ({ state: "completed", context: request.context, attachments: [file] }),
+    AddAttachments: (request) => ({ state: "failed", reason: quota, context: request.context, attachments: [file] }),
+    RemoveAttachment: (request) => ({ state: "failed", reason: unknown, context: request.context, attachments: [file] }),
+  });
+  await caseMenu(user, "Duplicate appointment after reschedule", "Attachments");
+  const table = within(await page().findByRole("table", { name: "Attachments" }));
+  await table.findByRole("row", { name: "receiver-log.txt" });
+  await user.click(page().getByRole("button", { name: "Add attachment" }));
+  expect(facade.callsTo("AddAttachments")).toHaveLength(1);
+  expect((await page().findByRole("alert")).textContent).toBe(quota);
+  expect(table.getByRole("row", { name: "receiver-log.txt" })).toBeTruthy();
+  await user.click(within(table.getByRole("row", { name: "receiver-log.txt" })).getByRole("button", { name: "More actions for receiver-log.txt" }));
+  await user.click(screen.getByRole("menuitem", { name: "Remove from case" }));
+  expect(facade.oneCall("RemoveAttachment")[0]).toMatchObject({ id: "a1" });
+  await waitFor(() => expect(page().getByRole("alert").textContent).toBe(unknown));
+  expect(within(page().getByRole("table", { name: "Attachments" })).getByRole("row", { name: "receiver-log.txt" })).toBeTruthy();
+  expect(page().queryByText("No attachments")).toBeNull();
+});
+
+test("editing a case's details retains a draft of that case until it is saved", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openProject(user, {
+    SaveEditorDraft: (draft) => ({ state: "completed", drafts: [{ ...draft, id: draft.id || "draft-case-1", saved_at: "2026-09-27T10:00:00Z" }] }),
+    SaveItem: (request) => saved(request, "case", `case-${CASE_ENTRY}`),
+  });
+  await caseMenu(user, "Duplicate appointment after reschedule", "Edit details");
+  const sheet = within(await screen.findByRole("dialog", { name: "Edit details" }));
+  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(0);
+  await user.clear(sheet.getByLabelText("Owner"));
+  await user.type(sheet.getByLabelText("Owner"), "Scheduling desk");
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(0));
+  const retained = facade.callsTo("SaveEditorDraft").at(-1)!.args[0] as import("./bindings").EditorDraft;
+  expect(retained).toMatchObject({
+    kind: "case",
+    workspace: WORKSPACE_ROOT,
+    content_schema: "readmit-case-details-draft/v1",
+    content: { name: "Duplicate appointment after reschedule", owner: "Scheduling desk", status: "investigating" },
+    item: { project_id: "p1", ref: { kind: "case", id: `case-${CASE_ENTRY}` } },
+  });
+  expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit details" })).toBeNull());
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+  // Saved, nothing is left to restore.
+  await waitFor(() => expect(facade.callsTo("DiscardEditorDraft").map((call) => call.args[0])).toContain("draft-case-1"));
 });

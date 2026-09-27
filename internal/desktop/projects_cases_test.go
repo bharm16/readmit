@@ -8,6 +8,7 @@ package desktop_test
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -25,8 +26,14 @@ import (
 // sample cases are in the folder and not registered.
 func casesProject(t *testing.T) (*desktop.App, *chooser, desktop.RequestContext) {
 	t.Helper()
+	return casesProjectOver(t, t.TempDir())
+}
+
+// casesProjectOver is casesProject over the shell documents in state.
+func casesProjectOver(t *testing.T, state string) (*desktop.App, *chooser, desktop.RequestContext) {
+	t.Helper()
 	dialogs := &chooser{folder: t.TempDir()}
-	app := newApp(t, dialogs)
+	app := activatedApp(t, dialogs, state)
 	root := sample(t, app).Workspace.Root
 	writeDocument(t, root, "project.json", `{"schema":"readmit-project/v2","settings":{"title":"Scheduling QA"},`+
 		`"interface_versions":["siu-2.5.1-v1"],"cases":[`+registeredRegression+`]}`+"\n")
@@ -392,7 +399,7 @@ func TestAttachmentsAreCopiedIntoTheProjectAndRemovedAsAssociations(t *testing.T
 		t.Fatalf("a link was attached: %+v", linked)
 	}
 	dialogs.files = nil
-	if cancelled := app.AddAttachments(desktop.ItemRequest{Context: context, Ref: item.Ref}); cancelled.State != desktop.Cancelled {
+	if cancelled := app.AddAttachments(desktop.ItemRequest{Context: context, Ref: item.Ref}); cancelled.State != desktop.Cancelled || len(cancelled.Attachments) == 0 {
 		t.Fatalf("cancel: %+v", cancelled)
 	}
 	// The project's own storage is not a case, a loose file or anything a
@@ -490,7 +497,8 @@ func TestRevealShowsAnObjectsPlaceWithoutAnsweringIt(t *testing.T) {
 // Locate without a place asks the host's folder dialog, and only a folder
 // that is the object is recorded; a cancelled dialog changes nothing.
 func TestLocateAsksForTheFolderAndVerifiesIt(t *testing.T) {
-	app, dialogs, context := casesProject(t)
+	shell := t.TempDir()
+	app, dialogs, context := casesProjectOver(t, shell)
 	moved := filepath.Join(t.TempDir(), "moved")
 	if err := os.Rename(context.Project, moved); err != nil {
 		t.Fatal(err)
@@ -504,9 +512,75 @@ func TestLocateAsksForTheFolderAndVerifiesIt(t *testing.T) {
 	if wrong := app.LocateItem(desktop.LocateRequest{Context: context, Ref: ref}); wrong.State == desktop.Completed {
 		t.Fatalf("a folder that is not the project was recorded: %+v", wrong)
 	}
+	other := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Order interface", Location: t.TempDir()})
+	if other.State != desktop.Completed {
+		t.Fatalf("create: %+v", other)
+	}
+	remembered := mustRead(t, filepath.Join(shell, "projects.json"))
+	dialogs.folder = ""
+	if cancelled := app.LocateItem(desktop.LocateRequest{Context: context, Ref: ref}); cancelled.State != desktop.Cancelled {
+		t.Fatalf("cancel: %+v", cancelled)
+	}
+	for _, folder := range []string{t.TempDir(), other.Context.Project} {
+		dialogs.folder = folder
+		if wrong := app.LocateItem(desktop.LocateRequest{Context: context, Ref: ref}); wrong.State != desktop.Failed || wrong.Reason == "" || wrong.Item != nil {
+			t.Fatalf("a folder that is not the project was not refused with its reason: %+v", wrong)
+		}
+	}
+	if after := mustRead(t, filepath.Join(shell, "projects.json")); !bytes.Equal(after, remembered) {
+		t.Fatalf("a cancelled or refused Locate changed the remembered projects:\n%s\n%s", remembered, after)
+	}
 	dialogs.folder = moved
 	located := app.LocateItem(desktop.LocateRequest{Context: context, Ref: ref})
 	if located.State != desktop.Completed || located.Item == nil || located.Item.Ref.ID != context.ProjectID {
+		t.Fatalf("locate: %+v", located)
+	}
+}
+
+// Locating a missing case verifies the entry chosen: cancelling, a folder
+// outside the project and an entry holding other evidence are each refused
+// with the reason, and the project's catalog is left exactly as it was.
+func TestLocatingACaseLeavesTheCatalogAloneUntilTheEvidenceMatches(t *testing.T) {
+	app, dialogs, context := casesProject(t)
+	item := caseAt(t, app, context, "regression")
+	moved := filepath.Join(context.Project, "regression-moved")
+	if err := os.Rename(filepath.Join(context.Project, "regression"), moved); err != nil {
+		t.Fatal(err)
+	}
+	// Recording the project, as Locate does before it asks, registers the
+	// moved folder as an entry of its own, as it does any new entry; that
+	// is all it writes, and a cancelled Locate writes nothing more.
+	dialogs.folder = ""
+	catalogPath := filepath.Join(context.Project, catalog.Folder, catalog.DocumentName)
+	var recorded []byte
+	for range 2 {
+		if cancelled := app.LocateItem(desktop.LocateRequest{Context: context, Ref: item.Ref}); cancelled.State != desktop.Cancelled {
+			t.Fatalf("cancel: %+v", cancelled)
+		}
+		if after := mustRead(t, catalogPath); recorded != nil && !bytes.Equal(after, recorded) {
+			t.Fatal("a cancelled Locate changed the project's catalog")
+		} else {
+			recorded = after
+		}
+	}
+	others := slices.DeleteFunc(entriesOf(t, context.Project), func(name string) bool {
+		info, err := os.Stat(filepath.Join(context.Project, name))
+		return err != nil || !info.IsDir() || name == "regression-moved" || strings.HasPrefix(name, ".")
+	})
+	if len(others) == 0 {
+		t.Fatal("the sample holds no other case folder")
+	}
+	for _, folder := range []string{t.TempDir(), filepath.Join(context.Project, others[0])} {
+		dialogs.folder = folder
+		if wrong := app.LocateItem(desktop.LocateRequest{Context: context, Ref: item.Ref}); wrong.State != desktop.Failed || wrong.Reason == "" {
+			t.Fatalf("a folder that is not the case was not refused with its reason: %+v", wrong)
+		}
+	}
+	if after := mustRead(t, catalogPath); !bytes.Equal(after, recorded) {
+		t.Fatalf("a cancelled or refused Locate changed the project's catalog\n%s\n%s", recorded, after)
+	}
+	dialogs.folder = moved
+	if located := app.LocateItem(desktop.LocateRequest{Context: context, Ref: item.Ref}); located.State != desktop.Completed {
 		t.Fatalf("locate: %+v", located)
 	}
 }
@@ -533,6 +607,50 @@ func TestRetainedDraftsSayWhenTheyWereRetained(t *testing.T) {
 	at := slices.IndexFunc(listed.Drafts, func(draft desktop.EditorDraft) bool { return draft.Item != nil })
 	if at < 0 || listed.Drafts[at].SavedAt == nil || *listed.Drafts[at].SavedAt != *retained.Drafts[edits].SavedAt {
 		t.Fatalf("drafts: %+v", listed)
+	}
+}
+
+// The project and case sheets retain their unsaved work as drafts of the
+// object they edit: Edit details as a draft of the case, Project settings as
+// a draft of the project itself, and a note as a note draft of the case or
+// the project it is about. Each is listed back with its object, its revision
+// and when it was retained; a project draft naming another project is refused.
+func TestProjectAndCaseSheetsRetainDraftsOfTheirObject(t *testing.T) {
+	app, _, context := casesProject(t)
+	item := caseAt(t, app, context, "regression")
+	projects := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem})
+	if projects.Page == nil || len(projects.Page.Items) != 1 {
+		t.Fatalf("projects: %+v", projects)
+	}
+	own := projects.Page.Items[0].Ref
+	note := []byte(`{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"Follow-up","body":"typed"}`)
+	sheets := []desktop.EditorDraft{
+		{Kind: "case", ContentSchema: "readmit-case-details-draft/v1", Content: []byte(`{"name":"Regression"}`), Item: &desktop.DraftItem{ProjectID: context.ProjectID, Ref: item.Ref}},
+		{Kind: "project", ContentSchema: "readmit-project-settings-draft/v1", Content: []byte(`{"name":"Scheduling"}`), Item: &desktop.DraftItem{ProjectID: context.ProjectID, Ref: own}},
+		{Kind: "note", ContentSchema: desktop.NoteDraftSchema, Content: note, Item: &desktop.DraftItem{ProjectID: context.ProjectID, Ref: item.Ref}},
+		{Kind: "note", ContentSchema: desktop.NoteDraftSchema, Content: note, Item: &desktop.DraftItem{ProjectID: context.ProjectID, Ref: own}},
+	}
+	for _, sheet := range sheets {
+		sheet.Workspace = context.Project
+		if kept := app.SaveEditorDraft(sheet); kept.State != desktop.Completed {
+			t.Fatalf("%s draft: %+v", sheet.Kind, kept)
+		}
+	}
+	listed := app.EditorDrafts()
+	if listed.State != desktop.Completed || len(listed.Drafts) != len(sheets) {
+		t.Fatalf("drafts: %+v", listed)
+	}
+	for _, sheet := range sheets {
+		if !slices.ContainsFunc(listed.Drafts, func(draft desktop.EditorDraft) bool {
+			return draft.Kind == sheet.Kind && draft.Item != nil && *draft.Item == *sheet.Item && draft.SavedAt != nil
+		}) {
+			t.Fatalf("the %s draft did not come back to its object: %+v", sheet.Kind, listed.Drafts)
+		}
+	}
+	other := desktop.EditorDraft{Kind: "project", Workspace: context.Project, ContentSchema: "readmit-project-settings-draft/v1", Content: []byte(`{}`),
+		Item: &desktop.DraftItem{ProjectID: context.ProjectID, Ref: desktop.ItemRef{Kind: desktop.ProjectItem, ID: strings.Repeat("a", 24)}}}
+	if refused := app.SaveEditorDraft(other); refused.State != desktop.Failed || len(refused.Drafts) != len(sheets) {
+		t.Fatalf("a draft of another project was retained: %+v", refused)
 	}
 }
 
@@ -572,6 +690,68 @@ func TestOpeningAFolderRemembersTheProjectItHolds(t *testing.T) {
 	}
 }
 
+// The projects an earlier release's recent-folder list names are listed
+// while this viewer has no projects list yet: each whose catalog records its
+// identity, never opened here, so after every project that has been. Nothing
+// is written into any folder, the earlier list is left as it was, and the
+// import happens once: a project forgotten afterwards stays forgotten.
+func TestProjectsAnEarlierReleaseListedAreListedOnce(t *testing.T) {
+	location := t.TempDir()
+	earlier := newApp(t, &chooser{folder: location})
+	recorded := earlier.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: location})
+	if recorded.State != desktop.Completed {
+		t.Fatalf("create: %+v", recorded)
+	}
+	unrecorded := writeProject(t, t.TempDir(), registeredRegression)
+	plain := t.TempDir()
+	folders := []string{recorded.Context.Project, unrecorded, plain}
+	before := map[string]map[string][]byte{}
+	for _, folder := range folders {
+		before[folder] = bytesUnder(t, folder)
+	}
+	list := fmt.Sprintf(`{"schema":"readmit-desktop-recent/v1","roots":[%q,%q,%q,%q]}`+"\n",
+		filepath.Join(t.TempDir(), "gone"), unrecorded, recorded.Context.Project, plain)
+	state := t.TempDir()
+	writeDocument(t, state, "recent.json", list)
+	app := activatedApp(t, &chooser{}, state)
+
+	listed := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem})
+	if listed.Page == nil || len(listed.Page.Items) != 1 {
+		t.Fatalf("projects: %+v", listed)
+	}
+	imported := listed.Page.Items[0]
+	if imported.Ref.ID != recorded.Context.ProjectID || imported.Name != "Scheduling QA" || imported.Availability != desktop.ItemAvailable || imported.LastOpenedAt != nil {
+		t.Fatalf("the earlier release's project: %+v", imported)
+	}
+	opened := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Order interface", Location: t.TempDir()})
+	if opened.State != desktop.Completed {
+		t.Fatalf("create: %+v", opened)
+	}
+	both := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem})
+	if both.Page == nil || len(both.Page.Items) != 2 {
+		t.Fatalf("projects: %+v", both)
+	}
+	for _, item := range both.Page.Items {
+		if (item.Ref.ID == opened.Context.ProjectID) != (item.LastOpenedAt != nil) {
+			t.Fatalf("only the project opened here has been opened: %+v", both.Page.Items)
+		}
+	}
+	if forgot := app.ForgetProject(imported.Ref.ID); forgot.State != desktop.Completed {
+		t.Fatalf("forget: %+v", forgot)
+	}
+	if again := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem}); again.Page == nil || len(again.Page.Items) != 1 || again.Page.Items[0].Ref.ID != opened.Context.ProjectID {
+		t.Fatalf("a forgotten project was imported again: %+v", again)
+	}
+	for _, folder := range folders {
+		if after := bytesUnder(t, folder); !maps.EqualFunc(before[folder], after, bytes.Equal) {
+			t.Fatalf("listing wrote into %s", folder)
+		}
+	}
+	if data := mustRead(t, filepath.Join(state, "recent.json")); string(data) != list {
+		t.Fatalf("the earlier recent-folder list was touched: %q", data)
+	}
+}
+
 // A project's quota bounds the copies attachments keep. A removed attachment
 // keeps its copy, and that copy no longer counts against adding another.
 func TestAttachmentsKeepToTheProjectsQuota(t *testing.T) {
@@ -601,10 +781,40 @@ func TestAttachmentsKeepToTheProjectsQuota(t *testing.T) {
 		t.Fatalf("the removed attachment's copy was counted against the quota: %+v", room)
 	}
 	dialogs.files = []string{filepath.Join(outside, "first.txt")}
-	if full := app.AddAttachments(desktop.ItemRequest{Context: context, Ref: item.Ref}); full.State != desktop.Failed || !strings.Contains(full.Reason, "quota") {
+	// A refusal says why and still answers what the case holds.
+	if full := app.AddAttachments(desktop.ItemRequest{Context: context, Ref: item.Ref}); full.State != desktop.Failed || !strings.Contains(full.Reason, "quota") ||
+		len(full.Attachments) != 1 {
 		t.Fatalf("an attachment past the quota was stored: %+v", full)
+	}
+	if gone := app.RemoveAttachment(desktop.AttachmentRemoveRequest{Context: context, Case: item.Ref, ID: "no-such-attachment"}); gone.State != desktop.Failed ||
+		gone.Reason == "" || len(gone.Attachments) != 1 {
+		t.Fatalf("a refused remove: %+v", gone)
 	}
 	if copies := managedFiles(t, context.Project); len(copies) != 2 {
 		t.Fatalf("stored copies: %v", copies)
+	}
+}
+
+// An earlier release's recent-folder list that names no recorded project is
+// still read only once: the first list keeps the empty result, so later lists
+// do not open its folders again. With no earlier list nothing is written.
+func TestAnEarlierListNamingNoProjectIsReadOnce(t *testing.T) {
+	fresh := t.TempDir()
+	app := activatedApp(t, &chooser{}, fresh)
+	if listed := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem}); listed.Page == nil || len(listed.Page.Items) != 0 {
+		t.Fatalf("a fresh install lists %+v", listed)
+	}
+	if _, err := os.Stat(filepath.Join(fresh, "projects.json")); !os.IsNotExist(err) {
+		t.Fatalf("a fresh install wrote its projects list: %v", err)
+	}
+	state := t.TempDir()
+	writeDocument(t, state, "recent.json", fmt.Sprintf(`{"schema":"readmit-desktop-recent/v1","roots":[%q]}`+"\n", t.TempDir()))
+	app = activatedApp(t, &chooser{}, state)
+	if listed := app.ListCatalog(desktop.CatalogQuery{Kind: desktop.ProjectItem}); listed.Page == nil || len(listed.Page.Items) != 0 {
+		t.Fatalf("an earlier list naming no project lists %+v", listed)
+	}
+	data, err := os.ReadFile(filepath.Join(state, "projects.json"))
+	if err != nil || !strings.Contains(string(data), `"projects":[]`) {
+		t.Fatalf("the empty import was not kept: %q %v", data, err)
 	}
 }

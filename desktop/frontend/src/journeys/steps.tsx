@@ -89,6 +89,9 @@ export async function createProject(user: UserEvent, journey: Journey, parent: s
  * facade's answer. */
 export async function submitProject(user: UserEvent, journey: Journey, parent: string, _name: string, title: string, admitted: boolean) {
   await press(user, screen.getByRole("button", { name: "Projects" }));
+  // Projects reads the list again when it is shown; a person starts once it
+  // has drawn.
+  await journey.settled();
   await press(user, screen.getAllByRole("button", { name: "New project" })[0]!);
   const sheet = within(await screen.findByRole("dialog", { name: "New project" }));
   await enter(user, sheet.getByLabelText("Name"), title);

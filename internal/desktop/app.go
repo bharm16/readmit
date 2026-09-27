@@ -498,7 +498,7 @@ func (a *App) begin(operation string) (context.Context, func(), bool) {
 // SelectWorkspace asks the host for a folder and opens it as a workspace.
 func (a *App) SelectWorkspace() WorkspaceResult {
 	return run(a, true, false, func(ctx context.Context) WorkspaceResult {
-		folder, declined := a.chooseFolder(ctx, "Open workspace")
+		folder, declined := a.chooseFolder(ctx, "Open project")
 		if folder == "" {
 			return declined.workspace()
 		}

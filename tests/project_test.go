@@ -843,8 +843,8 @@ func field(t *testing.T, out, label string) string {
 func TestApplicationCreatedProjectReadsThroughTheCommandLine(t *testing.T) {
 	parent := t.TempDir()
 	app := desktopApp(t, parent)
-	app.ChooseProjectLocation()
-	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Epic scheduling interface"})
+	chosen := app.ChooseProjectLocation()
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Epic scheduling interface", Location: chosen.Location})
 	if created.State != desktop.Completed || created.Project == nil {
 		t.Fatalf("the shell could not create the project: %+v", created)
 	}
@@ -878,8 +878,8 @@ func TestApplicationCreatedProjectReadsThroughTheCommandLine(t *testing.T) {
 func TestANamedProjectReadsThroughTheCommandLine(t *testing.T) {
 	parent := t.TempDir()
 	app := desktopApp(t, parent)
-	app.ChooseProjectLocation()
-	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
+	chosen := app.ChooseProjectLocation()
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: chosen.Location})
 	if created.State != desktop.Completed || created.Project == nil {
 		t.Fatalf("the shell could not create the project: %+v", created)
 	}

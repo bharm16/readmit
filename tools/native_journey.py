@@ -586,7 +586,7 @@ def staged_upgrade(app, work, command, bridge, candidate, version, record):
     app.read_out(r"License: active\. Organization: test-organization\.")
 
     app.press("Create project…")
-    app.choose_folder("Open workspace", work / "investigations")
+    app.choose_folder("Open project", work / "investigations")
     app.press("Create a project…", within="Evidence")
     app.fill("Project folder", "upgrade-check", within="Evidence")
     app.fill("Title", "Staged upgrade check", within="Evidence")

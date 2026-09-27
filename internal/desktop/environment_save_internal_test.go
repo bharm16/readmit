@@ -42,8 +42,8 @@ func TestAnEnvironmentSavePublishesTargetPolicyResetAndLinksAsOneRevision(t *tes
 				return app
 			}
 			app := window()
-			app.ChooseProjectLocation()
-			created := app.CreateNamedProject(NewProjectRequest{Name: "Faults"})
+			chosen := app.ChooseProjectLocation()
+			created := app.CreateNamedProject(NewProjectRequest{Name: "Faults", Location: chosen.Location})
 			if created.State != Completed {
 				t.Fatalf("%+v", created)
 			}

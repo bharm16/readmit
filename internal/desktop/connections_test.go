@@ -27,8 +27,8 @@ import (
 func connectionsProject(t *testing.T, files ...string) (*desktop.App, desktop.RequestContext) {
 	t.Helper()
 	app := activatedApp(t, &chooser{folder: t.TempDir(), files: files}, t.TempDir())
-	app.ChooseProjectLocation()
-	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA"})
+	chosen := app.ChooseProjectLocation()
+	created := app.CreateNamedProject(desktop.NewProjectRequest{Name: "Scheduling QA", Location: chosen.Location})
 	if created.State != desktop.Completed {
 		t.Fatalf("create: %+v", created)
 	}
