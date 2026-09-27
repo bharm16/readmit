@@ -28,10 +28,11 @@ func runConnectedTest(cmd *cobra.Command, plan, config, instance, output string,
 		return refusal(err)
 	}
 	if err = writeConnected(cmd, struct {
-		State   string            `json:"state"`
-		Verdict assertion.Verdict `json:"verdict"`
-		Phase   string            `json:"phase"`
-	}{result.State, result.Verdict, result.Phase}); err != nil {
+		State      string            `json:"state"`
+		Verdict    assertion.Verdict `json:"verdict"`
+		Phase      string            `json:"phase"`
+		Boundaries map[string]string `json:"boundaries,omitzero"`
+	}{result.State, result.Verdict, result.Phase, result.Boundaries()}); err != nil {
 		return err
 	}
 	if result.State != "complete" || result.Verdict == assertion.VerdictUndecided {

@@ -3,6 +3,7 @@ package connectedrun
 import (
 	"context"
 	"encoding/json/v2"
+	"maps"
 	"path/filepath"
 	"time"
 
@@ -13,11 +14,13 @@ import (
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/engine"
 	"github.com/bharm16/readmit/internal/networkaction"
+	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/replay"
 )
 
 type Result struct {
+	boundaries   map[string]string
 	Schema       string            `json:"schema"`
 	Plan         string            `json:"plan_identity"`
 	Instance     string            `json:"instance"`
@@ -32,6 +35,9 @@ type Result struct {
 	Evaluation   string            `json:"evaluation_identity"`
 	Transport    string            `json:"transport_identity"`
 }
+
+// Boundaries states the exact sufficient (or missing) coverage for a v2 run.
+func (r Result) Boundaries() map[string]string { return maps.Clone(r.boundaries) }
 
 var family = artifactdir.Family{Layout: artifactdir.Layout{Noun: "connected execution", AllowedDirectories: []string{"observations"}, Nested: []string{"plan", "transport", "observations", "evaluation"}, RequiredFiles: []string{"manifest.json", "identity.sha256"}, AllowFile: func(n string) bool {
 	return n == "started.json" || n == "stimulus-intent.json" || n == "manifest.json" || n == "identity.sha256"
@@ -61,6 +67,9 @@ func (a liveAuthority) Check(ctx context.Context, b networkaction.Binding) (netw
 // declared final-state horizon, acquire, evaluate and retain. No resume or retry
 // is inferred from an existing directory or an uncertain transport outcome.
 func Execute(ctx context.Context, p *Prepared, instance, output string) (Result, error) {
+	if p != nil && p.intervals {
+		return ExecuteWithClock(ctx, p, instance, output, observeinterval.SystemClock())
+	}
 	if p == nil || !safeID(instance) || p.unchanged() != nil {
 		return Result{}, invalid
 	}

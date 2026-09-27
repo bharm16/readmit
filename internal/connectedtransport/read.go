@@ -20,17 +20,28 @@ import (
 
 // Open verifies retained bindings and transport evidence locally. Missing final
 // identity is incomplete evidence; reopening never contacts an endpoint.
+type Evidence struct {
+	Receipt  Receipt
+	Identity string
+}
+
 func Open(directory string) (Receipt, error) {
+	e, err := OpenEvidence(directory)
+	return e.Receipt, err
+}
+
+// OpenEvidence returns identity from the same bytes whose receipt is verified.
+func OpenEvidence(directory string) (Evidence, error) {
 	files, err := artifactdir.Read(directory, family.Layout)
 	if err != nil {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(ReceiptSchema, files) {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	var r, start Receipt
 	if json.Unmarshal(files["receipt.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || r.Schema != ReceiptSchema || r.ApplicationVerdict != "not-evaluated" {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	want := r
 	want.State = "incomplete"
@@ -38,17 +49,17 @@ func Open(directory string) (Receipt, error) {
 	a, _ := json.Marshal(want)
 	b, _ := json.Marshal(start)
 	if !bytes.Equal(a, b) {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	plan, err := connectedtest.OpenPlan(filepath.Join(directory, "plan"))
-	if err != nil || r.Binding.Plan != plan.Identity() {
-		return Receipt{}, refused
+	if err != nil || r.Binding.Plan != plan.Identity() || !artifactdir.MatchesSubtree(files, "plan", plan.Document().Schema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
+		return Evidence{}, refused
 	}
 	env := plan.Document().Environment
 	a, _ = json.Marshal(env)
 	b, _ = json.Marshal(r.Environment)
 	if !bytes.Equal(a, b) || r.Binding.Project != env.Project || r.Binding.Environment != env.ID || r.Binding.Revision != env.Revision || r.Binding.Endpoint != env.Endpoint || r.Binding.Operation != sendpolicy.V2Stimulus || !runnerprotocol.ID(r.Instance) || !runnerprotocol.ID(r.Actor.ID) || !runnerprotocol.ID(r.Actor.Generation) || r.Actor.Kind != "runner" && r.Actor.Kind != "action-review" {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	config := map[string][]byte{}
 	for n, v := range files {
@@ -57,19 +68,19 @@ func Open(directory string) (Receipt, error) {
 		}
 	}
 	if artifactdir.Identity("readmit-connected-configuration/v1", config) != r.Binding.Configuration || connectedtest.Digest(config["policy.json"]) != r.Binding.Policy || connectedtest.Digest(config["credential.json"]) != r.Binding.Credentials {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	policy, err := sendpolicy.DecodeScopedPolicy(config["policy.json"])
 	if err != nil || policy.Project != env.Project || policy.Environment != env.ID || policy.Revision != env.Revision || r.Binding.Policy != env.AddressPolicyIdentity {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	run, err := replay.Open(filepath.Join(directory, "run"))
-	if err != nil || run.Identity != r.RunIdentity || run.Manifest.SourceBundleIdentity != r.Binding.Source || run.Manifest.Target.Identity() != env.TargetIdentity || len(run.Events) != len(plan.Document().Order) || transportState(run) != r.State {
-		return Receipt{}, refused
+	if err != nil || !artifactdir.MatchesSubtree(files, "run", replay.Schema, run.Identity) || run.Identity != r.RunIdentity || run.Manifest.SourceBundleIdentity != r.Binding.Source || run.Manifest.Target.Identity() != env.TargetIdentity || len(run.Events) != len(plan.Document().Order) || transportState(run) != r.State {
+		return Evidence{}, refused
 	}
 	target, decodeErr := replay.DecodeTarget(config["target.json"], "")
 	if decodeErr != nil || target.Schema != replay.TargetSchemaV3 || target.Name != env.Name || string(target.Classification) != env.Classification || target.ServerName != env.TLS.ServerName {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	expectedNames := []string{"target.json", "policy.json"}
 	if target.CAFile != "" {
@@ -78,15 +89,15 @@ func Open(directory string) (Receipt, error) {
 	if target.ClientCertificate != "" {
 		expectedNames = append(expectedNames, "client.pem", "credential.json", "secrets.json")
 		if _, _, err := bindCredentialSnapshot(config["credential.json"], config["secrets.json"], env, target); err != nil {
-			return Receipt{}, refused
+			return Evidence{}, refused
 		}
 	}
 	if len(config) != len(expectedNames) {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	for _, n := range expectedNames {
 		if _, ok := config[n]; !ok {
-			return Receipt{}, refused
+			return Evidence{}, refused
 		}
 	}
 	mode := target.Transport
@@ -94,24 +105,24 @@ func Open(directory string) (Receipt, error) {
 		mode = "mtls"
 	}
 	if mode != env.TLS.Mode {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	record := replay.TargetRecord{Address: target.Address, Transport: target.Transport, TestEndpoint: target.TestEndpoint, ApprovedTransport: target.ApprovedTransport, ConnectTimeout: target.ConnectTimeout, MessageTimeout: target.MessageTimeout, MaxACKBytes: target.MaxACKBytes}
 	if len(config["authorities.pem"]) > 0 {
 		record.CASHA256 = connectedtest.Digest(config["authorities.pem"])
 	}
 	if record != run.Manifest.Target {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	var decision sendpolicy.ScopedDecision
 	if json.Unmarshal(files["decision.json"], &decision, json.RejectUnknownMembers(true)) != nil {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	candidates := []netip.Addr{}
 	for _, candidate := range decision.Candidates {
 		ip, err := netip.ParseAddr(candidate)
 		if err != nil {
-			return Receipt{}, refused
+			return Evidence{}, refused
 		}
 		candidates = append(candidates, ip)
 	}
@@ -120,28 +131,28 @@ func Open(directory string) (Receipt, error) {
 	b, _ = json.Marshal(decision)
 	var operational sendpolicy.OperationalDecision
 	if json.Unmarshal(files["operational.json"], &operational, json.RejectUnknownMembers(true)) != nil || operational != decision.Redacted() {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	if !expected.Allowed || !bytes.Equal(a, b) {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	var transport TLSReceipt
 	if raw, exists := files["transport.json"]; exists {
 		if json.Unmarshal(raw, &transport, json.RejectUnknownMembers(true)) != nil || transport.Mode != target.Transport {
-			return Receipt{}, refused
+			return Evidence{}, refused
 		}
 		if target.Transport == "tls" {
 			if !transport.Verified || transport.Version < tls.VersionTLS12 || transport.ServerName != target.ServerName || len(transport.PeerCertificates) == 0 {
-				return Receipt{}, refused
+				return Evidence{}, refused
 			}
 			for _, der := range transport.PeerCertificates {
 				if _, err := x509.ParseCertificate(der); err != nil {
-					return Receipt{}, refused
+					return Evidence{}, refused
 				}
 			}
 		}
 	} else if r.State == "settled" || r.State == "uncertain" {
-		return Receipt{}, refused
+		return Evidence{}, refused
 	}
 	d := plan.Document()
 	inputs := plan.Files()
@@ -150,14 +161,14 @@ func Open(directory string) (Receipt, error) {
 		j := slices.IndexFunc(d.Test.Steps, func(s connectedtest.Step) bool { return s.ID == id })
 		raw, err := run.Raw(e.Intended)
 		if err != nil || d.Test.Steps[j].V2 == nil || e.SourceOccurrence != d.Test.Steps[j].V2.Occurrence || !bytes.Equal(raw, frame(inputs["inputs/"+id+".hl7"])) {
-			return Receipt{}, refused
+			return Evidence{}, refused
 		}
 		if e.Delivery != "not_sent" {
 			var in intent
 			if json.Unmarshal(files["intents/"+e.OutboundOccurrence+".json"], &in, json.RejectUnknownMembers(true)) != nil || in.Step != id || in.Occurrence != e.OutboundOccurrence || in.State != "uncertain-until-settled" {
-				return Receipt{}, refused
+				return Evidence{}, refused
 			}
 		}
 	}
-	return r, nil
+	return Evidence{Receipt: r, Identity: strings.TrimSpace(string(files["identity.sha256"]))}, nil
 }

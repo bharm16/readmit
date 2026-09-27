@@ -121,47 +121,64 @@ func VerifyDecision(policy sendpolicy.ScopedPolicy, request sendpolicy.ScopedReq
 	b, _ := json.Marshal(record, json.Deterministic(true))
 	return bytes.Equal(a, b)
 }
+
+// CaptureEvidence binds returned objects to exactly the outer bytes verified
+// by this read. It is readback metadata, never a new serialized Result member.
+type CaptureEvidence struct {
+	Result   Result
+	Capture  *bundle.Bundle
+	Identity string
+}
+
 func OpenCapture(directory string) (Result, *bundle.Bundle, error) {
+	readback, err := OpenCaptureEvidence(directory)
+	return readback.Result, readback.Capture, err
+}
+func OpenCaptureEvidence(directory string) (CaptureEvidence, error) {
+	result, capture, identity, err := readCapture(directory)
+	return CaptureEvidence{Result: result, Capture: capture, Identity: identity}, err
+}
+func readCapture(directory string) (Result, *bundle.Bundle, string, error) {
 	files, err := artifactdir.Read(directory, captureFamily.Layout)
 	if err != nil {
-		return Result{}, nil, err
+		return Result{}, nil, "", err
 	}
 	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(ResultSchema, files) {
-		return Result{}, nil, refused
+		return Result{}, nil, "", refused
 	}
 	p, err := PrepareCapture(files["action.json"], files["policy.json"])
 	if err != nil {
-		return Result{}, nil, err
+		return Result{}, nil, "", err
 	}
 	var r Result
 	var d sendpolicy.ScopedDecision
 	if json.Unmarshal(files["result.json"], &r, json.RejectUnknownMembers(true)) != nil || r.Schema != ResultSchema || r.Binding != p.binding || json.Unmarshal(files["decision.json"], &d, json.RejectUnknownMembers(true)) != nil {
-		return Result{}, nil, refused
+		return Result{}, nil, "", refused
 	}
 	s := p.spec
 	if !VerifyDecision(p.policy, sendpolicy.ScopedRequest{Project: s.Project, Environment: s.Environment, Endpoint: s.Endpoint, Classification: s.Classification, Address: s.Address, Operation: sendpolicy.CaptureListen}, d) || !d.Allowed {
-		return Result{}, nil, refused
+		return Result{}, nil, "", refused
 	}
 	var intent Binding
 	if json.Unmarshal(files["intent.json"], &intent, json.RejectUnknownMembers(true)) != nil || intent != p.binding {
-		return Result{}, nil, refused
+		return Result{}, nil, "", refused
 	}
 	if !RecordedActor(r.Actor) || r.State != "captured" && r.State != "incomplete" {
-		return Result{}, nil, refused
+		return Result{}, nil, "", refused
 	}
 	expected, _ := json.Marshal(d.Redacted(), json.Deterministic(true))
 	if !bytes.Equal(expected, files["operation.json"]) {
-		return Result{}, nil, refused
+		return Result{}, nil, "", refused
 	}
 	capture, err := bundle.Open(filepath.Join(directory, "case"))
 	if err != nil {
 		if r.State == "incomplete" {
-			return r, nil, nil
+			return r, nil, strings.TrimSpace(string(files["identity.sha256"])), nil
 		}
-		return Result{}, nil, err
+		return Result{}, nil, "", err
 	}
-	if r.ResponseDigest != capture.Identity {
-		return Result{}, nil, refused
+	if r.ResponseDigest != capture.Identity || !artifactdir.MatchesSubtree(files, "case", capture.Manifest.Schema, capture.Identity) {
+		return Result{}, nil, "", refused
 	}
-	return r, capture, nil
+	return r, capture, strings.TrimSpace(string(files["identity.sha256"])), nil
 }

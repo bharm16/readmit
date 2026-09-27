@@ -67,3 +67,12 @@ preparation. This is a real shared execution path consuming IG03's datasets, not
 a claim that every IG06 acceptance scenario is complete. Native and customer
 runner UI/configuration integration retain their owners and call the same Go
 service; no page or review redesign is introduced here.
+
+
+## Full observation intervals
+
+The explicit test/plan v3 and runtime configuration/result v2 path now arms live
+capture and retains sampled source evidence through the complete declared
+interval. It supports scoped processing barriers, deterministic monotonic
+completion, and recovery without resending. See [observation intervals](observation-intervals.md).
+The earlier v1 runtime described above keeps its final-snapshot semantics.

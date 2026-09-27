@@ -20,6 +20,7 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/localprofile"
+	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profileversion"
@@ -40,13 +41,13 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 		return nil, invalid
 	}
 	operatorVersion := OperatorVersion
-	if d.Schema == TestSchemaV2 {
+	if d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3 {
 		operatorVersion = OperatorVersionV2
 	}
-	if (d.Schema != TestSchema && d.Schema != TestSchemaV2) || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
+	if (d.Schema != TestSchema && d.Schema != TestSchemaV2 && d.Schema != TestSchemaV3) || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
 		return nil, invalid
 	}
-	if d.Schema == TestSchemaV2 && (d.Checks.Schema != assertion.DatasetSchema || d.Bindings != (Bindings{})) {
+	if (d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3) && (d.Checks.Schema != assertion.DatasetSchema || d.Bindings != (Bindings{})) {
 		return nil, invalid
 	}
 	if d.Limits.MaxSteps < 1 || d.Limits.MaxSteps > 256 || d.Limits.MaxBytes < 1 || d.Limits.MaxBytes > MaxBytes || d.Limits.DeadlineMS < 1 || d.Limits.DeadlineMS > 3600000 || len(d.Steps) < 1 || len(d.Steps) > d.Limits.MaxSteps {
@@ -72,13 +73,31 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			}
 		}
 	}
+	if d.Schema != TestSchemaV3 {
+		var fields struct {
+			Datasets []struct {
+				Completion map[string]jsontext.Value `json:"completion"`
+			} `json:"datasets"`
+		}
+		if json.Unmarshal(raw, &fields) != nil {
+			return nil, invalid
+		}
+		for _, ds := range fields.Datasets {
+			if _, ok := ds.Completion["policy"]; ok {
+				return nil, invalid
+			}
+		}
+	}
 	canonical, err := encode(d)
 	if err != nil {
 		return nil, err
 	}
 	planSchema := PlanSchema
-	if d.Schema == TestSchemaV2 {
+	if d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3 {
 		planSchema = PlanSchemaV2
+	}
+	if d.Schema == TestSchemaV3 {
+		planSchema = PlanSchemaV3
 	}
 	p := &Plan{document: PlanDocument{Schema: planSchema, TestIdentity: Digest(canonical), Test: d, Environment: d.Environment, Generation: generation, Resolution: map[string]string{}}, files: map[string][]byte{"test.json": canonical}}
 	total := len(canonical)
@@ -345,14 +364,29 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 	}
 	for _, ds := range d.Datasets {
 		c := ds.Completion
-		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources", "typed-rows"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind) || c.HorizonMS < 1 || c.HorizonMS > d.Limits.DeadlineMS || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
+		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources", "typed-rows"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !(d.Schema == TestSchemaV3 && slices.Contains([]string{"full-horizon", "processing-barrier"}, c.Kind) || d.Schema != TestSchemaV3 && slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind)) || c.HorizonMS < 1 || d.Schema == TestSchemaV3 && c.HorizonMS > 300000 || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
+			return nil, invalid
+		}
+		if d.Schema == TestSchemaV3 {
+			if c.Policy == nil || ds.Kind != "typed-rows" {
+				return nil, invalid
+			}
+			raw, err := resolve(*c.Policy, observeinterval.Schema)
+			if err != nil {
+				return nil, err
+			}
+			definition, err := observeinterval.Decode(raw)
+			if err != nil || definition.Source != ds.Source || definition.Namespace != ds.Namespace || definition.HorizonMS != c.HorizonMS || definition.MaxRecords != c.MaxRecords || definition.MaxBytes != c.MaxBytes || (definition.Barrier != nil) != (c.Kind == "processing-barrier") {
+				return nil, invalid
+			}
+		} else if c.Policy != nil || c.HorizonMS > d.Limits.DeadlineMS {
 			return nil, invalid
 		}
 		if c.Kind == "ack-responses" && (ds.Source != "legacy-ack" || ds.Kind != "v2-messages" || ds.Phase != "after") {
 			return nil, invalid
 		}
 		if ds.Kind == "typed-rows" {
-			if d.Schema != TestSchemaV2 || !identifier.MatchString(ds.Namespace) || !hash.MatchString(ds.Source) || ds.Projection == nil || c.Kind != "bounded-horizon" {
+			if d.Schema != TestSchemaV2 && d.Schema != TestSchemaV3 || !identifier.MatchString(ds.Namespace) || !hash.MatchString(ds.Source) || ds.Projection == nil || d.Schema != TestSchemaV3 && c.Kind != "bounded-horizon" {
 				return nil, invalid
 			}
 			raw, err := resolve(*ds.Projection, dataset.ProjectionSchema)
@@ -360,7 +394,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 				return nil, err
 			}
 			projection, err := dataset.DecodeProjection(raw)
-			if err != nil || projection.Limits.MaxRows > c.MaxRecords || projection.Limits.MaxBytes > c.MaxBytes || projection.Limits.TimeoutMS > c.HorizonMS {
+			if err != nil || projection.Limits.MaxRows > c.MaxRecords || projection.Limits.MaxBytes > c.MaxBytes || d.Schema != TestSchemaV3 && projection.Limits.TimeoutMS > c.HorizonMS {
 				return nil, invalid
 			}
 		} else if ds.Namespace != "" || ds.Projection != nil {
@@ -376,7 +410,7 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			}
 		}
 	}
-	if d.Checks.Schema == assertion.DatasetSchema && d.Schema == TestSchemaV2 {
+	if d.Checks.Schema == assertion.DatasetSchema && (d.Schema == TestSchemaV2 || d.Schema == TestSchemaV3) {
 		raw, err := resolve(d.Checks, assertion.DatasetSchema)
 		if err != nil {
 			return nil, err

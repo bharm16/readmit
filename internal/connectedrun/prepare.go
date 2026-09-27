@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/networkaction"
+	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -46,6 +47,10 @@ type Config struct {
 	Sources    map[string]SourceSelection `json:"sources"`
 }
 type sourcePlan struct {
+	interval   *observeinterval.Definition
+	capture    *networkaction.CapturePlan
+	captureRaw []byte
+	barrier    *sourcePlan
 	definition connectedtest.Dataset
 	source     observesource.Source
 	projection dataset.Projection
@@ -54,6 +59,7 @@ type sourcePlan struct {
 	grant      Grant
 }
 type Prepared struct {
+	intervals            bool
 	plan                 *connectedtest.Plan
 	transport            *connectedtransport.Prepared
 	send                 Grant
@@ -64,11 +70,23 @@ type Prepared struct {
 
 func Prepare(planPath, configPath string) (*Prepared, error) {
 	plan, err := connectedtest.OpenPlan(planPath)
-	if err != nil || plan.Document().Schema != connectedtest.PlanSchemaV2 {
+	if err != nil || plan.Document().Schema != connectedtest.PlanSchemaV2 && plan.Document().Schema != connectedtest.PlanSchemaV3 {
 		return nil, invalid
 	}
 	raw, err := (artifactdir.Document{MaxBytes: 64 << 10}).Read(configPath)
 	if err != nil {
+		return nil, invalid
+	}
+	var head struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(raw, &head) != nil {
+		return nil, invalid
+	}
+	if head.Schema == ConfigSchemaV2 {
+		return prepareInterval(planPath, configPath, plan, raw)
+	}
+	if plan.Document().Schema != connectedtest.PlanSchemaV2 {
 		return nil, invalid
 	}
 	var config Config
@@ -107,58 +125,67 @@ func Prepare(planPath, configPath string) (*Prepared, error) {
 		if !ok || d.Kind != "typed-rows" || d.Projection == nil || d.Completion.Kind != "bounded-horizon" {
 			return nil, invalid
 		}
-		source, err := observesource.ReadSource(anchor(selected.Path))
-		if err != nil || source.Identity() != d.Source || !source.Enabled {
-			return nil, invalid
-		}
 		projection, err := dataset.DecodeProjection(files["dependencies/"+d.Projection.SHA256])
 		if err != nil {
 			return nil, invalid
 		}
-		item := sourcePlan{definition: d, source: source, projection: projection}
-		if source.HTTP != nil || source.Database != nil {
-			if selected.Grant == nil || selected.CredentialGeneration == "" {
-				return nil, invalid
-			}
-			item.grant = *selected.Grant
-			item.grant.Path = anchor(item.grant.Path)
-			if source.HTTP != nil {
-				u, err := url.Parse(source.HTTP.URL)
-				if err != nil {
-					return nil, invalid
-				}
-				name := source.HTTP.ServerName
-				if name == "" {
-					name = u.Hostname()
-				}
-				var ca []byte
-				if source.HTTP.CAFile != "" {
-					ca, err = (artifactdir.Document{MaxBytes: 1 << 20}).Read(source.HTTP.CAFile)
-					if err != nil {
-						return nil, invalid
-					}
-				}
-				spec := networkaction.HTTPSpec{Schema: networkaction.HTTPSchema, Plan: plan.Identity(), Source: source.Identity(), Project: doc.Environment.Project, Environment: doc.Environment.ID, Revision: doc.Environment.Revision, Endpoint: d.ID, Classification: source.HTTP.Classification, Operation: sendpolicy.ObservationRead, Method: "GET", URL: source.HTTP.URL, ServerName: name, Authorities: ca, TimeoutMS: projection.Limits.TimeoutMS, MaxBytes: projection.Limits.MaxBytes}
-				if c := source.HTTP.Credential; c != nil {
-					spec.Credential = &networkaction.Credential{Endpoint: c.Address, Purpose: sendpolicy.ObservationRead, Generation: selected.CredentialGeneration, Header: c.Header, Locator: networkaction.Provider{Command: c.Command, Arguments: c.Arguments}}
-				}
-				b, _ := json.Marshal(spec, json.Deterministic(true))
-				item.http, err = networkaction.PrepareHTTP(b, policy)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				item.database, err = observesource.PrepareDatabaseAction(source, projection, observesource.DatabaseActionContext{Plan: plan.Identity(), Project: doc.Environment.Project, Environment: doc.Environment.ID, Revision: doc.Environment.Revision, Endpoint: d.ID, CredentialGeneration: selected.CredentialGeneration}, policy)
-				if err != nil {
-					return nil, err
-				}
-			}
-		} else if selected.Grant != nil || selected.CredentialGeneration != "" {
-			return nil, invalid
+		item, err := prepareSource(plan, d, projection, selected, anchor, policy)
+		if err != nil {
+			return nil, err
 		}
 		p.sources = append(p.sources, item)
 	}
 	return p, nil
+}
+
+func prepareSource(plan *connectedtest.Plan, d connectedtest.Dataset, projection dataset.Projection, selected SourceSelection, anchor func(string) string, policy []byte) (sourcePlan, error) {
+	doc := plan.Document()
+	source, err := observesource.ReadSource(anchor(selected.Path))
+	if err != nil || source.Identity() != d.Source || !source.Enabled {
+		return sourcePlan{}, invalid
+	}
+	item := sourcePlan{definition: d, source: source, projection: projection}
+	if source.HTTP != nil || source.Database != nil {
+		if selected.Grant == nil || selected.CredentialGeneration == "" {
+			return sourcePlan{}, invalid
+		}
+		item.grant = *selected.Grant
+		item.grant.Path = anchor(item.grant.Path)
+		if source.HTTP != nil {
+			u, err := url.Parse(source.HTTP.URL)
+			if err != nil {
+				return sourcePlan{}, invalid
+			}
+			name := source.HTTP.ServerName
+			if name == "" {
+				name = u.Hostname()
+			}
+			var ca []byte
+			if source.HTTP.CAFile != "" {
+				ca, err = (artifactdir.Document{MaxBytes: 1 << 20}).Read(source.HTTP.CAFile)
+				if err != nil {
+					return sourcePlan{}, invalid
+				}
+			}
+			spec := networkaction.HTTPSpec{Schema: networkaction.HTTPSchema, Plan: plan.Identity(), Source: source.Identity(), Project: doc.Environment.Project, Environment: doc.Environment.ID, Revision: doc.Environment.Revision, Endpoint: d.ID, Classification: source.HTTP.Classification, Operation: sendpolicy.ObservationRead, Method: "GET", URL: source.HTTP.URL, ServerName: name, Authorities: ca, TimeoutMS: projection.Limits.TimeoutMS, MaxBytes: projection.Limits.MaxBytes}
+			if c := source.HTTP.Credential; c != nil {
+				spec.Credential = &networkaction.Credential{Endpoint: c.Address, Purpose: sendpolicy.ObservationRead, Generation: selected.CredentialGeneration, Header: c.Header, Locator: networkaction.Provider{Command: c.Command, Arguments: c.Arguments}}
+			}
+			b, _ := json.Marshal(spec, json.Deterministic(true))
+			item.http, err = networkaction.PrepareHTTP(b, policy)
+			if err != nil {
+				return sourcePlan{}, err
+			}
+		} else {
+			item.database, err = observesource.PrepareDatabaseAction(source, projection, observesource.DatabaseActionContext{Plan: plan.Identity(), Project: doc.Environment.Project, Environment: doc.Environment.ID, Revision: doc.Environment.Revision, Endpoint: d.ID, CredentialGeneration: selected.CredentialGeneration}, policy)
+			if err != nil {
+				return sourcePlan{}, err
+			}
+		}
+	} else if selected.Grant != nil || selected.CredentialGeneration != "" {
+		return sourcePlan{}, invalid
+	}
+	return item, nil
 }
 
 // Bindings are machine configuration for separately provisioned runner grants;
@@ -166,6 +193,17 @@ func Prepare(planPath, configPath string) (*Prepared, error) {
 func (p *Prepared) Bindings() map[string]networkaction.Binding {
 	out := map[string]networkaction.Binding{"stimulus": p.transport.Binding()}
 	for _, s := range p.sources {
+		if s.capture != nil {
+			out["dataset:"+s.definition.ID] = s.capture.Binding()
+		}
+		if s.barrier != nil {
+			if s.barrier.http != nil {
+				out["barrier:"+s.definition.ID] = s.barrier.http.Binding()
+			}
+			if s.barrier.database != nil {
+				out["barrier:"+s.definition.ID] = s.barrier.database.Binding()
+			}
+		}
 		if s.http != nil {
 			out["dataset:"+s.definition.ID] = s.http.Binding()
 		}

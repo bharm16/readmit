@@ -50,13 +50,15 @@ func write(t *testing.T, path string, value any) {
 // The target is a separately implemented ordinary CSV-exporting application.
 // It does not use readmit's fixture ledger, assertion engine or ACK generator.
 type target struct {
-	listener net.Listener
-	file     string
-	mu       sync.Mutex
-	mode     string
-	rows     []string
-	received atomic.Int32
-	done     sync.WaitGroup
+	output        func(int, string)
+	notifications chan int
+	listener      net.Listener
+	file          string
+	mu            sync.Mutex
+	mode          string
+	rows          []string
+	received      atomic.Int32
+	done          sync.WaitGroup
 }
 
 func startTarget(t *testing.T, dir string) *target {
@@ -100,7 +102,7 @@ func startTarget(t *testing.T, dir string) *target {
 					if strings.Contains(raw, "SIU^S13") {
 						status, start = "moved", "2026-01-02T12:00"
 					}
-					s.received.Add(1)
+					ordinal := s.received.Add(1)
 					s.mu.Lock()
 					row := "SAME," + status + "," + start + "\n"
 					if s.mode == "defective" {
@@ -118,8 +120,14 @@ func startTarget(t *testing.T, dir string) *target {
 					if disconnect {
 						return
 					}
+					if s.output != nil {
+						s.output(int(ordinal), raw)
+					}
 					ack := "MSH|^~\\&|TARGET|LAB|SENDER|LAB|20260101000000||ACK|ACK|P|2.5.1\rMSA|AA|" + control + "\r"
 					c.Write(append(append([]byte{11}, []byte(ack)...), 28, 13))
+					if s.notifications != nil {
+						s.notifications <- int(ordinal)
+					}
 					if late {
 						s.done.Add(1)
 						go func() {
