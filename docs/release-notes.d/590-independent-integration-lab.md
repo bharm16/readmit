@@ -1,0 +1,1 @@
+- Added an opt-in independent OIE 4.6.0 and HAPI FHIR R4 lab with isolated synthetic fixtures, three target routes, deliberate defect revisions, SMART/TLS checks and retained qualification evidence. This is reference-target qualification, not EHR or native-product certification.

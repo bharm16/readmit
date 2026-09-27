@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16.11-alpine@sha256:4327b9fd295502f326f44153a1045a7170ddbfffed1c3829798328556cfd09e2
+    environment:
+      POSTGRES_DB: hapi
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD:?generated lab environment required}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [lab]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U lab -d hapi"]
+      interval: 3s
+      retries: 30
+  hapi:
+    image: hapiproject/hapi:v8.6.0-1@sha256:7611e4d6601f35dd8c223ed2ed47a2807be06976f71b2e5990e6541bbc90c16f
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/hapi
+      SPRING_DATASOURCE_USERNAME: lab
+      SPRING_DATASOURCE_PASSWORD: ${LAB_DB_PASSWORD:?generated lab environment required}
+      SPRING_DATASOURCE_DRIVERCLASSNAME: org.postgresql.Driver
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
+      HAPI_FHIR_FHIR_VERSION: R4
+      HAPI_FHIR_ALLOW_EXTERNAL_REFERENCES: 'false'
+      HAPI_FHIR_ALLOW_MULTIPLE_DELETE: 'false'
+      HAPI_FHIR_REUSE_CACHED_SEARCH_RESULTS_MILLIS: '0'
+      JAVA_TOOL_OPTIONS: -Xmx1536m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [lab]
+  engine:
+    image: readmit-lab-engine:4.6.0
+    build:
+      context: .
+      dockerfile: Dockerfile.engine
+    environment:
+      JAVA_TOOL_OPTIONS: -Duser.timezone=UTC
+    volumes:
+      - ${LAB_STATE:?generated lab state required}/secrets/engine:/run/lab:ro
+      - ${LAB_STATE}/channels:/lab-channels
+      - engine:/opt/engine/appdata
+    ports:
+      - 127.0.0.1::6661
+      - 127.0.0.1::6662
+    networks: [lab]
+  fixture:
+    image: readmit-lab-fixture:1
+    build:
+      context: .
+      dockerfile: Dockerfile.fixture
+    volumes:
+      - ..:/lab:ro
+      - ../../testdata/integration-lab:/fixtures:ro
+      - ${LAB_STATE}/secrets/fixture:/run/lab:ro
+      - ${LAB_STATE}/evidence:/evidence
+      - ${LAB_STATE}/control:/control
+    ports:
+      - 127.0.0.1::9443
+      - 127.0.0.1::9444
+    networks: [lab]
+  qualifier:
+    image: readmit-lab-fixture:1
+    profiles: [qualification]
+    command: [python, -m, independent_lab.qualify]
+    volumes:
+      - ..:/lab:ro
+      - ../../testdata/integration-lab:/fixtures:ro
+      - ${LAB_STATE}/secrets/clients:/run/lab:ro
+      - ${LAB_STATE}/evidence:/evidence
+      - ${LAB_STATE}/control:/control
+      - ${LAB_STATE}/channels:/lab-channels
+    networks: [lab]
+networks:
+  lab:
+    internal: true
+volumes:
+  postgres:
+  engine:

@@ -1,0 +1,338 @@
+{
+  "schema": "readmit-independent-lab-local-qualification/v1",
+  "platform": "linux/aarch64",
+  "oie_version": "4.6.0",
+  "java": "Picked up JAVA_TOOL_OPTIONS: -Duser.timezone=UTC\nopenjdk version \"17.0.17\" 2025-10-21\nOpenJDK Runtime Environment Temurin-17.0.17+10 (build 17.0.17+10)\nOpenJDK 64-Bit Server VM Temurin-17.0.17+10 (build 17.0.17+10, mixed mode, sharing)\n",
+  "hapi": {
+    "name": "HAPI FHIR Server",
+    "version": "8.6.0"
+  },
+  "fhir_version": "4.0.1",
+  "postgres_version": "16.11",
+  "postgres_fhir_resource_rows": 26,
+  "images": {
+    "hapi": "sha256:e112f4d0db9383ffa5c30b2a85658b020be8b100b561a896d49806dd271c4b17",
+    "fixture": "sha256:47a5dbd380f695edfa566ad415a669de9850e0ee3233502a3ded8084ff607e30",
+    "postgres": "sha256:55d7756631809b941005e45cd70885cabc16cd734d0aaa0ec52fc4f13abb6b0d",
+    "engine": "sha256:845f4d015ff1002f25c7548ea64f345f51866732343aad36c8df1c4bcf146c0a"
+  },
+  "config_sha256": {
+    "testdata/integration-lab/.gitattributes": "0d05565b16566d9b2970af55a612a36ce9ca83cd3523f952f41f97afcbb631f3",
+    "testdata/integration-lab/adt-a01.hl7": "72a9814da9086c660ac0509c276a5ab6ed582670bffd8c025730cc4a79762961",
+    "testdata/integration-lab/baseline.json": "facad33ff26d65699380c1b8be2731c5e0c29cefff3cfbab88085391187c3f15",
+    "testdata/integration-lab/expected.json": "df158933896b0fd7e0cf003a9fb31cbad0ce7883c93c1367ae5fa0e87026aca2",
+    "testdata/integration-lab/native-appointment.json": "5048cbaaeaec929bf804ea5c9cc6c165e55ef7e7bf7578ac473cab1f7476dd01",
+    "testdata/integration-lab/orm-o01.hl7": "0ad725919e34beaff30ce9da71e7baf549372dd4a7a69f737fccb35fae72a255",
+    "testdata/integration-lab/oru-r01.hl7": "7e4b9eb0dc226362edd62c5058e6dec06bb2a99de4caf83aef9bb66ad9cf1d23",
+    "testdata/integration-lab/siu-s12.hl7": "7325965926d2bac80e0042813fd67ba5d7944c11dc1c764598e0d5dbce6db255",
+    "testdata/integration-lab/siu-s13.hl7": "5c3467c44f7320e5325da3cb3757747b2a32e34b9dea2b7f621f0f8bd03f9e2d",
+    "tools/independent_lab/ChannelFactory.java": "1e73e7efdfd620df85f0935d5013b8b4693ff3a778d599c9fdad1655b5612dd0",
+    "tools/independent_lab/Dockerfile.engine": "3d54139e0221ae799a6bf4e2a070e8963cbe785ef476063a532c0300fc4620a2",
+    "tools/independent_lab/Dockerfile.fixture": "d5cd9d58809fd95fab9afe4414af38ce3b88246f6d6ac452b8a890212e33cf87",
+    "tools/independent_lab/LabHttp.java": "f4c3caa2a2e6261e3c652322f2db9232a16899afdc5f965ea4ab8d9a87b576cc",
+    "tools/independent_lab/__init__.py": "bdf242822bd11c60fcb1a1e8eaf100116be09bb8b2e77ccd9089efb1bdd76330",
+    "tools/independent_lab/channel.js": "2d0e8d677f12cfe3159c5bbd0168981ceaef106e9c310326db3ce109dcd0f54c",
+    "tools/independent_lab/compose.yaml": "9b65454af34735789f5c5d5764419f1b0dd206e9b282eb13c77dc7254f23b126",
+    "tools/independent_lab/engine-entrypoint.sh": "5ef9998d1994dc7b8a6c913ccbc6a2e096093c21f0050dd3631298b0da2912b2",
+    "tools/independent_lab/evidence.py": "eac1a4132b4d96e4f4fdc957578414736f5949cb3a02d0d75f4f65669da497c5",
+    "tools/independent_lab/licenses/HAPI-Apache-2.0.txt": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "tools/independent_lab/licenses/OIE-MPL-2.0.txt": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+    "tools/independent_lab/licenses/PostgreSQL.txt": "5ed3ce5c9373dff7f98b1fae7a6c7ccd98df7d734d46d24c1bcebf1240be8307",
+    "tools/independent_lab/qualify.py": "30cc417e743c2231d3cec35fd277c14f8f8365d7417c8397f8b6744574b2930e",
+    "tools/independent_lab/requirements.lock": "e2b5c3a01e4295324b0214b0dbe3c4364619c92879189be8ada3d9ccac8f6fec",
+    "tools/independent_lab/runtime.py": "f47bc89e06379e2e378ba438a22a077e157db889118a6bc4514a256531aa78b8",
+    "tools/independent_lab/security.py": "b612a5f3e635df04fa5e612b968b8748758930018934fc24c1412daf0dc9c2d4",
+    "tools/integration_lab.py": "bb5d396a7e87488b2f2663863b474bb906ec8cc5a54e0b468cd290ff7e35d810"
+  },
+  "security": {
+    "unauthenticated_denied": true,
+    "observer_write_denied": true,
+    "observer_delete_denied": true,
+    "wrong_audience_denied": true,
+    "expired_assertion_denied": true,
+    "bad_signature_denied": true,
+    "scope_escalation_denied": true,
+    "assertion_replay_denied": true,
+    "untrusted_ca_denied": true,
+    "missing_client_certificate_denied": true,
+    "trusted_mtls_client_accepted": true
+  },
+  "cases": [
+    {
+      "name": "duplicate-positive",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "duplicate-defective",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "duplicate-corrected",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "duplicate-reintroduced",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "field-positive",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "field-defective",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "field-corrected",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "field-reintroduced",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "link-positive",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "link-defective",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "link-corrected",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "link-reintroduced",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "drop-positive",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "drop-defective",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "drop-corrected",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "drop-reintroduced",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "reorder-positive",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "reorder-defective",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "reorder-corrected",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "reorder-reintroduced",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "late-duplicate-positive",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "late-duplicate-defective",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    },
+    {
+      "name": "late-duplicate-corrected",
+      "checks": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      },
+      "defect_signatures": {}
+    },
+    {
+      "name": "late-duplicate-reintroduced",
+      "checks": {
+        "v2-to-v2": false,
+        "v2-to-fhir": false,
+        "fhir-native": false
+      },
+      "defect_signatures": {
+        "v2-to-v2": true,
+        "v2-to-fhir": true,
+        "fhir-native": true
+      }
+    }
+  ],
+  "teardown": {
+    "schema": "readmit-independent-lab-teardown/v1",
+    "containers_absent": true,
+    "volumes_absent": true,
+    "networks_absent": true
+  },
+  "evidence_manifest_sha256": "05e3e85026d93a2245fdff0f628405ec187158c9c74f27911facc39012280d78",
+  "separate_developer_recreation": "unverified",
+  "channel_exports": {
+    "oie-v2fhir.xml": "773ea9d720557cbf5e3a34bca5779f3ef8a9f6b1f609aed7aaccf1b871308a97",
+    "oie-v2v2.xml": "7672277eb1e1b433820365b7b0db3c978f8f3ae3ee428c7cc63ddca4fce245fa"
+  }
+}

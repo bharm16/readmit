@@ -1,0 +1,10 @@
+FROM eclipse-temurin:17.0.17_10-jdk-jammy@sha256:73c73439d25b953b34e0065172ad8ce01bea5bc8fc25158f0eeecb4c06d14fed
+ADD --checksum=sha256:7c82e79027e671277e1d78d0f7bbb1c53ddf1be476f1e80c2ddbfcf7855900ea https://github.com/OpenIntegrationEngine/engine/releases/download/v4.6.0/oie_unix_4_6_0.tar.gz /tmp/oie.tar.gz
+RUN mkdir /opt/engine && tar -xzf /tmp/oie.tar.gz --strip-components=1 -C /opt/engine && rm /tmp/oie.tar.gz
+WORKDIR /opt/engine
+COPY ChannelFactory.java /opt/lab/ChannelFactory.java
+RUN find /opt/engine -name '*.jar' -printf '%p:' > /opt/lab/classpath && javac -cp "$(cat /opt/lab/classpath)" /opt/lab/ChannelFactory.java
+COPY LabHttp.java /opt/lab/LabHttp.java
+RUN mkdir /opt/lab/classes && javac -d /opt/lab/classes /opt/lab/LabHttp.java && jar cf /opt/engine/server-lib/lab-http.jar -C /opt/lab/classes .
+COPY engine-entrypoint.sh /opt/lab/engine-entrypoint.sh
+ENTRYPOINT ["bash", "/opt/lab/engine-entrypoint.sh"]
