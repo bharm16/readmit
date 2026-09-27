@@ -13,6 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/dataset"
+	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -20,12 +21,15 @@ import (
 const DatasetAcquisitionSchema = "readmit-dataset-acquisition/v1"
 
 type DatasetRequest struct {
-	Source     Source
-	Projection dataset.Projection
-	Binding    dataset.Binding
-	Output     string
-	Policy     *sendpolicy.Policy
-	Resolve    sendpolicy.Resolver
+	Network          *networkaction.HTTPPlan
+	DatabaseNetwork  *DatabaseAction
+	NetworkAuthority networkaction.Authority
+	Source           Source
+	Projection       dataset.Projection
+	Binding          dataset.Binding
+	Output           string
+	Policy           *sendpolicy.Policy
+	Resolve          sendpolicy.Resolver
 	// An execution adapter binds this callback to its exact approved inputs.
 	Authorize func(context.Context) error
 }
@@ -81,6 +85,18 @@ func CollectDataset(ctx context.Context, request DatasetRequest) (*dataset.Snaps
 			return nil, refuse
 		}
 	}
+	if request.DatabaseNetwork != nil && !databaseActionMatches(request) {
+		return nil, refuse
+	}
+	if request.Network != nil && !scopedDatasetSource(request) {
+		return nil, refuse
+	}
+	family := datasetFamily
+	schema := DatasetAcquisitionSchema
+	if request.Network != nil || request.DatabaseNetwork != nil {
+		schema = ScopedDatasetAcquisitionSchema
+		family = scopedDatasetFamily()
+	}
 	bounded, cancel := context.WithTimeout(ctx, time.Duration(projection.Limits.TimeoutMS)*time.Millisecond)
 	defer cancel()
 	authorize := func() error {
@@ -92,7 +108,7 @@ func CollectDataset(ctx context.Context, request DatasetRequest) (*dataset.Snaps
 	if authorize() != nil {
 		return nil, refuse
 	}
-	writer, err := artifactdir.Create(request.Output, datasetFamily, artifactdir.Durable)
+	writer, err := artifactdir.Create(request.Output, family, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +127,7 @@ func CollectDataset(ctx context.Context, request DatasetRequest) (*dataset.Snaps
 	a := dataset.Acquisition{Kind: map[string]string{FileExport: "file", HTTPAPI: "http", DatabaseQuery: "database", DownstreamCapture: "capture"}[source.Observes.Kind], Status: "failed", StartedAt: started, SourceConfiguration: sourceRaw, Completion: "snapshot"}
 	var material []byte
 	if source.Enabled && authorize() == nil {
-		open, err := newReader(bounded, source, retention, Options{Policy: request.Policy, Resolve: request.Resolve})
+		open, err := datasetReaderFor(bounded, source, retention, request, writer.Path())
 		if err == nil {
 			defer open.close()
 			if h, ok := open.(*httpReader); ok {
@@ -179,6 +195,11 @@ func CollectDataset(ctx context.Context, request DatasetRequest) (*dataset.Snaps
 		a.Status = "truncated"
 		material = nil
 	}
+	if request.Network != nil || request.DatabaseNetwork != nil {
+		if _, err := networkResultFor(writer.Path(), a.Kind); err != nil {
+			return nil, refuse
+		}
+	}
 	result, err := dataset.Build(context.WithoutCancel(ctx), request.Binding, projection, a, material)
 	if err != nil {
 		return nil, refuse
@@ -186,7 +207,7 @@ func CollectDataset(ctx context.Context, request DatasetRequest) (*dataset.Snaps
 	if err = result.Write(context.WithoutCancel(ctx), filepath.Join(writer.Path(), "dataset")); err != nil {
 		return nil, err
 	}
-	manifest, _ := json.Marshal(datasetReceipt{Schema: DatasetAcquisitionSchema, Binding: request.Binding, DatasetIdentity: result.Identity()}, json.Deterministic(true))
+	manifest, _ := json.Marshal(datasetReceipt{Schema: schema, Binding: request.Binding, DatasetIdentity: result.Identity()}, json.Deterministic(true))
 	if writer.WriteFile("manifest.json", manifest) != nil {
 		return nil, refuse
 	}
@@ -196,15 +217,31 @@ func CollectDataset(ctx context.Context, request DatasetRequest) (*dataset.Snaps
 	return OpenDataset(context.WithoutCancel(ctx), writer.Path())
 }
 func OpenDataset(ctx context.Context, path string) (*dataset.Snapshot, error) {
-	files, err := artifactdir.Read(path, datasetFamily.Layout)
+	manifest, err := (artifactdir.Document{MaxBytes: 64 << 10}).Read(filepath.Join(path, "manifest.json"))
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(DatasetAcquisitionSchema, files) {
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(manifest, &declared) != nil {
+		return nil, errors.New("invalid dataset acquisition")
+	}
+	family := datasetFamily
+	if declared.Schema == ScopedDatasetAcquisitionSchema {
+		family = scopedDatasetFamily()
+	} else if declared.Schema != DatasetAcquisitionSchema {
+		return nil, errors.New("unsupported dataset acquisition")
+	}
+	files, err := artifactdir.Read(path, family.Layout)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(declared.Schema, files) {
 		return nil, errors.New("dataset acquisition identity mismatch")
 	}
 	var receipt datasetReceipt
-	if json.Unmarshal(files["manifest.json"], &receipt, json.RejectUnknownMembers(true)) != nil || receipt.Schema != DatasetAcquisitionSchema {
+	if json.Unmarshal(files["manifest.json"], &receipt, json.RejectUnknownMembers(true)) != nil || receipt.Schema != declared.Schema {
 		return nil, errors.New("invalid dataset acquisition")
 	}
 	result, err := dataset.Open(ctx, filepath.Join(path, "dataset"))
@@ -214,5 +251,23 @@ func OpenDataset(ctx context.Context, path string) (*dataset.Snapshot, error) {
 	if result.Identity() != receipt.DatasetIdentity || result.Document().Binding != receipt.Binding {
 		return nil, errors.New("dataset acquisition binding mismatch")
 	}
+	if declared.Schema == ScopedDatasetAcquisitionSchema {
+		action, err := networkResultFor(path, result.Document().Acquisition.Kind)
+		if err != nil || action.Binding.Source != receipt.Binding.Source || action.Binding.Operation != sendpolicy.ObservationRead {
+			return nil, errors.New("scoped acquisition does not bind source")
+		}
+		if result.Usable() && (action.State != "responded" || (result.Document().Acquisition.Kind != "database" && action.HTTPStatus != 200) || !action.ResponseRetained || action.ResponseDigest != result.Document().Material.SHA256) {
+			return nil, errors.New("scoped acquisition is incomplete")
+		}
+	}
 	return result, nil
+}
+
+func scopedDatasetFamily() artifactdir.Family {
+	f := datasetFamily
+	f.Layout.Nested = []string{"dataset", "network"}
+	f.Layout.MaxFiles = 32
+	f.Layout.MaxBytes = 128 << 20
+	f.Seal = artifactdir.DirectoryHash(ScopedDatasetAcquisitionSchema)
+	return f
 }

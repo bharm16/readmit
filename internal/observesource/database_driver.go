@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/bharm16/readmit/internal/destination"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	mssql "github.com/microsoft/go-mssqldb"
@@ -25,7 +24,7 @@ import (
 // The route is every network connection's dialer, including any redirection a
 // driver attempts, so no DNS re-resolution or failover can widen the
 // destination decision.
-func databaseConnector(d Database, password string, route destination.Route, config *tls.Config) (driver.Connector, error) {
+func databaseConnector(d Database, password string, route databaseRoute, config *tls.Config) (driver.Connector, error) {
 	checked := route.Address()
 	host, port, _ := net.SplitHostPort(checked)
 	portNumber, _ := strconv.ParseUint(port, 10, 16)
@@ -112,7 +111,7 @@ func databaseConnector(d Database, password string, route destination.Route, con
 	return nil, errors.New("unsupported database connector")
 }
 
-func openDatabase(d Database, password string, route destination.Route, config *tls.Config) (*sql.DB, error) {
+func openDatabase(d Database, password string, route databaseRoute, config *tls.Config) (*sql.DB, error) {
 	connector, err := databaseConnector(d, password, route, config)
 	if err != nil {
 		return nil, err
@@ -143,4 +142,9 @@ func (c *oracleConnector) Connect(ctx context.Context) (driver.Conn, error) {
 		return nil, err
 	}
 	return conn, nil
+}
+
+type databaseRoute interface {
+	Address() string
+	DialContext(context.Context, string, string) (net.Conn, error)
 }
