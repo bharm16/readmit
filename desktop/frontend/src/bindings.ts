@@ -326,6 +326,9 @@ import type {
   StorageBackupsResult,
   StorageBackupRequest,
   StorageBackupResult,
+  StorageScopeResult,
+  RecoveryCopyRequest,
+  RecoveryCopyResult,
   RepairSearchRequest,
   Preferences,
   PreferencesResult,
@@ -1910,9 +1913,27 @@ export function revealBackup(id: string): Promise<RevealResult> {
   return guard(() => facade().RevealBackup(id), { state: "failed", context: { project: "", generation: 0 } });
 }
 
-/** Writes a new verified backup of the open project to a new folder. */
+/** Writes a new verified backup of the named project to a new folder. It is
+ * interruptible: the window's cancel() stops it, and a stopped backup lists as
+ * incomplete. */
 export function backupProject(request: StorageBackupRequest): Promise<StorageBackupResult> {
   return guard(() => facade().BackupProject(request), { state: "failed" });
+}
+
+/** What a backup of the named project would hold, read as Create backup opens;
+ * the project need not be the one open. */
+export function backupScope(request: StorageBackupRequest): Promise<StorageScopeResult> {
+  return retryingRead(() => facade().BackupScope(request), { state: "failed", files: 0, bytes: 0, evidence: 0, indexes: 0 });
+}
+
+/** One recovery copy opened read-only: what it holds. */
+export function inspectRecoveryCopy(request: RecoveryCopyRequest): Promise<RecoveryCopyResult> {
+  return retryingRead(() => facade().InspectRecoveryCopy(request), { state: "failed" });
+}
+
+/** Shows the hidden folder an unfinished restore or move kept. */
+export function revealIncomplete(folder: string): Promise<RevealResult> {
+  return guard(() => facade().RevealIncomplete(folder), { state: "failed", context: { project: "", generation: 0 } });
 }
 
 /** Rebuilds one case's own search data under its unchanged retention. */

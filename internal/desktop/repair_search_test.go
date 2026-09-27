@@ -90,3 +90,70 @@ func TestRepairSearchKeepsRetentionAndRefusesExpired(t *testing.T) {
 		t.Fatalf("a damaged index was repaired: %+v", damaged)
 	}
 }
+
+// Repair search is offered only for a case whose index has the failure it
+// rebuilds: search that works is refused and changed nothing, and the
+// search settings say which case repair is for.
+func TestRepairSearchRefusesAWorkingIndex(t *testing.T) {
+	app := newApp(t, &chooser{folder: t.TempDir()})
+	opened := storageProject(t, app, "Scheduling investigation")
+	root := opened.Context.Project
+	var regression desktop.ItemRef
+	for _, item := range listed(t, app, root, desktop.CaseItem) {
+		regression = item.Ref
+	}
+	built := app.BuildIndex(desktop.BuildIndexRequest{Workspace: root, Case: "regression", Output: "regression.index.json",
+		Fields: []string{"MSH-9"}, Retention: index.RetainDigests, RetainUntil: "indefinite"})
+	if built.State != desktop.Completed {
+		t.Fatalf("build: %+v", built)
+	}
+	path := filepath.Join(root, "regression.index.json")
+	before := mustRead(t, path)
+	working := app.RepairSearch(desktop.RepairSearchRequest{Context: opened.Context, Case: regression})
+	if working.State != desktop.Failed || working.Reason != "this case's search is working; there is nothing to repair" {
+		t.Fatalf("a working index was repaired: %+v", working)
+	}
+	if after := mustRead(t, path); string(after) != string(before) {
+		t.Fatal("a refused repair changed the index")
+	}
+	repairable := func() (bool, bool) {
+		t.Helper()
+		listedSettings := app.ListSearchSettings(root)
+		var inList bool
+		for _, row := range listedSettings.Cases {
+			if row.Case == "regression" {
+				inList = row.Repairable
+			}
+		}
+		return inList, app.DescribeSearchSettings(root, "regression", built.Index.Identity).Repairable
+	}
+	if inList, described := repairable(); inList || described {
+		t.Fatalf("repair is offered for a working index: %v %v", inList, described)
+	}
+	// Made stale by an edit to what it restates, the index is the one
+	// failure repair rebuilds, and repair is offered for this case.
+	document, err := index.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document.Records[0].Size++
+	data, err := index.Encode(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if described := app.DescribeIndex(root, "regression", "regression.index.json"); described.Index == nil || !described.Index.Repairable {
+		t.Fatalf("a stale index is not repairable: %+v", described)
+	}
+	if inList, described := repairable(); !inList || !described {
+		t.Fatalf("repair is not offered for a stale index: %v %v", inList, described)
+	}
+	if repaired := app.RepairSearch(desktop.RepairSearchRequest{Context: opened.Context, Case: regression}); repaired.State != desktop.Completed {
+		t.Fatalf("repair: %+v", repaired)
+	}
+	if inList, described := repairable(); inList || described {
+		t.Fatalf("repair is still offered after repairing: %v %v", inList, described)
+	}
+}

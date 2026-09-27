@@ -70,7 +70,7 @@ export function sortCases(items: CatalogItem[], sort: SortState | null): Catalog
   });
 }
 
-export type CaseAction = "edit" | "notes" | "attachments" | "variant" | "compare" | "remove" | "details";
+export type CaseAction = "edit" | "notes" | "attachments" | "variant" | "compare" | "remove" | "delete" | "details";
 const CASE_ACTIONS: { action: CaseAction; label: string; separated?: boolean; tone?: "danger" }[] = [
   { action: "edit", label: "Edit details" },
   { action: "notes", label: "Notes" },
@@ -79,6 +79,7 @@ const CASE_ACTIONS: { action: CaseAction; label: string; separated?: boolean; to
   { action: "compare", label: "Compare" },
   { action: "details", label: "Details", separated: true },
   { action: "remove", label: "Remove from project", tone: "danger" },
+  { action: "delete", label: "Delete from this computer…", tone: "danger" },
 ];
 
 export function CaseList({

@@ -16,6 +16,7 @@ import (
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/lifecycle"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/upgrade"
 )
@@ -56,9 +57,10 @@ const (
 	restoreConsequence      = "Creates a separate project; the current project stays unchanged."
 	deleteBackupConsequence = "Deletes this backup; the source project remains."
 	archiveConsequence      = "Copies the selected project into a new verified archive; the source is kept."
+	archiveCaseConsequence  = "Copies the selected case into a new verified archive; the case is kept."
 	deleteSourceConsequence = "Archives the selected source, then deletes it from this computer; this is not secure erasure."
 	moveConsequence         = "Copies the project to the chosen folder, verifies it and opens it there; the project in its current folder is kept until you delete it."
-	restoreCopyConsequence  = "Puts this earlier copy back in place of the current document; the current document is kept as another recovery copy. Nothing is sent or resumed."
+	restoreCopyConsequence  = "Creates a separate project with this earlier document; the current project stays unchanged. Nothing is sent or resumed."
 	prepareConsequence      = "Takes a verified rollback copy of this project and records this staged candidate as prepared. Nothing is installed or run."
 )
 
@@ -80,7 +82,9 @@ type StorageActionOptions struct {
 // StorageReview is what one storage task will do: the project and backup it
 // is about, what the backup holds, the name and folder its output gets, the
 // scope it copies — files, bytes and the documents in it — the recovery copy
-// or staged update it concerns, and its consequence in Storage's words.
+// or staged update it concerns, the retention its source declares and the
+// related work that refers to it, and its consequence in Storage's words. A
+// task about one case of the project names that case as its review's item.
 type StorageReview struct {
 	Project     string                    `json:"project,omitzero"`
 	ProjectID   string                    `json:"project_id,omitzero"`
@@ -93,6 +97,8 @@ type StorageReview struct {
 	Documents   []lifecycle.Compatibility `json:"documents,omitzero"`
 	Copy        *ProjectRecoveryCopy      `json:"copy,omitzero"`
 	Upgrade     *UpgradePlanView          `json:"upgrade,omitzero"`
+	Retention   []RetentionHold           `json:"retention,omitzero"`
+	Related     []RelatedWork             `json:"related,omitzero"`
 	Consequence string                    `json:"consequence"`
 }
 
@@ -114,6 +120,7 @@ type StorageOutcome struct {
 // acts on.
 type storagePlan struct {
 	source    *storageSource
+	item      *storageCase
 	backup    *locatedBackup
 	archive   *storageRecord
 	name      string
@@ -132,7 +139,7 @@ func init() {
 		StorageArchiveCopyAction:   {consent: CopyConsent, perform: interruptible, bind: bindArchiveCopy, execute: executeArchiveCopy},
 		StorageDeleteSourceAction:  {consent: DeleteConsent, perform: interruptible, bind: bindDeleteSource, execute: executeDeleteSource},
 		StorageMoveProjectAction:   {consent: CopyConsent, perform: interruptible, bind: bindMoveProject, execute: executeMoveProject},
-		StorageRestoreCopyAction:   {consent: RestoreConsent, bind: bindRestoreCopy, execute: executeRestoreCopy},
+		StorageRestoreCopyAction:   {consent: RestoreConsent, perform: interruptible, bind: bindRestoreCopy, execute: executeRestoreCopy},
 		StoragePrepareUpdateAction: {consent: PrepareConsent, perform: interruptible, bind: bindPrepareUpdate, execute: executePrepareUpdate},
 	})
 }
@@ -242,17 +249,9 @@ func bindRestoreBackup(a *App, ctx context.Context, request PrepareActionRequest
 	if !validName(name, check) {
 		return nil, refusal{Failed, nameRule}
 	}
-	var location string
-	switch {
-	case strings.TrimSpace(options.Location) != "":
-		location, declined = writableFolder(options.Location)
-	default:
-		// A restored project is a project: it goes where new projects are
-		// created, or beside the backups when no projects folder is chosen.
-		if location, declined = a.usableLocation(); location == "" {
-			location, _, declined = a.usableBackupLocation()
-		}
-	}
+	// A restored project is a project: it goes where new projects are
+	// created, or beside the backups when no projects folder is chosen.
+	location, declined := a.newProjectFolder(options.Location)
 	if location == "" {
 		return nil, declined
 	}
@@ -405,34 +404,151 @@ func retirementOf(ctx context.Context, root string) (lifecycle.Retirement, refus
 	return retirement, refusal{}
 }
 
-func bindArchiveCopy(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
+// storageCase is the one case of the project an archive or a deletion is
+// about: its catalog object, the entry its folder is, the title its archive
+// is named by, and the identity the project recorded for it.
+type storageCase struct {
+	item     CatalogItem
+	entry    string
+	title    string
+	identity string
+}
+
+// retiring is the source of an archive or a deletion as its review states it:
+// the project, and the one case when the request names one, with what it
+// copies, the retention it declares and the related work that refers to it.
+type retiring struct {
+	source     *storageSource
+	item       *storageCase
+	retirement lifecycle.Retirement
+	holds      []RetentionHold
+	related    []RelatedWork
+}
+
+// retiringOf reads the project a request names and, when its items name one
+// of its cases, that case; then what archiving or deleting it affects.
+func (a *App) retiringOf(ctx context.Context, request PrepareActionRequest) (*retiring, refusal) {
 	source, declined := sourceOf(request.Context)
 	if source == nil {
+		return nil, declined
+	}
+	found := &retiring{source: source}
+	loaded, declined := a.loadCatalog(ctx, request.Context, false)
+	if loaded == nil {
+		return nil, declined
+	}
+	identity := ""
+	switch {
+	case len(request.Items) == 0:
+	case len(request.Items) == 1 && request.Items[0].Kind == CaseItem:
+		_, items, records, declined := a.scoped(ctx, request.Context, request.Items)
+		if items == nil {
+			return nil, declined
+		}
+		registered := loaded.registeredCase(items[0].Ref.ID)
+		if registered == nil {
+			return nil, refusal{Failed, "only a case the project registers is archived or deleted on its own"}
+		}
+		found.item = &storageCase{item: items[0], entry: records[0].Entry, title: cmp.Or(records[0].Name, registered.Title, registered.Name),
+			identity: registered.Identity}
+		identity = registered.Identity
+	default:
+		return nil, refusal{Failed, "an archive or a deletion names the project or one of its cases"}
+	}
+	if found.item == nil {
+		found.retirement, declined = retirementOf(ctx, source.root)
+	} else {
+		found.retirement, declined = caseRetirementOf(ctx, source.root, found.item.entry)
+	}
+	if declined.state != "" {
+		return nil, declined
+	}
+	entry, id := "", ""
+	if found.item != nil {
+		entry, id = found.item.entry, found.item.item.Ref.ID
+	}
+	holds, err := retentionOf(source.root, entry, identity, a.now())
+	if err != nil {
+		return nil, refusal{Failed, err.Error()}
+	}
+	found.holds, found.related = holds, relatedOf(loaded, id)
+	return found, refusal{}
+}
+
+// caseRetirementOf previews what archiving or deleting one case affects.
+func caseRetirementOf(ctx context.Context, root, entry string) (lifecycle.Retirement, refusal) {
+	retirement, err := lifecycle.PreviewCaseRetirement(ctx, root, entry)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return retirement, cancelledRefusal
+		}
+		return retirement, refusal{Failed, err.Error()}
+	}
+	return retirement, refusal{}
+}
+
+// parts are what a binding of the source covers: the project, the case and
+// the retention declared for it.
+func (r *retiring) parts() []string {
+	parts := []string{r.source.root, r.source.id}
+	if r.item != nil {
+		parts = append(parts, r.item.item.Ref.ID, r.item.entry, r.item.identity)
+	}
+	return append(parts, holdParts(r.holds)...)
+}
+
+// review is the review of an archive or a deletion of the source.
+func (r *retiring) review(consequence string) StorageReview {
+	return StorageReview{Project: r.source.title, ProjectID: r.source.id, Files: r.retirement.Files, Bytes: r.retirement.Bytes,
+		Documents: r.retirement.Documents, Retention: r.holds, Related: r.related, Consequence: consequence}
+}
+
+// items are the review's items: the case, when the source is one.
+func (r *retiring) items() []CatalogItem {
+	if r.item == nil {
+		return []CatalogItem{}
+	}
+	return []CatalogItem{r.item.item}
+}
+
+func bindArchiveCopy(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
+	found, declined := a.retiringOf(ctx, request)
+	if found == nil {
 		return nil, declined
 	}
 	location, declined := a.outputFolder(storageOptions(request).Location)
 	if location == "" {
 		return nil, declined
 	}
-	retirement, declined := retirementOf(ctx, source.root)
-	if declined.state != "" {
-		return nil, declined
-	}
 	problem := ""
-	if !retirement.Compatible {
+	if !found.retirement.Compatible {
 		problem = "the project holds documents this release cannot read; no archive is taken"
 	}
-	review := StorageReview{Project: source.title, ProjectID: source.id, Location: location, Files: retirement.Files, Bytes: retirement.Bytes,
-		Documents: retirement.Documents, Consequence: archiveConsequence}
+	consequence := archiveConsequence
+	if found.item != nil {
+		consequence = archiveCaseConsequence
+	}
+	review := found.review(consequence)
+	review.Location = location
 	return &boundAction{action: StorageArchiveCopyAction, origin: request,
-		storage: storagePlan{source: source, location: location, selection: retirement.Selection},
-		binding: a.storageBinding(ctx, StorageArchiveCopyAction, held, source.root, source.id, retirement.Selection, location),
-		review:  ActionReview{Ready: problem == "", Refusal: problem, Storage: &review, Destination: ReviewDestination{Output: location}}}, noRefusal
+		storage: storagePlan{source: found.source, item: found.item, location: location, selection: found.retirement.Selection},
+		binding: a.storageBinding(ctx, StorageArchiveCopyAction, held, append(found.parts(), found.retirement.Selection, location)...),
+		review:  ActionReview{Ready: problem == "", Refusal: problem, Items: found.items(), Storage: &review, Destination: ReviewDestination{Output: location}}}, noRefusal
 }
 
 // archived writes the verified archive of a bound source, as a retirement
 // takes it, into a new folder of the plan's location, and records it.
 func (a *App) archived(ctx context.Context, plan storagePlan, reason BackupReason, annotate func(*storageRecord)) (*locatedBackup, refusal) {
+	if item := plan.item; item != nil {
+		// A case's archive is named and recorded by the case's title.
+		named := &storageSource{root: plan.source.root, title: item.title, id: plan.source.id}
+		return a.writeBackup(ctx, named, plan.location, reason, func(folder string) (backup.Report, error) {
+			return lifecycle.ArchiveCase(ctx, plan.source.root, item.entry, item.title, folder, plan.selection)
+		}, func(record *storageRecord) {
+			record.Case = item.item.Ref.ID
+			annotate(record)
+		})
+	}
 	return a.writeBackup(ctx, plan.source, plan.location, reason, func(folder string) (backup.Report, error) {
 		return lifecycle.Archive(ctx, plan.source.root, folder, plan.selection, false)
 	}, annotate)
@@ -464,8 +580,9 @@ func storageWritten(made *locatedBackup, declined refusal) ReviewedActionResult 
 }
 
 // archiveOf is the recorded archive association a source may be deleted
-// against: the one the review names, or the newest archive recorded of it.
-func (a *App) archiveOf(source *storageSource, chosen string) (*storageRecord, refusal) {
+// against: the one the review names, or the newest archive recorded of it —
+// of the project whole, or of the one case with id.
+func (a *App) archiveOf(source *storageSource, chosen, id string) (*storageRecord, refusal) {
 	document, err := a.readStorage()
 	if err != nil {
 		return nil, unreadableStorage
@@ -473,7 +590,7 @@ func (a *App) archiveOf(source *storageSource, chosen string) (*storageRecord, r
 	for i := range document.Records {
 		record := document.Records[i]
 		ofSource := record.Source == source.root || source.id != "" && record.ProjectID == source.id
-		if record.Reason != BackupReasonArchive || !ofSource {
+		if record.Reason != BackupReasonArchive || !ofSource || record.Case != id {
 			continue
 		}
 		if chosen == "" || backupID(record.Path, record.Identity) == chosen {
@@ -484,26 +601,49 @@ func (a *App) archiveOf(source *storageSource, chosen string) (*storageRecord, r
 }
 
 func bindDeleteSource(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
-	source, declined := sourceOf(request.Context)
-	if source == nil {
+	found, declined := a.retiringOf(ctx, request)
+	if found == nil {
 		return nil, declined
 	}
-	review := StorageReview{Project: source.title, ProjectID: source.id, Consequence: deleteSourceConsequence}
-	bound := &boundAction{action: StorageDeleteSourceAction, origin: request, storage: storagePlan{source: source}, review: ActionReview{Storage: &review}}
+	source := found.source
+	review := found.review(deleteSourceConsequence)
+	bound := &boundAction{action: StorageDeleteSourceAction, origin: request, storage: storagePlan{source: source, item: found.item},
+		review: ActionReview{Items: found.items(), Storage: &review}}
 	refuse := func(reason string, parts ...string) (*boundAction, refusal) {
 		bound.review.Refusal = reason
-		bound.binding = a.storageBinding(ctx, StorageDeleteSourceAction, held, append([]string{source.root, source.id, reason}, parts...)...)
+		bound.binding = a.storageBinding(ctx, StorageDeleteSourceAction, held, append(append(found.parts(), reason), parts...)...)
 		return bound, noRefusal
 	}
-	if _, err := os.Lstat(source.root + ".retiring"); err == nil {
+	id := ""
+	if item := found.item; item != nil {
+		id = item.item.Ref.ID
+		if remainder := lifecycle.CaseRemainder(source.root, item.entry); exists(remainder) {
+			return refuse("an earlier deletion of this case left a remainder at " + remainder + "; it is not deleted again")
+		}
+		opened, err := project.Open(source.root)
+		revisions, readErr := project.ReadRevisions(source.root)
+		if err != nil || readErr != nil {
+			return refuse("the project's documents cannot be read; nothing is deleted")
+		}
+		if _, err := project.RemoveCase(opened.Document, revisions, item.entry); errors.Is(err, project.ErrCaseNamed) {
+			return refuse("a note or a variant of this project names this case; remove the note or the variant first. Nothing is deleted")
+		}
+	} else if exists(source.root + ".retiring") {
 		return refuse("an earlier deletion of this project left a remainder at " + source.root + ".retiring; it is not deleted again")
 	}
-	record, declined := a.archiveOf(source, storageOptions(request).Backup)
+	if held := blockingHold(found.holds); held != "" {
+		return refuse(held)
+	}
+	record, declined := a.archiveOf(source, storageOptions(request).Backup, id)
 	if declined.state != "" {
 		return nil, declined
 	}
 	if record == nil {
-		return refuse("this project has no archive copy yet; archive it first, and it is deleted only against that verified copy")
+		what := "this project has no archive copy yet"
+		if found.item != nil {
+			what = "this case has no archive copy yet"
+		}
+		return refuse(what + "; archive it first, and it is deleted only against that verified copy")
 	}
 	archive := inspectBackup(record.Path, record)
 	review.Backup, review.Location = &archive.row, filepath.Dir(record.Path)
@@ -516,26 +656,35 @@ func bindDeleteSource(a *App, ctx context.Context, request PrepareActionRequest,
 	}
 	contents := viewFromDocument(record.Path, document)
 	review.Contents = &contents
-	retirement, declined := retirementOf(ctx, source.root)
-	if declined.state != "" {
-		return nil, declined
+	if found.retirement.Selection != record.Selection {
+		changed := "the project changed since it was archived; archive it again before deleting it"
+		if found.item != nil {
+			changed = "the case changed since it was archived; archive it again before deleting it"
+		}
+		return refuse(changed, record.Path, archive.identity, found.retirement.Selection)
 	}
-	review.Files, review.Bytes, review.Documents = retirement.Files, retirement.Bytes, retirement.Documents
-	if retirement.Selection != record.Selection {
-		return refuse("the project changed since it was archived; archive it again before deleting it", record.Path, archive.identity, retirement.Selection)
-	}
-	bound.storage.archive, bound.storage.backup, bound.storage.selection = record, &archive, retirement.Selection
+	bound.storage.archive, bound.storage.backup, bound.storage.selection = record, &archive, found.retirement.Selection
 	bound.review.Ready = true
-	bound.binding = a.storageBinding(ctx, StorageDeleteSourceAction, held, source.root, source.id, record.Path, archive.identity, retirement.Selection)
+	bound.binding = a.storageBinding(ctx, StorageDeleteSourceAction, held, append(found.parts(), record.Path, archive.identity, found.retirement.Selection)...)
 	return bound, noRefusal
 }
 
 // executeDeleteSource deletes the bound source against its recorded archive
 // and nothing else: it never takes a second archive. A deletion that stopped
-// part way says so, names what remains, and keeps the archive.
+// part way says so, names what remains, and keeps the archive. A case is
+// taken off the project, as removing it from the project does, in the same
+// step that deletes its folder.
 func executeDeleteSource(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
 	plan := bound.storage
-	outcome, err := lifecycle.Retire(ctx, plan.source.root, plan.archive.Path, plan.selection)
+	var outcome lifecycle.Outcome
+	var err error
+	if item := plan.item; item != nil {
+		outcome, err = lifecycle.RetireCase(ctx, plan.source.root, item.entry, plan.archive.Path, plan.selection, func() error {
+			return a.takeCaseOff(plan.source.root, item.item.Ref.ID, item.entry)
+		})
+	} else {
+		outcome, err = lifecycle.Retire(ctx, plan.source.root, plan.archive.Path, plan.selection)
+	}
 	result := ReviewedActionResult{State: Completed, Outcome: ActionCompleted,
 		Storage: &StorageOutcome{Backup: &plan.backup.row, Source: outcome.State, Remainder: outcome.Remainder}}
 	switch {
@@ -549,6 +698,39 @@ func executeDeleteSource(a *App, ctx context.Context, bound *boundAction, _ Revi
 		result.State, result.Reason = Failed, err.Error()
 	}
 	return result
+}
+
+// takeCaseOff records in the project's catalog that the case with id was
+// removed and then unregisters it, as removing a case from the project does.
+func (a *App) takeCaseOff(root, id, entry string) error {
+	store, err := catalog.Open(root)
+	if err != nil {
+		return errors.New("the project's catalog cannot be opened; the case is kept")
+	}
+	if _, err := store.Update(a.now(), func(document *catalog.Document) (bool, error) {
+		at := document.Find(id)
+		if at < 0 {
+			// A case the catalog has discovered but never recorded is
+			// recorded now, under the identity every read derived for it, so
+			// that it is recorded as removed.
+			document.Items = append(document.Items, catalog.Item{Kind: string(CaseItem), ID: id, Entry: entry, Revisions: []catalog.Revision{}})
+			at = len(document.Items) - 1
+		}
+		document.Items[at].RemovedAt = catalog.Stamp(a.now())
+		return true, nil
+	}); err != nil {
+		return errors.New("the project's catalog could not record that the case was removed; the case is kept")
+	}
+	if err := operation.UnregisterCase(root, entry); err != nil {
+		return errors.New("the case could not be taken off the project; it is kept: " + err.Error())
+	}
+	return nil
+}
+
+// exists reports whether anything is at path.
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 func bindMoveProject(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
@@ -659,37 +841,110 @@ func bindRestoreCopy(a *App, ctx context.Context, request PrepareActionRequest, 
 	case retained.Current:
 		problem = "this copy is the document as it stands; there is nothing to restore"
 	}
-	current := currentDigest(filepath.Join(source.root, retained.Document))
-	view := ProjectRecoveryCopy{Document: retained.Document, Digest: retained.Digest, Size: retained.Size, State: string(retained.State), Current: retained.Current}
-	review := StorageReview{Project: source.title, ProjectID: source.id, Copy: &view, Consequence: restoreCopyConsequence}
-	return &boundAction{action: StorageRestoreCopyAction, origin: request,
-		storage: storagePlan{source: source, document: retained.Document, digest: retained.Digest},
-		binding: a.storageBinding(ctx, StorageRestoreCopyAction, held, source.root, source.id, retained.Document, retained.Digest, current),
-		review:  ActionReview{Ready: problem == "", Refusal: problem, Storage: &review}}, noRefusal
-}
-
-// currentDigest is the SHA-256 of a document as it stands, so a document
-// changed after its recovery was reviewed makes the review stale.
-func currentDigest(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
+	// The restored project is named, by default, after the title it will
+	// hold: the copy's own, when the copy is the project document.
+	title, schema := source.title, project.SchemaV2
+	if opened, err := project.Open(source.root); err == nil {
+		schema = opened.Document.Schema
 	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	if recovered, err := project.ReadRecoveryCopy(source.root, retained.Document, retained.Digest); err == nil && recovered.Project != nil {
+		title, schema = recovered.Project.Settings.Title, recovered.Project.Schema
+	}
+	check := func(name string) error { return project.CheckTitle(schema, name) }
+	name := strings.TrimSpace(options.Name)
+	if name == "" {
+		name = restoredName(title, check)
+	}
+	if !validName(name, check) {
+		return nil, refusal{Failed, nameRule}
+	}
+	location, declined := a.newProjectFolder(options.Location)
+	if location == "" {
+		return nil, declined
+	}
+	retirement, declined := retirementOf(ctx, source.root)
+	if declined.state != "" {
+		return nil, declined
+	}
+	view := recoveryCopyView(retained)
+	review := StorageReview{Project: source.title, ProjectID: source.id, Copy: &view, Name: name, Location: location,
+		Files: retirement.Files, Bytes: retirement.Bytes, Consequence: restoreCopyConsequence}
+	return &boundAction{action: StorageRestoreCopyAction, origin: request,
+		storage: storagePlan{source: source, document: retained.Document, digest: retained.Digest, name: name, location: location, selection: retirement.Selection},
+		binding: a.storageBinding(ctx, StorageRestoreCopyAction, held, source.root, source.id, retained.Document, retained.Digest, retirement.Selection, name, location),
+		review:  ActionReview{Ready: problem == "", Refusal: problem, Storage: &review, Destination: ReviewDestination{Output: location}}}, noRefusal
 }
 
-// executeRestoreCopy recovers the bound copy in place through the operation
-// `readmit project recover` runs: the document it replaces is kept as another
-// copy, and nothing else is rewound, sent or resumed.
-func executeRestoreCopy(a *App, _ context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
+// newProjectFolder is where a task that makes a new project writes it: the
+// folder a native dialog chose, or else where new projects are created, or
+// beside the backups when no projects folder is chosen.
+func (a *App) newProjectFolder(chosen string) (string, refusal) {
+	if strings.TrimSpace(chosen) != "" {
+		return writableFolder(chosen)
+	}
+	location, declined := a.usableLocation()
+	if location == "" {
+		location, _, declined = a.usableBackupLocation()
+	}
+	return location, declined
+}
+
+// executeRestoreCopy copies the bound project whole into a hidden folder of
+// the chosen one, verifies the copy against the source, which must still be
+// the reviewed bytes, and recovers the earlier document inside the copy
+// through the operation `readmit project recover` runs. The copy then gets
+// the reviewed name and an identity of its own, is named and opened as a
+// separate project. The project the copy was kept in is never changed, and
+// nothing is sent or resumed. A restore that stops or fails part way leaves
+// the hidden folder as it is: recoverable, never an accepted project.
+func executeRestoreCopy(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
 	plan := bound.storage
-	if err := project.Recover(plan.source.root, plan.document, plan.digest); err != nil {
-		result := ReviewedActionResult{Outcome: ActionRefused}
-		result.refuse(Failed, err.Error())
+	result := ReviewedActionResult{State: Completed, Outcome: ActionCompleted, Storage: &StorageOutcome{}}
+	hidden := staging(plan.location, "restoring")
+	fail := func(state State, reason string) ReviewedActionResult {
+		result.State, result.Reason, result.Outcome = state, reason, ActionRefused
+		if state == Cancelled {
+			result.Outcome = ActionCancelled
+		}
+		if _, err := os.Lstat(hidden); err == nil {
+			result.Storage.Incomplete = hidden
+		}
 		return result
 	}
-	return ReviewedActionResult{State: Completed, Outcome: ActionCompleted, Storage: &StorageOutcome{}}
+	if err := lifecycle.Copy(ctx, plan.source.root, hidden); err != nil {
+		if ctx.Err() != nil {
+			return fail(Cancelled, "the restore was stopped; what it wrote is kept as an incomplete restore and is not a project")
+		}
+		return fail(Failed, err.Error()+"; the current project is unchanged")
+	}
+	if err := lifecycle.VerifyCopy(ctx, plan.source.root, hidden); err != nil {
+		if ctx.Err() != nil {
+			return fail(Cancelled, "the restore was stopped; what it wrote is kept as an incomplete restore and is not a project")
+		}
+		return fail(Failed, err.Error()+"; the current project is unchanged")
+	}
+	if retirement, declined := retirementOf(ctx, plan.source.root); declined.state != "" || retirement.Selection != plan.selection {
+		return fail(Failed, "the project changed while it was copied; the incomplete restore is kept and is not a project")
+	}
+	if err := project.Recover(hidden, plan.document, plan.digest); err != nil {
+		return fail(Failed, err.Error()+"; the incomplete restore is kept and is not a project")
+	}
+	if reason := a.giveIdentity(hidden, plan.name); reason != "" {
+		return fail(Failed, reason)
+	}
+	folder, declined := newChild(plan.location, plan.name)
+	if folder == "" {
+		return fail(declined.state, declined.reason)
+	}
+	if err := os.Rename(hidden, folder); err != nil {
+		return fail(Failed, "the restored project could not be named; it is kept as an incomplete restore")
+	}
+	opened := a.openNamed(ctx, folder, false)
+	result.Storage.Project = &opened
+	if opened.State != Completed {
+		result.State, result.Reason = opened.State, opened.Reason
+	}
+	return result
 }
 
 func bindPrepareUpdate(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
@@ -735,7 +990,7 @@ func bindPrepareUpdate(a *App, ctx context.Context, request PrepareActionRequest
 	case !retirement.Compatible:
 		problem = "the project holds documents this release cannot read; no rollback copy is taken"
 	}
-	view := &UpgradePlanView{Plan: &plan, InstallerHandoff: installerHandoffText, Offline: upgradeOfflineText, SigningDeferred: upgradeSigningText}
+	view := upgradeView(plan)
 	review := StorageReview{Project: source.title, ProjectID: source.id, Location: location, Files: retirement.Files, Bytes: retirement.Bytes,
 		Documents: retirement.Documents, Upgrade: view, Consequence: prepareConsequence}
 	return &boundAction{action: StoragePrepareUpdateAction, origin: request,

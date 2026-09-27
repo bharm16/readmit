@@ -145,12 +145,26 @@ export async function declareMllpImport(user: UserEvent, journey: Journey, file:
   await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
 }
 
+/** Presses a control whose call the window's one operation slot serves, again
+ * while the facade answers that another operation is still running: a person
+ * presses once more when the window says it is busy. */
+export async function pressServed(user: UserEvent, journey: Journey, control: HTMLElement, method: Parameters<Journey["callsTo"]>[0]): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const before = journey.callsTo(method).length;
+    await press(user, control);
+    await waitFor(() => expect(journey.callsTo(method)[before]?.settled).toBe(true));
+    if ((journey.callsTo(method)[before]?.result as { state?: string } | undefined)?.state !== "busy") return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`${method} stayed busy`);
+}
+
 /** Imports an export of back-to-back messages into the open project as a
  * registered case, then opens that case. */
 export async function importExport(user: UserEvent, journey: Journey, file: string, caseName: string, title: string): Promise<void> {
   await openImport(user, journey);
   await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
-  await press(user, await screen.findByRole("button", { name: "Select Files…" }));
+  await pressServed(user, journey, await screen.findByRole("button", { name: "Select Files…" }), "ChooseImportSources");
   await within(screen.getByRole("region", { name: "Declared sources" })).findByText(new RegExp(file.split("/").pop() ?? file));
   await user.selectOptions(screen.getByLabelText("Framing"), "batch");
   await user.selectOptions(await screen.findByLabelText("Batch boundary"), "segment-start");
@@ -158,13 +172,13 @@ export async function importExport(user: UserEvent, journey: Journey, file: stri
   // Several panels carry a Preview button of this name now; this one belongs
   // to the import's own bounded-preview section.
   const extraction = within(screen.getByRole("region", { name: "Extraction preview" }));
-  await press(user, extraction.getByRole("button", { name: "Preview" }));
+  await pressServed(user, journey, extraction.getByRole("button", { name: "Preview" }), "PreviewImport");
   const commit = within(screen.getByRole("region", { name: "Commit import" }));
   await whenEnabled(commit.getByRole("button", { name: "Import" }));
   await enter(user, commit.getByLabelText("Case bundle folder name"), caseName);
   await enter(user, commit.getByLabelText("Receipt file name"), `${caseName}-receipt.json`);
   await enter(user, commit.getByLabelText("Case title"), title);
-  await press(user, commit.getByRole("button", { name: "Import" }));
+  await pressServed(user, journey, commit.getByRole("button", { name: "Import" }), "CommitImport");
   expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
   await press(user, commit.getByRole("button", { name: "Open case" }));
   await openedCase();

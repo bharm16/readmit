@@ -59,6 +59,7 @@ test("a row opens its project; a missing one stays listed with its reason and Lo
   const open = vi.fn();
   const locate = vi.fn();
   const forget = vi.fn();
+  const remove = vi.fn();
   render(
     <ProjectList
       projects={[project("a", "Scheduling investigation", "2026-09-26T10:00:00Z"), project("m", "Moved away", null, "missing")]}
@@ -68,6 +69,7 @@ test("a row opens its project; a missing one stays listed with its reason and Lo
       onSettings={() => undefined}
       onReveal={() => undefined}
       onForget={forget}
+      onDelete={remove}
       onNew={() => undefined}
     />,
   );
@@ -82,15 +84,16 @@ test("a row opens its project; a missing one stays listed with its reason and Lo
   // No Open button per row; the rarer actions are in its menu.
   expect(screen.queryByRole("button", { name: /^Open/ })).toBeNull();
   await user.click(screen.getByRole("button", { name: "More actions for Scheduling investigation" }));
-  expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Project settings", expect.stringMatching(/^Show in (Finder|folder)$/), "Remove from recents"]);
+  expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Project settings", expect.stringMatching(/^Show in (Finder|folder)$/), "Remove from recents", "Delete from this computer…"]);
   await user.click(screen.getByRole("menuitem", { name: "Remove from recents" }));
   expect(forget).toHaveBeenCalledTimes(1);
+  expect(remove).not.toHaveBeenCalled();
 });
 
 test("no projects yet offers New project", async () => {
   const user = userEvent.setup();
   const onNew = vi.fn();
-  render(<ProjectList projects={[]} busy={false} onOpen={() => undefined} onLocate={() => undefined} onSettings={() => undefined} onReveal={() => undefined} onForget={() => undefined} onNew={onNew} />);
+  render(<ProjectList projects={[]} busy={false} onOpen={() => undefined} onLocate={() => undefined} onSettings={() => undefined} onReveal={() => undefined} onForget={() => undefined} onDelete={() => undefined} onNew={onNew} />);
   expect(screen.getByText("No projects yet")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "New project" }));
   expect(onNew).toHaveBeenCalled();

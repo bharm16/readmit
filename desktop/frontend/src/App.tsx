@@ -121,7 +121,8 @@ import {
   type Shell,
   type State,
   type WorkspaceResult,
-  messageFields
+  messageFields,
+  type RequestContext,
 } from "./bindings";
 import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
@@ -156,7 +157,7 @@ import { VocabularyContext } from "./vocabulary";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
-import { StorageView } from "./Storage";
+import { DeleteSourceSheet, StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
 import type { CaptureObservationBinding } from "./bindings";
@@ -441,6 +442,9 @@ export default function App() {
   const [filteringCases, setFilteringCases] = useState(false);
   // The case task a row's menu started, with the case it is about.
   const [caseTask, setCaseTask] = useState<{ item: CatalogItem; action: CaseAction } | null>(null);
+  // The project or case chosen for Delete from this computer, with the
+  // project its review is read under.
+  const [deleting, setDeleting] = useState<{ item: CatalogItem; context: RequestContext } | null>(null);
   // What the notes, attachments and files pages show, and the note being
   // written.
   const [notes, setNotes] = useState<NoteItem[]>([]);
@@ -1091,6 +1095,10 @@ export default function App() {
       }
       if (action === "details" && root && entry) {
         void verifyCase(root, entry).then(() => setFileDetails(true));
+        return;
+      }
+      if (action === "delete") {
+        setDeleting({ item, context: projectContext() });
         return;
       }
       if (action === "notes" || action === "attachments") {
@@ -2032,6 +2040,7 @@ export default function App() {
             onSettings={(item) => void openListedProject(item).then(() => setEditingProject(true))}
             onReveal={(item) => void revealItem({ context: { project: "", generation: 0 }, ref: item.ref })}
             onForget={(item) => void forgetProject(item.ref.id).then(refreshRecent)}
+            onDelete={(item) => setDeleting({ item, context: { project: item.summary.project?.folder ?? "", project_id: item.ref.id, generation: 0 } })}
             onNew={() => setCreatingProject(true)}
           />
           <div className="quiet-action">
@@ -2862,7 +2871,7 @@ export default function App() {
                 themes={described?.themes ?? ["system"]}
                 scales={described?.text_scales ?? [100]}
                 version={described?.version ?? ""}
-                canUpdate={root !== null}
+                canUpdate
                 onCheckUpdate={() => {
                   setStartUpdate(true);
                   openSettings("storage");
@@ -2890,19 +2899,18 @@ export default function App() {
               ) : null}
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="storage" className="task-panel view-panel" shown={settingsView === "storage"}>
-              {root && place === "settings" && settingsView === "storage" ? (
+              {place === "settings" && settingsView === "storage" ? (
                 <StorageView
                   root={root}
                   projectName={projectName}
+                  projects={projects}
                   context={storageContext}
                   busy={busy}
                   onOpenProject={(folder) => void openFolder(() => openWorkspace(folder))}
                   startUpdate={startUpdate}
                   onUpdateStarted={() => setStartUpdate(false)}
                 />
-              ) : root ? null : (
-                noProject("storage and backups")
-              )}
+              ) : null}
             </TaskPanel>
           </Categories>
         </Page>
@@ -3313,6 +3321,17 @@ export default function App() {
             onClose={() => setCaseTask(null)}
           />
         ) : null}
+
+        <DeleteSourceSheet
+          open={deleting !== null}
+          context={() => deleting?.context ?? projectContext()}
+          item={deleting?.item.ref ?? null}
+          onClose={() => setDeleting(null)}
+          onDone={() => {
+            void refreshRecent();
+            if (root) void refreshCases();
+          }}
+        />
 
         {caseTask?.action === "remove" ? (
           <RemoveCaseSheet

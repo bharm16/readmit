@@ -163,3 +163,19 @@ func FindSimilarFindingsWithinForTest(a *App, ctx context.Context, request Simil
 
 // AnalysisOperationForTest is the name an analysis holds the slot under.
 const AnalysisOperationForTest = analysisOperation
+
+// ExecuteStorageWithinForTest binds a storage action as PrepareAction does and
+// executes that binding under ctx, so a test stops it where the window's Stop
+// would. The binding and the work are the production ones; only the slot and
+// the review token are not taken.
+func ExecuteStorageWithinForTest(a *App, ctx context.Context, request PrepareActionRequest) ReviewedActionResult {
+	policy := actionPolicies[request.Action]
+	bound, declined := policy.bind(a, context.Background(), request, true)
+	if bound == nil {
+		return ReviewedActionResult{State: declined.state, Reason: declined.reason}
+	}
+	if !bound.review.Ready {
+		return ReviewedActionResult{State: Failed, Reason: bound.review.Refusal}
+	}
+	return policy.execute(a, ctx, bound, ReviewDecisions{})
+}

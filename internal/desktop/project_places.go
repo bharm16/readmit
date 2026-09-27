@@ -212,7 +212,8 @@ func (a *App) ProjectFiles(request ItemRequest) ProjectFilesResult {
 			}
 			name := entry.Name()
 			if _, _, previous := artifactdir.ParsePreviousName(name); previous || name == catalog.Folder || name == project.DocumentName ||
-				name == project.RevisionsDocumentName || name == project.QuotaDocumentName || strings.HasSuffix(name, ".incomplete") {
+				name == project.RevisionsDocumentName || name == project.QuotaDocumentName || name == project.RecoveryRecordName ||
+				strings.HasSuffix(name, ".incomplete") {
 				continue
 			}
 			if _, object := entryKind(root, entry); object {

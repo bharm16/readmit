@@ -25,6 +25,7 @@ import (
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/expectation"
+	"github.com/bharm16/readmit/internal/lifecycle"
 	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
@@ -304,14 +305,16 @@ var familyKinds = map[string]ItemKind{
 }
 
 // entryKind names the kind of object one entry declares. The project's own
-// documents, the catalog's area and the files the application saved for an
-// object are not objects of their own.
+// documents, the catalog's area, the files the application saved for an
+// object and what a case's deletion could not remove are not objects of their
+// own.
 func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 	name := entry.Name()
 	switch {
-	case name == catalog.Folder, name == project.DocumentName, name == project.RevisionsDocumentName, name == project.QuotaDocumentName:
+	case name == catalog.Folder, name == project.DocumentName, name == project.RevisionsDocumentName, name == project.QuotaDocumentName,
+		name == project.RecoveryRecordName:
 		return "", false
-	case strings.Contains(name, ".recovery-"), strings.HasSuffix(name, ".incomplete"):
+	case strings.Contains(name, ".recovery-"), strings.HasSuffix(name, ".incomplete"), strings.HasPrefix(name, lifecycle.CaseRemainderPrefix):
 		return "", false
 	}
 	artifact := describe(root, entry)

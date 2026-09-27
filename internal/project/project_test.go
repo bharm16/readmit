@@ -173,8 +173,8 @@ func TestCreateOpenAndSaveRoundTripThroughDisk(t *testing.T) {
 	if reopened.Document.Settings.Title != "Renamed investigation" {
 		t.Fatal("saving did not replace the document")
 	}
-	if entries, err := os.ReadDir(root); err != nil || len(entries) != 2 {
-		t.Fatalf("saving should retain the document and its recovery copy: %v %v", entries, err)
+	if entries, err := os.ReadDir(root); err != nil || len(entries) != 3 {
+		t.Fatalf("saving should retain the document, its recovery copy and the record of keeping it: %v %v", entries, err)
 	}
 }
 

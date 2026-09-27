@@ -155,14 +155,22 @@ type ProjectArchiveRequest struct {
 
 // ProjectRecoveryCopy is one retained earlier version of a project document:
 // the document it was retained for, the SHA-256 its name records, its length,
-// what reading it found (readable, damaged or unreadable) and whether it holds
-// the document as it stands.
+// what reading it found (readable, damaged or unreadable), whether it holds
+// the document as it stands, and when and why the project recorded keeping
+// it — both empty for a copy it has no record of.
 type ProjectRecoveryCopy struct {
-	Document string `json:"document"`
-	Digest   string `json:"digest"`
-	Size     int64  `json:"size"`
-	State    string `json:"state"`
-	Current  bool   `json:"current,omitzero"`
+	Document string                 `json:"document"`
+	Digest   string                 `json:"digest"`
+	Size     int64                  `json:"size"`
+	State    string                 `json:"state"`
+	Current  bool                   `json:"current,omitzero"`
+	KeptAt   string                 `json:"kept_at,omitzero"`
+	Reason   project.RecoveryReason `json:"reason,omitzero"`
+}
+
+func recoveryCopyView(retained project.RecoveryCopy) ProjectRecoveryCopy {
+	return ProjectRecoveryCopy{Document: retained.Document, Digest: retained.Digest, Size: retained.Size, State: string(retained.State),
+		Current: retained.Current, KeptAt: retained.KeptAt, Reason: retained.Reason}
 }
 
 // ProjectRecoveryCopiesResult lists a project's recovery copies.
@@ -207,12 +215,25 @@ type UpgradePrepareRequest struct {
 	Approve     bool   `json:"approve"`
 }
 
-// UpgradePlanView is the upgrade plan plus the installer handoff the window states.
+// UpgradePlanView is the upgrade plan plus the installer handoff the window
+// states. Refusal is the compatibility result in words: the first reason the
+// plan gives for not treating the candidate as an upgrade of this machine —
+// another machine, the same build, not signed for distribution, not staged
+// whole, or evidence this build cannot read — and empty when it is ready.
 type UpgradePlanView struct {
 	Plan             *upgrade.Plan `json:"plan"`
 	InstallerHandoff string        `json:"installer_handoff"`
 	Offline          string        `json:"offline"`
 	SigningDeferred  string        `json:"signing_deferred"`
+	Refusal          string        `json:"refusal,omitzero"`
+}
+
+func upgradeView(plan upgrade.Plan) *UpgradePlanView {
+	view := &UpgradePlanView{Plan: &plan, InstallerHandoff: installerHandoffText, Offline: upgradeOfflineText, SigningDeferred: upgradeSigningText}
+	if refused := plan.Refusal(); refused != nil {
+		view.Refusal = refused.Error()
+	}
+	return view
 }
 
 // UpgradeResult carries check or prepare outcomes.
@@ -521,13 +542,7 @@ func (a *App) ListProjectRecoveryCopies(path string) ProjectRecoveryCopiesResult
 			result.State = Empty
 		}
 		for _, retained := range copies {
-			result.Copies = append(result.Copies, ProjectRecoveryCopy{
-				Document: retained.Document,
-				Digest:   retained.Digest,
-				Size:     retained.Size,
-				State:    string(retained.State),
-				Current:  retained.Current,
-			})
+			result.Copies = append(result.Copies, recoveryCopyView(retained))
 		}
 		return result
 	})
@@ -549,12 +564,7 @@ func (a *App) CheckStagedUpgrade(request UpgradeCheckRequest) UpgradeResult {
 			}
 			return UpgradeResult{State: Failed, Reason: err.Error()}
 		}
-		view := &UpgradePlanView{
-			Plan:             &plan,
-			InstallerHandoff: installerHandoffText,
-			Offline:          upgradeOfflineText,
-			SigningDeferred:  upgradeSigningText,
-		}
+		view := upgradeView(plan)
 		state := Completed
 		reason := ""
 		if refused := plan.Refusal(); refused != nil {
@@ -585,12 +595,7 @@ func (a *App) PrepareStagedUpgrade(request UpgradePrepareRequest) UpgradeResult 
 			}
 			return UpgradeResult{State: Failed, Reason: err.Error()}
 		}
-		view := &UpgradePlanView{
-			Plan:             &plan,
-			InstallerHandoff: installerHandoffText,
-			Offline:          upgradeOfflineText,
-			SigningDeferred:  upgradeSigningText,
-		}
+		view := upgradeView(plan)
 		if !plan.StagedIntact() {
 			return UpgradeResult{State: Failed, Reason: upgrade.ErrNotStaged.Error(), View: view}
 		}

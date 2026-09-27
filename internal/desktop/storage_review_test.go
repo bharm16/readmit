@@ -6,6 +6,7 @@ package desktop_test
 // and leaves the project a person had open exactly as it was when it fails.
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
@@ -187,6 +188,135 @@ func TestRestoreRefusesAChangedBackupAsStale(t *testing.T) {
 	missing := app.PrepareAction(storageRequest(opened.Context, desktop.StorageRestoreBackupAction, desktop.StorageActionOptions{Backup: made.ID}))
 	if missing.Review == nil || missing.Review.Ready || missing.Review.Token != "" || missing.Review.Refusal == "" {
 		t.Fatalf("a missing backup: %+v", missing)
+	}
+	// A backup replaced by a symbolic link, and one written under a contract
+	// this release does not read, are refused before anything is written.
+	for _, lane := range []struct {
+		name   string
+		change func(t *testing.T, folder string)
+	}{
+		{"symbolic link", func(t *testing.T, folder string) {
+			elsewhere := filepath.Join(t.TempDir(), "real")
+			if err := os.Rename(folder, elsewhere); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(elsewhere, folder); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"unsupported version", func(t *testing.T, folder string) {
+			document := []byte(`{"schema":"readmit-backup/v2"}` + "\n")
+			sum := sha256.Sum256(append([]byte(backup.Schema+"\n"), document...))
+			if err := os.WriteFile(filepath.Join(folder, backup.DocumentName), document, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(folder, backup.MarkerName), []byte(hex.EncodeToString(sum[:])+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(lane.name, func(t *testing.T) {
+			changed := backedUp(t, app, opened)
+			ready := prepared(t, app, storageRequest(opened.Context, desktop.StorageRestoreBackupAction, desktop.StorageActionOptions{Backup: changed.ID}))
+			lane.change(t, changed.Folder)
+			before, err := os.ReadDir(ready.Storage.Location)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stale := executed(app, opened.Context, ready, "click-"+strings.ReplaceAll(lane.name, " ", "-")); stale.Outcome != desktop.ActionStale || stale.Storage != nil {
+				t.Fatalf("a changed backup was restored: %+v", stale)
+			}
+			refused := app.PrepareAction(storageRequest(opened.Context, desktop.StorageRestoreBackupAction, desktop.StorageActionOptions{Backup: changed.ID}))
+			if refused.Review == nil || refused.Review.Ready || refused.Review.Refusal == "" {
+				t.Fatalf("a %s backup: %+v", lane.name, refused)
+			}
+			if after, err := os.ReadDir(ready.Storage.Location); err != nil || len(after) != len(before) {
+				t.Fatalf("a refused restore wrote into the destination: %v %v", before, after)
+			}
+		})
+	}
+}
+
+// A restore that is stopped keeps what it wrote as an incomplete hidden
+// folder, which is never a project: nothing is opened or remembered, the
+// project it was taken of is unchanged, and the folder can be shown.
+func TestACancelledRestoreKeepsAnIncompleteFolderAndOpensNothing(t *testing.T) {
+	app, _, _ := storageApp(t)
+	opened := storageProject(t, app, "Scheduling investigation")
+	original := projectTree(t, opened.Context.Project)
+	made := backedUp(t, app, opened)
+	known := len(knownProjects(t, app))
+	stopped, stop := context.WithCancel(context.Background())
+	stop()
+	request := storageRequest(opened.Context, desktop.StorageRestoreBackupAction, desktop.StorageActionOptions{Backup: made.ID})
+	cancelled := desktop.ExecuteStorageWithinForTest(app, stopped, request)
+	if cancelled.Outcome != desktop.ActionCancelled || cancelled.State != desktop.Cancelled || cancelled.Storage == nil ||
+		cancelled.Storage.Project != nil || cancelled.Storage.Incomplete == "" {
+		t.Fatalf("a stopped restore: %+v", cancelled)
+	}
+	kept := cancelled.Storage.Incomplete
+	if info, err := os.Lstat(kept); err != nil || !info.IsDir() || !strings.HasPrefix(filepath.Base(kept), ".readmit-restoring-") {
+		t.Fatalf("the incomplete restore is not kept: %q %v", kept, err)
+	}
+	if len(knownProjects(t, app)) != known {
+		t.Fatal("a stopped restore was remembered as a project")
+	}
+	if !sameFiles(original, projectTree(t, opened.Context.Project)) {
+		t.Fatal("a stopped restore changed the project it was taken of")
+	}
+	if listed := app.ListBackups(); len(listed.Backups) != 1 || listed.Backups[0].ID != made.ID {
+		t.Fatalf("a stopped restore changed the backups: %+v", listed)
+	}
+	var shown string
+	desktop.SetRevealForTest(app, func(path string) error { shown = path; return nil })
+	if revealed := app.RevealIncomplete(kept); revealed.State != desktop.Completed || shown != kept {
+		t.Fatalf("reveal the incomplete restore: %+v %q", revealed, shown)
+	}
+	if refused := app.RevealIncomplete(opened.Context.Project); refused.State != desktop.Failed {
+		t.Fatalf("a project folder shown as an incomplete restore: %+v", refused)
+	}
+	// A stopped Restore copy keeps its incomplete folder the same way.
+	var earlier desktop.ProjectRecoveryCopy
+	for _, retained := range app.ListProjectRecoveryCopies(opened.Context.Project).Copies {
+		if retained.Document == project.DocumentName && !retained.Current {
+			earlier = retained
+		}
+	}
+	copyRequest := storageRequest(opened.Context, desktop.StorageRestoreCopyAction, desktop.StorageActionOptions{Document: earlier.Document, Digest: earlier.Digest})
+	if copied := desktop.ExecuteStorageWithinForTest(app, stopped, copyRequest); copied.Outcome != desktop.ActionCancelled || copied.Storage.Project != nil {
+		t.Fatalf("a stopped restore copy: %+v", copied)
+	}
+	if len(knownProjects(t, app)) != known || !sameFiles(original, projectTree(t, opened.Context.Project)) {
+		t.Fatal("a stopped restore copy opened a project or changed the current one")
+	}
+}
+
+// Stop never reaches the unlink: a deletion stopped before it keeps the
+// source whole and the archive it would have been deleted against.
+func TestACancelledDeleteSourceKeepsTheSource(t *testing.T) {
+	app, _, _ := storageApp(t)
+	opened := storageProject(t, app, "Scheduling investigation")
+	root := opened.Context.Project
+	archived := executed(app, opened.Context, prepared(t, app, storageRequest(opened.Context, desktop.StorageArchiveCopyAction, desktop.StorageActionOptions{})), "click-archive")
+	if archived.State != desktop.Completed {
+		t.Fatalf("archive: %+v", archived)
+	}
+	original := projectTree(t, root)
+	stopped, stop := context.WithCancel(context.Background())
+	stop()
+	cancelled := desktop.ExecuteStorageWithinForTest(app, stopped, storageRequest(opened.Context, desktop.StorageDeleteSourceAction, desktop.StorageActionOptions{}))
+	if cancelled.Outcome != desktop.ActionCancelled || cancelled.State != desktop.Cancelled || cancelled.Storage == nil ||
+		cancelled.Storage.Source != lifecycle.Retained {
+		t.Fatalf("a stopped deletion: %+v", cancelled)
+	}
+	if !sameFiles(original, projectTree(t, root)) {
+		t.Fatal("a stopped deletion changed the source")
+	}
+	if _, err := os.Lstat(root + ".retiring"); !os.IsNotExist(err) {
+		t.Fatal("a stopped deletion left a remainder")
+	}
+	if _, err := backup.Verify(archived.Storage.Backup.Folder); err != nil {
+		t.Fatalf("the archive is not kept whole: %v", err)
 	}
 }
 
@@ -439,7 +569,26 @@ func TestPrepareUpdateRecordsTheCandidateAndInstallsNothing(t *testing.T) {
 	original := projectTree(t, opened.Context.Project)
 	candidate := storageCandidate(t)
 	staged := projectTree(t, candidate)
+	// A window with no project open and no backup folder prepares the
+	// project a person picked by name, and asks where the rollback copy goes.
+	other := newApp(t, &chooser{})
+	picked := desktop.RequestContext{Project: opened.Context.Project, ProjectID: opened.Context.ProjectID}
+	if unplaced := other.PrepareAction(storageRequest(picked, desktop.StoragePrepareUpdateAction, desktop.StorageActionOptions{Candidate: candidate})); unplaced.State != desktop.Empty {
+		t.Fatalf("a rollback copy with nowhere to go: %+v", unplaced)
+	}
+	parent := t.TempDir()
+	placed := prepared(t, other, storageRequest(picked, desktop.StoragePrepareUpdateAction, desktop.StorageActionOptions{Candidate: candidate, Location: parent}))
+	if placed.Storage.Location != resolved(t, parent) || placed.Storage.Project != "Scheduling investigation" {
+		t.Fatalf("the rollback parent a person chose: %+v", placed.Storage)
+	}
 	review := prepared(t, app, storageRequest(opened.Context, desktop.StoragePrepareUpdateAction, desktop.StorageActionOptions{Candidate: candidate}))
+	// The review states the compatibility result and the changed resources:
+	// the packages staged and the work this build reads.
+	if upgradeView := review.Storage.Upgrade; upgradeView == nil || upgradeView.Refusal != upgrade.ErrUnsigned.Error() ||
+		len(upgradeView.Plan.Staged) != 1 || upgradeView.Plan.Staged[0].State != upgrade.Intact ||
+		len(upgradeView.Plan.Retained) != 1 || upgradeView.Plan.Retained[0].State != upgrade.Readable {
+		t.Fatalf("compatibility and scope: %+v", review.Storage.Upgrade)
+	}
 	if review.Consent != desktop.PrepareConsent || review.Storage.Upgrade == nil || review.Storage.Upgrade.Plan.Candidate != "9.9.9" ||
 		review.Storage.Consequence != "Takes a verified rollback copy of this project and records this staged candidate as prepared. Nothing is installed or run." {
 		t.Fatalf("prepare review: %+v", review.Storage)
@@ -475,7 +624,7 @@ func TestPrepareUpdateRecordsTheCandidateAndInstallsNothing(t *testing.T) {
 	}
 }
 
-func TestRestoreCopyRecoversInPlaceAndKeepsTheReplacedDocument(t *testing.T) {
+func TestRestoreCopyCreatesASeparateProjectAndLeavesTheCurrentOneUnchanged(t *testing.T) {
 	app, _, _ := storageApp(t)
 	opened := storageProject(t, app, "Scheduling investigation")
 	root := opened.Context.Project
@@ -489,28 +638,90 @@ func TestRestoreCopyRecoversInPlaceAndKeepsTheReplacedDocument(t *testing.T) {
 	if earlier == nil {
 		t.Fatalf("no earlier copy: %+v", copies)
 	}
+	// Each copy is listed with when and why it was kept.
+	if earlier.KeptAt == "" || earlier.Reason != project.RecoverySaved {
+		t.Fatalf("the copy's record: %+v", earlier)
+	}
+	original := projectTree(t, root)
 	review := prepared(t, app, storageRequest(opened.Context, desktop.StorageRestoreCopyAction, desktop.StorageActionOptions{Document: earlier.Document, Digest: earlier.Digest}))
-	if review.Consent != desktop.RestoreConsent || review.Storage.Copy == nil || review.Storage.Copy.Digest != earlier.Digest {
+	if review.Consent != desktop.RestoreConsent || review.Storage.Copy == nil || review.Storage.Copy.Digest != earlier.Digest ||
+		review.Storage.Name == "" || review.Storage.Location == "" ||
+		review.Storage.Consequence != "Creates a separate project with this earlier document; the current project stays unchanged. Nothing is sent or resumed." {
 		t.Fatalf("review: %+v", review.Storage)
 	}
-	before := len(copies.Copies)
-	recovered := executed(app, opened.Context, review, "click-restore-copy")
-	if recovered.State != desktop.Completed {
-		t.Fatalf("restore copy: %+v", recovered)
+	restored := executed(app, opened.Context, review, "click-restore-copy")
+	if restored.State != desktop.Completed || restored.Storage == nil || restored.Storage.Project == nil || restored.Storage.Project.State != desktop.Completed {
+		t.Fatalf("restore copy: %+v", restored)
 	}
-	after := app.ListProjectRecoveryCopies(root)
-	if len(after.Copies) != before+1 {
-		t.Fatalf("the replaced document was not kept as a copy: %+v", after)
+	made := restored.Storage.Project
+	if made.Context.Project == root || made.Context.ProjectID == opened.Context.ProjectID || made.Project == nil || made.Project.Name != review.Storage.Name {
+		t.Fatalf("the restored project is not a separate one: %+v", made)
 	}
-	if reopened, err := project.Open(root); err != nil || reopened.Document.Settings.Title == "Scheduling investigation" {
-		t.Fatalf("the earlier title did not come back: %+v %v", reopened, err)
+	// The current project is exactly as it was, identity included.
+	if !sameFiles(original, projectTree(t, root)) {
+		t.Fatal("restoring a copy changed the current project")
 	}
-	// The project keeps its identity: recovery copies never touch the catalog.
 	store, err := catalog.Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if document, present, err := store.Read(); err != nil || !present || document.Project.ID != opened.Context.ProjectID {
 		t.Fatalf("the catalog: %+v %v", document, err)
+	}
+	// The new project holds the earlier document's settings under the name
+	// the review showed, and its evidence.
+	restoredDocument, err := project.Open(made.Context.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := project.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredDocument.Document.Settings.Title != review.Storage.Name || current.Document.Settings.Title != "Scheduling investigation" {
+		t.Fatalf("titles: %q %q", restoredDocument.Document.Settings.Title, current.Document.Settings.Title)
+	}
+	if overview := app.OpenProjectOverview(made.Context.Project); overview.Overview == nil || len(overview.Overview.Cases) == 0 {
+		t.Fatalf("the restored project's evidence: %+v", overview)
+	}
+	// A copy that is the document as it stands is not restored.
+	for _, retained := range app.ListProjectRecoveryCopies(root).Copies {
+		if retained.Current {
+			if refused := app.PrepareAction(storageRequest(opened.Context, desktop.StorageRestoreCopyAction, desktop.StorageActionOptions{Document: retained.Document, Digest: retained.Digest})); refused.Review == nil || refused.Review.Ready {
+				t.Fatalf("the current document was offered for restore: %+v", refused)
+			}
+		}
+	}
+}
+
+// Opening a recovery copy reads what it holds and writes nothing.
+func TestInspectRecoveryCopyWritesNothing(t *testing.T) {
+	app, _, _ := storageApp(t)
+	opened := storageProject(t, app, "Scheduling investigation")
+	root := opened.Context.Project
+	original := projectTree(t, root)
+	for _, retained := range app.ListProjectRecoveryCopies(root).Copies {
+		inspected := app.InspectRecoveryCopy(desktop.RecoveryCopyRequest{Context: opened.Context, Document: retained.Document, Digest: retained.Digest})
+		if inspected.Copy == nil || inspected.Copy.Digest != retained.Digest {
+			t.Fatalf("inspect: %+v", inspected)
+		}
+		if retained.State != "readable" {
+			if inspected.State != desktop.Failed || inspected.Contents != nil {
+				t.Fatalf("an unreadable copy opened: %+v", inspected)
+			}
+			continue
+		}
+		if inspected.State != desktop.Completed || inspected.Contents == nil || inspected.Contents.Schema == "" {
+			t.Fatalf("inspect: %+v", inspected)
+		}
+		if retained.Document == project.DocumentName && (inspected.Contents.Title == "" || inspected.Contents.Cases == 0) {
+			t.Fatalf("a project document copy: %+v", inspected.Contents)
+		}
+	}
+	if unknown := app.InspectRecoveryCopy(desktop.RecoveryCopyRequest{Context: opened.Context, Document: project.DocumentName, Digest: strings.Repeat("0", 64)}); unknown.State != desktop.Failed {
+		t.Fatalf("an unknown copy: %+v", unknown)
+	}
+	if !sameFiles(original, projectTree(t, root)) {
+		t.Fatal("opening recovery copies changed the project")
 	}
 }

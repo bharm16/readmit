@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
@@ -80,7 +81,9 @@ type storageDocument struct {
 // storageRecord is one backup the application wrote. Source and Selection
 // are an archive's association with the project folder it copied and the
 // retirement selection it was taken under, which a later Delete source is
-// bound to.
+// bound to; Case is the catalog identity of the one case an archive holds,
+// when it was taken of a case rather than the whole project, and Title is
+// then the case's.
 type storageRecord struct {
 	Path      string             `json:"path"`
 	Identity  string             `json:"identity"`
@@ -90,6 +93,7 @@ type storageRecord struct {
 	CreatedAt string             `json:"created_at"`
 	Source    string             `json:"source,omitzero"`
 	Selection string             `json:"selection,omitzero"`
+	Case      string             `json:"case,omitzero"`
 	Candidate *PreparedCandidate `json:"candidate,omitzero"`
 }
 
@@ -127,7 +131,8 @@ func validRecord(record storageRecord) bool {
 		!slices.Contains(backupReasons, record.Reason), !stamp(record.CreatedAt),
 		record.ProjectID != "" && !catalog.ValidID(record.ProjectID),
 		record.Source != "" && !absolute(record.Source),
-		record.Selection != "" && !digestText(record.Selection):
+		record.Selection != "" && !digestText(record.Selection),
+		record.Case != "" && (!catalog.ValidID(record.Case) || record.Reason != BackupReasonArchive):
 		return false
 	}
 	if candidate := record.Candidate; candidate != nil {
@@ -251,17 +256,23 @@ func (a *App) ChooseBackupLocation() ProjectLocationResult {
 // while the backup stays where it is. CreatedAt is when the application
 // wrote it, and null for a backup it did not record writing: a date is never
 // read from a file. Project is the title recorded when it was written, or,
-// for a backup the application did not record, the one the backup stores.
-// Size is what its manifest records. Availability is available, or the
-// actual problem: missing, unreadable, unsupported or incomplete, with
-// Problem saying what was found.
+// for a backup the application did not record, the one the backup stores;
+// Case is the catalog identity of the one case an archive of a case holds,
+// whose title Project then is.
+// Size, Files and Evidence are what its manifest records: the bytes and
+// files it stores, and the cases and revisions it holds as evidence.
+// Availability is available, or the actual problem: missing, unreadable,
+// unsupported or incomplete, with Problem saying what was found.
 type StorageBackup struct {
 	ID           string             `json:"id"`
 	Project      string             `json:"project"`
 	ProjectID    string             `json:"project_id,omitzero"`
 	CreatedAt    *string            `json:"created_at"`
 	Size         int64              `json:"size"`
+	Files        int                `json:"files,omitzero"`
+	Evidence     int                `json:"evidence,omitzero"`
 	Reason       BackupReason       `json:"reason,omitzero"`
+	Case         string             `json:"case,omitzero"`
 	Availability Availability       `json:"availability"`
 	Problem      string             `json:"problem,omitzero"`
 	Folder       string             `json:"folder"`
@@ -319,7 +330,7 @@ func backupID(path, identity string) string {
 func inspectBackup(path string, record *storageRecord) locatedBackup {
 	found := locatedBackup{path: path, record: record, row: StorageBackup{Folder: path, Availability: ItemAvailable}}
 	if record != nil {
-		found.row.Project, found.row.ProjectID, found.row.Reason = record.Title, record.ProjectID, record.Reason
+		found.row.Project, found.row.ProjectID, found.row.Reason, found.row.Case = record.Title, record.ProjectID, record.Reason, record.Case
 		found.row.CreatedAt, found.row.Candidate = stamped(record.CreatedAt), record.Candidate
 	}
 	problem := func(availability Availability, reason string) locatedBackup {
@@ -357,6 +368,7 @@ func inspectBackup(path string, record *storageRecord) locatedBackup {
 	for _, file := range document.Files {
 		found.row.Size += file.Size
 	}
+	found.row.Files, found.row.Evidence = len(document.Files), len(document.Evidence)
 	if record == nil {
 		found.row.Project, found.row.ProjectID = storedProject(path)
 	}
@@ -584,6 +596,43 @@ func (a *App) RevealBackup(id string) RevealResult {
 	})
 }
 
+// RevealIncomplete shows, in the host's file manager, the folder an
+// unfinished restore or move kept: a hidden folder the application named for
+// a copy that is not yet a project. Nothing else is shown through it, and it
+// is never opened as a project.
+func (a *App) RevealIncomplete(folder string) RevealResult {
+	return run(a, false, false, func(context.Context) RevealResult {
+		if !incompleteFolder(folder) {
+			return RevealResult{State: Failed, Reason: "that folder is not one an unfinished restore or move kept"}
+		}
+		if err := a.revealer()(folder); err != nil {
+			return RevealResult{State: Failed, Reason: "the file manager could not be opened"}
+		}
+		return RevealResult{State: Completed}
+	})
+}
+
+// incompleteFolder reports whether path is a folder staging named for a
+// restore or a move, there now and not a link.
+func incompleteFolder(path string) bool {
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	base := filepath.Base(path)
+	suffix, restoring := strings.CutPrefix(base, ".readmit-restoring-")
+	if !restoring {
+		var moving bool
+		if suffix, moving = strings.CutPrefix(base, ".readmit-moving-"); !moving {
+			return false
+		}
+	}
+	if decoded, err := hex.DecodeString(suffix); err != nil || len(decoded) != 8 || hex.EncodeToString(decoded) != suffix {
+		return false
+	}
+	info, err := os.Lstat(path)
+	return err == nil && info.IsDir()
+}
+
 // storageSource is the project a storage task is about: its folder, its
 // title and the identity its catalog records, when it records one.
 type storageSource struct {
@@ -659,6 +708,74 @@ func (a *App) backupProject(ctx context.Context, request StorageBackupRequest) S
 		return StorageBackupResult{State: Failed, Reason: made.row.Problem, Backup: &made.row}
 	}
 	return StorageBackupResult{State: Completed, Backup: &made.row}
+}
+
+// StorageScopeResult is what one backup of a project would hold, measured
+// the way the backup measures it: the files it stores and their bytes, the
+// cases and revisions it holds as evidence, and the derived indexes it
+// records the declarations of instead of copying them.
+type StorageScopeResult struct {
+	State     State  `json:"state"`
+	Reason    string `json:"reason,omitzero"`
+	Project   string `json:"project,omitzero"`
+	ProjectID string `json:"project_id,omitzero"`
+	Files     int    `json:"files"`
+	Bytes     int64  `json:"bytes"`
+	Evidence  int    `json:"evidence"`
+	Indexes   int    `json:"indexes"`
+}
+
+func (r *StorageScopeResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// BackupScope reports what a backup of the named project would hold, through
+// the backup's own scan, so Create backup shows the actual scope before
+// anything is written. The project need not be the one open. It writes
+// nothing.
+func (a *App) BackupScope(request StorageBackupRequest) StorageScopeResult {
+	return run(a, false, false, func(context.Context) StorageScopeResult {
+		return backupScope(request.Context)
+	})
+}
+
+func backupScope(request RequestContext) StorageScopeResult {
+	source, declined := sourceOf(request)
+	if source == nil {
+		return StorageScopeResult{State: declined.state, Reason: declined.reason}
+	}
+	result := StorageScopeResult{Project: source.title, ProjectID: source.id}
+	opened, declined := openProjectFolder(source.root)
+	if opened == nil {
+		result.refuse(declined.state, declined.reason)
+		return result
+	}
+	revisions, declined := readRevisions(source.root)
+	if revisions == nil {
+		result.refuse(declined.state, declined.reason)
+		return result
+	}
+	root, err := os.OpenRoot(source.root)
+	if err != nil {
+		result.refuse(Failed, "the project folder cannot be read")
+		return result
+	}
+	defer root.Close()
+	stored, indexes, err := backup.Scan(root)
+	if err != nil {
+		result.refuse(Failed, err.Error())
+		return result
+	}
+	for _, name := range stored {
+		info, err := root.Lstat(name)
+		if err != nil {
+			result.refuse(Failed, "a file of the project cannot be read")
+			return result
+		}
+		result.Bytes += info.Size()
+	}
+	result.State = Completed
+	result.Files, result.Indexes = len(stored), len(indexes)
+	result.Evidence = len(opened.Document.Cases) + len(revisions.Revisions)
+	return result
 }
 
 // writeBackup takes one backup of source into a new folder of parent through

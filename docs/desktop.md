@@ -490,17 +490,20 @@ artifacts are never reported as completed.
 | `DescribeSearchSettings` / `SaveSearchSettings` | Reports the fields and retention of a case's own search index, and builds that index at a destination Go chooses, replacing only an index verified as the case's own. |
 | `ChooseMaintenancePath` | Presents the host's native save dialog to name the new folder a backup, a restored project or a recovery or rollback archive is written into, and its folder dialog for an existing backup or staged-upgrade package folder. |
 | `BackupLocation` / `ChooseBackupLocation` | Reports the remembered folder backups are kept in while a backup can be written there, or chooses and remembers it in the host's folder dialog. |
-| `ListBackups` | Lists every backup in that folder and every one the application recorded writing elsewhere, newest first, with its project, creation, size and, for a missing, damaged, unfinished or linked one, the actual problem. Writes nothing. |
-| `BackupProject` | Backs up the selected project into a new folder the application names in the backup folder, verifies it whole and records it; a stopped or failed backup is left incomplete and unrecorded. |
+| `ListBackups` | Lists every backup in that folder and every one the application recorded writing elsewhere, newest first, with its project (or, for an archive of one case, the case), creation, size, files and evidence and, for a missing, damaged, unfinished or linked one, the actual problem. Writes nothing. |
+| `BackupScope` | Reports what a backup of a named project would hold — files, bytes, evidence and the indexes it records instead of copying — through the backup's own scan. The project need not be the one open. Writes nothing. |
+| `BackupProject` | Backs up a named project, open or not, into a new folder the application names in the backup folder, verifies it whole and records it; a stopped or failed backup is left incomplete and unrecorded. The window's cancel stops it. |
 | `InspectBackup` / `ChooseBackup` / `RevealBackup` | Verifies one listed backup whole, opens a backup kept anywhere through the folder dialog, or shows a backup in its folder. |
-| `RepairSearch` | Rebuilds one case's own index under the fields and retention it already declared; an expired or unreadable index is refused with its reason. |
+| `RevealIncomplete` | Shows the hidden folder a stopped or failed restore or move kept, and nothing else. |
+| `RepairSearch` | Rebuilds one case's own index under the fields and retention it already declared, only when it has the one failure repair rebuilds (stale against the case, retention not ended); search that works, and an expired or unreadable index, are refused with the reason. `DescribeSearchSettings` and `ListSearchSettings` say which case repair is offered for. |
+| `InspectRecoveryCopy` | Opens one recovery copy read-only through the reader of the document it was kept for and reports what it holds. Writes nothing. |
 | `CreateProjectBackup` | Copies a project into a new verified backup and reports evidence, mutable documents, exclusions and credential references separately. |
 | `VerifyProjectBackup` | Reads a backup whole and reports what it holds without writing. |
 | `RestoreProjectBackup` | Restores a backup into a new destination and rebuilds disposable indexes. |
 | `InspectProjectQuota` / `SetProjectQuota` | Reports or declares retained-file quota and explains that indexes are disposable. |
 | `PreviewProjectMigration` | Previews supported schemas without rewriting retained artifacts. |
 | `PreviewProjectRetirement` / `ArchiveOrDeleteProject` | Previews archive/delete effects with a selection token; delete requires confirmation and a matching selection. |
-| `ListProjectRecoveryCopies` | Lists the recovery copies of a project's documents by the file each is retained in, with its length, whether its bytes are still the ones its name records and its document's reader accepts it, and whether it is the document as it stands. Writes nothing. |
+| `ListProjectRecoveryCopies` | Lists the recovery copies of a project's documents by the file each is retained in, with its length, whether its bytes are still the ones its name records and its document's reader accepts it, whether it is the document as it stands, and when and why the project recorded keeping it. Writes nothing. |
 | `RecoverProjectDocument` | Restores one selected recovery copy and retains the current document bytes. |
 | `CheckStagedUpgrade` / `PrepareStagedUpgrade` | Reviews a staged candidate offline and, with administrator approval, takes a rollback archive. Installation stays a native handoff. |
 | `Filters` | Lists the filters this viewer saved and the one selected now. |
@@ -3032,7 +3035,8 @@ runs the candidate, and opening Storage contacts no network.
 Storage keeps one remembered folder for backups, archive copies and rollback
 copies, in `readmit-desktop-storage/v1`, with a record of each one the
 application wrote: its folder, the identity its completion marker sealed, the
-project's name and identity, when and why. `ListBackups` lists those records
+project's name and identity, when and why, and, for an archive of one case,
+that case. `ListBackups` lists those records
 and every backup in the folder, newest first by that record; a backup the
 application did not record has no creation date, because none is read from a
 file. A missing, damaged, unfinished or linked backup stays a row with the
@@ -3040,7 +3044,8 @@ actual reason. Listing reads only a backup's marker, seal and manifest;
 `InspectBackup` is the explicit full verification, and every task that uses a
 backup verifies it whole first. `BackupProject` writes a new folder the
 application names and never overwrites one; with no backup folder chosen it
-answers `empty` and writes nothing.
+answers `empty` and writes nothing. Neither it nor `BackupScope`, which shows
+the scope first, needs an open project: a person picks one by name.
 
 Storage's writing and deleting tasks are reviewed actions, prepared with
 `PrepareAction` and executed once with `ExecuteReviewedAction`; a change to
@@ -3055,19 +3060,58 @@ what the review bound is a stale review and nothing happens:
 - `storage.delete-backup` deletes exactly the files the backup's sealed
   manifest names and refuses a backup holding anything else.
 - `storage.archive-copy` takes a verified archive of the project, keeps the
-  source, and records the association with its retirement selection.
-- `storage.delete-source` deletes the source only against that recorded,
-  verified archive while the source is still the bytes it was taken of; it never
-  takes a second archive. A removal that stops part way reports
-  `removal-incomplete` and its remainder, and is not retried over it.
+  source, and records the association with its retirement selection. With one
+  case as its item it archives that case alone: a verified backup of a project
+  registering only the case, which restores as an ordinary new project.
+- `storage.delete-source` deletes the source — the project, or the one case
+  its item names — only against that recorded, verified archive while the
+  source is still the bytes it was taken of; it never takes a second archive.
+  A case is taken off the project, as removing it does, in the same step. A
+  removal that stops part way reports `removal-incomplete` and its remainder,
+  and is not retried over it. The review names the source's retention and
+  related work: a protected transfer package within its declared retention
+  refuses the deletion, with no override, as discarding the package is
+  refused; a search index's retention is shown and never refuses it. A case a
+  note or a variant names is refused, as removing it is.
 - `storage.move-project` copies the project, keeping its identity, into a
   hidden folder of the chosen one, verifies every file against the source,
   then names it and switches the opened project to it; the source is kept.
-- `storage.restore-copy` recovers a recovery copy in place, keeping the
-  replaced document as another copy.
+- `storage.restore-copy` creates a separate project, under the new-project
+  destination rules restore follows: the project is copied into a hidden
+  folder and verified, the earlier document is recovered inside the copy
+  through `readmit project recover`'s operation, and the copy gets the
+  reviewed name and a new identity before it is named and opened. The current
+  project is never changed; a restore that stops leaves an incomplete restore.
+- A recovery copy's time and reason are the project's own record,
+  `readmit-recovery-copies/v1`, written when a save or a recovery keeps a new
+  copy; a copy kept before the record existed is listed without either.
 - `storage.prepare-update` takes a verified rollback copy and records the
   staged candidate's folder, version, platform and plan digest. Nothing is
   installed or run.
+
+In the window, Settings › Storage lists the backups with Restore and Create
+backup, with or without a project open. Create backup shows the project, the
+destination and what the backup holds (cases, files and size, from
+`BackupScope`); with no project open it asks for one by name. Stop cancels a
+running backup, which is then listed as incomplete, never as a backup; a
+created one offers Show in folder beside the list. Restore has Stop, asks
+before a changed name is thrown away, and after a stopped or failed restore
+shows Show folder for the unfinished folder it kept (`RevealIncomplete`); that
+folder is never opened. The Storage menu holds the project's own tasks while
+one is open — Quota, Recovery copies, Archive, Move project and Staged update
+— and Repair search only while `ListSearchSettings` reports a case whose
+search repair would fix, with that case filled in. Recovery copies lists each
+copy's document, when it was kept and why; a row opens the copy read-only
+(`InspectRecoveryCopy`), and its Restore copy reviews and then opens the new
+project. Archive first asks what to archive, the whole project or one case.
+Delete from this computer is not in Storage: it is in a project's row menu on
+Projects and a case's row menu on Cases, and its review names the archive,
+related work and retention. The staged update review shows the candidate, the
+compatibility result, what is staged and the work kept; with no backup folder
+it first asks where the rollback copy goes, and once prepared it offers Show
+in folder for that copy. Storage's own reads use the window's one operation
+slot, so a task the window starts as Storage opens, such as Check update,
+waits for them, and a read answered as busy keeps what Storage already shows.
 
 ## Raw inspection and the performance corpus
 

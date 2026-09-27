@@ -48,6 +48,7 @@ export function ProjectList({
   onSettings,
   onReveal,
   onForget,
+  onDelete,
   onNew,
 }: {
   projects: CatalogItem[];
@@ -57,6 +58,8 @@ export function ProjectList({
   onSettings: (project: CatalogItem) => void;
   onReveal: (project: CatalogItem) => void;
   onForget: (project: CatalogItem) => void;
+  /** Delete from this computer, against the project's verified archive. */
+  onDelete: (project: CatalogItem) => void;
   onNew: () => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -107,6 +110,7 @@ export function ProjectList({
               { label: "Project settings", onSelect: () => onSettings(project), disabled: busy || project.availability !== "available" },
               { label: REVEAL, onSelect: () => onReveal(project), disabled: project.availability !== "available" },
               { label: "Remove from recents", onSelect: () => onForget(project), disabled: busy },
+              { label: "Delete from this computer…", tone: "danger" as const, separated: true, onSelect: () => onDelete(project), disabled: busy || project.availability !== "available" },
             ]}
           />
         </span>

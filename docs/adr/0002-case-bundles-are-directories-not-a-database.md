@@ -34,3 +34,16 @@ evidence.
 Whole-project retirement requires a complete verified recovery backup, preserves
 identities in that archive, and unlinks rather than claims secure erasure.
 See [project lifecycle](../project-lifecycle.md).
+
+## 2026-09-27 amendment: when recovery copies were kept, and one case retired
+
+A recovery copy's name records its document and digest and nothing else, and
+a file's time is never evidence of when it was kept. The project therefore
+records, when a replacement keeps a new copy, when and why (`saved` or
+`recovered`) in one more mutable project document, `readmit-recovery-copies/v1`.
+It is metadata about the copies, bounded, and nothing depends on it: a copy
+with no entry is listed without a time. One case of a project can be retired
+as a project is: against a verified backup of a project registering only that
+case, taken while the case folder is exactly the bytes it inventoried; its
+folder is unlinked and its registration removed in one step, and a failure to
+remove the registration puts the folder back.
