@@ -3,6 +3,8 @@
 package desktop_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -38,7 +40,7 @@ func TestRawAndCorpusWritesStayInsideTheChosenFolder(t *testing.T) {
 	}
 	listed, before := entriesOf(t, root), bytesUnder(t, outside)
 	roundTrip := func(folder, name string) refused {
-		result := app.WriteRoundTrip(desktop.RoundTripRequest{File: stream, Format: "mllp", Terminator: "cr", Folder: folder, Name: name})
+		result := app.SaveFileCopy(desktop.SaveCopyRequest{File: stream, Format: "mllp", Terminator: "cr", Expect: digestOfFile(t, stream), Destination: filepath.Join(folder, name)})
 		return refused{result.State, result.Reason}
 	}
 	generate := func(folder, name string) refused {
@@ -85,7 +87,7 @@ func TestRawAndCorpusSeparatePermissionFromFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	unreadable(t, locked)
-	if got := app.InspectRawFile(desktop.RawInspectionRequest{File: locked, Format: "auto", Terminator: "auto"}); got.State != desktop.PermissionDenied || got.Inspection != nil {
+	if got := app.ListFileMessages(desktop.FileMessagesRequest{File: locked, Format: "auto", Terminator: "auto"}); got.State != desktop.PermissionDenied || len(got.Rows) != 0 {
 		t.Errorf("inspecting an unreadable file: %+v", got)
 	}
 	if got := app.ScanCorpus(desktop.CorpusScanRequest{File: locked, Plan: framed}); got.State != desktop.PermissionDenied || got.Scan != nil {
@@ -97,7 +99,7 @@ func TestRawAndCorpusSeparatePermissionFromFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(readOnly, 0o700) })
-	if got := app.WriteRoundTrip(desktop.RoundTripRequest{File: stream, Format: "auto", Terminator: "auto", Folder: readOnly, Name: "copy.mllp"}); got.State != desktop.PermissionDenied {
+	if got := app.SaveFileCopy(desktop.SaveCopyRequest{File: stream, Format: "auto", Terminator: "auto", Expect: digestOfFile(t, stream), Destination: filepath.Join(readOnly, "copy.mllp")}); got.State != desktop.PermissionDenied {
 		t.Errorf("a round trip into a read-only folder: %+v", got)
 	}
 	if got := app.GenerateCorpus(generationRequest(readOnly, "corpus", "7", 3, framed)); got.State != desktop.PermissionDenied || got.Manifest != nil {
@@ -125,7 +127,7 @@ func TestRawAndCorpusSeparatePermissionFromFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chmod(unsearchable, 0o700) })
 	hidden := filepath.Join(unsearchable, "stream.mllp")
-	if got := app.InspectRawFile(desktop.RawInspectionRequest{File: hidden, Format: "auto", Terminator: "auto"}); got.State != desktop.PermissionDenied {
+	if got := app.ListFileMessages(desktop.FileMessagesRequest{File: hidden, Format: "auto", Terminator: "auto"}); got.State != desktop.PermissionDenied {
 		t.Errorf("inspecting a file in an unsearchable folder: %+v", got)
 	}
 	if got := app.ScanCorpus(desktop.CorpusScanRequest{File: hidden, Plan: framed}); got.State != desktop.PermissionDenied {
@@ -156,12 +158,16 @@ func TestRawAndCorpusRefuseAPipeWithoutWaitingOnIt(t *testing.T) {
 	}
 	framed := corpusPlan(importer.MLLPFraming, "", importer.USASCII)
 	for label, read := range map[string]func() refused{
-		"InspectRawFile": func() refused {
-			r := app.InspectRawFile(desktop.RawInspectionRequest{File: pipe, Format: "auto", Terminator: "auto"})
+		"ListFileMessages": func() refused {
+			r := app.ListFileMessages(desktop.FileMessagesRequest{File: pipe, Format: "auto", Terminator: "auto"})
 			return refused{r.State, r.Reason}
 		},
-		"WriteRoundTrip": func() refused {
-			r := app.WriteRoundTrip(desktop.RoundTripRequest{File: pipe, Format: "auto", Terminator: "auto", Folder: dir, Name: "copy.hl7"})
+		"ReadFileBytes": func() refused {
+			r := app.ReadFileBytes(desktop.FileBytesRequest{File: pipe, Expect: strings.Repeat("0", 64)})
+			return refused{r.State, r.Reason}
+		},
+		"SaveFileCopy": func() refused {
+			r := app.SaveFileCopy(desktop.SaveCopyRequest{File: pipe, Format: "auto", Terminator: "auto", Expect: strings.Repeat("0", 64), Destination: filepath.Join(dir, "copy.hl7")})
 			return refused{r.State, r.Reason}
 		},
 		"ScanCorpus": func() refused {
@@ -200,7 +206,7 @@ func TestCorpusDestinationsInsideACaseAreRefusedWithoutTouchingIt(t *testing.T) 
 	if scanned.State != desktop.Failed || scanned.Benchmark != "" {
 		t.Fatalf("a benchmark into a case: %+v", scanned)
 	}
-	copied := app.WriteRoundTrip(desktop.RoundTripRequest{File: stream, Format: "auto", Terminator: "auto", Folder: sealed, Name: "copy.mllp"})
+	copied := app.SaveFileCopy(desktop.SaveCopyRequest{File: stream, Format: "auto", Terminator: "auto", Expect: digestOfFile(t, stream), Destination: filepath.Join(sealed, "copy.mllp")})
 	if copied.State != desktop.Failed {
 		t.Fatalf("a round trip into a case: %+v", copied)
 	}
@@ -210,4 +216,11 @@ func TestCorpusDestinationsInsideACaseAreRefusedWithoutTouchingIt(t *testing.T) 
 	if opened := app.OpenCase(root, "sealed"); opened.State != desktop.Completed {
 		t.Fatalf("the case no longer verifies: %+v", opened)
 	}
+}
+
+// digestOfFile is the SHA-256 the file reader lists a file with.
+func digestOfFile(t *testing.T, path string) string {
+	t.Helper()
+	sum := sha256.Sum256(mustReadFile(t, path))
+	return hex.EncodeToString(sum[:])
 }

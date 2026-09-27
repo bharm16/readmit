@@ -277,7 +277,7 @@ func TestFiltersReportAnEmptyViewerAndRefuseASelectionNothingSaved(t *testing.T)
 // here migrates or repairs one.
 func TestAnUnreadableSavedFilterDocumentIsReportedAndNeverReplaced(t *testing.T) {
 	for name, contents := range map[string]string{
-		"unknown version": `{"schema":"readmit-filters/v2","filters":[],"selected":""}`,
+		"unknown version": `{"schema":"readmit-filters/v3","filters":[],"selected":""}`,
 		"unknown member":  `{"schema":"readmit-filters/v1","filters":[],"selected":"","sorted":true}`,
 		"not JSON":        `{`,
 	} {

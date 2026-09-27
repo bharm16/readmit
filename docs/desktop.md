@@ -482,10 +482,12 @@ artifacts are never reported as completed.
 | `ListNotes` / `SaveNoteItem` | Lists a case's notes or the project's own, and saves one whole note through the shared operation `readmit project note` runs. |
 | `ForgetProject` | Removes one project from the projects this viewer remembers and leaves the project itself untouched. |
 | `Search` | Finds what one open workspace declares and what its project registers. |
-| `InspectOccurrence` | Verifies the grid identity again and reveals one selected occurrence, its navigable tree, escaped raw/decoded values and bounded hex bytes. |
+| `ReadMessages` | Reads one bounded window of a verified case's messages under a transient query and sort, through an applicable index of that case or one built in memory, and writes nothing. |
+| `InspectOccurrence` | Verifies the list identity again and inspects one selected occurrence: its labelled tree, canonical selectors and hex rows, and its escaped raw/decoded value only when revealed. |
 | `OpenGrid` | Renders one bounded window of one case through one index of it, and describes that index as `DescribeIndex` does, from the same read. |
 | `BuildIndex` | Builds an index of declared fields and retention choices for a verified case bundle into a new derived artifact, re-reads the workspace and returns the outcome. |
 | `DescribeIndex` | Inspects the index status of a case, reporting whether an index is applicable, stale, expired, damaged, or unsupported. |
+| `DescribeSearchSettings` / `SaveSearchSettings` | Reports the fields and retention of a case's own search index, and builds that index at a destination Go chooses, replacing only an index verified as the case's own. |
 | `ChooseMaintenancePath` | Presents the host's native save dialog to name the new folder a backup, a restored project or a recovery or rollback archive is written into, and its folder dialog for an existing backup or staged-upgrade package folder. |
 | `CreateProjectBackup` | Copies a project into a new verified backup and reports evidence, mutable documents, exclusions and credential references separately. |
 | `VerifyProjectBackup` | Reads a backup whole and reports what it holds without writing. |
@@ -499,6 +501,7 @@ artifacts are never reported as completed.
 | `Filters` | Lists the filters this viewer saved and the one selected now. |
 | `SaveFilter` | Stores one named filter and selects it. |
 | `SelectFilter` | Records which saved filter the grid applies. |
+| `ListViews` / `SaveView` / `RenameView` / `RemoveView` | Lists, saves, renames and removes the named views of the open project. |
 | `Shell` | Describes the window: regions, statuses, commands, appearance, privacy. |
 | `RecordView` | Retains the workspace, case, region and run this viewer has open. |
 | `SaveEditorDraft` | Retains one editor's unstored work under an internal identity, replacing the draft it continues. |
@@ -829,19 +832,30 @@ those occurrence bytes through `InspectOccurrence` without persisting them.
 
 ## Inspecting original values
 
-Select **Inspect** on a grid occurrence, then choose a segment, field,
-repetition, component or subcomponent. The selection, its state and byte range,
-escaped raw value, decoded value and highlighted raw/hex window all come from
-one verified read. The exact-selector form can also address omitted positions;
+Select an occurrence, then choose a segment, field, repetition, component or
+subcomponent. The selection, its state and byte range, its canonical selector,
+the labelled children and the hex rows all come from one verified read. The
+escaped raw and decoded value, and the printable column of each hex row, are
+sent only when the request sets `reveal`, and so are the hex digits, which are
+the values themselves; without it the inspector still shows every position,
+state, label and byte offset. Each child carries its dictionary
+label when the bundled labels name it, a readable segment name for the segments
+those labels cover, and the canonical selector a field filter names it by (a
+field is its first repetition, for example `PID[1]-3[1]`). With `reveal` each
+present child also carries its own decoded value, escaped and bounded to 128
+bytes, so a segment's fields read in place once Show values is chosen; reveal
+applies to the open case or file only and resets when another is opened. The inspection names
+the message's MSH-9 code and trigger and its recorded observed time. The exact-selector form can also address omitted positions;
 `empty`, explicit `null`, and `omitted` stay separate. The inspector uses the bundled `readmit-field-labels/v1` labels only when
 MSH-12 declares v2.5.1, with the nHapi revision and MPL-2.0 provenance displayed.
 Other versions, unknown segments and unknown positions stay explicitly
-unlabeled. The bundle contains field labels only, not segment names, datatypes,
-cardinality or semantic conformance rules.
+unlabeled. The bundle contains field labels only, not datatypes, cardinality or semantic
+conformance rules; the readable segment names are readmit's own.
 
 Tree navigation shows at most 100 immediate children; Next/Previous children
-reaches the rest. Original bytes are shown 256 at a time, including framing and
-terminators. Offsets are zero-based, half-open ranges within the original
+reaches the rest. Original bytes are shown 256 at a time as 16-byte hex rows,
+each with its offset, two groups of eight hex bytes and a printable column,
+including framing and terminators; a page begins at the start of its row. Offsets are zero-based, half-open ranges within the original
 occurrence; add the displayed source offset for the original capture position.
 Selecting a part jumps to its bytes, and moving through byte pages preserves
 the selected range. Unparsed occurrences have no field tree but retain every
@@ -1150,7 +1164,93 @@ cannot write reports `permission_denied`, and a project that already holds as
 many notes as this release stores reports the refusal rather than dropping one.
 See [interface investigation projects](project.md).
 
+## The Messages reader
+
+Opening a case reads its messages at once: `ReadMessages` verifies the case
+against the identity the window displayed and returns one window of at most 200
+rows, with the counts around it and the choices the filter sheet offers for this
+case (its actual message types, its source IDs and the acknowledgement codes it
+carries). No index has to exist, be chosen or be built first.
+
+A row is the occurrence's ID, source, sequence, byte span, kind, direction,
+recorded observed time, whether it decoded, and its parsed MSH-9 message code
+and trigger event, escaped and bounded. A code or trigger the message does not
+declare is empty and is never invented; an ACK and an unparsed occurrence are
+kinds of their own. The default order is the order the case holds its
+occurrences in; `time-ascending` and `time-descending` order by recorded observed
+time and list an occurrence with no recorded time last in both directions,
+because unknown is neither early nor late and an order is not a causal claim.
+
+A result is `completed` with its window, including a window of no rows: `total`
+is then nonzero and `matched` zero, which is a filtered view, not an empty case.
+`empty` is a case that holds no occurrence at all. `complete` says every
+occurrence was examined and `scanned` how many were; the verified reader holds
+at most 10,000 occurrences of a case in memory, so no bound of the reader stops
+a scan short and a total is never claimed for part of a case.
+
+In the window, the case's Messages view is one full-height list of Time, Type,
+Source and Direction (Kind is an optional column, and Direction is the first to
+go in a narrow list). Search and Filter open sheets; what they apply shows as
+removable chips, and Save view appears only once something is applied. Rows
+chosen with their checkboxes offer Create test, Send selected and Create
+variant; an ACK or unparsed row can be opened but is never counted as an
+outbound message. Selecting a row reads it into the shared reader beside the
+list, or on its own with the way back when the list would be too narrow.
+Scrolling to the end of the read rows asks for the next window.
+
+### Transient queries
+
+The query a person applies is a `grid.Query`, read and never stored. Its axes
+combine with AND; the values within one axis are alternatives.
+
+| Axis | What it compares |
+| --- | --- |
+| `types` / `not_types` | The parsed message code and trigger (`message`), or a whole `ack` or `unparsed` kind |
+| `kinds` | The occurrence kind the case recorded |
+| `sources` / `not_sources` | The source ID the case names |
+| `directions` | `inbound`, `outbound` or `unknown` |
+| `observed_from` / `observed_until` | Recorded observed time, from one instant up to but not including another; no recorded time never passes a bound |
+| `ack_codes` | A literal `MSA-1` code |
+| `fields` | A canonical selector that `equals` or `contains` a value, or has a `present`, `empty`, `null` or `omitted` state |
+| `search` | A literal `metadata` search (type, source ID, MSH-10 control ID) or `content` search (the original bytes of each occurrence of this case) |
+
+A combination this release cannot answer, such as a type both required and
+excluded, is refused with its reason rather than run as another question.
+Value and state questions are asked through `index.Document.Search`, the one
+search path of
+[ADR-0008](adr/0008-the-case-index-is-a-derived-disposable-readmit-owned-file.md):
+an index beside the case is reused when it names this case's exact evidence, its
+declared retention covers now and it retains what the query asks in a form that
+answers it; otherwise an index of just the asked fields is built in memory for
+that one read and discarded. A foreign, damaged, unsupported or expired index is
+passed over without being changed, and an expired retention is never extended.
+Applying a query writes no file. The persistent index is not repaired
+automatically: a same-identity index always describes its case, so there is
+nothing a silent rebuild could prove, and the in-memory path answers instead.
+
+### Saved views
+
+A view is a name of 1 to 200 printable characters and a query, saved only when
+the person chooses Save view. Views are listed per project — keyed by the
+project's folder — in the viewer's own `readmit-filters/v2` document, outside
+evidence, beside the saved filters. `readmit-filters/v1` is still read, as a v2
+document with no views, and is written as v2 the next time anything is saved.
+Renaming a view onto another view's name is refused; removing a view removes
+only the saved query, never evidence.
+
+### Search settings
+
+`SaveSearchSettings` takes fields, a retention form and an explicit retention
+end, and names no file and asks for no replacement: an index verified as this
+case's own is replaced, and otherwise the index is written as the first free
+name of `CASE.index.json`, `CASE.index-2.json` and so on, so another case's index
+is never replaced. `DescribeSearchSettings` prefills the sheet from the case's
+own index, stating when its retention has ended.
+
 ## The message grid
+
+The window no longer calls `OpenGrid`; the Messages view reads through
+`ReadMessages` above. `OpenGrid` stays for callers that already name an index.
 
 A case holds thousands of occurrences and a window holds a screenful. `OpenGrid`
 renders one bounded window of one case: the occurrences the selected filter
@@ -1329,18 +1429,19 @@ bound: unknown is not a pass, and the excluded count says it was left out. A
 source a case does not hold matches nothing rather than being refused, because a
 saved filter outlives the case it was made for.
 
-Saved filters are one bounded, versioned `readmit-filters/v1` document
+Saved filters are one bounded, versioned `readmit-filters/v2` document
 ([ADR-0003](adr/0003-specs-are-strict-json-with-typed-operators.md)) in
 `filters.json`, beside the other shell documents in the user configuration
-directory:
+directory; it also holds each project's saved views:
 
 ```json
-{"schema":"readmit-filters/v1","filters":[{"name":"rejected acknowledgements","kinds":["ack"],"sources":[],"observed_from":null,"observed_until":null,"ack_codes":["AE","AR"],"fields":[]}],"selected":"rejected acknowledgements"}
+{"schema":"readmit-filters/v2","filters":[{"name":"rejected acknowledgements","kinds":["ack"],"sources":[],"observed_from":null,"observed_until":null,"ack_codes":["AE","AR"],"fields":[]}],"selected":"rejected acknowledgements","views":[]}
 ```
 
 Unknown members, unknown versions and an omitted declaration are all errors; a
-time bound that is not declared is stated as an explicit null. There is no
-migration and no repair. A document this release cannot read is reported and
+time bound that is not declared is stated as an explicit null. A
+`readmit-filters/v1` document is read as the v2 document with no views; there
+is no other migration and no repair. A document this release cannot read is reported and
 left exactly as written: saving into it is refused rather than replacing it, and
 the grid reports the same refusal rather than quietly rendering an unfiltered
 view of the case. Listing a workspace, verifying a case and reading a project
@@ -2503,7 +2604,7 @@ retention of.
 The window offers `system`, `light` and `dark`, and text sizes from 100% to
 200%. Both start from the system every time the window opens and are written
 nowhere. The shell keeps seven separate owner-only local documents: saved
-filters (`readmit-filters/v1`),
+filters and views (`readmit-filters/v2`, which also reads `/v1`),
 the working session (`readmit-desktop-session/v1`), editor drafts
 (`readmit-desktop-drafts/v1`, or `/v2` while a draft names the object it
 edits), the projects folder and the projects opened
@@ -2744,32 +2845,23 @@ the palette's commands of the same names, which open the screen and move focus
 to the page. Neither needs a workspace, and neither writes a case, an index or a
 project.
 
-**Raw inspection** is [`readmit inspect`](../README.md) in the window. A person
-chooses exactly one file through the host's file dialog, declares its framing
-(`auto`, `raw` or `mllp`) and segment terminator (`auto`, `cr`, `lf` or
-`crlf`) — the two declarations the command takes, each `auto` meaning
-detected — and inspects it. `InspectRawFile` reads the file whole within the
-parser's 16 MiB bound through the same shared operation the command runs
-(`operation.InspectFile`, over `hl7.Parse` and the bundled field labels), so a
-row the window shows is a line the command prints, in its order: each message
-with its terminator, byte range and label profile, each segment with its byte
-range, each field by position and label with its state and length, and each
-repetition of a repeated field. A labelled field the message omits is shown as
-omitted, and a message whose version the labels do not describe is positional
-only. The window pages the rows 200 at a time, the grid's bound, and the file
-is read again for each page; nothing of it is retained. Every page after the
-first names the digest the rows already shown were read from, and a file that
-changed in between is refused — inspect it again — rather than shown as rows of
-two different files. Values are hidden until the person asks for them, and then
-each is the field's bytes as an escaped ASCII string made in Go, exactly as
-`--show-values` prints it, so bytes that are not UTF-8 reach the window escaped.
-A field longer than 4,096 bytes is shown as an escaped prefix of at most 4,096
-bytes. If the limit falls inside a multi-byte UTF-8 character, the prefix ends
-before that character and the row states the number of bytes actually shown.
-The command prints the value whole. The file is opened for reading only and is
-never changed; the summary names its length and SHA-256. Changing a declaration
-or the values choice clears what was shown, because it belongs to the reading
-it came from.
+**Inspect file** is [`readmit inspect`](../README.md) in the window's shared
+reader. A person chooses exactly one file through the host's file dialog;
+framing (`auto`, `raw` or `mllp`) and segment terminator (`auto`, `cr`, `lf` or
+`crlf`) are the two declarations the command takes, each `auto` meaning
+detected. `ListFileMessages` reads the file whole within the parser's 16 MiB
+bound, parses it with `hl7.Parse` under those declarations, and lists one
+window of up to 200 messages with each one's MSH-9 code and trigger and byte
+range — the messages and ranges `readmit inspect` prints — with the file's
+name, length, SHA-256 and the framing and terminator actually used. A file that
+does not parse is refused with the parser's own sentence, and still carries its
+name, length and digest, so `ReadFileBytes` shows its original bytes as 16-byte
+hex rows and the person can change the format. `InspectFileMessage` opens one
+message in the same inspector a case occurrence uses, at the file's offsets,
+values withheld until revealed. Every call after the list names the digest the
+list was read from, and a file that changed since is refused — open it again —
+rather than joined to a list of a different file. The file is opened for
+reading only and is never changed; nothing of it is retained.
 
 Inspection has no encoding or direction declaration, because the command has
 none: the parser reads bytes, and an encoding or a direction is a declaration
@@ -2777,12 +2869,14 @@ of what an import will record, which inspection records nothing of. Those are
 declared where they mean something — an import plan, and the performance
 corpus below.
 
-`WriteRoundTrip` is `--roundtrip`: once the file parses under the
-declarations, its exact bytes are written to one new file of a folder the
-person chose through the host's folder dialog. An existing file — including the
-source itself — is refused with the command's own sentence and left unchanged,
-a file that does not parse writes nothing, and the result names the copy's
-length and digest, which are the source's.
+`SaveFileCopy` is `--roundtrip`: the file is read again, checked against the
+digest it was listed with and parsed under the declarations, and only then are
+its exact bytes written, exclusively, as the one new file the host's save
+dialog named (`ChooseInspectionPath("copy-destination", file)` offers the
+source's own name). The source by any name — its own path, a link to it, a hard
+link — and an existing file are refused and left unchanged, a file that does not
+parse or that changed writes nothing, and the result names the copy's length
+and digest, which are the source's.
 
 **The performance corpus** is [`readmit corpus generate` and `readmit corpus
 scan`](corpus.md) in the window. Generation takes the four generator inputs,

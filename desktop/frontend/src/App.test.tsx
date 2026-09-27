@@ -1,3 +1,4 @@
+import { findMessageRow } from "./testkit/navigation";
 // The window's own journeys, driven as a person drives them: real user events
 // over the real components, with only the typed facade boundary stubbed.
 // Everything a panel claims about wiring — a selection reaching the inspector,
@@ -22,11 +23,8 @@ import {
   folderDenied,
   folderWithCase,
   suiteDocumentResult,
-  buildIndexResultFixture,
-  indexDetailsFixture,
-  indexResultFixture,
-  gridResult,
-  gridRow,
+  messagesResult,
+  messageRow,
   guideResult,
   inspectionResult,
   practiceResult,
@@ -59,7 +57,7 @@ import {
   SUITE_ENTRY,
   SUITE_PREPARED,
   SUITE_RELEASES,
-  vocabularyFixture,
+
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
@@ -73,9 +71,6 @@ async function openFolder(user: ReturnType<typeof userEvent.setup>) {
   }
   await user.click(screen.getByRole("button", { name: "Open" }));
 }
-
-/** How many occurrences one window of the grid shows, as the facade publishes it. */
-const GRID_WINDOW = vocabularyFixture().bounds.grid;
 
 test("the window draws every region the facade declares and its privacy disclosure as given", async () => {
   await renderApp();
@@ -240,43 +235,13 @@ async function openWorkspaceWithVerifiedCase(
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
   facade.reply({
     OpenCase: () => caseResult(),
-    DescribeIndex: () => indexResultFixture(),
-    OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]),
+    
+    ReadMessages: () => messagesResult([messageRow(GRID_OCCURRENCE), messageRow(NEXT_OCCURRENCE, "ack")]),
   });
   await user.click(await findCaseRow());
   await readCaseIdentity(user, CASE_IDENTITY);
-  await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) });
+  await (await findMessageRow(GRID_OCCURRENCE));
 }
-
-test("a grid row selected by hand reveals that occurrence through the inspector", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    InspectOccurrence: () => inspectionResult(),
-  });
-  await openWorkspaceWithVerifiedCase(facade, user);
-  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
-  const [workspace, name, indexName, offset, limit] = facade.oneCall("OpenGrid");
-  expect([workspace, name, indexName, offset, limit]).toEqual([
-    WORKSPACE_ROOT,
-    CASE_ENTRY,
-    INDEX_ENTRY,
-    0,
-    200,
-  ]);
-  const request = facade.oneCall("InspectOccurrence")[0];
-  expect(request).toMatchObject({
-    workspace: WORKSPACE_ROOT,
-    case: CASE_ENTRY,
-    identity: CASE_IDENTITY,
-    occurrence: GRID_OCCURRENCE,
-    path: "",
-    node_offset: 0,
-    byte_offset: -1,
-  });
-  const inspector = screen.getByRole("region", { name: "Details" });
-  expect(inspector.textContent).toContain("s0001");
-  expect(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }).closest("tr")?.getAttribute("aria-selected")).toBe("true");
-});
 
 test("a sequence event selected from the timeline selects the same occurrence in the inspector", async () => {
   const user = userEvent.setup();
@@ -310,12 +275,12 @@ test("a refused inspection reports the refusal and keeps the grid for recovery",
     InspectOccurrence: () => refused("The evidence changed since this grid was read."),
   });
   await openWorkspaceWithVerifiedCase(facade, user);
-  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
+  await user.click((await findMessageRow(GRID_OCCURRENCE)));
   expect(
     await screen.findByText("The evidence changed since this grid was read."),
   ).toBeTruthy();
   expect(
-    screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }),
+    (await findMessageRow(GRID_OCCURRENCE)),
   ).toBeTruthy();
 });
 
@@ -355,7 +320,7 @@ test("a reproducer step the evidence does not support leaves the plan exactly as
   expect(
     await screen.findByText("The case does not support dropping the only occurrence."),
   ).toBeTruthy();
-  expect(screen.getByText("Selected")).toBeTruthy();
+  expect(screen.getByText("Selected", { selector: ".reason" })).toBeTruthy();
   expect(screen.getByText(`Drop ${GRID_OCCURRENCE}`)).toBeTruthy();
   expect(facade.callsTo("EditReproducer")).toHaveLength(2);
 });
@@ -366,7 +331,7 @@ test("an inspector that never answered is reported and leaves the prior result a
   await openWorkspaceWithVerifiedCase(facade, user);
   // No InspectOccurrence handler: the boundary rejects, the bindings answer
   // with the fixed unreachable sentence.
-  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
+  await user.click((await findMessageRow(GRID_OCCURRENCE)));
   expect(await screen.findByText("the application did not answer")).toBeTruthy();
   expect(facade.callsTo("InspectOccurrence").length).toBeGreaterThanOrEqual(1);
 });
@@ -390,7 +355,8 @@ test("saving the authored test hands the draft to the engine and reads the guide
     expectations: [{ id: "ledger-has-booking", operator: "ledger_count" as const, count: 1 }],
   };
   facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: true, covered: true, expectation: "ledger-has-booking" }, messages: [], uncovered: [] } } } }) });
-  await user.click(screen.getByRole("button", { name: "Create test" }));
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Create test" }));
   await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
   await user.click(screen.getByRole("button", { name: "Save name" }));
   expect(await screen.findByText("Chosen: Appointment records")).toBeTruthy();
@@ -456,7 +422,8 @@ test("a saved test is at once an entry the run panel offers, read back from the 
         { name: "reschedule-test.json", kind: "spec" },
       ]),
   });
-  await user.click(screen.getByRole("button", { name: "Create test" }));
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Create test" }));
   await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
   await user.click(screen.getByRole("button", { name: "Save name" }));
   await screen.findByText("Chosen: Acknowledgements");
@@ -519,7 +486,8 @@ test("a refused save reports the refusal and keeps the draft a person is working
     expectations: [],
   };
   facade.reply({ AuthorTest: () => ({ state: "completed" as const, test: { draft: answered, resolution: { stage: "" as const, missing: [], messages: answered.messages, targets: [], coverage: { ledger: { applies: false, covered: false }, messages: [], uncovered: [] } } } }) });
-  await user.click(screen.getByRole("button", { name: "Create test" }));
+  await user.click(screen.getByRole("button", { name: "More case actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Create test" }));
   await user.type(screen.getByRole("textbox", { name: "Name" }), "booking-regression");
   await user.click(screen.getByRole("button", { name: "Save name" }));
   await screen.findByText("Chosen: Acknowledgements");
@@ -626,7 +594,7 @@ test("a refused case verification keeps the verified case and everything derived
   ).toBeTruthy();
   // The verified case, its grid and its inspector remain, for recovery.
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
-  expect(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
+  expect((await findMessageRow(GRID_OCCURRENCE))).toBeTruthy();
 });
 
 test("recordings of where the viewer is are chained, so the newest place is recorded last", async () => {
@@ -889,87 +857,6 @@ test("closing asks before dropping text the store refused to retain, and not aft
   }
 });
 
-test("verifying a case auto-selects and opens an applicable index", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    SelectWorkspace: () => folderWithCase(),
-    OpenCase: () => caseResult(),
-    DescribeIndex: () => indexResultFixture(indexDetailsFixture({ applicable: true })),
-    OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE)]),
-  });
-
-  await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(await findCaseRow());
-  await readCaseIdentity(user, CASE_IDENTITY);
-
-  expect(await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
-  expect(facade.callsTo("OpenGrid")).toHaveLength(1);
-});
-
-test("a page of the grid is one read, and the index details beside it are that read's", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    SelectWorkspace: () => folderWithCase(),
-    OpenCase: () => caseResult(),
-    DescribeIndex: () => indexResultFixture(),
-    OpenGrid: () => ({...gridResult([gridRow(GRID_OCCURRENCE)], {total:2*GRID_WINDOW,matched:2*GRID_WINDOW}), index:indexDetailsFixture({applicable:true})}),
-  });
-  await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(await findCaseRow());
-  await readCaseIdentity(user, CASE_IDENTITY);
-  const described = facade.callsTo("DescribeIndex").length;
-
-  facade.reply({
-    OpenGrid: () => ({
-      ...gridResult([gridRow(GRID_OCCURRENCE)], { total: 2 * GRID_WINDOW, matched: 2 * GRID_WINDOW }),
-      index: indexDetailsFixture({ applicable: true }),
-    }),
-  });
-  await user.click(screen.getByRole("button", { name: "More list actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Search settings…" }));
-  expect(await screen.findByLabelText("Active index details")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Close search settings" }));
-
-  // The evidence changed between the two page reads: the next one is refused,
-  // and what that same read found of the index is what the window now shows.
-  facade.reply({
-    OpenGrid: () => ({
-      ...refused("the index was built from different evidence than this case; build it again from this case"),
-      index: indexDetailsFixture({ applicable: false, stale: true }),
-    }),
-  });
-  await user.click(screen.getByRole("button", { name: `Next ${GRID_WINDOW} occurrences` }));
-  expect(await screen.findByRole("alert", { name: "Index rebuild notice" })).toBeTruthy();
-  expect(screen.getByText(/built from different evidence than this case/)).toBeTruthy();
-  expect(screen.queryByLabelText("Active index details")).toBeNull();
-  expect(screen.queryByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeNull();
-
-  expect(facade.callsTo("OpenGrid").map((call) => call.args[3])).toEqual([0, GRID_WINDOW]);
-  expect(facade.callsTo("DescribeIndex")).toHaveLength(described);
-});
-
-test("verifying an unindexed case shows unindexed view and keeps inspector available", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    SelectWorkspace: () => folderWithCase(),
-    OpenCase: () => caseResult(),
-    DescribeIndex: () => ({ state: "empty" }),
-    InspectOccurrence: () => inspectionResult(),
-  });
-
-  await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(await findCaseRow());
-  await readCaseIdentity(user, CASE_IDENTITY);
-
-  expect(await screen.findByText("Search is off for this case")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Enable search…" })).toBeTruthy();
-  expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
-  expect(facade.callsTo("OpenGrid")).toHaveLength(0);
-});
-
 test("searching workspace with content hit badges match and navigates to inspector", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({
@@ -1006,31 +893,6 @@ test("searching workspace with content hit badges match and navigates to inspect
   await waitFor(() => expect(facade.callsTo("OpenCase")).toHaveLength(1));
   await waitFor(() => expect(facade.callsTo("InspectOccurrence")).toHaveLength(1));
 });
-
-test("building an index from the unindexed case view calls BuildIndex and opens grid", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({
-    SelectWorkspace: () => folderWithCase(),
-    OpenCase: () => caseResult(),
-    DescribeIndex: () => ({ state: "empty" }),
-    BuildIndex: () => buildIndexResultFixture(indexDetailsFixture({ applicable: true })),
-    OpenWorkspace: () => folderWithCase(),
-    OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE)]),
-  });
-
-  await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await user.click(await findCaseRow());
-  await screen.findByText("Search is off for this case");
-
-  await user.click(screen.getByRole("button", { name: "Enable search…" }));
-  await user.click(screen.getByRole("button", { name: "Build index" }));
-
-  await waitFor(() => expect(facade.callsTo("BuildIndex")).toHaveLength(1));
-  await waitFor(() => expect(facade.callsTo("OpenGrid")).toHaveLength(1));
-  expect(await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) })).toBeTruthy();
-});
-
 
 test("case through rules, diagnosis, inspection, review and draft handoff", async () => {
   // Acceptance journey for UX09: open a verified case, lay out a sequence,
@@ -1214,7 +1076,7 @@ test("details sit beside a list that fits and are shown alone, with the way back
   const { facade } = await renderApp({ InspectOccurrence: () => inspectionResult(GRID_OCCURRENCE) });
   await openWorkspaceWithVerifiedCase(facade, user);
   windowWidth(1100);
-  await user.click(screen.getByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) }));
+  await user.click((await findMessageRow(GRID_OCCURRENCE)));
   await screen.findByRole("region", { name: "Details" });
   expect(document.querySelector(".workarea")?.classList.contains("with-details")).toBe(true);
   expect(screen.getByRole("region", { name: "Main content" })).toBeTruthy();

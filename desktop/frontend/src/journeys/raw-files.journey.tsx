@@ -11,8 +11,7 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { UserEvent } from "@testing-library/user-event";
-import { enter, Journey, press, region } from "../testkit/journey";
+import { enter, Journey, press } from "../testkit/journey";
 import { activateLicense } from "./steps";
 
 let journey: Journey;
@@ -25,34 +24,6 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-/** One line of `readmit inspect` as the window writes the same row. */
-function asWindowRow(line: string): string {
-  const message = /^Message (\d+): terminator=(\S+) \((\w+)\), bytes \[(\d+),(\d+)\), (.*)$/.exec(line);
-  if (message) return `Message ${message[1]} · terminator ${message[2]} (${message[3]}) · bytes [${message[4]},${message[5]}) · ${message[6]}`;
-  const segment = /^ {2}(\S+) bytes \[(\d+),(\d+)\)$/.exec(line);
-  if (segment) return `${segment[1]} · bytes [${segment[2]},${segment[3]})`;
-  const repetition = /^ {6}repetition (\d+): (\w+) \((\d+) bytes\)$/.exec(line);
-  if (repetition) return `repetition ${repetition[1]} · ${repetition[2]} · ${repetition[3]} bytes`;
-  const field = /^ {4}(.+): (\w+)(?: \((\d+) bytes\))?$/.exec(line);
-  if (field) return `${field[1]} · ${field[2]}${field[3] !== undefined ? ` · ${field[3]} bytes` : ""}`;
-  throw new Error(`not an inspect row: ${line}`);
-}
-
-/** Every row the window shows, page by page, as a person reads them. */
-async function everyRow(user: UserEvent): Promise<string[]> {
-  const inspection = within(region("Inspect HL7 file"));
-  const shown: string[] = [];
-  for (;;) {
-    const list = await inspection.findByRole("list", { name: "Inspection rows" });
-    shown.push(...within(list).getAllByRole("listitem").map((item) => item.textContent ?? ""));
-    const next = inspection.getByRole("button", { name: "Next page" }) as HTMLButtonElement;
-    if (next.disabled) return shown;
-    const page = inspection.getByText(/^Rows \d+–\d+ of \d+$/).textContent;
-    await press(user, next);
-    await waitFor(() => expect(inspection.getByText(/^Rows \d+–\d+ of \d+$/).textContent).not.toBe(page));
-  }
-}
-
 test("a raw file is inspected and copied in the window exactly as the command line inspects and copies it", async () => {
   const user = userEvent.setup();
   const exported = journey.placeFixture("two-messages.mllp", "exports/two-messages.mllp");
@@ -60,50 +31,45 @@ test("a raw file is inspected and copied in the window exactly as the command li
   journey.makeFolder("copies");
   await journey.launch();
 
-  // The palette opens the screen, from the keyboard.
-  await user.keyboard("{Control>}k{/Control}");
-  await user.type(screen.getByLabelText("Search commands"), "inspect HL7{Enter}");
-  const inspection = within(region("Inspect HL7 file"));
+  // The palette opens the tool, which goes straight to the host's Open dialog.
   await journey.chooseFiles([exported], "Open HL7 file");
-  await press(user, inspection.getByRole("button", { name: "Browse…" }));
-  expect(await inspection.findByText(exported)).toBeTruthy();
-  await user.selectOptions(inspection.getByLabelText("Framing"), "mllp");
-  await press(user, inspection.getByRole("button", { name: "Inspect" }));
-  expect(await inspection.findByText(/^Format: mllp \(declared\) · Messages: 2 · /)).toBeTruthy();
-  const shown = await everyRow(user);
+  await user.keyboard("{Control>}k{/Control}");
+  await user.type(screen.getByLabelText("Search commands"), "Inspect file{Enter}");
+  expect(await screen.findByRole("heading", { name: "two-messages.mllp" })).toBeTruthy();
 
+  // Auto detection reads the MLLP frames; the command line lists the same messages.
+  const table = await screen.findByRole("table", { name: "Messages in this file" });
   const command = await journey.commandLine(["inspect", "exports/two-messages.mllp", "--format", "mllp"]);
   expect(command.code).toBe(0);
-  const lines = command.stdout.trimEnd().split("\n");
-  expect(lines.slice(0, 2)).toEqual(["Format: mllp (declared)", "Messages: 2"]);
-  expect(shown).toEqual(lines.slice(2).map(asWindowRow));
-  expect(inspection.queryByText(/EXAMPLE\^CHARLIE/)).toBeNull();
+  const messages = command.stdout.split("\n").filter((line) => /^Message \d+:/.test(line));
+  await waitFor(() => expect(within(table).getAllByRole("row").filter((row) => row.hasAttribute("data-row-id"))).toHaveLength(messages.length));
 
-  // Values appear only once a person asks for them, escaped as the command
-  // escapes them.
-  await user.click(inspection.getByLabelText("Show values"));
-  await press(user, inspection.getByRole("button", { name: "Inspect" }));
-  expect(await inspection.findByText(/"EXAMPLE\^CHARLIE"/)).toBeTruthy();
+  // Values appear only once a person asks for them.
+  await press(user, table.querySelector<HTMLElement>('[data-row-id="0"]')!);
+  const details = within(await screen.findByRole("region", { name: "Message details" }));
+  expect(details.queryByText(/EXAMPLE\^CHARLIE/)).toBeNull();
+  await press(user, details.getByRole("button", { name: /^PID/ }));
+  await press(user, details.getByRole("button", { name: "Show values" }));
+  expect((await details.findAllByText(/EXAMPLE\^CHARLIE/)).length).toBeGreaterThan(0);
 
-  // A byte-identical copy goes to a new file of a folder the person chose.
-  await journey.chooseFolder(journey.path("copies"), "Choose copy destination");
-  await press(user, inspection.getByRole("button", { name: "Choose destination…" }));
-  expect(await inspection.findByText(journey.path("copies"))).toBeTruthy();
-  await enter(user, inspection.getByLabelText("Copy filename"), "window.mllp");
-  await press(user, inspection.getByRole("button", { name: "Save copy" }));
-  expect(await inspection.findByText(/· the same bytes the inspection read$/)).toBeTruthy();
+  // A byte-identical copy goes to a new file the person named.
+  await journey.nameNewFolder(journey.path("copies", "window.mllp"), "Save copy");
+  await press(user, screen.getByRole("button", { name: "More file actions" }));
+  await press(user, screen.getByRole("menuitem", { name: "Save copy…" }));
+  expect(await screen.findByText("Saved window.mllp")).toBeTruthy();
   const copied = await journey.commandLine(["inspect", "exports/two-messages.mllp", "--format", "mllp", "--roundtrip", "copies/command.mllp"]);
   expect(copied.code).toBe(0);
   expect(journey.digest("copies/window.mllp")).toBe(before);
   expect(journey.digest("copies/command.mllp")).toBe(before);
 
-  // A second copy over the first is refused in the command's own words, and
-  // neither the copy nor the source changes.
-  await press(user, inspection.getByRole("button", { name: "Save copy" }));
-  expect(await inspection.findByText("cannot create round-trip file; destination must be new and writable")).toBeTruthy();
+  // A second copy over the first is refused, and neither file changes.
+  await journey.nameNewFolder(journey.path("copies", "window.mllp"), "Save copy");
+  await press(user, screen.getByRole("button", { name: "More file actions" }));
+  await press(user, screen.getByRole("menuitem", { name: "Save copy…" }));
+  expect(await screen.findByRole("alert")).toBeTruthy();
   expect(journey.digest("copies/window.mllp")).toBe(before);
   expect(journey.digest("exports/two-messages.mllp")).toBe(before);
-  expect(journey.callsTo("InspectRawFile").every((call) => call.settled)).toBe(true);
+  expect(journey.callsTo("SaveFileCopy").every((call) => call.settled)).toBe(true);
 });
 
 test("a corpus generated and scanned in the window is the command line's corpus, manifest and benchmark", async () => {

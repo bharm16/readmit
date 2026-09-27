@@ -127,3 +127,22 @@ func TestAtAnswersTheStatusVocabulary(t *testing.T) {
 		t.Fatal("the answer carries the status and the label and nothing else")
 	}
 }
+
+// Every segment the bundled labels cover has a readable name, and a segment
+// they do not cover has none rather than an invented one.
+func TestEverySegmentTheLabelsCoverHasAReadableName(t *testing.T) {
+	labels, err := dictionary.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	labels.Positions(func(segment string, _ int, _ string) { seen[segment] = true })
+	for segment := range seen {
+		if dictionary.SegmentName(segment) == "" {
+			t.Fatalf("segment %s has no readable name", segment)
+		}
+	}
+	if dictionary.SegmentName("ZZZ") != "" {
+		t.Fatal("an unknown segment was named")
+	}
+}

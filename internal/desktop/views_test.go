@@ -1,0 +1,98 @@
+package desktop_test
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/index"
+)
+
+func viewNames(result desktop.ViewsResult) []string {
+	names := []string{}
+	for _, view := range result.Views {
+		names = append(names, view.Name)
+	}
+	return names
+}
+
+// A view is saved only explicitly, for one project, and reopening it gives
+// back the exact criteria it was saved with — an exclusive end time, an
+// omitted field state and a null one included. Renaming and removing a view
+// change only the saved query: the evidence is never touched.
+func TestSavedViewsAreProjectLocalExactAndNeverTouchEvidence(t *testing.T) {
+	app, root, state, opened := messagesWorkspace(t)
+	other := t.TempDir()
+	evidence := bytesUnder(t, root)
+	if listed := app.ListViews(root); listed.State != desktop.Empty || len(listed.Views) != 0 {
+		t.Fatalf("a project with no view: %+v", listed)
+	}
+	query := grid.Query{
+		NotTypes:      []grid.MessageType{{Kind: bundle.Unparsed}},
+		ObservedFrom:  minute(5),
+		ObservedUntil: minute(11),
+		Fields: []grid.FieldPredicate{
+			{Selector: patientField, Match: index.State, State: hl7.Present},
+			{Selector: "PID[1]-7[1]", Match: index.State, State: hl7.Omitted},
+		},
+	}
+	applied := readMessages(t, app, root, opened, query)
+	if saved := bytesUnder(t, state); len(saved) != 0 {
+		t.Fatalf("applying a query stored it: %v", saved)
+	}
+	saved := app.SaveView(root, "Booked before 12:11", query)
+	if saved.State != desktop.Completed || !reflect.DeepEqual(viewNames(saved), []string{"Booked before 12:11"}) {
+		t.Fatalf("save view: %+v", saved)
+	}
+	if elsewhere := app.ListViews(other); elsewhere.State != desktop.Empty {
+		t.Fatalf("a view leaked into another project: %+v", elsewhere)
+	}
+	reopened := desktop.New(&chooser{}, desktop.ShellDocuments{Folder: state}).ListViews(root)
+	if reopened.State != desktop.Completed || len(reopened.Views) != 1 {
+		t.Fatalf("reopening the views: %+v", reopened)
+	}
+	again := readMessages(t, app, root, opened, reopened.Views[0].Query)
+	if !reflect.DeepEqual(rowIDs(again.Rows), rowIDs(applied.Rows)) || again.Matched != applied.Matched ||
+		!reflect.DeepEqual(rowIDs(applied.Rows), []string{"s0001-e000001", "s0001-e000003"}) {
+		t.Fatalf("a reopened view matched %v, the applied query %v", rowIDs(again.Rows), rowIDs(applied.Rows))
+	}
+
+	if refused := app.SaveView(root, strings.Repeat("n", 201), query); refused.State != desktop.Failed || len(refused.Views) != 1 {
+		t.Fatalf("a long name: %+v", refused)
+	}
+	if refused := app.SaveView(root, "bad", grid.Query{Directions: []bundle.Direction{"up"}}); refused.State != desktop.Failed || !strings.Contains(refused.Reason, "direction") {
+		t.Fatalf("an invalid query: %+v", refused)
+	}
+	app.SaveView(root, "Second", grid.Query{})
+	if clash := app.RenameView(root, "Second", "Booked before 12:11"); clash.State != desktop.Failed || len(clash.Views) != 2 {
+		t.Fatalf("a rename onto another view: %+v", clash)
+	}
+	renamed := app.RenameView(root, "Second", "All")
+	if renamed.State != desktop.Completed || !reflect.DeepEqual(viewNames(renamed), []string{"Booked before 12:11", "All"}) {
+		t.Fatalf("rename: %+v", renamed)
+	}
+	if absent := app.RenameView(root, "missing", "x"); absent.State != desktop.Failed {
+		t.Fatalf("renaming a view nobody saved: %+v", absent)
+	}
+	removed := app.RemoveView(root, "Booked before 12:11")
+	if removed.State != desktop.Completed || !reflect.DeepEqual(viewNames(removed), []string{"All"}) {
+		t.Fatalf("remove: %+v", removed)
+	}
+	if last := app.RemoveView(root, "All"); last.State != desktop.Empty {
+		t.Fatalf("removing the last view: %+v", last)
+	}
+	if !reflect.DeepEqual(bytesUnder(t, root), evidence) {
+		t.Fatal("saving, renaming or removing a view changed the project folder")
+	}
+	// The saved filters a v1 release wrote are still read beside the views.
+	if filters := app.SaveFilter(grid.Filter{Name: "acks", Kinds: []bundle.EventKind{bundle.Acknowledgement}}); filters.State != desktop.Completed {
+		t.Fatalf("a saved filter beside views: %+v", filters)
+	}
+	if views := app.SaveView(root, "kept", grid.Query{}); views.State != desktop.Completed || len(app.Filters().Filters) != 1 {
+		t.Fatalf("a view and a filter did not coexist: %+v", views)
+	}
+}

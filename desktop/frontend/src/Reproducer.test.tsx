@@ -1,6 +1,6 @@
+import { findMessageRow } from "./testkit/navigation";
 import { findCaseRow } from "./testkit/navigation";
 import { openCaseFlow } from "./testkit/navigation";
-import { indexResultFixture } from "./testkit/fixtures";
 import { readCaseIdentity } from "./testkit/navigation";
 // The reproducer panel and the revision comparison beside it, driven through
 // the whole window as a person drives them, over the stubbed facade. What a
@@ -33,8 +33,8 @@ import {
   WORKSPACE_ROOT,
   caseResult,
   folderWithCase,
-  gridResult,
-  gridRow,
+  messagesResult,
+  messageRow,
   projectOverviewResult,
   refused,
   registeredCase,
@@ -88,10 +88,10 @@ async function openGrid(facade: Awaited<ReturnType<typeof renderApp>>["facade"],
   // so the first of them is clicked: both run the same open action.
   await user.click(screen.getAllByRole("button", { name: "Open" })[0]!);
   await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  facade.reply({ OpenCase: () => caseResult(), DescribeIndex: () => indexResultFixture(), OpenGrid: () => gridResult([gridRow(GRID_OCCURRENCE), gridRow(NEXT_OCCURRENCE, "ack")]) });
+  facade.reply({ OpenCase: () => caseResult(), ReadMessages: () => messagesResult([messageRow(GRID_OCCURRENCE), messageRow(NEXT_OCCURRENCE, "ack")]) });
   await user.click(await findCaseRow());
   await readCaseIdentity(user, CASE_IDENTITY);
-  await screen.findByRole("row", { name: new RegExp(`${GRID_OCCURRENCE}$`) });
+  await (await findMessageRow(GRID_OCCURRENCE));
   await user.click(screen.getByRole("button", { name: "More case actions" }));
   await user.click(screen.getByRole("menuitem", { name: "Build a reproducer" }));
   return within(await screen.findByRole("region", { name: "Reproducer editor" }));

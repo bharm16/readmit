@@ -2,23 +2,28 @@ package desktop_test
 
 import (
 	"encoding/hex"
+	"encoding/json/v2"
 	"fmt"
-	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/dictionary"
-	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/operation"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/dictionary"
+	"github.com/bharm16/readmit/internal/grid"
+	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/operation"
 )
 
 func TestInspectorSelectsExactOriginalRepeatedComponentBytes(t *testing.T) {
 	app, root, _ := gridWorkspace(t)
 	grid := openGrid(t, app, root, "incident", 0, 50).Grid
-	got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "incident", Identity: grid.Identity, Occurrence: grid.Rows[0].ID, Path: "PID[1]-3[1].4", ByteOffset: -1})
+	got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "incident", Identity: grid.Identity, Occurrence: grid.Rows[0].ID, Path: "PID[1]-3[1].4", ByteOffset: -1, Reveal: true})
 	if got.State != desktop.Completed || got.Inspection == nil {
 		t.Fatalf("inspect: %+v", got)
 	}
@@ -26,7 +31,10 @@ func TestInspectorSelectsExactOriginalRepeatedComponentBytes(t *testing.T) {
 	if view.Selected.Path != "PID[1]-3[1].4" || view.Raw != "READMIT" || view.Decoded != "READMIT" || view.Selected.State != "present" {
 		t.Fatalf("selected wrong bytes: %+v", view)
 	}
-	if view.Bytes[0].Offset != view.Selected.Start || view.Bytes[0].Hex != "52" || !view.Bytes[0].Selected {
+	row := view.Bytes[0]
+	within := view.Selected.Start - row.Offset
+	if row.Offset%desktop.HexRowBytes != 0 || within < 0 || within >= desktop.HexRowBytes ||
+		hexCells(row)[within] != "52" || row.Text[within] != 'R' || view.ByteOffset != row.Offset {
 		t.Fatalf("byte window lost selection: %+v", view.Bytes)
 	}
 	if view.SourceOffset != grid.Rows[0].Offset {
@@ -41,7 +49,7 @@ func TestInspectorTreeStatesEncodingAndRefusals(t *testing.T) {
 	message := "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|id|P|2.5.1\rPID||\"\"|first^one&two~second^<script>\\X1B00\\\r"
 	b := writeCase(t, root, "values", framed(gridBooking)+framed(message))
 	before := fingerprint(t, root)
-	request := desktop.InspectRequest{Workspace: root, Case: "values", Identity: b.Identity, Occurrence: "s0001-e000002", ByteOffset: -1}
+	request := desktop.InspectRequest{Workspace: root, Case: "values", Identity: b.Identity, Occurrence: "s0001-e000002", ByteOffset: -1, Reveal: true}
 	read := func(path string) *desktop.Inspection {
 		t.Helper()
 		r := request
@@ -60,7 +68,7 @@ func TestInspectorTreeStatesEncodingAndRefusals(t *testing.T) {
 	}
 	for _, tc := range []struct{ path, child string }{{"", "MSH[1]"}, {"PID[1]", "PID[1]-1"}, {"PID[1]-3", "PID[1]-3[1]"}, {"PID[1]-3[1]", "PID[1]-3[1].1"}, {"PID[1]-3[1].2", "PID[1]-3[1].2.1"}} {
 		v := read(tc.path)
-		if len(v.Children) == 0 || v.Children[0].Path != tc.child {
+		if len(v.Children) == 0 || v.Children[0].Node.Path != tc.child {
 			t.Fatalf("children %s: %+v", tc.path, v.Children)
 		}
 	}
@@ -99,7 +107,7 @@ func TestInspectorReportsUnsupportedEncodingAndEscapesWithoutReplacingBytes(t *t
 		name := fmt.Sprintf("encoding%d", i)
 		header := []string{"MSH", "^~\\&", "A", "B", "C", "D", "20260101", "", "ADT^A01", "id", "P", "2.5.1", "", "", "", "", "", tc.charset}
 		b := writeCase(t, root, name, framed(strings.Join(header, "|")+"\rPID|"+tc.value+"\r"))
-		got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: name, Identity: b.Identity, Occurrence: b.Events[0].ID, Path: "PID[1]-1", ByteOffset: -1})
+		got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: name, Identity: b.Identity, Occurrence: b.Events[0].ID, Path: "PID[1]-1", ByteOffset: -1, Reveal: true})
 		if got.Inspection == nil || got.Inspection.DecodeState != tc.state {
 			t.Fatalf("%+v: %+v", tc, got)
 		}
@@ -116,14 +124,14 @@ func TestInspectorWindowsEveryByteAndTreeChildWithoutTruncatingEvidence(t *testi
 	app, root, _ := gridWorkspace(t)
 	message := "MSH|^~\\&|A|B|C|D|20260101||ADT^A01|id|P|2.5.1\rPID|" + strings.Repeat("x", 5000) + "\r" + strings.Repeat("NTE|one\r", 125)
 	b := writeCase(t, root, "large", framed(message))
-	request := desktop.InspectRequest{Workspace: root, Case: "large", Identity: b.Identity, Occurrence: b.Events[0].ID, ByteOffset: -1}
+	request := desktop.InspectRequest{Workspace: root, Case: "large", Identity: b.Identity, Occurrence: b.Events[0].ID, ByteOffset: -1, Reveal: true}
 	first := app.InspectOccurrence(request).Inspection
 	if first == nil || first.ChildCount != 127 || len(first.Children) != desktop.InspectorNodeWindow {
 		t.Fatalf("tree not bounded: %+v", first)
 	}
 	request.NodeOffset = 100
 	last := app.InspectOccurrence(request).Inspection
-	if len(last.Children) != 27 || last.Children[26].Path != "NTE[125]" {
+	if len(last.Children) != 27 || last.Children[26].Node.Path != "NTE[125]" {
 		t.Fatal("tree silently lost late children")
 	}
 	request.NodeOffset = 0
@@ -137,13 +145,13 @@ func TestInspectorWindowsEveryByteAndTreeChildWithoutTruncatingEvidence(t *testi
 	for offset := 0; offset < len(framed(message)); offset += desktop.InspectorByteWindow {
 		request.ByteOffset = offset
 		window := app.InspectOccurrence(request).Inspection
-		if window == nil || len(window.Bytes) > desktop.InspectorByteWindow {
+		if window == nil || len(window.Bytes) > desktop.InspectorByteWindow/desktop.HexRowBytes {
 			t.Fatal("byte window not bounded")
 		}
-		for _, cell := range window.Bytes {
-			raw, err := hex.DecodeString(cell.Hex)
-			if err != nil {
-				t.Fatal(err)
+		for _, row := range window.Bytes {
+			raw, err := hex.DecodeString(strings.Join(hexCells(row), ""))
+			if err != nil || len(raw) > desktop.HexRowBytes || len(row.Text) != len(raw) {
+				t.Fatal(err, row)
 			}
 			wire = append(wire, raw...)
 		}
@@ -219,7 +227,7 @@ func TestInspectorBoundsUnsupportedEncodingMetadata(t *testing.T) {
 	app, root, _ := gridWorkspace(t)
 	header := []string{"MSH", "^~\\&", "A", "B", "C", "D", "20260101", "", "ADT^A01", "id", "P", strings.Repeat("2", 5000), "", "", "", "", "", strings.Repeat("X", 5000)}
 	b := writeCase(t, root, "long-metadata", framed(strings.Join(header, "|")+"\rPID|value\r"))
-	got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "long-metadata", Identity: b.Identity, Occurrence: b.Events[0].ID, Path: "PID[1]-1", ByteOffset: -1})
+	got := app.InspectOccurrence(desktop.InspectRequest{Workspace: root, Case: "long-metadata", Identity: b.Identity, Occurrence: b.Events[0].ID, Path: "PID[1]-1", ByteOffset: -1, Reveal: true})
 	if got.Inspection == nil {
 		t.Fatal(got)
 	}
@@ -319,5 +327,109 @@ func TestInspectorAndInspectCommandAgreeOnDeclaredLabels(t *testing.T) {
 				t.Fatalf("unexpected metadata status %q", metadata.Status)
 			}
 		})
+	}
+}
+
+// hexCells splits one hex row into its byte cells.
+func hexCells(row desktop.HexRow) []string { return strings.Fields(row.Hex) }
+
+// Without an explicit reveal the inspector says where and what every part is
+// and shows its hex, but no value text: not the selected value, not its decoded
+// form and not the printable column of a hex row.
+func TestInspectorWithholdsValueTextUntilRevealed(t *testing.T) {
+	app, root, _, opened := messagesWorkspace(t)
+	request := desktop.InspectRequest{Workspace: root, Case: "incident", Identity: opened.Identity, Occurrence: "s0001-e000001", Path: "PID[1]-5[1].1", ByteOffset: -1}
+	hidden := app.InspectOccurrence(request)
+	if hidden.State != desktop.Completed || hidden.Inspection == nil {
+		t.Fatalf("inspect: %+v", hidden)
+	}
+	view := hidden.Inspection
+	if view.Revealed || view.Raw != "" || view.Decoded != "" || view.DecodeState != "decoded" || view.Selected.State != hl7.Present || len(view.Bytes) == 0 {
+		t.Fatalf("an unrevealed inspection: %+v", view)
+	}
+	for _, row := range view.Bytes {
+		if row.Text != "" || row.Hex != "" {
+			t.Fatalf("an unrevealed hex row carried text: %+v", row)
+		}
+	}
+	if encoded, _ := json.Marshal(hidden); strings.Contains(string(encoded), "DOE") {
+		t.Fatalf("an unrevealed inspection carried a value: %s", encoded)
+	}
+	request.Reveal = true
+	shown := app.InspectOccurrence(request).Inspection
+	if shown == nil || !shown.Revealed || shown.Raw != "DOE" || shown.Decoded != "DOE" || !strings.HasPrefix(shown.Bytes[0].Text[shown.Selected.Start-shown.ByteOffset:], "DOE") {
+		t.Fatalf("a revealed inspection: %+v", shown)
+	}
+}
+
+// The inspector names what it shows: the message type, the observed time, the
+// readable segment names beside their codes, the dictionary label of each
+// field, and the canonical selector a field filter names each one by.
+func TestInspectorNamesSegmentsFieldsAndSelectorsAFilterCanUse(t *testing.T) {
+	app, root, _, opened := messagesWorkspace(t)
+	request := desktop.InspectRequest{Workspace: root, Case: "incident", Identity: opened.Identity, Occurrence: "s0001-e000001", ByteOffset: -1}
+	message := app.InspectOccurrence(request).Inspection
+	if message == nil || message.MessageCode != "SIU" || message.TriggerEvent != "S12" || message.ObservedAt == nil || !message.ObservedAt.Equal(*minute(10)) {
+		t.Fatalf("message header: %+v", message)
+	}
+	segments := map[string]string{}
+	for _, child := range message.Children {
+		segments[child.Node.Path] = child.SegmentName
+		if child.Selector != "" || child.Label != "" {
+			t.Fatalf("a segment carried a field selector or label: %+v", child)
+		}
+	}
+	if segments["MSH[1]"] != "Message header" || segments["PID[1]"] != "Patient identification" {
+		t.Fatalf("segment names: %v", segments)
+	}
+	request.Path = "PID[1]"
+	pid := app.InspectOccurrence(request).Inspection
+	if pid.SegmentName != "Patient identification" || pid.Selector != "" {
+		t.Fatalf("selected segment: %+v", pid)
+	}
+	third := pid.Children[2]
+	if third.Node.Path != "PID[1]-3" || third.Selector != "PID[1]-3[1]" || third.Label != "Patient Identifier List" {
+		t.Fatalf("PID-3: %+v", third)
+	}
+	request.Path = third.Node.Path
+	field := app.InspectOccurrence(request).Inspection
+	if field.Selector != "PID[1]-3[1]" || field.Children[0].Selector != "PID[1]-3[1]" {
+		t.Fatalf("the field's selector does not name what a filter asks: %+v", field)
+	}
+	// The selector the inspector reports is one a filter accepts, and asks
+	// exactly the field that was selected.
+	filtered := readMessages(t, app, root, opened, grid.Query{Fields: []grid.FieldPredicate{{Selector: field.Selector, Match: index.Contains, Term: "MRN-1"}}})
+	if filtered.State != desktop.Completed || !reflect.DeepEqual(rowIDs(filtered.Rows), []string{"s0001-e000001"}) {
+		t.Fatalf("filter by the inspected field: %+v", filtered)
+	}
+	request.Path = "ZZZ[1]-1"
+	unknown := app.InspectOccurrence(request).Inspection
+	if unknown.SegmentName != "" || unknown.Metadata.Label != "" || unknown.Selector != "ZZZ[1]-1[1]" {
+		t.Fatalf("an unknown segment was named: %+v", unknown)
+	}
+}
+
+// A field row carries its value only once values are revealed, so a segment's
+// fields can be read in place without selecting each one.
+func TestInspectorChildRowsCarryValuesOnlyWhenRevealed(t *testing.T) {
+	app, root, _, opened := messagesWorkspace(t)
+	request := desktop.InspectRequest{Workspace: root, Case: "incident", Identity: opened.Identity, Occurrence: "s0001-e000001", Path: "PID[1]-5[1]", ByteOffset: -1}
+	hidden := app.InspectOccurrence(request).Inspection
+	if hidden == nil || len(hidden.Children) == 0 {
+		t.Fatalf("inspect: %+v", hidden)
+	}
+	for _, child := range hidden.Children {
+		if child.Value != "" {
+			t.Fatalf("an unrevealed child carried a value: %+v", child)
+		}
+	}
+	request.Reveal = true
+	shown := app.InspectOccurrence(request).Inspection
+	values := []string{}
+	for _, child := range shown.Children {
+		values = append(values, child.Value)
+	}
+	if len(values) == 0 || values[0] != "DOE" {
+		t.Fatalf("revealed child values: %q", values)
 	}
 }

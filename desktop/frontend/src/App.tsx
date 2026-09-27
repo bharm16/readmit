@@ -74,7 +74,19 @@ import {
   editorDrafts as readEditorDrafts,
   saveEditorDraft,
   openCase,
-  openGrid,
+  readMessages,
+  listViews,
+  saveView,
+  renameView,
+  removeView,
+  describeSearchSettings,
+  saveSearchSettings,
+  type GridQuery,
+  type GridView,
+  type MessagesResult,
+  type MessageRow,
+  type SearchSettings,
+  type FieldState,
   openSequence,
   openCorrelationReview,
   decideCorrelation,
@@ -111,22 +123,14 @@ import {
   openProjectOverview,
   registerRevision,
   openWorkspace,
-  buildIndex,
-  describeIndex,
-  type BuildIndexRequest,
-  type IndexResult,
   captureSample,
   recordView,
   type EditorDraft,
-  saveFilter,
   search,
-  selectFilter,
   selectWorkspace,
   shell,
   type CaseResult,
   type CommandId,
-  type FiltersResult,
-  type GridResult,
   type Indicator,
   type Match,
   type ProjectOverviewResult,
@@ -141,7 +145,8 @@ import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
 import { GuidedSample } from "./GuidedSample";
 import { Sequence } from "./Sequence";
-import { Inspector } from "./Inspector";
+import { MessageReader } from "./Inspector";
+import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
 import { Reproducer, type ReproducerView } from "./Reproducer";
 import { RevisionComparison, type ComparisonSeed } from "./RevisionComparison";
 import { AssertionSetAuthoring } from "./AssertionSetAuthoring";
@@ -150,7 +155,7 @@ import { ProfileEditor } from "./ProfileEditor";
 import { ScenarioPanel } from "./ScenarioPanel";
 import { TestAuthoring, type PromotionProvenance, type TestView } from "./TestAuthoring";
 import { Diagnosis } from "./Diagnosis";
-import { MessageGrid, Report, Separator, Status } from "./shell";
+import { Report, Separator, Status } from "./shell";
 import { CommandPalette, shortcut, type PaletteEntry } from "./CommandPalette";
 import type { SortState } from "./DataTable";
 import { sidebarOf, useRoutes, viewOf, type ReturnContext, type Route } from "./routes";
@@ -169,7 +174,7 @@ import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
 import { ObservationPanel } from "./ObservationPanel";
 import { MaintenancePanel } from "./MaintenancePanel";
-import { RawInspection } from "./RawInspection";
+import { useFileReader } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
 import type { CaptureObservationBinding } from "./bindings";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
@@ -209,8 +214,6 @@ type Running =
   | "case"
   | "project"
   | "search"
-  | "grid"
-  | "filters"
   | "inspect"
   | "reproducer"
   | "authoring"
@@ -284,8 +287,6 @@ const PROGRESS: Record<Running, string> = {
   case: "Verifying the case…",
   project: "Reading the project…",
   search: "Searching this project…",
-  grid: "Reading messages…",
-  filters: "Saving the filter…",
   inspect: "Reading the message…",
   reproducer: "Updating the reproducer…",
   authoring: "Updating the test…",
@@ -322,6 +323,10 @@ export default function App() {
   // the window's one slot: while it runs, the rest of the window is
   // unavailable rather than answered busy. The practice run and a reduction
   // are the operations here a panel's own cancel control stops.
+  // Reading a case's messages is a background read of its own: it never holds
+  // the window's one slot, so it never disables what a person is typing in, and
+  // it never moves focus.
+  const { running: readingMessages, run: readMessagesIn } = useLifecycle<"messages">({ background: true });
   const { running, run, cancel: cancelRunning } = useLifecycle<Running>({
     window: true,
     names: { practice: "practice", reduction: "reduction" },
@@ -333,11 +338,19 @@ export default function App() {
   const [evidence, setEvidence] = useState<CaseResult | null>(null);
   const [investigation, setInvestigation] = useState<ProjectOverviewResult | null>(null);
   const [found, setFound] = useState<SearchResult | null>(null);
-  const [savedFilters, setSavedFilters] = useState<FiltersResult | null>(null);
   const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
   const [selectedOccurrence, setSelectedOccurrence] = useState<string | null>(null);
-  const [gridResult, setGridResult] = useState<GridResult | null>(null);
-  const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
+  // The open case's messages: the transient query and order they were read
+  // under, and the rows read so far, window by window.
+  const [messages, setMessages] = useState<{ case: string; identity: string; result: MessagesResult; rows: MessageRow[] } | null>(null);
+  const [messageQuery, setMessageQuery] = useState<GridQuery>(NO_QUERY);
+  const [messageSort, setMessageSort] = useState<SortState | null>(null);
+  const [messageView, setMessageView] = useState("");
+  const [views, setViews] = useState<GridView[]>([]);
+  const [checkedMessages, setCheckedMessages] = useState<Set<string>>(new Set());
+  const [revealed, setRevealed] = useState(false);
+  const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
+  const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
   const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
   const [testResult, setTestResult] = useState<TestView | null>(null);
   const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
@@ -494,7 +507,7 @@ export default function App() {
   // view a person set up survives navigating to another case and reopening the
   // window. They are read once and after every change.
   const refreshFilters = useCallback(async () => {
-    setSavedFilters(await readFilters());
+    await readFilters();
   }, []);
 
   useEffect(() => {
@@ -612,6 +625,7 @@ export default function App() {
   // screen's whose call holds the facade, such as the raw inspection and the
   // performance corpus.
   const busy = useWindowBusy();
+  const fileReader = useFileReader({ busy, request: rawRequest });
   const root = workspace?.workspace?.root ?? null;
   const opened = workspace?.workspace;
   const overview = investigation?.overview ?? null;
@@ -651,8 +665,13 @@ export default function App() {
    * and nowhere else. */
   const clearCase = useCallback(() => {
     setEvidence(null);
-    setGridResult(null);
-    setIndexResult(null);
+    setMessages(null);
+    setMessageQuery(NO_QUERY);
+    setMessageSort(null);
+    setMessageView("");
+    setCheckedMessages(new Set());
+    setRevealed(false);
+    setFilterSeed(null);
     setInspectionResult(null);
     setReproducerResult(null);
     setTestResult(null);
@@ -730,49 +749,37 @@ export default function App() {
   // Forgetting a recent folder writes the list, so it takes its turn like
   // every other write; what the list then holds is what the facade answers,
   // including when it refused.
-  // One window of the grid at a time. Asking for the next one re-reads the case
-  // and its index, so a window is never served from an index the evidence no
-  // longer supports. What the grid says about its index comes from that same
-  // read, so a page verifies the case once and the index details beside it can
-  // never describe another reading of the case.
-  const showGrid = useCallback(
-    async (folder: string, name: string, indexName: string, offset: number) => {
-      if (!bounds) return;
-      // A read whose answer can be older than the question: only the answer
-      // to the latest request commits, so a late answer to an earlier one is
-      // dropped instead of overwriting what the viewer asked for last.
-      await run("grid", async (current) => {
-        setGridResult(null);
-        setInspectionResult(null);
-        setSelectedOccurrence(null);
-        const result = await openGrid(folder, name, indexName, offset, bounds.grid);
-        if (current()) {
-          setGridResult(result);
-          setIndexResult(result.index ? { state: result.state, index: result.index } : null);
+  // The open case's messages under the applied query, one window at a time.
+  // A new query or order reads from the first window; scrolling to the end
+  // asks for the next and appends it. Nothing is saved by reading: the facade
+  // reuses the case's own index or reads the case directly. Only the answer to
+  // the latest request commits.
+  const loadMessages = useCallback(
+    async (folder: string, open: { case: string; identity: string }, query: GridQuery, sort: SortState | null, offset: number) => {
+      await readMessagesIn("messages", async (current) => {
+        if (offset === 0) {
+          setInspectionResult(null);
+          setSelectedOccurrence(null);
+          setCheckedMessages(new Set());
         }
+        const result = await readMessages({
+          workspace: folder,
+          case: open.case,
+          identity: open.identity,
+          query,
+          sort: sort?.column === "time" ? (sort.direction === "ascending" ? "time-ascending" : "time-descending") : "",
+          offset,
+          limit: 0,
+        });
+        if (!current()) return;
+        setMessages((held) => ({
+          ...open,
+          result,
+          rows: offset === 0 || !held ? result.rows : [...held.rows, ...result.rows],
+        }));
       });
     },
-    [bounds, run],
-  );
-
-  const handleBuildIndex = useCallback(
-    async (request: BuildIndexRequest) => {
-      if (!root) return;
-      let builtIndexName: string | null = null;
-      await run("grid", async () => {
-        request.workspace = root;
-        const res = await buildIndex(request);
-        setIndexResult(res);
-        if (res.state === "completed" && res.index) {
-          builtIndexName = res.index.index_name;
-          await openWorkspace(root);
-        }
-      });
-      if (builtIndexName) {
-        void showGrid(root, request.case, builtIndexName, 0);
-      }
-    },
-    [root, run, showGrid],
+    [readMessagesIn],
   );
 
   // Verifying a case is the same kind of committed navigation. The case and
@@ -804,22 +811,19 @@ export default function App() {
           }
           setCaseFlow(null);
           outcome = result;
-          const desc = await describeIndex(folder, name, "");
-          setIndexResult(desc);
-          if (desc.state === "completed" && desc.index?.applicable) {
-            autoIndex = desc.index.index_name;
-          }
+          autoIndex = result.case.identity;
         } else {
           setCaseNotice(result);
         }
       });
       if (autoIndex && !options?.skipAutoGrid) {
-        void showGrid(folder, name, autoIndex, 0);
+        void loadMessages(folder, { case: name, identity: autoIndex }, NO_QUERY, null, 0);
+        void listViews(folder).then((answer) => setViews(answer.views));
       }
       focusRegion("evidence");
       return outcome;
     },
-    [clearCase, focusRegion, run, showGrid],
+    [clearCase, focusRegion, loadMessages, run],
   );
 
   // An occurrence is selected from the grid or from the sequence, and both name
@@ -834,8 +838,9 @@ export default function App() {
       nodeOffset: number,
       byteOffset: number,
       targetCase?: { case: string; identity: string },
-    ) => {
-      const grid = gridResult?.grid;
+      reveal: boolean = revealed,
+    ): Promise<InspectionResult | null> => {
+      const grid = messages;
       const open =
         targetCase ??
         (grid
@@ -843,10 +848,12 @@ export default function App() {
           : evidence?.case
             ? { case: evidence.case.name, identity: evidence.case.identity }
             : null);
-      if (!root || !open) return;
+      if (!root || !open) return null;
+      let answer: InspectionResult | null = null;
       await run("inspect", async (current) => {
+        const moving = occurrence !== selectedOccurrence;
         setSelectedOccurrence(occurrence);
-        setInspectionResult(null);
+        if (moving) setInspectionResult(null);
         const result = await inspectOccurrence({
           workspace: root,
           case: open.case,
@@ -855,13 +862,17 @@ export default function App() {
           path,
           node_offset: nodeOffset,
           byte_offset: byteOffset,
+          reveal,
         });
-        if (current()) {
+        answer = result;
+        // A field that is not in the message leaves the message as it was.
+        if (current() && (result.state === "completed" || moving || path === "")) {
           setInspectionResult(result);
         }
       });
+      return answer;
     },
-    [evidence, gridResult, root, run],
+    [evidence, messages, revealed, root, run, selectedOccurrence],
   );
 
   // One practice run of the guided sample. It is the one operation in this
@@ -1574,7 +1585,7 @@ export default function App() {
 
   const reproduce = useCallback(
     async (work: (plan: ReproducerPlan, open: { case: string; identity: string }) => Promise<ReproducerResult>) => {
-      const open = gridResult?.grid;
+      const open = messages;
       if (!root || !open) return;
       const plan = reproducerResult?.reproducer?.plan ?? ({ schema: "", case: "", steps: [] } as ReproducerPlan);
       await run("reproducer", async () => {
@@ -1594,7 +1605,7 @@ export default function App() {
         }
       });
     },
-    [dropReproducerDraft, gridResult, keepReproducerDraft, reproducerResult, root, run],
+    [dropReproducerDraft, messages, keepReproducerDraft, reproducerResult, root, run],
   );
 
   // A test draft is bound to the case the grid verified, so every answer
@@ -1606,7 +1617,7 @@ export default function App() {
   // document beside the evidence and drops the draft.
   const author = useCallback(
     async (work: (draft: TestDraftDocument, open: { case: string; identity: string }) => Promise<TestResult>) => {
-      const open = gridResult?.grid;
+      const open = messages;
       if (!root || !open) return;
       const draft =
         testResult?.test?.draft ??
@@ -1665,7 +1676,7 @@ export default function App() {
         }
       });
     },
-    [gridResult, refreshGuide, refreshListing, root, run, testResult],
+    [messages, refreshGuide, refreshListing, root, run, testResult],
   );
 
   // Promoting one explicitly confirmed finding answers the existing authoring
@@ -1755,7 +1766,7 @@ export default function App() {
   // against evidence that has changed or moved is offered as what it is —
   // stale work this window does not silently rebind.
   useEffect(() => {
-    const grid = gridResult?.grid;
+    const grid = messages;
     if (!grid || !root || testResult !== null) {
       return;
     }
@@ -1774,11 +1785,11 @@ export default function App() {
       state: "completed",
       test: { draft: held.content as TestDraftDocument },
     });
-  }, [drafts, gridResult, root, testResult]);
+  }, [drafts, messages, root, testResult]);
 
   // The reproducer plan comes back the same way, and under the same rule.
   useEffect(() => {
-    const grid = gridResult?.grid;
+    const grid = messages;
     if (!grid || !root || reproducerResult !== null) {
       return;
     }
@@ -1797,12 +1808,12 @@ export default function App() {
       state: "completed",
       reproducer: { plan: held.content as ReproducerPlan },
     });
-  }, [drafts, gridResult, reproducerResult, root]);
+  }, [drafts, messages, reproducerResult, root]);
 
   // A promoted test draft comes back the same way, provenance and all, so a
   // draft that came from a confirmed finding never loses where it came from.
   useEffect(() => {
-    const grid = gridResult?.grid;
+    const grid = messages;
     if (!grid || !root || testResult !== null) {
       return;
     }
@@ -1820,7 +1831,7 @@ export default function App() {
     const content = held.content as { draft: TestDraftDocument; provenance: PromotionProvenance };
     setTestResult({ state: "completed", test: { draft: content.draft } });
     setPromotionProvenance(content.provenance);
-  }, [drafts, gridResult, root, testResult]);
+  }, [drafts, messages, root, testResult]);
 
   // Drops one retained editor draft and takes it out of the local list at the
   // same moment, so a panel cannot offer the same draft back again while the
@@ -1872,26 +1883,6 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [unsavedFailure]);
 
-  // Changing the filter changes what the open grid is showing, so the window is
-  // rendered again from its first page rather than left showing the old view.
-  const changeFilters = useCallback(
-    async (work: () => Promise<FiltersResult>) => {
-      let stored = false;
-      await run("filters", async () => {
-        const result = await work();
-        setSavedFilters(result);
-        stored = result.state === "completed" || result.state === "empty";
-      });
-      // A change that was refused left the selection as it was, so the open
-      // window is still the right one: rendering it again would only replace a
-      // correct view with an identical one and hide the refusal behind it.
-      const open = gridResult?.grid;
-      if (stored && root && open) {
-        await showGrid(root, open.case, open.index, 0);
-      }
-    },
-    [gridResult, root, run, showGrid],
-  );
 
 
   // Moves to a sidebar destination, back where it was last left. Focus goes
@@ -2041,14 +2032,24 @@ export default function App() {
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
   const subpage = importing && root ? "import" : capturing && root ? "capture" : null;
   const inspecting = selectedOccurrence !== null || inspectionResult !== null || running === "inspect";
-  const detailsShown = place === "cases" && verified !== null && subpage === null && inspecting;
+  // The rows chosen for Create test and Send selected: only message rows, so an
+  // ACK or unparsed row is never counted as outbound; none chosen is all rows.
+  const chosenRows = messages ? (checkedMessages.size > 0 ? messages.rows.filter((row) => checkedMessages.has(row.id) && row.kind === "message") : messages.rows) : [];
+  const shownCase = verified ? { case: verified.name, identity: verified.identity } : { case: "", identity: "" };
+  const selectedRow = messages?.rows.find((row) => row.id === selectedOccurrence) ?? null;
+  const fileSelection = place === "inspect-file" && fileReader.details !== null;
+  const detailsShown = (place === "cases" && verified !== null && subpage === null && inspecting) || fileSelection;
   const inspected =
     selectedOccurrence && inspectionResult?.inspection
       ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
       : null;
   const closeDetails = () => {
-    setSelectedOccurrence(null);
-    setInspectionResult(null);
+    if (fileSelection) {
+      fileReader.closeDetails();
+    } else {
+      setSelectedOccurrence(null);
+      setInspectionResult(null);
+    }
     focusRegion("evidence");
   };
   const leaveSubpage = () => {
@@ -2213,15 +2214,11 @@ export default function App() {
               </>
             ) : verified && subpage === null && caseFlow === null ? (
               <>
-                <button type="button" disabled={busy} onClick={() => setCaseFlow("replay")}>
-                  Replay…
-                </button>
-                <button type="button" className="primary" disabled={busy} onClick={() => setCaseFlow("test")}>
-                  Create test
-                </button>
                 <Menu
                   label="More case actions"
                   items={[
+                    { label: "Create test", onSelect: () => setCaseFlow("test") },
+                    { label: "Replay", onSelect: () => setCaseFlow("replay") },
                     { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
                     { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
                     { label: "Reduce", onSelect: () => setCaseFlow("reduce") },
@@ -2324,23 +2321,88 @@ export default function App() {
               <TaskTabs label="Case views" id="case-views" tabs={CASE_VIEWS} selected={caseView} onSelect={setView} keepMounted>
                 <TaskPanel tabs="case-views" tab="messages" className="task-panel view-panel" shown={caseView === "messages"}>
                   <Report indicators={indicators} progress={running === "case" ? "Verifying the case." : null} result={null} />
-                  <MessageGrid
-                    indicators={indicators}
-                    progress={running === "grid" ? "Reading this window of the case." : null}
-                    result={gridResult}
-                    filters={savedFilters}
-                    entries={named("index")}
-                    busy={busy}
-                    onOpen={(indexName, offset) => {
-                      if (root) void showGrid(root, verified.name, indexName, offset);
+                  <MessageList
+                    result={messages?.result ?? null}
+                    rows={messages?.rows ?? []}
+                    loading={readingMessages === "messages"}
+                    query={messageQuery}
+                    onQuery={(query) => {
+                      setMessageQuery(query);
+                      if (messageView && !views.some((saved) => saved.name === messageView && sameQuery(saved.query, query))) setMessageView("");
+                      if (root) void loadMessages(root, shownCase, query, messageSort, 0);
                     }}
-                    onSelect={(name) => void changeFilters(() => selectFilter(name))}
-                    onSave={(filter) => void changeFilters(() => saveFilter(filter))}
-                    selectedOccurrence={selectedOccurrence}
+                    sort={messageSort}
+                    onSort={(sort) => {
+                      setMessageSort(sort);
+                      if (root) void loadMessages(root, shownCase, messageQuery, sort, 0);
+                    }}
+                    views={views}
+                    view={messageView}
+                    onView={(name) => {
+                      const saved = views.find((candidate) => candidate.name === name);
+                      const query = saved?.query ?? NO_QUERY;
+                      setMessageView(saved ? name : "");
+                      setMessageQuery(query);
+                      if (root) void loadMessages(root, shownCase, query, messageSort, 0);
+                    }}
+                    onSaveView={async (name) => {
+                      if (!root) return { reason: "No project is open." };
+                      const answer = await saveView(root, name, messageQuery);
+                      if (answer.state !== "completed" && answer.state !== "empty") return { reason: answer.reason ?? "The view was not saved." };
+                      setViews(answer.views);
+                      setMessageView(name);
+                      return null;
+                    }}
+                    onRenameView={async (from, to) => {
+                      if (!root) return { reason: "No project is open." };
+                      const answer = await renameView(root, from, to);
+                      if (answer.state !== "completed" && answer.state !== "empty") return { reason: answer.reason ?? "The view was not renamed." };
+                      setViews(answer.views);
+                      setMessageView(to);
+                      return null;
+                    }}
+                    onRemoveView={async (name) => {
+                      if (!root) return { reason: "No project is open." };
+                      const answer = await removeView(root, name);
+                      if (answer.state !== "completed" && answer.state !== "empty") return { reason: answer.reason ?? "The view was not removed." };
+                      setViews(answer.views);
+                      setMessageView("");
+                      return null;
+                    }}
+                    selected={selectedOccurrence}
                     onInspect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-                    caseEvidence={evidence?.case}
-                    indexDetails={indexResult?.index}
-                    onBuildIndex={handleBuildIndex}
+                    checked={checkedMessages}
+                    onCheck={setCheckedMessages}
+                    onCreateTest={() => setCaseFlow("test")}
+                    onSendSelected={() => setCaseFlow("replay")}
+                    onCreateVariant={() => setCaseFlow("reproduce")}
+                    onLoadMore={() => {
+                      if (root && messages) void loadMessages(root, shownCase, messageQuery, messageSort, messages.rows.length);
+                    }}
+                    onRetry={() => {
+                      if (root) void loadMessages(root, shownCase, messageQuery, messageSort, 0);
+                    }}
+                    onImport={() => setImporting(true)}
+                    onSearchSettings={() => {
+                      setSearchSettings(undefined);
+                      if (root) void describeSearchSettings(root, verified.name, verified.identity).then((answer) => setSearchSettings(answer.settings ?? null));
+                    }}
+                    seed={filterSeed}
+                    onSeedUsed={() => setFilterSeed(null)}
+                    busy={busy}
+                  />
+                  <SearchSettingsSheet
+                    open={searchSettings !== undefined}
+                    settings={searchSettings ?? null}
+                    onClose={() => setSearchSettings(undefined)}
+                    onSave={async (fields, retention, until) => {
+                      if (!root) return { reason: "No project is open." };
+                      const answer = await saveSearchSettings({ workspace: root, case: verified.name, identity: verified.identity, fields, retention, retain_until: until });
+                      if (answer.state !== "completed") return { reason: answer.reason ?? "The search settings were not saved." };
+                      setSearchSettings(undefined);
+                      void loadMessages(root, shownCase, messageQuery, messageSort, 0);
+                      return null;
+                    }}
                   />
                 </TaskPanel>
                 <TaskPanel tabs="case-views" tab="timeline" className="task-panel view-panel" shown={caseView === "timeline"}>
@@ -2453,9 +2515,9 @@ export default function App() {
                   />
                 </div>
                 <div className="view-panel case-flow" hidden={caseFlow !== "reproduce"}>
-                  {gridResult?.grid ? (
+                  {messages ? (
                     <Reproducer
-                      rows={gridResult.grid.rows}
+                      rows={messages.rows}
                       result={reproducerResult}
                       restoredDraft={Boolean(reproducerResult?.reproducer && !reproducerResult.reproducer.resolution)}
                       onDiscardDraft={discardReproducerDraft}
@@ -2484,7 +2546,7 @@ export default function App() {
                           }),
                         )
                       }
-                      parentCase={gridResult.grid.case}
+                      parentCase={messages.case}
                       onBuild={(output: string) =>
                         void reproduce((plan, open) =>
                           buildReproducer({
@@ -2522,9 +2584,9 @@ export default function App() {
                   )}
                 </div>
                 <div className="view-panel case-flow" hidden={caseFlow !== "test"}>
-                  {gridResult?.grid ? (
+                  {messages ? (
                     <TestAuthoring
-                      rows={gridResult.grid.rows}
+                      rows={chosenRows}
                       result={testResult}
                       restoredDraft={Boolean(testResult?.test && !testResult.test.resolution)}
                       provenance={promotionProvenance}
@@ -2620,7 +2682,7 @@ export default function App() {
                     workspace={root}
                     caseName={verified.name}
                     identity={verified.identity}
-                    rows={gridResult?.grid?.case === verified.name && gridResult.grid.identity === verified.identity ? gridResult.grid.rows : []}
+                    rows={messages?.case === verified.name && messages.identity === verified.identity ? chosenRows : []}
                     entries={artifacts}
                     busy={busy}
                     onSent={() => void refreshListing()}
@@ -2972,8 +3034,8 @@ export default function App() {
           </ul>
         </Page>
 
-        <Page id="inspect-file" shown={place === "inspect-file"} title="Inspect file" back={<BackLink label="Tools" onBack={back} />}>
-          <RawInspection busy={busy} indicators={indicators} request={rawRequest} />
+        <Page id="inspect-file" shown={place === "inspect-file"} title={fileReader.title} back={<BackLink label="Tools" onBack={back} />} actions={fileReader.actions}>
+          {fileReader.body}
         </Page>
 
         <Page id="sample-data" shown={place === "sample-data"} title="Sample data" back={<BackLink label="Tools" onBack={back} />}>
@@ -3129,22 +3191,30 @@ export default function App() {
         </Page>
       </>
     ),
-    inspector: (
+    inspector: fileSelection ? (
       <>
-        <div className="details-header">
-          {detailOnly ? <BackLink label="Messages" onBack={closeDetails} /> : null}
-          <IconButton icon="close" label="Close message details" onClick={closeDetails} />
-        </div>
+        {fileReader.details}
+      </>
+    ) : (
+      <>
         {verified ? (
-          <Inspector
+          <MessageReader
             result={inspectionResult}
-            row={gridResult?.grid?.rows.find((row) => row.id === selectedOccurrence) ?? null}
+            {...(selectedRow ? { kind: selectedRow.kind, source: selectedRow.source_id } : {})}
+            loading={running === "inspect"}
             busy={busy}
-            progress={running === "inspect" ? "Verifying and inspecting the selected occurrence." : null}
-            indicators={indicators}
-            onInspect={(path, nodeOffset, byteOffset) => {
-              if (selectedOccurrence) void inspect(selectedOccurrence, path, nodeOffset, byteOffset);
+            onInspect={(path, nodeOffset, byteOffset) => (selectedOccurrence ? inspect(selectedOccurrence, path, nodeOffset, byteOffset) : Promise.resolve(null))}
+            onReveal={(next) => {
+              setRevealed(next);
+              const at = inspectionResult?.inspection;
+              if (selectedOccurrence) void inspect(selectedOccurrence, at?.selected.path ?? "", at?.node_offset ?? 0, at?.byte_offset ?? -1, undefined, next);
             }}
+            onFilterByField={(selector: string, value: string | null, state: FieldState) => {
+              setView("messages");
+              setFilterSeed({ selector, value, state });
+            }}
+            onClose={closeDetails}
+            {...(detailOnly ? { backLabel: "Messages", onBack: closeDetails } : {})}
           />
         ) : null}
       </>

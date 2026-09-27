@@ -1,11 +1,10 @@
 import { expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Inspector } from "./Inspector";
+import { MessageReader } from "./Inspector";
 import { renderApp } from "./testkit/app";
 import {
   inspectionResult,
-  indicatorTable,
   GRID_OCCURRENCE,
 } from "./testkit/fixtures";
 
@@ -29,7 +28,7 @@ for (const state of ["too_large", "unparsed"] as const) {
         ? "This selection exceeds the display limit."
         : "The original bytes could not be parsed.";
     render(
-      <Inspector
+      <MessageReader
         result={inspectionResult(GRID_OCCURRENCE, {
           decode_state: state,
           notice,
@@ -46,18 +45,17 @@ for (const state of ["too_large", "unparsed"] as const) {
             end: 8192,
           },
         })}
+        loading={false}
         busy={false}
-        progress={null}
-        indicators={indicatorTable()}
-        onInspect={() => {}}
+        onInspect={async () => null}
+        onReveal={() => {}}
       />,
     );
     expect(screen.getByText(notice)).toBeTruthy();
     await user.click(screen.getByRole("tab", { name: "Raw" }));
     expect(screen.getByText(notice)).toBeTruthy();
-    expect(
-      screen.getByText("Raw text unavailable; original bytes remain in Hex."),
-    ).toBeTruthy();
+    // Unrevealed, Raw holds no text at all; the bytes stay in Hex.
+    expect(screen.getAllByText("Hidden").length).toBeGreaterThan(0);
     expect(screen.queryByText("No bytes")).toBeNull();
     await user.click(screen.getByRole("tab", { name: "Hex" }));
     expect(screen.getByText(notice)).toBeTruthy();

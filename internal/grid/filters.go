@@ -16,11 +16,13 @@
 // the index records, which the caller has already checked against the verified
 // bundle through Describes.
 //
-// A saved filter is per-viewer working state, not evidence: it is one bounded,
-// versioned readmit-filters/v1 document (ADR-0003) that no case, run, result,
-// review or report ever holds. It does hold what a person typed to filter by,
-// and a value typed to match an HL7 field is the same patient data it matches;
-// this package treats it as such and never renders one.
+// A saved filter or a saved view is per-viewer working state, not evidence: it
+// is one bounded, versioned readmit-filters/v2 document (ADR-0003) that no
+// case, run, result, review or report ever holds. A readmit-filters/v1
+// document is still read and is written back as v2. It does hold what a
+// person typed to filter by, and a value typed to match an HL7 field is the
+// same patient data it matches; this package treats it as such and never
+// renders one.
 package grid
 
 import (
@@ -40,10 +42,13 @@ import (
 )
 
 const (
-	// Schema is the only saved-filter contract this release reads. A new member
-	// means a new version string and a reader for both, never an added member
-	// here and never an in-place migration.
-	Schema = "readmit-filters/v1"
+	// Schema is the saved-filter contract this release writes. SchemaV1 is the
+	// earlier contract, which it still reads: a v1 document is read as a v2
+	// document that saves no view, and is written back as v2 only when the
+	// person next saves something. A new member means a new version string and
+	// a reader for each, never an added member here.
+	Schema   = "readmit-filters/v2"
+	SchemaV1 = "readmit-filters/v1"
 
 	// AckCodeSelector is the canonical selector of the acknowledgement code an
 	// ACK outcome is read from. It is fixed rather than configurable: MSA-1 is
@@ -65,6 +70,13 @@ const (
 	MaxPredicates    = index.MaxFields
 	MaxTermBytes     = index.MaxValueBytes
 	MaxDocumentBytes = 1 << 18
+
+	// MaxViewProjects bounds how many projects one viewer keeps views for,
+	// MaxViews how many views one project keeps, and MaxViewNameRunes how
+	// long a view's name is.
+	MaxViewProjects  = 64
+	MaxViews         = 32
+	MaxViewNameRunes = 200
 
 	// MaxRows bounds one rendered window. A grid over a large case renders a
 	// window of it, never all of it.
@@ -180,24 +192,80 @@ func (f *Filter) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// View is one named query a person saved explicitly for one project. Applying
+// a query saves nothing; saving a view is the only way its values are stored.
+type View struct {
+	Name  string `json:"name"`
+	Query Query  `json:"query"`
+}
+
+// ProjectViews are the views saved for one project, keyed by the project's
+// resolved root folder, so a project's views are listed with that project and
+// no other.
+type ProjectViews struct {
+	Project string `json:"project"`
+	Views   []View `json:"views"`
+}
+
 // Document is the complete saved-filter state of one viewer: the filters a
-// person saved and the one that is selected now. Selected is what survives
-// navigating from one case to another, so the view a person set up is still the
-// view they get; it is a name, and an empty one selects no filter at all.
+// person saved and the one that is selected now, and the views saved for each
+// project. Selected is what survives navigating from one case to another, so
+// the view a person set up is still the view they get; it is a name, and an
+// empty one selects no filter at all.
 //
 // It carries no digest. It is not evidence and nothing is derived from it: a
 // document this release cannot read is reported and left exactly as written,
-// never migrated, repaired or replaced.
+// never repaired or replaced.
 type Document struct {
-	Schema   string   `json:"schema"`
-	Filters  []Filter `json:"filters"`
-	Selected string   `json:"selected"`
+	Schema   string         `json:"schema"`
+	Filters  []Filter       `json:"filters"`
+	Selected string         `json:"selected"`
+	Views    []ProjectViews `json:"views"`
 }
 
 // Empty is the state of a viewer who has saved nothing. It is what a missing
 // document means, and it is a complete, valid document rather than a zero value.
 func Empty() Document {
-	return Document{Schema: Schema, Filters: []Filter{}, Selected: ""}
+	return Document{Schema: Schema, Filters: []Filter{}, Selected: "", Views: []ProjectViews{}}
+}
+
+// ProjectViews returns the views saved for one project, in the order they
+// were saved. A project with none has an empty list.
+func (d Document) ProjectViews(project string) []View {
+	for _, saved := range d.Views {
+		if saved.Project == project {
+			return saved.Views
+		}
+	}
+	return []View{}
+}
+
+// WithProjectViews returns the document with one project's views replaced. A
+// project left with no view is dropped rather than kept as an empty entry.
+func (d Document) WithProjectViews(project string, views []View) Document {
+	kept := make([]ProjectViews, 0, len(d.Views)+1)
+	placed := false
+	for _, saved := range d.Views {
+		if saved.Project != project {
+			kept = append(kept, saved)
+			continue
+		}
+		placed = true
+		if len(views) > 0 {
+			kept = append(kept, ProjectViews{Project: project, Views: views})
+		}
+	}
+	if !placed && len(views) > 0 {
+		kept = append(kept, ProjectViews{Project: project, Views: views})
+	}
+	d.Views = kept
+	return d
+}
+
+// ValidViewName reports whether a name is one to 200 printable characters.
+func ValidViewName(name string) bool {
+	return printable(name, 4*MaxViewNameRunes) && utf8.RuneCountInString(name) <= MaxViewNameRunes &&
+		strings.IndexFunc(name, func(r rune) bool { return !unicode.IsPrint(r) }) < 0
 }
 
 // Find returns the saved filter of that name. A nil filter selects nothing, and
@@ -232,6 +300,32 @@ func Validate(document Document) error {
 	}
 	if document.Selected != "" && document.Find(document.Selected) == nil {
 		return errors.New("the selected filter is not one this document saves")
+	}
+	if len(document.Views) > MaxViewProjects {
+		return errors.New("a viewer saves views for at most " + strconv.Itoa(MaxViewProjects) + " projects")
+	}
+	for i, saved := range document.Views {
+		if !printable(saved.Project, 4096) || len(saved.Views) == 0 || len(saved.Views) > MaxViews {
+			return errors.New("each project saves between 1 and " + strconv.Itoa(MaxViews) + " views under its folder")
+		}
+		for _, earlier := range document.Views[:i] {
+			if earlier.Project == saved.Project {
+				return errors.New("one project's views are saved once")
+			}
+		}
+		for j, view := range saved.Views {
+			if !ValidViewName(view.Name) {
+				return errors.New("a view is named with 1 to " + strconv.Itoa(MaxViewNameRunes) + " printable characters")
+			}
+			if err := ValidateQuery(view.Query); err != nil {
+				return err
+			}
+			for _, earlier := range saved.Views[:j] {
+				if earlier.Name == view.Name {
+					return errors.New("two views of one project share one name")
+				}
+			}
+		}
 	}
 	return nil
 }
@@ -344,9 +438,10 @@ func Encode(document Document) ([]byte, error) {
 	return data, nil
 }
 
-// Decode reads a saved-filter document. Unknown members and unknown versions
-// are errors: there is no migration and no repair, and the remedy is the
-// person's, because nothing here was derived from evidence.
+// Decode reads a saved-filter document of either version. A v1 document is
+// read as the v2 document that saves the same filters and no view. Unknown
+// members and unknown versions are errors: there is no repair, and the remedy
+// is the person's, because nothing here was derived from evidence.
 func Decode(data []byte) (Document, error) {
 	if len(data) > MaxDocumentBytes {
 		return Document{}, errors.New("saved filters exceed their size limit")
@@ -361,7 +456,7 @@ func Decode(data []byte) (Document, error) {
 	if err := json.Unmarshal(data, &declared); err != nil {
 		return Document{}, errors.New("invalid saved filter document")
 	}
-	if declared.Schema != Schema {
+	if declared.Schema != Schema && declared.Schema != SchemaV1 {
 		return Document{}, ErrUnsupportedVersion
 	}
 	// Presence is read before the typed decode, for the reason every nested
@@ -371,6 +466,7 @@ func Decode(data []byte) (Document, error) {
 	var members struct {
 		Filters  jsontext.Value `json:"filters"`
 		Selected jsontext.Value `json:"selected"`
+		Views    jsontext.Value `json:"views"`
 	}
 	if err := json.Unmarshal(data, &members); err != nil {
 		return Document{}, errors.New("invalid saved filter document")
@@ -379,8 +475,23 @@ func Decode(data []byte) (Document, error) {
 		return Document{}, errors.New("a saved filter document states its filters and the one selected")
 	}
 	var document Document
-	if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil {
-		return Document{}, errors.New("invalid saved filter document")
+	if declared.Schema == SchemaV1 {
+		var earlier struct {
+			Schema   string   `json:"schema"`
+			Filters  []Filter `json:"filters"`
+			Selected string   `json:"selected"`
+		}
+		if err := json.Unmarshal(data, &earlier, json.RejectUnknownMembers(true)); err != nil {
+			return Document{}, errors.New("invalid saved filter document")
+		}
+		document = Document{Schema: Schema, Filters: earlier.Filters, Selected: earlier.Selected, Views: []ProjectViews{}}
+	} else {
+		if len(members.Views) == 0 {
+			return Document{}, errors.New("a saved filter document states the views it saves")
+		}
+		if err := json.Unmarshal(data, &document, json.RejectUnknownMembers(true)); err != nil {
+			return Document{}, errors.New("invalid saved filter document")
+		}
 	}
 	if err := Validate(document); err != nil {
 		return Document{}, err

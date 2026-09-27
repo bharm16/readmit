@@ -1163,7 +1163,7 @@ func TestDesktopReviewApprovesExactlyWhatTheExportGateRequires(t *testing.T) {
 	}
 	inspected := derived.InspectOccurrence(desktop.InspectRequest{
 		Workspace: request.Output, Case: "case", Identity: extract.Case.Identity,
-		Occurrence: "s0001-e000001", Path: "PID-3.1", ByteOffset: -1,
+		Occurrence: "s0001-e000001", Path: "PID-3.1", ByteOffset: -1, Reveal: true,
 	})
 	if inspected.State != desktop.Completed || inspected.Inspection == nil {
 		t.Fatalf("the transformed value of the extract could not be read: %+v", inspected)

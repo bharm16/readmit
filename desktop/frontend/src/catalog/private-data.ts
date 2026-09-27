@@ -202,19 +202,7 @@ export const privateData = {
         "Synthetic engineering targets, not measured customer requirements.",
     },
   },
-  rawRow: {
-    row: {
-      kind: "field",
-      message: 1,
-      segment: "PID",
-      field: 3,
-      label: "Patient Identifier List",
-      state: "present",
-      start: 70,
-      end: 82,
-    },
-    selection: "auto",
-  },
+
   decision,
   replayRun,
   transformPreview: {

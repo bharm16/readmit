@@ -1758,6 +1758,70 @@ export interface FieldProblem {
 /** internal/hl7.State */
 export type FieldState = "present" | "empty" | "null" | "omitted" | "";
 
+/** internal/desktop.FileBytesRequest */
+export interface FileBytesRequest {
+  file: string;
+  expect: string;
+  offset: number;
+  reveal: boolean;
+}
+
+/** internal/desktop.FileBytesResult */
+export interface FileBytesResult {
+  state: State;
+  reason?: string;
+  bytes: number;
+  offset: number;
+  rows: HexRow[];
+}
+
+/** internal/desktop.FileInspectRequest */
+export interface FileInspectRequest {
+  file: string;
+  format: string;
+  terminator: string;
+  expect: string;
+  message: number;
+  path: string;
+  node_offset: number;
+  byte_offset: number;
+  reveal: boolean;
+}
+
+/** internal/desktop.FileMessage */
+export interface FileMessage {
+  index: number;
+  message_code: string;
+  trigger_event: string;
+  start: number;
+  end: number;
+}
+
+/** internal/desktop.FileMessagesRequest */
+export interface FileMessagesRequest {
+  file: string;
+  format: string;
+  terminator: string;
+  offset: number;
+  limit: number;
+}
+
+/** internal/desktop.FileMessagesResult */
+export interface FileMessagesResult {
+  state: State;
+  reason?: string;
+  name: string;
+  bytes: number;
+  sha256: string;
+  format: string;
+  terminator: string;
+  format_selection: string;
+  terminator_selection: string;
+  total: number;
+  offset: number;
+  rows: FileMessage[];
+}
+
 /** internal/grid.Filter */
 export interface Filter {
   name: string;
@@ -1959,6 +2023,31 @@ export interface GridFieldPredicate {
   state: FieldState;
 }
 
+/** internal/grid.MessageType */
+export interface GridMessageType {
+  kind: OccurrenceKind;
+  code: string;
+  trigger: string;
+}
+
+/** internal/grid.Order */
+export type GridOrder = "" | "time-ascending" | "time-descending";
+
+/** internal/grid.Query */
+export interface GridQuery {
+  kinds: OccurrenceKind[];
+  types: GridMessageType[];
+  not_types: GridMessageType[];
+  sources: string[];
+  not_sources: string[];
+  directions: BundleDirection[];
+  observed_from: string | null;
+  observed_until: string | null;
+  ack_codes: string[];
+  fields: GridFieldPredicate[];
+  search: GridTextSearch | null;
+}
+
 /** internal/desktop.GridResult */
 export interface GridResult {
   state: State;
@@ -1977,6 +2066,21 @@ export interface GridRow {
   direction: BundleDirection;
   observed_at: string | null;
   decoded: boolean;
+}
+
+/** internal/grid.SearchScope */
+export type GridSearchScope = "metadata" | "content";
+
+/** internal/grid.TextSearch */
+export interface GridTextSearch {
+  scope: GridSearchScope;
+  text: string;
+}
+
+/** internal/grid.View */
+export interface GridView {
+  name: string;
+  query: GridQuery;
 }
 
 /** internal/desktop.GroupDiagnosesRequest */
@@ -2034,6 +2138,13 @@ export interface HL7Node {
 
 /** internal/hl7.Terminator */
 export type HL7Terminator = "cr" | "lf" | "crlf";
+
+/** internal/desktop.HexRow */
+export interface HexRow {
+  offset: number;
+  hex: string;
+  text: string;
+}
 
 /** desktop/hubadmin.Request */
 export interface HubAdminRequest {
@@ -2616,6 +2727,7 @@ export interface InspectRequest {
   path: string;
   node_offset: number;
   byte_offset: number;
+  reveal: boolean;
 }
 
 /** internal/operation.autoTerminator and the constants declared with it */
@@ -2626,15 +2738,22 @@ export interface Inspection {
   metadata: FieldMetadata;
   identity: string;
   occurrence: string;
+  message: number;
   source_id: string;
   source_offset: number;
   size: number;
+  message_code: string;
+  trigger_event: string;
+  observed_at: string | null;
   selected: HL7Node;
-  children: HL7Node[];
+  selector: string;
+  segment_name: string;
+  children: InspectorNode[];
   node_offset: number;
   child_count: number;
-  bytes: InspectorByte[];
+  bytes: HexRow[];
   byte_offset: number;
+  revealed: boolean;
   raw: string;
   decoded: string;
   encoding: string;
@@ -2643,7 +2762,7 @@ export interface Inspection {
 }
 
 /** internal/desktop.inspectionFile and the constants declared with it */
-export type InspectionPathKind = "file" | "round-trip-folder";
+export type InspectionPathKind = "file" | "copy-destination";
 
 /** internal/desktop.InspectionPathResult */
 export interface InspectionPathResult {
@@ -2660,30 +2779,14 @@ export interface InspectionResult {
   inspection?: Inspection;
 }
 
-/** internal/operation.InspectionRow */
-export interface InspectionRow {
-  kind: string;
-  message: number;
-  segment?: string;
-  field?: number;
-  repetition?: number;
-  label?: string;
-  profile?: string;
-  terminator?: HL7Terminator;
-  state?: FieldState;
-  start: number;
-  end: number;
-  value?: string;
-  value_truncated?: boolean;
-  value_shown_bytes?: number;
-}
-
-/** internal/desktop.InspectorByte */
-export interface InspectorByte {
-  offset: number;
-  hex: string;
-  text: string;
-  selected: boolean;
+/** internal/desktop.InspectorNode */
+export interface InspectorNode {
+  node: HL7Node;
+  label: string;
+  selector: string;
+  segment_name: string;
+  value: string;
+  truncated: boolean;
 }
 
 /** internal/desktop.InstalledLicenseResult */
@@ -3195,6 +3298,53 @@ export interface Match {
 
 /** internal/desktop.MatchKind */
 export type MatchKind = "artifact" | "registered_case" | "content";
+
+/** internal/desktop.MessageFacets */
+export interface MessageFacets {
+  types: GridMessageType[];
+  sources: string[];
+  ack_codes: string[];
+}
+
+/** internal/desktop.MessageRow */
+export interface MessageRow {
+  id: string;
+  source_id: string;
+  sequence: number;
+  offset: number;
+  size: number;
+  kind: OccurrenceKind;
+  direction: BundleDirection;
+  observed_at: string | null;
+  decoded: boolean;
+  message_code: string;
+  trigger_event: string;
+}
+
+/** internal/desktop.MessagesRequest */
+export interface MessagesRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  query: GridQuery;
+  sort: GridOrder;
+  offset: number;
+  limit: number;
+}
+
+/** internal/desktop.MessagesResult */
+export interface MessagesResult {
+  state: State;
+  reason?: string;
+  rows: MessageRow[];
+  total: number;
+  matched: number;
+  undecided: number;
+  undecodable: number;
+  complete: boolean;
+  scanned: number;
+  facets: MessageFacets;
+}
 
 /** internal/desktop.MigrationPreviewResult */
 export interface MigrationPreviewResult {
@@ -4725,40 +4875,6 @@ export interface ProtectionResult {
   document?: ProtectionDocument;
 }
 
-/** internal/desktop.RawInspection */
-export interface RawInspection {
-  format: string;
-  format_selection: string;
-  terminator_selection: string;
-  messages: number;
-  bytes: number;
-  sha256: string;
-  show_values: boolean;
-  offset: number;
-  limit: number;
-  value_bytes: number;
-  total: number;
-  rows: InspectionRow[];
-}
-
-/** internal/desktop.RawInspectionRequest */
-export interface RawInspectionRequest {
-  file: string;
-  format: string;
-  terminator: string;
-  show_values: boolean;
-  offset: number;
-  limit: number;
-  expect?: string;
-}
-
-/** internal/desktop.RawInspectionResult */
-export interface RawInspectionResult {
-  state: State;
-  reason?: string;
-  inspection?: RawInspection;
-}
-
 /** internal/desktop.Reassignment */
 export interface Reassignment {
   from: string;
@@ -5758,15 +5874,6 @@ export interface RevisionRegistration {
   source?: string;
 }
 
-/** internal/desktop.RoundTripRequest */
-export interface RoundTripRequest {
-  file: string;
-  format: string;
-  terminator: string;
-  folder: string;
-  name: string;
-}
-
 /** internal/desktop.RoundTripResult */
 export interface RoundTripResult {
   state: State;
@@ -6290,6 +6397,15 @@ export interface SampleCaptureRequest {
   output: string;
 }
 
+/** internal/desktop.SaveCopyRequest */
+export interface SaveCopyRequest {
+  file: string;
+  format: string;
+  terminator: string;
+  expect: string;
+  destination: string;
+}
+
 /** internal/desktop.SaveItemRequest */
 export interface SaveItemRequest {
   context: RequestContext;
@@ -6607,6 +6723,31 @@ export interface SearchResult {
   state: State;
   reason?: string;
   matches: Match[];
+}
+
+/** internal/desktop.SearchSettings */
+export interface SearchSettings {
+  fields: string[];
+  retention: IndexRetention;
+  retain_until: string | null;
+  expired: boolean;
+}
+
+/** internal/desktop.SearchSettingsRequest */
+export interface SearchSettingsRequest {
+  workspace: string;
+  case: string;
+  identity: string;
+  fields: string[];
+  retention: IndexRetention;
+  retain_until: string;
+}
+
+/** internal/desktop.SearchSettingsResult */
+export interface SearchSettingsResult {
+  state: State;
+  reason?: string;
+  settings?: SearchSettings;
 }
 
 /** internal/desktop.SecretChange */
@@ -8159,6 +8300,13 @@ export interface View {
   run: string;
 }
 
+/** internal/desktop.ViewsResult */
+export interface ViewsResult {
+  state: State;
+  reason?: string;
+  views: GridView[];
+}
+
 /** internal/desktop.Vocabulary */
 export interface Vocabulary {
   diagnosis_builtins: DiagnosisBuiltin[];
@@ -8220,7 +8368,7 @@ export interface Facade {
   ChooseExplanationInput(workspace: string, kind: string): Promise<ExplanationChoiceResult>;
   ChooseHubConfig(): Promise<HubResult>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
-  ChooseInspectionPath(kind: string): Promise<InspectionPathResult>;
+  ChooseInspectionPath(kind: string, source: string): Promise<InspectionPathResult>;
   ChooseLicenseFolder(): Promise<LicenseFolderResult>;
   ChooseMaintenancePath(kind: string): Promise<MaintenancePathResult>;
   ChooseOperationPolicy(): Promise<OperationResult>;
@@ -8254,6 +8402,7 @@ export interface Facade {
   DecideFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
   DeriveExportReview(request: PrivacyReviewRequest): Promise<PrivacyReviewResult>;
   DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
+  DescribeSearchSettings(workspace: string, caseName: string, identity: string): Promise<SearchSettingsResult>;
   DiagnoseHub(): Promise<HubDiagnosisResult>;
   DiagnoseSource(request: SourceWorkRequest): Promise<SourceAccessResult>;
   DiscardEditorDraft(id: string): Promise<EditorDraftsResult>;
@@ -8298,23 +8447,25 @@ export interface Facade {
   ImportScenarioLibrary(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
   InspectCIResults(directory: string): Promise<CIInspectResult>;
+  InspectFileMessage(request: FileInspectRequest): Promise<InspectionResult>;
   InspectGatePolicy(path: string): Promise<GatePolicyResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
   InspectProfilePack(workspace: string, entry: string): Promise<ProfilePackResult>;
   InspectProfilePackage(workspace: string, entry: string): Promise<ProfilePackageResult>;
   InspectProjectQuota(path: string): Promise<ProjectQuotaResult>;
   InspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult>;
-  InspectRawFile(request: RawInspectionRequest): Promise<RawInspectionResult>;
   InspectRunnerJob(configPath: string, jobPath: string): Promise<RunnerJobPreviewResult>;
   LicenseStatus(): Promise<InstalledLicenseResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
+  ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
   ListHubNotifications(project: string): Promise<HubReviewsResult>;
   ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
   ListHubReviews(project: string): Promise<HubReviewsResult>;
   ListNotes(request: NotesRequest): Promise<NotesResult>;
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
+  ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
   NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
@@ -8381,6 +8532,8 @@ export interface Facade {
   ProjectFiles(request: ItemRequest): Promise<ProjectFilesResult>;
   ProjectLocation(): Promise<ProjectLocationResult>;
   PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
+  ReadFileBytes(request: FileBytesRequest): Promise<FileBytesResult>;
+  ReadMessages(request: MessagesRequest): Promise<MessagesResult>;
   ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
   ReadProtection(workspace: string, entry: string): Promise<ProtectionResult>;
   ReadReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult>;
@@ -8403,7 +8556,9 @@ export interface Facade {
   RemoveAttachment(request: AttachmentRemoveRequest): Promise<AttachmentsResult>;
   RemoveCaseFromProject(request: ItemRequest): Promise<ItemResult>;
   RemoveSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
+  RemoveView(workspace: string, name: string): Promise<ViewsResult>;
   RenameItem(request: RenameRequest): Promise<ItemResult>;
+  RenameView(workspace: string, from: string, to: string): Promise<ViewsResult>;
   RenewLicenseDocument(): Promise<OperationResult>;
   ResetTarget(request: TargetResetRequest): Promise<TargetResetResult>;
   ResolveOperationClock(): Promise<OperationResult>;
@@ -8425,6 +8580,7 @@ export interface Facade {
   SaveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult>;
   SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
   SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;
+  SaveFileCopy(request: SaveCopyRequest): Promise<RoundTripResult>;
   SaveFilter(filter: Filter): Promise<FiltersResult>;
   SaveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult>;
   SaveHubAudit(project: string): Promise<HubTransferResult>;
@@ -8446,6 +8602,7 @@ export interface Facade {
   SaveScenario(request: ScenarioSaveRequest): Promise<ScenarioDocumentResult>;
   SaveScenarioLibraryEntry(request: ScenarioLibraryRequest): Promise<ScenarioLibraryResult>;
   SaveSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult>;
+  SaveSearchSettings(request: SearchSettingsRequest): Promise<BuildIndexResult>;
   SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
   SaveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult>;
   SaveSequenceAnalysis(request: RuleDocumentSaveRequest): Promise<SequenceAnalysisResult>;
@@ -8457,6 +8614,7 @@ export interface Facade {
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
   SaveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult>;
+  SaveView(workspace: string, name: string, query: GridQuery): Promise<ViewsResult>;
   ScanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult>;
   ScanSecrets(request: SecretScanRequest): Promise<SecretScanResult>;
   ScenarioCatalog(): Promise<ScenarioCatalogResult>;
@@ -8498,7 +8656,6 @@ export interface Facade {
   VerifyRunnerUpdate(configPath: string, manifest: string, binary: string): Promise<RunnerUpdateResult>;
   VerifySupportBundle(workspace: string, entry: string): Promise<SupportPreviewResult>;
   WithdrawReview(token: string): Promise<ActionReviewResult>;
-  WriteRoundTrip(request: RoundTripRequest): Promise<RoundTripResult>;
 }
 
 /** The methods Wails binds for desktop/hubadmin.Admin. */

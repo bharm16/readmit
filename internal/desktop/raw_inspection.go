@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -12,21 +13,13 @@ import (
 	"github.com/bharm16/readmit/internal/operation"
 )
 
-// MaxInspectionRows bounds one window of a raw inspection: the rows the window
-// shows at once, the same bound the message grid and a scan window render
-// under. A file is inspected whole every time and paged by row, so a large
-// file costs the window one page of rows, never every field it holds.
+// MaxInspectionRows bounds one window of a standalone file's message list, the
+// same bound the case message list renders under.
 const MaxInspectionRows = 200
 
-// MaxInspectionValueBytes bounds how many of one field's bytes a window shows
-// when values are asked for. A longer field is shown escaped in part and says
-// so, so one field of a large file cannot carry the file into the window; the
-// command line prints it whole.
-const MaxInspectionValueBytes = 4096
-
-// InspectionPathResult is one native dialog answer for the raw-inspection
-// screen: the file to inspect, or the folder its byte-identical copy is
-// written into.
+// InspectionPathResult is one native dialog answer for the standalone file
+// reader: the file to open, or the new file its byte-identical copy is saved
+// as.
 type InspectionPathResult struct {
 	State  State  `json:"state"`
 	Reason string `json:"reason,omitzero"`
@@ -36,63 +29,237 @@ type InspectionPathResult struct {
 
 func (r *InspectionPathResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// RawInspectionRequest declares one inspection the way `readmit inspect`
-// does: the file, the framing and terminator (each auto, meaning detected),
-// and whether values are shown. Offset and Limit select the window of rows;
-// a zero Limit is the whole bound. Expect, when set, is the digest the
-// earlier pages were read from: a later page of a file that changed since is
-// refused rather than joined to rows of a different file.
-type RawInspectionRequest struct {
+// The paths ChooseInspectionPath chooses.
+const (
+	inspectionFile  = "file"
+	copyDestination = "copy-destination"
+)
+
+// ChooseInspectionPath presents the host's native dialog for the file to open
+// ("file"), or its save dialog for the new file a byte-identical copy of
+// source is written as ("copy-destination"), offering the source's own file
+// name. Choosing reads and writes nothing.
+func (a *App) ChooseInspectionPath(kind, source string) InspectionPathResult {
+	return run(a, true, false, func(ctx context.Context) InspectionPathResult {
+		switch kind {
+		case inspectionFile:
+			path, declined := a.chooseOneFile(ctx, "Open HL7 file")
+			if path == "" {
+				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
+			}
+			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
+		case copyDestination:
+			name := ""
+			if filepath.IsAbs(source) {
+				name = filepath.Base(source)
+			}
+			path, declined := a.chooseNamedDestination(ctx, "Save copy", name)
+			if path == "" {
+				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
+			}
+			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
+		default:
+			return InspectionPathResult{State: Failed, Reason: "unknown inspection path kind"}
+		}
+	})
+}
+
+// FileMessagesRequest lists the messages of one file named by its full path,
+// parsed under the declared framing and terminator (each auto, meaning
+// detected). Offset and Limit select the window of messages; a zero Limit is
+// the whole bound.
+type FileMessagesRequest struct {
 	File       string `json:"file"`
 	Format     string `json:"format"`
 	Terminator string `json:"terminator"`
-	ShowValues bool   `json:"show_values"`
 	Offset     int    `json:"offset"`
 	Limit      int    `json:"limit"`
-	Expect     string `json:"expect,omitzero"`
 }
 
-// RawInspection is what `readmit inspect` reports about the file, one window
-// of its rows at a time. Total counts every row the command prints; Rows are
-// the ones from Offset, at most Limit of them, and a value is cut at or before
-// ValueBytes bytes. Each row's ValueShownBytes is the actual byte count after
-// respecting a UTF-8 character boundary. Bytes and SHA256 are the length and
-// digest of the bytes read, so a person can see the source was read and not
-// changed.
-type RawInspection struct {
-	Format              string                    `json:"format"`
-	FormatSelection     string                    `json:"format_selection"`
-	TerminatorSelection string                    `json:"terminator_selection"`
-	Messages            int                       `json:"messages"`
-	Bytes               int                       `json:"bytes"`
-	SHA256              string                    `json:"sha256"`
-	ShowValues          bool                      `json:"show_values"`
-	Offset              int                       `json:"offset"`
-	Limit               int                       `json:"limit"`
-	ValueBytes          int                       `json:"value_bytes"`
-	Total               int                       `json:"total"`
-	Rows                []operation.InspectionRow `json:"rows"`
+// FileMessage is one message of a standalone file: its zero-based index, its
+// parsed MSH-9 code and trigger, escaped and bounded and empty where it
+// declares none, and its half-open byte range in the file, MLLP included.
+type FileMessage struct {
+	Index        int    `json:"index"`
+	MessageCode  string `json:"message_code"`
+	TriggerEvent string `json:"trigger_event"`
+	Start        int    `json:"start"`
+	End          int    `json:"end"`
 }
 
-// RawInspectionResult carries one state. Inspection is present only when the
-// file parsed under the declarations.
-type RawInspectionResult struct {
-	State      State          `json:"state"`
-	Reason     string         `json:"reason,omitzero"`
-	Inspection *RawInspection `json:"inspection,omitzero"`
+// FileMessagesResult is one window of a file's messages. Name, Bytes and
+// SHA256 describe the bytes read and are present whenever the file was read,
+// including when it did not parse under the declarations: the state is then
+// failed with the parser's reason, and ReadFileBytes still shows its original
+// bytes. Format and Terminator are what the parser used, whether declared or
+// detected, as FormatSelection and TerminatorSelection say.
+type FileMessagesResult struct {
+	State               State         `json:"state"`
+	Reason              string        `json:"reason,omitzero"`
+	Name                string        `json:"name"`
+	Bytes               int           `json:"bytes"`
+	SHA256              string        `json:"sha256"`
+	Format              string        `json:"format"`
+	Terminator          string        `json:"terminator"`
+	FormatSelection     string        `json:"format_selection"`
+	TerminatorSelection string        `json:"terminator_selection"`
+	Total               int           `json:"total"`
+	Offset              int           `json:"offset"`
+	Rows                []FileMessage `json:"rows"`
 }
 
-func (r *RawInspectionResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+func (r *FileMessagesResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// RoundTripRequest names the file, the declarations it is parsed under, and
-// the new entry of a natively chosen folder its byte-identical copy is
-// written to.
-type RoundTripRequest struct {
+// ListFileMessages reads one file whole, parses it by the same parser and
+// declarations `readmit inspect` uses, and lists one window of its messages.
+// Nothing is imported, written or retained; a later window reads the file
+// again. It holds the operation slot but is not interruptible.
+func (a *App) ListFileMessages(request FileMessagesRequest) FileMessagesResult {
+	return run(a, false, false, func(context.Context) FileMessagesResult {
+		fail := func(state State, reason string) FileMessagesResult {
+			return FileMessagesResult{State: state, Reason: reason, Rows: []FileMessage{}}
+		}
+		options, declined := inspectionOptions(request.File, request.Format, request.Terminator)
+		if declined.state != "" {
+			return fail(declined.state, declined.reason)
+		}
+		limit := request.Limit
+		if limit == 0 {
+			limit = MaxInspectionRows
+		}
+		if request.Offset < 0 || limit < 1 || limit > MaxInspectionRows {
+			return fail(Failed, "a message window begins at or after the first message and lists at most "+strconv.Itoa(MaxInspectionRows)+" of them")
+		}
+		data, err := operation.ReadInputFile(request.File, hl7.MaxInputBytes)
+		if err != nil {
+			return fail(refusalState(err), err.Error())
+		}
+		result := FileMessagesResult{State: Completed, Name: filepath.Base(request.File), Bytes: len(data), SHA256: digestOf(data),
+			FormatSelection: selectionOf(request.Format), TerminatorSelection: selectionOf(request.Terminator), Rows: []FileMessage{}}
+		document, err := hl7.Parse(data, options)
+		if err != nil {
+			result.State, result.Reason = Failed, err.Error()
+			return result
+		}
+		result.Format, result.Total, result.Offset = string(document.Format), len(document.Messages), request.Offset
+		if len(document.Messages) > 0 {
+			result.Terminator = string(document.Messages[0].Terminator)
+		}
+		if request.Offset > 0 && request.Offset >= result.Total {
+			return fail(Failed, "the message window begins after the last message")
+		}
+		for i := request.Offset; i < min(result.Total, request.Offset+limit); i++ {
+			code, trigger := messageType(document, i)
+			span := document.Messages[i].Span
+			result.Rows = append(result.Rows, FileMessage{Index: i, MessageCode: code, TriggerEvent: trigger, Start: span.Start, End: span.End})
+		}
+		return result
+	})
+}
+
+// FileInspectRequest inspects one message of a standalone file with the same
+// inspector a case occurrence is inspected with. Expect is the digest the
+// message list was read from; a file that changed since is refused rather
+// than joined to a list of a different file. Message is zero-based.
+type FileInspectRequest struct {
 	File       string `json:"file"`
 	Format     string `json:"format"`
 	Terminator string `json:"terminator"`
-	Folder     string `json:"folder"`
-	Name       string `json:"name"`
+	Expect     string `json:"expect"`
+	Message    int    `json:"message"`
+	Path       string `json:"path"`
+	NodeOffset int    `json:"node_offset"`
+	ByteOffset int    `json:"byte_offset"`
+	Reveal     bool   `json:"reveal"`
+}
+
+// InspectFileMessage inspects one message of a file named by its full path.
+// Offsets are within the file. Identity is the file's digest. Nothing is
+// written; it holds the operation slot but is not interruptible.
+func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
+	return run(a, false, false, func(context.Context) InspectionResult {
+		fail := func(state State, reason string) InspectionResult {
+			return InspectionResult{State: state, Reason: reason}
+		}
+		if request.NodeOffset < 0 || request.ByteOffset < -1 {
+			return fail(Failed, "inspector offsets must be in range")
+		}
+		data, declined := expectedFile(request.File, request.Expect)
+		if declined.state != "" {
+			return fail(declined.state, declined.reason)
+		}
+		options, declined := inspectionOptions(request.File, request.Format, request.Terminator)
+		if declined.state != "" {
+			return fail(declined.state, declined.reason)
+		}
+		document, err := hl7.Parse(data, options)
+		if err != nil {
+			return fail(Failed, err.Error())
+		}
+		view, reason := inspectDocument(data, document, request.Message, inspectorWindow{
+			Path: request.Path, NodeOffset: request.NodeOffset, ByteOffset: request.ByteOffset, Reveal: request.Reveal,
+		})
+		if view == nil {
+			return fail(Failed, reason)
+		}
+		view.Identity = request.Expect
+		return InspectionResult{State: Completed, Inspection: view}
+	})
+}
+
+// FileBytesRequest pages the original bytes of a file, whether or not it
+// parses. Offset is read from the start of the hex row that holds it.
+type FileBytesRequest struct {
+	File   string `json:"file"`
+	Expect string `json:"expect"`
+	Offset int    `json:"offset"`
+	Reveal bool   `json:"reveal"`
+}
+
+// FileBytesResult is one window of InspectorByteWindow original bytes as hex
+// rows. Bytes is the file's length.
+type FileBytesResult struct {
+	State  State    `json:"state"`
+	Reason string   `json:"reason,omitzero"`
+	Bytes  int      `json:"bytes"`
+	Offset int      `json:"offset"`
+	Rows   []HexRow `json:"rows"`
+}
+
+func (r *FileBytesResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// ReadFileBytes shows one window of a file's original bytes, which a file that
+// did not parse still has. The printable column is present only when
+// revealed. Nothing is written.
+func (a *App) ReadFileBytes(request FileBytesRequest) FileBytesResult {
+	return run(a, false, false, func(context.Context) FileBytesResult {
+		fail := func(state State, reason string) FileBytesResult {
+			return FileBytesResult{State: state, Reason: reason, Rows: []HexRow{}}
+		}
+		if request.Offset < 0 {
+			return fail(Failed, "a byte window begins at or after the first byte")
+		}
+		data, declined := expectedFile(request.File, request.Expect)
+		if declined.state != "" {
+			return fail(declined.state, declined.reason)
+		}
+		if request.Offset > len(data) {
+			return fail(Failed, "the byte window begins after the last byte")
+		}
+		offset := request.Offset - request.Offset%HexRowBytes
+		return FileBytesResult{State: Completed, Bytes: len(data), Offset: offset, Rows: hexRows(data, offset, InspectorByteWindow, request.Reveal)}
+	})
+}
+
+// SaveCopyRequest saves a byte-identical copy of the file, parsed under the
+// declarations, as the new file Destination the save dialog named. Expect is
+// the digest the file was listed with.
+type SaveCopyRequest struct {
+	File        string `json:"file"`
+	Format      string `json:"format"`
+	Terminator  string `json:"terminator"`
+	Expect      string `json:"expect"`
+	Destination string `json:"destination"`
 }
 
 // RoundTripResult reports the copy that was written: where, how many bytes
@@ -107,120 +274,96 @@ type RoundTripResult struct {
 
 func (r *RoundTripResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
-// The paths ChooseInspectionPath chooses.
-const (
-	inspectionFile  = "file"
-	roundTripFolder = "round-trip-folder"
-)
-
-// ChooseInspectionPath presents the host's native dialog for the file to
-// inspect ("file") or the folder a byte-identical copy is written into
-// ("round-trip-folder"). Choosing reads and writes nothing.
-func (a *App) ChooseInspectionPath(kind string) InspectionPathResult {
-	return run(a, true, false, func(ctx context.Context) InspectionPathResult {
-		switch kind {
-		case inspectionFile:
-			path, declined := a.chooseOneFile(ctx, "Open HL7 file")
-			if path == "" {
-				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
-			}
-			return InspectionPathResult{State: Completed, Kind: kind, Path: path}
-		case roundTripFolder:
-			folder, declined := a.chooseFolder(ctx, "Choose copy destination")
-			if folder == "" {
-				return InspectionPathResult{State: declined.state, Reason: declined.reason, Kind: kind}
-			}
-			return InspectionPathResult{State: Completed, Kind: kind, Path: folder}
-		default:
-			return InspectionPathResult{State: Failed, Reason: "unknown inspection path kind"}
-		}
-	})
-}
-
-// InspectRawFile is `readmit inspect` for the window: the file is read whole,
-// parsed under the declared framing and terminator by the same shared
-// operation, and reported as the command reports it, one bounded window of
-// rows at a time. The source is opened for reading only and nothing is
-// imported, written or retained: a later page reads the file again. It runs
-// to completion once it starts, so it holds the operation slot but is not
-// interruptible.
-func (a *App) InspectRawFile(request RawInspectionRequest) RawInspectionResult {
-	return run(a, false, false, func(context.Context) RawInspectionResult {
-		options, declined := inspectionOptions(request.File, request.Format, request.Terminator)
-		if declined.state != "" {
-			return RawInspectionResult{State: declined.state, Reason: declined.reason}
-		}
-		limit := request.Limit
-		if limit == 0 {
-			limit = MaxInspectionRows
-		}
-		if request.Offset < 0 || limit < 0 || limit > MaxInspectionRows {
-			return RawInspectionResult{State: Failed, Reason: "an inspection window begins at or after the first row and shows at most " + strconv.Itoa(MaxInspectionRows) + " rows"}
-		}
-		inspected, err := operation.InspectFile(request.File, options, "")
-		if err != nil {
-			return RawInspectionResult{State: refusalState(err), Reason: err.Error()}
-		}
-		digest := inspected.Digest()
-		if request.Expect != "" && request.Expect != digest {
-			return RawInspectionResult{State: Failed, Reason: "the file changed since its earlier rows were read; inspect it again"}
-		}
-		view := &RawInspection{
-			Format:              string(inspected.Format),
-			FormatSelection:     inspected.FormatSelection,
-			TerminatorSelection: inspected.TerminatorSelection,
-			Messages:            inspected.Messages(),
-			Bytes:               inspected.Bytes(),
-			SHA256:              digest,
-			ShowValues:          request.ShowValues,
-			Offset:              request.Offset,
-			Limit:               limit,
-			ValueBytes:          MaxInspectionValueBytes,
-			Rows:                []operation.InspectionRow{},
-		}
-		inspected.Rows(func(row operation.InspectionRow) bool {
-			if view.Total >= request.Offset && len(view.Rows) < limit {
-				if request.ShowValues {
-					row.Value, row.ValueTruncated, row.ValueShownBytes = inspected.Value(row, MaxInspectionValueBytes)
-				}
-				view.Rows = append(view.Rows, row)
-			}
-			view.Total++
-			return true
-		})
-		if request.Offset > 0 && request.Offset >= view.Total {
-			return RawInspectionResult{State: Failed, Reason: "the inspection window begins after the last row"}
-		}
-		return RawInspectionResult{State: Completed, Inspection: view}
-	})
-}
-
-// WriteRoundTrip is `readmit inspect --roundtrip`: the file is parsed under
-// the declarations by the same shared operation, and only once it parsed are
-// its bytes written, exactly, to one new entry of the chosen folder. An
-// existing entry is never overwritten and the source is never changed. It
-// writes nothing a license governs, as the command does not, so it is
-// admitted without a term.
-func (a *App) WriteRoundTrip(request RoundTripRequest) RoundTripResult {
+// SaveFileCopy is `readmit inspect --roundtrip` for the standalone reader: the
+// file is read again, checked against the digest it was listed with and
+// parsed under the declarations, and only then are its exact bytes written,
+// exclusively, as one new file. The source itself, by any name, an existing
+// destination and a source that changed are refused, and the source is never
+// changed. It writes nothing a license governs, as the command does not, so it
+// is admitted without a term.
+func (a *App) SaveFileCopy(request SaveCopyRequest) RoundTripResult {
 	return run(a, false, false, func(context.Context) RoundTripResult {
+		fail := func(state State, reason string) RoundTripResult { return RoundTripResult{State: state, Reason: reason} }
 		options, declined := inspectionOptions(request.File, request.Format, request.Terminator)
 		if declined.state != "" {
-			return RoundTripResult{State: declined.state, Reason: declined.reason}
+			return fail(declined.state, declined.reason)
 		}
-		root, declined := chosenFolder(request.Folder)
+		if !filepath.IsAbs(request.Destination) {
+			return fail(Failed, "choose the copy's destination with the save dialog")
+		}
+		root, declined := chosenFolder(filepath.Dir(request.Destination))
 		if root == "" {
-			return RoundTripResult{State: declined.state, Reason: declined.reason}
+			return fail(declined.state, declined.reason)
 		}
-		if artifactpath.EntryName(request.Name) != nil {
-			return RoundTripResult{State: Failed, Reason: "the copy is one new entry of the chosen folder, named by one valid file name"}
+		name := filepath.Base(request.Destination)
+		if artifactpath.EntryName(name) != nil {
+			return fail(Failed, "the copy is one new file named by one valid file name")
 		}
-		destination := filepath.Join(root, request.Name)
-		inspected, err := operation.InspectFile(request.File, options, destination)
+		destination := filepath.Join(root, name)
+		if aliases(request.File, destination) {
+			return fail(Failed, "the copy cannot be written over the file it copies; choose another name")
+		}
+		if _, err := os.Lstat(destination); err == nil {
+			return fail(Failed, "a file with that name already exists; choose a new name")
+		}
+		data, declined := expectedFile(request.File, request.Expect)
+		if declined.state != "" {
+			return fail(declined.state, declined.reason)
+		}
+		document, err := hl7.Parse(data, options)
 		if err != nil {
-			return RoundTripResult{State: refusalState(err), Reason: err.Error()}
+			return fail(Failed, err.Error())
 		}
-		return RoundTripResult{State: Completed, Path: destination, Bytes: inspected.Bytes(), SHA256: inspected.Digest()}
+		if err := operation.WriteNewFile(destination, document.Serialize(),
+			"cannot create round-trip file; destination must be new and writable",
+			"cannot write round-trip file"); err != nil {
+			return fail(refusalState(err), err.Error())
+		}
+		return RoundTripResult{State: Completed, Path: destination, Bytes: len(data), SHA256: digestOf(data)}
 	})
+}
+
+// aliases reports whether destination names the source file: the same cleaned
+// path, the same path once links are resolved, or the same file by identity.
+func aliases(source, destination string) bool {
+	if filepath.Clean(source) == filepath.Clean(destination) {
+		return true
+	}
+	resolvedSource, sourceErr := filepath.EvalSymlinks(source)
+	resolvedDestination, destinationErr := filepath.EvalSymlinks(destination)
+	if sourceErr == nil && destinationErr == nil && resolvedSource == resolvedDestination {
+		return true
+	}
+	sourceInfo, sourceErr := os.Stat(source)
+	destinationInfo, destinationErr := os.Stat(destination)
+	return sourceErr == nil && destinationErr == nil && os.SameFile(sourceInfo, destinationInfo)
+}
+
+// expectedFile reads a file named by its full path and refuses it unless its
+// digest is the one the window displayed.
+func expectedFile(path, expect string) ([]byte, refusal) {
+	if !filepath.IsAbs(path) {
+		return nil, refusal{Failed, "choose the file with the file dialog; an inspection reads one file named by its full path"}
+	}
+	if expect == "" {
+		return nil, refusal{Failed, "list the file's messages before inspecting it"}
+	}
+	data, err := operation.ReadInputFile(path, hl7.MaxInputBytes)
+	if err != nil {
+		return nil, refusal{refusalState(err), err.Error()}
+	}
+	if digestOf(data) != expect {
+		return nil, refusal{Failed, "the file changed since it was opened; open it again"}
+	}
+	return data, refusal{}
+}
+
+// selectionOf says how a framing or terminator reached the parser.
+func selectionOf(declared string) string {
+	if declared == "" || declared == "auto" {
+		return operation.InspectDetected
+	}
+	return operation.InspectDeclared
 }
 
 // inspectionOptions checks the declarations through the command's own check,

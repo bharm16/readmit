@@ -64,7 +64,7 @@ func TestPlantedPatientValuesAndCredentialsStayOutOfResultsAndShellState(t *test
 	grid := app.OpenGrid(workspace, "case", "case.index.json", 0, 10)
 	views = append(views, grid)
 	if grid.State == desktop.Completed && grid.Grid != nil && len(grid.Grid.Rows) > 0 {
-		inspected := app.InspectOccurrence(desktop.InspectRequest{Workspace: workspace, Case: "case", Identity: opened.Case.Identity, Occurrence: grid.Grid.Rows[0].ID, Path: "PID[1]-5", ByteOffset: -1})
+		inspected := app.InspectOccurrence(desktop.InspectRequest{Workspace: workspace, Case: "case", Identity: opened.Case.Identity, Occurrence: grid.Grid.Rows[0].ID, Path: "PID[1]-5", ByteOffset: -1, Reveal: true})
 		views = append(views, inspected)
 		if encoded, _ := json.Marshal(inspected); !strings.Contains(string(encoded), "CEDARPLANT") {
 			t.Fatalf("the evidence view does not show the evidence, so the absences below prove nothing: %s", encoded)

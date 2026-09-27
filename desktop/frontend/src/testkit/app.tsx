@@ -15,6 +15,7 @@ import {
   disclosureStatusResult,
   filtersResult,
   guideResult,
+  messagesResult,
   sessionStored,
   shellResult,
   vocabularyFixture,
@@ -46,8 +47,9 @@ export async function renderApp(handlers: FacadeHandlers = {}) {
     SaveEditorDraft: () => ({ state: "completed" }),
     DiscardEditorDraft: () => ({ state: "completed" }),
     Cancel: async () => {},
-    DescribeIndex: () => ({ state: "empty" }),
-    BuildIndex: () => ({ state: "completed" }),
+    // Opening a case reads its messages and the project's saved views.
+    ReadMessages: () => messagesResult([]),
+    ListViews: () => ({ state: "empty", views: [] }),
     // Opening a folder re-reads the guided sample out of it.
     Guide: () => guideResult("sample", 0),
     ...handlers,

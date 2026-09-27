@@ -75,28 +75,11 @@ func Select(document index.Document, at time.Time, filter *Filter, window Window
 			return Page{}, err
 		}
 	}
-	if err := document.Usable(at); err != nil {
-		return Page{}, err
+	query := Query{}
+	if filter != nil {
+		query = filter.Query()
 	}
-	page := Page{Rows: []index.Record{}, Offset: window.Offset, Limit: window.Limit, Total: len(document.Records)}
-	kept, asked, err := answered(document, at, filter, &page)
-	if err != nil {
-		return Page{}, err
-	}
-	for _, record := range document.Records {
-		if record.ParseError != "" {
-			page.Undecodable++
-		}
-		if !narrows(filter, record) || (asked && !kept[record.ID]) {
-			continue
-		}
-		page.Matched++
-		if page.Matched > window.Offset && len(page.Rows) < window.Limit {
-			page.Rows = append(page.Rows, record)
-		}
-	}
-	page.Excluded = page.Total - page.Matched
-	return page, nil
+	return selectQuery(document, at, query, nil, EvidenceOrder, window)
 }
 
 // answered asks the index every value and state question the filter carries and

@@ -61,6 +61,8 @@ import type {
   HubDiagnosisResult,
   HubArtifactsResult,
   BuildIndexResult,
+  MessageRow,
+  MessagesResult,
   IndexDetails,
   IndexResult,
   TargetResult,
@@ -433,6 +435,45 @@ export function gridRow(
   };
 }
 
+/** One window of a case's messages under a transient query: positions,
+ * types and counts, never a value. */
+export function messagesResult(rows: MessageRow[], overrides: Partial<MessagesResult> = {}): MessagesResult {
+  return {
+    state: rows.length === 0 ? "empty" : "completed",
+    rows,
+    total: rows.length,
+    matched: rows.length,
+    undecided: 0,
+    undecodable: 0,
+    complete: true,
+    scanned: rows.length,
+    facets: {
+      types: [
+        { kind: "message", code: "SIU", trigger: "S12" },
+        { kind: "ack", code: "", trigger: "" },
+      ],
+      sources: ["s0001", "s0002"],
+      ack_codes: ["AA", "AE"],
+    },
+    ...overrides,
+  };
+}
+
+/** A message row: where the occurrence is, what it is and when it was seen. */
+export function messageRow(
+  id: string,
+  kind: "message" | "ack" | "unparsed" = "message",
+  overrides: Partial<MessageRow> = {},
+): MessageRow {
+  return {
+    ...gridRow(id, kind),
+    sequence: 0,
+    message_code: kind === "message" ? "SIU" : "",
+    trigger_event: kind === "message" ? "S12" : "",
+    ...overrides,
+  };
+}
+
 /** One revealed occurrence: positions, states and byte windows with no
  * displayed value — the raw and decoded texts are empty, which the window
  * draws as the absence of a value rather than inventing one. */
@@ -462,15 +503,22 @@ export function inspectionResult(
       },
       identity: CASE_IDENTITY,
       occurrence,
+      message: 0,
       source_id: "s0001",
       source_offset: 0,
       size: 256,
+      message_code: "SIU",
+      trigger_event: "S12",
+      observed_at: null,
       selected,
+      selector: "",
+      segment_name: "",
       children: [],
       node_offset: 0,
       child_count: 0,
       bytes: [],
       byte_offset: 0,
+      revealed: false,
       raw: "",
       decoded: "",
       encoding: "ASCII",

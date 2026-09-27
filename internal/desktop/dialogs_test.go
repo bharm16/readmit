@@ -94,8 +94,8 @@ func TestEveryNativeDialogCancelsFailsRecoverablyAndAnswersItsChoice(t *testing.
 		{name: "ChooseRunSpec", call: func(a *desktop.App) any { return a.ChooseRunSpec(workspace) }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 		{name: "ChooseExplanationInput(run)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "run") }, opens: "folder", folder: filepath.Join(resolved(t, workspace), "case")},
 		{name: "ChooseExplanationInput(assertions)", call: func(a *desktop.App) any { return a.ChooseExplanationInput(workspace, "assertions") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
-		{name: "ChooseInspectionPath(round-trip-folder)", call: func(a *desktop.App) any { return a.ChooseInspectionPath("round-trip-folder") }, opens: "folder", folder: fresh(), title: "Choose copy destination"},
-		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Open HL7 file"},
+		{name: "ChooseInspectionPath(copy-destination)", call: func(a *desktop.App) any { return a.ChooseInspectionPath("copy-destination", "/chosen/source.hl7") }, opens: "save", destination: unnamed(), title: "Save copy"},
+		{name: "ChooseInspectionPath", call: func(a *desktop.App) any { return a.ChooseInspectionPath("file", "") }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}, title: "Open HL7 file"},
 		{name: "ChooseCorpusPath", call: func(a *desktop.App) any { return a.ChooseCorpusPath("corpus-folder") }, opens: "folder", folder: fresh()},
 		{name: "ChooseScenarioLibraryImport", call: func(a *desktop.App) any { return a.ChooseScenarioLibraryImport() }, opens: "files", files: []string{filepath.Join(resolved(t, workspace), "spec.json")}},
 	}

@@ -135,3 +135,14 @@ export async function findCaseRow(name?: string): Promise<HTMLElement> {
   });
   return row!;
 }
+
+/** One row of the open case's Messages table, by the occurrence it shows. */
+export async function findMessageRow(occurrence: string): Promise<HTMLElement> {
+  const table = await screen.findByRole("table", { name: "Messages" });
+  let row: HTMLElement | null = null;
+  await waitFor(() => {
+    row = table.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(occurrence)}"]`);
+    if (!row) throw new Error(`the Messages table shows no ${occurrence}`);
+  });
+  return row!;
+}
