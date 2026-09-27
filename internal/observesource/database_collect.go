@@ -57,6 +57,10 @@ func newDatabaseReader(ctx context.Context, d Database, retained *snapshot, opti
 // databaseQuery has a fixed SELECT shape. Values always travel separately as
 // driver parameters. Validated and quoted identifiers cannot introduce SQL.
 func databaseQuery(d Database) (string, []any) {
+	return databaseProjectionQuery(d, []string{d.RecordKey})
+}
+
+func databaseProjectionQuery(d Database, columns []string) (string, []any) {
 	quote := func(s string) string { return `"` + s + `"` }
 	if d.Driver == "sqlserver" {
 		quote = func(s string) string { return "[" + s + "]" }
@@ -70,7 +74,11 @@ func databaseQuery(d Database) (string, []any) {
 	if d.Driver == "sqlserver" {
 		prefix += "TOP (" + limit + ") "
 	}
-	query := prefix + quote(d.RecordKey) + " FROM " + strings.Join(parts, ".")
+	selected := make([]string, len(columns))
+	for i, c := range columns {
+		selected[i] = quote(c)
+	}
+	query := prefix + strings.Join(selected, ", ") + " FROM " + strings.Join(parts, ".")
 	args := make([]any, 0, len(d.Filters))
 	for i, f := range d.Filters {
 		if i == 0 {

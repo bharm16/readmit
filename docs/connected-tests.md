@@ -66,3 +66,6 @@ including keys and endpoint metadata, remains customer-local sensitive evidence.
 
 For explicitly authorized non-loopback v2 execution, see
 [scoped connected transport](connected-transports.md).
+
+Version 2 plans pin [typed downstream datasets](typed-datasets.md) and their
+shared assertion contracts for the connected orchestration handoff.

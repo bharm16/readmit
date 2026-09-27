@@ -55,9 +55,8 @@ type attempt struct {
 	// asOf alone. A capture can say, and a capture that reaches back past the
 	// window's watermark returned evidence from before the window.
 	from time.Time
-	// keys are the record keys in scope, which only an observation has. No
-	// other value is read out of a record, so nothing patient-identifying
-	// reaches a digest, a correlation or a completion record.
+	// keys are the record keys in scope, which only an observation has. Other values belong to the typed dataset path. Keys can identify people
+	// and remain customer-local sensitive evidence.
 	keys []string
 	// evidence is the original material this attempt read, retained exactly as
 	// it was read, keyed by the name it is retained under.

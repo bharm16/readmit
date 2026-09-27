@@ -1,0 +1,1 @@
+- Added engine support for retained typed downstream fields, distinct duplicate rows, offline re-derivation and dataset assertions in versioned connected plans. File, HTTP, HL7 and approved-view database snapshots retain source meaning; incomplete reads cannot pass absence checks. Full runtime orchestration and desktop integration remain separate.

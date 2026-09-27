@@ -20,6 +20,13 @@ import (
 // This is an external protocol fixture, not a PostgreSQL installation or grant
 // acceptance. It exercises the real selected driver and collector end to end.
 func postgresFixture(t *testing.T, values [][]byte, oid uint32, deny, stall bool, started ...chan<- struct{}) (string, []byte) {
+	rows := make([][][]byte, len(values))
+	for i, v := range values {
+		rows[i] = [][]byte{v}
+	}
+	return postgresRowsFixture(t, rows, []pgproto3.FieldDescription{{Name: []byte("appointment"), DataTypeOID: oid, DataTypeSize: -1, TypeModifier: -1}}, `SELECT "appointment" FROM "public"."observed" WHERE "status" = $1 LIMIT `, deny, stall, started...)
+}
+func postgresRowsFixture(t *testing.T, values [][][]byte, fields []pgproto3.FieldDescription, queryPrefix string, deny, stall bool, started ...chan<- struct{}) (string, []byte) {
 	t.Helper()
 	ca := newAuthority(t)
 	pair := ca.leaf(t, nil, []string{"localhost"})
@@ -74,7 +81,7 @@ func postgresFixture(t *testing.T, values [][]byte, oid uint32, deny, stall bool
 					switch m := message.(type) {
 					case *pgproto3.Parse:
 						// The independent fixture accepts only a bound read of its synthetic view.
-						if m.Query != `SELECT "appointment" FROM "public"."observed" WHERE "status" = $1 LIMIT 10001` && !strings.HasPrefix(m.Query, `SELECT "appointment" FROM "public"."observed" WHERE "status" = $1 LIMIT `) {
+						if !strings.HasPrefix(m.Query, queryPrefix) {
 							t.Errorf("unexpected query shape")
 						}
 						backend.Send(&pgproto3.ParseComplete{})
@@ -84,7 +91,7 @@ func postgresFixture(t *testing.T, values [][]byte, oid uint32, deny, stall bool
 						}
 						backend.Send(&pgproto3.BindComplete{})
 					case *pgproto3.Describe:
-						backend.Send(&pgproto3.RowDescription{Fields: []pgproto3.FieldDescription{{Name: []byte("appointment"), DataTypeOID: oid, DataTypeSize: -1, TypeModifier: -1}}})
+						backend.Send(&pgproto3.RowDescription{Fields: fields})
 					case *pgproto3.Execute:
 						if len(started) > 0 {
 							select {
@@ -104,7 +111,7 @@ func postgresFixture(t *testing.T, values [][]byte, oid uint32, deny, stall bool
 							backend.Send(&pgproto3.ErrorResponse{Severity: "ERROR", Code: "42501", Message: "synthetic-sensitive-driver-detail"})
 						} else {
 							for _, v := range values {
-								backend.Send(&pgproto3.DataRow{Values: [][]byte{v}})
+								backend.Send(&pgproto3.DataRow{Values: v})
 							}
 							backend.Send(&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")})
 						}

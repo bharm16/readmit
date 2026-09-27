@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/assertion"
+	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/localprofile"
@@ -38,7 +39,14 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil {
 		return nil, invalid
 	}
-	if d.Schema != TestSchema || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != OperatorVersion {
+	operatorVersion := OperatorVersion
+	if d.Schema == TestSchemaV2 {
+		operatorVersion = OperatorVersionV2
+	}
+	if (d.Schema != TestSchema && d.Schema != TestSchemaV2) || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.OperatorVersion != operatorVersion {
+		return nil, invalid
+	}
+	if d.Schema == TestSchemaV2 && (d.Checks.Schema != assertion.DatasetSchema || d.Bindings != (Bindings{})) {
 		return nil, invalid
 	}
 	if d.Limits.MaxSteps < 1 || d.Limits.MaxSteps > 256 || d.Limits.MaxBytes < 1 || d.Limits.MaxBytes > MaxBytes || d.Limits.DeadlineMS < 1 || d.Limits.DeadlineMS > 3600000 || len(d.Steps) < 1 || len(d.Steps) > d.Limits.MaxSteps {
@@ -48,11 +56,31 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 	if err != nil {
 		return nil, errors.New("generation requires an explicit base instant")
 	}
+	if d.Schema == TestSchema {
+		var fields struct {
+			Datasets []map[string]jsontext.Value `json:"datasets"`
+		}
+		if json.Unmarshal(raw, &fields) != nil {
+			return nil, invalid
+		}
+		for _, ds := range fields.Datasets {
+			if _, ok := ds["namespace"]; ok {
+				return nil, invalid
+			}
+			if _, ok := ds["projection"]; ok {
+				return nil, invalid
+			}
+		}
+	}
 	canonical, err := encode(d)
 	if err != nil {
 		return nil, err
 	}
-	p := &Plan{document: PlanDocument{Schema: PlanSchema, TestIdentity: Digest(canonical), Test: d, Environment: d.Environment, Generation: generation, Resolution: map[string]string{}}, files: map[string][]byte{"test.json": canonical}}
+	planSchema := PlanSchema
+	if d.Schema == TestSchemaV2 {
+		planSchema = PlanSchemaV2
+	}
+	p := &Plan{document: PlanDocument{Schema: planSchema, TestIdentity: Digest(canonical), Test: d, Environment: d.Environment, Generation: generation, Resolution: map[string]string{}}, files: map[string][]byte{"test.json": canonical}}
 	total := len(canonical)
 	resolve := func(r Reference, schema string) ([]byte, error) {
 		b, ok := supplied[r.File]
@@ -317,10 +345,25 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 	}
 	for _, ds := range d.Datasets {
 		c := ds.Completion
-		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind) || c.HorizonMS < 1 || c.HorizonMS > d.Limits.DeadlineMS || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
+		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources", "typed-rows"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind) || c.HorizonMS < 1 || c.HorizonMS > d.Limits.DeadlineMS || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
 			return nil, invalid
 		}
 		if c.Kind == "ack-responses" && (ds.Source != "legacy-ack" || ds.Kind != "v2-messages" || ds.Phase != "after") {
+			return nil, invalid
+		}
+		if ds.Kind == "typed-rows" {
+			if d.Schema != TestSchemaV2 || !identifier.MatchString(ds.Namespace) || !hash.MatchString(ds.Source) || ds.Projection == nil || c.Kind != "bounded-horizon" {
+				return nil, invalid
+			}
+			raw, err := resolve(*ds.Projection, dataset.ProjectionSchema)
+			if err != nil {
+				return nil, err
+			}
+			projection, err := dataset.DecodeProjection(raw)
+			if err != nil || projection.Limits.MaxRows > c.MaxRecords || projection.Limits.MaxBytes > c.MaxBytes || projection.Limits.TimeoutMS > c.HorizonMS {
+				return nil, invalid
+			}
+		} else if ds.Namespace != "" || ds.Projection != nil {
 			return nil, invalid
 		}
 		datasets[ds.ID] = ds
@@ -333,17 +376,31 @@ func Compile(raw []byte, supplied map[string][]byte, generation Generation) (*Pl
 			}
 		}
 	}
-	checkBytes, err := resolve(d.Checks, assertion.Schema)
-	if err != nil {
-		return nil, err
-	}
-	checks, err := assertion.Decode(checkBytes)
-	if err != nil {
-		return nil, err
-	}
-	for _, a := range checks.Assertions {
-		if err := validateBinding(a, d.Bindings, occurrences); err != nil {
+	if d.Checks.Schema == assertion.DatasetSchema && d.Schema == TestSchemaV2 {
+		raw, err := resolve(d.Checks, assertion.DatasetSchema)
+		if err != nil {
 			return nil, err
+		}
+		set, err := assertion.DecodeDatasets(raw)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateTypedBindings(set.Document(), d, p.files); err != nil {
+			return nil, err
+		}
+	} else {
+		checkBytes, err := resolve(d.Checks, assertion.Schema)
+		if err != nil {
+			return nil, err
+		}
+		checks, err := assertion.Decode(checkBytes)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range checks.Assertions {
+			if err := validateBinding(a, d.Bindings, occurrences); err != nil {
+				return nil, err
+			}
 		}
 	}
 	names := make([]string, 0, len(p.files))

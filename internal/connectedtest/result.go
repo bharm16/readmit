@@ -89,30 +89,14 @@ func Evaluate(ctx context.Context, p *Plan, execution Execution, reader Evidence
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if p == nil || reader == nil || !identifier.MatchString(execution.Instance) || !short(execution.Engine) || !slices.Contains([]string{"complete", "incomplete", "failed", "cancelled", "uncertain"}, execution.State) || !slices.Contains([]string{"operator-declared", "complete", "failed", "unknown"}, execution.Setup) || !slices.Contains([]string{"not-requested", "complete", "failed", "unknown"}, execution.Cleanup) {
+	if reader == nil {
 		return nil, invalid
 	}
+	if err := validateExecution(p, execution); err != nil {
+		return nil, err
+	}
 	d := p.document.Test
-	attempted := map[string]bool{}
-	seenAttempts := map[string]bool{}
 	uncertain := false
-	for _, a := range execution.Attempts {
-		i := slices.IndexFunc(p.document.Effects, func(e Effect) bool { return e.Step == a.Step && e.Kind == a.Kind })
-		if i < 0 || seenAttempts[a.Step] || !slices.Contains([]string{"complete", "failed", "unknown", "not-attempted"}, a.Outcome) {
-			return nil, invalid
-		}
-		seenAttempts[a.Step] = true
-		attempted[a.Step] = a.Outcome == "complete"
-		uncertain = uncertain || a.Uncertain || a.Outcome != "complete"
-	}
-	if execution.State == "complete" {
-		if (d.Setup.Kind == "fixture-reset" || d.Setup.Plan != nil) && execution.Setup != "complete" || d.Setup.Cleanup != nil && execution.Cleanup != "complete" {
-			return nil, errors.New("required setup or cleanup was not completed")
-		}
-		if len(attempted) != len(d.Steps) || uncertain || execution.Setup == "failed" || execution.Setup == "unknown" || execution.Cleanup == "failed" || execution.Cleanup == "unknown" {
-			return nil, errors.New("complete execution requires settled effects, setup and cleanup")
-		}
-	}
 	r := &Result{plan: p, files: map[string][]byte{}, document: ResultDocument{Schema: ResultSchema, PlanIdentity: p.Identity(), CheckIdentity: d.Checks.SHA256, Environment: p.document.Environment, Execution: execution}}
 	for n, b := range p.Files() {
 		r.files["plan/"+n] = b
@@ -356,4 +340,33 @@ func (r *Result) Reanalyze(ctx context.Context, instance string) (Analysis, erro
 	}
 	a.Identity = Digest(b)
 	return a, nil
+}
+
+func validateExecution(p *Plan, execution Execution) error {
+	if p == nil || !identifier.MatchString(execution.Instance) || !short(execution.Engine) || !slices.Contains([]string{"complete", "incomplete", "failed", "cancelled", "uncertain"}, execution.State) || !slices.Contains([]string{"operator-declared", "complete", "failed", "unknown"}, execution.Setup) || !slices.Contains([]string{"not-requested", "complete", "failed", "unknown"}, execution.Cleanup) {
+		return invalid
+	}
+	d := p.document.Test
+	attempted := map[string]bool{}
+	seenAttempts := map[string]bool{}
+	uncertain := false
+	for _, a := range execution.Attempts {
+		i := slices.IndexFunc(p.document.Effects, func(e Effect) bool { return e.Step == a.Step && e.Kind == a.Kind })
+		if i < 0 || seenAttempts[a.Step] || !slices.Contains([]string{"complete", "failed", "unknown", "not-attempted"}, a.Outcome) {
+			return invalid
+		}
+		seenAttempts[a.Step] = true
+		attempted[a.Step] = a.Outcome == "complete"
+		uncertain = uncertain || a.Uncertain || a.Outcome != "complete"
+	}
+	if execution.State == "complete" {
+		if (d.Setup.Kind == "fixture-reset" || d.Setup.Plan != nil) && execution.Setup != "complete" || d.Setup.Cleanup != nil && execution.Cleanup != "complete" {
+			return errors.New("required setup or cleanup was not completed")
+		}
+		if len(attempted) != len(d.Steps) || uncertain || execution.Setup == "failed" || execution.Setup == "unknown" || execution.Cleanup == "failed" || execution.Cleanup == "unknown" {
+			return errors.New("complete execution requires settled effects, setup and cleanup")
+		}
+	}
+
+	return nil
 }

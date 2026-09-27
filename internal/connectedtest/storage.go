@@ -14,7 +14,7 @@ var planFamily = artifactdir.Family{Layout: artifactdir.Layout{Noun: "connected 
 var resultFamily = artifactdir.Family{Layout: artifactdir.Layout{Noun: "connected result", AllowedDirectories: []string{"plan", "plan/dependencies", "plan/inputs", "observations"}, Nested: []string{"legacy"}, RequiredFiles: []string{"result.json", "identity.sha256"}, AllowFile: func(string) bool { return true }, MaxFiles: 20000, MaxFileBytes: MaxBytes, MaxBytes: 256 << 20}, Seal: artifactdir.DirectoryHash(ResultSchema)}
 
 func (p *Plan) Write(ctx context.Context, output string) error {
-	_, err := artifactdir.Write(ctx, output, planFamily, artifactdir.Durable, p.Files())
+	_, err := artifactdir.Write(ctx, output, planFamilyFor(p.document.Schema), artifactdir.Durable, p.Files())
 	return err
 }
 func OpenPlan(directory string) (*Plan, error) {
@@ -22,7 +22,13 @@ func OpenPlan(directory string) (*Plan, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !sealed(PlanSchema, files) {
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 {
+		return nil, invalid
+	}
+	if !sealed(declared.Schema, files) {
 		return nil, errors.New("connected plan identity mismatch")
 	}
 	delete(files, "identity.sha256")
@@ -33,7 +39,7 @@ func sealed(schema string, files map[string][]byte) bool {
 }
 func readPlan(files map[string][]byte) (*Plan, error) {
 	var d PlanDocument
-	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema {
+	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 {
 		return nil, invalid
 	}
 	supplied := map[string][]byte{}
@@ -79,6 +85,9 @@ func references(d Test) []Reference {
 		}
 	}
 	for _, ds := range d.Datasets {
+		if ds.Projection != nil {
+			refs = append(refs, *ds.Projection)
+		}
 		if ds.Completion.Barrier != nil {
 			refs = append(refs, *ds.Completion.Barrier)
 		}
@@ -95,4 +104,10 @@ func PrepareDirectory(directory string, g Generation) (*Plan, error) {
 		return nil, err
 	}
 	return Compile(files["test.json"], files, g)
+}
+
+func planFamilyFor(schema string) artifactdir.Family {
+	f := planFamily
+	f.Seal = artifactdir.DirectoryHash(schema)
+	return f
 }

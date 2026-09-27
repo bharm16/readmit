@@ -76,8 +76,9 @@ func encodeEvidence(record Evidence) ([]byte, error) {
 // rewritten: original evidence is immutable, and a second collection writes a
 // second snapshot beside the first rather than replacing it.
 type snapshot struct {
-	directory string
-	root      *os.Root
+	recordDecision func(sendpolicy.Decision) error
+	directory      string
+	root           *os.Root
 }
 
 // openSnapshot reserves and creates the snapshot directory. The destination
@@ -132,6 +133,9 @@ func (s *snapshot) retain(index int, material map[string][]byte, record []byte) 
 // retainDecision keeps the destination decision an HTTP observation was made
 // under beside the material it governed, before that decision is acted on.
 func (s *snapshot) retainDecision(decision sendpolicy.Decision) error {
+	if s.recordDecision != nil {
+		return s.recordDecision(decision)
+	}
 	return sendpolicy.WriteDecision(filepath.Join(s.directory, "decision.json"), decision)
 }
 

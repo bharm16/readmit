@@ -37,11 +37,12 @@ func newReader(ctx context.Context, source Source, retained *snapshot, options O
 // taken from the environment: an observation reads the endpoint an operator
 // selected or it reads nothing.
 type httpReader struct {
-	extraction Extraction
-	endpoint   HTTP
-	client     *http.Client
-	header     string
-	locator    secret.Locator
+	datasetRead bool
+	extraction  Extraction
+	endpoint    HTTP
+	client      *http.Client
+	header      string
+	locator     secret.Locator
 	// value is the credential this command resolved, held for the duration of
 	// the command that resolved it and never written anywhere. It is resolved
 	// once, on the first read that needs it.
@@ -219,6 +220,9 @@ func (r *httpReader) once(ctx context.Context, value *secret.Value) (attempt, bo
 		return failure(taken, observewindow.SampleStale, "the response states an age past the declared freshness bound, so it describes state from before this window"), false
 	}
 	taken.evidence = map[string][]byte{"body": body}
+	if r.datasetRead && response.Header.Get("Link") != "" {
+		return failure(taken, observewindow.SampleTruncated, "linked HTTP result is not a complete dataset snapshot"), false
+	}
 	keys, err := divide(r.extraction, body)
 	if err != nil {
 		return failure(taken, observewindow.SampleAmbiguous, err.Error()), false
