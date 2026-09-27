@@ -1,0 +1,30 @@
+{
+  "schema": "readmit-independent-lab-oracle/v1",
+  "v2_control_order": [
+    "LAB-S12",
+    "LAB-S13"
+  ],
+  "v2_sender": "OIE-LAB",
+  "appointment_start": "2030-01-02T10:00:00Z",
+  "appointment_status": "booked",
+  "v2_patient_reference": "Patient/lab-patient-01",
+  "native_patient_reference": "Patient/lab-native-patient-01",
+  "order_reference": "ServiceRequest/lab-order-01",
+  "observation_values": [
+    "100",
+    "140"
+  ],
+  "patient_family": "Lark",
+  "encounter_status": "in-progress",
+  "late_observation_horizon_seconds": 2.0,
+  "observation_records": {
+    "lab-observation-1": {
+      "value": "100",
+      "code": "Fictional glucose"
+    },
+    "lab-observation-2": {
+      "value": "140",
+      "code": "Fictional sodium"
+    }
+  }
+}

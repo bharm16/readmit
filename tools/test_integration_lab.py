@@ -121,13 +121,19 @@ class EvidenceExportTests(unittest.TestCase):
             path.unlink();path.symlink_to('/etc/hosts')
             with self.assertRaises(ValueError):evidence.read_files(directory)
 
-class LiveEvidenceIntegrityTests(unittest.TestCase):
-    @unittest.skipUnless(__import__('os').environ.get('READMIT_LAB_EVIDENCE'), 'requires actual acquired lab evidence')
+class AcquiredEvidenceIntegrityTests(unittest.TestCase):
     def test_acquisition_removal_and_mutation_cannot_remain_qualified(self):
+        import hashlib
         import os
         from independent_lab import evidence
-        files=evidence.read_files(os.environ['READMIT_LAB_EVIDENCE'])
+        retained=Path(__file__).parent.parent/'testdata/integration-lab/qualification/recreation-20260927'
+        directory=Path(os.environ.get('READMIT_LAB_EVIDENCE',retained))
+        files=evidence.read_files(directory)
         self.assertTrue(evidence.verified_export(files))
+        manifest=json.loads((directory/'manifest.json').read_text())
+        self.assertEqual(manifest['schema'],'readmit-independent-lab-evidence/v1')
+        self.assertIs(manifest['qualified'],True)
+        self.assertEqual(manifest['files'],{name:{'sha256':hashlib.sha256(raw).hexdigest(),'bytes':len(raw)} for name,raw in files.items()})
         for name in ['qualification.json','duplicate-positive-observations.json','duplicate-positive-v2v2-export.xml','duplicate-positive-v2fhir-export.xml']:
             damaged=dict(files);del damaged[name]
             with self.assertRaises((ValueError,KeyError)):evidence.verified_export(damaged)

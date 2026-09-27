@@ -1,0 +1,1 @@
+- Retained a fresh isolated OIE/HAPI lab recreation with all three routes, 24 actual defect revisions, authentication checks and verified teardown. Offline lab tests now reopen the complete synthetic acquisitions and reject missing or changed evidence.
