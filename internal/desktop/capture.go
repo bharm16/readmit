@@ -339,7 +339,16 @@ func (a *App) sourceWork(_ context.Context, request SourceWorkRequest) (evidence
 	if err != nil {
 		return evidencesource.Source{}, evidencesource.Options{}, err
 	}
+	a.reach(reachingTarget{name: source.Name, kind: ConnectionSource, destination: sourceWhere(source)})
 	return source, options, nil
+}
+
+// sourceWhere is where a registered source is read from, as it declares it.
+func sourceWhere(source evidencesource.Source) string {
+	if source.Address != "" {
+		return source.Address
+	}
+	return source.Root
 }
 
 // ReceiverPolicyRequest saves a declarative responder policy.
@@ -679,12 +688,18 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 			return CaptureSessionResult{State: Failed, Reason: err.Error(), Phase: CaptureFailed}
 		}
 		output := filepath.Join(root, request.OutputName)
+		// A capture reaches whatever connects to the port it listens on: it is
+		// named by the case it writes, at the address it bound.
+		listening := func(bound string) {
+			a.reach(reachingTarget{name: request.OutputName, kind: ConnectionSource, destination: bound})
+		}
 
 		switch request.Kind {
 		case "listen":
 			obsName := observationName(request)
 			cfg := listenConfig(request, output, filepath.Join(root, obsName))
-			cfg.Listening = a.reportCaptureProgress("listen")
+			report := a.reportCaptureProgress("listen")
+			cfg.Listening = func(bound string) error { listening(bound); return report(bound) }
 			result, serveErr := operation.StartListen(ctx, cfg)
 			out = CaptureSessionResult{
 				BoundAddress:    result.BoundAddress,
@@ -702,7 +717,7 @@ func (a *App) StartCapture(request CaptureRequest) CaptureSessionResult {
 				return CaptureSessionResult{State: Failed, Reason: err.Error(), Phase: CaptureFailed, Preview: &preview}
 			}
 			report := a.reportCaptureProgress("collect")
-			cfg.Listening = func(bound string, _ collection.Policy) error { return report(bound) }
+			cfg.Listening = func(bound string, _ collection.Policy) error { listening(bound); return report(bound) }
 			result, serveErr := operation.StartCollect(ctx, cfg)
 			out = CaptureSessionResult{
 				BoundAddress: result.BoundAddress,

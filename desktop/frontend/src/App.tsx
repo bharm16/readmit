@@ -395,6 +395,13 @@ export default function App() {
   const [startUpdate, setStartUpdate] = useState(false);
   // Add observation opened from Security's Add connection returns there.
   const [observingFromSecurity, setObservingFromSecurity] = useState(false);
+  // The connection Security selects when a setup started there comes back
+  // saved, and the setups Security starts on the Team, Runners and License
+  // pages: each new count starts that page's setup once.
+  const [securityReturn, setSecurityReturn] = useState<string | undefined>(undefined);
+  const [setupFromSecurity, setSetupFromSecurity] = useState<null | "team" | "operator" | "portal" | "runner">(null);
+  const [runnerPath, setRunnerPath] = useState<string | undefined>(undefined);
+  const [setupRequests, setSetupRequests] = useState({ team: 0, operator: 0, portal: 0, runner: 0 });
   const [packagesOpen, setPackagesOpen] = useState(false);
   // The inspector width each project was last given, in rem. The shown width
   // is clamped to the room there is now without overwriting the wider choice.
@@ -1939,18 +1946,25 @@ export default function App() {
     go: (objectId, view) => open({ destination: "environments", objectId, ...(view ? { view } : {}) }),
     back,
     busy,
-    onAdded: () => open({ destination: "settings", view: "security" }),
+    onAdded: (ref) => returnToSecurity(ref),
     capture: captureBinding,
     onObservationClosed: () => {
       setCaptureBinding(null);
       if (observingFromSecurity) {
         setObservingFromSecurity(false);
-        open({ destination: "settings", view: "security" });
+        returnToSecurity();
       } else back();
+    },
+    onObservationSaved: (id) => {
+      setCaptureBinding(null);
+      if (observingFromSecurity) {
+        setObservingFromSecurity(false);
+        returnToSecurity(`observation:${id}`);
+      } else open({ destination: "environments", objectId: `observation:${id}` });
     },
   });
 
-  const encryption = useEncryption({ root: place === "encryption" ? root : null, busy });
+  const encryption = useEncryption({ root: place === "encryption" ? root : null, busy, onChanged: () => void refreshListing() });
 
   // The shown test's or environment's own actions, for the palette.
   useOfferedActions(registerActions, place === "tests" && "palette" in tests ? tests.palette : null);
@@ -1965,15 +1979,31 @@ export default function App() {
 
   const openStorage = useCallback(() => openSettings("storage"), [openSettings]);
 
+  /** Back to Security from a setup it started: with the saved connection
+   * selected, or with nothing selected when the setup was closed unsaved. */
+  const returnToSecurity = (ref?: string) => {
+    setSecurityReturn(ref);
+    open({ destination: "settings", view: "security" });
+  };
+  const requestSetup = (which: keyof typeof setupRequests) => setSetupRequests((held) => ({ ...held, [which]: held[which] + 1 }));
+  const setupHandled = (which: keyof typeof setupRequests) => () => setSetupRequests((held) => ({ ...held, [which]: 0 }));
+  // A setup Security started ends with its first choice: a saved one returns
+  // to Security, a cancelled one stays on its page and forgets Security.
+  const configured = (which: "team" | "operator" | "portal" | "runner", ref: string) => (chosen: boolean) => {
+    if (setupFromSecurity !== which) return;
+    setSetupFromSecurity(null);
+    if (chosen) returnToSecurity(ref);
+  };
   /** Security's Add connection and Edit: the owner of that kind's setup. */
   const openConnection = (route: ConnectionRoute) => {
+    setSecurityReturn(undefined);
     switch (route.kind) {
       case "environment":
         open({ destination: "environments", ...(route.id ? { objectId: route.id } : {}), view: route.id ? "edit" : "add" });
         return;
       case "observation":
         if (route.id) {
-          open({ destination: "environments", objectId: `observation:${route.id}` });
+          open({ destination: "environments", objectId: `observation:${route.id}`, view: "edit" });
         } else {
           setCaptureBinding(null);
           setObservingFromSecurity(true);
@@ -1981,10 +2011,20 @@ export default function App() {
         }
         return;
       case "team":
+        setSetupFromSecurity(route.operator ? "operator" : "team");
+        requestSetup(route.operator ? "operator" : "team");
         openSettings("team");
         return;
       case "runner":
+        setRunnerPath(route.path);
+        setSetupFromSecurity("runner");
+        requestSetup("runner");
         openSettings("runners");
+        return;
+      case "portal":
+        setSetupFromSecurity("portal");
+        requestSetup("portal");
+        openSettings("license");
         return;
       case "license":
         openSettings("license");
@@ -3141,7 +3181,7 @@ export default function App() {
                 themes={described?.themes ?? ["system"]}
                 scales={described?.text_scales ?? [100]}
                 version={described?.version ?? ""}
-                canUpdate
+                build={described?.build}
                 onCheckUpdate={() => {
                   setStartUpdate(true);
                   openSettings("storage");
@@ -3149,18 +3189,30 @@ export default function App() {
               />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="license" className="task-panel view-panel" shown={settingsView === "license"}>
-              <OperationAccess />
+              <OperationAccess request={setupRequests.portal} onHandled={setupHandled("portal")} onConfigured={configured("portal", "portal")} />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="team" className="task-panel view-panel" shown={settingsView === "team"}>
-              <HubPanel workspace={root} entries={artifacts} />
+              <HubPanel
+                workspace={root}
+                entries={artifacts}
+                request={setupRequests.team}
+                onHandled={setupHandled("team")}
+                onConfigured={configured("team", "hub:client")}
+                operatorRequest={setupRequests.operator}
+                onOperatorHandled={setupHandled("operator")}
+                onOperatorConfigured={configured("operator", "hub:operator")}
+              />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="runners" className="task-panel view-panel" shown={settingsView === "runners"}>
-              <RunnerPanel />
+              <RunnerPanel request={setupRequests.runner} configPath={runnerPath} onHandled={setupHandled("runner")} onConfigured={configured("runner", "runner:config")} />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="security" className="task-panel view-panel" shown={settingsView === "security"}>
               {place === "settings" && settingsView === "security" ? (
                 <SecurityView
                   root={root}
+                  projectName={projectName}
+                  returnTo={securityReturn}
+                  onReturned={() => setSecurityReturn(undefined)}
                   busy={busy}
                   operations={described?.privacy.operations ?? []}
                   onOpen={openConnection}

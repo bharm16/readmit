@@ -48,6 +48,11 @@ export function ProtectionPanel({
   // answered for: a view of another file offers none of its controls.
   const [packView, setPackView] = useViewState<{ entry: string; result: ProtectionResult } | null>("ProtectionPanel.packView", null);
   const [packControl, setPackControl] = useViewState("ProtectionPanel.packControl", "");
+  // The key generation the chosen control had when it was chosen: a pack
+  // under any other generation is refused, and a rotation seen on reading the
+  // file again withdraws the choice.
+  const [packGeneration, setPackGeneration] = useViewState("ProtectionPanel.packGeneration", 0);
+  const [packNotice, setPackNotice] = useViewState<string | null>("ProtectionPanel.packNotice", null);
   const [packSources, setPackSources] = useViewState<string[]>("ProtectionPanel.packSources", []);
   const [packOutput, setPackOutput] = useViewState("ProtectionPanel.packOutput", "");
   const [packed, setPacked] = useViewState<ProtectionPackageResult | null>("ProtectionPanel.packed", null);
@@ -72,6 +77,23 @@ export function ProtectionPanel({
     if (confirmingDiscard) keepPackage.current?.focus();
   }, [confirmingDiscard]);
 
+  // Opening Packages reads the pack task's file again, since its controls may
+  // have been rotated in Encryption meanwhile.
+  useEffect(() => {
+    if (!workspace || !packDocument) return;
+    const entry = packDocument;
+    void packReads.run("reading", async (current) => {
+      const result = await readProtection(workspace, entry);
+      if (!current()) return;
+      setPackView({ entry, result });
+      const now = result.document?.controls.find((control) => control.name === packControl);
+      if (packControl && now && now.generation !== packGeneration) {
+        setPackControl("");
+        setPackNotice("Generation changed; choose the control again.");
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Chooses the file the pack task writes under and reads it for its own
    * controls. The control chosen for another file is withdrawn with it. */
   async function choosePackDocument(entry: string) {
@@ -93,6 +115,7 @@ export function ProtectionPanel({
         workspace,
         entry: packDocument,
         control: chosenControl,
+        generation: packGeneration,
         sources: packSources,
         ...(packOutput ? { output: packOutput } : {}),
       }));
@@ -158,12 +181,17 @@ export function ProtectionPanel({
       {packShown?.reason ? <p>{packShown.reason}</p> : null}
       <label htmlFor="protection-pack-control">Protection control</label>
       <select id="protection-pack-control" value={chosenControl} disabled={busy} aria-describedby="protection-pack-control-hint"
-        onChange={(e) => setPackControl(e.target.value)}>
+        onChange={(e) => {
+          setPackControl(e.target.value);
+          setPackGeneration(writable.find((control) => control.name === e.target.value)?.generation ?? 0);
+          setPackNotice(null);
+        }}>
         <option value="">Select a control…</option>
         {writable.map((control) => (
           <option key={control.name} value={control.name}>{control.name}</option>
         ))}
       </select>
+      {packNotice ? <p role="alert">{packNotice}</p> : null}
       <p id="protection-pack-control-hint" className="hint">The active controls of the protection file chosen for this package.</p>
       <label htmlFor="protection-pack-sources">Package contents</label>
       <select id="protection-pack-sources" value="" disabled={busy} aria-describedby="protection-pack-sources-hint"

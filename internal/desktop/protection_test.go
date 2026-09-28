@@ -331,3 +331,38 @@ func TestProtectionWritesAdmitTheAuthorAndReadsStayFree(t *testing.T) {
 		t.Fatalf("a policy-less viewer could not pack a local copy: %+v", packed)
 	}
 }
+
+// A package is written only under the key generation its control was chosen
+// at: a rotation recorded after the person chose the control refuses the
+// pack with the reason, before any source or key is read, and nothing is
+// written; choosing it again at its new generation packs.
+func TestPackProtectedPackageRefusesAGenerationThatChangedSinceItWasChosen(t *testing.T) {
+	app := workspaceApp(t)
+	root, entry := protectionDocument(t, app, keyProgram(t, "test-only-not-a-real-key-4f8c1d2e6b0a9357", ""))
+	shown := app.ReadProtection(root, entry)
+	if shown.Document == nil || shown.Document.Controls[0].Generation != 1 {
+		t.Fatalf("the chosen control: %+v", shown)
+	}
+	chosen := uint64(shown.Document.Controls[0].Generation)
+	if rotated := app.RotateProtectionControl(root, entry, "lab-evidence"); rotated.State != desktop.Completed {
+		t.Fatalf("rotation: %+v", rotated)
+	}
+
+	refused := app.PackProtectedPackage(desktop.ProtectionPackRequest{
+		Workspace: root, Entry: entry, Control: "lab-evidence", Generation: chosen, Sources: []string{"evidence.txt"}, Output: "transfer",
+	})
+	if refused.State != desktop.Failed || refused.Package != nil ||
+		refused.Reason != "the control's key generation changed since it was chosen; nothing was written; choose it again" {
+		t.Fatalf("a pack under a generation rotated since it was chosen: %+v", refused)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "transfer")); !os.IsNotExist(err) {
+		t.Fatalf("a refused pack wrote its output: %v", err)
+	}
+
+	again := app.PackProtectedPackage(desktop.ProtectionPackRequest{
+		Workspace: root, Entry: entry, Control: "lab-evidence", Generation: chosen + 1, Sources: []string{"evidence.txt"}, Output: "transfer",
+	})
+	if again.State != desktop.Completed || again.Package == nil || again.Package.Generation != 2 {
+		t.Fatalf("a pack under the generation chosen again: %+v", again)
+	}
+}

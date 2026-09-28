@@ -113,6 +113,7 @@ func (r *PrivacyReviewResult) refuse(state State, reason string) { r.State, r.Re
 // receivers on the loopback, and never to a configured endpoint.
 func (a *App) DeriveExportReview(request PrivacyReviewRequest) PrivacyReviewResult {
 	return runNamed[PrivacyReviewResult, *PrivacyReviewResult](a, profiles["DeriveExportReview"], func(ctx context.Context) PrivacyReviewResult {
+		a.reach(reachingTarget{name: specNamed(request.Workspace, request.Spec, privacyOperation), kind: ConnectionRun})
 		return deriveExportReview(ctx, request)
 	})
 }
@@ -268,6 +269,7 @@ func (r *PrivacyExportResult) refuse(state State, reason string) { r.State, r.Re
 // starts itself, and their configuration is inside the packet it writes.
 func (a *App) ExportDerivedPacket(request PrivacyExportRequest) PrivacyExportResult {
 	return runNamed[PrivacyExportResult, *PrivacyExportResult](a, profiles["ExportDerivedPacket"], func(ctx context.Context) PrivacyExportResult {
+		a.reach(reachingTarget{name: activityTitle(privacyOperation), kind: ConnectionRun})
 		return exportDerivedPacket(ctx, request)
 	})
 }

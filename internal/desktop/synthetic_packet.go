@@ -124,6 +124,7 @@ func (r *SyntheticPacketResult) refuse(state State, reason string) { r.State, r.
 // stops the fixture executions; the partial folder never verifies.
 func (a *App) GenerateSyntheticPacket(request SyntheticPacketRequest) SyntheticPacketResult {
 	return runNamed[SyntheticPacketResult, *SyntheticPacketResult](a, profiles["GenerateSyntheticPacket"], func(ctx context.Context) SyntheticPacketResult {
+		a.reach(reachingTarget{name: request.Scenario, kind: ConnectionRun})
 		return generateSyntheticPacket(ctx, request)
 	})
 }

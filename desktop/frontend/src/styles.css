@@ -2875,6 +2875,13 @@ h2 .count {
     outline-offset: -2px;
   }
 
+  /* A launcher row and an icon button draw no border of their own, so their
+     focus is the system's highlight rather than a forced accent. */
+  .launcher-row:focus-visible,
+  .icon-button button:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
   .task-tabs > button[role="tab"][aria-selected="true"],
   .view-tabs > button[role="tab"][aria-selected="true"] {
     border-bottom-color: Highlight;

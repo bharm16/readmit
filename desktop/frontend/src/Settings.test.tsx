@@ -6,9 +6,9 @@
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CatalogItem, ConnectionRow, Preferences } from "./bindings";
+import type { CatalogItem, ConnectionRow, ItemDraft, Preferences } from "./bindings";
 import { renderApp } from "./testkit/app";
-import { folderWithCase } from "./testkit/fixtures";
+import { folderWithCase, shellResult } from "./testkit/fixtures";
 import { goTo, goToView, page } from "./testkit/navigation";
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -134,14 +134,32 @@ test("a failed preferences save keeps the sheet open with the chosen values", as
   expect((within(sheet).getByLabelText("Reviewer") as HTMLInputElement).value).toBe("Avery QA");
 });
 
-test("About shows the application's version", async () => {
+test("About shows the application's version, build, build time and release channel", async () => {
   const user = userEvent.setup();
-  await renderApp();
+  const shell = shellResult();
+  shell.shell!.build = { ...shell.shell!.build, modified: true };
+  await renderApp({ Shell: () => shell });
   await goToView(user, "Settings", "General");
   await user.click(page().getByRole("button", { name: "More general settings" }));
   await user.click(await screen.findByRole("menuitem", { name: "About" }));
   const about = await screen.findByRole("dialog", { name: "About Readmit" });
-  expect(within(about).getByText("0.0.0-test")).toBeTruthy();
+  const value = (label: string) => Array.from(about.querySelectorAll("dt")).find((term) => term.textContent === label)?.nextElementSibling?.textContent;
+  expect(value("Version")).toBe("0.0.0-test");
+  expect(value("Build")).toBe("3527e801aa0b · modified");
+  expect(value("Built")).toBeTruthy();
+  expect(value("Release")).toBe("Development preview, unsigned");
+});
+
+test("About shows no Build or Built row for a build without a version-control stamp", async () => {
+  const user = userEvent.setup();
+  const shell = shellResult();
+  shell.shell!.build = { version: "0.0.0-test", modified: false, channel: "Development preview, unsigned" };
+  await renderApp({ Shell: () => shell });
+  await goToView(user, "Settings", "General");
+  await user.click(page().getByRole("button", { name: "More general settings" }));
+  await user.click(await screen.findByRole("menuitem", { name: "About" }));
+  const about = await screen.findByRole("dialog", { name: "About Readmit" });
+  expect(Array.from(about.querySelectorAll("dt")).map((term) => term.textContent)).toEqual(["Application", "Version", "Release"]);
 });
 
 test("the security inventory lists saved environments, sources and the team hub with their actual states", async () => {
@@ -238,20 +256,24 @@ test("Disconnect appears only for a connected Hub session", async () => {
   await waitFor(() => expect(rowsOf(table)[0]).toEqual(["Team hub", "team.example.test", "Disconnected"]));
 });
 
-test("Add connection opens the owner's setup for each kind and a saved environment returns to Security", async () => {
+test("closing Add environment unsaved returns to Security with no connection selected", async () => {
   const user = userEvent.setup();
-  await renderApp({ SelectWorkspace: () => folderWithCase() });
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ListConnections: (context) => ({ state: "completed", context, rows: [QA] }),
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: true, draft: NEW_ENVIRONMENT }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+  });
   await openProject(user);
-  await goToView(user, "Settings", "Security");
-  await user.click(await page().findByRole("button", { name: "Add connection" }));
-  await user.click(await screen.findByRole("menuitem", { name: "Team" }));
-  expect(await page().findByRole("tab", { name: "Team", selected: true }).catch(() => page().findByRole("heading", { name: "Settings" }))).toBeTruthy();
-  await goToView(user, "Settings", "Security");
+  await openSecurity(user);
   await user.click(await page().findByRole("button", { name: "Add connection" }));
   await user.click(await screen.findByRole("menuitem", { name: "Environment" }));
   const sheet = await screen.findByRole("dialog", { name: "Add environment" });
   await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy());
+  expect(await page().findByRole("table", { name: "Connections" })).toBeTruthy();
+  expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
 test("Add connection's Source opens Add observation, and closing it unsaved returns to Security", async () => {
@@ -377,7 +399,7 @@ test("an unreadable project catalog is said, not shown as no connections", async
   expect(page().queryByText("No connections")).toBeNull();
 });
 
-test("Edit on an environment connection opens its connection sheet and returns to Security", async () => {
+test("Edit on an environment connection opens its connection sheet and returns to it after saving", async () => {
   const user = userEvent.setup();
   const environment: CatalogItem = {
     ref: { kind: "environment", id: "qa", revision: "1" },
@@ -392,6 +414,8 @@ test("Edit on an environment connection opens its connection sheet and returns t
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),
     ListConnections: (context) => ({ state: "completed", context, rows: [QA] }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: { kind: "environment", id: "qa", revision: "2" }, replayed: false, problems: [] }),
     OpenItemDraft: (request) => ({
       state: "completed",
       context: request.context,
@@ -410,8 +434,304 @@ test("Edit on an environment connection opens its connection sheet and returns t
   const table = await openSecurity(user);
   await user.click(await within(table).findByText("Scheduling QA"));
   await user.click(within(await screen.findByRole("dialog", { name: "Scheduling QA" })).getByRole("button", { name: "Edit" }));
-  const sheet = await screen.findByRole("dialog", { name: /Connection|Edit connection|Scheduling QA/ });
+  const sheet = await screen.findByRole("dialog", { name: "Edit connection" });
+  const port = within(sheet).getByRole("textbox", { name: "Port" });
+  await user.clear(port);
+  await user.type(port, "2580");
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  expect(facade.oneCall("SaveItem")[0]).toMatchObject({ kind: "environment", item: "qa" });
+  expect(await screen.findByRole("dialog", { name: "Scheduling QA" })).toBeTruthy();
+  expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
+});
+
+// ---------- Setup started from Security returns to its connection ----------
+
+/** A new environment as the facade's validated defaults start it. */
+const NEW_ENVIRONMENT: ItemDraft = {
+  environment: {
+    schema: "readmit-target/v3",
+    name: "",
+    test_endpoint: true,
+    address: "",
+    transport: "",
+    approved_transport: false,
+    classification: "unclassified",
+    connect_timeout: "2s",
+    message_timeout: "5s",
+    max_ack_bytes: 65536,
+  },
+};
+
+test("Add connection › Environment returns to its new connection after saving", async () => {
+  const user = userEvent.setup();
+  const NIGHTLY = connection({
+    ref: "environment:env-new",
+    name: "Nightly",
+    kind: "environment",
+    destination: "third-peer:2577",
+    state: "not-checked",
+    owner: { kind: "environment", object_id: "env-new" },
+    actions: ["edit"],
+  });
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ListConnections: (context) => ({ state: "completed", context, rows: [QA] }),
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: true, draft: NEW_ENVIRONMENT }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: { kind: "environment", id: "env-new", revision: "1" }, replayed: false, problems: [] }),
+  });
+  await openProject(user);
+  await openSecurity(user);
+  await user.click(await page().findByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Environment" }));
+  const sheet = await screen.findByRole("dialog", { name: "Add environment" });
+  await user.type(within(sheet).getByRole("textbox", { name: "Name" }), "Nightly");
+  await user.type(within(sheet).getByRole("textbox", { name: "Host" }), "third-peer");
+  await user.type(within(sheet).getByRole("textbox", { name: "Port" }), "2577");
+  await user.click(within(sheet).getByRole("radio", { name: "TCP/MLLP" }));
+  facade.reply({ ListConnections: (context) => ({ state: "completed", context, rows: [QA, NIGHTLY] }) });
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const detail = await screen.findByRole("dialog", { name: "Nightly" });
+  expect(within(detail).getByText("third-peer:2577")).toBeTruthy();
+  expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+});
+
+/** The saved Appointments observation, as the catalog lists it and its editor reads it. */
+const APPOINTMENTS: CatalogItem = {
+  ref: { kind: "observation", id: "appointments", revision: "rev-1" },
+  name: "Appointments",
+  created_at: null,
+  updated_at: null,
+  last_opened_at: null,
+  availability: "available",
+  capabilities: [],
+  summary: { observation: { source_type: "file-export", enabled: true, latest_collection: null } },
+};
+const APPOINTMENTS_DRAFT: ItemDraft = {
+  name: "Appointments",
+  observation: {
+    source: {
+      schema: "readmit-observation-source/v1",
+      source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+      enabled: true,
+      freshness: { max_age: "1h" },
+      extraction: { envelope: "csv", encoding: "utf-8", record_key: ["appointment"] },
+      file: { path: "exports/appointments.csv", max_bytes: 65536 },
+      http: null,
+      capture: null,
+    },
+    window: {
+      schema: "readmit-observation-window/v1",
+      source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+      watermark: { kind: "none", position: "" },
+      pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
+      completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
+    },
+  },
+};
+
+test("Edit on a source connection opens its observation editor and returns to it after saving", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ListConnections: (context) => ({ state: "completed", context, rows: [SOURCE, QA] }),
+    ListCatalog: (query) => {
+      const items = query.kind === "observation" ? [APPOINTMENTS] : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+    },
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, ref: request.ref, draft: APPOINTMENTS_DRAFT }),
+    ObservationHistory: (request) => ({ state: "completed", context: request.context, collections: [] }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    ObservationSupport: () => ({ state: "completed", support: [] }),
+    ObservationFields: (request) => ({ state: "completed", context: request.context, fields: ["appointment", "status"] }),
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: { kind: "observation", id: "appointments", revision: "rev-2" }, replayed: false, problems: [] }),
+  });
+  await openProject(user);
+  const table = await openSecurity(user);
+  await user.click(await within(table).findByText("Appointments"));
+  await user.click(within(await screen.findByRole("dialog", { name: "Appointments" })).getByRole("button", { name: "Edit" }));
+  const sheet = await screen.findByRole("dialog", { name: "Edit observation" });
+  const size = await within(sheet).findByRole("textbox", { name: "Maximum size (bytes)" });
+  await user.clear(size);
+  await user.type(size, "4096");
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  expect(facade.oneCall("SaveItem")[0]).toMatchObject({ kind: "observation", item: "appointments" });
+  const detail = await screen.findByRole("dialog", { name: "Appointments" });
+  expect(within(detail).getByText("records.example.test")).toBeTruthy();
+  expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+});
+
+test("Add connection › Team chooses a hub configuration and returns to the Team hub", async () => {
+  const user = userEvent.setup();
+  let choice: "cancelled" | "completed" = "cancelled";
+  const { facade } = await renderApp({
+    ListConnections: (context) => ({ state: "completed", context, rows: choice === "completed" ? [HUB, QA] : [QA] }),
+    ChooseHubConfig: () =>
+      choice === "completed"
+        ? { state: "completed", connected: false, authenticated: false, config_path: "/etc/readmit/hub-client.json", hub_url: "https://team.example.test" }
+        : { state: "cancelled", connected: false, authenticated: false },
+  });
+  // A cancelled choice leaves the person on Team with nothing chosen.
+  await openSecurity(user);
+  await user.click(await page().findByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Team" }));
+  await waitFor(() => expect(facade.callsTo("ChooseHubConfig").length).toBeGreaterThan(0));
+  expect(await page().findByRole("button", { name: "Team", current: "page" })).toBeTruthy();
+  expect(page().queryByRole("table", { name: "Connections" })).toBeNull();
+
+  // A completed choice returns to Security with the Team hub open.
+  choice = "completed";
+  const before = facade.callsTo("ChooseHubConfig").length;
+  await openSecurity(user);
+  await user.click(await page().findByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Team" }));
+  await waitFor(() => expect(facade.callsTo("ChooseHubConfig").length).toBeGreaterThan(before));
+  const detail = await screen.findByRole("dialog", { name: "Team hub" });
+  expect(within(detail).getByText("team.example.test")).toBeTruthy();
+  expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
+});
+
+test("Add connection › Runner returns to the runner once its configuration is read", async () => {
+  const user = userEvent.setup();
+  const RUNNER = connection({
+    ref: "runner:config",
+    name: "Runner lab",
+    kind: "runner",
+    destination: "hub.example.test:8443",
+    state: "not-checked",
+    owner: { kind: "runner" },
+    disclosure: "runner",
+    actions: ["edit"],
+    detail: { signed_in: false, config_path: "/etc/readmit-runner/config.json" },
+  });
+  const { facade } = await renderApp({
+    ListConnections: (context) => ({ state: "completed", context, rows: facade.callsTo("ReadRunnerConfig").length > 0 ? [RUNNER, QA] : [QA] }),
+    ReadRunnerConfig: () => ({
+      state: "completed",
+      config: { hub: "https://hub.example.test:8443", project: "alpha", environment: "lab", root: "/var/lib/readmit-runner/runs", update_engine: "NEXT", key: { command: "/usr/local/bin/reader", arguments: [] }, token: { command: "/usr/local/bin/reader", arguments: [] } },
+      engine: "readmit-engine/v1",
+      jobs: [],
+      queued: [],
+    }),
+  });
+  await openSecurity(user);
+  await user.click(await page().findByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Runner" }));
+  await user.type(await page().findByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
+  await user.click(page().getByRole("button", { name: "Inspect runner" }));
+  await waitFor(() => expect(facade.callsTo("ReadRunnerConfig")).toHaveLength(1));
+  const detail = await screen.findByRole("dialog", { name: "Runner lab" });
+  expect(within(detail).getByText("hub.example.test:8443")).toBeTruthy();
+  expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
+});
+
+test("Customer portal Edit chooses the destinations file and returns to the portal", async () => {
+  const user = userEvent.setup();
+  const PORTAL = connection({
+    ref: "portal",
+    name: "Customer portal",
+    kind: "portal",
+    destination: "Browser",
+    state: "not-checked",
+    owner: { kind: "license" },
+    disclosure: "portal",
+    actions: ["edit"],
+    detail: { signed_in: false, config_path: "/etc/readmit/destinations.json" },
+  });
+  const { facade } = await renderApp({
+    ListConnections: (context) => ({ state: "completed", context, rows: [PORTAL, QA] }),
+    ChooseCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: "https://portal.example.test", config_path: "/etc/readmit/destinations.json" }),
+  });
+  const table = await openSecurity(user);
+  await user.click(await within(table).findByText("Customer portal"));
+  await user.click(within(await screen.findByRole("dialog", { name: "Customer portal" })).getByRole("button", { name: "Edit" }));
+  await waitFor(() => expect(facade.callsTo("ChooseCommercialDestinations").length).toBeGreaterThan(0));
+  const detail = await screen.findByRole("dialog", { name: "Customer portal" });
+  expect(within(detail).getByText("/etc/readmit/destinations.json")).toBeTruthy();
+  expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
+});
+
+// ---------- General at every size, and what Security holds ----------
+
+test("choosing a text size keeps focus on Text size, and Cancel returns focus to Edit", async () => {
+  const user = userEvent.setup();
+  await renderApp();
+  await goToView(user, "Settings", "General");
+  const edit = page().getByRole("button", { name: "Edit" });
+  await user.click(edit);
+  const sheet = await screen.findByRole("dialog", { name: "General" });
+  const size = within(sheet).getByLabelText("Text size");
+  await user.selectOptions(size, "200");
+  expect(document.documentElement.style.getPropertyValue("--text-scale")).toBe("2");
+  expect(document.activeElement).toBe(size);
   await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy());
-  expect(await page().findByRole("table", { name: "Connections" })).toBeTruthy();
+  await user.click(await screen.findByRole("button", { name: "Discard" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "General" })).toBeNull());
+  expect(document.documentElement.style.getPropertyValue("--text-scale")).toBe("1");
+  await waitFor(() => expect(document.activeElement).toBe(page().getByRole("button", { name: "Edit" })));
+});
+
+test("with text size 200% Settings still offers every category", async () => {
+  const user = userEvent.setup();
+  await renderApp({ ReadPreferences: () => ({ state: "completed", preferences: { theme: "system", text_scale: 200 } }) });
+  await goToView(user, "Settings", "General");
+  await waitFor(() => expect(document.documentElement.style.getPropertyValue("--text-scale")).toBe("2"));
+  for (const category of ["General", "License", "Team", "Runners", "Security", "Storage"]) {
+    await goToView(user, "Settings", category);
+    expect(await page().findByRole("button", { name: category, current: "page" })).toBeTruthy();
+  }
+});
+
+test("a failed privacy save keeps the sheet and its values, and the sheet names the project", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    ListSearchSettings: () => ({
+      state: "completed",
+      cases: [{ case: "cancel-case", identity: "id-2", settings: { fields: ["SCH-1"], retention: "states", retain_until: null, expired: false } }],
+    }),
+    SaveSearchSettings: () => ({ state: "failed", reason: "The saved search settings cannot be written." }),
+  });
+  await openProject(user);
+  await goToView(user, "Settings", "Security");
+  await user.click(await page().findByRole("button", { name: "Edit" }));
+  const sheet = await screen.findByRole("dialog", { name: "Privacy" });
+  const project = Array.from(sheet.querySelectorAll("dt")).find((term) => term.textContent === "Project");
+  expect(project?.nextElementSibling?.textContent).toBe("workspace-under-test");
+  await user.type(within(sheet).getByLabelText("Field 1"), "-2");
+  await user.selectOptions(within(sheet).getByLabelText("Stored as"), "digests");
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  expect(await within(sheet).findByText("The saved search settings cannot be written.")).toBeTruthy();
+  expect(facade.callsTo("SaveSearchSettings")).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: "Privacy" })).toBe(sheet);
+  expect((within(sheet).getByLabelText("Field 1") as HTMLInputElement).value).toBe("SCH-1-2");
+  expect((within(sheet).getByLabelText("Stored as") as HTMLSelectElement).value).toBe("digests");
+  expect(within(sheet).getByRole("radio", { name: "Indefinitely" })).toHaveProperty("checked", true);
+});
+
+test("an active connection is still Active after going to Environments and back", async () => {
+  const user = userEvent.setup();
+  const active = connection({ ...QA, state: "active", checked_at: null, detail: { signed_in: false, operation: "target-check" } });
+  await renderApp({ SelectWorkspace: () => folderWithCase(), ListConnections: (context) => ({ state: "completed", context, rows: [active, SOURCE] }) });
+  await openProject(user);
+  let table = await openSecurity(user);
+  await waitFor(() => expect(rowsOf(table)[0]).toEqual(["Scheduling QA", "qa.example.test:2575", "Active"]));
+  await goTo(user, "Environments");
+  expect(await page().findByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  table = await openSecurity(user);
+  await waitFor(() => expect(rowsOf(table)[0]).toEqual(["Scheduling QA", "qa.example.test:2575", "Active"]));
+});
+
+test("Security holds its connections, privacy values and Encryption, and no Team, Runners, License or Protection panel", async () => {
+  const user = userEvent.setup();
+  await renderApp({ SelectWorkspace: () => folderWithCase(), ListConnections: (context) => ({ state: "completed", context, rows: [QA] }) });
+  await openProject(user);
+  await openSecurity(user);
+  for (const name of ["Team", "Runners", "Runner", "License", "Protection", "Encrypted packages"]) {
+    expect(page().queryByRole("region", { name })).toBeNull();
+  }
+  expect(page().getByRole("list", { name: "Encryption" })).toBeTruthy();
 });

@@ -188,6 +188,12 @@ func (a *App) ReexecuteReviewedEvidence(request ReexecutionSendRequest) Reexecut
 		if refused.state != "" {
 			return ReexecutionResult{State: refused.state, Reason: refused.reason}
 		}
+		inputs := plan.PinnedInputs()
+		test := ""
+		if spec, err := testrunner.DecodeSpec(inputs.Spec); err == nil {
+			test = spec.Name
+		}
+		a.reach(runReaching(savedRun{}, test, inputs.Configuration))
 		output := filepath.Join(root, destination.Name)
 		// The job is named while it is written, so the run panel's progress
 		// read tells a send in flight from one a crash interrupted.

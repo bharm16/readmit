@@ -15,6 +15,7 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/reduce"
+	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
@@ -107,6 +108,7 @@ func (a *App) StartReduction(request ReductionRequest) ReductionResult {
 		if declined.state != "" {
 			return declined.reduction()
 		}
+		a.reachTarget(prepared.root, request.Target, "", ConnectionEnvironment, prepared.target)
 		report, err := reduce.Run(ctx, prepared.request, prepared.oracle)
 		// A working folder no trial wrote into holds nothing: the engine
 		// refused the plan before its first trial, a reset let no trial run,
@@ -141,6 +143,10 @@ type preparedReduction struct {
 	oracle  *reduce.DurableOracle
 	// work is the working folder a run created, and empty for a preview.
 	work string
+	// root and target are the open workspace and the environment its trials
+	// reset and send to.
+	root   string
+	target replay.Target
 }
 
 func (a *App) prepareReduction(request ReductionRequest, createWork bool) (preparedReduction, refusal) {
@@ -261,6 +267,7 @@ func (a *App) prepareReduction(request ReductionRequest, createWork bool) (prepa
 			Case: casePath, Plan: plan, Rules: rules,
 			Messages: oracle.Messages(), Required: oracle.Required(),
 		},
+		root: root, target: target,
 	}
 	if createWork {
 		prepared.oracle, prepared.work = oracle, workPath

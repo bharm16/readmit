@@ -159,12 +159,20 @@ export function useObservation({
   context,
   busy,
   onRemoved,
+  editing = false,
+  onEdited,
 }: {
   id: string | null;
   environment: CatalogItem | null;
   context: () => RequestContext;
   busy: boolean;
   onRemoved: () => void;
+  /** Opened to edit from elsewhere (Settings → Security): the editor opens
+   * as soon as the observation is read. */
+  editing?: boolean;
+  /** Where that edit returns: with the connection's ref once saved, without
+   * one when closed unsaved. */
+  onEdited?: ((saved?: string) => void) | undefined;
 }) {
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [draft, setDraft] = useState<ItemDraft | null>(null);
@@ -229,6 +237,10 @@ export function useObservation({
       clearInterval(timer);
     };
   }, [collecting]);
+
+  useEffect(() => {
+    if (editing && draft) setSheet("edit");
+  }, [editing, draft !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inspect = (entry: string) => {
     if (!item) return;
@@ -333,10 +345,14 @@ export function useObservation({
           item={item}
           draft={draft}
           history={history ?? []}
-          onClose={() => setSheet(null)}
+          onClose={() => {
+            setSheet(null);
+            if (editing) onEdited?.();
+          }}
           onSaved={async () => {
             setSheet(null);
             await read();
+            if (editing) onEdited?.(`observation:${item.ref.id}`);
           }}
         />
       ) : null}

@@ -87,7 +87,7 @@ function DurationField({ id, label, value, onChange }: { id: string; label: stri
 const keyOf = (listed: ListedProtectionControl) => `${listed.entry}\u0000${listed.control.name}`;
 
 /** The Encryption page's actions and body. */
-export function useEncryption({ root, busy }: { root: string | null; busy: boolean }) {
+export function useEncryption({ root, busy, onChanged }: { root: string | null; busy: boolean; onChanged?: () => void }) {
   const [list, setList] = useState<ProtectionListResult | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | "add" | "edit" | "retire">(null);
@@ -104,6 +104,12 @@ export function useEncryption({ root, busy }: { root: string | null; busy: boole
     setList(null);
     void refresh();
   }, [refresh]);
+  // A saved, rotated or retired control changes the project's files, which
+  // Packages then offers.
+  const changed = async () => {
+    await refresh();
+    onChanged?.();
+  };
 
   const controls = list?.controls ?? [];
   const chosen = controls.find((listed) => keyOf(listed) === selected) ?? null;
@@ -119,7 +125,7 @@ export function useEncryption({ root, busy }: { root: string | null; busy: boole
     if (!root) return;
     const answer = await rotateProtectionControl(root, listed.entry, listed.control.name);
     if (answer.state === "completed") {
-      await refresh();
+      await changed();
       const next = answer.document?.controls.find((control) => control.name === listed.control.name);
       say(listed, `Rotation recorded · generation ${next?.generation ?? listed.control.generation + 1}`);
     } else {
@@ -263,7 +269,7 @@ export function useEncryption({ root, busy }: { root: string | null; busy: boole
           onClose={() => setSheet(null)}
           onSaved={async (name, rotated) => {
             setSheet(null);
-            await refresh();
+            await changed();
             const entry = sheet === "edit" && chosen ? chosen.entry : (list?.add_entry ?? "protection.json");
             setSelected(`${entry}\u0000${name}`);
             if (rotated) setStatus({ key: `${entry}\u0000${name}`, text: "Saved as a rotation" });
@@ -288,7 +294,7 @@ export function useEncryption({ root, busy }: { root: string | null; busy: boole
                   const answer = await retireProtectionControl(root, chosen.entry, chosen.control.name);
                   setSheet(null);
                   if (answer.state === "completed") {
-                    await refresh();
+                    await changed();
                     say(chosen, "Retired");
                   } else {
                     say(chosen, answer.reason ?? "Not retired.", true);
@@ -334,6 +340,7 @@ function ControlSheet({
   const [args, setArgs] = useState<string[]>([]);
   const [maxAge, setMaxAge] = useState<Duration>(durationOf(undefined));
   const [retain, setRetain] = useState<Duration>(durationOf(undefined));
+  const [chooseFailure, setChooseFailure] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
     setName(control?.name ?? "");
@@ -343,6 +350,7 @@ function ControlSheet({
     setArgs([]);
     setMaxAge(durationOf(control?.max_age));
     setRetain(durationOf(control?.retain));
+    setChooseFailure(null);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const entered = args.map((argument) => argument.trim()).filter((argument) => argument !== "");
@@ -414,12 +422,19 @@ function ControlSheet({
       <FilePicker
         label="Key program"
         path={command}
-        onChoose={() =>
+        onChoose={() => {
+          setChooseFailure(null);
           void chooseEnvironmentFile("locator-program").then((answer) => {
             if (answer.state === "completed" && answer.paths?.[0]) setCommand(answer.paths[0]);
-          })
-        }
+            else if (answer.state !== "cancelled") setChooseFailure(answer.reason ?? "The program was not chosen.");
+          });
+        }}
       />
+      {chooseFailure ? (
+        <p className="field-error" role="alert">
+          {chooseFailure}
+        </p>
+      ) : null}
       {replacing ? (
         <fieldset>
           <legend>Arguments</legend>

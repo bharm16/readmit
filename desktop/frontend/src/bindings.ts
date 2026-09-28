@@ -893,7 +893,7 @@ export function reexecuteReviewedEvidence(request: ReexecutionSendRequest): Prom
 /** Reads one protection document and shows every registered control with the
  * key masked. It runs no program, resolves no key and contacts nothing. */
 export function readProtection(workspace: string, entry: string): Promise<ProtectionResult> {
-  return guard(() => facade().ReadProtection(workspace, entry), { state: "failed" });
+  return retryingRead(() => facade().ReadProtection(workspace, entry), { state: "failed" });
 }
 
 /** Registers one control into the document entry named here, creating that

@@ -46,6 +46,15 @@ func HoldSlotForTest(a *App, name string) (func(), bool) {
 	return a.claim(name)
 }
 
+// OnReachForTest calls reached each time an operation of the window records
+// what it reaches, right after it records it and while it still holds the
+// slot, so a test reads the connection inventory at that moment. Nil stops.
+func OnReachForTest(a *App, reached func()) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.reached = reached
+}
+
 // DeclaredProgramRunningForTest counts one operator-declared program as
 // running, exactly as a program an operation runs reports itself, and returns
 // the function that reports it ended: a test reads what the privacy status

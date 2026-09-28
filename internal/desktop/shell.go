@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"runtime/debug"
 	"slices"
 
 	"github.com/bharm16/readmit/docs"
@@ -91,7 +92,9 @@ type Shell struct {
 	Themes     []Theme     `json:"themes"`
 	TextScales []int       `json:"text_scales"`
 	// Version is the build identity this executable was stamped with.
-	Version    string     `json:"version"`
+	Version string `json:"version"`
+	// Build is the release information About shows beside it.
+	Build      Build      `json:"build"`
 	Privacy    Privacy    `json:"privacy"`
 	Support    Support    `json:"support"`
 	Vocabulary Vocabulary `json:"vocabulary"`
@@ -392,6 +395,43 @@ func openCapabilities(data []byte) []string {
 	return open
 }
 
+// Build is what this executable says about how it was built: its version,
+// the source revision and commit time the Go toolchain stamped into it, and
+// whether the working tree it was built from had changes, as Go's embedded
+// build information records them, and the release channel it belongs to.
+// Revision and BuiltAt are empty for a build that carries no version-control
+// stamp, such as a test binary.
+type Build struct {
+	Version  string `json:"version"`
+	Revision string `json:"revision,omitzero"`
+	BuiltAt  string `json:"built_at,omitzero"`
+	Modified bool   `json:"modified"`
+	Channel  string `json:"channel"`
+}
+
+// releaseChannel is the channel every build of this development preview
+// belongs to; see supportStatus.
+const releaseChannel = "Development preview, unsigned"
+
+// buildOf reads the version-control settings of the build information given.
+func buildOf(info *debug.BuildInfo, ok bool) Build {
+	build := Build{Version: engine.Version(), Channel: releaseChannel}
+	if !ok || info == nil {
+		return build
+	}
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			build.Revision = setting.Value
+		case "vcs.time":
+			build.BuiltAt = setting.Value
+		case "vcs.modified":
+			build.Modified = setting.Value == "true"
+		}
+	}
+	return build
+}
+
 // Shell describes the window: the regions focus moves through, how each status
 // reads without colour, the commands the palette lists, the appearance choices,
 // the support guidance and the privacy status. It reads nothing and writes
@@ -407,6 +447,7 @@ func (a *App) Shell() ShellResult {
 		Themes:     themes,
 		TextScales: textScales,
 		Version:    engine.Version(),
+		Build:      buildOf(debug.ReadBuildInfo()),
 		Privacy:    privacyStatus,
 		Support:    supportStatus,
 		Vocabulary: vocabulary(),

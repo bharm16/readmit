@@ -191,6 +191,8 @@ func bindCollect(a *App, ctx context.Context, request PrepareActionRequest, held
 // collection that did not complete is reported with the reason it observed
 // nothing, never as having found no records.
 func executeCollect(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
+	a.reach(reachingTarget{ref: "observation:" + bound.origin.Items[0].ID, name: bound.review.Items[0].Name,
+		kind: ConnectionSource, destination: bound.review.Destination.Address})
 	request := bound.collect.request
 	report, done := a.measureCollection(bound.collect.observation, bound.collect.stable)
 	defer done()
@@ -332,6 +334,8 @@ func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held b
 // executeReset runs the bound plan once with the manual steps the click
 // confirmed, and reports every action's own outcome.
 func executeReset(a *App, ctx context.Context, bound *boundAction, decisions ReviewDecisions) ReviewedActionResult {
+	a.reach(reachingTarget{ref: "environment:" + bound.origin.Items[0].ID, name: bound.review.Items[0].Name,
+		kind: ConnectionEnvironment, destination: bound.review.Destination.Address})
 	request := bound.reset.request
 	request.Confirmed = slices.Clone(decisions.Confirmed)
 	outcome, _, err := operation.ResetEnvironment(ctx, request, filepath.Join(request.PlanDirectory, bound.reset.output), sendpolicy.SystemResolver)

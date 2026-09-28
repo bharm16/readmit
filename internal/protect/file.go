@@ -221,6 +221,18 @@ func (f File) save(updated Document, stored Control, err error) (Document, Contr
 // descriptor and the count of entries that were not regular files and so were
 // not read. Nothing is read until the control admits a new package.
 func (f File) Pack(ctx context.Context, name string, roots []string, output string, at time.Time) (Package, int, error) {
+	return f.PackExpecting(ctx, name, 0, roots, output, at)
+}
+
+// ErrGenerationChanged refuses a package whose control's key generation is no
+// longer the one the person chose it at.
+var ErrGenerationChanged = errors.New("the control's key generation changed since it was chosen; nothing was written; choose it again")
+
+// PackExpecting is Pack under a control that must still be at the key
+// generation given, read from the same document the package is written under,
+// so a rotation recorded after the control was chosen refuses the package
+// before anything is read. A generation of 0 checks nothing, as Pack does.
+func (f File) PackExpecting(ctx context.Context, name string, generation uint64, roots []string, output string, at time.Time) (Package, int, error) {
 	document, err := f.Read()
 	if err != nil {
 		return Package{}, 0, err
@@ -228,6 +240,9 @@ func (f File) Pack(ctx context.Context, name string, roots []string, output stri
 	entry, err := Writable(document, name)
 	if err != nil {
 		return Package{}, 0, err
+	}
+	if generation != 0 && uint64(entry.Generation) != generation {
+		return Package{}, 0, ErrGenerationChanged
 	}
 	sources, notRead, err := Collect(roots)
 	if err != nil {
