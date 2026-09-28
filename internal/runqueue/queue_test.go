@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -318,6 +319,39 @@ func TestCancellingTheQueueStartsNothingFurther(t *testing.T) {
 		t.Fatalf("%+v %v", report, watch.order)
 	}
 	if jobs(report)["a"].Reason != "the queue stopped before this job started" {
+		t.Fatalf("%+v", report.Jobs)
+	}
+}
+
+// expiredUncancelled is a queue context whose deadline has passed while the
+// timer that cancels it has not yet run. A run arms its network deadline from
+// that same instant, so it can time out and return before the context reports
+// an error; the queue's deadline must already have stopped it then.
+type expiredUncancelled struct {
+	context.Context
+	at time.Time
+}
+
+func (c expiredUncancelled) Deadline() (time.Time, bool) { return c.at, true }
+
+func TestAQueuePastItsDeadlineStartsNothingFurtherBeforeItsContextIsCancelled(t *testing.T) {
+	watch := newTracker()
+	deadline := time.Now().Add(20 * time.Millisecond)
+	queued(t, map[string]*fake{
+		"a.json": {id: "a", resources: environmentResources(), state: durablerun.Passed, tracker: watch, during: func() { time.Sleep(time.Until(deadline) + 10*time.Millisecond) }},
+		"b.json": {id: "b", resources: environmentResources(), state: durablerun.Passed, tracker: watch},
+	})
+	document := `{"schema":"readmit-run-queue/v1","parallelism":1,"jobs":[` +
+		`{"id":"a","spec":"a.json","isolation":"shared"},` +
+		`{"id":"b","spec":"b.json","isolation":"shared"}]}`
+	report, err := Run(expiredUncancelled{t.Context(), deadline}, Request{PlanBytes: []byte(document), PlanDirectory: t.TempDir(), Runs: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Executed != 1 || report.Skipped != 1 || !slices.Equal(watch.order, []string{"enter a", "leave a"}) {
+		t.Fatalf("%+v %v", report, watch.order)
+	}
+	if jobs(report)["b"].Reason != "the queue stopped before this job started" {
 		t.Fatalf("%+v", report.Jobs)
 	}
 }

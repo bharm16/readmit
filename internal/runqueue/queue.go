@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/operationguard"
@@ -322,7 +323,7 @@ func (q *schedule) run(ctx context.Context, parallelism int) {
 // its state with it rather than letting them run against state nobody
 // established.
 func (q *schedule) admit(ctx context.Context) int {
-	if ctx.Err() != nil {
+	if stopped(ctx) {
 		for _, current := range q.states {
 			if current.pending() {
 				current.stop(Skipped, "the queue stopped before this job started")
@@ -366,6 +367,18 @@ func (q *schedule) admit(ctx context.Context) int {
 		}
 	}
 	return -1
+}
+
+// stopped reports whether the queue may start nothing further. A run arms its
+// network deadline from the queue's own deadline, so it can time out and hand
+// back before the context's timer has cancelled it; the deadline instant, not
+// the timer, is when the queue stops.
+func stopped(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+	deadline, ok := ctx.Deadline()
+	return ok && !time.Now().Before(deadline)
 }
 
 // conflict reports a resource this job declares that a durable run outside this
