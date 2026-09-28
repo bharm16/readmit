@@ -48,7 +48,10 @@ func Evaluate(ctx context.Context, profileBytes, packBytes []byte, inputs []Occu
 	if p.Schema == ProfileSchemaV3 || pack.Schema == PackSchemaV3 {
 		e.report.Operator = ComponentOperatorVersion
 	}
-	if pack.Schema == PackSchema || pack.Schema == PackSchemaV3 {
+	if pack.Schema == PackSchemaV4 {
+		e.report.Operator = ChoiceOperatorVersion
+	}
+	if pack.Schema == PackSchema || pack.Schema == PackSchemaV3 || pack.Schema == PackSchemaV4 {
 		e.report.BaseSupport = "evaluated"
 	}
 	total := 0
@@ -303,7 +306,7 @@ func (e *evaluator) field(f localprofile.Field, sel string, r hl7.Reading, origi
 			if date.ID == f.Date {
 				dateValue := value
 				if f.Type == "TS" {
-					if e.report.Operator == ComponentOperatorVersion {
+					if e.components() {
 						dateValue = string(e.read(sel + ".1").Decoded)
 					} else {
 						dateValue = strings.Split(value, "^")[0]

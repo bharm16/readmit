@@ -16,6 +16,13 @@ import (
 
 func retainedComponentCLIInputs(t *testing.T, family string, steps []int) (string, string, string, string) {
 	t.Helper()
+	return retainedProfileCLIInputs(t, family, steps, profileeval.PackSchemaV3, func(_ string, b []byte) []byte { return b })
+}
+
+// retainedProfileCLIInputs pins the owned fixture's profile and a pack of the
+// given schema, after edit republishes either document.
+func retainedProfileCLIInputs(t *testing.T, family string, steps []int, packSchema string, edit func(name string, b []byte) []byte) (string, string, string, string) {
+	t.Helper()
 	root := t.TempDir()
 	files := map[string][]byte{"checks.json": []byte(`{"schema":"readmit-assertion-set/v1","name":"independent ACK check","assertions":[{"id":"accepted","operator":"field_equals","subject":{"field":{"scope":"observed","message":"s0001-e000001","selector":"MSA-1"}},"when":null,"expected":{"field":{"state":"present","text":"AA"}}}]}`)}
 	ref := func(id, schema, file string) connectedtest.Reference {
@@ -29,9 +36,9 @@ func retainedComponentCLIInputs(t *testing.T, family string, steps []int) (strin
 		}
 		return b
 	}
-	for _, pin := range []struct{ id, schema string }{{"profile", profileeval.ProfileSchemaV3}, {"pack", profileeval.PackSchemaV3}} {
+	for _, pin := range []struct{ id, schema string }{{"profile", profileeval.ProfileSchemaV3}, {"pack", packSchema}} {
 		name := pin.id + ".json"
-		files[name] = read(name)
+		files[name] = edit(name, read(name))
 		d.Profiles = append(d.Profiles, ref(pin.id, pin.schema, name))
 		if err := os.WriteFile(filepath.Join(root, name), files[name], 0600); err != nil {
 			t.Fatal(err)
@@ -145,6 +152,57 @@ func TestComponentProfileCommandsDistinguishCaptureGapsFromFailures(t *testing.T
 			if report.Verdict != tc.verdict || report.CompleteCapture != tc.complete || report.Operator != profileeval.ComponentOperatorVersion {
 				t.Fatalf("wrong capture decision: %+v", report)
 			}
+		}
+	}
+}
+
+// A pack/v4 choice reaches every profile command through the same evaluator
+// and names evaluator v3; the earlier pins keep their own operators.
+func TestChoicePackProfileCommandsUseTheSharedEvaluator(t *testing.T) {
+	edit := func(name string, b []byte) []byte {
+		var v map[string]any
+		if err := json.Unmarshal(b, &v); err != nil {
+			t.Fatal(err)
+		}
+		if name == "profile.json" {
+			v["definition"].(map[string]any)["base"].(map[string]any)["pack"].(map[string]any)["version"] = "2"
+		} else {
+			v["schema"] = profileeval.PackSchemaV4
+			v["metadata"].(map[string]any)["pack"].(map[string]any)["version"] = "2"
+			orders := v["messages"].([]any)[0].(map[string]any)["sequence"].([]any)[1].(map[string]any)
+			children := orders["children"].([]any)
+			orders["children"] = []any{children[0], map[string]any{"name": "kind", "min": 1, "max": "1", "choice": true, "children": []any{children[1],
+				map[string]any{"name": "requisition", "segment": "RQD", "min": 1, "max": "1"}}}}
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	profile, pack, casePath, plan := retainedProfileCLIInputs(t, "ORM", []int{1, 2, 3}, profileeval.PackSchemaV4, edit)
+	var canonical []byte
+	for _, args := range [][]string{{"profile", "evaluate", profile, pack, casePath, "--complete-capture"}, {"diagnose", "profile", profile, pack, casePath, "--complete-capture"}, {"connected", "profile-checks", plan, "profile", "pack", "--complete-capture"}} {
+		out, diagnostics, err := runInProcess(t, args...)
+		if err != nil {
+			t.Fatalf("%s: %v, %s", args[0], err, diagnostics.String())
+		}
+		var report profileeval.Report
+		if err := json.Unmarshal(out.Bytes(), &report, json.RejectUnknownMembers(true)); err != nil {
+			t.Fatal(err)
+		}
+		if report.Verdict != "pass" || report.Operator != profileeval.ChoiceOperatorVersion || report.Pack.Schema != profileeval.PackSchemaV4 || report.Pack.Version != "2" {
+			t.Fatalf("lost v4 semantics: %+v", report)
+		}
+		report.CaseIdentity = ""
+		raw, err := json.Marshal(report, json.Deterministic(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if canonical == nil {
+			canonical = raw
+		} else if !bytes.Equal(canonical, raw) {
+			t.Fatalf("%s did not use identical profile evaluation", args[0])
 		}
 	}
 }

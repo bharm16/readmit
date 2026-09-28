@@ -68,7 +68,9 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 - Dictionary provenance and redistribution rights must be confirmed before bundling externally sourced definitions.
 - Selected expansion: pinned nHapi metadata for 2.3.1 through 2.7.1 and HL7apy
   1.3.5 metadata for 2.8.2, normalized at build time with no added customer
-  runtime. Exact versions, source commits and separate support levels are in
+  runtime. The same HL7apy pin supplies only the version-matched ORM order-detail
+  choice groups nHapi's 2.3.1–2.6 constructors flatten
+  ([profile evaluation](profile-evaluation.md)). Exact versions, source commits and separate support levels are in
   [D1](product-decisions.md#d1--profile-metadata-and-supported-meaning); #45 owns
   library delivery after the separate shared pack contract.
 - That contract is `readmit-profile-pack/v1`, read by `internal/profilepack`: pack

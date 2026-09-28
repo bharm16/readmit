@@ -27,7 +27,7 @@ func TestPinnedExtractionReadback(t *testing.T) {
 			SHA256 string `json:"sha256"`
 		} `json:"notices"`
 	}
-	recorded, err := os.ReadFile("../../docs/profile-extraction-v2-receipt.json")
+	recorded, err := os.ReadFile("../../docs/profile-extraction-v3-receipt.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,5 +139,93 @@ func TestPinnedUpstreamGroupingMatrix(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// Each fixture is authored from the order-detail grammar: exactly one of the
+// six order kinds opens the detail. It is checked against the exact extracted
+// v4 packs, whose choice comes from the same version's HL7apy declaration.
+// Versions without an ORM_O01 source never acquire one from a neighbour.
+func TestPinnedOrderDetailChoice(t *testing.T) {
+	dir := os.Getenv("READMIT_PROFILE_EXTRACTION")
+	if dir == "" {
+		t.Skip("set READMIT_PROFILE_EXTRACTION to the pinned offline extraction")
+	}
+	for _, version := range []string{"2.3.1", "2.4", "2.5", "2.5.1", "2.6", "2.7.1", "2.8.2"} {
+		t.Run(version, func(t *testing.T) {
+			packRaw, err := os.ReadFile(filepath.Join(dir, "pack-"+version+".json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			pack, err := profileeval.DecodePack(packRaw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pack.Schema != profileeval.PackSchemaV4 {
+				t.Fatal(pack.Schema)
+			}
+			choices := 0
+			var count func([]profileeval.Node)
+			count = func(nodes []profileeval.Node) {
+				for _, n := range nodes {
+					if n.Choice {
+						choices++
+					}
+					count(n.Children)
+				}
+			}
+			for _, m := range pack.Messages {
+				count(m.Sequence)
+			}
+			if version == "2.7.1" || version == "2.8.2" {
+				if choices != 0 {
+					t.Fatal("borrowed a choice from another version")
+				}
+				return
+			}
+			if choices != 1 {
+				t.Fatalf("want the one ORM_O01 order-detail choice, got %d", choices)
+			}
+			local, _ := fixture(t)
+			var definition localprofile.Profile
+			if err = json.Unmarshal(local, &definition); err != nil {
+				t.Fatal(err)
+			}
+			definition.Base.Pack = pack.Metadata.Identity
+			definition.Base.HL7Version = version
+			definition.Base.Family = "ORM"
+			definition.Segments = []localprofile.Segment{{ID: "MSH", Fields: []localprofile.Field{{Position: 10, Usage: localprofile.UsageRequired}}}}
+			profileRaw, err := json.Marshal(definition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct {
+				name  string
+				valid bool
+			}{{"OBR", true}, {"RQD", true}, {"RQ1", true}, {"RXO", true}, {"ODS", true}, {"ODT", true}, {"mixed", false}, {"missing", false}} {
+				t.Run(tc.name, func(t *testing.T) {
+					raw, err := os.ReadFile(filepath.Join("../../testdata/profile-evaluation/upstream-grouping", version, "ORM-detail-"+tc.name+".hl7"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					got, err := profileeval.Evaluate(context.Background(), profileRaw, packRaw, []profileeval.Occurrence{{ID: tc.name, Bytes: raw}}, profileeval.Options{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					failed := false
+					for _, finding := range got.Findings {
+						if finding.Rule == "segment-group-order-cardinality" && finding.Origin == "profile" {
+							failed = true
+						}
+					}
+					if failed == tc.valid || got.BaseSupport != "evaluated" || got.Operator != profileeval.ChoiceOperatorVersion {
+						t.Fatalf("order detail %s: %+v", tc.name, got)
+					}
+					if got.Verdict == "pass" {
+						t.Fatal("order-detail grouping advertised as full conformance")
+					}
+				})
+			}
+		})
 	}
 }

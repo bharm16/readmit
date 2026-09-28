@@ -3,7 +3,10 @@
   "status": "open; agreed scope preserved",
   "basis_commit": "1e1f499061566015ad28f17c4bc9b5180c50e6ba",
   "rights_status": "pending; independent of technical qualification",
-  "receipt_sha256": "68674439c40df97b6c4af7fd4f2190e79a01a43a44f1333e248c4f47c54b271f",
+  "receipt_sha256": "b1ab013cc5131d001d6eb5f599a10d842d23c7838c27e749c76d7526b160c608",
+  "revisions": [
+    "2026-09-28: receipt_sha256 names docs/profile-extraction-v3-receipt.json. The five ORDER_DETAIL rows are qualified at the tested choice level; component usage rows record what the pinned HL7apy archive can and cannot supply; a 2.8.2 component usage row records that conditional usage is not represented."
+  ],
   "rows": [
     {
       "version": "2.3.1",
@@ -14,7 +17,8 @@
       "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
       "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
       "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported."
+      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
+      "source_survey": "The pinned HL7apy archive's hl7apy/v2_3_1/datatypes.py declares all 404 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
     },
     {
       "version": "2.3.1",
@@ -98,11 +102,12 @@
       "version": "2.3.1",
       "family": "ORM",
       "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "choice-semantics-not-established",
-      "missing": "Extracted constructors list alternatives as required sequence members; generic grouping success does not prove a clinically valid choice grammar.",
-      "authoritative_source_needed": "Version-specific ORM grammar, exact group constructor and AbstractGroup choice behavior; distinguish extraction omission from upstream limitation.",
-      "implementation_test_needed": "Implement the authoritative allowed alternatives, with each valid branch and invalid mixtures; do not silently repair the source into a guessed grammar.",
-      "release_claim_affected": "Full ORM order-detail structural validation remains unqualified."
+      "status": "qualified-version-matched-choice",
+      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_3_1/groups.py (lines 315 and 334) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
+      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
+      "tests": "TestPinnedOrderDetailChoice/2.3.1: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
+      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
     },
     {
       "version": "2.4",
@@ -113,7 +118,8 @@
       "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
       "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
       "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported."
+      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
+      "source_survey": "The pinned HL7apy archive's hl7apy/v2_4/datatypes.py declares all 415 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
     },
     {
       "version": "2.4",
@@ -197,11 +203,12 @@
       "version": "2.4",
       "family": "ORM",
       "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "choice-semantics-not-established",
-      "missing": "Extracted constructors list alternatives as required sequence members; generic grouping success does not prove a clinically valid choice grammar.",
-      "authoritative_source_needed": "Version-specific ORM grammar, exact group constructor and AbstractGroup choice behavior; distinguish extraction omission from upstream limitation.",
-      "implementation_test_needed": "Implement the authoritative allowed alternatives, with each valid branch and invalid mixtures; do not silently repair the source into a guessed grammar.",
-      "release_claim_affected": "Full ORM order-detail structural validation remains unqualified."
+      "status": "qualified-version-matched-choice",
+      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_4/groups.py (lines 629 and 649) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
+      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
+      "tests": "TestPinnedOrderDetailChoice/2.4: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
+      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
     },
     {
       "version": "2.5.1",
@@ -212,7 +219,8 @@
       "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
       "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
       "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported."
+      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
+      "source_survey": "The pinned HL7apy archive's hl7apy/v2_5_1/datatypes.py declares all 435 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
     },
     {
       "version": "2.5.1",
@@ -296,11 +304,12 @@
       "version": "2.5.1",
       "family": "ORM",
       "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "choice-semantics-not-established",
-      "missing": "Extracted constructors list alternatives as required sequence members; generic grouping success does not prove a clinically valid choice grammar.",
-      "authoritative_source_needed": "Version-specific ORM grammar, exact group constructor and AbstractGroup choice behavior; distinguish extraction omission from upstream limitation.",
-      "implementation_test_needed": "Implement the authoritative allowed alternatives, with each valid branch and invalid mixtures; do not silently repair the source into a guessed grammar.",
-      "release_claim_affected": "Full ORM order-detail structural validation remains unqualified."
+      "status": "qualified-version-matched-choice",
+      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_5_1/groups.py (lines 1130 and 1146) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
+      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
+      "tests": "TestPinnedOrderDetailChoice/2.5.1: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
+      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
     },
     {
       "version": "2.5",
@@ -311,7 +320,8 @@
       "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
       "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
       "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported."
+      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
+      "source_survey": "The pinned HL7apy archive's hl7apy/v2_5/datatypes.py declares all 435 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
     },
     {
       "version": "2.5",
@@ -395,11 +405,12 @@
       "version": "2.5",
       "family": "ORM",
       "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "choice-semantics-not-established",
-      "missing": "Extracted constructors list alternatives as required sequence members; generic grouping success does not prove a clinically valid choice grammar.",
-      "authoritative_source_needed": "Version-specific ORM grammar, exact group constructor and AbstractGroup choice behavior; distinguish extraction omission from upstream limitation.",
-      "implementation_test_needed": "Implement the authoritative allowed alternatives, with each valid branch and invalid mixtures; do not silently repair the source into a guessed grammar.",
-      "release_claim_affected": "Full ORM order-detail structural validation remains unqualified."
+      "status": "qualified-version-matched-choice",
+      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_5/groups.py (lines 1132 and 1148) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
+      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
+      "tests": "TestPinnedOrderDetailChoice/2.5: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
+      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
     },
     {
       "version": "2.6",
@@ -410,7 +421,8 @@
       "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
       "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
       "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported."
+      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
+      "source_survey": "The pinned HL7apy archive's hl7apy/v2_6/datatypes.py declares 52 composite components (1, 1) and 385 (0, 1). Its (min, max) form cannot represent conditional or backward-compatible usage, so (0, 1) is not evidence of optional usage; it is not adopted as a supplement."
     },
     {
       "version": "2.6",
@@ -494,11 +506,12 @@
       "version": "2.6",
       "family": "ORM",
       "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "choice-semantics-not-established",
-      "missing": "Extracted constructors list alternatives as required sequence members; generic grouping success does not prove a clinically valid choice grammar.",
-      "authoritative_source_needed": "Version-specific ORM grammar, exact group constructor and AbstractGroup choice behavior; distinguish extraction omission from upstream limitation.",
-      "implementation_test_needed": "Implement the authoritative allowed alternatives, with each valid branch and invalid mixtures; do not silently repair the source into a guessed grammar.",
-      "release_claim_affected": "Full ORM order-detail structural validation remains unqualified."
+      "status": "qualified-version-matched-choice",
+      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_6/groups.py (lines 1439 and 1459) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
+      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
+      "tests": "TestPinnedOrderDetailChoice/2.6: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
+      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
     },
     {
       "version": "2.7.1",
@@ -509,7 +522,8 @@
       "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
       "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
       "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported."
+      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
+      "source_survey": "The pinned HL7apy archive has no v2_7_1 directory. Its v2_7 metadata is a different version and is not borrowed."
     },
     {
       "version": "2.7.1",
@@ -594,6 +608,17 @@
       "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
       "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
       "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
+    },
+    {
+      "version": "2.8.2",
+      "constraint": "composite component usage",
+      "status": "conditional-usage-not-represented",
+      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/required",
+      "source_survey": "HL7apy's hl7apy/v2_8_2/datatypes.py gives each component a (min, max) pair: (1, 1) becomes required, (0, 0) withdrawn and (0, 1) not required. The pair cannot represent conditional or backward-compatible usage, so usage_known true establishes only the required and withdrawn declarations.",
+      "missing": "A (0, 1) component may be conditional in the standard; its predicate is neither extracted nor evaluated, and the evaluator currently treats it as optional.",
+      "authoritative_source_needed": "Version-matched component usage codes and conditional predicates for 2.8.2, with provenance and a separate exact-content rights review.",
+      "implementation_test_needed": "Distinguish optional from conditional components in the pack, evaluate declared predicates, and report an unknown predicate as unsupported; independently test each case.",
+      "release_claim_affected": "2.8.2 base component usage is qualified for required and withdrawn declarations only; optional versus conditional usage is unqualified."
     },
     {
       "version": "2.8.2",

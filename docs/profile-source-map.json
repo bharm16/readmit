@@ -2,9 +2,12 @@
   "schema": "readmit-profile-source-map/v1",
   "status": "factual mapping; redistribution not approved",
   "basis_commit": "1e1f499061566015ad28f17c4bc9b5180c50e6ba",
-  "extractor_sha256": "2469b206360d9d6f8b19c16e59aa66e8f5d25d7046f6ec73f944f536838ab750",
-  "receipt_sha256": "68674439c40df97b6c4af7fd4f2190e79a01a43a44f1333e248c4f47c54b271f",
+  "extractor_sha256": "dff65d883e769405a8eb6266dfdf94ba717d30b53bb6f0da90053409b03d7d79",
+  "receipt_sha256": "b1ab013cc5131d001d6eb5f599a10d842d23c7838c27e749c76d7526b160c608",
   "generator_sha256": "0eb02d1222bc87ff3c2081fbef0ce9adac19da3e5eb76cad5d3146e54fe5064d",
+  "revisions": [
+    "2026-09-28: output, receipt and extractor hashes follow readmit-profile-extraction/v3 (docs/profile-extraction-v3-receipt.json). ORM_O01 in the 2.3.1, 2.4, 2.5, 2.5.1 and 2.6 packs adds the version-matched HL7apy groups.py its supplements section records, from the same pinned archive; every other mapping is the generator_sha256 mapping, unchanged. basis_commit names that mapping's basis."
+  ],
   "sources": {
     "hl7apy": {
       "archive_sha256": "8b496e4e94221b8472a9df81be73d98b8726c1d6b386637a6f08264fc83ddb63",
@@ -17,6 +20,76 @@
   },
   "mapping_boundary": "Source declarations and hashes only. No upstream prose, source bodies, constraints or terminology values are included. File-level license applicability is not decided by this inventory.",
   "files": {
+    "hl7apy:hl7apy/v2_3_1/groups.py": {
+      "source": "hl7apy",
+      "path": "hl7apy/v2_3_1/groups.py",
+      "sha256": "7439e888c9d59bd841e7ad69d73554ac66b501d77953b269923d452ec9e1b85f",
+      "bytes": 84619,
+      "declaration_lines": [
+        315,
+        334
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "file_notice_sha256": null,
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_3_1/groups.py"
+    },
+    "hl7apy:hl7apy/v2_4/groups.py": {
+      "source": "hl7apy",
+      "path": "hl7apy/v2_4/groups.py",
+      "sha256": "f8211b59f05d79b7cddfacd165c7016d8612d792e8b2f46debca2c7ee0cdf0cc",
+      "bytes": 149932,
+      "declaration_lines": [
+        629,
+        649
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "file_notice_sha256": null,
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_4/groups.py"
+    },
+    "hl7apy:hl7apy/v2_5/groups.py": {
+      "source": "hl7apy",
+      "path": "hl7apy/v2_5/groups.py",
+      "sha256": "d2ee99eb271464f58f4f44418179e2aa1fe441d45b1854fa0cb881822285cd62",
+      "bytes": 201372,
+      "declaration_lines": [
+        1132,
+        1148
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "file_notice_sha256": null,
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_5/groups.py"
+    },
+    "hl7apy:hl7apy/v2_5_1/groups.py": {
+      "source": "hl7apy",
+      "path": "hl7apy/v2_5_1/groups.py",
+      "sha256": "cc47e31cba9a247ad02706d63ed494821a45a15b784d364013d1364ae5c92bd0",
+      "bytes": 178340,
+      "declaration_lines": [
+        1130,
+        1146
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "file_notice_sha256": null,
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_5_1/groups.py"
+    },
+    "hl7apy:hl7apy/v2_6/groups.py": {
+      "source": "hl7apy",
+      "path": "hl7apy/v2_6/groups.py",
+      "sha256": "97b5f3a156c166bb22a0a486574f94bdf3d457c511e3e86eeb5c7b4c264c78a5",
+      "bytes": 224471,
+      "declaration_lines": [
+        1439,
+        1459
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "file_notice_sha256": null,
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_6/groups.py"
+    },
     "hl7apy:hl7apy/v2_8_2/datatypes.py": {
       "source": "hl7apy",
       "path": "hl7apy/v2_8_2/datatypes.py",
@@ -24537,7 +24610,7 @@
       "artifact": "pack-2.3.1.json",
       "hl7_version": "2.3.1",
       "source": "nhapi",
-      "sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
+      "sha256": "fff29041d769717050afb131d0b2aa79f79f0b9e29a4c522ef00ae373991d7b4",
       "root_notice_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
       "messages": [
         {
@@ -25512,8 +25585,9 @@
           "json_pointer": "/messages/50",
           "structure": "ORM_O01",
           "family": "ORM",
-          "material": "ordered group/segment declarations and field metadata",
+          "material": "ordered group/segment declarations and field metadata; ORDER_DETAIL choice operator from the version-matched HL7apy group declaration",
           "source_files": [
+            "hl7apy:hl7apy/v2_3_1/groups.py",
             "nhapi:src/NHapi.Model.V231/Group/ORM_O01_INSURANCE.cs",
             "nhapi:src/NHapi.Model.V231/Group/ORM_O01_OBSERVATION.cs",
             "nhapi:src/NHapi.Model.V231/Group/ORM_O01_ORDER.cs",
@@ -26232,7 +26306,7 @@
       "artifact": "pack-2.4.json",
       "hl7_version": "2.4",
       "source": "nhapi",
-      "sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
+      "sha256": "e888231e736d9c4064d3572192aa1e7f41bf84178fd383e09fce0fd3910f4931",
       "root_notice_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
       "messages": [
         {
@@ -26684,8 +26758,9 @@
           "json_pointer": "/messages/24",
           "structure": "ORM_O01",
           "family": "ORM",
-          "material": "ordered group/segment declarations and field metadata",
+          "material": "ordered group/segment declarations and field metadata; ORDER_DETAIL choice operator from the version-matched HL7apy group declaration",
           "source_files": [
+            "hl7apy:hl7apy/v2_4/groups.py",
             "nhapi:src/NHapi.Model.V24/Group/ORM_O01_INSURANCE.cs",
             "nhapi:src/NHapi.Model.V24/Group/ORM_O01_OBSERVATION.cs",
             "nhapi:src/NHapi.Model.V24/Group/ORM_O01_ORDER.cs",
@@ -27424,7 +27499,7 @@
       "artifact": "pack-2.5.json",
       "hl7_version": "2.5",
       "source": "nhapi",
-      "sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
+      "sha256": "46c408045fb9dc058ef92f347473fde009308625c81f9f373865848cf14c0159",
       "root_notice_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
       "messages": [
         {
@@ -27937,8 +28012,9 @@
           "json_pointer": "/messages/25",
           "structure": "ORM_O01",
           "family": "ORM",
-          "material": "ordered group/segment declarations and field metadata",
+          "material": "ordered group/segment declarations and field metadata; ORDER_DETAIL choice operator from the version-matched HL7apy group declaration",
           "source_files": [
+            "hl7apy:hl7apy/v2_5/groups.py",
             "nhapi:src/NHapi.Model.V25/Group/ORM_O01_INSURANCE.cs",
             "nhapi:src/NHapi.Model.V25/Group/ORM_O01_OBSERVATION.cs",
             "nhapi:src/NHapi.Model.V25/Group/ORM_O01_ORDER.cs",
@@ -28692,7 +28768,7 @@
       "artifact": "pack-2.5.1.json",
       "hl7_version": "2.5.1",
       "source": "nhapi",
-      "sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
+      "sha256": "6c08022e1c9f556e96fcf9705d0ac289dc19376dfa02183c225f50fddaaa4c33",
       "root_notice_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
       "messages": [
         {
@@ -29205,8 +29281,9 @@
           "json_pointer": "/messages/25",
           "structure": "ORM_O01",
           "family": "ORM",
-          "material": "ordered group/segment declarations and field metadata",
+          "material": "ordered group/segment declarations and field metadata; ORDER_DETAIL choice operator from the version-matched HL7apy group declaration",
           "source_files": [
+            "hl7apy:hl7apy/v2_5_1/groups.py",
             "nhapi:src/NHapi.Model.V251/Group/ORM_O01_INSURANCE.cs",
             "nhapi:src/NHapi.Model.V251/Group/ORM_O01_OBSERVATION.cs",
             "nhapi:src/NHapi.Model.V251/Group/ORM_O01_ORDER.cs",
@@ -29960,7 +30037,7 @@
       "artifact": "pack-2.6.json",
       "hl7_version": "2.6",
       "source": "nhapi",
-      "sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
+      "sha256": "eb01f5e8f0968767e2d9233f4e85d41e0c79d007b4f81ba2a2eda8bfc9aa6bdd",
       "root_notice_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
       "messages": [
         {
@@ -30507,8 +30584,9 @@
           "json_pointer": "/messages/25",
           "structure": "ORM_O01",
           "family": "ORM",
-          "material": "ordered group/segment declarations and field metadata",
+          "material": "ordered group/segment declarations and field metadata; ORDER_DETAIL choice operator from the version-matched HL7apy group declaration",
           "source_files": [
+            "hl7apy:hl7apy/v2_6/groups.py",
             "nhapi:src/NHapi.Model.V26/Group/ORM_O01_INSURANCE.cs",
             "nhapi:src/NHapi.Model.V26/Group/ORM_O01_OBSERVATION.cs",
             "nhapi:src/NHapi.Model.V26/Group/ORM_O01_ORDER.cs",
@@ -31266,7 +31344,7 @@
       "artifact": "pack-2.7.1.json",
       "hl7_version": "2.7.1",
       "source": "nhapi",
-      "sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
+      "sha256": "ab1ee9a36a10529f3b55b5a0066a44abc96a92c6301a446c1cd4d6841f894f39",
       "root_notice_sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
       "messages": [
         {
@@ -32471,7 +32549,7 @@
       "artifact": "pack-2.8.2.json",
       "hl7_version": "2.8.2",
       "source": "hl7apy",
-      "sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
+      "sha256": "410eac0ec5df8b576d2d4101e9d629a3a333fa07276589db5b7ee7fffc108c42",
       "root_notice_sha256": "5656ff729ec3a0de702317f3032912904d88553a9d1a2ea27d6db1529a9d4989",
       "messages": [
         {

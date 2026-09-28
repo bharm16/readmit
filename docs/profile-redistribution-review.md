@@ -6,7 +6,9 @@ Engineering may continue with owned synthetic contracts. Technical qualification
 distribution approval and release readiness are separate gates. None is inferred
 from a green PR or from the other gates. The agreed coverage has not been reduced.
 
-The exact artifacts are produced by `readmit-profile-extractor/v2` from the adopted D1 pins. [The receipt](profile-extraction-v2-receipt.json) binds source archives, all seven output packs, and the exact license files. Derived packs and notice copies remain outside source control and release archives.
+The exact artifacts are produced by `readmit-profile-extractor/v3` from the adopted D1 pins. [The receipt](profile-extraction-v3-receipt.json) binds source archives, all seven output packs, the exact license files and the supplemental HL7apy group declarations. Derived packs and notice copies remain outside source control and release archives.
+
+The review covers the v3 receipt. It supersedes the [v2 receipt](profile-extraction-v2-receipt.json): every pack is a new identity (version 3, `readmit-profile-pack/v4`), and five packs add copied material listed below. A local review packet built from the v2 receipt must be regenerated with extractor v3 before review; its hashes are checked against the v3 receipt.
 
 | Source | Commit | Archive SHA-256 |
 | --- | --- | --- |
@@ -17,6 +19,7 @@ The exact artifacts are produced by `readmit-profile-extractor/v2` from the adop
 
 - Message/group order and segment cardinalities, field positions, primitive/composite type references, repetition and available length metadata.
 - Composite component positions and type references; HL7apy component usage/withdrawn positions; code-table identifiers only.
+- For the 2.3.1, 2.4, 2.5, 2.5.1 and 2.6 packs only: the choice operator, member order and cardinalities of HL7apy's ORM_O01 order-detail groups, from that version's `hl7apy/v2_x/groups.py`. They replace nHapi's six flattened order-detail members with one choice node after an exact agreement check. The receipt's `supplements` name each file, hash, declaration lines and notice basis. These `groups.py` files carry no file preamble; the repository MIT LICENSE is their observed notice basis.
 - Source comments, prose definitions and code-table values are excluded. No upstream program is executed or included in the Go runtime.
 - nHapi does not supply extracted component usage: `usage_known: false` retains that limitation as an unsupported result.
 - nHapi `TSComponentOne` is normalized to the evaluator’s DTM lexical rule. Source recursive component placeholders are preserved and become unsupported if a value exceeds the two wire levels.
@@ -26,10 +29,10 @@ The exact artifacts are produced by `readmit-profile-extractor/v2` from the adop
 
 [The source map](profile-source-map.json) connects each of the 235 normalized
 message entries and 535 datatype entries to its contributing source files.
-It inventories 1,149 distinct files, their archive-byte SHA-256, immutable source
+It inventories 1,154 distinct files, their archive-byte SHA-256, immutable source
 URL, declaration line numbers where applicable, and observed notice basis. The
-seven recomputed output hashes match the committed receipt and the withheld
-local review packet. The map contains provenance, not the extracted definitions
+seven output hashes match the committed v3 receipt; the map's `revisions` entry
+records which entries moved with extraction v3 and that the rest are unchanged. The map contains provenance, not the extracted definitions
 or terminology values. It is not a license determination.
 
 For nHapi, message constructors lead to group and segment constructors; composite
@@ -109,11 +112,14 @@ separate from its absence in the selected libraries. Keep both cells visible as
 native-unsupported/withdrawn; a fictional local ORM contract does not establish
 native conformance. Do not silently substitute another order message.
 
-Missing component usage/length information, required terminology, older ORM
-alternative grammar and qualification beyond selected grouping/local fixtures
-remain technical work. Approval to distribute cannot resolve those gaps. #577
-stays open until its separate rights, coverage and distribution checks are met;
-its v3 capability-list handoff remains with #557/#551.
+The 2.3.1–2.6 ORM order-detail alternatives are now qualified at their tested
+choice level from the version-matched HL7apy declaration. Missing component
+usage/length information, required terminology and qualification beyond the
+selected grouping, order-detail and local fixtures remain technical work.
+Approval to distribute cannot resolve those gaps. By the owner's decision the
+rights and distribution gates are tracked in #627; #577 stays open for its
+technical coverage gate. The evaluate and diagnose command rows of the
+capability ledger now list the v3 profile and v3/v4 pack inputs.
 
 ## Required owner decision
 
@@ -125,7 +131,7 @@ Record approved or refused status, reviewer, date, scope, obligations and exact 
 
 ```sh
 python3 tools/profile_extract.py --nhapi NHAPI_ARCHIVE --hl7apy HL7APY_ARCHIVE --output NEW_REVIEW_DIRECTORY
-READMIT_PROFILE_EXTRACTION=NEW_REVIEW_DIRECTORY go test -short -p 2 -tags readmit_nosync ./internal/profileeval -run TestPinnedExtractionReadback
+READMIT_PROFILE_EXTRACTION=NEW_REVIEW_DIRECTORY go test -short -p 2 -tags readmit_nosync ./internal/profileeval -run TestPinned
 ```
 
 The notice files are emitted as `licenses/nhapi.txt` and `licenses/hl7apy.txt`; compare their exact hashes to the receipt. Source review links: [nHapi license](https://github.com/nHapiNET/nHapi/blob/2495edd1e23a85ab9146cb03947c17d45120cf1f/LICENSE) and [HL7apy license](https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/LICENSE).

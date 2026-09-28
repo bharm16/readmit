@@ -35,7 +35,7 @@
       "screen": "Evaluate a case\u2026 in a saved profile's More profile actions",
       "action": "evaluate pinned interface constraints and inspect traceable findings",
       "backend": {"package": "internal/profileeval", "name": "EvaluateBundle"},
-      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-case/v1"],
+      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-case/v1"],
       "outputs": ["readmit-profile-evaluation/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Library.test.tsx", "name": "Evaluate a case shows the profile's result for that case as the command line evaluates it"},
@@ -51,7 +51,7 @@
       "screen": "the existing Profiles, Findings and test review flows",
       "action": "evaluate pinned interface constraints and inspect traceable findings",
       "backend": {"package": "internal/profileeval", "name": "EvaluateBundle"},
-      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-case/v1"],
+      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-case/v1"],
       "outputs": ["readmit-profile-evaluation/v1"],
       "prerequisites": [],
       "implemented": false
