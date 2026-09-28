@@ -1,6 +1,6 @@
 # ADR 0024: connected proof is retained whole and extracted value-free
 
-Status: accepted
+Status: accepted; amended by [ADR 0025](0025-connected-proof-is-revalidated-explicitly-and-extracted-through-reviewed-transformations.md), which adds explicit revalidation and reviewed transformed extracts.
 
 ## Context
 
@@ -29,8 +29,9 @@ exists.
   a rewritten claim is named as the claim the evidence contradicts.
 - Reanalysis with the current release is reported beside the sealed original
   engine and verdict and never written into the packet. Validator output is
-  reinterpreted from its retained capability; the validator is not rerun, and
-  that is stated.
+  reinterpreted from its retained capability; verification never reruns the
+  validator, and that is stated. ADR 0025 adds the separate, explicit
+  revalidation.
 - `runcompare.CompareFlows` compares two verified lifecycles by declared
   dimension (check definition, input, environment, protocol boundary, target,
   profile and validator, completion policy, collector, engine), by check
@@ -43,10 +44,11 @@ exists.
   formats, regenerated and compared on every open.
 - The share-oriented export of connected evidence is a value-free
   `readmit-connected-extract/v1`. A `readmit-connected-disclosure-policy/v1`
-  must map every surface the packet holds (the only disposition is
-  `exclude`); an unmapped surface or any credential material blocks it; a
-  residual scan over every value the packet observed or bound must pass; and
-  publication requires the exact previewed identity.
+  must map every surface the packet holds (its only disposition is
+  `exclude`; ADR 0025 adds a v2 policy with reviewed transformations); an
+  unmapped surface or any credential material blocks it; a residual scan
+  over every value the packet observed or bound must pass; and publication
+  requires the exact previewed identity.
 - Equivalence is a packet claim decided from retained executions only:
   `reproduced` needs a distinct complete replay of the same plan against the
   same declared environment and target revision failing with the same failure
@@ -57,7 +59,7 @@ exists.
 Original evidence, reviewed extracts and reproduced regressions stay distinct
 contracts, and nothing in them requires the original sources. Packets are
 larger than v1 (bounded at 60,000 files and 512 MiB). A reviewed extract that
-carries transformed FHIR or v2 content, rather than none, needs a reviewed
-transformation this release does not have; the policy's single disposition
-leaves room for one as a new policy version. The redesigned Report and Share
+carries transformed FHIR content, rather than none, needs a reviewed
+transformation; ADR 0025 adds it as a new policy and extract version, and v2
+transport content remains excluded. The redesigned Report and Share
 views bind these operations later; the command line is the only surface now.

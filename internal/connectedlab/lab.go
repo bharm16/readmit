@@ -48,6 +48,11 @@ type FHIRLab struct {
 	Extra func()
 	// capability replaces the served CapabilityStatement when set.
 	CapabilityOverride atomic.Value
+	// Reject, when set, is the application's own refusal of a create: it
+	// answers a status, a content type and a body (a FHIR OperationOutcome or
+	// plain text), or status 0 to accept. Real applications quote the refused
+	// record and what they already hold in such errors.
+	Reject atomic.Pointer[func(typ string, body []byte) (int, string, []byte)]
 	// IncludeSameType adds a same-identifier historical Appointment to every
 	// Appointment search page as an included entry, never as a match.
 	IncludeSameType atomic.Bool
@@ -149,6 +154,14 @@ func (l *FHIRLab) serve(w http.ResponseWriter, r *http.Request) {
 		l.respond(w, 200, res, false)
 	case r.Method == http.MethodPost && len(parts) == 1:
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if reject := l.Reject.Load(); reject != nil {
+			if code, contentType, answer := (*reject)(parts[0], body); code != 0 {
+				w.Header().Set("Content-Type", contentType)
+				w.WriteHeader(code)
+				_, _ = w.Write(answer)
+				return
+			}
+		}
 		res, err := l.create(parts[0], body)
 		if err != nil {
 			outcome(w, 400)

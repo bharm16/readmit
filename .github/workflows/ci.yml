@@ -74,7 +74,18 @@ jobs:
           cache-scope: tests
       - name: Vet
         run: go vet ./...
+      # The connected lab observes a real PostgreSQL database; its tests fail
+      # rather than skip in CI when no installation is named.
+      - name: PostgreSQL 16 binaries for the connected lab's disposable cluster
+        run: |
+          if [ ! -x /usr/lib/postgresql/16/bin/initdb ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-16
+          fi
+          /usr/lib/postgresql/16/bin/initdb --version
       - name: Race tests and the production-size resource boundary
+        env:
+          READMIT_POSTGRES_BIN: /usr/lib/postgresql/16/bin
         run: make test
 
   tooling:

@@ -147,8 +147,18 @@ func reportConnectedCommand() *cobra.Command {
 	}}
 	review.Flags().StringVar(&format, "format", "", "Explicit sensitive content to stdout: html, pdf, markdown, json or junit")
 
-	var policy, approve, extractOutput string
-	extract := &cobra.Command{Use: "extract PACKET --policy POLICY", Short: "Preview or publish a value-free disclosure-reviewed extract of a connected packet", Annotations: declareInterruptible(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+	var policy, approve, extractOutput, keyPath, previewFormat string
+	extract := &cobra.Command{Use: "extract PACKET --policy POLICY", Short: "Preview or publish a disclosure-reviewed extract of a connected packet: value-free (policy v1) or reviewed transformed (policy v2)", Annotations: declareInterruptible(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+		version, err := report.DisclosurePolicyVersion(policy)
+		if err != nil {
+			return err
+		}
+		if version == report.TransformPolicySchema {
+			return transformedExtract(cmd, args[0], policy, keyPath, previewFormat, approve, extractOutput)
+		}
+		if keyPath != "" || previewFormat != "" {
+			return errors.New("--key and --format apply to a reviewed transformed extract (policy v2) only")
+		}
 		candidate, err := report.PrepareExtract(cmd.Context(), args[0], policy)
 		if err != nil {
 			return err
@@ -181,10 +191,138 @@ func reportConnectedCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	extract.Flags().StringVar(&policy, "policy", "", "Reviewed readmit-connected-disclosure-policy/v1 mapping every surface")
+	extract.Flags().StringVar(&policy, "policy", "", "Reviewed readmit-connected-disclosure-policy/v1 (value-free) or /v2 (transformed) mapping every surface")
 	extract.Flags().StringVar(&approve, "approve", "", "Exact preview identity to publish")
 	extract.Flags().StringVar(&extractOutput, "output", "", "New extract directory; never overwrite")
+	extract.Flags().StringVar(&keyPath, "key", "", "Customer-local pseudonym key for a transformed extract; never exported")
+	extract.Flags().StringVar(&previewFormat, "format", "", "Preview a transformed extract's derived content to stdout: json, markdown or html")
 
-	root.AddCommand(assemble, verify, compare, export, review, extract)
+	var keyOutput string
+	pseudonymKey := &cobra.Command{Use: "pseudonym-key --output NEW_KEY_FILE", Short: "Create a private customer-local key for the pseudonyms of transformed extracts", Annotations: declare(capabilityFree), Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if keyOutput == "" {
+			return errors.New("select a new key file with --output")
+		}
+		if err := report.WritePseudonymKey(keyOutput); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprint(cmd.OutOrStdout(), "Pseudonym key created; keep it customer-local and private. It is never part of an extract.\n"); err != nil {
+			return errors.New("cannot write pseudonym key summary")
+		}
+		return nil
+	}}
+	pseudonymKey.Flags().StringVar(&keyOutput, "output", "", "New private key file; never overwrite")
+
+	var revalidation report.RevalidationOptions
+	var revalidationOutput string
+	revalidate := &cobra.Command{Use: "revalidate PACKET --capability INSTALLED_CAPABILITY --output NEW_ANALYSIS", Short: "Run the installed, identically pinned FHIR validator again on a packet's retained resources as a separate analysis", Annotations: declareInterruptible(capabilityFree), Args: reportOneArgument, RunE: func(cmd *cobra.Command, args []string) error {
+		analysis, err := report.RevalidateConnected(cmd.Context(), args[0], revalidation, revalidationOutput)
+		if err != nil {
+			return err
+		}
+		return writeRevalidation(cmd, analysis)
+	}}
+	revalidate.Flags().StringVar(&revalidation.Capability, "capability", "", "The administrator's staged validator capability; it must be the historical pin")
+	revalidate.Flags().StringVar(&revalidation.Engine, "engine", "local", "local runs the worker in the local container engine; none records what is not run")
+	revalidate.Flags().StringVar(&revalidation.Socket, "socket", "", "Local container engine socket (default: the engine's own)")
+	revalidate.Flags().StringVar(&revalidationOutput, "output", "", "New analysis directory beside the packet; never overwrite")
+
+	revalidationView := &cobra.Command{Use: "revalidation ANALYSIS PACKET", Short: "Verify a connected revalidation offline against its packet without starting anything", Annotations: declare(capabilityFree), Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+		analysis, err := report.OpenConnectedRevalidation(cmd.Context(), args[0], args[1])
+		if err != nil {
+			return err
+		}
+		return writeRevalidation(cmd, analysis)
+	}}
+
+	root.AddCommand(assemble, verify, compare, export, review, extract, pseudonymKey, revalidate, revalidationView)
 	return root
+}
+
+// writeRevalidation names identities, states and reasons, never a finding's
+// text, a path outside the analysis or an endpoint.
+func writeRevalidation(cmd *cobra.Command, analysis *report.ConnectedRevalidation) error {
+	m := analysis.Manifest
+	var out strings.Builder
+	fmt.Fprintf(&out, "Connected revalidation: %s\nPacket: %s\nInstalled capability: %s\nEngine: %s (%s)\nHistorical verdicts unchanged; this is a separate analysis\n", analysis.Identity, m.PacketIdentity, orNone(m.Capability), m.Engine.Selection, m.Engine.State)
+	for _, v := range m.Validations {
+		fmt.Fprintf(&out, "%s %s validation:%s: %s", v.Section, v.Phase, v.Check, v.Status)
+		if v.Reason != "" {
+			fmt.Fprintf(&out, " (%s)", v.Reason)
+		}
+		if v.Historical != nil {
+			fmt.Fprintf(&out, "; historical %s %s", v.Historical.State, v.Historical.Verdict)
+		}
+		if v.Revalidated != nil {
+			fmt.Fprintf(&out, "; now %s %s", v.Revalidated.State, v.Revalidated.Verdict)
+		}
+		fmt.Fprintf(&out, "; %s\n", v.Agreement)
+	}
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), out.String()); err != nil {
+		return errors.New("cannot write connected revalidation")
+	}
+	return nil
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "none selected"
+	}
+	return s
+}
+
+// transformedExtract previews or publishes a reviewed transformed extract.
+// The preview names identities, surfaces and reasons; derived content reaches
+// stdout only when --format asks for it.
+func transformedExtract(cmd *cobra.Command, packet, policy, keyPath, format, approve, output string) error {
+	if keyPath == "" {
+		return errors.New("a transformed extract requires the customer-local pseudonym key (--key)")
+	}
+	key, err := report.ReadPseudonymKey(keyPath)
+	if err != nil {
+		return err
+	}
+	candidate, err := report.PrepareTransformedExtract(cmd.Context(), packet, policy, key)
+	if err != nil {
+		return err
+	}
+	if approve == "" && output == "" {
+		if format != "" {
+			data, err := candidate.Render(format)
+			if err != nil {
+				return err
+			}
+			if _, err := cmd.OutOrStdout().Write(data); err != nil {
+				return errors.New("cannot write extract preview")
+			}
+		} else {
+			var out strings.Builder
+			fmt.Fprintf(&out, "Transformed extract preview: %s\nDerived by the reviewed policy; nothing written\n", candidate.Identity())
+			for _, item := range candidate.Extract.Inventory {
+				fmt.Fprintf(&out, "%s: %d files, %s\n", item.Surface, item.Files, item.Disposition)
+			}
+			for _, reason := range candidate.Blocked {
+				fmt.Fprintf(&out, "Blocked: %s\n", reason)
+			}
+			if _, err := fmt.Fprint(cmd.OutOrStdout(), out.String()); err != nil {
+				return errors.New("cannot write extract preview")
+			}
+		}
+		if len(candidate.Blocked) > 0 {
+			return errors.New("the extract is blocked; map every surface the packet holds, keep only what the policy may disclose, or keep the evidence customer-local")
+		}
+		return nil
+	}
+	if format != "" {
+		return errors.New("--format previews only; publish without it")
+	}
+	if approve == "" || output == "" {
+		return errors.New("publishing an extract requires both --approve EXACT_PREVIEW_ID and --output NEW_EXTRACT")
+	}
+	if err := candidate.Publish(cmd.Context(), approve, output); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Transformed extract published: %s\nDerived, not original evidence; not an equivalent reproducer; not a de-identification determination\n", candidate.Identity()); err != nil {
+		return errors.New("cannot write extract summary")
+	}
+	return nil
 }
