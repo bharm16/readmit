@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/backup"
 	"github.com/bharm16/readmit/internal/desktop"
@@ -216,6 +218,7 @@ func TestTheWindowsRecoveryCopiesAreTheOnesProjectRecoverRestores(t *testing.T) 
 	if err != nil || stderr != "" || stdout != "Document recovered; previous bytes retained.\n" {
 		t.Fatalf("readmit project recover: %v %s %s", err, stdout, stderr)
 	}
+	alignRecoveryTimes(t, windowRoot, commandRoot)
 	if !reflect.DeepEqual(treeDigests(t, windowRoot), treeDigests(t, commandRoot)) {
 		t.Fatal("the window's recovery left another project than the command line's")
 	}
@@ -286,6 +289,7 @@ func TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines(t *testing.T
 	if _, stderr, err := run(t, "project", "quota", commandRoot, "--max-bytes", "500000000", "--max-files", "5000"); declared.State != desktop.Completed || err != nil {
 		t.Fatalf("declaring a quota: the window answered %+v, the command line %v %s", declared, err, stderr)
 	}
+	alignRecoveryTimes(t, windowRoot, commandRoot)
 	if !reflect.DeepEqual(treeDigests(t, windowRoot), treeDigests(t, commandRoot)) {
 		t.Fatal("the window declared another quota than the command line")
 	}
@@ -342,3 +346,60 @@ func TestTheWindowsArchiveDeleteMigrationAndQuotaAreTheCommandLines(t *testing.T
 		t.Fatal("the window's delete kept another recovery archive than the command line's")
 	}
 }
+
+// alignRecoveryTimes holds the two projects' records of recovery copies to
+// the same copies, for the same documents and reasons in the same order, and
+// then gives the command line's record the window's times. A copy's kept_at
+// is the wall-clock second its own replacement ran, and two projects changed
+// one after the other need not share it; nothing else in either project may
+// differ.
+func alignRecoveryTimes(t *testing.T, windowRoot, commandRoot string) {
+	t.Helper()
+	type entry struct {
+		Document string `json:"document"`
+		Digest   string `json:"digest"`
+		KeptAt   string `json:"kept_at"`
+		Reason   string `json:"reason"`
+	}
+	type record struct {
+		Schema string  `json:"schema"`
+		Copies []entry `json:"copies"`
+	}
+	read := func(root string) (record, []byte) {
+		raw, err := os.ReadFile(filepath.Join(root, project.RecoveryRecordName))
+		if err != nil {
+			t.Fatalf("the record of recovery copies: %v", err)
+		}
+		var r record
+		if err := json.Unmarshal(raw, &r, json.RejectUnknownMembers(true)); err != nil {
+			t.Fatal(err)
+		}
+		return r, raw
+	}
+	window, _ := read(windowRoot)
+	command, raw := read(commandRoot)
+	// The record is rewritten as the project writes it, so the only bytes
+	// that change are the times.
+	if encoded, err := json.Marshal(command, json.Deterministic(true)); err != nil || !bytes.Equal(append(encoded, '\n'), raw) {
+		t.Fatal("the record of recovery copies is not encoded as this helper rewrites it")
+	}
+	if len(window.Copies) != len(command.Copies) || window.Schema != command.Schema {
+		t.Fatalf("the window recorded other recovery copies than the command line: %+v %+v", window, command)
+	}
+	for i := range command.Copies {
+		w, c := window.Copies[i], command.Copies[i]
+		if _, err := time.Parse(time.RFC3339, c.KeptAt); err != nil || !validTime(w.KeptAt) || w.Document != c.Document || w.Digest != c.Digest || w.Reason != c.Reason {
+			t.Fatalf("the window recorded another recovery copy than the command line: %+v %+v", w, c)
+		}
+		command.Copies[i].KeptAt = w.KeptAt
+	}
+	aligned, err := json.Marshal(command, json.Deterministic(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(commandRoot, project.RecoveryRecordName), append(aligned, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func validTime(value string) bool { _, err := time.Parse(time.RFC3339, value); return err == nil }
