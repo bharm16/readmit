@@ -140,4 +140,6 @@ See [ADR 0019](adr/0019-connected-lifecycle-composition.md),
 [test isolation](test-isolation.md). The v4 engine result is ready for existing
 catalog/desktop adapters; this release adds no desktop facade or page.
 Lifecycles with FHIR stimuli or observations use `readmit-connected-test/v5`;
-see [connected FHIR lifecycle tests](connected-fhir.md).
+see [connected FHIR lifecycle tests](connected-fhir.md). Retained lifecycle
+results are packeted, compared, reviewed and extracted offline as
+[retained connected proof](connected-report.md).

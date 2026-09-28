@@ -217,14 +217,21 @@ type fhirReader struct {
 // openFHIRPhase verifies one sealed v5 phase offline. It returns the phase
 // summary and the response values its steps bound for later phases.
 func openFHIRPhase(ctx context.Context, flow *connectedtest.FlowPlan, phase connectedtest.FlowPhase, dir string, files map[string][]byte, inputs map[string]string) (FlowPhaseResult, FHIRPhaseRun, string, error) {
+	result, r, identity, _, err := openFHIRPhaseTables(ctx, flow, phase, dir, files, inputs)
+	return result, r, identity, err
+}
+
+// openFHIRPhaseTables is openFHIRPhase that also answers the tables the
+// evaluator read, each re-derived from retained bytes by its own reader.
+func openFHIRPhaseTables(ctx context.Context, flow *connectedtest.FlowPlan, phase connectedtest.FlowPhase, dir string, files map[string][]byte, inputs map[string]string) (FlowPhaseResult, FHIRPhaseRun, string, map[string]assertion.Table, error) {
 	x := fhirReader{flow: flow, phase: phase, plan: flow.Phase(phase.ID), dir: dir, files: files, inputs: inputs}
 	identity := strings.TrimSpace(string(files["identity.sha256"]))
 	var r, start FHIRPhaseRun
 	if identity == "" || identity != artifactdir.Identity(PhaseSchemaV2, files) || json.Unmarshal(files["manifest.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || r.Schema != PhaseSchemaV2 || r.Plan != x.plan.Identity() || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {
-		return FlowPhaseResult{}, r, "", invalid
+		return FlowPhaseResult{}, r, "", nil, invalid
 	}
 	if !artifactdir.MatchesSubtree(files, "plan", connectedtest.PhasePlanSchemaV2, artifactdir.Identity(connectedtest.PhasePlanSchemaV2, x.plan.Files())) {
-		return FlowPhaseResult{}, r, "", invalid
+		return FlowPhaseResult{}, r, "", nil, invalid
 	}
 	used := map[string]string{}
 	for _, s := range x.plan.Document().Test.Steps {
@@ -236,28 +243,28 @@ func openFHIRPhase(ctx context.Context, flow *connectedtest.FlowPlan, phase conn
 	}
 	expected := x.initial(r.Instance, r.StartedAt, used)
 	if !bytes.Equal(canonicalFlow(start), canonicalFlow(expected)) {
-		return FlowPhaseResult{}, r, "", invalid
+		return FlowPhaseResult{}, r, "", nil, invalid
 	}
 	derived, evidence, err := x.derive(ctx, r)
 	if err != nil {
-		return FlowPhaseResult{}, r, "", err
+		return FlowPhaseResult{}, r, "", nil, err
 	}
 	if !bytes.Equal(canonicalFlow(derived), canonicalFlow(r)) {
-		return FlowPhaseResult{}, r, "", invalid
+		return FlowPhaseResult{}, r, "", nil, invalid
 	}
 	evaluation, err := x.evaluate(ctx, r, evidence)
 	if err != nil {
-		return FlowPhaseResult{}, r, "", err
+		return FlowPhaseResult{}, r, "", nil, err
 	}
 	if r.Stage == "evaluated" {
 		if r.Evaluation != flowDigest(evaluation) || !bytes.Equal(files["evaluation.json"], canonicalFlow(evaluation)) {
-			return FlowPhaseResult{}, r, "", invalid
+			return FlowPhaseResult{}, r, "", nil, invalid
 		}
 	} else if r.Evaluation != "" || files["evaluation.json"] != nil {
-		return FlowPhaseResult{}, r, "", invalid
+		return FlowPhaseResult{}, r, "", nil, invalid
 	}
 	result, err := x.result(r, evaluation, identity)
-	return result, r, identity, err
+	return result, r, identity, evidence, err
 }
 
 func (x fhirReader) initial(instance string, at time.Time, inputs map[string]string) FHIRPhaseRun {

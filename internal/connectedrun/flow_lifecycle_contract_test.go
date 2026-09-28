@@ -29,6 +29,8 @@ import (
 	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/report"
+	"github.com/bharm16/readmit/internal/runcompare"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/testisolation"
 )
@@ -555,6 +557,37 @@ func TestFlowLifecycleContractUnchangedOracleDetectsDefectFixAndReintroduction(t
 		if err != nil || result.Verdict != want || result.Cleanup != "complete" {
 			t.Fatalf("offline historical result changed: %+v %v", result, err)
 		}
+	}
+	// The typed rows behind each verdict re-derive offline too, and the
+	// retained proof built from them compares, packets and reproduces.
+	for _, output := range retained {
+		evidence, err := connectedrun.OpenFlowEvidence(context.Background(), output)
+		if err != nil || len(evidence.Phases) != 2 {
+			t.Fatal("retained evidence does not re-derive offline", err)
+		}
+		for id, phase := range evidence.Phases {
+			if len(phase.Tables) == 0 {
+				t.Fatal("no retained table for phase", id)
+			}
+			for ds, table := range phase.Tables {
+				if !table.Usable || phase.Observations[ds] == "" {
+					t.Fatal("an unusable or unlocated retained table", id, ds)
+				}
+			}
+		}
+	}
+	comparison, err := runcompare.CompareFlows(context.Background(), retained[0], retained[1])
+	if err != nil || comparison.Attribution.Outcome != "no-declared-change" || len(comparison.Records) == 0 {
+		t.Fatalf("v4 lifecycles do not compare offline: %v %+v", err, comparison.Attribution)
+	}
+	for _, records := range comparison.Records {
+		if records.State != "compared" {
+			t.Fatalf("v4 records were not compared: %+v", records)
+		}
+	}
+	packet, err := report.AssembleConnected(context.Background(), report.ConnectedInput{Current: retained[0], Baseline: retained[1], Replay: retained[2]}, filepath.Join(h.root, "packet"))
+	if err != nil || packet.Manifest.Current.Schema != connectedrun.FlowSchema || packet.Manifest.Equivalence.State != report.EquivalenceReproduced || packet.Comparison == nil {
+		t.Fatal("a v4 lifecycle packet", err)
 	}
 	if h.fixture.target.received.Load() != 6 {
 		t.Fatal("offline reopening resent inputs")
