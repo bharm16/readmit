@@ -596,7 +596,7 @@ func (a *App) completeImport(ctx context.Context, result ImportCaseResult, root,
 		result.Operation = held.Intent
 		return result
 	}
-	ref, declined := a.caseRef(ctx, result.Context, held.Entry)
+	ref, declined := a.caseRef(ctx, result.Context, held.Entry, true)
 	if ref == nil {
 		result.refuse(declined.state, "the case was imported and registered, and "+declined.reason)
 		return result
@@ -673,16 +673,22 @@ func entryRegistered(root, entry string) bool {
 	return slices.ContainsFunc(opened.Document.Cases, func(registered project.Case) bool { return registered.Name == entry })
 }
 
-// caseRef is the catalog's reference to the case at entry, once the catalog
-// records it.
-func (a *App) caseRef(ctx context.Context, request RequestContext, entry string) (*ItemRef, refusal) {
-	loaded, declined := a.loadCatalog(ctx, request, true)
+// caseRef is the catalog's reference to the case at entry, recording the
+// catalog first when record asks. Import and capture resolve entries they
+// just wrote; a read resolves without recording.
+func (a *App) caseRef(ctx context.Context, request RequestContext, entry string, record bool) (*ItemRef, refusal) {
+	loaded, declined := a.loadCatalog(ctx, request, record)
 	if loaded == nil {
 		return nil, declined
 	}
 	index := loaded.document.ByEntry(string(CaseItem), entry)
 	if index < 0 {
-		return nil, refusal{Failed, "the project's catalog does not list the case yet"}
+		// The recording path says "yet": the catalog may still record the
+		// case. The read path records nothing, so it does not.
+		if record {
+			return nil, refusal{Failed, "the project's catalog does not list the case yet"}
+		}
+		return nil, refusal{Failed, "the project's catalog does not list the case"}
 	}
 	item := loaded.read(loaded.document.Items[index])
 	return &item.Ref, refusal{}

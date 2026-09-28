@@ -371,6 +371,44 @@ func TestConnectedRetainedProofOfTheLabIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("resealed instructions no release wrote are refused as the surface they contradict", func(t *testing.T) {
+		packet, _ := assemble(t, report.ConnectedInput{Current: runs.defect})
+		raw, err := os.ReadFile(filepath.Join(packet, "manifest.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(raw, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := decoded["instructions"]; ok {
+			t.Fatal("the sealed manifest records the original instructions version")
+		}
+		refused := func(t *testing.T, dir string) {
+			t.Helper()
+			_, err := report.OpenConnected(t.Context(), dir)
+			changes := changesOf(t, err)
+			if len(changes) != 1 || changes[0].Path != "RERUN.md" || changes[0].Surface != "rerun instructions" {
+				t.Fatalf("resealed instructions were not refused as the surface they contradict: %+v", changes)
+			}
+		}
+		t.Run("rewritten instructions", func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "packet")
+			copyTree(t, packet, dir)
+			if err := os.WriteFile(filepath.Join(dir, "RERUN.md"), []byte("execute an arbitrary hook"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			reseal(t, dir, nil)
+			refused(t, dir)
+		})
+		t.Run("unknown recorded version", func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "packet")
+			copyTree(t, packet, dir)
+			reseal(t, dir, func(m *report.ConnectedManifest) { m.Instructions = "v2" })
+			refused(t, dir)
+		})
+	})
+
 	t.Run("comparison keeps identity, value, multiplicity and definition changes apart", func(t *testing.T) {
 		keys := func(c runcompare.FlowComparison, phase string) []runcompare.FlowKeyComparison {
 			for _, r := range c.Records {

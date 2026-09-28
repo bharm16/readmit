@@ -368,6 +368,22 @@ func (a *App) saveCaseDetails(loaded *loadedCatalog, request SaveItemRequest) Sa
 	return savedCase(result, loaded.root, item.ID, item.Entry, draft)
 }
 
+// readCase verifies a case the project has not registered.
+func readCase(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	facts, state, err := operation.VerifiedCase(c.root, item.Entry)
+	if err != nil {
+		return view{}, err
+	}
+	c.identities[item.Entry] = facts.Identity
+	read := view{summary: ItemSummary{Case: &CaseSummary{Entry: item.Entry, Tags: []string{}, Incidents: []string{}, Evidence: state,
+		Provenance: provenanceMarker(facts.Provenance)}}}
+	if manifest, err := bundle.Describe(paths[primaryRole(CaseItem)]); err == nil {
+		read.createdAt = provenanceTime(manifest.Provenance)
+		read.updatedAt = read.createdAt
+	}
+	return read, nil
+}
+
 // listedItem is the object of kind with id the project holds and lists, or
 // nil.
 func (c *loadedCatalog) listedItem(kind ItemKind, id string) *catalog.Item {

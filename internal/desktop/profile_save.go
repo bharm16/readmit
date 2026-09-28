@@ -10,6 +10,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/localprofile"
+	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profilepackage"
 	"github.com/bharm16/readmit/internal/profileversion"
@@ -211,7 +212,8 @@ func (s draftScope) pack(ref ItemRef) (profilepack.Pack, error) {
 	return s.loaded.packOf(ref)
 }
 
-// packOf reads the metadata pack one profile object of the project is.
+// packOf reads the metadata pack one profile object of the project is, at
+// any pack version this release reads.
 func (c *loadedCatalog) packOf(ref ItemRef) (profilepack.Pack, error) {
 	index := c.document.Find(ref.ID)
 	if ref.Kind != ProfileItem || index < 0 || c.document.Items[index].Kind != string(ProfileItem) || c.removed(c.document.Items[index]) {
@@ -221,7 +223,11 @@ func (c *loadedCatalog) packOf(ref ItemRef) (profilepack.Pack, error) {
 	if err != nil {
 		return profilepack.Pack{}, err
 	}
-	return profilepack.Decode(data)
+	pack, err := profileeval.DecodePack(data)
+	if err != nil {
+		return profilepack.Pack{}, err
+	}
+	return pack.Metadata, nil
 }
 
 // packBytes is the metadata pack document one profile object is or carries:

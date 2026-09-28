@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/fhirvalidator"
 )
 
@@ -177,7 +178,7 @@ func RevalidateConnected(ctx context.Context, packetPath string, options Revalid
 			m.Validations = append(m.Validations, v)
 			continue
 		}
-		prefix := v.Section + "/phases/" + v.Phase + "/validations/" + v.Check + "/"
+		prefix := v.Section + "/" + connectedrun.ValidationDir(v.Phase, v.Check) + "/"
 		request, input := files[prefix+"request.json"], files[prefix+"input.json"]
 		v.Status, v.Agreement, v.Differences = NotRevalidated, AgreementNotCompare, []string{}
 		switch reason := v.requestReason(packet, request); {
@@ -226,7 +227,7 @@ func RevalidateConnected(ctx context.Context, packetPath string, options Revalid
 			return nil, err
 		}
 		v.settle(outcome)
-		v.compareFindings(filepath.Join(dir, v.Section, "phases", v.Phase, "validations", v.Check), filepath.Join(w.Path(), filepath.FromSlash(v.Evidence)))
+		v.compareFindings(filepath.Join(dir, v.Section, filepath.FromSlash(connectedrun.ValidationDir(v.Phase, v.Check))), filepath.Join(w.Path(), filepath.FromSlash(v.Evidence)))
 		m.Validations = append(m.Validations, v)
 	}
 	m.Files = index(written)
@@ -449,7 +450,7 @@ func OpenConnectedRevalidation(ctx context.Context, dir, packetPath string) (*Co
 		rebuilt := want
 		rebuilt.Evidence = v.Evidence
 		rebuilt.settle(outcome)
-		rebuilt.compareFindings(filepath.Join(packetDir, want.Section, "phases", want.Phase, "validations", want.Check), filepath.Join(dir, filepath.FromSlash(v.Evidence)))
+		rebuilt.compareFindings(filepath.Join(packetDir, want.Section, filepath.FromSlash(connectedrun.ValidationDir(want.Phase, want.Check))), filepath.Join(dir, filepath.FromSlash(v.Evidence)))
 		if !bytes.Equal(canonicalJSON(rebuilt), canonicalJSON(v)) {
 			return nil, invalid
 		}

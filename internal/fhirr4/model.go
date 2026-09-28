@@ -14,10 +14,8 @@ import (
 )
 
 const Version = "4.0.1"
-const EvidenceSchema = "readmit-fhir-evidence/v1"
 const ProjectionSchema = "readmit-fhir-projection/v1"
 const DatasetSchema = "readmit-fhir-dataset/v1"
-const CapabilitySchema = "readmit-fhir-capability-check/v1"
 const MaxBytes = 16 << 20
 const MaxNodes = 100000
 const MaxDepth = 64

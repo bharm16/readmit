@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -164,32 +165,15 @@ func reportConnectedCommand() *cobra.Command {
 			return err
 		}
 		if approve == "" && extractOutput == "" {
-			var out strings.Builder
-			fmt.Fprintf(&out, "Extract preview: %s\nValue-free; nothing written\n", candidate.Identity())
-			for _, item := range candidate.Extract.Inventory {
-				fmt.Fprintf(&out, "%s: %d files, %s\n", item.Surface, item.Files, item.Disposition)
-			}
-			for _, reason := range candidate.Blocked {
-				fmt.Fprintf(&out, "Blocked: %s\n", reason)
-			}
-			if _, err := fmt.Fprint(cmd.OutOrStdout(), out.String()); err != nil {
-				return errors.New("cannot write extract preview")
+			if err := writeExtractPreview(cmd, "Extract preview", "Value-free", candidate.Identity(), candidate.Extract.Inventory, candidate.Blocked); err != nil {
+				return err
 			}
 			if len(candidate.Blocked) > 0 {
 				return errors.New("the extract is blocked; map every surface the packet holds or keep the evidence customer-local")
 			}
 			return nil
 		}
-		if approve == "" || extractOutput == "" {
-			return errors.New("publishing an extract requires both --approve EXACT_PREVIEW_ID and --output NEW_EXTRACT")
-		}
-		if err := candidate.Publish(cmd.Context(), approve, extractOutput); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Extract published: %s\nValue-free; not an equivalent reproducer; not a de-identification determination\n", candidate.Identity()); err != nil {
-			return errors.New("cannot write extract summary")
-		}
-		return nil
+		return publishExtract(cmd, candidate, approve, extractOutput, "Extract published", "Value-free; not an equivalent reproducer; not a de-identification determination")
 	}}
 	extract.Flags().StringVar(&policy, "policy", "", "Reviewed readmit-connected-disclosure-policy/v1 (value-free) or /v2 (transformed) mapping every surface")
 	extract.Flags().StringVar(&approve, "approve", "", "Exact preview identity to publish")
@@ -294,18 +278,8 @@ func transformedExtract(cmd *cobra.Command, packet, policy, keyPath, format, app
 			if _, err := cmd.OutOrStdout().Write(data); err != nil {
 				return errors.New("cannot write extract preview")
 			}
-		} else {
-			var out strings.Builder
-			fmt.Fprintf(&out, "Transformed extract preview: %s\nDerived by the reviewed policy; nothing written\n", candidate.Identity())
-			for _, item := range candidate.Extract.Inventory {
-				fmt.Fprintf(&out, "%s: %d files, %s\n", item.Surface, item.Files, item.Disposition)
-			}
-			for _, reason := range candidate.Blocked {
-				fmt.Fprintf(&out, "Blocked: %s\n", reason)
-			}
-			if _, err := fmt.Fprint(cmd.OutOrStdout(), out.String()); err != nil {
-				return errors.New("cannot write extract preview")
-			}
+		} else if err := writeExtractPreview(cmd, "Transformed extract preview", "Derived by the reviewed policy", candidate.Identity(), candidate.Extract.Inventory, candidate.Blocked); err != nil {
+			return err
 		}
 		if len(candidate.Blocked) > 0 {
 			return errors.New("the extract is blocked; map every surface the packet holds, keep only what the policy may disclose, or keep the evidence customer-local")
@@ -315,13 +289,41 @@ func transformedExtract(cmd *cobra.Command, packet, policy, keyPath, format, app
 	if format != "" {
 		return errors.New("--format previews only; publish without it")
 	}
+	return publishExtract(cmd, candidate, approve, output, "Transformed extract published", "Derived, not original evidence; not an equivalent reproducer; not a de-identification determination")
+}
+
+// extractPublisher is one prepared extract behind the shared publish driver.
+type extractPublisher interface {
+	Identity() string
+	Publish(ctx context.Context, approval, output string) error
+}
+
+// writeExtractPreview names the preview identity, every inventoried surface
+// and every block reason; it writes nothing.
+func writeExtractPreview(cmd *cobra.Command, title, subtitle, identity string, inventory []report.InventoryItem, blocked []string) error {
+	var out strings.Builder
+	fmt.Fprintf(&out, "%s: %s\n%s; nothing written\n", title, identity, subtitle)
+	for _, item := range inventory {
+		fmt.Fprintf(&out, "%s: %d files, %s\n", item.Surface, item.Files, item.Disposition)
+	}
+	for _, reason := range blocked {
+		fmt.Fprintf(&out, "Blocked: %s\n", reason)
+	}
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), out.String()); err != nil {
+		return errors.New("cannot write extract preview")
+	}
+	return nil
+}
+
+// publishExtract publishes one approved preview and names what it is.
+func publishExtract(cmd *cobra.Command, candidate extractPublisher, approve, output, published, note string) error {
 	if approve == "" || output == "" {
 		return errors.New("publishing an extract requires both --approve EXACT_PREVIEW_ID and --output NEW_EXTRACT")
 	}
 	if err := candidate.Publish(cmd.Context(), approve, output); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Transformed extract published: %s\nDerived, not original evidence; not an equivalent reproducer; not a de-identification determination\n", candidate.Identity()); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n%s\n", published, candidate.Identity(), note); err != nil {
 		return errors.New("cannot write extract summary")
 	}
 	return nil

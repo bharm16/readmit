@@ -50,6 +50,7 @@ type Manifest struct {
 	ReceiverBehaviorChanged bool                   `json:"receiver_behavior_changed"`
 	Limitations             []string               `json:"limitations"`
 	Runs                    []RunLabel             `json:"runs"`
+	Instructions            string                 `json:"instructions,omitzero"`
 	Files                   []bundle.Payload       `json:"files"`
 }
 

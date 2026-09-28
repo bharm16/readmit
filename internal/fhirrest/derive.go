@@ -2,7 +2,6 @@ package fhirrest
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -68,7 +67,8 @@ func derive(ctx context.Context, p *Plan, r *Result, bodies map[int][]byte) {
 			if len(p.request.Parameters["_elements"]) > 0 || (len(p.request.Parameters["_summary"]) > 0 && p.request.Parameters["_summary"][0] != "false") || d.Subsetted() {
 				r.Search.Coverage = "unknown"
 			}
-			for i, entry := range b.Entries {
+			for _, m := range CorrelateEntries(b, resources) {
+				entry := b.Entries[m.Index]
 				switch entry.SearchMode {
 				case "match":
 					r.Search.MatchOccurrences++
@@ -98,36 +98,32 @@ func derive(ctx context.Context, p *Plan, r *Result, bodies map[int][]byte) {
 					}
 					continue
 				}
-				pointer := fmt.Sprintf("/entry/%d/resource", i)
-				for _, resource := range resources {
-					if resource.Pointer != pointer {
-						continue
-					}
-					if entry.SearchMode == "match" {
-						if resource.Type != p.request.Resource {
-							r.Search.Coverage = "unknown"
-						}
-					}
-					if resource.LogicalID == "" {
+				if !m.Found {
+					continue
+				}
+				if entry.SearchMode == "match" {
+					if m.Type != p.request.Resource {
 						r.Search.Coverage = "unknown"
-						continue
 					}
-					identity := resource.Base + "/" + resource.Type + "/" + resource.LogicalID
-					if entry.SearchMode == "match" && !matched[identity] {
-						matched[identity] = true
-						r.Search.Matches++
-						matches[resource.Occurrence] = true
+				}
+				if m.LogicalID == "" {
+					r.Search.Coverage = "unknown"
+					continue
+				}
+				if entry.SearchMode == "match" && !matched[m.Identity] {
+					matched[m.Identity] = true
+					r.Search.Matches++
+					matches[m.Occurrence] = true
+				}
+				digest := dataset.Digest(entry.Resource)
+				if first, ok := seen[m.Identity]; ok {
+					r.Search.Overlaps = append(r.Search.Overlaps, Overlap{Identity: m.Identity, FirstAttempt: first.attempt, Attempt: a.Index, FirstVersion: first.version, Version: m.VersionID, Changed: first.version != m.VersionID || first.digest != digest})
+					if first.version != m.VersionID || first.digest != digest {
+						r.Search.Consistency = "changed-between-pages"
+						r.Search.Coverage = "unknown"
 					}
-					digest := dataset.Digest(entry.Resource)
-					if first, ok := seen[identity]; ok {
-						r.Search.Overlaps = append(r.Search.Overlaps, Overlap{Identity: identity, FirstAttempt: first.attempt, Attempt: a.Index, FirstVersion: first.version, Version: resource.VersionID, Changed: first.version != resource.VersionID || first.digest != digest})
-						if first.version != resource.VersionID || first.digest != digest {
-							r.Search.Consistency = "changed-between-pages"
-							r.Search.Coverage = "unknown"
-						}
-					} else {
-						seen[identity] = occurrence{a.Index, resource.VersionID, digest}
-					}
+				} else {
+					seen[m.Identity] = occurrence{a.Index, m.VersionID, digest}
 				}
 			}
 		}

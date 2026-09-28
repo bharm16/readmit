@@ -80,8 +80,6 @@ import type {
   DiagnosisGroupsResult,
   DiagnosisResult,
   FindingPromotion,
-  FindingReviewRecord,
-  FindingReviewResult,
   FindingStatus,
   Normalization,
   NormalizationDifference,
@@ -1517,40 +1515,6 @@ export function findingStatus(
     basis: verdict === "not_reviewed" ? "unreviewed" : "decision",
     next_evidence: "Capture the acknowledgement the case does not hold.",
     ...overrides,
-  };
-}
-
-/** One finding review joined to its diagnosis, bound by fixed identity tokens. */
-export function findingReviewResult(
-  statuses: FindingStatus[],
-  overrides: Partial<FindingReviewRecord> = {},
-  result: Partial<FindingReviewResult> = {},
-): FindingReviewResult {
-  return {
-    state: "completed",
-    review: {
-      record: {
-        schema: "readmit-finding-review/v1",
-        engine: "readmit",
-        diagnosis: {
-          schema: "readmit-diagnosis/v1",
-          report_sha256: REPORT_SHA256,
-          case_identity: CASE_IDENTITY,
-          config_sha256: "config-sha256-fixed-for-tests",
-          profile: "readmit-siu-v1",
-          ruleset: "readmit-siu-diagnosis/v1",
-        },
-        decisions_sha256: "decisions-sha256-fixed-for-tests",
-        boundary: "ack-contract",
-        findings: statuses,
-        statement:
-          "The machine's findings and one person's judgment of them, joined but distinguishable.",
-        ...overrides,
-      },
-      offset: 0,
-      total: statuses.length,
-    },
-    ...result,
   };
 }
 

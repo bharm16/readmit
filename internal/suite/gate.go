@@ -174,11 +174,15 @@ func assessGate(ctx context.Context, root string, p GatePolicy, at time.Time) Ga
 		if e != nil || comparison.Baseline.Identity != pins[job.ID] || comparison.Specification != "unchanged" {
 			return r
 		}
-		if comparison.Baseline.RunState != "passed" || comparison.Baseline.Status != string(testrunner.Pass) {
+		baselineState, baselineRecorded := comparison.Baseline.DurableState()
+		baselineStatus, baselineDecided := comparison.Baseline.ResultStatus()
+		if !baselineRecorded || baselineState != durablerun.Passed || !baselineDecided || baselineStatus != testrunner.Pass {
 			return r
 		}
-		if comparison.Current.RunState != "passed" || comparison.Current.Status != string(testrunner.Pass) {
-			if comparison.Current.RunState == "assertion_failed" {
+		currentState, currentRecorded := comparison.Current.DurableState()
+		currentStatus, currentDecided := comparison.Current.ResultStatus()
+		if !currentRecorded || currentState != durablerun.Passed || !currentDecided || currentStatus != testrunner.Pass {
+			if currentRecorded && currentState == durablerun.AssertionFailed {
 				r.State = "failed"
 				r.ExitCode = 1
 				r.Baseline = "failed"

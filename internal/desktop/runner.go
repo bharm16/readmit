@@ -16,6 +16,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
@@ -76,6 +77,30 @@ type RunnerConfigRequest struct {
 	UpdateKey    string               `json:"update_key"`
 	UpdateEngine string               `json:"update_engine"`
 	Output       string               `json:"output"`
+}
+
+func readRunner(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	data, err := boundedFile(paths[primaryRole(RunnerItem)], 1<<20)
+	if err != nil {
+		return view{}, err
+	}
+	config, err := customerrunner.DecodeConfig(data)
+	if err != nil {
+		return view{}, err
+	}
+	return view{summary: ItemSummary{Runner: &RunnerSummary{Environment: config.Environment}}}, nil
+}
+
+func readSchedule(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	data, err := boundedFile(paths[primaryRole(ScheduleItem)], 1<<20)
+	if err != nil {
+		return view{}, err
+	}
+	policy, err := runnerprotocol.DecodeSchedules(data)
+	if err != nil {
+		return view{}, err
+	}
+	return view{summary: ItemSummary{Schedule: &ScheduleSummary{Schedules: len(policy.Schedules)}}}, nil
 }
 
 // PreviewRunnerConfig validates the structured form through the runner

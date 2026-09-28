@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
@@ -660,6 +662,138 @@ func (c *loadedCatalog) revisionBacking(item catalog.Item, revision string) (map
 	return c.backing(historical)
 }
 
+func readTest(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	path := paths[primaryRole(TestItem)]
+	var spec testrunner.Spec
+	version := item.RevisionLabel()
+	if declares(path, expectation.Schema) {
+		release, err := expectation.Read(path)
+		if err != nil {
+			return view{}, err
+		}
+		spec, version = release.Baseline.Spec, revisionLabel(release.Baseline.Revision)
+	} else {
+		read, err := testrunner.ReadSpec(path)
+		if err != nil {
+			return view{}, err
+		}
+		spec = read
+	}
+	summary := &TestSummary{SourceCase: c.specCase(spec), CurrentVersion: version, Assertions: len(spec.Assertions),
+		Boundary: spec.Observation.Boundary, Entry: c.entryOf(path)}
+	environment := ""
+	if links, held := paths["links"]; held {
+		read, err := readTestLinks(links)
+		if err != nil {
+			return view{}, err
+		}
+		summary.Tags, environment = read.Tags, read.Environment
+	}
+	if latest := c.latestRun(spec, environment); latest != nil {
+		summary.LatestRun = &ItemRef{Kind: RunItem, ID: latest.id}
+		summary.LatestResult = latest.outcome
+		if !latest.started.IsZero() {
+			summary.LatestRunAt = stampedTime(latest.started)
+		}
+	}
+	return view{name: spec.Name, summary: ItemSummary{Test: summary}}, nil
+}
+
+// specCase is the project's case a test names, when it names one entry of
+// the project.
+func (c *loadedCatalog) specCase(spec testrunner.Spec) *ItemRef {
+	if artifactpath := filepath.Clean(spec.Input.Case); filepath.IsLocal(artifactpath) && filepath.Base(artifactpath) == artifactpath {
+		if ref := c.entryRef(CaseItem, artifactpath); ref != nil {
+			return ref
+		}
+		return c.entryRef(VariantItem, artifactpath)
+	}
+	return nil
+}
+
+// runView is one retained run's retained test, its start and the status its
+// result records, for finding a test's runs. Only a run with a result retains
+// its test: a durable run with none is not one of any test's runs.
+type runView struct {
+	id      string
+	spec    *testrunner.Spec
+	started time.Time
+	outcome testrunner.Status
+}
+
+// runs reads every retained run's test once per load.
+func (c *loadedCatalog) runs() []runView {
+	if !c.runsRead {
+		c.runsRead = true
+		for _, item := range c.document.Items {
+			if item.Kind != string(RunItem) || item.Entry == "" {
+				continue
+			}
+			opened, err := runresult.Open(filepath.Join(c.root, item.Entry))
+			if err != nil || opened.Spec == nil {
+				continue
+			}
+			view := runView{id: item.ID, spec: opened.Spec}
+			if opened.Run != nil {
+				view.started = opened.Run.Manifest.StartedAt
+			}
+			view.outcome = opened.Artifact.Result.Status
+			c.runViews = append(c.runViews, view)
+		}
+	}
+	return c.runViews
+}
+
+// runsOf are the runs whose retained test is exactly this one, the most
+// recently started first. A test that follows the environment it names
+// executed exactly when its retained test differs from it in nothing but the
+// target, which is the target of a revision of that environment.
+func (c *loadedCatalog) runsOf(spec testrunner.Spec, environment string) []runView {
+	matched := []runView{}
+	targets := c.environmentTargets(environment)
+	for _, run := range c.runs() {
+		retained := *run.spec
+		if targets[retained.Target] {
+			retained.Target = spec.Target
+		}
+		if reflect.DeepEqual(retained, spec) {
+			matched = append(matched, run)
+		}
+	}
+	slices.SortStableFunc(matched, func(x, y runView) int {
+		return cmp.Or(y.started.Compare(x.started), cmp.Compare(x.id, y.id))
+	})
+	return matched
+}
+
+// latestRun is the most recently started run whose retained test is exactly
+// this one.
+func (c *loadedCatalog) latestRun(spec testrunner.Spec, environment string) *runView {
+	if matched := c.runsOf(spec, environment); len(matched) > 0 {
+		return &matched[0]
+	}
+	return nil
+}
+
+// environmentTargets are the targets every revision of an environment
+// declares, by their entries.
+func (c *loadedCatalog) environmentTargets(id string) map[string]bool {
+	targets := map[string]bool{}
+	index := c.document.Find(id)
+	if id == "" || index < 0 || c.document.Items[index].Kind != string(EnvironmentItem) {
+		return targets
+	}
+	item := c.document.Items[index]
+	for _, revision := range item.Revisions {
+		if paths, availability, _ := c.revisionBacking(item, strconv.Itoa(revision.Number)); availability == ItemAvailable {
+			if entry := c.entryOf(paths["target"]); entry != "" {
+				targets[entry] = true
+			}
+		}
+	}
+	return targets
+}
+
 // testOf reads one revision of a test.
 func (c *loadedCatalog) testOf(item catalog.Item, revision string) (*savedTest, error) {
 	paths, availability, reason := c.revisionBacking(item, revision)
@@ -1098,7 +1232,7 @@ func (a *App) TestRunChecks(request TestRunChecksRequest) TestRunChecksResult {
 				result.Checks = append(result.Checks, decided)
 				continue
 			}
-			explained := explainRun(ctx, RunExplanationRequest{Workspace: loaded.root, Run: runEntry, Assertions: loaded.entryOf(set)})
+			explained := explainRunAt(ctx, loaded.root, RunExplanationRequest{Run: runEntry, Assertions: loaded.entryOf(set)})
 			decided.State, decided.Reason, decided.Explanation = explained.State, explained.Reason, explained.Explanation
 			result.Checks = append(result.Checks, decided)
 		}

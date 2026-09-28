@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/bharm16/readmit/internal/dictionary"
 	"github.com/bharm16/readmit/internal/findingreview"
 	"github.com/bharm16/readmit/internal/hl7"
+	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
 // The Findings view reads a case's analyses as catalog objects. An analysis
@@ -288,6 +290,47 @@ func (a *App) caseEntry(ctx context.Context, request RequestContext, ref ItemRef
 		return nil, "", refusal{Failed, "the case changed since it was shown; look at it again"}
 	}
 	return loaded, loaded.document.Items[index].Entry, refusal{}
+}
+
+func readAnalysis(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	path := paths[primaryRole(AnalysisItem)]
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		if declares(filepath.Join(path, diagnose.ReportName), diagnose.GroupsSchema) {
+			grouping, err := diagnose.OpenGroups(path)
+			if err != nil {
+				return view{}, err
+			}
+			summary := &AnalysisSummary{Form: "grouping", Cases: []ItemRef{}}
+			if len(grouping.Cases) > 0 {
+				summary.ProfileName = c.configName(grouping.Cases[0].ConfigSHA256)
+			}
+			for _, report := range grouping.Cases {
+				summary.Findings += len(report.Findings)
+				summary.Unsupported += len(report.Unsupported)
+				if ref := c.caseByIdentity(report.CaseIdentity); ref != nil {
+					summary.Cases = append(summary.Cases, *ref)
+				}
+			}
+			return view{summary: ItemSummary{Analysis: summary}}, nil
+		}
+		retained, err := c.retainedAnalysis(item.Entry, path)
+		if err != nil {
+			return view{}, err
+		}
+		report := retained.Report
+		return view{summary: ItemSummary{Analysis: &AnalysisSummary{Form: "diagnosis", RelatedCase: c.caseByIdentity(report.CaseIdentity), Cases: []ItemRef{},
+			Findings: len(report.Findings), CaseIdentity: report.CaseIdentity, Profile: report.Profile, ProfileName: c.configName(report.ConfigSHA256), Ruleset: report.Ruleset,
+			ConfigSHA256: report.ConfigSHA256, Unsupported: len(report.Unsupported)}}}, nil
+	}
+	data, err := boundedFile(path, 4<<20)
+	if err != nil {
+		return view{}, err
+	}
+	declaration, err := sequenceanalysis.Parse(data)
+	if err != nil {
+		return view{}, err
+	}
+	return view{summary: ItemSummary{Analysis: &AnalysisSummary{Form: "sequence-analysis", RelatedCase: c.caseByIdentity(declaration.CaseIdentity), Cases: []ItemRef{}}}}, nil
 }
 
 // retainedAnalysis reopens the diagnosis one analysis entry holds, once per

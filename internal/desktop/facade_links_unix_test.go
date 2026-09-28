@@ -131,15 +131,11 @@ func TestSequenceAndCorrelationRefuseALinkToACaseOrReviewTheyAccept(t *testing.T
 	})
 }
 
-// The case a diagnosis runs over and a finding review joins, the retained
-// report a person reopens and reviews, and every case a grouping diagnoses.
-func TestDiagnosisAndFindingReviewRefuseALinkToACaseOrReportTheyAccept(t *testing.T) {
-	app, root, identity, reportSHA256 := reviewableWorkspace(t)
-	findings := func(set func(*desktop.FindingReviewRequest)) desktop.FindingReviewRequest {
-		request := findingReviewRequest(root, identity, reportSHA256)
-		set(&request)
-		return request
-	}
+// The case a diagnosis runs over, the retained report a person reopens, and
+// every case a grouping diagnoses.
+func TestDiagnosisRefusesALinkToACaseOrReportItAccepts(t *testing.T) {
+	app, root, identity := diagnosisWorkspace(t)
+	diagnosed(t, app, desktop.DiagnosisRequest{Workspace: root, Case: "acked", Identity: identity, Builtin: "siu", Output: "diagnosis-out"})
 	report := []string{"a diagnosis report must be one directory entry of the open workspace"}
 	refusesLinksToEntriesItAccepts(t, root, []ownReader{
 		{"RunDiagnosis(Case)", "acked", caseEntry, func(entry string) refused {
@@ -152,26 +148,6 @@ func TestDiagnosisAndFindingReviewRefuseALinkToACaseOrReportTheyAccept(t *testin
 		}},
 		{"GroupDiagnoses(Cases)", "acked", []string{"every grouped case must be named by one directory entry of the open workspace"}, func(entry string) refused {
 			result := app.GroupDiagnoses(desktop.GroupDiagnosesRequest{Workspace: root, Cases: []string{entry}, Builtin: "siu"})
-			return refused{result.State, result.Reason}
-		}},
-		{"ReviewFindings(Case)", "acked", caseEntry, func(entry string) refused {
-			result := app.ReviewFindings(findings(func(r *desktop.FindingReviewRequest) { r.Case = entry }))
-			return refused{result.State, result.Reason}
-		}},
-		{"ReviewFindings(Report)", "diagnosis-out", report, func(entry string) refused {
-			result := app.ReviewFindings(findings(func(r *desktop.FindingReviewRequest) { r.Report = entry }))
-			return refused{result.State, result.Reason}
-		}},
-		{"DecideFindings(Case)", "acked", caseEntry, func(entry string) refused {
-			result := app.DecideFindings(findings(func(r *desktop.FindingReviewRequest) {
-				r.Case, r.Output, r.DecisionsOutput = entry, "reviewed-case-"+entry, "decisions-case-"+entry+".json"
-			}))
-			return refused{result.State, result.Reason}
-		}},
-		{"DecideFindings(Report)", "diagnosis-out", report, func(entry string) refused {
-			result := app.DecideFindings(findings(func(r *desktop.FindingReviewRequest) {
-				r.Report, r.Output, r.DecisionsOutput = entry, "reviewed-report-"+entry, "decisions-report-"+entry+".json"
-			}))
 			return refused{result.State, result.Reason}
 		}},
 	})

@@ -1,13 +1,10 @@
 package fhirr4
 
 import (
-	"encoding/json/v2"
-	"github.com/bharm16/readmit/internal/dataset"
 	"slices"
 )
 
 const ClaimsSchema = "readmit-fhir-capability-claims/v1"
-const RequirementsSchema = "readmit-fhir-capability-requirements/v1"
 
 type SearchParameter struct {
 	Name       string `json:"name"`
@@ -39,37 +36,6 @@ type Capabilities struct {
 	Formats        []string     `json:"formats"`
 	PatchFormats   []string     `json:"patch_formats"`
 	REST           []RESTClaims `json:"rest"`
-}
-type ResourceRequirement struct {
-	Type              string            `json:"type"`
-	Interactions      []string          `json:"interactions"`
-	Search            []SearchParameter `json:"search"`
-	Profiles          []string          `json:"profiles"`
-	Versioning        string            `json:"versioning"`
-	ConditionalCreate bool              `json:"conditional_create"`
-	ConditionalRead   string            `json:"conditional_read"`
-	ConditionalUpdate bool              `json:"conditional_update"`
-	ConditionalDelete string            `json:"conditional_delete"`
-}
-type Requirements struct {
-	Schema       string                `json:"schema"`
-	FHIRVersion  string                `json:"fhir_version"`
-	Formats      []string              `json:"formats"`
-	PatchFormats []string              `json:"patch_formats"`
-	Resources    []ResourceRequirement `json:"resources"`
-}
-type CapabilityFinding struct {
-	Resource    string `json:"resource"`
-	Requirement string `json:"requirement"`
-	State       string `json:"state"`
-}
-type CapabilityCheck struct {
-	SourceIdentity       string              `json:"source_identity"`
-	RequirementsIdentity string              `json:"requirements_identity"`
-	Schema               string              `json:"schema"`
-	State                string              `json:"state"`
-	Meaning              string              `json:"meaning"`
-	Findings             []CapabilityFinding `json:"findings"`
 }
 
 func init() {
@@ -181,124 +147,4 @@ func (d *Document) Capabilities(occurrenceID string) (Capabilities, error) {
 		c.REST = append(c.REST, claims)
 	}
 	return c, nil
-}
-func DecodeRequirements(raw []byte) (Requirements, error) {
-	var r Requirements
-	if len(raw) > 64<<10 || json.Unmarshal(raw, &r, json.RejectUnknownMembers(true)) != nil || r.Validate() != nil {
-		return r, invalid
-	}
-	return r, nil
-}
-func (r Requirements) Validate() error {
-	if r.Schema != RequirementsSchema || r.FHIRVersion != Version || len(r.Resources) > 32 || len(r.Formats) > 16 || len(r.PatchFormats) > 16 || !unique(r.Formats) || !unique(r.PatchFormats) {
-		return invalid
-	}
-	seen := map[string]bool{}
-	for _, req := range r.Resources {
-		if !r4ResourceTypes[req.Type] || seen[req.Type] || len(req.Interactions) > 16 || len(req.Search) > 32 || len(req.Profiles) > 32 || !unique(req.Profiles) || !unique(req.Interactions) || req.Versioning != "" && !slices.Contains(versioning, req.Versioning) || req.ConditionalRead != "" && !slices.Contains(conditionalRead, req.ConditionalRead) || req.ConditionalDelete != "" && !slices.Contains(conditionalDelete, req.ConditionalDelete) {
-			return invalid
-		}
-		seen[req.Type] = true
-		for _, op := range req.Interactions {
-			if !slices.Contains(interactions, op) {
-				return invalid
-			}
-		}
-		for _, sp := range req.Search {
-			if sp.Name == "" || len(sp.Name) > 128 || !slices.Contains(searchTypes, sp.Type) {
-				return invalid
-			}
-		}
-	}
-	return nil
-}
-func (c Capabilities) Check(r Requirements) (CapabilityCheck, error) {
-	out := CapabilityCheck{SourceIdentity: c.SourceIdentity, RequirementsIdentity: dataset.Digest(canonical(r)), Schema: CapabilitySchema, State: "satisfied", Meaning: "declared-claims-only-not-permission-or-workflow-success", Findings: []CapabilityFinding{}}
-	if r.Validate() != nil || c.Schema != ClaimsSchema || c.FHIRVersion != Version || !digestPattern.MatchString(c.SourceIdentity) {
-		return out, invalid
-	}
-	add := func(resource, requirement string, ok bool) {
-		state := "satisfied"
-		if !ok {
-			state = "missing"
-			out.State = "missing"
-		}
-		out.Findings = append(out.Findings, CapabilityFinding{resource, requirement, state})
-	}
-	add("", "fhir-version", c.FHIRVersion == r.FHIRVersion)
-	for _, format := range r.Formats {
-		add("", "format:"+format, supportsFormat(c.Formats, format))
-	}
-	for _, format := range r.PatchFormats {
-		add("", "patch-format:"+format, slices.Contains(c.PatchFormats, format))
-	}
-	for _, requirement := range r.Resources {
-		var declared *ResourceClaims
-		for _, rest := range c.REST {
-			if rest.Mode != "server" {
-				continue
-			}
-			for i := range rest.Resources {
-				if rest.Resources[i].Type == requirement.Type {
-					copy := rest.Resources[i]
-					declared = &copy
-				}
-			}
-		}
-		add(requirement.Type, "resource", declared != nil)
-		if declared == nil {
-			continue
-		}
-		for _, interaction := range requirement.Interactions {
-			add(requirement.Type, "interaction:"+interaction, slices.Contains(declared.Interactions, interaction))
-		}
-		for _, parameter := range requirement.Search {
-			found := false
-			for _, sp := range declared.Search {
-				if sp.Name == parameter.Name && sp.Type == parameter.Type && (parameter.Definition == "" || sp.Definition == parameter.Definition) {
-					found = true
-				}
-			}
-			add(requirement.Type, "search:"+parameter.Name, found)
-		}
-		for _, profile := range requirement.Profiles {
-			add(requirement.Type, "profile:"+profile, declared.Profile == profile || slices.Contains(declared.SupportedProfiles, profile))
-		}
-		if requirement.Versioning != "" {
-			add(requirement.Type, "versioning", declared.Versioning != "" && slices.Index(versioning, declared.Versioning) >= slices.Index(versioning, requirement.Versioning))
-		}
-		if requirement.ConditionalCreate {
-			add(requirement.Type, "conditional-create", declared.ConditionalCreate != nil && *declared.ConditionalCreate)
-		}
-		if requirement.ConditionalUpdate {
-			add(requirement.Type, "conditional-update", declared.ConditionalUpdate != nil && *declared.ConditionalUpdate)
-		}
-		if requirement.ConditionalRead != "" {
-			add(requirement.Type, "conditional-read", declared.ConditionalRead == requirement.ConditionalRead || declared.ConditionalRead == "full-support" && requirement.ConditionalRead != "not-supported")
-		}
-		if requirement.ConditionalDelete != "" {
-			add(requirement.Type, "conditional-delete", declared.ConditionalDelete == requirement.ConditionalDelete || requirement.ConditionalDelete != "not-supported" && declared.ConditionalDelete != "" && slices.Index(conditionalDelete, declared.ConditionalDelete) >= slices.Index(conditionalDelete, requirement.ConditionalDelete))
-		}
-	}
-	return out, nil
-}
-
-func supportsFormat(formats []string, want string) bool {
-	alias := func(value string) string {
-		switch value {
-		case "json":
-			return "application/fhir+json"
-		case "xml":
-			return "application/fhir+xml"
-		case "ttl":
-			return "text/turtle"
-		}
-		return value
-	}
-	for _, format := range formats {
-		if alias(format) == alias(want) {
-			return true
-		}
-	}
-	return false
 }

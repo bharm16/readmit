@@ -23,7 +23,6 @@ import (
 	"unicode"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/exportreview"
@@ -674,29 +673,11 @@ func PrepareTransformedExtract(ctx context.Context, packetPath, policyPath strin
 	if err != nil {
 		return nil, err
 	}
-	packet, err := OpenConnected(ctx, packetPath)
+	opened, err := openDisclosedPacket(ctx, packetPath)
 	if err != nil {
 		return nil, err
 	}
-	dir, err := artifactpath.Directory(packetPath)
-	if err != nil {
-		return nil, err
-	}
-	inventory, err := packet.Inventory(ctx, dir)
-	if err != nil {
-		return nil, err
-	}
-	c := &TransformedCandidate{packet: packetPath, policy: policyPath, key: key, Blocked: []string{}}
-	for i, item := range inventory {
-		switch {
-		case item.Surface == SurfaceCredential:
-			c.Blocked = append(c.Blocked, "credential material (a token or private key) is retained in "+strconv.Itoa(item.Files)+" files; no policy can admit it and no share-oriented export is made")
-		case policy.Surfaces[item.Surface] == "":
-			c.Blocked = append(c.Blocked, "the policy does not map the "+item.Surface+" surface held in "+strconv.Itoa(item.Files)+" files")
-		default:
-			inventory[i].Disposition = policy.Surfaces[item.Surface]
-		}
-	}
+	c := &TransformedCandidate{packet: packetPath, policy: policyPath, key: key, Blocked: applyDisclosurePolicy(opened.inventory, policy.Surfaces)}
 	t := &transformer{policy: policy, key: key.key, elements: map[string]string{}, columns: map[string]string{}, params: map[string]string{}, originals: map[string]bool{}, kept: map[string]bool{}}
 	for _, r := range policy.Elements {
 		t.elements[r.Resource+"|"+r.Path] = r.Action
@@ -707,22 +688,22 @@ func PrepareTransformedExtract(ctx context.Context, packetPath, policyPath strin
 	for _, r := range policy.Parameters {
 		t.params[r.Name] = r.Action
 	}
-	for _, e := range packet.evidence {
+	for _, e := range opened.packet.evidence {
 		for _, s := range e.Plan.Document().Test.Servers {
 			t.bases = append(t.bases, s.Base)
 		}
 	}
 	slices.Sort(t.bases)
 	t.bases = slices.Compact(t.bases)
-	x := TransformedExtract{Schema: TransformedExtractSchema, PacketIdentity: packet.Identity, PolicyIdentity: digest(raw), EvidenceClass: EvidenceTransformed, Derivation: transformedDerivation,
+	x := TransformedExtract{Schema: TransformedExtractSchema, PacketIdentity: opened.packet.Identity, PolicyIdentity: digest(raw), EvidenceClass: EvidenceTransformed, Derivation: transformedDerivation,
 		Equivalence: ConnectedEquivalence{State: EquivalenceUnverified, Reason: "No external replay of this transformed extract is retained, so it is not described as an equivalent reproducer, and a passing disclosure review establishes no behavioral equivalence. Its disclosure review is unaffected."},
-		Runs:        valueFreeRuns(packet), Comparison: valueFreeComparison(packet), Evidence: []TransformedRun{}, Inventory: inventory, Scope: transformedScope}
+		Runs:        valueFreeRuns(opened.packet), Comparison: valueFreeComparison(opened.packet), Evidence: []TransformedRun{}, Inventory: opened.inventory, Scope: transformedScope}
 	for _, section := range connectedSections {
-		e, ok := packet.evidence[section]
+		e, ok := opened.packet.evidence[section]
 		if !ok {
 			continue
 		}
-		run, err := t.run(ctx, filepath.Join(dir, section), e)
+		run, err := t.run(ctx, filepath.Join(opened.dir, section), e)
 		if err != nil {
 			return nil, err
 		}
@@ -731,7 +712,7 @@ func PrepareTransformedExtract(ctx context.Context, packetPath, policyPath strin
 	}
 	// Every value the packet observed, bound or declared, and every original
 	// value read while transforming, is a term unless a rule kept it.
-	for _, v := range knownValues(packet) {
+	for _, v := range knownValues(opened.packet) {
 		t.originals[string(v)] = true
 	}
 	terms := [][]byte{}
@@ -750,10 +731,7 @@ func PrepareTransformedExtract(ctx context.Context, packetPath, policyPath strin
 	for name, data := range renders {
 		scanned[name] = data
 	}
-	x.Residual = exportreview.Residual(scanned, terms)
-	if x.Residual.Status != "passed" {
-		c.Blocked = append(c.Blocked, "an original value the policy did not keep appears in the extract or its renderings")
-	}
+	c.Blocked, x.Residual = scanResidual(c.Blocked, scanned, terms, "an original value the policy did not keep appears in the extract or its renderings")
 	c.Extract = x
 	if c.raw, err = encode(x); err != nil {
 		return nil, err
@@ -814,9 +792,9 @@ func (t *transformer) run(ctx context.Context, dir string, e connectedrun.FlowEv
 			return run, err
 		}
 		tp := TransformedPhase{Position: i + 1, ID: t.name(phase.ID), Exchanges: []TransformedExchange{}, Observations: []TransformedObservation{}, Bindings: []TransformedBinding{}}
-		base := filepath.Join(dir, "phases", phase.ID)
+		base := filepath.Join(dir, filepath.FromSlash(connectedrun.PhaseDir(phase.ID)))
 		for j, s := range pe.Steps {
-			evidence, err := fhirrest.OpenEvidence(ctx, filepath.Join(base, "steps", s.Step))
+			evidence, err := fhirrest.OpenEvidence(ctx, filepath.Join(dir, filepath.FromSlash(connectedrun.StepDir(phase.ID, s.Step))))
 			if err != nil {
 				continue
 			}
@@ -962,46 +940,17 @@ var transformedFamily = artifactdir.Family{
 // Publish writes the transformed extract only when nothing blocks it and a
 // fresh preparation with the same key yields exactly the approved bytes.
 func (c *TransformedCandidate) Publish(ctx context.Context, approval, output string) error {
-	if len(c.Blocked) > 0 {
-		return errors.New("the extract is blocked: " + strings.Join(c.Blocked, "; "))
-	}
-	fresh, err := PrepareTransformedExtract(ctx, c.packet, c.policy, c.key)
-	if err != nil {
-		return err
-	}
-	if approval != c.Identity() || fresh.Identity() != c.Identity() || len(fresh.Blocked) > 0 {
-		return errors.New("the extract requires approval of its exact current identity; changed evidence, policy or key requires review again")
-	}
-	protected := []os.FileInfo{}
-	for _, path := range []string{c.packet, c.policy} {
-		info, err := os.Stat(path)
-		if err != nil {
-			return err
-		}
-		protected = append(protected, info)
-	}
-	path, err := artifactpath.Destination(output, protected...)
-	if err != nil {
-		return err
-	}
-	w, err := artifactdir.Create(path, transformedFamily, artifactdir.Durable)
-	if err != nil {
-		return err
-	}
-	defer w.Close()
-	if err := w.WriteFile("extract.json", fresh.raw); err != nil {
-		return err
-	}
-	for _, name := range []string{"report.md", "report.html"} {
-		if err := w.WriteFile(name, fresh.renders[name]); err != nil {
-			return err
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	_, err = w.Seal(nil)
-	return err
+	return publishDisclosed(ctx, disclosedPublish{
+		packet: c.packet, policy: c.policy, blocked: c.Blocked, identity: c.Identity(),
+		changed: "evidence, policy or key", family: transformedFamily, approval: approval, output: output,
+		repare: func(ctx context.Context) ([]disclosedFile, []string, string, error) {
+			fresh, err := PrepareTransformedExtract(ctx, c.packet, c.policy, c.key)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			return []disclosedFile{{name: "extract.json", data: fresh.raw}, {name: "report.md", data: fresh.renders["report.md"]}, {name: "report.html", data: fresh.renders["report.html"]}}, fresh.Blocked, fresh.Identity(), nil
+		},
+	})
 }
 
 // OpenTransformedExtract verifies a published transformed extract: its seal,
@@ -1011,22 +960,17 @@ func (c *TransformedCandidate) Publish(ctx context.Context, approval, output str
 func OpenTransformedExtract(dir string) (TransformedExtract, error) {
 	var x TransformedExtract
 	invalid := errors.New("invalid, incomplete or changed transformed connected extract")
-	dir, err := artifactpath.Directory(dir)
+	files, raw, err := verifyDisclosedSeal(dir, artifactdir.Layout{AllowFile: transformedFamily.Layout.AllowFile, RequiredFiles: []string{"extract.json", "report.md", "report.html", "identity.sha256"}, MaxFiles: 4, MaxFileBytes: transformedMaxBytes * 4, MaxBytes: transformedMaxBytes * 8}, invalid)
 	if err != nil {
 		return x, err
 	}
-	files, err := artifactdir.Read(dir, artifactdir.Layout{AllowFile: transformedFamily.Layout.AllowFile, RequiredFiles: []string{"extract.json", "report.md", "report.html", "identity.sha256"}, MaxFiles: 4, MaxFileBytes: transformedMaxBytes * 4, MaxBytes: transformedMaxBytes * 8})
-	if err != nil {
-		return x, invalid
-	}
-	raw := files["extract.json"]
-	if string(files["identity.sha256"]) != digest(raw)+"\n" || json.Unmarshal(raw, &x, json.RejectUnknownMembers(true)) != nil || x.Schema != TransformedExtractSchema || x.EvidenceClass != EvidenceTransformed || x.Derivation != transformedDerivation || x.Equivalence.State != EquivalenceUnverified || x.Scope != transformedScope || x.Residual.Status != "passed" {
+	if json.Unmarshal(raw, &x, json.RejectUnknownMembers(true)) != nil || x.Schema != TransformedExtractSchema || x.EvidenceClass != EvidenceTransformed || x.Derivation != transformedDerivation || x.Equivalence.State != EquivalenceUnverified || x.Scope != transformedScope || x.Residual.Status != "passed" {
 		return TransformedExtract{}, invalid
 	}
-	for _, item := range x.Inventory {
-		if item.Surface == SurfaceCredential || item.Disposition != "exclude" && (item.Disposition != "transform" || !slices.Contains(transformable, item.Surface)) {
-			return TransformedExtract{}, invalid
-		}
+	if !inventoryAdmitted(x.Inventory, func(item InventoryItem) bool {
+		return item.Disposition == "exclude" || item.Disposition == "transform" && slices.Contains(transformable, item.Surface)
+	}) {
+		return TransformedExtract{}, invalid
 	}
 	canonical, err := encode(x)
 	if err != nil || !bytes.Equal(canonical, raw) {

@@ -270,7 +270,7 @@ func TestOpenRejectsResealedFalseSyntheticClaims(t *testing.T) {
 	if _, err := report.Create(context.Background(), report.Scenario, original); err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []string{"generated-provenance", "wrong-receiver-mode", "mismatched-spec", "mismatched-source", "extra-ack-content", "diagnosis", "diff", "profile", "history", "instructions", "extra-indexed-file"} {
+	for _, kind := range []string{"generated-provenance", "wrong-receiver-mode", "mismatched-spec", "mismatched-source", "extra-ack-content", "diagnosis", "diff", "profile", "history", "instructions", "unknown-instructions-version", "extra-indexed-file"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := clone(t, original)
 			switch kind {
@@ -370,6 +370,12 @@ func TestOpenRejectsResealedFalseSyntheticClaims(t *testing.T) {
 				write(t, filepath.Join(dir, "history.json"), []byte("{}\n"))
 			case "instructions":
 				write(t, filepath.Join(dir, "RERUN.md"), []byte("execute an arbitrary hook"))
+			case "unknown-instructions-version":
+				path := filepath.Join(dir, "manifest.json")
+				var manifest report.Manifest
+				decode(t, read(t, path), &manifest)
+				manifest.Instructions = "v2"
+				write(t, path, marshal(t, manifest))
 			case "extra-indexed-file":
 				write(t, filepath.Join(dir, "extra.txt"), []byte("synthetic label is insufficient"))
 			}
@@ -378,6 +384,29 @@ func TestOpenRejectsResealedFalseSyntheticClaims(t *testing.T) {
 				t.Fatal("recomputed hashes authenticated false scenario content")
 			}
 		})
+	}
+}
+
+// Packets seal the original instructions without recording a version, so a
+// sealed manifest stays byte-identical to those sealed before versioning and
+// old packets verify unchanged.
+func TestSealedPacketsOmitTheOriginalInstructionsVersion(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "packet")
+	if _, err := report.Create(context.Background(), report.Scenario, dir); err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	decode(t, read(t, filepath.Join(dir, "manifest.json")), &decoded)
+	if _, ok := decoded["instructions"]; ok {
+		t.Error("the sealed manifest records the original instructions version")
+	}
+	packet, err := report.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.Manifest.Instructions != "" {
+		t.Errorf("the opened manifest records %q", packet.Manifest.Instructions)
 	}
 }
 

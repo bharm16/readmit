@@ -2438,23 +2438,6 @@ export interface FindingPromotion {
   unsupported: FindingUnsupported[];
 }
 
-/** internal/findingreview.Provenance */
-export interface FindingProvenance {
-  schema: string;
-  report_sha256: string;
-  case_identity: string;
-  config_sha256: string;
-  profile: string;
-  ruleset: string;
-}
-
-/** internal/desktop.FindingReview */
-export interface FindingReview {
-  record: FindingReviewRecord;
-  offset: number;
-  total: number;
-}
-
 /** internal/desktop.FindingReviewDraft */
 export interface FindingReviewDraft {
   analysis: ItemRef;
@@ -2490,39 +2473,6 @@ export interface FindingReviewPreview {
   problems: FieldProblem[];
   effects: FindingReviewEffect[];
   statuses: FindingStatus[];
-}
-
-/** internal/findingreview.Record */
-export interface FindingReviewRecord {
-  schema: string;
-  engine: string;
-  diagnosis: FindingProvenance;
-  decisions_sha256: string;
-  boundary: string;
-  findings: FindingStatus[];
-  statement: string;
-}
-
-/** internal/desktop.FindingReviewRequest */
-export interface FindingReviewRequest {
-  workspace: string;
-  case: string;
-  identity: string;
-  report: string;
-  report_sha256: string;
-  decisions: FindingDecision[];
-  offset: number;
-  output?: string;
-  decisions_output?: string;
-}
-
-/** internal/desktop.FindingReviewResult */
-export interface FindingReviewResult {
-  state: State;
-  reason?: string;
-  output?: string;
-  decisions_output?: string;
-  review?: FindingReview;
 }
 
 /** internal/desktop.FindingReviewRevision */
@@ -9928,7 +9878,6 @@ export interface Facade {
   CreateScenarioCase(request: ScenarioCaseRequest): Promise<ScenarioCaseResult>;
   DeactivateLicense(): Promise<InstalledLicenseResult>;
   DecideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
-  DecideFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
   DeriveExportReview(request: PrivacyReviewRequest): Promise<PrivacyReviewResult>;
   DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
   DescribeSearchSettings(workspace: string, caseName: string, identity: string): Promise<SearchSettingsResult>;
@@ -10122,7 +10071,6 @@ export interface Facade {
   RevealIncomplete(folder: string): Promise<RevealResult>;
   RevealItem(request: ItemRequest): Promise<RevealResult>;
   ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
-  ReviewFindings(request: FindingReviewRequest): Promise<FindingReviewResult>;
   ReviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult>;
   ReviewResetAction(request: ResetActionRequest): Promise<ResetActionResult>;
   ReviewSuitePromotion(request: SuitePromotionRequest): Promise<SuitePromotionResult>;

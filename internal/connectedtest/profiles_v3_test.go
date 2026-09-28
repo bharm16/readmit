@@ -147,6 +147,36 @@ func TestConnectedComponentProfileRevisionChangesOnlyNewPlan(t *testing.T) {
 	}
 }
 
+// A connected plan may pin a v5 metadata pack: the compiler accepts every
+// pack version the evaluator reads, and the retained pins evaluate under the
+// v5 operator.
+func TestConnectedV5PackPinsCompileAndEvaluate(t *testing.T) {
+	d, files := componentProfilePlan(t, "SIU")
+	var envelope map[string]any
+	if err := json.Unmarshal(files["pack.json"], &envelope); err != nil {
+		t.Fatal(err)
+	}
+	envelope["schema"] = profileeval.PackSchemaV5
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["pack.json"] = raw
+	for i, pin := range d.Profiles {
+		if pin.ID == "pack" {
+			d.Profiles[i].Schema = profileeval.PackSchemaV5
+			d.Profiles[i].SHA256 = connectedtest.Digest(raw)
+		}
+	}
+	report, err := connectedtest.EvaluateProfiles(t.Context(), compileComponentProfile(t, d, files), "profile", "pack", profileeval.Options{CompleteCapture: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Operator != profileeval.UsageOperatorVersion || report.Pack.Schema != profileeval.PackSchemaV5 {
+		t.Fatalf("v5 pins not evaluated by their operator: %+v", report)
+	}
+}
+
 func TestConnectedLegacyProfileSchemasKeepTheirOperator(t *testing.T) {
 	for _, version := range []string{"v1", "v2"} {
 		t.Run(version, func(t *testing.T) {

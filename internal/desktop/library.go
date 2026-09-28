@@ -22,6 +22,7 @@ import (
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/operation"
+	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/profilelibrary"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profilepackage"
@@ -71,6 +72,124 @@ const (
 	checkGroupRole = "check-group"
 	scenarioRole   = "scenario"
 )
+
+// readCheckGroup reads a check group clause by clause, so a group holding a
+// check this release cannot evaluate is still listed, with every check it
+// holds counted and the unsupported ones named as its reason.
+func readCheckGroup(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	data, err := boundedFile(paths[primaryRole(CheckGroupItem)], 1<<20)
+	if err != nil {
+		return view{}, err
+	}
+	set, unsupported, err := assertionauthor.ReadLenient(data)
+	if err != nil {
+		return view{}, err
+	}
+	summary := &CheckGroupSummary{Assertions: len(set.Assertions) + len(unsupported), Revision: item.RevisionLabel(), Unsupported: len(unsupported)}
+	read := view{name: set.Name, summary: ItemSummary{CheckGroup: summary}}
+	if len(unsupported) > 0 {
+		return read, &unsupportedClauses{count: len(unsupported)}
+	}
+	return read, nil
+}
+
+// unsupportedClauses is a check group read whole whose count checks use an
+// operator, or members, this release does not evaluate.
+type unsupportedClauses struct{ count int }
+
+func (u *unsupportedClauses) Error() string {
+	if u.count == 1 {
+		return "one check uses an operator this release does not evaluate"
+	}
+	return strconv.Itoa(u.count) + " checks use an operator this release does not evaluate"
+}
+
+func readProfile(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	path := paths[primaryRole(ProfileItem)]
+	data, err := boundedFile(path, 4<<20)
+	if err != nil {
+		return view{}, err
+	}
+	schema, _ := sniffSchema(path)
+	switch {
+	case strings.HasPrefix(schema, "readmit-local-profile/"):
+		profile, err := profileeval.DecodeProfile(data)
+		if err != nil {
+			return view{}, err
+		}
+		definition := profile.Definition
+		return view{name: definition.Identity.ID, summary: ItemSummary{Profile: &ProfileSummary{Form: "local-profile", Family: definition.Base.Family,
+			ProtocolVersion: definition.Base.HL7Version, PublishedVersion: definition.Identity.Version}}}, nil
+	case strings.HasPrefix(schema, "readmit-profile-pack/"):
+		pack, err := profileeval.DecodePack(data)
+		if err != nil {
+			return view{}, err
+		}
+		metadata := pack.Metadata
+		summary := &ProfileSummary{Form: "profile-pack", PublishedVersion: metadata.Identity.Version}
+		if len(metadata.Coverage) == 1 {
+			summary.Family, summary.ProtocolVersion = metadata.Coverage[0].Family, metadata.Coverage[0].HL7Version
+		}
+		return view{name: metadata.Identity.ID, summary: ItemSummary{Profile: summary}}, nil
+	}
+	if _, err := profilepackage.Decode(data); err != nil {
+		return view{}, err
+	}
+	return view{summary: ItemSummary{Profile: &ProfileSummary{Form: "profile-package"}}}, nil
+}
+
+func readScenario(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	path := paths[primaryRole(ScenarioItem)]
+	data, err := boundedFile(path, 4<<20)
+	if err != nil {
+		return view{}, err
+	}
+	if declares(path, scenariogen.Schema) {
+		plan, err := scenariogen.Decode(data)
+		if err != nil {
+			return view{}, err
+		}
+		workflow, err := scenario.DecodeDocument(plan.Template)
+		if err != nil {
+			return view{}, err
+		}
+		identity := workflow.Identity()
+		seed, base := plan.Seed, catalog.Stamp(workflow.BaseTime)
+		metadata, err := readMetadata(paths)
+		if err != nil {
+			return view{}, err
+		}
+		return view{name: identity.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: identity.Version, Profile: string(workflow.Profile),
+			Family: lifecycleFamily(workflow.Profile), Plan: true, Seed: &seed, BaseTime: &base, GeneratorVersion: plan.GeneratorVersion,
+			LocalProfile: metadata.Profile}}}, nil
+	}
+	if declares(path, scenario.OrderSchema) {
+		orders, err := scenario.DecodeOrders(data)
+		if err != nil {
+			return view{}, err
+		}
+		return view{name: orders.Scenario.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: orders.Scenario.Version, Profile: string(orders.Profile),
+			Family: lifecycleFamily(orders.Profile)}}}, nil
+	}
+	declared, err := scenario.Decode(data)
+	if err != nil {
+		return view{}, err
+	}
+	return view{name: declared.Scenario.ID, summary: ItemSummary{Scenario: &ScenarioSummary{Version: declared.Scenario.Version, Profile: string(declared.Profile),
+		Family: lifecycleFamily(declared.Profile)}}}, nil
+}
+
+// lifecycleFamily is the message family a lifecycle profile generates, the
+// inverse of lifecycleForFamily; empty for a profile this release does not
+// implement.
+func lifecycleFamily(profile scenario.ProfileName) string {
+	for _, family := range []string{"ADT", "SIU", "ORM", "ORU"} {
+		if named, _ := lifecycleForFamily(family); named == profile {
+			return family
+		}
+	}
+	return ""
+}
 
 // validateCheckGroupDraft validates a whole check group: no unsupported check
 // is held, every check reads on its own and the group reads as one set.

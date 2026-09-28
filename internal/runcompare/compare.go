@@ -28,8 +28,10 @@ type Input struct {
 // Execution deliberately carries no patient values, target addresses or paths.
 // Excluded is unknown because reopening the original case would substitute
 // today's source for the source that execution actually used. recorded and
-// state keep the durable summary the RunState string was taken from, so the
-// stability rules read the typed vocabulary instead of matching view strings.
+// state keep the durable summary the RunState string was taken from, and
+// statusRecorded and status keep the result verdict the Status string was
+// taken from, so consumers read the typed vocabularies instead of matching
+// view strings.
 type Execution struct {
 	RunState    string           `json:"run_state"`
 	Identity    string           `json:"identity"`
@@ -44,9 +46,24 @@ type Execution struct {
 	Gaps        []string         `json:"gaps"`
 	Assertions  []AssertionState `json:"assertions"`
 
-	recorded bool
-	state    durablerun.State
+	recorded       bool
+	state          durablerun.State
+	statusRecorded bool
+	status         testrunner.Status
 }
+
+// DurableState answers the durable summary state the RunState string was
+// taken from. It is false for an execution that was not a durable run.
+func (e Execution) DurableState() (durablerun.State, bool) {
+	return e.state, e.recorded
+}
+
+// ResultStatus answers the result verdict the Status string was taken from.
+// It is false for an execution that retained no usable result.
+func (e Execution) ResultStatus() (testrunner.Status, bool) {
+	return e.status, e.statusRecorded
+}
+
 type AssertionState struct {
 	ID       string `json:"id"`
 	Operator string `json:"operator"`
@@ -95,18 +112,56 @@ type opened struct {
 	evidence *runresult.Evidence
 }
 
+// OpenedInput compares executions already opened through runresult: the
+// baseline, the current execution and additional executions. A caller holding
+// the evidence it verified compares exactly that evidence rather than opening
+// it again.
+type OpenedInput struct {
+	Baseline, Current *runresult.Result
+	Repeats           []*runresult.Result
+	Approval          string
+}
+
 func Compare(ctx context.Context, input Input) (Comparison, error) {
 	if len(input.Repeats) > MaxRepeats {
 		return Comparison{}, errors.New("compare at most sixteen retained executions")
 	}
 	paths := append([]string{input.Baseline, input.Current}, input.Repeats...)
-	runs := make([]opened, 0, len(paths))
-	seen := map[string]bool{}
-	for i, path := range paths {
+	results := make([]*runresult.Result, 0, len(paths))
+	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return Comparison{}, err
 		}
-		run, err := open(path)
+		retained, err := runresult.Open(path)
+		if err != nil {
+			return Comparison{}, err
+		}
+		results = append(results, retained)
+	}
+	return CompareOpened(ctx, OpenedInput{Baseline: results[0], Current: results[1], Repeats: results[2:], Approval: input.Approval})
+}
+
+// CompareOpened compares executions already opened through runresult, the
+// legacy twin of CompareFlowEvidence: one open, one projection, one matching
+// rule over the frozen result contract.
+func CompareOpened(ctx context.Context, input OpenedInput) (Comparison, error) {
+	if input.Baseline == nil || input.Current == nil {
+		return Comparison{}, errors.New("compare two opened retained executions")
+	}
+	if len(input.Repeats) > MaxRepeats {
+		return Comparison{}, errors.New("compare at most sixteen retained executions")
+	}
+	results := append([]*runresult.Result{input.Baseline, input.Current}, input.Repeats...)
+	runs := make([]opened, 0, len(results))
+	seen := map[string]bool{}
+	for i, retained := range results {
+		if err := ctx.Err(); err != nil {
+			return Comparison{}, err
+		}
+		if retained == nil {
+			return Comparison{}, errors.New("compare two opened retained executions")
+		}
+		run, err := project(retained)
 		if err != nil {
 			return Comparison{}, err
 		}
@@ -162,11 +217,10 @@ func Compare(ctx context.Context, input Input) (Comparison, error) {
 	return result, nil
 }
 
-func open(path string) (opened, error) {
-	retained, err := runresult.Open(path)
-	if err != nil {
-		return opened{}, err
-	}
+// project renders one opened execution as the view every consumer reads: the
+// typed states as strings, the gaps a missing record leaves, and the evidence
+// drift compares, opened once and never again.
+func project(retained *runresult.Result) (opened, error) {
 	v := Execution{Status: "unknown", Boundary: "unknown", Excluded: "unknown: the original case is not reopened", Gaps: []string{}, Assertions: []AssertionState{}}
 	if retained.Durable {
 		job := retained.Lifecycle
@@ -196,6 +250,7 @@ func open(path string) (opened, error) {
 	}
 	v.Identity = a.Identity
 	v.Status = string(a.Result.Status)
+	v.statusRecorded, v.status = true, a.Result.Status
 	v.ErrorClass = a.Result.ErrorClass
 	v.Boundary = a.Result.ObservationBoundary
 	if v.Boundary == "" {

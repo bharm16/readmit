@@ -2,7 +2,6 @@ package fhirrest
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -149,7 +148,7 @@ func classify(base string, request fhirrequest.Request, status int, headers map[
 			types[resource.Pointer] = resource.Type
 		}
 		for i, entry := range bundle.Entries {
-			typ, exists := types[fmt.Sprintf("/entry/%d/resource", i)]
+			typ, exists := types[entryPointer(i)]
 			if len(entry.Resource) == 0 || !exists || entry.SearchMode == "outcome" && typ != "OperationOutcome" {
 				return o
 			}

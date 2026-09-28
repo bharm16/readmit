@@ -25,6 +25,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/bharm16/readmit/internal/hl7"
 )
 
 // FHIRLab is an independent FHIR R4 JSON server written from the HTTP and
@@ -473,15 +475,6 @@ func (e *Engine) currentMode() string { e.mu.Lock(); defer e.mu.Unlock(); return
 
 // SetAfter runs after is called after each handled message, to inject faults.
 func (e *Engine) SetAfter(after func()) { e.mu.Lock(); e.after = after; e.mu.Unlock() }
-func field(raw, segment string, index int) string {
-	for _, s := range strings.Split(raw, "\r") {
-		parts := strings.Split(s, "|")
-		if parts[0] == segment && len(parts) > index {
-			return parts[index]
-		}
-	}
-	return ""
-}
 func (e *Engine) fhir(method, path, match string, body map[string]any) (map[string]any, string) {
 	raw, _ := json.Marshal(body)
 	request, _ := http.NewRequest(method, e.lab.Base()+"/"+path, strings.NewReader(string(raw)))
@@ -516,14 +509,33 @@ func (e *Engine) find(typ, system, value string) (map[string]any, string) {
 	return nil, ""
 }
 
+// selectText reads one HL7 path from a lab arrival through the HL7 owner:
+// no separator assumptions, no hand-split fields. An unreadable message or
+// position reads as absent, as the hand-split reader it replaces did.
+func selectText(raw, path string) string {
+	document, err := hl7.Parse([]byte(raw), hl7.Options{})
+	if err != nil {
+		return ""
+	}
+	selector, err := hl7.ParseSelector(path)
+	if err != nil {
+		return ""
+	}
+	reading, err := document.Read(0, selector, hl7.IgnoreMSH18)
+	if err != nil || reading.State != hl7.Present {
+		return ""
+	}
+	return string(reading.Decoded)
+}
+
 // handle applies one message and returns its control ID for the AA ACK.
 func (e *Engine) handle(raw string) string {
-	control := field(raw, "MSH", 9)
+	control := selectText(raw, "MSH-10")
 	mode := e.currentMode()
-	event := field(raw, "MSH", 8)
+	event := selectText(raw, "MSH-9")
 	if strings.HasPrefix(event, "SIU") {
-		key := field(raw, "SCH", 1)
-		start := field(raw, "SCH", 11)
+		key := selectText(raw, "SCH-1")
+		start := selectText(raw, "SCH-11")
 		status := "booked"
 		if strings.HasSuffix(event, "S15") {
 			status = "cancelled"
@@ -567,13 +579,13 @@ func (e *Engine) handle(raw string) string {
 
 // result maps an ORU^R01 observation onto a FHIR Observation for the order.
 func (e *Engine) result(raw, mode string) {
-	mrn := field(raw, "PID", 3)
-	placer := field(raw, "OBR", 2)
-	filler := field(raw, "OBR", 3)
-	value := field(raw, "OBX", 5)
-	units := field(raw, "OBX", 6)
+	mrn := selectText(raw, "PID-3")
+	placer := selectText(raw, "OBR-2")
+	filler := selectText(raw, "OBR-3")
+	value := selectText(raw, "OBX-5")
+	units := selectText(raw, "OBX-6")
 	status := "final"
-	if field(raw, "OBX", 11) == "C" {
+	if selectText(raw, "OBX-11") == "C" {
 		status = "corrected"
 	}
 	patient, _ := e.find("Patient", PatientSystem, mrn)

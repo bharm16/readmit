@@ -493,7 +493,7 @@ func (a *App) RetryCaptureFinalization(request CaptureSessionRequest) ImportCase
 		}
 		record.State, record.Reason = CaptureFinished, ""
 		_ = writeCaptureSession(folder, record)
-		ref, declined := a.caseRef(ctx, request.Context, record.Entry)
+		ref, declined := a.caseRef(ctx, request.Context, record.Entry, true)
 		if ref == nil {
 			result.refuse(declined.state, "the case was published and registered, and "+declined.reason)
 			return result
@@ -592,7 +592,7 @@ func (a *App) sessionRow(ctx context.Context, request RequestContext, root strin
 		row.Received, row.Recovered = summary.Received, summary.Recovered
 	}
 	if record.State == CaptureFinished && record.Entry != "" {
-		if ref, _ := a.caseRefRead(ctx, request, record.Entry); ref != nil {
+		if ref, _ := a.caseRef(ctx, request, record.Entry, false); ref != nil {
 			row.Case = ref
 		}
 	}
@@ -679,26 +679,12 @@ func (a *App) serving(session string) bool {
 	return a.captureProgress != nil && a.captureProgress.Session == session
 }
 
-// caseRefRead is caseRef as a read, recording nothing.
-func (a *App) caseRefRead(ctx context.Context, request RequestContext, entry string) (*ItemRef, refusal) {
-	loaded, declined := a.loadCatalog(ctx, request, false)
-	if loaded == nil {
-		return nil, declined
-	}
-	index := loaded.document.ByEntry(string(CaseItem), entry)
-	if index < 0 {
-		return nil, refusal{Failed, "the project's catalog does not list the case"}
-	}
-	item := loaded.read(loaded.document.Items[index])
-	return &item.Ref, refusal{}
-}
-
 // sessionResult answers a capture session as its record reads.
 func (a *App) sessionResult(ctx context.Context, request RequestContext, record captureRecord) CaptureSessionResult {
 	out := CaptureSessionResult{State: Completed, Phase: CaptureStopped, Outcome: record.State, Session: record.ID, Received: record.Received, Reason: record.Reason}
 	switch record.State {
 	case CaptureFinished:
-		ref, declined := a.caseRef(ctx, request, record.Entry)
+		ref, declined := a.caseRef(ctx, request, record.Entry, true)
 		if ref == nil {
 			out.State, out.Reason = declined.state, declined.reason
 			return out

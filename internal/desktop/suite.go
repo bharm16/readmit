@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/suite"
@@ -32,6 +34,156 @@ import (
 // strict reader the suite contract applies, and a draft never claims to be a
 // valid suite.
 const SuiteDraftSchema = "readmit-suite-draft/v1"
+
+func readSuite(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	data, err := boundedFile(paths[primaryRole(SuiteItem)], suite.MaxBytes)
+	if err != nil {
+		return view{}, err
+	}
+	document, err := suite.Decode(data)
+	if err != nil {
+		return view{}, err
+	}
+	environments := []string{}
+	for _, environment := range document.Environments {
+		environments = append(environments, environment.ID)
+	}
+	summary := &SuiteSummary{Tests: len(document.Tests), Environments: environments}
+	// The latest run of a suite is the latest execution of its current
+	// version: an execution of an earlier version is not one of this one.
+	identity := suite.Identity(data)
+	for _, run := range c.suiteExecutions() {
+		if run.identity == identity && (summary.LatestRun == nil || startedLater(run, *summary)) {
+			summary.LatestRun = &ItemRef{Kind: RunItem, ID: run.id}
+			summary.LatestRunAt, summary.LatestOutcome = stampedTime(run.started), run.outcome
+		}
+	}
+	return view{name: document.ID, summary: ItemSummary{Suite: summary}}, nil
+}
+
+// startedLater reports whether an execution started after the one a summary
+// names; a start nobody knows is earlier than every known one, and the
+// identity breaks every tie.
+func startedLater(run suiteRunView, summary SuiteSummary) bool {
+	named := ""
+	if summary.LatestRunAt != nil {
+		named = *summary.LatestRunAt
+	}
+	started := ""
+	if at := stampedTime(run.started); at != nil {
+		started = *at
+	}
+	return cmp.Or(cmp.Compare(named, started), cmp.Compare(run.id, summary.LatestRun.ID)) < 0
+}
+
+// suiteRunView is one retained suite execution: the identity of the suite
+// document it executed, that suite's own id, and what it did.
+type suiteRunView struct {
+	id, identity, suite, outcome string
+	started, completed           time.Time
+	jobs, uncertain              int
+}
+
+// suiteExecutions reads every retained suite execution of the project once
+// per load.
+func (c *loadedCatalog) suiteExecutions() []suiteRunView {
+	if c.suitesRead {
+		return c.suiteRuns
+	}
+	c.suitesRead = true
+	for _, item := range c.document.Items {
+		if item.Kind != string(RunItem) || item.Entry == "" || c.removed(item) {
+			continue
+		}
+		path := filepath.Join(c.root, item.Entry)
+		if !regular(filepath.Join(path, "suite.json")) {
+			continue
+		}
+		if run, err := suiteExecution(item.ID, path); err == nil {
+			c.suiteRuns = append(c.suiteRuns, run)
+		}
+	}
+	return c.suiteRuns
+}
+
+// suiteExecution reads one retained suite execution through the suite's own
+// reader. An execution without its queue report was interrupted; one whose
+// queue did not execute every job was stopped.
+func suiteExecution(id, path string) (suiteRunView, error) {
+	execution, err := suite.OpenExecution(path)
+	if err != nil {
+		return suiteRunView{}, err
+	}
+	run := suiteRunView{id: id, identity: execution.Identity, suite: execution.Suite.ID, jobs: len(execution.Queue.Jobs), outcome: "incomplete"}
+	if execution.Report != nil {
+		run.outcome = "stopped"
+		if execution.Report.Executed == len(execution.Report.Jobs) {
+			run.outcome = "executed"
+		}
+	}
+	for _, job := range execution.Jobs {
+		if !job.StartedAt.IsZero() && (run.started.IsZero() || job.StartedAt.Before(run.started)) {
+			run.started = job.StartedAt
+		}
+		if job.CompletedAt.After(run.completed) {
+			run.completed = job.CompletedAt
+		}
+		if job.DeliveryUncertain {
+			run.uncertain++
+		}
+	}
+	return run, nil
+}
+
+// suiteView is one suite of the project: its identity and the id it declares.
+type suiteView struct {
+	ref            ItemRef
+	identity, name string
+}
+
+// suites reads every suite of the project once per load.
+func (c *loadedCatalog) suites() []suiteView {
+	if c.suiteViews != nil {
+		return c.suiteViews
+	}
+	c.suiteViews = []suiteView{}
+	for _, item := range c.document.Items {
+		if item.Kind != string(SuiteItem) || c.removed(item) {
+			continue
+		}
+		paths, availability, _ := c.backing(item)
+		if availability != ItemAvailable {
+			continue
+		}
+		data, err := boundedFile(paths[primaryRole(SuiteItem)], suite.MaxBytes)
+		if err != nil {
+			continue
+		}
+		if document, err := suite.Decode(data); err == nil {
+			c.suiteViews = append(c.suiteViews, suiteView{ref: ItemRef{Kind: SuiteItem, ID: item.ID, Revision: item.RevisionLabel()},
+				identity: suite.Identity(data), name: document.ID})
+		}
+	}
+	return c.suiteViews
+}
+
+// suiteOf is the project's suite an execution ran: the suite whose current
+// version it executed, or else the one suite that declares its id.
+func (c *loadedCatalog) suiteOf(run suiteRunView) *ItemRef {
+	var named []ItemRef
+	for _, held := range c.suites() {
+		if held.identity == run.identity {
+			return &held.ref
+		}
+		if held.name == run.suite {
+			named = append(named, held.ref)
+		}
+	}
+	if len(named) == 1 {
+		return &named[0]
+	}
+	return nil
+}
 
 // suiteDocument is the suite contract as the shared authoring seam works with
 // it: the same strict decoder `readmit suite` reads, the suite's own byte
