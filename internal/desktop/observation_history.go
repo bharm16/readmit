@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
 )
@@ -22,7 +24,9 @@ import (
 
 // CollectionRow is one retained collection of an observation. Records is
 // the settled count of a completed collection and null for every other
-// status, which settled on none. Reason is why a collection that did not
+// status, which settled on none. Baseline is the state a completed
+// collection settled on, the identity a window's recorded baseline names,
+// and empty for every other status. Reason is why a collection that did not
 // complete observed nothing.
 type CollectionRow struct {
 	Entry       string  `json:"entry"`
@@ -30,6 +34,7 @@ type CollectionRow struct {
 	Status      string  `json:"status"`
 	Trustworthy bool    `json:"trustworthy"`
 	Records     *int    `json:"records"`
+	Baseline    string  `json:"baseline,omitzero"`
 	Reason      string  `json:"reason,omitzero"`
 }
 
@@ -39,6 +44,12 @@ func collectionRow(entry string, completion observewindow.Completion) Collection
 	if completion.Trustworthy() {
 		records := completion.RecordsObserved
 		row.Records = &records
+		for _, sample := range slices.Backward(completion.Samples) {
+			if sample.Status == observewindow.Observed {
+				row.Baseline = sample.StateDigest
+				break
+			}
+		}
 	}
 	if err := completion.Err(); err != nil {
 		row.Reason = err.Error()
@@ -228,4 +239,81 @@ func memberDigest(item catalog.Item, role string) string {
 		}
 	}
 	return ""
+}
+
+// CollectionProgress is what the running reviewed collection has measured:
+// the observation it reads, how many reads it recorded, how many records the
+// latest observed read held (null while none was an observation), the bytes
+// of original material read, the run of identical observations reached and
+// the run the window requires, when the window opened, when its deadline
+// closes it, and how long it has run. It is a measurement; only the
+// completion decides what the collection means.
+type CollectionProgress struct {
+	Observation    ItemRef `json:"observation"`
+	Samples        int     `json:"samples"`
+	Records        *int    `json:"records"`
+	Bytes          int64   `json:"bytes"`
+	StableSamples  int     `json:"stable_samples"`
+	RequiredStable int     `json:"required_stable"`
+	OpenedAt       *string `json:"opened_at"`
+	Deadline       *string `json:"deadline"`
+	Elapsed        string  `json:"elapsed"`
+	opened         time.Time
+}
+
+// CollectionProgressResult is Empty when no reviewed collection is running,
+// and otherwise what the running one has measured.
+type CollectionProgressResult struct {
+	State    State               `json:"state"`
+	Reason   string              `json:"reason,omitzero"`
+	Progress *CollectionProgress `json:"progress,omitzero"`
+}
+
+func (r *CollectionProgressResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
+// CollectionProgress reads what the running reviewed collection has
+// measured. It never waits for the slot the collection holds, so the window
+// can read it while the collection runs, and it reads nothing of the source.
+func (a *App) CollectionProgress() CollectionProgressResult {
+	a.collectMu.Lock()
+	defer a.collectMu.Unlock()
+	if a.collectionProgress == nil {
+		return CollectionProgressResult{State: Empty}
+	}
+	reached := *a.collectionProgress
+	if !reached.opened.IsZero() {
+		reached.Elapsed = a.now().Sub(reached.opened).Round(100 * time.Millisecond).String()
+	}
+	return CollectionProgressResult{State: Completed, Progress: &reached}
+}
+
+// measureCollection keeps what one running collection has measured for
+// CollectionProgress, from its start until done is called.
+func (a *App) measureCollection(observation ItemRef, required int) (report func(observesource.Progress), done func()) {
+	a.collectMu.Lock()
+	a.collectionProgress = &CollectionProgress{Observation: observation, RequiredStable: required, Elapsed: "0s"}
+	a.collectMu.Unlock()
+	report = func(progress observesource.Progress) {
+		a.collectMu.Lock()
+		defer a.collectMu.Unlock()
+		if a.collectionProgress == nil {
+			return
+		}
+		reached := a.collectionProgress
+		reached.Samples, reached.Bytes, reached.StableSamples = progress.Samples, progress.Bytes, progress.Stable
+		reached.Records = nil
+		if progress.Observed {
+			records := progress.Records
+			reached.Records = &records
+		}
+		reached.opened, reached.OpenedAt, reached.Deadline = progress.OpenedAt, stampedTime(progress.OpenedAt), stampedTime(progress.Closes)
+	}
+	done = func() {
+		a.collectMu.Lock()
+		defer a.collectMu.Unlock()
+		a.collectionProgress = nil
+	}
+	return report, done
 }

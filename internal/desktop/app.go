@@ -356,6 +356,12 @@ type App struct {
 	corpusMu       sync.Mutex
 	corpusProgress *CorpusProgress
 
+	// collectMu guards what a running reviewed collection has measured,
+	// which CollectionProgress reads without waiting for the slot the
+	// collection holds. collectionProgress is nil while none runs.
+	collectMu          sync.Mutex
+	collectionProgress *CollectionProgress
+
 	// captureMu guards the address a running collector or fixture bound,
 	// which CaptureProgress reads without waiting for the slot StartCapture
 	// holds. captureProgress is nil while nothing listens.

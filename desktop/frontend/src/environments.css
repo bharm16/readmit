@@ -125,3 +125,23 @@
   display: inline-flex;
   gap: var(--s2);
 }
+
+/* Rows edited in place inside a sheet: allowed ranges, database filters. */
+.edit-table input,
+.edit-table select {
+  width: 100%;
+}
+
+.edit-table td:last-child,
+.plain-table td.row-actions {
+  text-align: end;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.plain-table tbody th[title] {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -26,9 +26,15 @@ func TestAnEnvironmentSavePublishesTargetPolicyResetAndLinksAsOneRevision(t *tes
 		if full {
 			draft.SendPolicy = &sendpolicy.Policy{ApprovedDestinations: []string{"127.0.0.1/32"}}
 			draft.ResetPlan = &fixturereset.Plan{Actions: []fixturereset.Action{{Operator: fixturereset.OperatorConfirms, Instructions: "Clear the store."}}}
-			draft.Links = &EnvironmentLinks{ResetName: "Clear store", ActionNames: []string{"Clear"}}
+			draft.Links = &EnvironmentLinks{ResetName: "Clear store", ActionNames: []string{"Clear"}, RangeNames: []string{"Lab loopback"}}
 		}
 		return draft
+	}
+	// Every allowed range is named, or none is.
+	unnamed := draft("127.0.0.1:2576", true)
+	unnamed.Links.RangeNames = []string{"Lab loopback", "Another"}
+	if _, _, problems := validateItemDraft(draftScope{}, EnvironmentItem, unnamed); len(problems) != 1 || problems[0].Field != "links.range_names" {
+		t.Fatalf("a range name for no range: %+v", problems)
 	}
 	for _, point := range []string{catalog.PointMember + "target", catalog.PointMember + "policy", catalog.PointMember + "reset",
 		catalog.PointMember + "links", catalog.PointVerified} {
@@ -74,7 +80,8 @@ func TestAnEnvironmentSavePublishesTargetPolicyResetAndLinksAsOneRevision(t *tes
 				t.Fatalf("the environment after the crash: %+v", opened)
 			}
 			current := opened.Draft
-			whole := current.SendPolicy != nil && current.ResetPlan != nil && current.Links != nil && current.Environment.Address == "127.0.0.1:2576"
+			whole := current.SendPolicy != nil && current.ResetPlan != nil && current.Links != nil && current.Environment.Address == "127.0.0.1:2576" &&
+				len(current.Links.RangeNames) == 1 && current.Links.RangeNames[0] == "Lab loopback"
 			previous := current.SendPolicy == nil && current.ResetPlan == nil && current.Links == nil && current.Environment.Address == "127.0.0.1:2575"
 			switch {
 			case point == catalog.PointVerified && (opened.Ref.Revision != "2" || !whole):

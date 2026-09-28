@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,38 +129,52 @@ var databaseIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 func (d Database) validate() error {
 	if d.Driver != "postgresql" && d.Driver != "sqlserver" && d.Driver != "oracle" {
-		return errors.New("database driver is postgresql, sqlserver or oracle")
+		return at("driver", errors.New("database driver is postgresql, sqlserver or oracle"))
 	}
 	if err := endpointAddress(d.Address); err != nil {
-		return errors.New("database requires one endpoint")
+		return at("address", errors.New("database requires one endpoint"))
 	}
-	if d.Classification == "" || !databaseIdentifier.MatchString(d.Name) || !databaseIdentifier.MatchString(d.Username) {
-		return errors.New("database requires a class, database or service name, and username")
+	refused := errors.New("database requires a class, database or service name, and username")
+	switch {
+	case d.Classification == "":
+		return at("classification", refused)
+	case !databaseIdentifier.MatchString(d.Name):
+		return at("name", refused)
+	case !databaseIdentifier.MatchString(d.Username):
+		return at("username", refused)
 	}
-	if len(d.CAFile) > maxPathBytes || d.ServerName == "" || len(d.ServerName) > maxHostBytes {
-		return errors.New("database requires an explicit verified TLS server name and bounded CA reference")
+	refused = errors.New("database requires an explicit verified TLS server name and bounded CA reference")
+	if len(d.CAFile) > maxPathBytes {
+		return at("ca_file", refused)
+	}
+	if d.ServerName == "" || len(d.ServerName) > maxHostBytes {
+		return at("server_name", refused)
 	}
 	c := d.Credential
 	if c.Address != d.Address || c.Purpose != "database-observation" || (c.Store != secret.OSKeychain && c.Store != secret.CustomerManaged) {
-		return errors.New("database requires an endpoint-bound observation credential; reset credentials are refused")
+		return at("credential", errors.New("database requires an endpoint-bound observation credential; reset credentials are refused"))
 	}
 	if err := (secret.Locator{Command: c.Command, Arguments: c.Arguments}).Validate(); err != nil {
-		return errors.New("invalid database credential locator")
+		return at("credential", errors.New("invalid database credential locator"))
 	}
-	if len(d.View) < 1 || len(d.View) > 2 || !databaseIdentifier.MatchString(d.RecordKey) {
-		return errors.New("database requires an approved view and record-key column")
+	refused = errors.New("database requires an approved view and record-key column")
+	if len(d.View) < 1 || len(d.View) > 2 {
+		return at("view", refused)
+	}
+	if !databaseIdentifier.MatchString(d.RecordKey) {
+		return at("record_key", refused)
 	}
 	for _, part := range d.View {
 		if !databaseIdentifier.MatchString(part) {
-			return errors.New("invalid database view identifier")
+			return at("view", errors.New("invalid database view identifier"))
 		}
 	}
 	if len(d.Filters) > 16 {
-		return errors.New("at most 16 bound database filters")
+		return at("filters", errors.New("at most 16 bound database filters"))
 	}
-	for _, f := range d.Filters {
+	for i, f := range d.Filters {
 		if !databaseIdentifier.MatchString(f.Column) || len(f.Value) > 4096 || strings.IndexByte(f.Value, 0) >= 0 {
-			return errors.New("invalid database filter")
+			return at("filters."+strconv.Itoa(i), errors.New("invalid database filter"))
 		}
 	}
 	return d.validateReading()
@@ -169,11 +184,11 @@ func (d Database) validateReading() error {
 	switch d.KeyType {
 	case "text", "integer", "decimal", "timestamp":
 	default:
-		return errors.New("database key type is text, integer, decimal or timestamp")
+		return at("key_type", errors.New("database key type is text, integer, decimal or timestamp"))
 	}
 	limits := d.limits()
 	if _, err := boundedDuration(limits.Timeout, 5*time.Minute); err != nil || limits.MaxRows < 1 || limits.MaxRows > 100000 || limits.MaxBytes < 1 || limits.MaxBytes > MaxReadBytes {
-		return errors.New("database limits require a timeout up to five minutes, 1-100000 rows and 1-16777216 bytes")
+		return at("limits", errors.New("database limits require a timeout up to five minutes, 1-100000 rows and 1-16777216 bytes"))
 	}
 	return nil
 }

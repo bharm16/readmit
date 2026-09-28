@@ -37,6 +37,27 @@ type Options struct {
 	// observed of each one. A produced occurrence with no correlation is
 	// unknown, and unknown is not a pass.
 	Produced []string
+	// Progress, when set, is told what the collection has measured after
+	// every read it records. It is called on the collecting goroutine and
+	// must not block.
+	Progress func(Progress)
+}
+
+// Progress is what a running collection has measured so far: how many reads
+// of the source it recorded since the window opened, how many records the
+// latest observed read held (Observed is false while no read was an
+// observation), the bytes of original material it read, the baseline's
+// included, the run of identical observations the window has reached, and
+// when the window opened and its deadline closes it. It is a measurement,
+// never a verdict: only the completion decides what a collection means.
+type Progress struct {
+	Samples  int
+	Observed bool
+	Records  int
+	Bytes    int64
+	Stable   int
+	OpenedAt time.Time
+	Closes   time.Time
 }
 
 // attempt is what one bounded read of the source produced, before the window's
@@ -107,7 +128,7 @@ func Collect(ctx context.Context, source Source, window observewindow.Window, op
 		return observewindow.Completion{}, err
 	}
 	defer open.close()
-	return sample(ctx, window, retained, open, options.Produced)
+	return sample(ctx, window, retained, open, options.Produced, options.Progress)
 }
 
 // refuse reports the one attempt a source that cannot be collected from
@@ -149,11 +170,14 @@ func decideOne(window observewindow.Window, retained *snapshot, only attempt) (o
 // recomputed here, so the condition a collector stops on is the condition a
 // reader re-decides the record against, and a collector cannot stop at the
 // first convenient answer by holding a slightly different rule.
-func sample(ctx context.Context, window observewindow.Window, retained *snapshot, open reader, produced []string) (observewindow.Completion, error) {
+func sample(ctx context.Context, window observewindow.Window, retained *snapshot, open reader, produced []string, report func(Progress)) (observewindow.Completion, error) {
 	collection := observewindow.Collection{Stop: observewindow.StopRule}
+	measured := Progress{}
 	next := 0
 	if window.PreExisting.Declaration == observewindow.RecordedBaseline {
-		baseline, err := retain(retained, next, baselineAttempt(ctx, window, open))
+		taken := baselineAttempt(ctx, window, open)
+		measured.Bytes += materialBytes(taken)
+		baseline, err := retain(retained, next, taken)
 		if err != nil {
 			return observewindow.Completion{}, err
 		}
@@ -164,6 +188,7 @@ func sample(ctx context.Context, window observewindow.Window, retained *snapshot
 	interval := samplingInterval(window.Completion)
 	limit, _ := time.ParseDuration(window.Completion.Deadline)
 	closes := collection.OpenedAt.Add(limit)
+	measured.OpenedAt, measured.Closes = collection.OpenedAt, closes
 	var observed []string
 	for {
 		// Every read is bounded by what is left of the window as well as by
@@ -187,7 +212,9 @@ func sample(ctx context.Context, window observewindow.Window, retained *snapshot
 		}
 		if taken.status == observewindow.Observed {
 			observed = taken.keys
+			measured.Observed, measured.Records = true, len(taken.keys)
 		}
+		measured.Bytes += materialBytes(taken)
 		sampled, err := retain(retained, next, taken)
 		if err != nil {
 			return observewindow.Completion{}, err
@@ -198,6 +225,10 @@ func sample(ctx context.Context, window observewindow.Window, retained *snapshot
 		decided, err := window.Decide(collection)
 		if err != nil {
 			return observewindow.Completion{}, err
+		}
+		if report != nil {
+			measured.Samples, measured.Stable = len(collection.Samples), decided.StableSamples
+			report(measured)
 		}
 		// Incomplete is the one verdict more sampling can still change. A
 		// window that completed, one whose read was not an observation and one
@@ -223,6 +254,15 @@ func sample(ctx context.Context, window observewindow.Window, retained *snapshot
 	collection.ClosedAt = time.Now().UTC()
 	collection.Correlations = correlate(produced, observed, lastObserved(collection.Samples) >= 0)
 	return window.Decide(collection)
+}
+
+// materialBytes is how many bytes of original material one attempt read.
+func materialBytes(taken attempt) int64 {
+	var total int64
+	for _, data := range taken.evidence {
+		total += int64(len(data))
+	}
+	return total
 }
 
 // baselineAttempt reads the state the window opens on. A baseline is held to

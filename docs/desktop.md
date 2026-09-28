@@ -4692,9 +4692,10 @@ are reviewed actions: the review names exactly what will run, a manual reset
 step is confirmed in the review, and the final button runs only that. These
 share the Go engine with the CLI, keeping parity with `readmit target`,
 `readmit secret`, and the policy and plan readers of `readmit target check`
-and `readmit target reset`. The file-level observation setup stays a started
-task reached from Security's Add connection › Source and from a capture's
-binding.
+and `readmit target reset`. A named observation opens from its environment's
+Observation group; Add observation, the same editor, is also reached from
+Security's Add connection › Source and from a finalized capture's Set up
+observation.
 
 ### Named environments and observations
 
@@ -4708,8 +4709,23 @@ no identity, a new environment unclassified and with its transport unchosen,
 or a new observation from the default source and window; otherwise the
 members the current revision declares, exactly as saved. A duplicate is that
 draft saved with no `Item`. A draft whose transport is empty is refused at
-`transport` ("Choose a transport"); choosing TLS or plain TCP/MLLP in the
-editor is the approval the target records as `approved_transport`. The
+`transport` ("Choose a transport"). Saving never approves a transport: a save
+records `approved_transport` false, except that an edit keeps an approval
+already recorded while the address, the transport, the server name, the CA
+certificate and the client certificate stay exactly as they were. The approval
+is its own reviewed action, `environment.approve-transport`: its review shows
+the address, transport and TLS settings it covers, and its final click
+publishes a new revision whose target records `approved_transport` true, every
+other member unchanged. Until then a check, a send or a reset through a
+nonloopback or named address is refused ("approve the transport first");
+`transport_approved` and `approval_required` in the environment's summary say
+which applies. A target member saved before its approval is read by
+`replay.ReadRecordedTarget`, which is `ReadTarget` without the approval rule,
+and `readmit target` refuses it as it refuses any unapproved nonloopback
+target. A refused member is answered at that member —
+`environment.address`, `environment.connect_timeout`,
+`environment.message_timeout`, `environment.max_ack_bytes` — and never
+coerced to a default. The
 target's `name` is drawn from the display name when the environment is
 created — letters, digits, `-`, `_` and `.`, made distinct from the
 project's other environments — and never changes afterwards; a reset plan
@@ -4719,17 +4735,44 @@ a person gave it. A credential names a reference of the project's
 `CheckCredential`, `RecordCredentialRotation` and `RemoveCredential` keep the
 project's references. A credential row counts its locator arguments and never
 carries them; an edit replaces them only when `replace_arguments` is set, and
-a removal is refused, naming them, while an environment presents the
-reference. The credential in its store is never touched.
+a removal is refused, naming them, while an environment or an observation
+presents the reference. A refused save names the member it is about in
+`problems` (`name`, `store`, `address`, `command`, `arguments` or `max_age`).
+The credential in its store is never touched.
 
 `readmit-environment-links/v1` is new and not yet in a released version. It
 holds what an environment names beside its target: the catalog identity of its
 observation, the name its reset was given and the names of its actions, in the
-plan's order. Unknown members are refused.
+plan's order, and the names of its allowed ranges, in the policy's order
+(`range_names`, every range named or none). Unknown members are refused.
 
 ```json
 {"schema": "readmit-environment-links/v1", "observation": "0f3c2a8e6b1d4f7a9c5e2b10",
- "reset_name": "Empty appointment store", "action_names": ["Stop listener", "Ledger is empty"]}
+ "reset_name": "Empty appointment store", "action_names": ["Stop listener", "Ledger is empty"],
+ "range_names": ["Scheduling lab"]}
+```
+
+An Observation is saved the same way: its source and window and, when its
+HTTPS or database source presents a project credential, a links member
+(`readmit-observation-links/v1`, new and not yet in a released version)
+naming that reference, all in one revision. The draft names the credential in
+`credential`; a save resolves it from `secrets.json` — a `source-endpoint`
+reference scoped to exactly the endpoint the source reads — into the source's
+own credential reference, with `database-observation` as a database
+credential's purpose, and a draft opened from a saved observation never
+carries the reference's locator arguments. A refused member of the source or
+the window is answered at that member, such as
+`observation.source.database.view` or
+`observation.window.completion.stable_samples`, and a database driver this
+release has no adapter for is refused at `observation.source.database.driver`.
+`ObservationFields` lists the fields a file export's chosen input offers a
+record key — a CSV header's columns or the readable members of the first JSON
+record — reading the file locally within the source's read bound.
+`OpenItemDraft` with `capture` starts a new observation of a case a capture
+retained in the project.
+
+```json
+{"schema": "readmit-observation-links/v1", "credential": "scheduling-api"}
 ```
 
 `CheckEnvironment` connects to the environment at the revision the window
@@ -4742,7 +4785,8 @@ revision checked, when, the outcome with its TLS details and the send
 decision; the next check replaces it, and the environment's summary shows it as
 the last check, never as a live connection. `CheckEnvironmentDestination`
 decides one proposed send, an address and a classification, under the saved
-policy; it may resolve a name and opens no connection.
+policy — under the environment's own recorded classification when the request
+names none — and may resolve a name; it opens no connection.
 
 A collection (`observation.collect`) reviews the observation's source by its
 identity, kind and scope, the window's identity and completion bounds, and
@@ -4751,13 +4795,26 @@ project entries the application names; saving the observation again withdraws
 the review. A collection that did not complete reports its status and reason
 and no record count. `ObservationHistory` lists the collections the project
 retained for the source, and `InspectCompletion` reads one again against the
-current window; neither collects. A reset (`environment.reset`) reviews the
+current window; neither collects. While a reviewed collection runs,
+`CollectionProgress` reads what it has measured — reads recorded, the records
+the latest observed read held, bytes read, the run of identical observations
+reached and required, when the window opened and closes, and the elapsed
+time — without waiting for its slot; it is a measurement, never a verdict. A
+completed collection's row carries `baseline`, the state it settled on, which a
+recorded-baseline window names. A reset (`environment.reset`) reviews the
 target and each saved action with its type, instructions and effect, is not
 ready for a production or unclassified environment, and requires every manual
 action's identity, and nothing else, in `decisions.confirmed`; its result is
 the outcome of each action and the entry its `readmit-reset-outcome/v1` was
-retained in. `ListReceiverSnapshots` names the project's `readmit-observation/v1`
-receiver snapshots a check-empty action chooses from. A credential scan
+retained in. A Check empty observation action (`collection_empty`) names one
+of the project's observations: in a draft by its identity, in the saved plan
+by the file its current revision's source was saved as. Its review names the
+observation at its current revision, which the reset follows whichever
+revision the plan was saved against, and it confirms that observation's latest
+completed collection found no records and is still inside the source's
+freshness bound; it collects nothing. `ListReceiverSnapshots` names the
+project's `readmit-observation/v1` receiver snapshots an `observation_empty`
+action reads. A credential scan
 (`secret.scan`) lists exactly the files it reads — `secrets.json` and every
 file the project's environments and observations were saved as — and scans
 those. `RemoveItem` removes an environment or observation from the project,
@@ -4878,8 +4935,9 @@ a collector or the fixture is its controlled stop, so it answers cancelled with
 the case it sealed from what arrived before the stop.
 Reopening a project never restarts a listener and never fabricates complete
 capture after a crash. On completion the panel offers opening the case, setting
-up an index, and binding the retained case into Observation setup through
-`BindCaptureObservation`.
+up an index, and Set up observation, which opens Add observation started from
+the retained case through `OpenItemDraft` with `capture`; nothing is collected
+until the saved observation's own reviewed Collect.
 
 While a collector or the fixture runs, the capture panel says where it listens,
 `Listening on 127.0.0.1:PORT`: the address `readmit listen` and `readmit
@@ -4915,48 +4973,60 @@ See [source](source.md), [collect](collect.md) and [listen](listen.md).
 
 ## Observation sources and windows
 
-The desktop application authors `readmit-observation-source/v1|v2|v3` and
-`readmit-observation-window/v1` documents through structured controls over the
-same Go readers and writers the CLI uses. Opening Observation setup never queries
-a database or HTTPS endpoint. Local validation checks configuration identity and
-source/window agreement only. Collection and connectivity preview require an
-explicit authorize action and retain completions through
-`internal/observesource` and `internal/observewindow`. Like `readmit observe
-collect`, a collection reserves a runner instance as well as admitting the
-author, and is refused without one before a source is read.
-Changing a source or window document name when that editor holds unsaved edits
-asks before replacing them; Escape keeps the edits and the original name.
-Pinned identities describe saved or read documents. A new default or a source
-prepared from a capture binding says **not saved** until it is written.
+A named observation is where a test reads its downstream result and when that
+result is complete: a `readmit-observation-source/v1|v2|v3` source and a
+`readmit-observation-window/v1` window, saved together as one revision through
+`SaveItem` with the same Go readers and writers the CLI uses. Its page shows
+the saved source, the completion rule and the actual collections, with the
+Latest result first; opening it reads the saved draft and the collection
+history only, and never queries a file, database or HTTPS endpoint.
 
-**Save source and window** writes the source, then the window, each through
-its shared writer, and shows the identity each was saved with. A refused source
-leaves the window as it was saved, and the panel says which document was not
-saved and why. **Validate source document** and **Validate window document**
-read the saved document the file field names, on its own, with the reader the
-command line reads it with — `readmit observe validate` for a window, and the
-reader `readmit observe collect` reads a source through — and show its identity
-or the reader's refusal in the command line's words. They validate what is
-saved, not what the editor holds, and collect nothing; **Validate locally**
-still checks that the saved pair agrees.
+**Edit** (and **Add observation**) is one editor with two steps, Source and
+Completion, and one Save. Source shows only the fields of the chosen type:
+
+- **File export**: the input file, chosen in the host's file dialog; its
+  format; the record key field, picked from the chosen export's own header or
+  first record through `ObservationFields`; and its maximum size.
+- **HTTPS API**: the URL, classification, server name, CA certificate, a
+  named project credential and the header it is presented in, the format and
+  the record key path.
+- **Downstream capture**: a case of the project, the HL7 field that keys a
+  record and the maximum occurrences.
+- **Database view**: an adapter this release has, listed from
+  `ObservationSupport` with whether it is qualified against a live server; the
+  address, database name, username, classification, server name, CA
+  certificate and a named project credential; the schema-qualified view; the
+  record key column and its type; and equality filters added as rows. A
+  filter is added only with both its column and its value, and Save refuses a
+  typed filter that was never added. A saved driver this release has no
+  adapter for says it is not available in this release.
+
+Completion asks for a position only for a declared-position watermark, and a
+baseline only for a recorded-baseline initial state, chosen from the
+observation's completed collections that recorded one. A number that is not a
+whole number stays in its field with the reason. A refused save opens the step
+that holds the member the facade names and keeps every value typed; a save of
+an observation that changed since it was opened says so and keeps them too.
+Closing the editor with unsaved edits asks first.
+
+**Collect** is a reviewed, read-only collection (`observation.collect`): the
+review names the source, its version, type, scope and where it is read from,
+and the completion bounds. While the final Collect runs, what it has measured
+so far — `CollectionProgress`, such as `Sample 3 · 1 of 3 stable` — shows
+beside Stop, which stops exactly that collection. Like `readmit observe
+collect`, a collection reserves a runner instance as well as admitting the
+author, and is refused without one before a source is read. **Inspect
+completion**, in a collection's menu, reads that retained collection again
+through `InspectCompletion` without collecting.
 
 A source's identity is the SHA-256 of what the document declares, in canonical
-form: the digest of the file the window writes, without its final newline. An
-export path, capture path or certificate authority a source names relative to
-its own folder is resolved against that folder only when the source is
-collected, so saving, validating and reopening a source report one identity
-wherever its folder is, and the editor keeps the path as it was typed. A
-document the reader refuses is said to be refused when it is opened rather
-than shown as a new one, and saving stays closed until another document is
-named, so a document the window could not read, such as a later version, is
-never replaced by what the editor holds. Naming one document reads only that
-one again, and the editor stays closed while a document is read, so a read
-that lands late never replaces what was typed. A document saved into retained
-evidence, such as a case folder, is refused and creates nothing there, so the
-case still verifies.
-
-Adapter support and qualification state are listed in the panel. Database
-drivers remain unqualified production claims until #75. Downstream-capture
-sources accept a retained case path; Capture completion hands that path into
-`BindCaptureObservation` without starting a second capture UI. Verified window
-references bind into guided test authoring without hand-authored JSON.
+form. An export path, capture path or certificate authority a source names
+relative to its own folder is resolved against that folder only when the
+source is collected, and the editor keeps the path as it was chosen. Database
+drivers remain unqualified production claims until #75. The file-path
+Observation setup panel, which opened, saved and validated loose source and
+window documents, is gone; `OpenObservationSource`, `OpenObservationWindow`,
+`SaveObservationSource`, `SaveObservationWindow`, the `ValidateObservation`
+bindings, `CollectObservation`, `ExplainObservation` and
+`BindCaptureObservation` are still served for compatibility, but no screen
+calls them.

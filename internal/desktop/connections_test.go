@@ -242,6 +242,7 @@ func TestListConnectionsKeepsAnActiveOperationAfterItsConfigurationIsRemoved(t *
 	saved := saveEnvironment(t, app, context, desktop.SaveItemRequest{IntentID: "lab",
 		Draft: desktop.ItemDraft{Name: "Scheduling lab", Environment: draft,
 			SendPolicy: &sendpolicy.Policy{ApprovedDestinations: []string{"127.0.0.1/32"}}}})
+	saved = approveTransport(t, app, context, saved)
 	done := make(chan desktop.EnvironmentCheckResult, 1)
 	go func() { done <- app.CheckEnvironment(desktop.ItemRequest{Context: context, Ref: saved}) }()
 	select {

@@ -231,6 +231,7 @@ of the two. Nothing is implicit and nothing is ambient.
 | --- | --- | --- |
 | `operator_confirms` | `none` | Nothing. A person performs the step and confirms it with `--confirm ID`. Without that confirmation the step is `unconfirmed`, never assumed. |
 | `observation_empty` | `read_declared_file` | Reads exactly the one receiver observation file the action declares, inside the plan's own directory, and confirms an empty ledger with nothing processed. Writes nothing. |
+| `collection_empty` | `read_declared_file` | Reads the one observation source file the action declares, inside the plan's own directory, and the `readmit-observation-completion/v1` records beside it, and confirms that the latest completed collection of that source observed no records and closed within the source's own freshness bound. Collects nothing and writes nothing. |
 | `endpoint_quiet` | `connect_approved_target` | Opens one connection to the selected target and confirms it is reachable and sends nothing unprompted. **It sends no HL7 payload.** |
 
 `endpoint_quiet` reports what it established and no more. A refused connection
@@ -250,7 +251,15 @@ Confirming a machine action, or an id no plan declares, is refused: a person
 approving a step they performed is the operator-assisted half of a reset, and it
 is not a way to hand readmit a result it is supposed to establish itself.
 
-`observation_empty` names its file as a path inside the plan's own directory,
+`collection_empty` reads only collections that completed: one that stopped at its
+deadline, was truncated or found its source missing settled on no count and is
+not evidence either way. No completed collection of the source
+(`no_completed_collection`), and a latest one that closed longer ago than the
+source's `freshness.max_age` (`collection_older_than_freshness`), leave the step
+`unconfirmed`; a latest one that observed records (`collection_not_empty`)
+`fail`s it.
+
+`observation_empty` and `collection_empty` name their file as a path inside the plan's own directory,
 resolved after the plan's own symlink, and readmit opens it within that
 directory. An absolute path, a path with `..` and a link out of the directory
 are each refused, so what one action may read is fixed by where the operator put
@@ -339,8 +348,9 @@ with 1 to 32 actions. Unknown and duplicate members are rejected.
 
 `environment` must equal the `name` the selected configuration records, so a
 plan written for one environment cannot be pointed at another by changing one
-flag. `observation` is required for `observation_empty` and refused for every
-other operator, so no action carries a file it has no authority to read.
+flag. `observation` is required for `observation_empty` and `collection_empty`
+and refused for every other operator, so no action carries a file it has no
+authority to read.
 
 `readmit-reset-outcome/v1` is what `reset` retains. It holds readmit's own
 closed vocabulary and the SHA-256 of the plan bytes it ran: no path, no value
@@ -448,7 +458,7 @@ transport contract the two commands share.
 The desktop application saves a named environment as one revision of its
 project's catalog: this target together with, when it has them, its send
 policy, its reset plan and a `readmit-environment-links/v1` document naming
-its observation and labelling its reset, and it retains an environment's
+its observation and labelling its reset and its allowed ranges, and it retains an environment's
 latest explicit check as `readmit-environment-check/v1`. Both contracts are
 new and not yet in a released version; see
 [named environments and observations](desktop.md#named-environments-and-observations).

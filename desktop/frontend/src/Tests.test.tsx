@@ -23,7 +23,7 @@ const QA: CatalogItem = {
   last_opened_at: null,
   availability: "available",
   capabilities: [],
-  summary: { environment: { classification: "nonproduction", address: "peer-under-test:2575", transport: "plain", last_checked_at: null, observation: null, has_policy: true, reset_actions: 1, reset_name: "Empty appointments" } },
+  summary: { environment: { classification: "nonproduction", address: "peer-under-test:2575", transport: "plain", transport_approved: true, approval_required: true, last_checked_at: null, observation: null, has_policy: true, reset_actions: 1, reset_name: "Empty appointments" } },
 };
 
 function testItem(id: string, name: string, updated: string | null, summary: Partial<NonNullable<CatalogItem["summary"]["test"]>> = {}): CatalogItem {

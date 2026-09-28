@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/fixturereset"
+	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
@@ -36,13 +39,15 @@ const maxLinksBytes = 64 << 10
 
 // EnvironmentLinks is what an environment names beside its target: the
 // catalog identity of the observation its results are collected through,
-// empty for none, and the names a person gave its reset and each of the
-// reset's actions, in the plan's order. The plan itself holds no names.
+// empty for none, the names a person gave its reset and each of the reset's
+// actions, in the plan's order, and the names of its allowed destination
+// ranges, in the policy's order. Neither the plan nor the policy holds names.
 type EnvironmentLinks struct {
 	Schema      string   `json:"schema,omitzero"`
 	Observation string   `json:"observation,omitzero"`
 	ResetName   string   `json:"reset_name,omitzero"`
 	ActionNames []string `json:"action_names,omitzero"`
+	RangeNames  []string `json:"range_names,omitzero"`
 }
 
 // TransportProblem is the problem an environment draft reports while its
@@ -63,9 +68,11 @@ func validateEnvironmentDraft(scope draftScope, draft ItemDraft) ([]catalog.Stag
 		// transport, so every other problem is reported at once.
 		target.Transport = "tls"
 	}
-	// Choosing a transport in the deliberate editor is the approval the
-	// configuration records; nothing else sets it.
-	target.ApprovedTransport = true
+	// Saving never approves a transport. An approval recorded by its own
+	// reviewed action is kept while the address, the transport and the TLS
+	// settings it approved stay exactly as they were, and is cleared by any
+	// change to them.
+	target.ApprovedTransport = scope.approvedTransport(target)
 	name, problem := scope.environmentName(draft.Name, target.Name)
 	if problem != nil {
 		problems = append(problems, *problem)
@@ -76,7 +83,7 @@ func validateEnvironmentDraft(scope draftScope, draft ItemDraft) ([]catalog.Stag
 	}
 	declared, data, err := declaredTarget(target)
 	if err != nil {
-		problems = append(problems, FieldProblem{Field: "environment", Problem: err.Error()})
+		problems = append(problems, FieldProblem{Field: targetField(err), Problem: err.Error()})
 	}
 	if !chosen {
 		declared.Transport = ""
@@ -111,6 +118,7 @@ func validateEnvironmentDraft(scope draftScope, draft ItemDraft) ([]catalog.Stag
 	links.Schema = EnvironmentLinksSchema
 	if draft.ResetPlan != nil {
 		plan, found := normalizedPlan(*draft.ResetPlan, name, draft.Environment.Name, links.ActionNames)
+		found = append(found, scope.namedObservationSources(&plan)...)
 		problems = append(problems, found...)
 		encoded, err := encodeMember(plan)
 		if err == nil {
@@ -135,10 +143,18 @@ func validateEnvironmentDraft(scope draftScope, draft ItemDraft) ([]catalog.Stag
 			problems = append(problems, FieldProblem{Field: "links.action_names." + strconv.Itoa(i), Problem: nameRule})
 		}
 	}
+	if len(links.RangeNames) > 0 && (normalized.SendPolicy == nil || len(links.RangeNames) != len(normalized.SendPolicy.ApprovedDestinations)) {
+		problems = append(problems, FieldProblem{Field: "links.range_names", Problem: "every allowed range is named, in the policy's order"})
+	}
+	for i, name := range links.RangeNames {
+		if !catalog.ValidName(name) {
+			problems = append(problems, FieldProblem{Field: "links.range_names." + strconv.Itoa(i), Problem: nameRule})
+		}
+	}
 	if links.Observation != "" && !scope.holdsObservation(links.Observation) {
 		problems = append(problems, FieldProblem{Field: "links.observation", Problem: "the project holds no such observation"})
 	}
-	if draft.Links != nil && (links.Observation != "" || links.ResetName != "" || len(links.ActionNames) > 0) {
+	if draft.Links != nil && (links.Observation != "" || links.ResetName != "" || len(links.ActionNames) > 0 || len(links.RangeNames) > 0) {
 		encoded, err := encodeMember(links)
 		if err != nil {
 			problems = append(problems, FieldProblem{Field: "links", Problem: err.Error()})
@@ -148,6 +164,18 @@ func validateEnvironmentDraft(scope draftScope, draft ItemDraft) ([]catalog.Stag
 		}
 	}
 	return staged, normalized, problems
+}
+
+// targetField is the member of an environment's target a refusal is about,
+// or the target as a whole.
+func targetField(err error) string {
+	for refusal, field := range map[error]string{replay.ErrTargetAddress: "environment.address", replay.ErrConnectTimeout: "environment.connect_timeout",
+		replay.ErrMessageTimeout: "environment.message_timeout", replay.ErrMaxACKBytes: "environment.max_ack_bytes"} {
+		if errors.Is(err, refusal) {
+			return field
+		}
+	}
+	return "environment"
 }
 
 // normalizedPlan is a reset plan as a save records it: under this
@@ -275,6 +303,28 @@ func (s draftScope) environmentName(display, declared string) (string, *FieldPro
 	return name, nil
 }
 
+// approvedTransport reports whether the environment an edit began from
+// recorded a transport approval that still covers target: the same address,
+// transport, server name, CA certificate and client certificate.
+func (s draftScope) approvedTransport(target replay.Target) bool {
+	if s.item == "" || s.loaded == nil {
+		return false
+	}
+	index := s.loaded.document.Find(s.item)
+	if index < 0 {
+		return false
+	}
+	saved, err := s.loaded.targetOf(s.loaded.document.Items[index])
+	return err == nil && saved.ApprovedTransport && sameTransport(saved, target)
+}
+
+// sameTransport reports whether two targets reach the same address over the
+// same transport and TLS settings, which is what a transport approval covers.
+func sameTransport(a, b replay.Target) bool {
+	return a.Address == b.Address && a.Transport == b.Transport && a.ServerName == b.ServerName &&
+		a.CAFile == b.CAFile && a.ClientCertificate == b.ClientCertificate
+}
+
 // holdsObservation reports an observation of the project that is not removed.
 func (s draftScope) holdsObservation(id string) bool {
 	if s.loaded == nil {
@@ -309,7 +359,7 @@ func (c *loadedCatalog) targetOf(item catalog.Item) (replay.Target, error) {
 	if availability != ItemAvailable {
 		return replay.Target{}, errors.New(reason)
 	}
-	return replay.ReadDeclaredTarget(paths["target"])
+	return replay.ReadDeclaredRecordedTarget(paths["target"])
 }
 
 // encodeMember is a member's deterministic encoding.
@@ -327,7 +377,7 @@ func decodeLinks(data []byte) (EnvironmentLinks, error) {
 	if len(data) > maxLinksBytes || json.Unmarshal(data, &links, json.RejectUnknownMembers(true)) != nil || links.Schema != EnvironmentLinksSchema {
 		return EnvironmentLinks{}, errors.New("the environment's links cannot be read")
 	}
-	for _, name := range append([]string{links.ResetName}, links.ActionNames...) {
+	for _, name := range slices.Concat([]string{links.ResetName}, links.ActionNames, links.RangeNames) {
 		if name != "" && !catalog.ValidName(name) {
 			return EnvironmentLinks{}, errors.New("the environment's links name something with a name that is not printable text")
 		}
@@ -349,7 +399,7 @@ func readLinks(path string) (EnvironmentLinks, error) {
 // verifyEnvironment reads a staged environment revision through the readers
 // the command line reads each of its documents with, together.
 func verifyEnvironment(files map[string]string) error {
-	target, err := operation.ReadTarget(files["target"])
+	target, err := replay.ReadRecordedTarget(files["target"])
 	if err != nil {
 		return err
 	}
@@ -368,8 +418,15 @@ func verifyEnvironment(files map[string]string) error {
 		}
 	}
 	if path, held := files["links"]; held {
-		if _, err := readLinks(path); err != nil {
+		links, err := readLinks(path)
+		if err != nil {
 			return err
+		}
+		if len(links.RangeNames) > 0 {
+			policy, err := operation.ReadSendPolicy(files["policy"])
+			if err != nil || len(policy.ApprovedDestinations) != len(links.RangeNames) {
+				return errors.New("every allowed range is named, in the policy's order")
+			}
 		}
 	}
 	return nil
@@ -390,7 +447,7 @@ func (c *loadedCatalog) environmentOf(item catalog.Item) (*environmentMembers, e
 	if availability != ItemAvailable {
 		return nil, errors.New(reason)
 	}
-	target, err := replay.ReadDeclaredTarget(paths["target"])
+	target, err := replay.ReadDeclaredRecordedTarget(paths["target"])
 	if err != nil {
 		return nil, err
 	}
@@ -467,8 +524,13 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			return result
 		}
 		if request.Ref.ID == "" {
-			if root, declined := a.projectRoot(ctx, request.Context); root == "" {
+			root, declined := a.projectRoot(ctx, request.Context)
+			if root == "" {
 				result.refuse(declined.state, declined.reason)
+				return result
+			}
+			if request.Capture != nil && request.Ref.Kind != ObservationItem {
+				result.refuse(Failed, "only a new observation starts from a capture")
 				return result
 			}
 			draft := ItemDraft{}
@@ -484,6 +546,26 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				draft.AnalysisSettings = &config
 			default:
 				draft.Observation = &ObservationDraft{Source: operation.DefaultObservationSource(), Window: operation.DefaultObservationWindow()}
+				// Which export is read and which field keys its records have no
+				// default; the person chooses both.
+				draft.Observation.Source.File.Path, draft.Observation.Source.Extraction.RecordKey = "", importer.Locator{}
+				if request.Capture != nil {
+					entry := request.Capture.CasePath
+					if filepath.IsAbs(entry) {
+						entry, _ = filepath.Rel(root, entry)
+					}
+					if artifactpath.EntryName(entry) != nil {
+						result.refuse(Failed, "a capture starts an observation of a case the project retained")
+						return result
+					}
+					source, err := operation.SourceFromCaptureBinding(*request.Capture, entry)
+					if err != nil {
+						result.refuse(Failed, err.Error())
+						return result
+					}
+					draft.Observation.Source = source
+					draft.Observation.Window.Source = source.Observes
+				}
 			}
 			result.State, result.Draft, result.New = Completed, &draft, true
 			result.Ref = &ItemRef{Kind: request.Ref.Kind}
@@ -546,6 +628,11 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				return result
 			}
 			draft.Environment, draft.SendPolicy, draft.ResetPlan = &members.target, members.policy, members.reset
+			if draft.ResetPlan != nil {
+				plan := *draft.ResetPlan
+				loaded.observationIdentities(&plan)
+				draft.ResetPlan = &plan
+			}
 			if _, held := members.paths["links"]; held {
 				links := members.links
 				draft.Links = &links
@@ -592,5 +679,14 @@ func (c *loadedCatalog) observationOf(item catalog.Item) (*ObservationDraft, err
 			return nil, err
 		}
 	}
-	return &ObservationDraft{Source: source, Window: window}, nil
+	draft := &ObservationDraft{Source: source, Window: window}
+	if path, held := paths["links"]; held {
+		links, err := readObservationLinks(path)
+		if err != nil {
+			return nil, err
+		}
+		draft.Credential = links.Credential
+		withheldArguments(draft)
+	}
+	return draft, nil
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
-	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/testauthor"
@@ -89,10 +88,14 @@ type ItemDraft struct {
 }
 
 // ObservationDraft is an observation source and its window, which only mean
-// something together and are published together or not at all.
+// something together and are published together or not at all. Credential
+// names the project credential reference an HTTPS or database source
+// presents, empty for none: a save resolves it into the source, and a draft
+// opened from a saved observation never carries the reference's arguments.
 type ObservationDraft struct {
-	Source observesource.Source `json:"source"`
-	Window observewindow.Window `json:"window"`
+	Source     observesource.Source `json:"source"`
+	Window     observewindow.Window `json:"window"`
+	Credential string               `json:"credential,omitzero"`
 }
 
 // FieldProblem is one reason a draft cannot be saved, at the member it is
@@ -422,30 +425,10 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if draft.Observation == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "observation", Problem: "an observation is a source and its window"})
 		}
-		source, err := observesource.EncodeSource(draft.Observation.Source)
-		if err == nil {
-			_, err = observesource.DecodeSource(source)
-		}
-		if err != nil {
-			problems = append(problems, FieldProblem{Field: "observation.source", Problem: err.Error()})
-		}
-		window := draft.Observation.Window
-		if window.Schema == "" {
-			window.Schema = observewindow.WindowSchema
-		}
-		windowData, windowErr := observewindow.EncodeWindow(window)
-		if windowErr == nil {
-			_, windowErr = observewindow.DecodeWindow(windowData)
-		}
-		if windowErr != nil {
-			problems = append(problems, FieldProblem{Field: "observation.window", Problem: windowErr.Error()})
-		}
-		if err == nil && windowErr == nil && draft.Observation.Source.Observes != window.Source {
-			problems = append(problems, FieldProblem{Field: "observation.window.source", Problem: operation.ErrObservationPairMismatch.Error()})
-		}
-		if len(problems) == 0 {
-			normalized.Observation = &ObservationDraft{Source: draft.Observation.Source, Window: window}
-			staged = []catalog.Staged{{Role: "source", File: "source.json", Data: source}, {Role: "window", File: "window.json", Data: windowData}}
+		members, observation, found := validateObservationDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.Observation = members, observation
 		}
 	case AnalysisSettingsItem:
 		if draft.AnalysisSettings == nil {
@@ -540,7 +523,7 @@ func declaredTarget(target replay.Target) (replay.Target, []byte, error) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return replay.Target{}, nil, errors.New("the target configuration cannot be validated")
 	}
-	declared, err := replay.ReadDeclaredTarget(path)
+	declared, err := replay.ReadDeclaredRecordedTarget(path)
 	if err != nil {
 		return replay.Target{}, nil, err
 	}
@@ -557,8 +540,7 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 		case TestItem:
 			return verifyTest(files)
 		case ObservationItem:
-			_, _, err := operation.ValidateObservationPair(files["source"], files["window"])
-			return err
+			return verifyObservation(files)
 		case AnalysisSettingsItem:
 			_, err := readAnalysisSettingsFile(files["config"])
 			return err

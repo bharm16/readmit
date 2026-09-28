@@ -26,13 +26,45 @@ import (
 // turn it into the target file's own directory, and a refusal would then name
 // the wrong member.
 func ReadDeclaredTarget(path string) (Target, error) {
-	target, _, err := readDeclared(path)
+	target, _, err := readDeclared(path, true)
 	return target, err
 }
 
+// ReadRecordedTarget reads a configuration ReadTarget reads, anchored and with
+// its credential bound, except that a nonloopback or named address need not
+// have its transport approved yet. An editor records a named environment this
+// way before a person approves its transport as a separate reviewed action;
+// everything that connects through a configuration reads it with ReadTarget,
+// which still refuses it until that approval is recorded.
+func ReadRecordedTarget(path string) (Target, error) {
+	target, resolved, err := readDeclared(path, false)
+	if err != nil {
+		return Target{}, err
+	}
+	target = anchor(target, filepath.Dir(resolved))
+	if _, err := BindCredential(target); err != nil {
+		return Target{}, err
+	}
+	return target, nil
+}
+
+// ReadDeclaredRecordedTarget is ReadRecordedTarget's reading exactly as the
+// file declares it, as ReadDeclaredTarget reads: every path is left as
+// declared and no credential is bound.
+func ReadDeclaredRecordedTarget(path string) (Target, error) {
+	target, _, err := readDeclared(path, false)
+	return target, err
+}
+
+// ErrTransportNotApproved is the refusal of a nonloopback or named address
+// whose transport nobody approved.
+var ErrTransportNotApproved = errors.New("nonloopback targets and hostnames require approved_transport true")
+
 // readDeclared also hands back the physical path it read, so a caller that has
 // to anchor the configuration's declared references resolves the file once.
-func readDeclared(path string) (Target, string, error) {
+// approved says the transport approval a nonloopback address needs is
+// required as well.
+func readDeclared(path string, approved bool) (Target, string, error) {
 	resolved, err := artifactpath.Resolve(path)
 	if err != nil {
 		return Target{}, "", errors.New("cannot resolve target configuration")
@@ -45,7 +77,11 @@ func readDeclared(path string) (Target, string, error) {
 	if err := json.Unmarshal(data, &target, json.RejectUnknownMembers(true)); err != nil {
 		return Target{}, "", errors.New("invalid target configuration JSON")
 	}
-	if err := validateTarget(target); err != nil {
+	checked := target
+	if !approved {
+		checked.ApprovedTransport = true
+	}
+	if err := validateTarget(checked); err != nil {
 		return Target{}, "", err
 	}
 	return target, resolved, nil
@@ -56,7 +92,7 @@ func readDeclared(path string) (Target, string, error) {
 // working directory, and the credential reference is bound to this target's own
 // purpose and address before the configuration is handed back.
 func ReadTarget(path string) (Target, error) {
-	target, resolved, err := readDeclared(path)
+	target, resolved, err := readDeclared(path, true)
 	if err != nil {
 		return Target{}, err
 	}
@@ -164,7 +200,7 @@ func validateTarget(t Target) error {
 	host, port, err := net.SplitHostPort(t.Address)
 	p, portErr := strconv.Atoi(port)
 	if err != nil || host == "" || len(host) > 253 || strings.ContainsAny(host, " /%\\") || portErr != nil || p < 1 || p > 65535 {
-		return errors.New("target requires an explicit host and numeric port")
+		return ErrTargetAddress
 	}
 	for _, r := range t.Address {
 		if r < 33 || r > 126 {
@@ -178,19 +214,31 @@ func validateTarget(t Target) error {
 	// commonly used for loopback requires explicit approval, avoiding DNS trust.
 	ip := net.ParseIP(host)
 	if (ip == nil || !ip.IsLoopback()) && !t.ApprovedTransport {
-		return errors.New("nonloopback targets and hostnames require approved_transport true")
+		return ErrTransportNotApproved
 	}
-	for _, value := range []string{t.ConnectTimeout, t.MessageTimeout} {
-		d, err := time.ParseDuration(value)
+	for _, timeout := range []struct {
+		value   string
+		refusal error
+	}{{t.ConnectTimeout, ErrConnectTimeout}, {t.MessageTimeout, ErrMessageTimeout}} {
+		d, err := time.ParseDuration(timeout.value)
 		if err != nil || d <= 0 || d > 5*time.Minute {
-			return errors.New("target timeouts must be positive durations at most five minutes")
+			return timeout.refusal
 		}
 	}
 	if t.MaxACKBytes < 1 || t.MaxACKBytes > 1<<20 {
-		return errors.New("max_ack_bytes must be between 1 and 1048576")
+		return ErrMaxACKBytes
 	}
 	return nil
 }
+
+// The refusals of one member of a target, so an editor can show each beside
+// the member it is about. Both timeouts are refused in the same words.
+var (
+	ErrTargetAddress  = errors.New("target requires an explicit host and numeric port")
+	ErrConnectTimeout = errors.New("target timeouts must be positive durations at most five minutes")
+	ErrMessageTimeout = errors.New("target timeouts must be positive durations at most five minutes")
+	ErrMaxACKBytes    = errors.New("max_ack_bytes must be between 1 and 1048576")
+)
 
 // validateEnvironment checks the members readmit-target/v3 introduced. They are
 // refused outright on the versions that never declared them: a member is never

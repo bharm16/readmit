@@ -1,6 +1,7 @@
 package fixturereset
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,8 @@ import (
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/environment"
 	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/observesource"
+	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -54,12 +57,20 @@ type Reason string
 const (
 	OperatorConfirmed    Reason = "operator_confirmed"
 	LedgerEmpty          Reason = "ledger_empty"
+	CollectionEmptied    Reason = "collection_empty"
 	EndpointReachable    Reason = "endpoint_reachable"
 	EveryActionConfirmed Reason = "every_action_confirmed"
 
 	AwaitingOperator      Reason = "awaiting_operator_confirmation"
 	ObservationUnreadable Reason = "observation_unreadable"
 	LedgerNotEmpty        Reason = "ledger_not_empty"
+	// NoCompletedCollection, CollectionStale and CollectionNotEmpty are what a
+	// collection_empty action found instead of an empty completed collection:
+	// none was retained, the latest one is older than its source's freshness
+	// bound, or it observed records.
+	NoCompletedCollection Reason = "no_completed_collection"
+	CollectionStale       Reason = "collection_older_than_freshness"
+	CollectionNotEmpty    Reason = "collection_not_empty"
 	// EndpointRefusedConnection and EndpointNotQuiet are two different
 	// findings and are named separately: an endpoint that refused the
 	// connection was silent, and saying it was not quiet would assert
@@ -240,6 +251,8 @@ func perform(ctx context.Context, request Request, action Action, route destinat
 		performed.Outcome, performed.Reason = Confirmed, OperatorConfirmed
 	case ObservationEmpty:
 		performed.Outcome, performed.Reason = emptyLedger(request.PlanDirectory, action.Observation)
+	case CollectionEmpty:
+		performed.Outcome, performed.Reason = emptyCollection(request.PlanDirectory, action.Observation, time.Now())
 	case EndpointQuiet:
 		performed.Outcome, performed.Reason, performed.Diagnosis = quietEndpoint(ctx, request.Target, route)
 	}
@@ -273,6 +286,68 @@ func emptyLedger(directory, name string) (Outcome, Reason) {
 		return Failed, LedgerNotEmpty
 	}
 	return Confirmed, LedgerEmpty
+}
+
+// emptyCollection confirms that the latest completed collection of the one
+// declared observation source, among the completions retained in the plan's
+// own directory, observed no records and closed inside the source's own
+// freshness bound. It reads the source file and the completion records,
+// read-only, through their own readers, and collects nothing: a collection
+// that did not complete settled on no count, so only a completed one is
+// evidence, and an older one than the source calls current is not evidence
+// of the state now.
+//
+// No completed collection, and one too old to describe the state now, leave
+// the reset unconfirmed: readmit established nothing about the fixture
+// either way.
+func emptyCollection(directory, name string, now time.Time) (Outcome, Reason) {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return Unconfirmed, ObservationUnreadable
+	}
+	defer root.Close()
+	data, err := artifactdir.Document{MaxBytes: observesource.MaxSourceBytes, Links: artifactdir.FollowLinks}.ReadIn(root, name)
+	if err != nil {
+		return Unconfirmed, ObservationUnreadable
+	}
+	source, err := observesource.DecodeSource(data)
+	if err != nil {
+		return Unconfirmed, ObservationUnreadable
+	}
+	fresh, err := time.ParseDuration(source.Freshness.MaxAge)
+	if err != nil {
+		return Unconfirmed, ObservationUnreadable
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return Unconfirmed, ObservationUnreadable
+	}
+	var latest *observewindow.Completion
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		data, err := artifactdir.Document{MaxBytes: observewindow.MaxCompletionBytes}.ReadIn(root, entry.Name())
+		if err != nil || !bytes.Contains(data, []byte(observewindow.CompletionSchema)) {
+			continue
+		}
+		completion, err := observewindow.DecodeCompletion(data)
+		if err != nil || completion.Source != source.Observes || !completion.Trustworthy() {
+			continue
+		}
+		if latest == nil || completion.ClosedAt.After(latest.ClosedAt) {
+			latest = &completion
+		}
+	}
+	switch {
+	case latest == nil:
+		return Unconfirmed, NoCompletedCollection
+	case now.Sub(latest.ClosedAt) > fresh:
+		return Unconfirmed, CollectionStale
+	case latest.RecordsObserved > 0:
+		return Failed, CollectionNotEmpty
+	}
+	return Confirmed, CollectionEmptied
 }
 
 // quietEndpoint confirms the environment accepts a connection again and sends

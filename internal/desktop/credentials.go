@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
@@ -37,13 +38,35 @@ type CredentialRow struct {
 
 // CredentialsResult answers a read or a change of the project's credentials
 // with every reference as it is registered now. Referring names what still
-// uses a reference a removal was refused for.
+// uses a reference a removal was refused for. Problems names the member of
+// a refused save its refusal is about: name, store, address, command,
+// arguments or max_age.
 type CredentialsResult struct {
 	State       State           `json:"state"`
 	Reason      string          `json:"reason,omitzero"`
 	Context     RequestContext  `json:"context"`
 	Credentials []CredentialRow `json:"credentials"`
 	Referring   []Referrer      `json:"referring"`
+	Problems    []FieldProblem  `json:"problems,omitzero"`
+}
+
+// credentialFields are the members of a reference the shared validation
+// names at the start of its refusal, and the field of the sheet each is.
+var credentialFields = []struct{ prefix, field string }{
+	{"reference name:", "name"}, {"that name is already registered", "name"}, {"reference store:", "store"},
+	{"reference address:", "address"}, {"reference command:", "command"}, {"reference arguments:", "arguments"},
+	{"reference argument:", "arguments"}, {"a locator argument", "arguments"}, {"reference rotation interval:", "max_age"},
+}
+
+// credentialProblems is a refused save's refusal at the member it names, or
+// none when it names no member.
+func credentialProblems(err error) []FieldProblem {
+	for _, named := range credentialFields {
+		if strings.HasPrefix(err.Error(), named.prefix) {
+			return []FieldProblem{{Field: named.field, Problem: err.Error()}}
+		}
+	}
+	return nil
 }
 
 func (r *CredentialsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -168,6 +191,7 @@ func (a *App) SaveCredential(request CredentialSaveRequest) CredentialsResult {
 		}
 		if err != nil {
 			result.refuse(Failed, err.Error())
+			result.Problems = credentialProblems(err)
 			return result
 		}
 		result.State, result.Credentials = Completed, a.credentialRows(document)
@@ -250,8 +274,9 @@ func (a *App) RecordCredentialRotation(request CredentialRequest) CredentialsRes
 }
 
 // RemoveCredential removes one reference from the project's secrets entry.
-// It is refused, naming them, while an environment's current revision
-// presents it; the credential in its store is never touched.
+// It is refused, naming them, while an environment's or an observation's
+// current revision presents it; the credential in its store is never
+// touched.
 func (a *App) RemoveCredential(request CredentialRequest) CredentialsResult {
 	return run(a, false, true, func(ctx context.Context) CredentialsResult {
 		result := CredentialsResult{Context: request.Context, Credentials: []CredentialRow{}, Referring: []Referrer{}}
@@ -261,16 +286,26 @@ func (a *App) RemoveCredential(request CredentialRequest) CredentialsResult {
 			return result
 		}
 		for _, item := range loaded.document.Items {
-			if item.Kind != string(EnvironmentItem) || loaded.removed(item) {
+			if loaded.removed(item) {
 				continue
 			}
-			target, err := loaded.targetOf(item)
-			if err == nil && target.Credential.Reference == request.Name && filepath.Clean(target.Credential.SecretsFile) == ProjectSecrets {
-				result.Referring = append(result.Referring, Referrer{Ref: ItemRef{Kind: EnvironmentItem, ID: item.ID, Revision: item.RevisionLabel()}, Name: loaded.read(item).Name})
+			presents := false
+			switch item.Kind {
+			case string(EnvironmentItem):
+				target, err := loaded.targetOf(item)
+				presents = err == nil && target.Credential.Reference == request.Name && filepath.Clean(target.Credential.SecretsFile) == ProjectSecrets
+			case string(ObservationItem):
+				if paths, availability, _ := loaded.backing(item); availability == ItemAvailable && paths["links"] != "" {
+					links, err := readObservationLinks(paths["links"])
+					presents = err == nil && links.Credential == request.Name
+				}
+			}
+			if presents {
+				result.Referring = append(result.Referring, Referrer{Ref: ItemRef{Kind: ItemKind(item.Kind), ID: item.ID, Revision: item.RevisionLabel()}, Name: loaded.read(item).Name})
 			}
 		}
 		if len(result.Referring) > 0 {
-			result.refuse(Failed, "an environment presents this credential; choose another credential there first. Nothing was removed")
+			result.refuse(Failed, "an environment or an observation presents this credential; choose another credential there first. Nothing was removed")
 			return result
 		}
 		document, err := operation.RemoveSecretReference(filepath.Join(loaded.root, ProjectSecrets), request.Name)

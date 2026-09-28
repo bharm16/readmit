@@ -12,6 +12,8 @@ import (
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/observesource"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/scenario"
@@ -51,6 +53,9 @@ type Vocabulary struct {
 	FixtureModes []observation.Mode `json:"fixture_modes"`
 	// AffectedTestImpacts are what Affected tests says about one pinned test.
 	AffectedTestImpacts []string `json:"affected_test_impacts"`
+	// ObservationStarts are where a new observation source of each kind
+	// starts when the editor switches to that kind.
+	ObservationStarts []observesource.Source `json:"observation_starts"`
 }
 
 // CheckVocabulary is every value a check's editor offers: the sixteen
@@ -162,6 +167,7 @@ func vocabulary() Vocabulary {
 		DiagnosisBuiltins: builtins,
 		ImportPlan:        importer.Vocabulary(),
 		ResetOperators:    fixturereset.Reviewed(),
+		ObservationStarts: operation.ObservationStarts(),
 		ReceiverFaults:    ReceiverFaultVocabulary{Actions: collection.FaultActions(), DefaultDelayMS: defaultFaultDelayMS},
 		Bounds: WindowBounds{
 			Grid: grid.MaxRows, Comparison: MaxComparisonRows, Review: MaxReviewFindings,

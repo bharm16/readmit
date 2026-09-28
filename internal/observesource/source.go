@@ -538,7 +538,7 @@ func (s Source) Validate() error {
 		return err
 	}
 	if _, err := boundedDuration(s.Freshness.MaxAge, maxFreshness); err != nil {
-		return errors.New("a freshness bound is a positive duration of at most one week")
+		return at("freshness.max_age", errors.New("a freshness bound is a positive duration of at most one week"))
 	}
 	// An envelope belongs to a transport that reads a document. A capture is
 	// HL7 evidence readmit already divided into occurrences, so declaring one
@@ -553,7 +553,7 @@ func (s Source) Validate() error {
 			return errors.New("an observation source that reads a document declares the envelope it is read through")
 		}
 		if err := s.Extraction.validate(); err != nil {
-			return err
+			return at("extraction", err)
 		}
 	}
 	declared := 0
@@ -573,22 +573,22 @@ func (s Source) Validate() error {
 		if s.Database == nil {
 			return errors.New("database-query declares a database")
 		}
-		return s.Database.validate()
+		return at("database", s.Database.validate())
 	case FileExport:
 		if s.File == nil {
 			return errors.New("a file-export source declares a file export")
 		}
-		return s.File.validate()
+		return at("file", s.File.validate())
 	case HTTPAPI:
 		if s.HTTP == nil {
 			return errors.New("an http-api source declares an http observation")
 		}
-		return s.HTTP.validate()
+		return at("http", s.HTTP.validate())
 	case DownstreamCapture:
 		if s.Capture == nil {
 			return errors.New("a downstream-capture source declares a capture")
 		}
-		return s.Capture.validate()
+		return at("capture", s.Capture.validate())
 	}
 	return errors.New("an observation source kind is file-export, http-api, downstream-capture or database-query")
 }
@@ -605,10 +605,10 @@ func (e Extraction) validate() error {
 
 func (f File) validate() error {
 	if f.Path == "" || len(f.Path) > maxPathBytes {
-		return errors.New("a file export names one path")
+		return at("path", errors.New("a file export names one path"))
 	}
 	if f.MaxBytes < 1 || f.MaxBytes > MaxReadBytes {
-		return errors.New("a read bound is between 1 byte and 16 MiB")
+		return at("max_bytes", errors.New("a read bound is between 1 byte and 16 MiB"))
 	}
 	return nil
 }
@@ -618,7 +618,7 @@ func (f File) validate() error {
 // discovered after a window has been opened against it.
 func (c Capture) validate() error {
 	if c.Path == "" || len(c.Path) > maxPathBytes {
-		return errors.New("a downstream capture names one retained case")
+		return at("path", errors.New("a downstream capture names one retained case"))
 	}
 	if len(c.Kinds) == 0 || len(c.Kinds) > len(captureKinds) {
 		return errors.New("a downstream capture declares the occurrence kinds in scope, at least one of message and ack")
@@ -634,10 +634,10 @@ func (c Capture) validate() error {
 		seen[kind] = true
 	}
 	if _, err := c.Selector(); err != nil {
-		return err
+		return at("record_key", err)
 	}
 	if c.MaxOccurrences < 1 || c.MaxOccurrences > bundle.MaxEvents {
-		return errors.New("a capture read bound is between 1 and 10000 occurrences")
+		return at("max_occurrences", errors.New("a capture read bound is between 1 and 10000 occurrences"))
 	}
 	return nil
 }
@@ -660,30 +660,30 @@ func (c Capture) inScope(kind string) bool { return slices.Contains(c.Kinds, kin
 
 func (h HTTP) validate() error {
 	if _, err := h.Endpoint(); err != nil {
-		return err
+		return at("url", err)
 	}
 	if h.Classification == "" {
-		return errors.New("an http observation records the class of the environment its endpoint belongs to")
+		return at("classification", errors.New("an http observation records the class of the environment its endpoint belongs to"))
 	}
 	if len(h.CAFile) > maxPathBytes {
-		return errors.New("a certificate authority reference names one path")
+		return at("ca_file", errors.New("a certificate authority reference names one path"))
 	}
 	if len(h.ServerName) > maxHostBytes {
-		return errors.New("a verified server name is one bounded host name")
+		return at("server_name", errors.New("a verified server name is one bounded host name"))
 	}
 	if _, err := boundedDuration(h.Timeout, maxTimeout); err != nil {
-		return errors.New("an http timeout is a positive duration of at most five minutes")
+		return at("timeout", errors.New("an http timeout is a positive duration of at most five minutes"))
 	}
 	if h.MaxBytes < 1 || h.MaxBytes > MaxReadBytes {
-		return errors.New("a read bound is between 1 byte and 16 MiB")
+		return at("max_bytes", errors.New("a read bound is between 1 byte and 16 MiB"))
 	}
 	if err := h.Retry.validate(); err != nil {
-		return err
+		return at("retry", err)
 	}
 	if h.Credential == nil {
 		return nil
 	}
-	return h.Credential.validate()
+	return at("credential", h.Credential.validate())
 }
 
 func (r Retry) validate() error {
@@ -699,13 +699,13 @@ func (r Retry) validate() error {
 
 func (c Credential) validate() error {
 	if c.Store != secret.OSKeychain && c.Store != secret.CustomerManaged {
-		return errors.New("a credential store is declared as os-keychain or customer-managed")
+		return at("store", errors.New("a credential store is declared as os-keychain or customer-managed"))
 	}
 	if err := endpointAddress(c.Address); err != nil {
-		return errors.New("a credential reference is scoped to one explicit host and numeric port")
+		return at("address", errors.New("a credential reference is scoped to one explicit host and numeric port"))
 	}
 	if err := headerName(c.Header); err != nil {
-		return err
+		return at("header", err)
 	}
 	if err := c.Locator().Validate(); err != nil {
 		return errors.New("credential " + err.Error())
@@ -786,6 +786,15 @@ func boundedDuration(value string, limit time.Duration) (time.Duration, error) {
 		return 0, errors.New("invalid duration")
 	}
 	return parsed, nil
+}
+
+// at names the member of a declaration a refusal is about, so an editor
+// shows it beside that member; a declaration that is valid names nothing.
+func at(field string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return observewindow.AtField(field, err)
 }
 
 // endpointAddress holds an address to one explicit host and numeric port. It is

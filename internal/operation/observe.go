@@ -10,6 +10,7 @@ import (
 	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
+	"github.com/bharm16/readmit/internal/secret"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
@@ -68,6 +69,33 @@ func DefaultObservationSource() observesource.Source {
 		},
 		File: &observesource.File{Path: "export.csv", MaxBytes: 65536},
 	}
+}
+
+// ObservationStarts is where a new source of each kind starts: the reader's
+// own default bounds, with every value that has no default (what is read,
+// from where, keyed by what) left for the person to choose.
+func ObservationStarts() []observesource.Source {
+	start := func(kind string) observesource.Source {
+		source := DefaultObservationSource()
+		source.Schema = observesource.VersionFor(kind, nil)
+		source.Observes.Kind = kind
+		source.File, source.Extraction = nil, nil
+		return source
+	}
+	file := start(observesource.FileExport)
+	file.File = &observesource.File{MaxBytes: DefaultObservationSource().File.MaxBytes}
+	file.Extraction = DefaultObservationSource().Extraction
+	file.Extraction.RecordKey = importer.Locator{}
+	http := start(observesource.HTTPAPI)
+	http.HTTP = &observesource.HTTP{Classification: "unclassified", Timeout: "10s", MaxBytes: 1 << 20, Retry: observesource.Retry{Attempts: 1, Delay: "1s"}}
+	http.Extraction = &observesource.Extraction{Envelope: importer.JSONEnvelope, Encoding: importer.UTF8, JSON: &importer.DocumentDialect{RecordPath: []string{}}, RecordKey: importer.Locator{}}
+	capture := start(observesource.DownstreamCapture)
+	capture.Capture = &observesource.Capture{Kinds: []string{"message"}, MaxOccurrences: 1000}
+	database := start(observesource.DatabaseQuery)
+	database.Database = &observesource.Database{Driver: "postgresql", Classification: "unclassified", KeyType: "text",
+		Credential: observesource.DatabaseCredential{Store: secret.OSKeychain, Purpose: "database-observation", Arguments: []string{}},
+		View:       []string{}, Filters: []observesource.DatabaseFilter{}}
+	return []observesource.Source{file, http, capture, database}
 }
 
 // OpenOrNewObservationWindow reads a window to edit, or returns the default
@@ -290,6 +318,9 @@ type ObservationCollectRequest struct {
 	// identity differs is refused rather than collected.
 	ExpectedSourceIdentity string
 	ExpectedWindowIdentity string
+	// Progress, when set, is told what the collection has measured after
+	// every read it records.
+	Progress func(observesource.Progress)
 }
 
 // CollectObservation runs one authorized read-only collection and retains its
@@ -327,6 +358,7 @@ func CollectObservation(ctx context.Context, request ObservationCollectRequest) 
 		Policy:   policy,
 		Resolve:  sendpolicy.SystemResolver,
 		Produced: request.Produced,
+		Progress: request.Progress,
 	})
 	if err != nil {
 		return observewindow.Completion{}, err

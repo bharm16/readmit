@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,16 +37,42 @@ const faultSource = `{"schema":"readmit-observation-source/v1","source":{"kind":
 	`"csv":{"delimiter":",","record_separator":"lf","header":"present","fields":2},"record_key":["appointment"]},` +
 	`"file":{"path":"export.csv","max_bytes":65536},"http":null}`
 
-func faultDraft(t *testing.T, scope string) ItemDraft {
+// faultSources are a source of each kind, each beside a window declaring
+// another completion state, so every kind of observation and every
+// completion state is saved through the same interruptions.
+var faultSources = map[string]struct{ source, watermark, preExisting string }{
+	"file-export": {faultSource, `{"kind":"none","position":""}`, `{"declaration":"declared-empty","baseline_identity":""}`},
+	"http-api": {`{"schema":"readmit-observation-source/v1","source":{"kind":"http-api","identity":"scheduling-archive","scope":"appointments"},` +
+		`"enabled":true,"freshness":{"max_age":"1h"},"extraction":{"envelope":"json","encoding":"utf-8","json":{"record_path":["appointments"]},"record_key":["id"]},` +
+		`"file":null,"http":{"url":"https://api.example/appointments","classification":"nonproduction","ca_file":"","server_name":"","timeout":"5s",` +
+		`"max_bytes":65536,"retry":{"attempts":0,"delay":"0s"},"credential":null}}`,
+		`{"kind":"declared-position","position":"2026-09-27T08:00:00Z"}`, `{"declaration":"declared-empty","baseline_identity":""}`},
+	"downstream-capture": {`{"schema":"readmit-observation-source/v2","source":{"kind":"downstream-capture","identity":"scheduling-archive","scope":"appointments"},` +
+		`"enabled":true,"freshness":{"max_age":"1h"},"extraction":null,"file":null,"http":null,` +
+		`"capture":{"path":"captured-case","kinds":["message"],"record_key":"SCH-1.1","max_occurrences":100}}`,
+		`{"kind":"collection-start","position":""}`, `{"declaration":"recorded-baseline","baseline_identity":"` + strings.Repeat("ab", 32) + `"}`},
+	"database-query": {`{"schema":"readmit-observation-source/v3","source":{"kind":"database-query","identity":"scheduling-archive","scope":"appointments"},` +
+		`"enabled":true,"freshness":{"max_age":"1h"},"extraction":null,"file":null,"http":null,"capture":null,` +
+		`"database":{"driver":"postgresql","address":"127.0.0.1:5432","classification":"nonproduction","name":"synthetic","username":"observer",` +
+		`"ca_file":"","server_name":"localhost","credential":{"store":"customer-managed","address":"127.0.0.1:5432","purpose":"database-observation",` +
+		`"command":"/usr/bin/true","arguments":[]},"view":["scheduling","appointments"],"record_key":"appointment","key_type":"text","filters":[],"limits":null}}`,
+		`{"kind":"none","position":""}`, `{"declaration":"unknown","baseline_identity":""}`},
+}
+
+func faultDraft(t *testing.T, kind, scope string) ItemDraft {
 	t.Helper()
+	declared := faultSources[kind]
 	var source observesource.Source
 	var window observewindow.Window
-	if err := json.Unmarshal([]byte(faultSource), &source); err != nil {
+	if err := json.Unmarshal([]byte(declared.source), &source); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal([]byte(faultWindow), &window); err != nil {
+	document := strings.Replace(strings.Replace(faultWindow, `{"kind":"none","position":""}`, declared.watermark, 1),
+		`{"declaration":"declared-empty","baseline_identity":""}`, declared.preExisting, 1)
+	if err := json.Unmarshal([]byte(document), &window); err != nil {
 		t.Fatal(err)
 	}
+	window.Source = source.Observes
 	source.Observes.Scope, window.Source.Scope = scope, scope
 	return ItemDraft{Observation: &ObservationDraft{Source: source, Window: window}}
 }
@@ -57,82 +84,90 @@ func faultDraft(t *testing.T, scope string) ItemDraft {
 // reports any other as incomplete work, which the same click then finishes.
 func TestAnInterruptedSaveNeverExposesAMixedObservation(t *testing.T) {
 	policy := testlicense.New(t)
-	for _, point := range []string{catalog.PointPending, catalog.PointMember + "source", catalog.PointMember + "window", catalog.PointVerified, catalog.PointPublished} {
-		t.Run(point, func(t *testing.T) {
-			state := t.TempDir()
-			window := func() *App {
-				app := New(folderAnswer(t.TempDir()), ShellDocuments{Folder: state})
-				if selected := app.SelectOperationPolicy(policy); selected.State != Completed {
-					t.Fatal(selected)
-				}
-				return app
-			}
-			app := window()
-			chosen := app.ChooseProjectLocation()
-			created := app.CreateNamedProject(NewProjectRequest{Name: "Faults", Location: chosen.Location})
-			if created.State != Completed {
-				t.Fatalf("%+v", created)
-			}
-			context := created.Context
-			first := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "appointments"), IntentID: "first"})
-			if first.Outcome != SavedOutcome {
-				t.Fatalf("%+v", first)
-			}
-			crash := errors.New("crash")
-			app.saveFault = func(at string) error {
-				if at == point {
-					return crash
-				}
-				return nil
-			}
-			interrupted := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1",
-				Draft: faultDraft(t, "cancellations"), IntentID: "second"})
-			app.saveFault = nil
-			if point != catalog.PointPublished && interrupted.Outcome != FailedOutcome {
-				t.Fatalf("a save reported success past its crash: %+v", interrupted)
-			}
+	for _, kind := range []string{"file-export", "http-api", "downstream-capture", "database-query"} {
+		for _, point := range []string{catalog.PointPending, catalog.PointMember + "source", catalog.PointMember + "window", catalog.PointVerified, catalog.PointPublished} {
+			t.Run(kind+"/"+point, func(t *testing.T) {
+				interruptObservationSave(t, policy, kind, point)
+			})
+		}
+	}
+}
 
-			// A new process reads the project.
-			restarted := window()
-			// Reading reports interrupted work and settles nothing; opening
-			// the project for writing settles it.
-			before := restarted.ListCatalog(CatalogQuery{Context: context, Kind: ObservationItem})
-			if before.Page == nil || before.Page.Items[0].Ref.Revision != "1" && point != catalog.PointPublished {
-				t.Fatalf("a read settled an interrupted save: %+v", before)
-			}
-			// Every save that left a pending record behind unpublished is
-			// reported by the read, under its operation.
-			reported := len(before.Page.Incomplete) == 1 && before.Page.Incomplete[0].Operation == "second"
-			if point != catalog.PointPending && point != catalog.PointPublished && !reported {
-				t.Fatalf("a read did not report the interrupted save: %+v", before.Page.Incomplete)
-			}
-			if reopened := restarted.OpenNamedProject(context.Project); reopened.State != Completed {
-				t.Fatalf("reopen: %+v", reopened)
-			}
-			listing := restarted.ListCatalog(CatalogQuery{Context: context, Kind: ObservationItem})
-			if listing.Page == nil || len(listing.Page.Items) != 1 {
-				t.Fatalf("listing: %+v", listing)
-			}
-			current := listing.Page.Items[0]
-			scope := scopeOf(t, context.Project, current)
-			completed := point == catalog.PointVerified || point == catalog.PointPublished
-			switch {
-			case completed && (current.Ref.Revision != "2" || scope["source"] != "cancellations" || scope["window"] != "cancellations" || len(listing.Page.Incomplete) != 0):
-				t.Fatalf("a verified save was not completed whole: %+v %v", listing.Page, scope)
-			case !completed && (current.Ref.Revision != "1" || scope["source"] != "appointments" || scope["window"] != "appointments"):
-				t.Fatalf("a mixed or partial revision is current: %+v %v", current, scope)
-			}
-			if point == catalog.PointMember+"source" || point == catalog.PointMember+"window" {
-				if len(listing.Page.Incomplete) != 1 || listing.Page.Incomplete[0].Operation != "second" || listing.Page.Incomplete[0].Item == nil {
-					t.Fatalf("interrupted work is not reported: %+v", listing.Page.Incomplete)
-				}
-				retried := restarted.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1",
-					Draft: faultDraft(t, "cancellations"), IntentID: "second"})
-				if retried.Outcome != SavedOutcome || retried.Saved.Revision != "2" {
-					t.Fatalf("the same click did not finish the save: %+v", retried)
-				}
-			}
-		})
+// interruptObservationSave saves an observation of kind, crashes its next
+// save at point, and reads the project again in a new process.
+func interruptObservationSave(t *testing.T, policy, kind, point string) {
+	state := t.TempDir()
+	window := func() *App {
+		app := New(folderAnswer(t.TempDir()), ShellDocuments{Folder: state})
+		if selected := app.SelectOperationPolicy(policy); selected.State != Completed {
+			t.Fatal(selected)
+		}
+		return app
+	}
+	app := window()
+	chosen := app.ChooseProjectLocation()
+	created := app.CreateNamedProject(NewProjectRequest{Name: "Faults", Location: chosen.Location})
+	if created.State != Completed {
+		t.Fatalf("%+v", created)
+	}
+	context := created.Context
+	first := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, kind, "appointments"), IntentID: "first"})
+	if first.Outcome != SavedOutcome {
+		t.Fatalf("%+v", first)
+	}
+	crash := errors.New("crash")
+	app.saveFault = func(at string) error {
+		if at == point {
+			return crash
+		}
+		return nil
+	}
+	interrupted := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1",
+		Draft: faultDraft(t, kind, "cancellations"), IntentID: "second"})
+	app.saveFault = nil
+	if point != catalog.PointPublished && interrupted.Outcome != FailedOutcome {
+		t.Fatalf("a save reported success past its crash: %+v", interrupted)
+	}
+
+	// A new process reads the project.
+	restarted := window()
+	// Reading reports interrupted work and settles nothing; opening
+	// the project for writing settles it.
+	before := restarted.ListCatalog(CatalogQuery{Context: context, Kind: ObservationItem})
+	if before.Page == nil || before.Page.Items[0].Ref.Revision != "1" && point != catalog.PointPublished {
+		t.Fatalf("a read settled an interrupted save: %+v", before)
+	}
+	// Every save that left a pending record behind unpublished is
+	// reported by the read, under its operation.
+	reported := len(before.Page.Incomplete) == 1 && before.Page.Incomplete[0].Operation == "second"
+	if point != catalog.PointPending && point != catalog.PointPublished && !reported {
+		t.Fatalf("a read did not report the interrupted save: %+v", before.Page.Incomplete)
+	}
+	if reopened := restarted.OpenNamedProject(context.Project); reopened.State != Completed {
+		t.Fatalf("reopen: %+v", reopened)
+	}
+	listing := restarted.ListCatalog(CatalogQuery{Context: context, Kind: ObservationItem})
+	if listing.Page == nil || len(listing.Page.Items) != 1 {
+		t.Fatalf("listing: %+v", listing)
+	}
+	current := listing.Page.Items[0]
+	scope := scopeOf(t, context.Project, current)
+	completed := point == catalog.PointVerified || point == catalog.PointPublished
+	switch {
+	case completed && (current.Ref.Revision != "2" || scope["source"] != "cancellations" || scope["window"] != "cancellations" || len(listing.Page.Incomplete) != 0):
+		t.Fatalf("a verified save was not completed whole: %+v %v", listing.Page, scope)
+	case !completed && (current.Ref.Revision != "1" || scope["source"] != "appointments" || scope["window"] != "appointments"):
+		t.Fatalf("a mixed or partial revision is current: %+v %v", current, scope)
+	}
+	if point == catalog.PointMember+"source" || point == catalog.PointMember+"window" {
+		if len(listing.Page.Incomplete) != 1 || listing.Page.Incomplete[0].Operation != "second" || listing.Page.Incomplete[0].Item == nil {
+			t.Fatalf("interrupted work is not reported: %+v", listing.Page.Incomplete)
+		}
+		retried := restarted.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1",
+			Draft: faultDraft(t, kind, "cancellations"), IntentID: "second"})
+		if retried.Outcome != SavedOutcome || retried.Saved.Revision != "2" {
+			t.Fatalf("the same click did not finish the save: %+v", retried)
+		}
 	}
 }
 
@@ -465,7 +500,7 @@ func TestDiscardIncompleteSaveDropsOnlyTheStagedFiles(t *testing.T) {
 		t.Fatalf("%+v", created)
 	}
 	context := created.Context
-	first := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "appointments"), IntentID: "first"})
+	first := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "file-export", "appointments"), IntentID: "first"})
 	if first.Outcome != SavedOutcome {
 		t.Fatalf("%+v", first)
 	}
@@ -487,14 +522,14 @@ func TestDiscardIncompleteSaveDropsOnlyTheStagedFiles(t *testing.T) {
 		}
 		return nil
 	}
-	edit := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1", Draft: faultDraft(t, "cancellations"), IntentID: "edit"})
+	edit := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Item: first.Saved.ID, BaseRevision: "1", Draft: faultDraft(t, "file-export", "cancellations"), IntentID: "edit"})
 	staged := []string{}
 	for name := range files() {
 		if !saved[name] {
 			staged = append(staged, name)
 		}
 	}
-	creation := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "arrivals"), IntentID: "creation"})
+	creation := app.SaveItem(SaveItemRequest{Context: context, Kind: ObservationItem, Draft: faultDraft(t, "file-export", "arrivals"), IntentID: "creation"})
 	app.saveFault = nil
 	if edit.Operation != "edit" || creation.Operation != "creation" || len(staged) == 0 {
 		t.Fatalf("interrupted saves: %+v %+v staged %v", edit, creation, staged)

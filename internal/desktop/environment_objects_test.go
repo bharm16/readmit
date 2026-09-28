@@ -45,6 +45,21 @@ func saveEnvironment(t *testing.T, app *desktop.App, context desktop.RequestCont
 	return *saved.Saved
 }
 
+// approveTransport records the reviewed approval of a saved environment's
+// transport and answers the revision that holds it.
+func approveTransport(t *testing.T, app *desktop.App, context desktop.RequestContext, ref desktop.ItemRef) desktop.ItemRef {
+	t.Helper()
+	prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ApproveTransportAction, Items: []desktop.ItemRef{ref}})
+	if prepared.Review == nil || !prepared.Review.Ready {
+		t.Fatalf("a transport approval review: %+v", prepared)
+	}
+	approved := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "approve-" + ref.ID})
+	if approved.State != desktop.Completed || approved.Approved == nil {
+		t.Fatalf("approving the transport: %+v", approved)
+	}
+	return *approved.Approved
+}
+
 func catalogRow(t *testing.T, app *desktop.App, context desktop.RequestContext, ref desktop.ItemRef) desktop.CatalogItem {
 	t.Helper()
 	opened := app.OpenItem(desktop.ItemRequest{Context: context, Ref: ref})
@@ -134,12 +149,16 @@ func TestANewEnvironmentDraftProjectsValidatedDefaultsAndLeavesTransportUnchosen
 	}
 }
 
-func TestExplicitPlainTransportIsTheApproval(t *testing.T) {
+func TestSaveNeverApprovesATransportAndApprovalIsItsOwnReviewedAction(t *testing.T) {
 	app, context := namedProject(t)
 	request := desktop.SaveItemRequest{Draft: desktop.ItemDraft{Name: "Scheduling QA", Environment: environmentDraft("qa.example:2575", "nonproduction", "plain")}, IntentID: "first"}
+	request.Draft.Environment.ApprovedTransport = true
 	first := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Draft: request.Draft, IntentID: "first"})
-	if first.Outcome != desktop.SavedOutcome || first.Projection == nil || !first.Projection.Environment.ApprovedTransport || first.Projection.Environment.Name != "Scheduling-QA" {
-		t.Fatalf("an explicit plain transport to a host name: %+v", first)
+	if first.Outcome != desktop.SavedOutcome || first.Projection == nil || first.Projection.Environment.ApprovedTransport || first.Projection.Environment.Name != "Scheduling-QA" {
+		t.Fatalf("a save of a plain transport to a host name approved it: %+v", first)
+	}
+	if summary := catalogRow(t, app, context, *first.Saved).Summary.Environment; summary.TransportApproved || !summary.ApprovalRequired {
+		t.Fatalf("an unapproved environment reads as: %+v", summary)
 	}
 	// The same click again is the same environment; the name it was given is
 	// not taken from itself.
@@ -150,12 +169,51 @@ func TestExplicitPlainTransportIsTheApproval(t *testing.T) {
 	if second.Outcome != desktop.SavedOutcome || second.Projection.Environment.Name != "Scheduling-QA-2" {
 		t.Fatalf("a second environment of the same name: %+v", second)
 	}
-	// An edit keeps the name the environment was created with.
-	edit := desktop.ItemDraft{Name: "Scheduling QA renamed", Environment: first.Projection.Environment}
-	edit.Environment.Name = "something-else"
-	edited := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Item: first.Saved.ID, BaseRevision: "1", Draft: edit, IntentID: "edit"})
-	if edited.Outcome != desktop.SavedOutcome || edited.Projection.Environment.Name != "Scheduling-QA" {
-		t.Fatalf("an edit changed the environment's name: %+v", edited)
+	// Nothing reaches an address whose transport nobody approved.
+	if checked := app.CheckEnvironment(desktop.ItemRequest{Context: context, Ref: *first.Saved}); checked.State != desktop.Failed || checked.Report != nil ||
+		!strings.Contains(checked.Reason, "approve the transport") {
+		t.Fatalf("a check of an unapproved transport: %+v", checked)
+	}
+
+	approve := desktop.PrepareActionRequest{Context: context, Action: desktop.ApproveTransportAction, Items: []desktop.ItemRef{*first.Saved}}
+	prepared := app.PrepareAction(approve)
+	review := prepared.Review
+	if review == nil || !review.Ready || review.Consent != desktop.ApproveConsent || review.Transport == nil || review.Transport.Address != "qa.example:2575" ||
+		review.Transport.Transport != "plain" || review.Transport.Classification != "nonproduction" {
+		t.Fatalf("a transport approval review: %+v", prepared)
+	}
+	approved := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: review.Token, IntentID: "approve-1"})
+	if approved.State != desktop.Completed || approved.Approved == nil || approved.Approved.ID != first.Saved.ID || approved.Approved.Revision != "2" {
+		t.Fatalf("approving the transport: %+v", approved)
+	}
+	if summary := catalogRow(t, app, context, *approved.Approved).Summary.Environment; !summary.TransportApproved {
+		t.Fatalf("an approved environment reads as: %+v", summary)
+	}
+	if again := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ApproveTransportAction, Items: []desktop.ItemRef{*approved.Approved}}); again.Review == nil || again.Review.Ready {
+		t.Fatalf("an approval of an approved transport: %+v", again)
+	}
+
+	// An edit keeps the name the environment was created with, and the
+	// approval while the address, transport and TLS settings stay as they
+	// were.
+	edit := desktop.ItemDraft{Name: "Scheduling QA renamed", Environment: environmentDraft("qa.example:2575", "nonproduction", "plain")}
+	edit.Environment.Name, edit.Environment.MessageTimeout = "something-else", "6s"
+	edited := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Item: first.Saved.ID, BaseRevision: "2", Draft: edit, IntentID: "edit"})
+	if edited.Outcome != desktop.SavedOutcome || edited.Projection.Environment.Name != "Scheduling-QA" || !edited.Projection.Environment.ApprovedTransport {
+		t.Fatalf("an edit that keeps the transport: %+v", edited)
+	}
+	// A review prepared before a change is stale, and a changed address
+	// clears the approval.
+	stale := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ApproveTransportAction, Items: []desktop.ItemRef{*second.Saved}})
+	moved := desktop.ItemDraft{Name: "Scheduling QA renamed", Environment: environmentDraft("qa2.example:2575", "nonproduction", "plain")}
+	cleared := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Item: first.Saved.ID, BaseRevision: "3", Draft: moved, IntentID: "move"})
+	if cleared.Outcome != desktop.SavedOutcome || cleared.Projection.Environment.ApprovedTransport {
+		t.Fatalf("a changed address kept its approval: %+v", cleared)
+	}
+	edit.Environment.Address = "qa3.example:2575"
+	saveEnvironment(t, app, context, desktop.SaveItemRequest{Item: second.Saved.ID, BaseRevision: "1", Draft: edit, IntentID: "move-second"})
+	if refused := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: stale.Review.Token, IntentID: "approve-2"}); refused.Outcome != desktop.ActionStale || refused.Approved != nil {
+		t.Fatalf("approving a transport changed since its review: %+v", refused)
 	}
 }
 
@@ -245,6 +303,14 @@ func TestCheckEnvironmentUsesTheSavedRevisionAndRetainsLastChecked(t *testing.T)
 	if allowed.Decision == nil || !allowed.Decision.Allowed || refused.Decision == nil || refused.Decision.Allowed || endpoint.accepted.Load() != 1 {
 		t.Fatalf("destination checks: %+v %+v", allowed, refused)
 	}
+	// With no classification named, the check is decided under the
+	// environment's own, never an assumed nonproduction one.
+	unclassified := saveEnvironment(t, app, context, desktop.SaveItemRequest{IntentID: "unclassified", Draft: desktop.ItemDraft{Name: "Unclassified",
+		Environment: environmentDraft(endpoint.address, "unclassified", "plain"), SendPolicy: draft.SendPolicy}})
+	if assumed := app.CheckEnvironmentDestination(desktop.DestinationCheckRequest{Context: context, Ref: unclassified, Address: "127.0.0.1:2575"}); assumed.Decision == nil ||
+		assumed.Decision.Classification != "unclassified" {
+		t.Fatalf("a destination check with no classification named: %+v %+v", assumed, assumed.Decision)
+	}
 }
 
 func TestCredentialRowsNeverCarryArgumentsAndRemovalNamesDependents(t *testing.T) {
@@ -273,6 +339,19 @@ func TestCredentialRowsNeverCarryArgumentsAndRemovalNamesDependents(t *testing.T
 		Address: "127.0.0.1:2575", Command: "/usr/bin/security", ReplaceArguments: true})
 	if cleared.State != desktop.Completed || cleared.Credentials[0].ArgumentCount != 0 {
 		t.Fatalf("replacing the arguments with none: %+v", cleared)
+	}
+
+	// A refused save names the member its refusal is about.
+	for field, request := range map[string]desktop.CredentialSaveRequest{
+		"name":    {Name: "lab mllp", Purpose: secret.MLLPEndpoint, Store: secret.OSKeychain, Address: "127.0.0.1:2575", Command: "/usr/bin/security"},
+		"address": {Name: "lab-2", Purpose: secret.MLLPEndpoint, Store: secret.OSKeychain, Address: "127.0.0.1", Command: "/usr/bin/security"},
+		"max_age": {Name: "lab-3", Purpose: secret.MLLPEndpoint, Store: secret.OSKeychain, Address: "127.0.0.1:2575", Command: "/usr/bin/security", MaxAge: "forever"},
+		"command": {Name: "lab-4", Purpose: secret.MLLPEndpoint, Store: secret.OSKeychain, Address: "127.0.0.1:2575", Command: "security"},
+	} {
+		request.Context = context
+		if refused := app.SaveCredential(request); refused.State != desktop.Failed || len(refused.Problems) != 1 || refused.Problems[0].Field != field {
+			t.Errorf("a refusal at %s: %+v", field, refused)
+		}
 	}
 
 	target := environmentDraft("127.0.0.1:2575", "nonproduction", "tls")
@@ -461,11 +540,19 @@ func TestAReviewedResetRequiresEachManualConfirmationAndReportsPerActionOutcomes
 	// A changed plan withdraws the review.
 	again := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ResetEnvironmentAction, Items: []desktop.ItemRef{environment}})
 	plan.Actions[0].Instructions = "Stop the listener."
-	saveEnvironment(t, app, context, desktop.SaveItemRequest{Item: environment.ID, BaseRevision: "1", IntentID: "lab-2", Draft: desktop.ItemDraft{Name: "Lab",
+	current := saveEnvironment(t, app, context, desktop.SaveItemRequest{Item: environment.ID, BaseRevision: "1", IntentID: "lab-2", Draft: desktop.ItemDraft{Name: "Lab",
 		Environment: environmentDraft("127.0.0.1:2575", "nonproduction", "plain"), ResetPlan: plan, Links: links}})
 	if stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: again.Review.Token, IntentID: "reset-4",
 		Decisions: desktop.ReviewDecisions{Confirmed: []string{manual}}}); stale.Outcome != desktop.ActionStale || stale.Reset != nil {
 		t.Fatalf("a reset of a changed plan: %+v", stale)
+	}
+	// So does a changed target.
+	moved := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ResetEnvironmentAction, Items: []desktop.ItemRef{current}})
+	saveEnvironment(t, app, context, desktop.SaveItemRequest{Item: environment.ID, BaseRevision: "2", IntentID: "lab-3", Draft: desktop.ItemDraft{Name: "Lab",
+		Environment: environmentDraft("127.0.0.1:2576", "nonproduction", "plain"), ResetPlan: plan, Links: links}})
+	if stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: moved.Review.Token, IntentID: "reset-5",
+		Decisions: desktop.ReviewDecisions{Confirmed: []string{manual}}}); stale.Outcome != desktop.ActionStale || stale.Reset != nil {
+		t.Fatalf("a reset of a changed target: %+v", stale)
 	}
 
 	// A production environment is never reset.
@@ -491,5 +578,23 @@ func TestChooseEnvironmentFileKinds(t *testing.T) {
 	c.files = nil
 	if dismissed := app.ChooseEnvironmentFile("ca-certificate"); dismissed.State != desktop.Cancelled {
 		t.Fatalf("dismissed: %+v", dismissed)
+	}
+}
+
+func TestAnEnvironmentRefusalIsAnsweredAtTheFieldThatHoldsIt(t *testing.T) {
+	app, context := namedProject(t)
+	for field, change := range map[string]func(*replay.Target){
+		"environment.max_ack_bytes":   func(target *replay.Target) { target.MaxACKBytes = 0 },
+		"environment.connect_timeout": func(target *replay.Target) { target.ConnectTimeout = "" },
+		"environment.message_timeout": func(target *replay.Target) { target.MessageTimeout = "10m" },
+		"environment.address":         func(target *replay.Target) { target.Address = "qa.example" },
+	} {
+		target := environmentDraft("127.0.0.1:2575", "nonproduction", "plain")
+		change(target)
+		refused := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.EnvironmentItem, Draft: desktop.ItemDraft{Name: "Lab", Environment: target},
+			IntentID: "refused-" + strings.ReplaceAll(field, ".", "-")})
+		if refused.Outcome != desktop.InvalidOutcome || len(refused.Problems) != 1 || refused.Problems[0].Field != field {
+			t.Errorf("a refusal at %s: %+v", field, refused.Problems)
+		}
 	}
 }

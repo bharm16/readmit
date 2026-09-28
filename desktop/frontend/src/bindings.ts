@@ -114,17 +114,7 @@ import type {
   NoteSaveRequest,
   NotesRequest,
   NotesResult,
-  ObservationCaptureBindRequest,
-  ObservationCollectFacadeRequest,
-  ObservationCompletionResult,
-  ObservationExplainRequest,
-  ObservationSourceRequest,
-  ObservationSourceResult,
   ObservationSupportResult,
-  ObservationValidateRequest,
-  ObservationValidateResult,
-  ObservationWindowRequest,
-  ObservationWindowResult,
   OperationResult,
   PacketExportRequest,
   PacketExportResult,
@@ -289,9 +279,11 @@ import type {
   CredentialRequest,
   CredentialCheckResult,
   ObservationHistoryResult,
+  CollectionProgressResult,
+  ObservationFieldsRequest,
+  ObservationFieldsResult,
   CompletionRequest,
   CompletionInspectionResult,
-  ReceiverSnapshotsResult,
   RemoveItemResult,
   StorageBackupsResult,
   StorageBackupRequest,
@@ -1283,46 +1275,6 @@ export function observationSupport(): Promise<ObservationSupportResult> {
   return guard(() => facade().ObservationSupport(), { state: "failed" });
 }
 
-export function openObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult> {
-  return retryingRead(() => facade().OpenObservationWindow(workspace, windowFile), { state: "failed" });
-}
-
-export function saveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult> {
-  return guard(() => facade().SaveObservationWindow(request), { state: "failed" });
-}
-
-export function validateObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult> {
-  return guard(() => facade().ValidateObservationWindow(workspace, windowFile), { state: "failed" });
-}
-
-export function openObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult> {
-  return retryingRead(() => facade().OpenObservationSource(workspace, sourceFile), { state: "failed" });
-}
-
-export function saveObservationSource(request: ObservationSourceRequest): Promise<ObservationSourceResult> {
-  return guard(() => facade().SaveObservationSource(request), { state: "failed" });
-}
-
-export function validateObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult> {
-  return guard(() => facade().ValidateObservationSource(workspace, sourceFile), { state: "failed" });
-}
-
-export function validateObservationPair(request: ObservationValidateRequest): Promise<ObservationValidateResult> {
-  return guard(() => facade().ValidateObservationPair(request), { state: "failed" });
-}
-
-export function collectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult> {
-  return guard(() => facade().CollectObservation(request), { state: "failed" });
-}
-
-export function explainObservation(request: ObservationExplainRequest): Promise<ObservationCompletionResult> {
-  return guard(() => facade().ExplainObservation(request), { state: "failed" });
-}
-
-export function bindCaptureObservation(request: ObservationCaptureBindRequest): Promise<ObservationSourceResult> {
-  return guard(() => facade().BindCaptureObservation(request), { state: "failed" });
-}
-
 export function chooseImportSources(kind: string): Promise<ImportSourcesResult> {
   return guard(() => facade().ChooseImportSources(kind), { state: "failed" });
 }
@@ -1743,12 +1695,20 @@ export function observationHistory(request: ItemRequest): Promise<ObservationHis
   return retryingRead(() => facade().ObservationHistory(request), { state: "failed", context: request.context, collections: [] });
 }
 
-export function inspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult> {
-  return guard(() => facade().InspectCompletion(request), { state: "failed", context: request.context });
+/** A read of what the running reviewed collection has measured. It never
+ * waits for the collection's slot, so the review can read it while it runs. */
+export function collectionProgress(): Promise<CollectionProgressResult> {
+  return guard(() => facade().CollectionProgress(), { state: "failed" });
 }
 
-export function listReceiverSnapshots(request: ItemRequest): Promise<ReceiverSnapshotsResult> {
-  return retryingRead(() => facade().ListReceiverSnapshots(request), { state: "failed", context: request.context, snapshots: [] });
+/** The fields a file export's chosen input file offers a record key. A local
+ * read only: nothing is collected. */
+export function observationFields(request: ObservationFieldsRequest): Promise<ObservationFieldsResult> {
+  return retryingRead(() => facade().ObservationFields(request), { state: "failed", context: request.context, fields: [] });
+}
+
+export function inspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult> {
+  return guard(() => facade().InspectCompletion(request), { state: "failed", context: request.context });
 }
 
 /** Removes a named environment or observation from the project; its files stay. */
