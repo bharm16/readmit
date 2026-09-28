@@ -85,6 +85,19 @@ type CollectorConfig struct {
 	// caller's, so one TLS rule serves every path.
 	TLS               bool
 	ClientCertificate bool
+	// Observe, when set, is told about each complete inbound frame as it is
+	// received: when, on which connection, and the message type its header
+	// declares. It carries no value of the message and must not block.
+	Observe func(FrameSeen)
+}
+
+// FrameSeen is what an observer is told about one received frame: metadata
+// only. MessageType is the header's declared code and trigger when both are
+// short upper-case words, and empty otherwise.
+type FrameSeen struct {
+	At          time.Time
+	Session     string
+	MessageType string
 }
 
 // Collector is a generic bounded MLLP receiver. It retains every byte it reads
@@ -234,6 +247,13 @@ func digestOf(data []byte) string {
 // acknowledgements have an unknown effect; it is not a verdict about a test.
 func (c *Collector) Journal() *capturejournal.Summary { return c.summary }
 
+// Stop ends the capture in a controlled way, as reaching a declared budget
+// does: the listener stops accepting, peers waiting for their next frame are
+// closed, and every frame already being answered finishes before the case is
+// sealed. The journal then reads finalized, not cancelled. Stopping before
+// Serve starts makes Serve stop at once.
+func (c *Collector) Stop() { c.stop() }
+
 func (c *Collector) bounds() limits {
 	return limits{maxFrameBytes: c.config.MaxFrameBytes, maxMessages: c.config.MaxMessages,
 		maxConnections: c.config.MaxConnections, maxSessions: c.config.MaxSessions,
@@ -328,6 +348,9 @@ func (c *Collector) frame(ctx context.Context, connection net.Conn, state *strea
 		if err := c.journal.Received(session, id, result.controlID, raw); err != nil {
 			return frameDecision{err: err}
 		}
+	}
+	if c.config.Observe != nil {
+		c.config.Observe(FrameSeen{At: time.Now().UTC(), Session: session, MessageType: declaredType(raw)})
 	}
 	entry := collection.Received{SessionID: session, OccurrenceID: id, ControlID: result.controlID, Mode: result.mode, Accept: result.accept, Application: result.application}
 	if step := c.config.Policy.Faults.Step(ordinal); step != nil {
@@ -573,6 +596,37 @@ func (c *Collector) decide(raw []byte, ordinal int) outcome {
 		return c.original(composer, controlID, accepted, ordinal)
 	}
 	return c.enhanced(composer, controlID, accepted, acceptCondition, applicationCondition, ordinal)
+}
+
+// declaredType is a frame's declared message code and trigger, joined by a
+// caret, for an observer. Anything but short upper-case words is withheld, so
+// no value of the message reaches the observer.
+func declaredType(raw []byte) string {
+	doc, err := hl7.Parse(raw, hl7.Options{Format: hl7.MLLP})
+	if err != nil || len(doc.Messages) == 0 || len(doc.Messages[0].Segments) == 0 {
+		return ""
+	}
+	message := doc.Messages[0]
+	declared := doc.Bytes(message.Segments[0].Field(9).Span)
+	parts := bytes.SplitN(declared, []byte{message.Delimiters.Component}, 3)
+	word := func(part []byte) bool {
+		if len(part) == 0 || len(part) > 4 {
+			return false
+		}
+		for _, b := range part {
+			if (b < 'A' || b > 'Z') && (b < '0' || b > '9') {
+				return false
+			}
+		}
+		return true
+	}
+	if !word(parts[0]) {
+		return ""
+	}
+	if len(parts) > 1 && word(parts[1]) {
+		return string(parts[0]) + "^" + string(parts[1])
+	}
+	return string(parts[0])
 }
 
 // undeclaredCondition stands in for a populated MSH-15/MSH-16 value this

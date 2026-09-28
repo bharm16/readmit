@@ -20,9 +20,7 @@ import (
 	"testing"
 
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/operation"
@@ -157,25 +155,6 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 		result := app.SaveObservationSource(desktop.ObservationSourceRequest{Workspace: folder, SourceFile: file, Source: opened.Source})
 		return saved{result.State, result.Reason, result.Identity}
 	}
-	saveRegistration := func(app *desktop.App, folder, file, scope string) saved {
-		result := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: folder, SourceFile: file, Source: evidencesource.Source{
-			Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Directory, Scope: scope, Root: folder,
-			Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
-			Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
-		}})
-		return saved{result.State, result.Reason, result.Source}
-	}
-	saveResponder := func(app *desktop.App, folder, file, name string) saved {
-		result := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: folder, PolicyFile: file, Policy: collection.Policy{
-			Schema: collection.PolicySchema, Name: name, SourceLabel: "downstream",
-			Acknowledgement:      collection.AckRule{Operator: collection.FixedCodeOperator, Code: collection.AcceptCode},
-			AcceptedMessageTypes: collection.MessageTypeRule{Operator: collection.AnyMessageTypeRule, Values: []string{}},
-			Enhanced: &collection.EnhancedRule{Operator: collection.EnhancedFixedCodes, AcceptCode: collection.CommitAcceptCode,
-				ApplicationCode: collection.AcceptCode, ApplicationDelivery: collection.SameConnection},
-		}})
-		return saved{result.State, result.Reason, result.Policy}
-	}
-
 	// A project's documents have fixed names in its folder: the project
 	// document, the editable revisions document a note and a revision are
 	// kept in, and the quota. Each is read through the folder itself, which
@@ -280,18 +259,6 @@ func TestEverySaveThatReplacesADocumentLeavesTheFileALinkLedToUnchanged(t *testi
 			replace: func(app *desktop.App, folder, file string) saved {
 				return saveSource(app, folder, file, facadeSourceDocument)
 			}},
-		{name: "SaveSourceRegistration", file: "registration.json",
-			create: func(app *desktop.App, folder, file string) saved {
-				return saveRegistration(app, folder, file, "outside")
-			},
-			replace: func(app *desktop.App, folder, file string) saved {
-				return saveRegistration(app, folder, file, "appointments")
-			}},
-		{name: "SaveReceiverPolicy", file: "responder.json",
-			create: func(app *desktop.App, folder, file string) saved {
-				return saveResponder(app, folder, file, "outside-sink")
-			},
-			replace: func(app *desktop.App, folder, file string) saved { return saveResponder(app, folder, file, "sink") }},
 		{name: "SaveItem(project)", file: project.DocumentName, linkRefusal: projectUnread, create: createProject,
 			replace: func(app *desktop.App, folder, _ string) saved {
 				opened := app.OpenNamedProject(folder)

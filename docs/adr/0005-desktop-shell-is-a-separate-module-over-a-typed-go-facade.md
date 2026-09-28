@@ -247,3 +247,20 @@ preferences are a facade read and write that do not wait for the operation
 slot. The reviewer name is a label a local approval carries; it is not an
 identity anything authenticates, and a review's binding never reads it. It
 holds no evidence.
+
+#552 (2026-09-27) lets a capture record in the background. The facade still
+runs one operation at a time, and a capture still holds the slot for as long as
+it records; while it does, one local read at a time runs beside it — a read
+that writes nothing into the project, sends, collects and executes nothing and
+takes no admission — so the window can read while a session records. Opening
+an object records when this viewer opened it, in the viewer's own shell
+document outside the project, under that document's own lock; that is the one
+write such a read makes. An import's probe and preview are reads that name
+themselves only so their panel's cancel control can stop them, and they run
+beside a capture too; Cancel with their name stops them there. Everything
+else answers busy, naming the capture it waits for, and a second capture is
+refused the same way. A read beside a capture never takes the slot's name or
+cancellation, so the privacy status and the window's own `Cancel` still address
+the capture. The alternative, a second slot for background sessions, would
+have let writes race the capture's own publication and split what the privacy
+status reads; admitting only reads keeps every write serialized as before.

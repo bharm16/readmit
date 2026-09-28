@@ -32,14 +32,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/profileversion"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/sharing"
 )
 
@@ -94,7 +93,7 @@ func TestEveryOperationThatCanReachADestinationRunsUnderADisclosedName(t *testin
 		}
 	}
 	// Local work stays local: none of these is mistaken for reaching anything.
-	for _, method := range []string{"PreflightRun", "PreviewReduction", "PreviewCapture", "DisconnectHub", "SelectHubConfig", "SaveTarget", "DisclosureStatus"} {
+	for _, method := range []string{"PreflightRun", "PreviewReduction", "DisconnectHub", "SelectHubConfig", "SaveTarget", "DisclosureStatus"} {
 		if why := reaching[method]; len(why) != 0 {
 			t.Errorf("the enumeration reads local %s as reaching a destination (%s)", method, strings.Join(why, ", "))
 		}
@@ -619,72 +618,33 @@ func TestDisclosureStatusReportsSendsActiveWhileTheyReachTheTarget(t *testing.T)
 	})
 }
 
-// Checking a source's access and collecting from it each look its declared
-// address up before anything else, and a capture listens on its port; the
-// capture row reads active while each one does.
+// A capture from a transfer source looks its declared address up, under the
+// environment's approved destinations, before anything else, and a capture
+// from a listener listens on its port; the capture row reads active while
+// each one does.
 func TestDisclosureStatusReportsSourceWorkActiveWhileItReachesTheSource(t *testing.T) {
 	w := &witness{}
 	witnessLookups(t, w)
-	app := workspaceApp(t)
+	app, context := namedProject(t)
 	w.app.Store(app)
-	root := t.TempDir()
-	source := evidencesource.Source{
-		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Transfer, Scope: "appointments",
-		Address: "exports.example.test:22", Classification: "nonproduction", Command: "/bin/cat",
-		Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
-		Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
-	}
-	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: root, SourceFile: "source.json", Source: source}); saved.State != desktop.Completed {
-		t.Fatalf("source: %+v", saved)
-	}
-	writeDocument(t, root, "policy.json", `{"schema":"readmit-send-policy/v1","approved_destinations":["192.0.2.0/24"]}`)
-	w.during(t, "a source access check", "capture", func() {
-		app.DiagnoseSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", PolicyFile: "policy.json"})
-	})
-	w.during(t, "a source collection", "capture", func() {
-		app.CollectSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", PolicyFile: "policy.json",
-			OutputName: "staged", ReceiptName: "receipt.json"})
+	transfer := transferSource(t, app, context)
+	environment := saveEnvironment(t, app, context, desktop.SaveItemRequest{IntentID: "lab", Draft: desktop.ItemDraft{Name: "Lab",
+		Environment: environmentDraft("127.0.0.1:2575", "nonproduction", "plain"),
+		SendPolicy:  &sendpolicy.Policy{ApprovedDestinations: []string{"192.0.2.0/24"}}}})
+	w.during(t, "a capture from a transfer source", "capture", func() {
+		app.StartCapture(desktop.CaptureRequest{Context: context, Source: &transfer, Environment: &environment, Name: "Exported", IntentID: "transfer-1"})
 	})
 
-	policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: "receiver.json", Policy: policy}); saved.State != desktop.Completed {
-		t.Fatalf("receiver policy: %+v", saved)
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	listener.Close()
-	w.during(t, "a capture", "capture", func() {
-		done := make(chan desktop.CaptureSessionResult, 1)
-		go func() {
-			done <- app.StartCapture(desktop.CaptureRequest{Workspace: root, Kind: "collect", Address: address,
-				PolicyFile: "receiver.json", OutputName: "case", JournalName: "journal", MaxMessages: 1, IdleTimeout: "5s"})
-		}()
+	source := listenerSource(t, app, context)
+	w.during(t, "a capture from a listener", "capture", func() {
 		// A sender reaches the capture's port, reads the status while the
 		// capture is listening for it, and only then sends the one message
-		// that completes the capture.
-		var conn net.Conn
-		for deadline := time.Now().Add(5 * time.Second); conn == nil && time.Now().Before(deadline); {
-			if conn, err = net.DialTimeout("tcp", address, 50*time.Millisecond); err != nil {
-				conn = nil
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-		if conn == nil {
-			t.Error("the capture never listened on its port")
-			app.Cancel("capture")
-			<-done
-			return
-		}
+		// the capture finishes with.
+		done, progress := startedCapture(t, app, context, source, "listener-1")
 		w.observe()
-		_, _ = conn.Write(mllp.Frame([]byte("MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r")))
-		_ = conn.Close()
-		if session := <-done; session.State != desktop.Completed || session.Received != 1 {
+		deliver(t, progress.BoundAddress)
+		app.FinishCapture()
+		if session := awaitCapture(t, done); session.State != desktop.Completed || session.Received != 1 {
 			t.Errorf("the capture the status was read during: %+v", session)
 		}
 	})

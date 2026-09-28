@@ -4,7 +4,6 @@ import { artifacts, catalogRows } from "./fixtures";
 import { VocabularyContext } from "../vocabulary";
 import { IndicatorsContext, Outcome } from "../lifecycle";
 import { Baseline } from "../Baseline";
-import { CapturePanel } from "../CapturePanel";
 import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
 import { HelpTopics } from "../ContextHelp";
@@ -14,7 +13,6 @@ import { GuidedSample } from "../GuidedSample";
 import { HubAdministration } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
-import { ImportPanel } from "../ImportPanel";
 import { MessageReader } from "../Inspector";
 import { OperationAccess } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
@@ -119,7 +117,6 @@ const e = (
 });
 export const examples: Example[] = [
   e("Baseline", () => <Baseline {...common} />),
-  e("CapturePanel", () => <CapturePanel {...common} />),
   e("Comparison", () => (
     <Comparison
       {...resultProps}
@@ -151,7 +148,6 @@ export const examples: Example[] = [
   e("IconButton", () => (
     <IconButton label="Refresh" icon="refresh" onClick={noop} />
   )),
-  e("ImportPanel", () => <ImportPanel {...common} />),
   e("MessageReader", () => (
     <MessageReader result={f.inspectionResult()} loading={false} busy={false} onInspect={async () => null} onReveal={noop} />
   )),

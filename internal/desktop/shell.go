@@ -311,9 +311,9 @@ var privacyStatus = Privacy{
 		{
 			ID:            "capture",
 			Activity:      "Capture and source collection",
-			Destination:   "the sources your registration declares — a local directory, your own transfer program's output, or a declared nonproduction endpoint under the receiver policy; a capture listener accepts connections on the local port you chose while it runs",
+			Destination:   "the capture source you saved — a local folder, your own transfer program's output, or an MLLP listener that accepts connections on the address and port its settings name while the capture runs, answering under its saved responder",
 			Data:          "the HL7 bytes those sources deliver, written into a new case bundle on this machine",
-			Authorization: "a source registration and receiver policy you saved and your explicit start; an api source is declarable and refused",
+			Authorization: "a capture source you saved and your explicit Start capture; an API source is unavailable and cannot be started",
 		},
 		{
 			ID:            "observe",
@@ -341,7 +341,7 @@ var privacyStatus = Privacy{
 			Activity:      "Operator-declared programs",
 			Destination:   "whatever the program is configured to reach, such as a secret store or vault, a key service, or the source a transfer program reads; Readmit cannot see or vouch for that program's destinations, and running one adds no network access of Readmit's own",
 			Data:          "only the arguments the operator declared, and for a transfer program the credential its reference names, on standard input; Readmit reads back one bounded credential or key, or the listing and entries a transfer program prints, and discards the program's diagnostics",
-			Authorization: "a program declared by absolute path in a credential reference, a hub or runner configuration, a protection control, a source registration or an observation source, and your explicit action that needs it: testing, rotating or scanning credential references, a hub, runner or protection action, or a check, reset, reduction, collection, capture or observation whose configuration declares one",
+			Authorization: "a program declared by absolute path in a credential reference, a hub or runner configuration, a protection control, a saved capture source or an observation source, and your explicit action that needs it: testing, rotating or scanning credential references, a hub, runner or protection action, or a check, reset, reduction, collection, capture or observation whose configuration declares one",
 		},
 		{
 			ID:            "portal",

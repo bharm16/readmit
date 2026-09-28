@@ -168,7 +168,7 @@ func (r *AnalysisProfilesResult) refuse(state State, reason string) {
 // the case the request names through the engine's own preflight
 // (diagnose.Check). It runs nothing and writes nothing.
 func (a *App) ListAnalysisProfiles(request ItemRequest) AnalysisProfilesResult {
-	return run(a, false, false, func(ctx context.Context) AnalysisProfilesResult {
+	return runRead(a, false, func(ctx context.Context) AnalysisProfilesResult {
 		result := AnalysisProfilesResult{Context: request.Context, Profiles: []AnalysisProfile{}}
 		loaded, entry, declined := a.caseEntry(ctx, request.Context, request.Ref, false)
 		if loaded == nil {

@@ -50,7 +50,7 @@ type AttachmentRemoveRequest struct {
 // ListAttachments lists the attachments of one case, oldest first. It is a
 // read.
 func (a *App) ListAttachments(request ItemRequest) AttachmentsResult {
-	return run(a, false, false, func(ctx context.Context) AttachmentsResult {
+	return runRead(a, false, func(ctx context.Context) AttachmentsResult {
 		result := AttachmentsResult{Context: request.Context, Attachments: []Attachment{}}
 		loaded, refused := a.attachedCase(ctx, request.Context, request.Ref, false)
 		if loaded == nil {

@@ -75,6 +75,12 @@ const (
 	HL7DTMTime       TimeOperator = "hl7-dtm"
 )
 
+// TimeOperators is every way a recipe reads a record's time, in the order a
+// person is offered them, unknown first.
+func TimeOperators() []TimeOperator {
+	return []TimeOperator{UnknownTime, RFC3339Time, UnixSecondsTime, UnixMilliseconds, HL7DTMTime}
+}
+
 // LabelOperator supplies the declared source or channel of a record: an
 // explicit statement that the recipe does not declare one, one constant the
 // operator declared for every record, or the value at a declared location.

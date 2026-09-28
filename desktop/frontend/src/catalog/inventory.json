@@ -18,24 +18,6 @@
     "line": 11
   },
   {
-    "name": "PolicyReview",
-    "source": "desktop/frontend/src/CapturePanel.tsx",
-    "exported": false,
-    "line": 100
-  },
-  {
-    "name": "SourceReview",
-    "source": "desktop/frontend/src/CapturePanel.tsx",
-    "exported": false,
-    "line": 136
-  },
-  {
-    "name": "CapturePanel",
-    "source": "desktop/frontend/src/CapturePanel.tsx",
-    "exported": true,
-    "line": 204
-  },
-  {
     "name": "CommandPalette",
     "source": "desktop/frontend/src/CommandPalette.tsx",
     "exported": true,
@@ -124,12 +106,6 @@
     "source": "desktop/frontend/src/IconButton.tsx",
     "exported": true,
     "line": 78
-  },
-  {
-    "name": "ImportPanel",
-    "source": "desktop/frontend/src/ImportPanel.tsx",
-    "exported": true,
-    "line": 109
   },
   {
     "name": "MessageReader",

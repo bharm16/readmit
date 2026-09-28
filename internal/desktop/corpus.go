@@ -192,6 +192,15 @@ func (a *App) ChooseCorpusPath(kind string) CorpusPathResult {
 	})
 }
 
+// withPlanSchema is plan with its contract version filled in when it names
+// none, so the window declares a plan without copying the version.
+func withPlanSchema(plan importer.Plan) importer.Plan {
+	if plan.Schema == "" {
+		plan.Schema = importer.PlanSchema
+	}
+	return plan
+}
+
 // GenerateCorpus is `readmit corpus generate`: corpus.Write streams the
 // declared corpus to one new entry of the chosen folder and writes its
 // readmit-corpus/v1 manifest to another, after it. Generation is new
@@ -215,7 +224,7 @@ func (a *App) GenerateCorpus(request CorpusGenerateRequest) CorpusGenerateResult
 		inputs := corpus.Inputs{
 			Generator: bundle.GeneratorInputs{Seed: seed, BaseTime: base, GeneratorVersion: request.GeneratorVersion, ProfileVersion: request.ProfileVersion},
 			Messages:  request.Messages,
-			Plan:      request.Plan,
+			Plan:      withPlanSchema(request.Plan),
 		}
 		if err := inputs.Validate(); err != nil {
 			return CorpusGenerateResult{State: Failed, Reason: err.Error()}
@@ -265,6 +274,7 @@ func (a *App) ScanCorpus(request CorpusScanRequest) CorpusScanResult {
 		if !filepath.IsAbs(request.File) {
 			return CorpusScanResult{State: Failed, Reason: "choose the stream with the file dialog; a scan reads one file named by its full path"}
 		}
+		request.Plan = withPlanSchema(request.Plan)
 		if err := request.Plan.Validate(); err != nil {
 			return CorpusScanResult{State: Failed, Reason: err.Error()}
 		}

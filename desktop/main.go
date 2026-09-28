@@ -201,6 +201,13 @@ func runShell(arguments []string) error {
 		AssetServer: &assetserver.Options{Assets: assets},
 		OnStartup:   startup,
 		Bind:        []any{desktop.NewWithInstalledLicense(folders, documents, license), new(hubadmin.Admin)},
+		// Files dropped on the window reach it as their paths, through the
+		// runtime's OnFileDrop, and the window hands them to the facade's
+		// ClassifyDroppedSources, as it hands the picker's choices on. Once
+		// the window has registered OnFileDrop the runtime prevents the
+		// webview's own drop, which would open a dropped file in the window,
+		// for every file drop, so the window registers it as it starts.
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true},
 		// The shell adds no logging of its own, reports no telemetry, no crash
 		// reports and no update checks, and sends nothing to a network. The
 		// window host is held to errors so it emits no routine output either.

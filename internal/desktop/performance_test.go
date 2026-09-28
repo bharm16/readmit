@@ -100,13 +100,13 @@ func TestPerformanceEnvelope(t *testing.T) {
 			t.Fatalf("largest preview: %s %s", got.State, got.Reason)
 		}
 	})
-	// Committing writes one synced file per occurrence, so it is measured over
+	// Importing writes one synced file per occurrence, so it is measured over
 	// fewer samples; nearest-rank p95 of five is the slowest.
-	measure("facade own-evidence import commit", 5, func(sample int) {
-		output := "imported-" + strconv.Itoa(sample)
-		got := app.CommitImport(desktop.ImportCommitRequest{Workspace: root, Mode: "plan", OutputName: output, Files: []string{source}, Plan: &plan})
-		if got.State != desktop.Completed || got.Case == nil || got.Case.Occurrences != bundle.MaxEvents {
-			t.Fatalf("commit: %s %s", got.State, got.Reason)
+	importFolder := importProject(t)
+	measure("facade own-evidence import", 5, func(sample int) {
+		got := app.ImportCase(previewedImport(t, app, importFolder, "Imported "+strconv.Itoa(sample), source, "imported-"+strconv.Itoa(sample)))
+		if got.State != desktop.Completed || got.Case == nil {
+			t.Fatalf("import: %s %s", got.State, got.Reason)
 		}
 	})
 	measure("facade index build", performanceSamples, func(sample int) {
@@ -187,7 +187,7 @@ func TestPerformanceEnvelope(t *testing.T) {
 	// only once the first payload of the new case has been written.
 	writing := func(attempt int, answered chan desktop.State) bool {
 		for {
-			if written, _ := os.ReadDir(filepath.Join(root, "cancelled-"+strconv.Itoa(attempt), "payloads")); len(written) > 0 {
+			if incomingPayloads(importFolder) > 0 {
 				return true
 			}
 			select {
@@ -198,13 +198,15 @@ func TestPerformanceEnvelope(t *testing.T) {
 			}
 		}
 	}
-	cancellation("cancel own-evidence import commit while it writes its case", "import", writing, func(attempt int) desktop.State {
-		output := "cancelled-" + strconv.Itoa(attempt)
-		got := app.CommitImport(desktop.ImportCommitRequest{Workspace: root, Mode: "plan", OutputName: output, Files: []string{source}, Plan: &plan})
-		if got.State == desktop.Cancelled {
-			if opened := app.OpenCase(root, output); opened.State == desktop.Completed {
-				t.Errorf("a cancelled import left a case the reader accepts: %s", output)
-			}
+	cancellation("cancel own-evidence import while it writes its case", "import", writing, func(attempt int) desktop.State {
+		// Each attempt writes in a fresh import area, so the payloads the
+		// harness waits for are this attempt's.
+		if err := os.RemoveAll(filepath.Join(importFolder, ".readmit", "incoming")); err != nil {
+			t.Fatal(err)
+		}
+		got := app.ImportCase(previewedImport(t, app, importFolder, "Cancelled "+strconv.Itoa(attempt), source, "cancelled-"+strconv.Itoa(attempt)))
+		if got.State == desktop.Cancelled && got.Case != nil {
+			t.Errorf("a cancelled import registered a case: %+v", got.Case)
 		}
 		return got.State
 	})

@@ -8,7 +8,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"slices"
 	"strings"
+
+	"github.com/bharm16/readmit/internal/hl7"
 )
 
 const Schema = "readmit-engine-export/v1"
@@ -18,15 +21,58 @@ var ErrUnsupported = errors.New("unsupported engine export declaration or XML va
 
 // Plan records the selected adapter. No engine identity is inferred from bytes.
 type Plan struct {
-	Schema     string `json:"schema"`
-	Engine     string `json:"engine"`
-	Version    string `json:"version"`
-	Format     string `json:"format"`
-	Terminator string `json:"terminator"`
+	Schema     string         `json:"schema"`
+	Engine     string         `json:"engine"`
+	Version    string         `json:"version"`
+	Format     Format         `json:"format"`
+	Terminator hl7.Terminator `json:"terminator"`
+}
+
+// Engine is one engine export this reader accepts: the engine a plan names,
+// its product name, the one exact version, and the formats and terminators a
+// plan may declare for it.
+type Engine struct {
+	Engine      string           `json:"engine"`
+	Name        string           `json:"name"`
+	Version     string           `json:"version"`
+	Formats     []Format         `json:"formats"`
+	Terminators []hl7.Terminator `json:"terminators"`
+}
+
+// Format is how an engine export holds its messages: the raw message bytes,
+// or the engine's message XML.
+type Format string
+
+// The formats an engine export plan may declare.
+const (
+	RawFormat        Format = "raw"
+	MessageXMLFormat Format = "message-xml"
+)
+
+var (
+	formats     = []Format{RawFormat, MessageXMLFormat}
+	terminators = []hl7.Terminator{hl7.CR, hl7.LF, hl7.CRLF}
+	engines     = []Engine{
+		{Engine: "mirth", Name: "Mirth Connect", Version: "4.5.2", Formats: formats, Terminators: terminators},
+		{Engine: "oie", Name: "Open Integration Engine", Version: "4.6.0", Formats: formats, Terminators: terminators},
+	}
+)
+
+// Supported is every engine export a plan may declare, in the order a person
+// is offered them. It is the set Validate accepts, and nothing else.
+func Supported() []Engine {
+	out := make([]Engine, len(engines))
+	for i, engine := range engines {
+		engine.Formats, engine.Terminators = slices.Clone(engine.Formats), slices.Clone(engine.Terminators)
+		out[i] = engine
+	}
+	return out
 }
 
 func (p Plan) Validate() error {
-	if p.Schema != Schema || !(p.Engine == "oie" && p.Version == "4.6.0" || p.Engine == "mirth" && p.Version == "4.5.2") || (p.Format != "raw" && p.Format != "message-xml") || (p.Terminator != "cr" && p.Terminator != "lf" && p.Terminator != "crlf") {
+	if p.Schema != Schema || !slices.ContainsFunc(engines, func(engine Engine) bool {
+		return p.Engine == engine.Engine && p.Version == engine.Version && slices.Contains(engine.Formats, p.Format) && slices.Contains(engine.Terminators, p.Terminator)
+	}) {
 		return ErrUnsupported
 	}
 	return nil
@@ -59,7 +105,7 @@ func Extract(p Plan, data []byte) ([]Record, error) {
 	if len(data) == 0 || len(data) > MaxBytes {
 		return nil, errors.New("engine export is empty or exceeds 16 MiB")
 	}
-	if p.Format == "raw" {
+	if p.Format == RawFormat {
 		return []Record{{Offset: 0, Size: len(data), Stage: "unknown", Correlation: "unknown", Payload: bytes.Clone(data)}}, nil
 	}
 	d := xml.NewDecoder(bytes.NewReader(data))

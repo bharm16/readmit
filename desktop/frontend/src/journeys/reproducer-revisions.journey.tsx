@@ -36,6 +36,7 @@ import {
   createProject,
   declareMllpImport,
   EXPORTED_BOOKING,
+  finishImport,
   EXPORTED_RESCHEDULE,
   framed,
   licensedProject,
@@ -76,22 +77,11 @@ function exportFeed(): void {
   journey.writeFile(FEED, framed(EXPORTED_BOOKING) + framed(EXPORTED_RESCHEDULE));
 }
 
-/** Imports the export into the open project as the registered case
- * `incident` and opens it. */
-async function importIncident(user: UserEvent): Promise<void> {
-  await declareMllpImport(user, journey, FEED);
-  // Several panels carry a Preview button of this name now; this one belongs
-  // to the import's own bounded-preview section.
-  const extraction = within(screen.getByRole("region", { name: "Extraction preview" }));
-  await press(user, extraction.getByRole("button", { name: "Preview" }));
-  const commit = within(screen.getByRole("region", { name: "Commit import" }));
-  await enter(user, commit.getByLabelText("Case bundle folder name"), "incident");
-  await enter(user, commit.getByLabelText("Receipt file name"), "incident-receipt.json");
-  await enter(user, commit.getByLabelText("Case title"), "Reschedule is refused");
-  await press(user, commit.getByRole("button", { name: "Import" }));
-  expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
-  expect(commit.getByText("Registered into project.")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open case" }));
+/** Imports the export into the open project as the registered case named
+ * Reschedule is refused and opens it; returns the entry it was given. */
+async function importIncident(user: UserEvent): Promise<string> {
+  await declareMllpImport(user, journey, FEED, "Reschedule is refused");
+  return finishImport(user, journey);
 }
 
 function reproducerPanel() {
@@ -159,10 +149,10 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
   exportFeed();
   await licensedProject(journey, user);
   journey.makeFolder(`${PROJECT}/handover`);
-  await importIncident(user);
+  const incident = await importIncident(user);
   await openedCase();
   const panel = reproducerPanel();
-  const incidentIdentity = journey.readFile(`${PROJECT}/incident/identity.sha256`).trim();
+  const incidentIdentity = journey.readFile(`${PROJECT}/${incident}/identity.sha256`).trim();
 
   // The reschedule, the booking it depends on, and one replaced identifier.
   await retainWithBooking(user, panel);
@@ -212,7 +202,7 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
   // different export under the same name, so it verifies as other evidence.
   // Either way the plan was authored against evidence that is no longer
   // there: the build is refused, nothing is written, and the plan stays.
-  const payload = `${PROJECT}/incident/payloads/${RESCHEDULE_ID}.bin`;
+  const payload = `${PROJECT}/${incident}/payloads/${RESCHEDULE_ID}.bin`;
   const stored = journey.readFile(payload);
   journey.changeFile(payload, stored.replace("OWN-MOVE-1", "OWN-MOVE-2"));
   await write(user, panel, "with-booking");
@@ -229,27 +219,27 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
     "--output", "exports/moved-again", "--receipt", "exports/moved-again-receipt.json",
   ]);
   expect(reimported.code).toBe(0);
-  const files = filesUnder(journey.path(PROJECT, "incident"));
+  const files = filesUnder(journey.path(PROJECT, incident));
   expect(filesUnder(journey.path("exports", "moved-again"))).toEqual(files);
-  const original = new Map(files.map((file) => [file, journey.readFile(`${PROJECT}/incident/${file}`)]));
-  for (const file of files) journey.changeFile(`${PROJECT}/incident/${file}`, journey.readFile(`exports/moved-again/${file}`));
+  const original = new Map(files.map((file) => [file, journey.readFile(`${PROJECT}/${incident}/${file}`)]));
+  for (const file of files) journey.changeFile(`${PROJECT}/${incident}/${file}`, journey.readFile(`exports/moved-again/${file}`));
   await write(user, panel, "with-booking");
   expect(await panel.findByText(REPLACED)).toBeTruthy();
   expect(exists(journey.path(PROJECT, "with-booking"))).toBe(false);
   expect(planSteps(panel)).toEqual([`select-occurrence/v1 · ${RESCHEDULE_ID}`, IDENTITY_STEP]);
 
   // Once the evidence is back as it was recorded, the same plan is written.
-  for (const [file, content] of original) journey.changeFile(`${PROJECT}/incident/${file}`, content);
-  expect(journey.readFile(`${PROJECT}/incident/identity.sha256`).trim()).toBe(incidentIdentity);
+  for (const [file, content] of original) journey.changeFile(`${PROJECT}/${incident}/${file}`, content);
+  expect(journey.readFile(`${PROJECT}/${incident}/identity.sha256`).trim()).toBe(incidentIdentity);
   const derived = await written(user, panel, "with-booking");
 
   // A name already in the project is refused as one, and the case it names is
   // untouched.
-  const incidentBefore = journey.digest(`${PROJECT}/incident/identity.sha256`);
-  await register(user, panel, "incident");
+  const incidentBefore = journey.digest(`${PROJECT}/${incident}/identity.sha256`);
+  await register(user, panel, incident);
   expect(await panel.findByText(ENTRY_TAKEN)).toBeTruthy();
   expect(panel.queryByText(/^Registered as /)).toBeNull();
-  expect(journey.digest(`${PROJECT}/incident/identity.sha256`)).toBe(incidentBefore);
+  expect(journey.digest(`${PROJECT}/${incident}/identity.sha256`)).toBe(incidentBefore);
 
   // Registered under a new name: the panel says so only now, and the
   // overview lists the revision the project recorded.
@@ -259,14 +249,14 @@ test("a reproducer plan is edited, undone and abandoned, refused where it cannot
   const evidence = within(region("Evidence"));
   const row = (await evidence.findByText("with-booking-case", { selector: ".revisions .name" })).closest("li");
   expect(row?.textContent).toContain("verified");
-  expect(row?.textContent).toContain("readmit-reproducer/v1 of incident");
+  expect(row?.textContent).toContain(`readmit-reproducer/v1 of ${incident}`);
 
   // The command line reads the revision the window registered: the derived
   // case the window named, verified, and its lineage to the case it came from.
   const shown = await journey.commandLine(["project", "show", PROJECT]);
   expect(shown.code).toBe(0);
   const lineage = /\n {2}with-booking-case evidence=(\w+) identity=([0-9a-f]{64}) [^\n]*\n {4}operation=(\S+) parent=(\S+) parent_identity=([0-9a-f]{64})\n/.exec(shown.stdout);
-  expect(lineage?.slice(1)).toEqual(["verified", derived, "readmit-reproducer/v1", "incident", incidentIdentity]);
+  expect(lineage?.slice(1)).toEqual(["verified", derived, "readmit-reproducer/v1", incident, incidentIdentity]);
   expect(shown.stdout).toContain("Revisions: 1\n");
   const recorded = journey.digest(`${PROJECT}/revisions.json`);
 

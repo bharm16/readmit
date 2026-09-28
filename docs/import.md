@@ -52,12 +52,26 @@ them later.
 The declarations are data, so the same import is repeatable and reviewable.
 There is no interactive prompt and no hidden state: re-running step 3 with the
 same declarations and the same containers produces the same sources in the same
-order. In the desktop window, open **Import evidence** from a project. Its
-**Import Plan (HL7 v2)** tab declares local files, folders and ZIP archives,
-previews extraction, then commits a case and receipt through the same readers
-and limits. **Mapping Recipe (Envelopes)** authors a typed recipe for CSV, JSON,
-XML or text exports; **Engine Export Adapter** exposes the finite, unqualified adapter
-described below. The command line remains available for saved plans and recipes.
+order. In the desktop window, **Import** on a project's Cases is one flow:
+Source chooses local files, a folder, ZIP archives or pasted messages; Format
+declares the plan, maps a CSV, JSON, XML or text export through a typed recipe,
+or names the finite, unqualified engine export adapter described below; and
+Preview reads exactly that declaration before Import writes the case, its
+receipt and its project registration through the same readers and limits. The
+command line remains available for saved plans and recipes.
+
+### Probing proposes a declaration; it never makes one
+
+The desktop Import flow probes the chosen inputs before the Format step: it
+reads at most the first 64 KiB of each member and proposes the formats that
+could read them all. It proposes a whole `readmit-import-plan/v1` only when
+every member agrees on one framing, one segment terminator and one encoding,
+with the direction `unknown`; anything else is offered as a choice, and an
+envelope is named without a mapping. It never proposes an engine export,
+because which engine wrote an XML document cannot be read from its bytes.
+Whatever the person accepts or chooses is then the declaration, previewed and
+imported exactly as a written plan or recipe is, and the receipt records it
+verbatim; the probe itself is recorded nowhere and changes no byte.
 
 ## Declaring containers
 

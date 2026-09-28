@@ -21,6 +21,7 @@ import (
 	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 // heldProgram is an operator-declared program under the test's control. Each
@@ -302,37 +303,35 @@ func TestDisclosureStatusReportsARunnerTokenCommandActiveWhileItRuns(t *testing.
 	}
 }
 
-// Checking a source's access and collecting from it each run the transfer
-// program the source registration declares, and the capture row is active
-// beside the declared program while it runs.
+// A capture from a transfer source runs the transfer program its saved
+// source declares, and the capture row is active beside the declared program
+// while it runs.
 func TestDisclosureStatusReportsATransferProgramActiveWhileItRuns(t *testing.T) {
-	app := workspaceApp(t)
+	app, context := namedProject(t)
 	message := "MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r"
 	program := newHeldProgram(t, "MESSAGE='"+message+"'\n"+`case "$1" in
 list) printf '%d\ta.hl7\n' "${#MESSAGE}" ;;
 get)  printf '%s' "$MESSAGE" ;;
 esac`)
-	root := t.TempDir()
-	source := evidencesource.Source{
+	evidence := evidencesource.Source{
 		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Transfer, Scope: "appointments",
 		Address: "127.0.0.1:2222", Classification: "nonproduction", Command: program.path,
 		Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
 		Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
 	}
-	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: root, SourceFile: "source.json", Source: source}); saved.State != desktop.Completed {
+	plan := validDesktopPlan()
+	saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.SourceItem, IntentID: "save-transfer",
+		Draft: desktop.ItemDraft{Name: "Exports", Source: &desktop.CaptureSourceDraft{Type: desktop.TransferSource, Evidence: &evidence, Plan: &plan}}})
+	if saved.Outcome != desktop.SavedOutcome {
 		t.Fatalf("source: %+v", saved)
 	}
-	writeDocument(t, root, "policy.json", `{"schema":"readmit-send-policy/v1","approved_destinations":["127.0.0.1/32"]}`)
-	program.during(t, app, "a source access check", "capture,declared-program", "for a source access check", func() {
-		if checked := app.DiagnoseSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", PolicyFile: "policy.json"}); checked.State != desktop.Completed {
-			t.Errorf("access check: %+v", checked)
-		}
-	})
-	program.during(t, app, "a source collection", "capture,declared-program", "for a source collection", func() {
-		collected := app.CollectSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", PolicyFile: "policy.json",
-			OutputName: "staged", ReceiptName: "receipt.json"})
-		if collected.State != desktop.Completed {
-			t.Errorf("collection: %+v", collected)
+	environment := saveEnvironment(t, app, context, desktop.SaveItemRequest{IntentID: "lab", Draft: desktop.ItemDraft{Name: "Lab",
+		Environment: environmentDraft("127.0.0.1:2575", "nonproduction", "plain"),
+		SendPolicy:  &sendpolicy.Policy{ApprovedDestinations: []string{"127.0.0.1/32"}}}})
+	program.during(t, app, "a capture from a transfer source", "capture,declared-program", "a capture source declares", func() {
+		captured := app.StartCapture(desktop.CaptureRequest{Context: context, Source: saved.Saved, Environment: &environment, Name: "Exported", IntentID: "transfer-1"})
+		if captured.State != desktop.Completed || captured.Outcome != desktop.CaptureFinished {
+			t.Errorf("capture: %+v", captured)
 		}
 	})
 }

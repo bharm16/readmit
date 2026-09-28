@@ -330,7 +330,10 @@ func TestRecoveringACancelledRunKeepsItsStopReasonAndUncertainty(t *testing.T) {
 
 // reopenAddress is the loopback address the killed child's collector listens
 // on, so the parent can tell whether reopening started it again.
-const reopenAddress = "READMIT_DESKTOP_REOPEN_ADDRESS"
+const (
+	reopenAddress = "READMIT_DESKTOP_REOPEN_ADDRESS"
+	reopenSource  = "READMIT_DESKTOP_REOPEN_SOURCE"
+)
 
 // Reopening after an interruption is a read. The process is killed while its
 // collector is listening, and the window opens the same folder again: it
@@ -357,9 +360,18 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 	}
 	address := listener.Addr().String()
 	listener.Close()
+	// The capture source the child captures from, saved at that address.
+	port := listener.Addr().(*net.TCPAddr).Port
+	settings := desktop.ListenerSettings{BindAddress: "127.0.0.1", Port: port, Transport: desktop.PlainTransport, IdleTimeout: "1m", AckCode: "AA"}
+	saved := workspaceApp(t).SaveItem(desktop.SaveItemRequest{Context: desktop.RequestContext{Project: workspace}, Kind: desktop.SourceItem, IntentID: "reopen-source",
+		Draft: desktop.ItemDraft{Name: "Collector", Source: &desktop.CaptureSourceDraft{Type: desktop.MLLPListenerSource, Listener: &settings}}})
+	if saved.Outcome != desktop.SavedOutcome {
+		t.Fatalf("save the capture source: %+v", saved)
+	}
 
 	child := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$")
-	child.Env = append(os.Environ(), crashChild+"=3", crashSession+"="+session, crashWorkspace+"="+workspace, reopenAddress+"="+address)
+	child.Env = append(os.Environ(), crashChild+"=3", crashSession+"="+session, crashWorkspace+"="+workspace, reopenAddress+"="+address,
+		reopenSource+"="+saved.Saved.ID)
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +380,11 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 	// what is retained is a capture that was open for frames.
 	deadline := time.Now().Add(20 * time.Second)
 	for {
-		running, _ := os.ReadFile(filepath.Join(workspace, "journal", "journal.jsonl"))
+		journals, _ := filepath.Glob(filepath.Join(workspace, ".readmit", "captures", "*", "journal", "journal.jsonl"))
+		var running []byte
+		if len(journals) == 1 {
+			running, _ = os.ReadFile(journals[0])
+		}
 		if bytes.Contains(running, []byte(`"kind":"running"`)) {
 			if conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond); err == nil {
 				conn.Close()
@@ -400,9 +416,9 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 		t.Fatalf("the project did not reopen: %+v", opened)
 	}
 	// The capture the kill interrupted is reported interrupted, never finished.
-	if journal := restarted.OpenCaptureJournal(workspace, "journal"); journal.State != desktop.Completed || journal.Journal == nil ||
-		journal.Journal.State != durablerun.Interrupted || !journal.Journal.Recovered {
-		t.Fatalf("the collector's retained journal was not read as interrupted: %+v", journal)
+	sessions := restarted.ListCaptureSessions(desktop.RequestContext{Project: workspace})
+	if sessions.State != desktop.Completed || len(sessions.Sessions) != 1 || sessions.Sessions[0].State != desktop.CaptureInterrupted || !sessions.Sessions[0].Recovered {
+		t.Fatalf("the capture's retained journal was not read as interrupted: %+v", sessions)
 	}
 	status := restarted.DisclosureStatus()
 	if status.State != desktop.Completed {
@@ -432,8 +448,8 @@ func TestReopeningAfterAKillStartsNoListenerSendOrBackgroundWork(t *testing.T) {
 	}
 }
 
-// reopenChildRun records where it is and starts a collector with a journal,
-// then waits in it until it is killed.
+// reopenChildRun records where it is and starts a capture from the saved
+// listener, then waits in it until it is killed.
 func reopenChildRun(t *testing.T) {
 	state := filepath.Dir(os.Getenv(crashSession))
 	app := activatedApp(t, &chooser{}, state)
@@ -441,6 +457,6 @@ func reopenChildRun(t *testing.T) {
 	if recorded := app.RecordView(desktop.View{Workspace: workspace, Region: "evidence", Case: "case"}); recorded.State != desktop.Completed {
 		t.Fatalf("child could not record its view: %+v", recorded)
 	}
-	app.StartCapture(desktop.CaptureRequest{Workspace: workspace, Kind: "collect", Address: os.Getenv(reopenAddress),
-		PolicyFile: "policy.json", OutputName: "collected", JournalName: "journal", MaxMessages: 0, IdleTimeout: "1m"})
+	app.StartCapture(desktop.CaptureRequest{Context: desktop.RequestContext{Project: workspace},
+		Source: &desktop.ItemRef{Kind: desktop.SourceItem, ID: os.Getenv(reopenSource)}, Name: "Collected", IntentID: "reopen-1"})
 }

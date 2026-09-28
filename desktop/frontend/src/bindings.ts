@@ -25,11 +25,11 @@ import type {
   CIHandoffRequest,
   CIHandoffResult,
   CIInspectResult,
-  CaptureJournalResult,
-  CapturePreviewResult,
   CaptureProgressResult,
   CaptureRequest,
   CaptureSessionResult,
+  CapturePathKind,
+  CaptureSessionRequest,
   CaseResult,
   CaseStatus,
   CatalogPage,
@@ -57,10 +57,10 @@ import type {
   ExecuteActionRequest,
   ExplanationChoiceResult,
   ExplanationInputKind,
+  DroppedSourcesResult,
   Facade,
   Filter,
   FiltersResult,
-  FinalizeCaptureRequest,
   GatePolicyResult,
   GridResult,
   GuideResult,
@@ -82,8 +82,6 @@ import type {
   HubSupportReviewRequest,
   HubTransferResult,
   HubUploadRequest,
-  ImportCommitRequest,
-  ImportCommitResult,
   ImportPreviewResult,
   ImportRequest,
   ImportSourcesResult,
@@ -150,8 +148,6 @@ import type {
   ProtectionPackRequest,
   ProtectionPackageResult,
   ProtectionResult,
-  ReceiverPolicyRequest,
-  ReceiverPolicyResult,
   RedactInventoryRequest,
   RedactInventoryResult,
   RedactPolicyRequest,
@@ -214,11 +210,6 @@ import type {
   SequenceResult,
   SessionResult,
   ShellResult,
-  SourceAccessResult,
-  SourceCollectionResult,
-  SourceRegistrationRequest,
-  SourceRegistrationResult,
-  SourceWorkRequest,
   State,
   SuiteCoverageAssessRequest,
   SuiteCoverageResult,
@@ -337,6 +328,13 @@ import type {
   ScenarioLibraryResult,
   SynthGenerateRequest,
   SynthGenerateResult,
+  RetainedCaptureResult,
+  CaptureSessionsResult,
+  ImportCaseRequest,
+  ImportCaseResult,
+  ImportInspectRequest,
+  ImportProbeRequest,
+  ImportProbeResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -350,6 +348,11 @@ export type StatusValue = State | Kind | CaseStatus;
 declare global {
   interface Window {
     go?: { desktop?: { App?: Facade }; hubadmin?: { Admin?: HubAdminFacade } };
+    /** The host runtime's file drop, present only in the native window. */
+    runtime?: {
+      OnFileDrop?: (callback: (x: number, y: number, paths: string[] | null) => void, useDropTarget: boolean) => void;
+      OnFileDropOff?: () => void;
+    };
   }
 }
 
@@ -563,7 +566,6 @@ export function shell(): Promise<ShellResult> {
   return guard(() => facade().Shell(), { state: "failed" });
 }
 
-
 export function startDurableRun(request: DurableRunRequest): Promise<DurableRunResult> {
  return guard(() => facade().StartDurableRun(request), { state: "failed", reason: "The desktop connection was interrupted. Recover the output directory to inspect evidence; do not resend automatically." });
 }
@@ -713,8 +715,6 @@ export function compareReproducers(
 ): Promise<ReproducerComparisonResult> {
   return guard(() => facade().CompareReproducers(request), { state: "failed" });
 }
-
-
 
 /** Proposes expectations from one run somebody has already reviewed, and
  * records nothing. The draft comes back unchanged: a proposal becomes an
@@ -963,9 +963,6 @@ export function approveBaseline(request: BaselineRequest): Promise<BaselineResul
 export function openBaseline(request: BaselineRequest): Promise<BaselineResult> {
   return guard(() => facade().OpenBaseline(request), { state: "failed" });
 }
-
-
-
 
 // ---------------------------------------------------------------------------
 // Suite management
@@ -1277,6 +1274,30 @@ export function chooseImportSources(kind: string): Promise<ImportSourcesResult> 
   return guard(() => facade().ChooseImportSources(kind), { state: "failed" });
 }
 
+/** Hands the paths of files dropped on an element styled
+ * `--wails-drop-target: drop` to deliver, from the native window's file drop
+ * (the shell enables it). Registering it also stops the webview opening a
+ * dropped file itself, so the window registers it as it starts. It answers
+ * the function that stops listening; outside the native window nothing is
+ * ever delivered. */
+export function onFileDrop(deliver: (paths: string[]) => void): () => void {
+  const runtime = window.runtime;
+  if (!runtime?.OnFileDrop) {
+    return () => {};
+  }
+  runtime.OnFileDrop((_x, _y, paths) => deliver(paths ?? []), true);
+  return () => runtime.OnFileDropOff?.();
+}
+
+/** Sorts dropped paths into the files, folders and ZIP archives an import
+ * names, as the pickers' choices are, refusing links and anything else by
+ * name. */
+export function classifyDroppedSources(paths: string[]): Promise<DroppedSourcesResult> {
+  return guard(() => facade().ClassifyDroppedSources(paths), {
+    state: "failed", files: [], folders: [], archives: [], refused: [],
+  });
+}
+
 export function stagePastedContent(request: PastedSourceRequest): Promise<PastedSourceResult> {
   return guard(() => facade().StagePastedContent(request), { state: "failed" });
 }
@@ -1285,33 +1306,29 @@ export function previewImport(request: ImportRequest): Promise<ImportPreviewResu
   return guard(() => facade().PreviewImport(request), { state: "failed" });
 }
 
-export function commitImport(request: ImportCommitRequest): Promise<ImportCommitResult> {
-  return guard(() => facade().CommitImport(request), { state: "failed" });
+const NO_CONTEXT = { project: "", generation: 0 };
+
+/** Probes the chosen inputs and proposes the formats that could read them.
+ * It writes nothing, so a busy answer is asked again. */
+export function probeImport(request: ImportProbeRequest): Promise<ImportProbeResult> {
+  return retryingRead(() => facade().ProbeImport(request), {
+    state: "failed", context: request.context ?? NO_CONTEXT, inputs: [], formats: [], selected: null, sample: null,
+  });
 }
 
-export function chooseCapturePath(kind: string): Promise<PathChoiceResult> {
+/** Imports exactly the previewed inputs as one case under the click's intent;
+ * a retry of the click answers the case it made. */
+export function importCase(request: ImportCaseRequest): Promise<ImportCaseResult> {
+  return submitted(() => facade().ImportCase(request), { state: "failed", context: request.context, replayed: false });
+}
+
+/** Inspects one previewed row; values stay withheld until reveal. */
+export function inspectImportPreview(request: ImportInspectRequest): Promise<InspectionResult> {
+  return retryingRead(() => facade().InspectImportPreview(request), { state: "failed" });
+}
+
+export function chooseCapturePath(kind: CapturePathKind): Promise<PathChoiceResult> {
   return guard(() => facade().ChooseCapturePath(kind), { state: "failed" });
-}
-export function saveSourceRegistration(request: SourceRegistrationRequest): Promise<SourceRegistrationResult> {
-  return guard(() => facade().SaveSourceRegistration(request), { state: "failed" });
-}
-export function readSourceRegistration(workspace: string, sourceFile: string): Promise<SourceRegistrationResult> {
-  return guard(() => facade().ReadSourceRegistration(workspace, sourceFile), { state: "failed" });
-}
-export function diagnoseSource(request: SourceWorkRequest): Promise<SourceAccessResult> {
-  return guard(() => facade().DiagnoseSource(request), { state: "failed" });
-}
-export function collectSource(request: SourceWorkRequest): Promise<SourceCollectionResult> {
-  return guard(() => facade().CollectSource(request), { state: "failed" });
-}
-export function saveReceiverPolicy(request: ReceiverPolicyRequest): Promise<ReceiverPolicyResult> {
-  return guard(() => facade().SaveReceiverPolicy(request), { state: "failed" });
-}
-export function readReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult> {
-  return guard(() => facade().ReadReceiverPolicy(workspace, policyFile), { state: "failed" });
-}
-export function previewCapture(request: CaptureRequest): Promise<CapturePreviewResult> {
-  return guard(() => facade().PreviewCapture(request), { state: "failed" });
 }
 export function startCapture(request: CaptureRequest): Promise<CaptureSessionResult> {
   return guard(() => facade().StartCapture(request), { state: "failed" });
@@ -1319,17 +1336,27 @@ export function startCapture(request: CaptureRequest): Promise<CaptureSessionRes
 export function captureProgress(): Promise<CaptureProgressResult> {
   return guard(() => facade().CaptureProgress(), { state: "failed" });
 }
-export function openCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult> {
-  return guard(() => facade().OpenCaptureJournal(workspace, journalPath), { state: "failed" });
+/** Asks the running listener capture to finish: Stop. It does not wait for
+ * the operation slot. */
+export function finishCapture(): Promise<CaptureProgressResult> {
+  return guard(() => facade().FinishCapture(), { state: "failed" });
 }
-export function finalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult> {
-  return guard(() => facade().FinalizeCaptureImport(request), { state: "failed" });
+/** Publishes a session whose finalization failed; it never collects again. */
+export function retryCaptureFinalization(request: CaptureSessionRequest): Promise<ImportCaseResult> {
+  return guard(() => facade().RetryCaptureFinalization(request), { state: "failed", context: request.context, replayed: false });
 }
-
-
-
-
-
+/** The project's capture sessions, read-only, newest first. */
+export function listCaptureSessions(request: RequestContext): Promise<CaptureSessionsResult> {
+  return retryingRead(() => facade().ListCaptureSessions(request), { state: "failed", context: request, sessions: [] });
+}
+/** Opens, read-only, the case a cancelled, interrupted or unfinalized capture
+ * kept; its messages are read by the answered workspace, case name and
+ * identity, as any case's are. It runs while a capture records. */
+export function openRetainedCapture(request: CaptureSessionRequest): Promise<RetainedCaptureResult> {
+  return retryingRead(() => facade().OpenRetainedCapture(request), {
+    state: "failed", context: request.context, session: request.session,
+  });
+}
 
 /** Reads two collections under a declared policy and reports every difference
  * beside what the policy did about it. It never edits the raw comparison and
@@ -1345,10 +1372,6 @@ export function openNormalizationPolicy(workspace: string, entry: string): Promi
 export function saveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult> {
   return guard(() => facade().SaveNormalizationPolicy(request), { state: "failed" });
 }
-
-
-
-
 
 // Raw inspection and the performance corpus: `readmit inspect`, `readmit
 // corpus generate` and `readmit corpus scan` in the window. The facade reads,

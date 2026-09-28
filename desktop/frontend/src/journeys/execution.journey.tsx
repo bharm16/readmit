@@ -126,7 +126,7 @@ test("a test of an independent downstream system fails on its defect, passes onc
   await journey.launch();
   await activateLicense(user, journey);
   const project = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
 
   // The environment: a named nonproduction target, its one approved
   // destination, and a reachability check that sends nothing. The command

@@ -448,7 +448,7 @@ func (r refusal) sequence() SequenceResult {
 // timestamp and each occurrence's escaped, bounded message type and trigger,
 // as the message list shows them.
 func (a *App) OpenSequence(request SequenceRequest) SequenceResult {
-	return run(a, false, false, func(ctx context.Context) SequenceResult {
+	return runRead(a, false, func(ctx context.Context) SequenceResult {
 		result := a.openSequence(ctx, request)
 		result.Context = request.Context
 		if result.Sequence != nil {

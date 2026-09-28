@@ -1,723 +1,463 @@
-import { goToView } from "./testkit/navigation";
-import { readCaseIdentity } from "./testkit/navigation";
+// Import, driven as a person drives it: one started flow — Source, Format,
+// Preview — over the real components, with only the typed facade stubbed.
+// What a probe proposes, what a preview reads and what an import writes are
+// decided on the Go side (internal/desktop's import flow tests); these tests
+// prove the window sends exactly the selection, format and mapping a person
+// chose, keeps them when something is refused, and never guesses.
+import { StrictMode } from "react";
 import { expect, test, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  CASE_ENTRY,
-  WORKSPACE_ROOT,
-  folderChosen,
-  projectOverviewResult,
-  caseResult,
-  registeredCase,
-  shellResult,
-} from "./testkit/fixtures";
+import { ImportFlow, importDrop } from "./Import";
+import { VocabularyContext } from "./vocabulary";
+import { installFacade, type FacadeHandlers } from "./testkit/wails";
+import { WORKSPACE_ROOT, caseCatalogItem, caseResult, folderChosen, messagesResult, projectOverviewResult, vocabularyFixture } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
-import type { FacadeHandlers } from "./testkit/wails";
+import { page, sidebar } from "./testkit/navigation";
 import type {
-  ImportCommitResult,
-  ImportContainer,
+  CatalogItem,
+  CatalogQuery,
+  CatalogResult,
+  EditorDraft,
   ImportPreviewResult,
-  ImportSourcesResult,
-  PastedSourceResult,
+  ImportProbeFormat,
+  ImportProbeRequest,
+  ImportProbeResult,
+  ImportRequest,
+  ItemRef,
+  RequestContext,
 } from "./bindings";
 
-async function openWorkspaceWithProject(user: ReturnType<typeof userEvent.setup>, handlers: FacadeHandlers = {}) {
-  const { facade } = await renderApp({
-    SelectWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: "project.json", kind: "project", schema: "readmit-project/v1" },
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-      ]),
-    OpenProjectOverview: () =>
-      projectOverviewResult([
-        {
-          name: CASE_ENTRY,
-          identity: "sha256:1111",
-          schema: "readmit-case/v3",
-          provenance: "generated",
-          interface_version: "siu-2.5.1-v1",
-          title: "Initial Case",
-          status: "open",
-          owner: "test-user",
-          tags: ["test"],
-          incidents: [],
-          evidence: "verified",
-        },
-      ]),
-    ...handlers,
-  });
-  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
-  return { facade };
+type User = ReturnType<typeof userEvent.setup>;
+
+const CONTEXT: RequestContext = { project: WORKSPACE_ROOT, project_id: "p1", generation: 1 };
+const HL7_PLAN = { schema: "readmit-import-plan/v1", framing: "raw", terminator: "cr", encoding: "utf-8", direction: "unknown", members: [] } as const;
+const HL7: ImportProbeFormat = { mode: "plan", label: "HL7 v2", plan: { ...HL7_PLAN, members: [] } };
+const CSV: ImportProbeFormat = { mode: "recipe", label: "CSV", envelope: "csv" };
+const TEXT: ImportProbeFormat = { mode: "recipe", label: "Text", envelope: "text" };
+const CASE_REF: ItemRef = { kind: "case", id: "case-case-001", revision: "1" };
+const CSV_SAMPLE = { envelope: "csv" as const, columns: ["time", "payload", "flow"], paths: [] };
+
+/** The open project's request context, one callback for the flow's life as
+ * the window holds it. */
+const projectContext = () => CONTEXT;
+
+function baseName(path: string): string {
+  return path.split("/").pop() ?? path;
 }
 
-test("opening import panel from project, selecting sources via native dialogs, and staging pasted content", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
+/** A probe that names each chosen input and proposes the formats given; one
+ * format is selected only when it is the only one. */
+function probing(formats: ImportProbeFormat[], sample: ImportProbeResult["sample"] = null) {
+  return (request: ImportProbeRequest): ImportProbeResult => {
+    const inputs = [
+      ...(request.files ?? []).map((path, index) => ({ name: baseName(path), kind: "file" as const, source: "file" as const, index })),
+      ...(request.staged ?? []).map((_, index) => ({ name: "Pasted messages", kind: "file" as const, source: "staged" as const, index })),
+      ...(request.folders ?? []).map((path, index) => ({ name: baseName(path), kind: "folder" as const, source: "folder" as const, index })),
+      ...(request.archives ?? []).map((path, index) => ({ name: baseName(path), kind: "archive" as const, source: "archive" as const, index })),
+    ].map((input, container) => ({ ...input, container, size: 120, accepted: true }));
+    return { state: "completed", context: request.context ?? CONTEXT, inputs, formats, selected: formats.length === 1 ? 0 : null, sample };
+  };
+}
 
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-
-  // Import panel is open and shows breadcrumbs
-  expect(await screen.findByRole("heading", { name: "Import evidence", level: 3 })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Back to cases" })).toBeTruthy();
-
-  // Test selecting files via native dialog
-  facade.reply({
-    ChooseImportSources: (kind: string): Promise<ImportSourcesResult> => {
-      expect(kind).toBe("files");
-      return Promise.resolve({
-        state: "completed",
-        kind: "files",
-        paths: ["adt-feed-01.hl7", "adt-feed-02.hl7"],
-      });
-    },
-  });
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  expect(await screen.findByText("adt-feed-01.hl7")).toBeTruthy();
-  expect(await screen.findByText("adt-feed-02.hl7")).toBeTruthy();
-
-  // Test staging pasted content
-  facade.reply({
-    StagePastedContent: (req): Promise<PastedSourceResult> => {
-      expect(req.content).toBe("synthetic-bytes");
-      expect(req.name).toBe("emergency-adt.hl7");
-      expect(req.encoding).toBe("utf-8");
-      return Promise.resolve({
-        state: "completed",
-        path: "staged-sources/emergency-adt.hl7",
-        name: "emergency-adt.hl7",
-        size: 58,
-        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        encoding: "utf-8",
-      });
-    },
-  });
-
-  const pasteArea = screen.getByLabelText("Pasted evidence content");
-  await user.type(pasteArea, "synthetic-bytes");
-  const nameInput = screen.getByLabelText("Source name");
-  await user.clear(nameInput);
-  await user.type(nameInput, "emergency-adt.hl7");
-  await user.click(screen.getByRole("button", { name: "Add source" }));
-
-  expect(
-    await screen.findByText(/Retained as newly declared source; never represented as a captured original file/),
-  ).toBeTruthy();
-  expect(screen.getAllByText(/emergency-adt\.hl7 \(58 bytes/).length).toBeGreaterThan(0);
-});
-
-test("plan authoring, extraction preview with deliberate reveal toggle, and invalidation on change", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-
-  // Add source file
-  facade.reply({
-    ChooseImportSources: (): Promise<ImportSourcesResult> =>
-      Promise.resolve({
-        state: "completed",
-        kind: "files",
-        paths: ["batch-feed.hl7"],
-      }),
-  });
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  await screen.findByText("batch-feed.hl7");
-
-  // Configure import plan controls
-  await user.selectOptions(screen.getByLabelText("Framing"), "batch");
-  expect(await screen.findByLabelText("Batch boundary")).toBeTruthy();
-  await user.selectOptions(screen.getByLabelText("Batch boundary"), "hl7-batch");
-  await user.selectOptions(screen.getByLabelText("Direction"), "outbound");
-
-  // Run preview
-  const mockPreview: ImportPreviewResult = {
-    state: "completed",
-    mode: "plan",
-    plan_preview: {
-      schema: "readmit-import-preview/v1",
-      plan: {
-        schema: "readmit-import-plan/v1",
-        framing: "batch",
-        batch_boundary: "hl7-batch",
-        terminator: "cr",
-        encoding: "utf-8",
-        direction: "outbound",
-        members: [],
-      },
-      containers: [
-        {
-          kind: "file",
-          path: "batch-feed.hl7",
-          size: 1024,
-          sha256: "abc123",
-          members: [
-            {
-              name: "batch-feed.hl7",
-              size: 1024,
-              sha256: "abc123",
-              state: "included",
-              records: [
-                { source_id: "src-01", offset: 0, size: 512, occurrences: 1 },
-                { source_id: "src-02", offset: 512, size: 512, occurrences: 1 },
-              ],
-            },
-          ],
-        },
+/** A preview of two messages under a fresh token for each request it reads. */
+function previewing() {
+  let read = 0;
+  return (): ImportPreviewResult => {
+    read += 1;
+    return {
+      state: "completed",
+      mode: "plan",
+      preview_token: `token-${read}`,
+      rows: [
+        { index: 0, time: null, type: "SIU^S12", source: "feed.hl7", direction: "unknown", kind: "message", member: "feed.hl7" },
+        { index: 1, time: null, type: "SIU^S14", source: "feed.hl7", direction: "unknown", kind: "message", member: "feed.hl7" },
       ],
-      totals: {
-        containers: 1,
-        members: 1,
-        excluded: 0,
-        sources: 2,
-        occurrences: 2,
-      },
-    },
+      row_total: 2,
+    };
   };
+}
 
-  facade.reply({
-    PreviewImport: (req) => {
-      expect(req.mode).toBe("plan");
-      expect(req.plan?.framing).toBe("batch");
-      expect(req.plan?.batch_boundary).toBe("hl7-batch");
-      expect(req.plan?.direction).toBe("outbound");
-      return Promise.resolve(mockPreview);
-    },
-  });
+function flowHandlers(handlers: FacadeHandlers = {}): FacadeHandlers {
+  return {
+    SaveEditorDraft: () => ({ state: "completed" }),
+    DiscardEditorDraft: () => ({ state: "completed" }),
+    ProbeImport: probing([HL7]),
+    PreviewImport: previewing(),
+    ...handlers,
+  };
+}
 
-  await user.click(within(evidence).getByRole("button", { name: "Preview" }));
+/** The flow as the Cases page opens it, over the open project. */
+function renderFlow(handlers: FacadeHandlers = {}, drafts: EditorDraft[] | null = []) {
+  const facade = installFacade(flowHandlers(handlers));
+  const onImported = vi.fn();
+  const onClose = vi.fn();
+  render(
+    <StrictMode>
+      <VocabularyContext.Provider value={vocabularyFixture()}>
+        <ImportFlow open root={WORKSPACE_ROOT} context={projectContext} drafts={drafts} busy={false} onClose={onClose} onImported={onImported} />
+      </VocabularyContext.Provider>
+    </StrictMode>,
+  );
+  return { facade, onImported, onClose };
+}
 
-  // Check preview totals
-  expect(await screen.findByText("Containers")).toBeTruthy();
-  expect(screen.getByText("Sources")).toBeTruthy();
-  expect(screen.getByText("Occurrences")).toBeTruthy();
+function flow() {
+  return within(screen.getByRole("dialog", { name: "Import" }));
+}
 
-  // Check sensitivity reveal toggle
-  expect(within(evidence).getByText("May contain patient data.")).toBeTruthy();
-  const revealButton = within(evidence).getByRole("button", { name: "Show values" });
-  await user.click(revealButton);
-  expect(within(evidence).getByRole("button", { name: "Hide values" })).toBeTruthy();
+function chosen(paths: string[], kind = "files") {
+  return () => ({ state: "completed" as const, kind, paths });
+}
 
-  // Test invalidation on input change: changing direction should clear the preview
-  await user.selectOptions(screen.getByLabelText("Direction"), "inbound");
-  expect(screen.queryByText("Containers")).toBeNull();
+async function chooseFiles(user: User, facade: ReturnType<typeof installFacade>, paths: string[]) {
+  facade.reply({ ChooseImportSources: chosen(paths) });
+  await user.click(flow().getByRole("button", { name: "Choose files" }));
+  for (const path of paths) await flow().findByRole("rowheader", { name: baseName(path) });
+}
+
+async function chooseMore(user: User, facade: ReturnType<typeof installFacade>, item: "Choose folder" | "Choose ZIP", paths: string[], kind: string) {
+  facade.reply({ ChooseImportSources: chosen(paths, kind) });
+  await user.click(flow().getByRole("button", { name: "More ways to choose" }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
+}
+
+function names(): string[] {
+  const table = flow().queryByRole("table", { name: "Selected inputs" });
+  return table ? within(table).getAllByRole("rowheader").map((cell) => cell.firstChild?.textContent ?? "") : [];
+}
+
+/** Chooses CSV and maps the message and the direction with two direction
+ * rows. */
+async function mapCsv(user: User) {
+  await user.selectOptions(await flow().findByLabelText("Choose format"), "CSV");
+  const sheet = within(await screen.findByRole("dialog", { name: "Mapping" }));
+  await user.selectOptions(sheet.getByLabelText("Message"), "payload");
+  await user.selectOptions(sheet.getByLabelText("Direction from"), "field");
+  await user.selectOptions(sheet.getAllByRole("combobox").find((select) => select.id === "mapping-direction-field")!, "flow");
+  await user.click(sheet.getByRole("button", { name: "Add mapping" }));
+  await user.type(sheet.getByLabelText("Source value 1"), "IN");
+  await user.click(sheet.getByRole("button", { name: "Add mapping" }));
+  await user.type(sheet.getByLabelText("Source value 2"), "OUT");
+  await user.selectOptions(sheet.getByLabelText("Direction 2"), "outbound");
+  await user.click(sheet.getByRole("button", { name: "Done" }));
+}
+
+test("Choose files, folder and ZIP name each input, and a cancelled picker keeps the selection", async () => {
+  const user = userEvent.setup();
+  const { facade } = renderFlow();
+  await chooseFiles(user, facade, ["/exports/feed.hl7"]);
+  await chooseMore(user, facade, "Choose folder", ["/exports/nightly"], "folder");
+  await flow().findByRole("rowheader", { name: "nightly" });
+  await chooseMore(user, facade, "Choose ZIP", ["/exports/week.zip"], "archive");
+  await flow().findByRole("rowheader", { name: "week.zip" });
+  expect(names()).toEqual(["feed.hl7", "nightly", "week.zip"]);
+  const table = flow().getByRole("table", { name: "Selected inputs" });
+  expect(within(table).getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0]?.textContent)).toEqual(["File", "Folder", "ZIP"]);
+  expect(facade.callsTo("ChooseImportSources").map((call) => call.args[0])).toEqual(["files", "folder", "archive"]);
+
+  // A cancelled picker leaves every input where it was.
+  facade.reply({ ChooseImportSources: () => ({ state: "cancelled" }) });
+  await user.click(flow().getByRole("button", { name: "Add files" }));
+  await waitFor(() => expect(facade.callsTo("ChooseImportSources")).toHaveLength(4));
+  expect(names()).toEqual(["feed.hl7", "nightly", "week.zip"]);
+
+  // Removing one takes its reference out of the import, not its bytes.
+  await user.click(flow().getByRole("button", { name: "Remove nightly from import" }));
+  await waitFor(() => expect(names()).toEqual(["feed.hl7", "week.zip"]));
+  const last = facade.callsTo("ProbeImport").at(-1)!.args[0] as ImportProbeRequest;
+  expect(last).toMatchObject({ files: ["/exports/feed.hl7"], folders: [], archives: ["/exports/week.zip"] });
 });
 
-test("engine export authoring displays unqualified compatibility notice and previews correlation records", async () => {
+test("pasted messages become their own source named Pasted messages", async () => {
   const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-  const evidence = screen.getByRole("region", { name: "Main content" });
-
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-
-  // Switch to engine tab
-  await user.click(screen.getByRole("tab", { name: "Engine adapter" }));
-
-  // Check unqualified notice is prominent
-  expect(await screen.findByText(/Unqualified compatibility notice:/)).toBeTruthy();
-  expect(
-    screen.getByText(/Engine export adapters parse a deliberately finite source-model export subset/),
-  ).toBeTruthy();
-
-  // Change engine to Mirth 4.5.2
-  await user.selectOptions(screen.getByLabelText("Engine"), "mirth");
-  expect(screen.getByDisplayValue("4.5.2")).toBeTruthy();
-
-  // Add source file
-  facade.reply({
-    ChooseImportSources: () =>
-      Promise.resolve({
-        state: "completed",
-        kind: "files",
-        paths: ["mirth-export.xml"],
-      }),
+  const { facade } = renderFlow({
+    StagePastedContent: (request) => ({ state: "completed", staged_id: "0123456789abcdef01234567", name: request.name ?? "Pasted messages", size: request.content.length, encoding: "utf-8" }),
   });
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-
-  // Preview engine export
-  facade.reply({
-    PreviewImport: (req) => {
-      expect(req.mode).toBe("engine");
-      expect(req.engine_plan?.engine).toBe("mirth");
-      expect(req.engine_plan?.version).toBe("4.5.2");
-      return Promise.resolve({
-        state: "completed",
-        mode: "engine",
-        engine_preview: {
-          schema: "readmit-engine-export-preview/v1",
-          plan: {
-            schema: "readmit-engine-export/v1",
-            engine: "mirth",
-            version: "4.5.2",
-            format: "raw",
-            terminator: "cr",
-          },
-          qualification: "unqualified",
-          records: [
-            { offset: 0, size: 320, stage: "raw", correlation: "corr-101" },
-            { offset: 320, size: 400, stage: "transformed", correlation: "corr-101" },
-          ],
-        },
-      });
-    },
-  });
-
-  await user.click(within(evidence).getByRole("button", { name: "Preview" }));
-  expect(await screen.findByText("Export records")).toBeTruthy();
-  expect(screen.getByText("unqualified")).toBeTruthy();
-  expect(screen.getAllByText("corr-101")).toHaveLength(2);
-  expect(screen.getAllByText("[Sensitive payload hidden]")).toHaveLength(2);
-
-  // Click reveal
-  await user.click(within(evidence).getByRole("button", { name: "Show values" }));
-  expect(screen.getAllByText(/\[Payload extracted from stage:/)).toHaveLength(2);
+  await user.click(flow().getByRole("button", { name: "Paste" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Paste" }));
+  expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("Pasted messages");
+  expect((sheet.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.type(sheet.getByLabelText("Messages"), "MSH|^~\\&|SEND");
+  await user.click(sheet.getByRole("button", { name: "Add" }));
+  await flow().findByRole("rowheader", { name: "Pasted messages" });
+  const [staged] = facade.oneCall("StagePastedContent");
+  expect(staged).toMatchObject({ context: CONTEXT, name: "Pasted messages", content: "MSH|^~\\&|SEND" });
+  // It is named by its identity when the inputs are read, never by a path.
+  const probed = facade.callsTo("ProbeImport").at(-1)!.args[0] as ImportProbeRequest;
+  expect(probed).toMatchObject({ files: [], staged: ["0123456789abcdef01234567"] });
 });
 
-test("recipe mapping authoring, preview, commit to project, and navigation into inspector", async () => {
+test("the case name defaults to the source's name, or Imported messages for several", async () => {
   const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-  const evidence = screen.getByRole("region", { name: "Main content" });
-
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-
-  // Switch to Recipe tab
-  await user.click(screen.getByRole("tab", { name: "Envelope mapping" }));
-
-  // Add source file
-  facade.reply({
-    ChooseImportSources: () =>
-      Promise.resolve({
-        state: "completed",
-        kind: "files",
-        paths: ["messages.csv"],
-      }),
-  });
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-
-  // Configure recipe controls
-  const nameInput = screen.getByLabelText("Recipe name");
-  await user.clear(nameInput);
-  await user.type(nameInput, "csv-adt-feed");
-  await user.selectOptions(screen.getByLabelText("Time operator (assumes UTC offset)"), "rfc3339");
-  expect(await screen.findByLabelText("Time locator")).toBeTruthy();
-
-  // Preview
-  facade.reply({
-    PreviewImport: (req) => {
-      expect(req.mode).toBe("recipe");
-      expect(req.recipe?.name).toBe("csv-adt-feed");
-      expect(req.recipe?.envelope).toBe("csv");
-      expect(req.recipe?.observed_at.operator).toBe("rfc3339");
-      return Promise.resolve({
-        state: "completed",
-        mode: "recipe",
-        recipe_preview: {
-          schema: "readmit-mapping-preview/v1",
-          recipe: req.recipe!,
-          recipe_identity: "sha256:rec123",
-          containers: [],
-          mappings: [
-            {
-              source_id: "src-001",
-              state: "mapped",
-              payload_size: 240,
-              observed_at: null,
-              source: "interface-engine",
-              direction: "inbound",
-              channel: "unknown",
-            },
-          ],
-          totals: {
-            containers: 1,
-            members: 1,
-            excluded: 0,
-            sources: 1,
-            occurrences: 1,
-          },
-          unmapped_records: 0,
-        },
-      });
-    },
-  });
-
-  await user.click(within(evidence).getByRole("button", { name: "Preview" }));
-  expect(await screen.findByText("Unmapped records")).toBeTruthy();
-
-  // Commit import
-  facade.reply({
-    CommitImport: (req): Promise<ImportCommitResult> => {
-      expect(req.mode).toBe("recipe");
-      expect(req.output_name).toBe("imported-case-01");
-      expect(req.register_in_project).toBe(true);
-      return Promise.resolve({
-        state: "completed",
-        case: {
-          name: "imported-case-01",
-          identity: "sha256:finalcase777",
-          schema: "readmit-case/v3",
-          provenance: "imported",
-          sources: 1,
-          occurrences: 1,
-          messages: 1,
-          acknowledgements: 0,
-          unparsed: 0,
-        },
-        case_path: "imported-case-01",
-        receipt_path: "imported-case-01-receipt.json",
-        registered: true,
-      });
-    },
-    OpenCase: (workspace, name) => {
-      expect(workspace).toBe(WORKSPACE_ROOT);
-      expect(name).toBe("imported-case-01");
-      return Promise.resolve(caseResult("imported-case-01", "sha256:finalcase777"));
-    },
-  });
-
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-
-  // Check commit completion card
-  expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
-  expect(screen.getByText(/imported-case-01 \(sha256:finalcase777\)/)).toBeTruthy();
-  expect(screen.getByText("imported-case-01-receipt.json")).toBeTruthy();
-  expect(screen.getByText("Registered into project.")).toBeTruthy();
-
-  // Click "Open case". Leaving the import re-reads the
-  // project the case was registered into, so its overview lists the case.
-  // It re-reads the folder as well, so every panel that offers the folder's
-  // entries — the packet and privacy panels among them — offers the new case.
-  const overviewReads = facade.callsTo("OpenProjectOverview").length;
-  const listings = facade.callsTo("OpenWorkspace").length;
-  facade.reply({
-    OpenProjectOverview: () =>
-      projectOverviewResult([{ ...registeredCase("imported-case-01"), title: "Imported feed" }]),
-    OpenWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: "project.json", kind: "project", schema: "readmit-project/v1" },
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-        { name: "imported-case-01", kind: "case", schema: "readmit-case/v3", provenance: "imported" },
-        { name: "imported-case-01-receipt.json", kind: "unsupported" },
-      ]),
-  });
-  await user.click(within(evidence).getByRole("button", { name: /^Open case(?: |$)/ }));
-
-  // Inspector verifies and opens the case!
-  expect(await readCaseIdentity(user, "sha256:finalcase777")).toBeTruthy();
-  expect(facade.callsTo("OpenProjectOverview")).toHaveLength(overviewReads + 1);
-  expect(await screen.findByRole("heading", { level: 1, name: "Imported feed" })).toBeTruthy();
-  expect(facade.callsTo("OpenWorkspace")).toHaveLength(listings + 1);
-  await goToView(user, "Reports", "Share");
-  const privacy = within(screen.getByRole("region", { name: "Privacy review" }));
-  // The case is chosen in the Create review task, one of the panel's tasks.
-  await user.click(privacy.getByRole("tab", { name: "Create review" }));
-  expect(await privacy.findByRole("option", { name: "imported-case-01" })).toBeTruthy();
+  const { facade } = renderFlow();
+  const caseName = () => (flow().getByLabelText("Case") as HTMLInputElement).value;
+  await chooseFiles(user, facade, ["/exports/appointments.mllp"]);
+  expect(caseName()).toBe("appointments");
+  await chooseFiles(user, facade, ["/exports/second.hl7"]);
+  expect(caseName()).toBe("Imported messages");
+  // A name the person typed is kept whatever is chosen next.
+  await user.clear(flow().getByLabelText("Case"));
+  await user.type(flow().getByLabelText("Case"), "Reschedule feed");
+  await user.click(flow().getByRole("button", { name: "Remove second.hl7 from import" }));
+  await waitFor(() => expect(names()).toEqual(["appointments.mllp"]));
+  expect(caseName()).toBe("Reschedule feed");
 });
 
-test("every member of every declared source has its own row in the extraction preview", async () => {
+test("an unambiguous HL7 file goes straight to preview and an ambiguous one asks Choose format", async () => {
   const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-  facade.reply({
-    ChooseImportSources: () => Promise.resolve({ state: "completed", kind: "files", paths: ["booking.mllp", "reschedule.mllp"] }),
-  });
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  await screen.findByText(/reschedule\.mllp/);
-  const container = (path: string, size: number): ImportContainer => ({
-    kind: "file",
-    path,
-    size,
-    sha256: "",
-    members: [{ name: path, size, sha256: "", state: "included", records: [] }],
-  });
-  facade.reply({
-    PreviewImport: (): Promise<ImportPreviewResult> =>
-      Promise.resolve({
-        state: "completed",
-        mode: "plan",
-        plan_preview: {
-          schema: "readmit-import-preview/v1",
-          plan: { schema: "readmit-import-plan/v1", framing: "mllp", terminator: "cr", encoding: "utf-8", direction: "inbound", members: [] },
-          containers: [container("booking.mllp", 101), container("reschedule.mllp", 202)],
-          totals: { containers: 2, members: 2, excluded: 0, sources: 2, occurrences: 2 },
-        },
-      }),
-  });
-  const reported = vi.spyOn(console, "error");
-  try {
-    await user.click(within(evidence).getByRole("button", { name: "Preview" }));
-    // Two sources each holding one member: two rows, neither standing in for
-    // the other, and no two rows sharing an identity React would conflate.
-    expect(await screen.findByRole("cell", { name: "101 bytes" })).toBeTruthy();
-    expect(screen.getByRole("cell", { name: "202 bytes" })).toBeTruthy();
-    expect(reported.mock.calls.filter((args) => String(args[0]).includes("same key"))).toEqual([]);
-  } finally {
-    reported.mockRestore();
-  }
+  const { facade } = renderFlow();
+  await chooseFiles(user, facade, ["/exports/feed.hl7"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  expect(await flow().findByRole("table", { name: "Preview" })).toBeTruthy();
+  expect(flow().queryByLabelText("Choose format")).toBeNull();
+  const [previewed] = facade.oneCall("PreviewImport");
+  expect(previewed).toMatchObject({ mode: "plan", plan: HL7_PLAN, files: ["/exports/feed.hl7"] });
+
+  // Comma-separated text reads as CSV or as text: the person chooses.
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  facade.reply({ ProbeImport: probing([CSV, TEXT]) });
+  await user.click(flow().getByRole("button", { name: "Remove feed.hl7 from import" }));
+  await chooseFiles(user, facade, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  const choice = await flow().findByLabelText("Choose format");
+  expect(within(choice).getAllByRole("option").map((option) => option.textContent)).toEqual([
+    "Choose a format",
+    "CSV",
+    "Text",
+    "Mirth Connect 4.5.2",
+    "Open Integration Engine 4.6.0",
+  ]);
+  expect((flow().getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facade.callsTo("PreviewImport")).toHaveLength(1);
 });
 
-test("draft retention restores draft state and handles cancellation", async () => {
+test("an unsupported engine export version shows its refusal", async () => {
   const user = userEvent.setup();
-  let cancelled = false;
-
-  const { facade } = await renderApp({
-    SelectWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: "project.json", kind: "project", schema: "readmit-project/v1" },
-      ]),
-    OpenProjectOverview: () => projectOverviewResult([]),
-    EditorDrafts: () =>
-      Promise.resolve({
-        state: "completed",
-        drafts: [
-          {
-            id: "draft-import-01",
-            kind: "import",
-            workspace: WORKSPACE_ROOT,
-            case: "",
-            identity: "",
-            content_schema: "readmit-desktop-drafts/v1",
-            content: {
-              mode: "plan",
-              framing: "mllp",
-              terminator: "lf",
-              encoding: "us-ascii",
-              direction: "outbound",
-              files: ["retained-stream.mllp"],
-              outputName: "retained-case-99",
-            },
-          },
-        ],
-      }),
-    Cancel: () => {
-      cancelled = true;
-      return Promise.resolve();
-    },
-  });
-
-  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
-
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-
-  // Verify restored draft values
-  expect(await screen.findByText("retained-stream.mllp")).toBeTruthy();
-  expect(screen.getByDisplayValue("retained-case-99")).toBeTruthy();
-  expect(screen.getByDisplayValue("MLLP")).toBeTruthy();
-  expect(screen.getByDisplayValue("LF (\\n)")).toBeTruthy();
-  expect(screen.getByDisplayValue("US-ASCII")).toBeTruthy();
-
-  // Test cancellation during preview
-  const parked = facade.park("PreviewImport");
-
-  await user.click(within(evidence).getByRole("button", { name: "Preview" }));
-  const cancelBtn = await within(screen.getByRole("region", { name: "Main content" })).findByRole("button", {
-    name: "Cancel",
-  });
-  expect(cancelBtn).toBeTruthy();
-  await user.click(cancelBtn);
-  expect(cancelled).toBe(true);
-
-  parked.resolve({
-    state: "cancelled",
-    reason: "Operation cancelled",
-  });
+  const refusal = "unsupported engine export declaration or XML variant";
+  const { facade } = renderFlow({ ProbeImport: probing([]), PreviewImport: () => ({ state: "failed", reason: refusal }) });
+  await chooseFiles(user, facade, ["/exports/channel-export.xml"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await user.selectOptions(await flow().findByLabelText("Choose format"), "Mirth Connect 4.5.2");
+  // The version is the supported one, read-only.
+  await user.click(flow().getByRole("button", { name: "Edit" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Format" }));
+  expect(sheet.getByText("4.5.2")).toBeTruthy();
+  expect(sheet.queryByRole("textbox", { name: "Version" })).toBeNull();
+  await user.click(sheet.getByRole("button", { name: "Done" }));
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  expect(await flow().findByText(refusal)).toBeTruthy();
+  const [previewed] = facade.oneCall("PreviewImport");
+  expect(previewed).toMatchObject({ mode: "engine", engine_plan: { engine: "mirth", version: "4.5.2", format: "raw", terminator: "cr" } });
+  expect((flow().getByRole("button", { name: "Import" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-test("dropping a message file and a zip declares both sources", async () => {
+test("mapping fields and direction rows survive Back and reopening the draft", async () => {
   const user = userEvent.setup();
-  await openWorkspaceWithProject(user);
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
+  const { facade } = renderFlow({ ProbeImport: probing([CSV, TEXT], CSV_SAMPLE) });
+  await chooseFiles(user, facade, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await mapCsv(user);
+  expect(flow().getByText("payload")).toBeTruthy();
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await user.click(flow().getAllByRole("button", { name: "Edit" })[1]!);
+  let sheet = within(await screen.findByRole("dialog", { name: "Mapping" }));
+  expect((sheet.getByLabelText("Source value 1") as HTMLInputElement).value).toBe("IN");
+  expect((sheet.getByLabelText("Source value 2") as HTMLInputElement).value).toBe("OUT");
+  expect((sheet.getByLabelText("Direction 2") as HTMLSelectElement).value).toBe("outbound");
+  await user.click(sheet.getByRole("button", { name: "Cancel" }));
 
-  const zone = await screen.findByLabelText("Drop files or ZIP archives here");
-  const message = new File(["synthetic"], "evidence.hl7");
-  const archive = new File(["synthetic"], "batch.zip");
-  fireEvent.drop(zone, { dataTransfer: { files: [message, archive] } });
-
-  const sources = await screen.findByRole("list", { name: "Declared sources list" });
-  expect(within(sources).getByText(/evidence\.hl7/)).toBeTruthy();
-  expect(within(sources).getByText(/batch\.zip/)).toBeTruthy();
-  expect(within(sources).getByText(/File:/)).toBeTruthy();
-  expect(within(sources).getByText(/ZIP Archive:/)).toBeTruthy();
+  // The draft the flow kept reopens with the same mapping and rows.
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(0));
+  const kept = facade.callsTo("SaveEditorDraft").at(-1)!.args[0] as EditorDraft;
+  expect(kept).toMatchObject({ kind: "import", workspace: WORKSPACE_ROOT, content_schema: "readmit-import-draft/v2" });
+  cleanup();
+  renderFlow({ ProbeImport: probing([CSV, TEXT], CSV_SAMPLE) }, [kept]);
+  await flow().findByRole("heading", { name: "Mapping" });
+  await user.click(flow().getAllByRole("button", { name: "Edit" })[1]!);
+  sheet = within(await screen.findByRole("dialog", { name: "Mapping" }));
+  expect((sheet.getByLabelText("Message") as HTMLSelectElement).value).toBe("payload");
+  expect((sheet.getByLabelText("Source value 1") as HTMLInputElement).value).toBe("IN");
+  expect((sheet.getByLabelText("Source value 2") as HTMLInputElement).value).toBe("OUT");
+  expect((sheet.getByLabelText("Direction 2") as HTMLSelectElement).value).toBe("outbound");
 });
 
-test("a committed import's draft is dropped before the window reports it stored, and the edits queued behind it are never written", async () => {
+test("a changed source or mapping discards the preview", async () => {
   const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-  // The first retention is still being written when the person commits.
-  const retaining = facade.park("SaveEditorDraft");
-  facade.reply({
-    DiscardEditorDraft: () => ({ state: "empty" as const, drafts: [] }),
-    ChooseImportSources: (): Promise<ImportSourcesResult> =>
-      Promise.resolve({ state: "completed", kind: "files", paths: ["scheduling-feed.hl7"] }),
-    PreviewImport: (): Promise<ImportPreviewResult> =>
-      Promise.resolve({
-        state: "completed",
-        mode: "plan",
-        plan_preview: {
-          schema: "readmit-import-preview/v1",
-          plan: { schema: "readmit-import-plan/v1", framing: "raw", terminator: "cr", encoding: "utf-8", direction: "inbound", members: [] },
-          containers: [],
-          totals: { containers: 1, members: 1, excluded: 0, sources: 1, occurrences: 1 },
-        },
-      }),
-    CommitImport: (): Promise<ImportCommitResult> =>
-      Promise.resolve({
-        state: "completed",
-        case: {
-          name: "imported-case-01",
-          identity: "sha256:committed",
-          schema: "readmit-case/v3",
-          provenance: "imported",
-          sources: 1,
-          occurrences: 1,
-          messages: 1,
-          acknowledgements: 0,
-          unparsed: 0,
-        },
-        case_path: "imported-case-01",
-        receipt_path: "imported-case-01-receipt.json",
-        registered: true,
-      }),
+  const { facade } = renderFlow({
+    ProbeImport: probing([HL7]),
+    InspectImportPreview: (request) => ({ state: "failed", reason: `read ${request.preview_token}` }),
   });
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  await screen.findByText("scheduling-feed.hl7");
-  await user.type(screen.getByLabelText("Case title"), "Reschedule duplicate");
-  await user.click(within(evidence).getByRole("button", { name: "Preview" }));
-  await user.click(await within(evidence).findByRole("button", { name: "Import" }));
-  // One write is in flight; the rest of the typing waits behind it.
-  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
-  expect(retaining.size).toBe(1);
-  expect(screen.queryByText("Import Completed Successfully")).toBeNull();
-  // The write in flight mints the draft's identity; that identity is what the
-  // committed import drops, and only then does the window say it is stored.
-  retaining.resolve({
-    state: "completed",
-    drafts: [{ id: "minted-import", kind: "import", workspace: WORKSPACE_ROOT, case: "", identity: "", content_schema: "readmit-desktop-drafts/v1", content: {} }],
-  });
-  expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
-  expect(facade.oneCall("DiscardEditorDraft")).toEqual(["minted-import"]);
-  // The edits that waited held the stored work; none was written.
-  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
+  await chooseFiles(user, facade, ["/exports/feed.hl7"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await user.click(await within(await flow().findByRole("table", { name: "Preview" })).findByRole("row", { name: "SIU^S12 1" }));
+  await waitFor(() => expect(facade.callsTo("InspectImportPreview")[0]?.args[0]).toMatchObject({ preview_token: "token-1", row: 0 }));
+
+  // Back to the source and a changed selection: the preview is withdrawn
+  // and read again under the new inputs, never reused.
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  await chooseFiles(user, facade, ["/exports/more.hl7"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  const previews = facade.callsTo("PreviewImport").map((call) => call.args[0] as ImportRequest);
+  expect(previews).toHaveLength(2);
+  expect(previews[1]!.files).toEqual(["/exports/feed.hl7", "/exports/more.hl7"]);
+  await user.click(await flow().findByRole("row", { name: "SIU^S14 2" }));
+  await waitFor(() => expect(facade.callsTo("InspectImportPreview").at(-1)!.args[0]).toMatchObject({ preview_token: "token-2", row: 1 }));
+
+  // A changed mapping withdraws the preview the old mapping read.
+  cleanup();
+  const again = renderFlow({ ProbeImport: probing([CSV, TEXT], CSV_SAMPLE) }).facade;
+  await chooseFiles(user, again, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await mapCsv(user);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  await user.click(flow().getAllByRole("button", { name: "Edit" })[1]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "Mapping" }));
+  await user.selectOptions(sheet.getByLabelText("Direction 1"), "outbound");
+  await user.click(sheet.getByRole("button", { name: "Done" }));
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  const directions = again.callsTo("PreviewImport").map((call) => (call.args[0] as ImportRequest).recipe!.direction);
+  expect(directions).toHaveLength(2);
+  expect(directions[1]).toMatchObject({ operator: "field", locator: ["flow"], values: [{ envelope: "IN", mapped: "outbound" }, { envelope: "OUT", mapped: "outbound" }] });
 });
 
-test("a committed import whose retention was refused leaves no retention reported in progress", async () => {
+test("a failed import keeps the selection, mapping and reason", async () => {
   const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-  // The first retention is still being written when the person commits.
-  const retaining = facade.park("SaveEditorDraft");
-  facade.reply({
-    DiscardEditorDraft: () => ({ state: "empty" as const, drafts: [] }),
-    ChooseImportSources: (): Promise<ImportSourcesResult> =>
-      Promise.resolve({ state: "completed", kind: "files", paths: ["scheduling-feed.hl7"] }),
-    PreviewImport: (): Promise<ImportPreviewResult> =>
-      Promise.resolve({
-        state: "completed",
-        mode: "plan",
-        plan_preview: {
-          schema: "readmit-import-preview/v1",
-          plan: { schema: "readmit-import-plan/v1", framing: "raw", terminator: "cr", encoding: "utf-8", direction: "inbound", members: [] },
-          containers: [],
-          totals: { containers: 1, members: 1, excluded: 0, sources: 1, occurrences: 1 },
-        },
-      }),
-    CommitImport: (): Promise<ImportCommitResult> =>
-      Promise.resolve({
-        state: "completed",
-        case: {
-          name: "imported-case-01",
-          identity: "sha256:committed",
-          schema: "readmit-case/v3",
-          provenance: "imported",
-          sources: 1,
-          occurrences: 1,
-          messages: 1,
-          acknowledgements: 0,
-          unparsed: 0,
-        },
-        case_path: "imported-case-01",
-        receipt_path: "imported-case-01-receipt.json",
-        registered: true,
-      }),
+  const reason = "the project's catalog cannot be read; it is left exactly as written";
+  const { facade, onImported } = renderFlow({
+    ProbeImport: probing([CSV, TEXT], CSV_SAMPLE),
+    ImportCase: (request) => ({ state: "failed", reason, context: request.context, replayed: false }),
   });
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-  await user.click(screen.getByRole("button", { name: "Select Files…" }));
-  await screen.findByText("scheduling-feed.hl7");
-  await user.type(screen.getByLabelText("Case title"), "Reschedule duplicate");
-  await user.click(within(evidence).getByRole("button", { name: "Preview" }));
-  await user.click(await within(evidence).findByRole("button", { name: "Import" }));
-  // The write in flight is refused and minted nothing: there is no draft to
-  // drop, and nothing queued behind it is written.
-  retaining.resolve({ state: "failed", reason: "the draft store is not writable", drafts: [] });
-  expect(await screen.findByText("Import Completed Successfully")).toBeTruthy();
+  await chooseFiles(user, facade, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await mapCsv(user);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  await user.click(flow().getByRole("button", { name: "Import" }));
+  expect(await flow().findByText(reason)).toBeTruthy();
+  expect(onImported).not.toHaveBeenCalled();
   expect(facade.callsTo("DiscardEditorDraft")).toHaveLength(0);
-  expect(facade.callsTo("SaveEditorDraft")).toHaveLength(1);
-  expect(screen.queryByText("Retaining this draft…")).toBeNull();
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  await user.click(flow().getAllByRole("button", { name: "Edit" })[1]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "Mapping" }));
+  expect((sheet.getByLabelText("Message") as HTMLSelectElement).value).toBe("payload");
+  expect((sheet.getByLabelText("Source value 2") as HTMLInputElement).value).toBe("OUT");
+  await user.click(sheet.getByRole("button", { name: "Cancel" }));
+  await user.click(flow().getByRole("button", { name: "Back" }));
+  expect(names()).toEqual(["feed.csv"]);
 });
 
-test("a refused discard of the import draft keeps the text and still offers Retry draft save", async () => {
+test("Save mapping asks a name and publishes a preset", async () => {
   const user = userEvent.setup();
-  const { facade } = await openWorkspaceWithProject(user);
-  const held = { id: "import-draft", kind: "import", workspace: WORKSPACE_ROOT, case: "", identity: "", content_schema: "readmit-desktop-drafts/v1", content: {} };
-  let writable = true;
-  facade.reply({
-    SaveEditorDraft: async () =>
-      writable ? { state: "completed" as const, drafts: [held] } : { state: "failed" as const, reason: "the draft store is not writable", drafts: [held] },
-    DiscardEditorDraft: async () => ({ state: "failed" as const, reason: "the draft store is locked", drafts: [held] }),
+  const { facade } = renderFlow({
+    ProbeImport: probing([CSV, TEXT], CSV_SAMPLE),
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", replayed: false, problems: [], saved: { kind: "mapping", id: "m1", revision: "1" } }),
   });
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getAllByRole("button", { name: "Import" })[0]!);
-  const title = screen.getByLabelText("Case title") as HTMLInputElement;
-  fireEvent.change(title, { target: { value: "Reschedule" } });
-  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
-  writable = false;
-  fireEvent.change(title, { target: { value: "Reschedule duplicate" } });
-  expect(await screen.findByText("the draft store is not writable")).toBeTruthy();
-
-  await user.click(screen.getByRole("button", { name: "Discard draft" }));
-  // The refusal is shown; the text stays, and so does the way to save it.
-  expect(await screen.findByText("the draft store is locked")).toBeTruthy();
-  expect(facade.oneCall("DiscardEditorDraft")).toEqual(["import-draft"]);
-  expect(title.value).toBe("Reschedule duplicate");
-  const saves = facade.callsTo("SaveEditorDraft").length;
-  writable = true;
-  await user.click(screen.getByRole("button", { name: "Retry draft save" }));
-  expect(await screen.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
-  const retried = facade.callsTo("SaveEditorDraft");
-  expect(retried).toHaveLength(saves + 1);
-  expect((retried[saves]?.args[0] as { id: string }).id).toBe("import-draft");
+  await chooseFiles(user, facade, ["/exports/feed.csv"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await mapCsv(user);
+  // Mapping is enough to import; nothing was published yet.
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+  await user.click(flow().getByRole("button", { name: "More mapping actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Save mapping…" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Save mapping" }));
+  expect((sheet.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.type(sheet.getByLabelText("Name"), "Scheduling CSV");
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const [saved] = facade.oneCall("SaveItem");
+  expect(saved).toMatchObject({ kind: "mapping", draft: { name: "Scheduling CSV", mapping: { envelope: "csv", payload: { locator: ["payload"] } } } });
+  expect(saved.intent_id).not.toBe("");
 });
 
-// Every value an import plan may declare is offered as the facade publishes it
-// in the window's description, so the panel offers exactly what a plan reader
-// accepts and nothing it keeps a copy of.
-test("the plan controls offer the import-plan vocabulary the facade publishes", async () => {
+test("dropped files and folders join the selection by name and a link is refused", async () => {
   const user = userEvent.setup();
-  const described = shellResult();
-  const shell = described.shell;
-  if (!shell) throw new Error("fixture shell missing");
-  shell.vocabulary.import_plan = {
-    ...shell.vocabulary.import_plan,
-    framings: ["mllp", "raw"],
-    encodings: ["utf-8"],
-    directions: ["outbound", "inbound"],
-  };
-  await openWorkspaceWithProject(user, { Shell: () => described });
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Import" }));
-  await screen.findByRole("heading", { name: "Import evidence", level: 3 });
-  const values = (label: string) =>
-    Array.from((screen.getByLabelText(label, { selector: "select" }) as HTMLSelectElement).options).map((option) => option.value);
-  expect(values("Framing")).toEqual(["mllp", "raw"]);
-  expect(values("Terminator")).toEqual(["cr", "lf", "crlf"]);
-  expect(values("Direction")).toEqual(["outbound", "inbound"]);
+  const { facade } = renderFlow({
+    ClassifyDroppedSources: (paths) => ({
+      state: "completed",
+      files: paths.filter((path) => path.endsWith(".hl7") && !path.endsWith("link.hl7")),
+      folders: paths.filter((path) => path.endsWith("nightly")),
+      archives: [],
+      refused: [{ name: "link.hl7", reason: "it is a link; drop what it points to" }],
+    }),
+  });
+  await chooseFiles(user, facade, ["/exports/feed.hl7"]);
+  importDrop.deliver?.(["/drops/more.hl7", "/drops/nightly", "/drops/link.hl7"]);
+  await flow().findByRole("rowheader", { name: "nightly" });
+  expect(names()).toEqual(["feed.hl7", "more.hl7", "nightly"]);
+  expect(facade.oneCall("ClassifyDroppedSources")[0]).toEqual(["/drops/more.hl7", "/drops/nightly", "/drops/link.hl7"]);
+  expect(await flow().findByText("link.hl7: it is a link; drop what it points to")).toBeTruthy();
+});
+
+// ---------- Through the window ----------
+
+const PROJECT: CatalogItem = {
+  ref: { kind: "project", id: "p1", revision: "rev-project-1" },
+  name: "Scheduling investigation",
+  created_at: null,
+  updated_at: null,
+  last_opened_at: "2026-09-26T10:00:00Z",
+  availability: "available",
+  capabilities: [],
+  summary: { project: { folder: WORKSPACE_ROOT, schema: "readmit-project/v2", cases: 0, interface_versions: ["v1"], owner: "Integration team", tags: [], revisions: [{ id: "v1", name: "v1", default: true }] } },
+};
+
+test("Import sends one intent, opens Messages, and a second click creates nothing", async () => {
+  const user = userEvent.setup();
+  const cases: CatalogItem[] = [];
+  const imported = { ...caseCatalogItem("case-001", "imported", "open"), ref: CASE_REF, name: "feed" };
+  const importCase = vi.fn();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]),
+    OpenProjectOverview: () => projectOverviewResult([]),
+    OpenNamedProject: () => ({ state: "completed", context: { project: "", generation: 0 }, recorded: true }),
+    ListCatalog: (query: CatalogQuery): CatalogResult => {
+      const items = query.kind === "project" ? [PROJECT] : query.kind === "case" ? cases : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+    },
+    ListCaptureSessions: (context) => ({ state: "empty", context, sessions: [] }),
+    CaptureProgress: () => ({ state: "empty" }),
+    ...flowHandlers(),
+    ImportCase: (request) => {
+      importCase(request);
+      if (!cases.includes(imported)) cases.push(imported);
+      return { state: "completed", context: request.context, case: CASE_REF, replayed: importCase.mock.calls.length > 1 };
+    },
+    OpenCase: (_workspace, name) => caseResult(name),
+    ReadMessages: () => messagesResult([]),
+  });
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
+  await sidebar().findByRole("button", { name: "Project: Scheduling investigation" });
+  // The page header's Import (an empty project also offers one in its body).
+  await user.click(page().getAllByRole("button", { name: "Import" })[0]!);
+  await chooseFiles(user, facade, ["/exports/feed.hl7"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  // A second click while the first is answered sends nothing more.
+  await user.dblClick(flow().getByRole("button", { name: "Import" }));
+  // The case opens on its Messages.
+  expect(await screen.findByRole("region", { name: "Messages" }, { timeout: 5000 })).toBeTruthy();
+  expect(facade.callsTo("OpenCase").at(-1)!.args).toEqual([WORKSPACE_ROOT, "case-001"]);
+  const [request] = importCase.mock.calls[0]!;
+  expect(request).toMatchObject({ name: "feed", preview_token: "token-1", source: { mode: "plan", files: ["/exports/feed.hl7"] } });
+  expect(request.intent_id).not.toBe("");
+  expect(importCase).toHaveBeenCalledTimes(1);
+
+  // A later import, from a new opening of the flow, is a new click.
+  await user.click(page().getAllByRole("button", { name: /^Back to / })[0] ?? page().getByRole("button", { name: "Cases" }));
+  await user.click((await page().findAllByRole("button", { name: "Import" }))[0]!);
+  await chooseFiles(user, facade, ["/exports/feed.hl7"]);
+  await user.click(flow().getByRole("button", { name: "Next" }));
+  await flow().findByRole("table", { name: "Preview" });
+  await user.click(flow().getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(importCase).toHaveBeenCalledTimes(2));
+  expect(importCase.mock.calls[1]![0].intent_id).not.toBe(request.intent_id);
 });

@@ -2,7 +2,7 @@
 // environment; every change is one Edit sheet and one Save of one revision.
 // Nothing here connects on opening: Test connection, Check destination, Check
 // reference and Reset each happen only when pressed.
-import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   chooseEnvironmentFile,
   checkCredential,
@@ -1174,8 +1174,12 @@ function DestinationsSheet({
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<RangeRow[]>([]);
+  // The rows are seeded as the sheet opens, never while it is open: a page
+  // render that hands the same saved lists anew must not discard edits.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) setRows(ranges.length > 0 ? ranges.map((range, index) => ({ name: names[index] ?? "", range })) : [{ name: "", range: "" }]);
+    if (open && !wasOpen.current) setRows(ranges.length > 0 ? ranges.map((range, index) => ({ name: names[index] ?? "", range })) : [{ name: "", range: "" }]);
+    wasOpen.current = open;
   }, [open, ranges, names]);
   const used = rows.map((row) => ({ name: row.name.trim(), range: row.range.trim() })).filter((row) => row.name !== "" || row.range !== "");
   const saved = ranges.map((range, index) => ({ name: names[index] ?? "", range }));

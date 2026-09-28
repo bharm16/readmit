@@ -158,7 +158,7 @@ func (r *InspectionResult) refuse(state State, reason string) { r.State, r.Reaso
 // completion and is not interruptible; the shell must not offer cancellation
 // for this read.
 func (a *App) InspectOccurrence(request InspectRequest) InspectionResult {
-	return run(a, false, false, func(context.Context) InspectionResult {
+	return runRead(a, false, func(context.Context) InspectionResult {
 		return a.inspectOccurrence(request)
 	})
 }

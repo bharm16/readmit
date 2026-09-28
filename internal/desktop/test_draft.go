@@ -1135,7 +1135,7 @@ func (r *ItemHistoryResult) refuse(state State, reason string) { r.State, r.Reas
 // holds as a discovered file, or whose state a project document holds, has
 // no revisions. It is a read.
 func (a *App) ItemHistory(request ItemRequest) ItemHistoryResult {
-	return run(a, false, false, func(ctx context.Context) ItemHistoryResult {
+	return runRead(a, false, func(ctx context.Context) ItemHistoryResult {
 		result := ItemHistoryResult{Context: request.Context, Revisions: []ItemRevision{}}
 		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Ref, false)
 		if loaded == nil {

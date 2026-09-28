@@ -526,6 +526,35 @@ func TestTheFacadePublishesTheWindowsChoicesAndBounds(t *testing.T) {
 	if vocabulary.Coverage.MaxClockToleranceSeconds != sequenceanalysis.MaxClockToleranceSeconds {
 		t.Errorf("the most clock tolerance is published as %d seconds", vocabulary.Coverage.MaxClockToleranceSeconds)
 	}
+	// The capture and import choices the window offers are the facade's.
+	var sourceTypes, transports, codes, timeOperators, engineFormats []string
+	for _, choice := range vocabulary.CaptureSourceTypes {
+		sourceTypes = append(sourceTypes, string(choice.Type))
+		if choice.Available == (choice.Type == desktop.APISource) {
+			t.Errorf("capture source type %s is published available %v", choice.Type, choice.Available)
+		}
+	}
+	for _, transport := range vocabulary.ListenerTransports {
+		transports = append(transports, string(transport))
+	}
+	for _, code := range vocabulary.AckCodes {
+		codes = append(codes, string(code))
+	}
+	for _, operator := range vocabulary.ImportTimeOperators {
+		timeOperators = append(timeOperators, string(operator))
+	}
+	for _, engine := range vocabulary.ImportEngines {
+		for _, format := range engine.Formats {
+			if !slices.Contains(engineFormats, string(format)) {
+				engineFormats = append(engineFormats, string(format))
+			}
+		}
+	}
+	exactly("CaptureSourceType", sourceTypes)
+	exactly("ListenerTransport", transports)
+	exactly("AckCode", codes)
+	exactly("ImportTimeOperator", timeOperators)
+	exactly("EngineExportFormat", engineFormats)
 
 	faults := vocabulary.ReceiverFaults
 	if !slices.Equal(faults.Actions, collection.FaultActions()) {
@@ -567,7 +596,8 @@ func TestTheFacadePublishesTheWindowsChoicesAndBounds(t *testing.T) {
 	// reset authority and no contract version of the documents the window
 	// composes is written into it.
 	sources := interfaceSources(t)
-	retired := []string{"readmit-receiver-policy/v", "readmit-observation-source/v"}
+	retired := []string{"readmit-receiver-policy/v", "readmit-observation-source/v",
+		"readmit-mapping-recipe/v", "readmit-engine-export/v", "readmit-import-plan/v", "readmit-source/v", "readmit-capture-listener/v"}
 	for _, basis := range vocabulary.Coverage.RetryBases {
 		retired = append(retired, `"`+string(basis)+`"`)
 	}

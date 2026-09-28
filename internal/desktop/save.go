@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/fixturereset"
+	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/replay"
@@ -30,10 +31,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules and coverage whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets and capture sources whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -88,6 +89,10 @@ type ItemDraft struct {
 	Scenario  *ScenarioDraft   `json:"scenario,omitzero"`
 	LinkRules *correlate.Rules `json:"link_rules,omitzero"`
 	Coverage  *CoverageDraft   `json:"coverage,omitzero"`
+	// Mapping is a saved mapping preset, and Source a capture source whose
+	// members are published together.
+	Mapping *importer.Recipe    `json:"mapping,omitzero"`
+	Source  *CaptureSourceDraft `json:"source,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -143,13 +148,13 @@ func (r *DraftValidation) refuse(state State, reason string) { r.State, r.Reason
 // through, and writes nothing. Validation is also the first step of every
 // save, so a window never needs to ask for it before saving.
 func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
-	return run(a, false, false, func(ctx context.Context) DraftValidation {
+	return runRead(a, false, func(ctx context.Context) DraftValidation {
 		result := DraftValidation{Context: request.Context, Problems: []FieldProblem{}}
 		if slices.Contains(documentKinds, request.Kind) {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -508,6 +513,28 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.Coverage = members, coverage
 		}
+	case MappingItem:
+		if draft.Mapping == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "mapping", Problem: "a mapping preset is a mapping recipe"})
+		}
+		members, found := validateMapping(draft.Mapping)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			recipe := *draft.Mapping
+			if recipe.Schema == "" {
+				recipe.Schema = importer.RecipeSchema
+			}
+			staged, normalized.Mapping = members, &recipe
+		}
+	case SourceItem:
+		if draft.Source == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "source", Problem: "a capture source declares its type and settings"})
+		}
+		members, source, found := validateCaptureSource(scope, draft.Source)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.Source = members, source
+		}
 	default:
 		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: savedKindsRule})
 	}
@@ -579,6 +606,11 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 		case LinkReviewItem:
 			_, err := readReviewFile(files[string(LinkReviewItem)])
 			return err
+		case MappingItem:
+			_, err := readMapping(files["recipe"])
+			return err
+		case SourceItem:
+			return verifyCaptureSource(files)
 		}
 		return errors.New("this release does not save this kind of object")
 	}

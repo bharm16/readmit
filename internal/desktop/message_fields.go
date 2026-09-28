@@ -49,7 +49,7 @@ func (r *MessageFieldsResult) refuse(state State, reason string) { r.State, r.Re
 // answer and nothing is written. It holds the operation slot but is not
 // interruptible.
 func (a *App) MessageFields(request MessageFieldsRequest) MessageFieldsResult {
-	return run(a, false, false, func(context.Context) MessageFieldsResult {
+	return runRead(a, false, func(context.Context) MessageFieldsResult {
 		result := MessageFieldsResult{Fields: []MessageField{}}
 		root, opened, declined := openedCase(request.Workspace, request.Case, request.Identity)
 		if root == "" {

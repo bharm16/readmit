@@ -278,11 +278,18 @@ export function ProjectSwitcher({
 
 /** The one operation running now, shown compactly in the sidebar so it stays
  * addressable from anywhere; Stop is offered only for work that can stop. */
-export function OperationIndicator({ label, onStop }: { label: string; onStop?: (() => void) | undefined }) {
+export function OperationIndicator({ label, onStop, onOpen }: { label: string; onStop?: (() => void) | undefined; onOpen?: (() => void) | undefined }) {
   return (
     <div className="operation" role="status">
       <span className="spinner" aria-hidden="true" />
-      <span className="operation-label">{label}</span>
+      {/* Work that runs on elsewhere, such as a capture, is returned to here. */}
+      {onOpen ? (
+        <button type="button" className="quiet operation-label" onClick={onOpen}>
+          {label}
+        </button>
+      ) : (
+        <span className="operation-label">{label}</span>
+      )}
       {onStop ? (
         <button type="button" className="quiet" onClick={onStop}>
           Stop

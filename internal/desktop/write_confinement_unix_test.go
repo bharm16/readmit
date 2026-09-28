@@ -18,42 +18,45 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/evidencesource"
 )
 
 // notAWorkspace is the sentence every operation refuses a workspace or a
 // project with when it is not an existing folder, or is a symbolic link.
 var notAWorkspace = []string{"a workspace must be an existing folder that is not a symbolic link"}
 
-// Pasted content is staged in the workspace's fixed staged-sources folder.
-// Whatever is already at that name — a link out of the workspace, a link to
-// one of its folders, a file or a FIFO — is refused before anything is
-// written, rather than written through or reported with the path it failed at.
-func TestPastedContentIsStagedOnlyInARealStagingFolderOfTheWorkspace(t *testing.T) {
+// Pasted content is staged in the project's own staging folder,
+// .readmit/staged-sources. Whatever is already at that name — a link out of
+// the project, a link to one of its folders, a file or a FIFO — is refused
+// before anything is written, rather than written through or reported with
+// the path it failed at.
+func TestPastedContentIsStagedOnlyInARealStagingFolderOfTheProject(t *testing.T) {
 	app := workspaceApp(t)
 	root, outside := besideWorkspace(t)
-	if err := os.Mkdir(filepath.Join(root, "folder"), 0o700); err != nil {
+	writeProject(t, root, "")
+	if err := os.MkdirAll(filepath.Join(root, "folder"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	staged := filepath.Join(root, "staged-sources")
+	if err := os.Mkdir(filepath.Join(root, ".readmit"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	staged := filepath.Join(root, ".readmit", "staged-sources")
 	listed, before := entriesOf(t, root), bytesUnder(t, outside)
 	paste := func() refused {
-		result := app.StagePastedContent(desktop.PastedSourceRequest{Workspace: root, Name: "pasted.hl7", Content: sampleImportHL7})
+		result := app.StagePastedContent(desktop.PastedSourceRequest{Context: desktop.RequestContext{Project: root}, Name: "pasted.hl7", Content: sampleImportHL7})
 		return refused{result.State, result.Reason}
 	}
 	for how, plant := range map[string]func() error{
-		"a symbolic link out of the workspace":         func() error { return os.Symlink(outside, staged) },
-		"a symbolic link to a folder of the workspace": func() error { return os.Symlink(filepath.Join(root, "folder"), staged) },
-		"a regular file": func() error { return os.WriteFile(staged, []byte("synthetic"), 0o600) },
-		"a FIFO":         func() error { return syscall.Mkfifo(staged, 0o600) },
+		"a symbolic link out of the project":         func() error { return os.Symlink(outside, staged) },
+		"a symbolic link to a folder of the project": func() error { return os.Symlink(filepath.Join(root, "folder"), staged) },
+		"a regular file":                             func() error { return os.WriteFile(staged, []byte("synthetic"), 0o600) },
+		"a FIFO":                                     func() error { return syscall.Mkfifo(staged, 0o600) },
 	} {
 		if err := plant(); err != nil {
 			t.Fatal(err)
 		}
 		got := answeredWithin(t, "StagePastedContent with "+how, paste)
-		if got.state != desktop.Failed || got.reason != "the staged-sources folder must be one real folder of the workspace, never a symbolic link" {
+		if got.state != desktop.Failed || got.reason != "the project's staging area cannot be written" {
 			t.Errorf("StagePastedContent with %s at the staging folder: %+v", how, got)
 		}
 		if err := os.Remove(staged); err != nil {
@@ -61,22 +64,28 @@ func TestPastedContentIsStagedOnlyInARealStagingFolderOfTheWorkspace(t *testing.
 		}
 	}
 	if after := entriesOf(t, root); !reflect.DeepEqual(listed, after) {
-		t.Fatalf("a refused paste changed the workspace's entries: %v, was %v", after, listed)
+		t.Fatalf("a refused paste changed the project's entries: %v, was %v", after, listed)
 	}
 	if inside := entriesOf(t, filepath.Join(root, "folder")); len(inside) != 0 {
-		t.Fatalf("a refused paste was staged inside a folder of the workspace: %v", inside)
+		t.Fatalf("a refused paste was staged inside a folder of the project: %v", inside)
 	}
 	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
-		t.Fatal("a refused paste was staged outside the workspace")
+		t.Fatal("a refused paste was staged outside the project")
 	}
 	// With nothing at the name the staging folder is created, and the real
 	// folder it created is used again.
 	for _, name := range []string{"first.hl7", "second.hl7"} {
-		result := app.StagePastedContent(desktop.PastedSourceRequest{Workspace: root, Name: name, Content: sampleImportHL7})
-		if result.State != desktop.Completed || result.Path != filepath.Join(staged, name) {
-			t.Fatalf("a paste into the workspace's own staging folder: %+v", result)
+		result := app.StagePastedContent(desktop.PastedSourceRequest{Context: desktop.RequestContext{Project: root}, Name: name, Content: sampleImportHL7})
+		if result.State != desktop.Completed || !regularFile(filepath.Join(staged, result.StagedID, name)) {
+			t.Fatalf("a paste into the project's own staging folder: %+v", result)
 		}
 	}
+}
+
+// regularFile reports a regular file at path.
+func regularFile(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 // A new project is created from a name alone, and whatever that name says it
@@ -128,21 +137,20 @@ func TestANewProjectIsOneNewFolderOfTheChosenFolder(t *testing.T) {
 	}
 }
 
-// Collecting, capturing, finalizing a staged collection, importing and
-// pasting write into the workspace or project the request names. Named by a
-// symbolic link, or by anything that is not an existing folder, that folder is
-// refused with the sentence every other operation refuses it with, before
-// anything is read or written: the folder the link leads to holds everything
-// each request needs, so only the rule can refuse it.
-func TestEveryNewEntryIsWrittenIntoAWorkspaceOrProjectThatIsNotALink(t *testing.T) {
+// Capturing, importing and pasting write into the project the request's
+// context names. Named by a symbolic link, or by anything that is not an
+// existing folder, that folder is refused with the sentence every other
+// operation refuses it with, before anything is read or written: the folder
+// the link leads to is a project too, so only the rule can refuse it.
+func TestEveryNewEntryIsWrittenIntoAProjectThatIsNotALink(t *testing.T) {
 	app := workspaceApp(t)
 	root, outside := besideWorkspace(t)
 	for _, folder := range []string{root, outside} {
+		writeProject(t, folder, "")
 		if err := os.Mkdir(filepath.Join(folder, "export"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		writeDocument(t, filepath.Join(folder, "export"), "one.hl7", sampleImportHL7)
-		collectStaged(t, folder)
 	}
 	parent := filepath.Dir(root)
 	linked := filepath.Join(parent, "linked")
@@ -153,81 +161,44 @@ func TestEveryNewEntryIsWrittenIntoAWorkspaceOrProjectThatIsNotALink(t *testing.
 	if err := syscall.Mkfifo(filepath.Join(parent, "fifo"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
-	if err != nil {
-		t.Fatal(err)
-	}
 	importPlan := validDesktopPlan()
-	source := func(folder string) *evidencesource.Source {
-		return &evidencesource.Source{
-			Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Directory,
-			Scope: "appointments", Root: filepath.Join(folder, "export"),
-			Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
-			Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
-		}
-	}
-	collect := func(workspace string) refused {
-		result := app.CollectSource(desktop.SourceWorkRequest{Workspace: workspace, Source: source(root), Plan: &importPlan,
-			OutputName: "fresh-staged", ReceiptName: "fresh-receipt.json"})
+	source := desktop.ItemRef{Kind: desktop.SourceItem, ID: "0123456789abcdef01234567"}
+	capture := func(project string) refused {
+		result := app.StartCapture(desktop.CaptureRequest{Context: desktop.RequestContext{Project: project}, Source: &source, Name: "Fresh", IntentID: "capture-1"})
 		return refused{result.State, result.Reason}
 	}
-	// A capture the rule missed would listen until its idle timeout and then
-	// answer with its own outcome.
-	capture := func(workspace, kind string) refused {
-		result := app.StartCapture(desktop.CaptureRequest{Workspace: workspace, Kind: kind, Address: "127.0.0.1:0", Policy: &policy,
-			FixtureMode: "fixed", OutputName: "fresh-capture", MaxMessages: 1, IdleTimeout: "1s"})
+	importCase := func(project string) refused {
+		result := app.ImportCase(desktop.ImportCaseRequest{Context: desktop.RequestContext{Project: project}, Name: "Fresh", IntentID: "import-1", PreviewToken: "token",
+			Source: desktop.ImportRequest{Mode: "plan", Plan: &importPlan, Files: []string{filepath.Join(outside, "export", "one.hl7")}}})
 		return refused{result.State, result.Reason}
 	}
-	finalize := func(workspace, project string) refused {
-		result := app.FinalizeCaptureImport(desktop.FinalizeCaptureRequest{Workspace: workspace, Project: project, Folder: "staged",
-			CollectionReceipt: "staged.json", OutputName: "fresh-finalized", ReceiptName: "fresh-finalized.json"})
-		return refused{result.State, result.Reason}
-	}
-	commit := func(workspace, project string) refused {
-		result := app.CommitImport(desktop.ImportCommitRequest{Workspace: workspace, Project: project, Mode: "plan", Plan: &importPlan,
-			Files: []string{filepath.Join(root, "export", "one.hl7")}, OutputName: "fresh-imported", ReceiptName: "fresh-imported.json"})
-		return refused{result.State, result.Reason}
-	}
-	paste := func(workspace, project string) refused {
-		result := app.StagePastedContent(desktop.PastedSourceRequest{Workspace: workspace, Project: project, Name: "fresh.hl7", Content: sampleImportHL7})
+	paste := func(project string) refused {
+		result := app.StagePastedContent(desktop.PastedSourceRequest{Context: desktop.RequestContext{Project: project}, Name: "fresh.hl7", Content: sampleImportHL7})
 		return refused{result.State, result.Reason}
 	}
 	listed, beside, before := entriesOf(t, root), entriesOf(t, parent), bytesUnder(t, outside)
 	notFolders := map[string]string{
-		"a symbolic link to a folder outside the workspace": linked,
-		"a folder that does not exist":                      filepath.Join(parent, "absent"),
-		"a file":                                            filepath.Join(parent, "file"),
-		"a FIFO":                                            filepath.Join(parent, "fifo"),
+		"a symbolic link to a project outside": linked,
+		"a folder that does not exist":         filepath.Join(parent, "absent"),
+		"a file":                               filepath.Join(parent, "file"),
+		"a FIFO":                               filepath.Join(parent, "fifo"),
 	}
 	refusesEveryEntry(t, []confinedMember{
-		{"CollectSource(Workspace)", notAWorkspace, notFolders, collect},
-		{"StartCapture(Workspace) collecting", notAWorkspace, notFolders, func(workspace string) refused { return capture(workspace, "collect") }},
-		{"StartCapture(Workspace) listening", notAWorkspace, notFolders, func(workspace string) refused { return capture(workspace, "listen") }},
-		{"FinalizeCaptureImport(Workspace)", notAWorkspace, notFolders, func(workspace string) refused { return finalize(workspace, "") }},
-		{"FinalizeCaptureImport(Project)", notAWorkspace, notFolders, func(project string) refused { return finalize(root, project) }},
-		{"CommitImport(Workspace)", notAWorkspace, notFolders, func(workspace string) refused { return commit(workspace, "") }},
-		{"CommitImport(Project)", notAWorkspace, notFolders, func(project string) refused { return commit(root, project) }},
-		{"StagePastedContent(Workspace)", notAWorkspace, notFolders, func(workspace string) refused { return paste(workspace, "") }},
-		{"StagePastedContent(Project)", notAWorkspace, notFolders, func(project string) refused { return paste(root, project) }},
+		{"StartCapture(Context.Project)", notAWorkspace, notFolders, capture},
+		{"ImportCase(Context.Project)", notAWorkspace, notFolders, importCase},
+		{"StagePastedContent(Context.Project)", notAWorkspace, notFolders, paste},
 	})
 	if after := entriesOf(t, root); !reflect.DeepEqual(listed, after) {
-		t.Fatalf("a refused write changed the workspace's entries: %v, was %v", after, listed)
+		t.Fatalf("a refused write changed the project's entries: %v, was %v", after, listed)
 	}
 	if after := entriesOf(t, parent); !reflect.DeepEqual(beside, after) {
-		t.Fatalf("a refused write created an entry beside the workspace: %v, was %v", after, beside)
+		t.Fatalf("a refused write created an entry beside the project: %v, was %v", after, beside)
 	}
 	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
 		t.Fatal("a refused write reached the folder the link leads to")
 	}
-	// The same requests naming the workspace itself write there.
-	for name, write := range map[string]func() refused{
-		"CollectSource":         func() refused { return collect(root) },
-		"FinalizeCaptureImport": func() refused { return finalize(root, root) },
-		"CommitImport":          func() refused { return commit(root, root) },
-		"StagePastedContent":    func() refused { return paste(root, root) },
-	} {
-		if got := write(); got.state != desktop.Completed {
-			t.Errorf("%s into the workspace itself: %+v", name, got)
-		}
+	// A paste naming the project itself writes there.
+	if got := paste(root); got.state != desktop.Completed {
+		t.Errorf("StagePastedContent into the project itself: %+v", got)
 	}
 }

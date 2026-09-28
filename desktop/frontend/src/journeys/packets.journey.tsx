@@ -23,7 +23,7 @@ import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
 import { freeLoopbackAddress } from "./probes.js";
-import { activateLicense, createProject, runOnce, runs, savedAckTest, tabTo } from "./steps";
+import { activateLicense, createProject, declareMllpImport, finishImport, runOnce, runs, savedAckTest, tabTo } from "./steps";
 import type { RedactInventory, RedactPolicy } from "../bindings";
 
 let journey: Journey;
@@ -328,7 +328,7 @@ test("a policy and inventory authored in the window derive a ready review and th
   journey.placeFixture("redact-inventory.json", "templates/inventory.json");
   const policy = JSON.parse(journey.readFile("templates/policy.json")) as RedactPolicy;
   const inventory = JSON.parse(journey.readFile("templates/inventory.json")) as RedactInventory;
-  await importCaptures(user, "original.case");
+  await importCaptures(user);
   const panel = privacy();
 
   await enter(user, panel.getByLabelText("Policy file"), "authored-policy.json");
@@ -405,7 +405,7 @@ test("a policy and inventory authored in the window derive a ready review and th
   await privacyTask(user, "Create review");
   await panel.findByRole("option", { name: "authored-inventory.json" });
 
-  await user.selectOptions(panel.getByLabelText("Case"), "original.case");
+  await user.selectOptions(panel.getByLabelText("Case"), caseEntry);
   await user.selectOptions(panel.getByLabelText("Original test file"), "spec.json");
   await user.selectOptions(panel.getByLabelText("Disclosure policy", { selector: "select" }), "authored-policy.json");
   await user.selectOptions(panel.getByLabelText("Original-artifact inventory"), "authored-inventory.json");
@@ -414,7 +414,7 @@ test("a policy and inventory authored in the window derive a ready review and th
   const windowIdentity = (await line(panel, /^Identity an approval must name: /)).replace("Identity an approval must name: ", "");
   const cli = await journey.commandLine([
     "--operation-policy", journey.path("vendor-delivered-license", "operation-policy.json"),
-    "redact", `${project}/original.case`, "--spec", `${project}/spec.json`,
+    "redact", `${project}/${caseEntry}`, "--spec", `${project}/spec.json`,
     "--policy", `${project}/authored-policy.json`, "--inventory", `${project}/authored-inventory.json`,
     "--local-state", `${project}/cli-private`, "--output", `${project}/cli-review`,
   ]);
@@ -430,24 +430,15 @@ test("a policy and inventory authored in the window derive a ready review and th
   expect(journey.callsTo("SaveRedactInventory")).toHaveLength(1);
 });
 
+/** The entry the import of the two captures generated for their case. */
+let caseEntry = "";
+
 /** Imports the two MLLP captures into the open project as one registered
- * case, with the framing the capture used. */
-async function importCaptures(user: UserEvent, caseName: string) {
-  const evidence = within(region("Evidence"));
-  await press(user, evidence.getByRole("button", { name: "Import" }));
-  await journey.chooseFiles([journey.path("captures/redact-booking.mllp"), journey.path("captures/redact-reschedule.mllp")], "Choose evidence files to import");
-  await press(user, await screen.findByRole("button", { name: "Select Files…" }));
-  await within(screen.getByRole("region", { name: "Declared sources" })).findByText(/redact-reschedule\.mllp/);
-  await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
-  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
-  const commit = within(screen.getByRole("region", { name: "Commit import" }));
-  await enter(user, commit.getByLabelText("Case bundle folder name"), caseName);
-  await enter(user, commit.getByLabelText("Receipt file name"), `${caseName}-receipt.json`);
-  await enter(user, commit.getByLabelText("Case title"), "Planted example");
-  await press(user, commit.getByRole("button", { name: "Import" }));
-  expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open case" }));
-  expect(await within(region("Inspector")).findByText(caseName, { selector: "dd" })).toBeTruthy();
+ * case, with the framing the capture used, and opens it. */
+async function importCaptures(user: UserEvent) {
+  await declareMllpImport(user, journey, ["captures/redact-booking.mllp", "captures/redact-reschedule.mllp"], "Planted example");
+  caseEntry = await finishImport(user, journey);
+  expect(caseEntry).not.toBe("");
 }
 
 /** Derives a disclosure review of the case under one policy and returns what
@@ -455,7 +446,7 @@ async function importCaptures(user: UserEvent, caseName: string) {
 async function derive(user: UserEvent, policy: string) {
   await privacyTask(user, "Create review");
   const panel = privacy();
-  await user.selectOptions(panel.getByLabelText("Case"), "original.case");
+  await user.selectOptions(panel.getByLabelText("Case"), caseEntry);
   await user.selectOptions(panel.getByLabelText("Original test file"), "spec.json");
   await user.selectOptions(panel.getByLabelText("Disclosure policy", { selector: "select" }), policy);
   await user.selectOptions(panel.getByLabelText("Original-artifact inventory"), "inventory.json");
@@ -472,7 +463,7 @@ test("a planted example's privacy review is blocked while its policy leaves find
   await createProject(user, journey, "reviews", "planted-review", "Planted disclosure review");
   const project = "reviews/planted-review";
   placePlantedExample(project);
-  await importCaptures(user, "original.case");
+  await importCaptures(user);
 
   const blocked = await derive(user, "blocked-policy.json");
   expect(blocked.review).toMatch(/^Review review-001 · blocked · (\d+) findings \(\1 unresolved\)\.$/);
@@ -488,7 +479,7 @@ test("a planted example's privacy review is blocked while its policy leaves find
       "--operation-policy",
       journey.path("vendor-delivered-license", "operation-policy.json"),
       "redact",
-      `${project}/original.case`,
+      `${project}/${caseEntry}`,
       "--spec",
       `${project}/spec.json`,
       "--policy",
@@ -580,7 +571,7 @@ test("an approved review is reexecuted against the target its original failing r
     JSON.stringify({ schema: "readmit-target/v1", test_endpoint: true, address, transport: "plain", approved_transport: false, connect_timeout: "10s", message_timeout: "30s", max_ack_bytes: 65536 }),
   );
   journey.makeFolder("receiver");
-  await importCaptures(user, "original.case");
+  await importCaptures(user);
 
   // The actual original phase: the planted test run once through the window
   // against the defective ledger, failing as reviewed.
@@ -613,7 +604,7 @@ test("an approved review is reexecuted against the target its original failing r
   // The original run becomes the current run of a retained packet.
   const packet = packets();
   await packet.findAllByRole("option", { name: "run-original" });
-  await user.selectOptions(packet.getByLabelText("Case"), "original.case");
+  await user.selectOptions(packet.getByLabelText("Case"), caseEntry);
   await user.selectOptions(packet.getByLabelText("Historical test file"), "spec.json");
   await user.selectOptions(packet.getByLabelText("Current run or result"), "run-original");
   await press(user, packet.getByRole("button", { name: "Preview" }));

@@ -57,45 +57,37 @@ test.skipIf(!measuring())(
     journey.writeFile("exports/feed.mllp", framed(BOOKING).repeat(OCCURRENCES));
     await licensedProject(journey, user);
 
-    // Import preview, repeated: the click to the preview's counts drawn again.
-    await declareMllpImport(user, journey, "exports/feed.mllp");
-    const previewButton = () => screen.getByRole("button", { name: /Preview|Extracting preview…/ });
-    const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
+    // Import preview, repeated: from Next on the Format step to the
+    // preview's rows drawn again.
+    await declareMllpImport(user, journey, "exports/feed.mllp", "feed");
+    const flow = within(screen.getByRole("dialog", { name: "Import" }));
     const previews: number[] = [];
     for (let sample = 0; sample <= SAMPLES; sample++) {
+      await press(user, flow.getByRole("button", { name: "Back" }));
+      const asked = journey.callsTo("PreviewImport").length;
       const elapsed = await timed(
-        () => press(user, previewButton()),
+        () => press(user, flow.getByRole("button", { name: "Next" })),
         () =>
           waitFor(() => {
-            expect(previewButton().textContent).toBe("Preview");
-            expect(preview.getByText("Occurrences").previousSibling?.textContent).toBe(String(OCCURRENCES));
-          }),
+            expect(journey.callsTo("PreviewImport")[asked]?.result).toMatchObject({ state: "completed", row_total: OCCURRENCES });
+            expect(flow.getByRole("table", { name: "Preview" })).toBeTruthy();
+          }, { timeout: 60_000 }),
       );
       if (sample > 0) previews.push(elapsed);
     }
     logTiming(`import preview of ${OCCURRENCES} occurrences`, previews);
 
-    // Import commit, once: it writes one synced file per occurrence.
-    const commit = within(screen.getByRole("region", { name: "Commit import" }));
-    await user.clear(commit.getByLabelText("Case bundle folder name"));
-    await user.type(commit.getByLabelText("Case bundle folder name"), "feed");
-    const committed = await timed(
-      () => press(user, commit.getByRole("button", { name: "Import" })),
-      async () => {
-        expect(await commit.findByText("Import Completed Successfully", undefined, { timeout: 180_000 })).toBeTruthy();
-      },
-    );
-    logTiming(`import commit of ${OCCURRENCES} occurrences (one sample)`, [committed]);
-    // Opening the case, once: the click to the first window of its messages
+    // Import, once: it writes one synced file per occurrence, registers the
+    // case and opens it; the click to the first window of its messages
     // drawn, read with no index set up.
-    const opened = await timed(
-      () => press(user, commit.getByRole("button", { name: "Open case" })),
+    const imported = await timed(
+      () => press(user, flow.getByRole("button", { name: "Import" })),
       async () => {
-        const table = await screen.findByRole("table", { name: "Messages" }, { timeout: 60_000 });
+        const table = await screen.findByRole("table", { name: "Messages" }, { timeout: 180_000 });
         await waitFor(() => expect(Number(table.getAttribute("aria-rowcount")) - 1).toBe(GRID_WINDOW), { timeout: 60_000 });
       },
     );
-    logTiming("open case to first window of messages", [opened]);
+    logTiming(`import of ${OCCURRENCES} occurrences to the first window of its messages (one sample)`, [imported]);
     const messages = await openedCase();
     const table = messages.getByRole("table", { name: "Messages" });
     const drawn = () => table.querySelectorAll("tr[data-row-id]").length;

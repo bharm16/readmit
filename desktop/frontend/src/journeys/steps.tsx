@@ -10,7 +10,7 @@ import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, press, region, whenEnabled } from "../testkit/journey";
 import type { Journey } from "../testkit/journey";
 import type { Downstream, DownstreamMode } from "../testkit/downstream.js";
-import { findMessageRow, goToView, page } from "../testkit/navigation";
+import { findMessageRow, goToView } from "../testkit/navigation";
 import { hostLoad } from "./probes.js";
 
 /** How many messages one read of a case's Messages list returns: the
@@ -114,7 +114,7 @@ export async function investigation(user: UserEvent, journey: Journey, mode: Dow
   await journey.launch();
   await activateLicense(user, journey);
   const project = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
   await configureTarget(user, downstream.address);
   return { downstream, project };
 }
@@ -128,24 +128,72 @@ export async function savedAckTest(user: UserEvent, journey: Journey, mode: Down
   return investigated;
 }
 
-/** Opens the import of the open project's Cases page, once the reads that
- * opening it starts have been answered. The page header and the empty list
- * both offer Import; either opens it. */
-async function openImport(user: UserEvent, journey: Journey): Promise<void> {
-  await press(user, (await page().findAllByRole("button", { name: "Import" }))[0]!);
-  await screen.findByRole("region", { name: "Declared sources" });
+/** Opens the Import flow from the open project's Cases page, once the reads
+ * that opening it starts have been answered. */
+async function openImport(user: UserEvent, journey: Journey): Promise<ReturnType<typeof within>> {
+  await press(user, (await screen.findAllByRole("button", { name: "Import" }))[0]!);
+  const flow = within(await screen.findByRole("dialog", { name: "Import" }));
   await journey.settled();
+  return flow;
 }
 
-/** Opens an import of an MLLP-framed export already on this person's machine
- * into the open project and declares its framing, up to its preview: what a
- * person has done before they preview, commit or cancel it. */
-export async function declareMllpImport(user: UserEvent, journey: Journey, file: string): Promise<void> {
-  await openImport(user, journey);
-  await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
-  await press(user, await screen.findByRole("button", { name: "Select Files…" }));
-  await user.selectOptions(screen.getByLabelText("Framing"), "mllp");
-  await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
+/** Chooses exports on this person's machine as the Import flow's sources,
+ * through the host's file dialog. */
+async function chooseImportFiles(user: UserEvent, journey: Journey, flow: ReturnType<typeof within>, files: string[]): Promise<void> {
+  await journey.chooseFiles(files.map((file) => journey.path(file)), "Choose evidence files to import");
+  await pressServed(user, journey, flow.getByRole("button", { name: "Choose files" }), "ChooseImportSources");
+  for (const file of files) await flow.findByRole("rowheader", { name: file.split("/").pop() ?? file });
+}
+
+/** Declares the import's format in its Format sheet — the framing, the batch
+ * boundary for a batch, and CR segments — and previews it. */
+async function declareFormat(user: UserEvent, journey: Journey, flow: ReturnType<typeof within>, framing: "mllp" | "batch"): Promise<void> {
+  await pressServed(user, journey, flow.getByRole("button", { name: "Next" }), "ProbeImport");
+  // An unambiguous HL7 reading goes straight to its preview; the format is
+  // declared on the step before it.
+  if (!flow.queryAllByRole("button", { name: "Edit" }).length) {
+    await press(user, await flow.findByRole("button", { name: "Back" }));
+  }
+  await press(user, (await flow.findAllByRole("button", { name: "Edit" }))[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "Format" }));
+  await user.selectOptions(sheet.getByLabelText("Framing"), framing);
+  if (framing === "batch") await user.selectOptions(await sheet.findByLabelText("Batch boundary"), "segment-start");
+  await user.selectOptions(sheet.getByLabelText("Segment terminator"), "cr");
+  await press(user, sheet.getByRole("button", { name: "Done" }));
+  await pressServed(user, journey, flow.getByRole("button", { name: "Next" }), "PreviewImport");
+  await flow.findByRole("table", { name: "Preview" }, { timeout: 60_000 });
+}
+
+/** Opens an import of exports already on this person's machine into the open
+ * project, names the case when a title is given, and declares their framing —
+ * MLLP, or a batch of back-to-back messages each starting at MSH — up to its
+ * preview: what a person has done before they import or cancel it. */
+export async function declareImport(user: UserEvent, journey: Journey, files: string | string[], framing: "mllp" | "batch", title?: string): Promise<void> {
+  const flow = await openImport(user, journey);
+  await chooseImportFiles(user, journey, flow, Array.isArray(files) ? files : [files]);
+  if (title !== undefined) await enter(user, flow.getByLabelText("Case"), title);
+  await declareFormat(user, journey, flow, framing);
+}
+
+/** declareImport of MLLP-framed exports. */
+export async function declareMllpImport(user: UserEvent, journey: Journey, files: string | string[], title?: string): Promise<void> {
+  await declareImport(user, journey, files, "mllp", title);
+}
+
+/** The Import flow's preview, once it has been read. */
+export async function importPreview() {
+  const flow = within(await screen.findByRole("dialog", { name: "Import" }));
+  return within(await flow.findByRole("table", { name: "Preview" }, { timeout: 60_000 }));
+}
+
+/** Imports what the open Import flow previewed, as one intent, and waits for
+ * the case to open on its Messages. Returns the entry the import generated
+ * for the case. */
+export async function finishImport(user: UserEvent, journey: Journey): Promise<string> {
+  const flow = within(await screen.findByRole("dialog", { name: "Import" }));
+  await pressServed(user, journey, flow.getByRole("button", { name: "Import" }), "ImportCase");
+  await openedCase();
+  return (journey.callsTo("OpenCase").at(-1)?.args[1] as string | undefined) ?? "";
 }
 
 /** Presses a control whose call the window's one operation slot serves, again
@@ -163,28 +211,11 @@ export async function pressServed(user: UserEvent, journey: Journey, control: HT
 }
 
 /** Imports an export of back-to-back messages into the open project as a
- * registered case, then opens that case. */
-export async function importExport(user: UserEvent, journey: Journey, file: string, caseName: string, title: string): Promise<void> {
-  await openImport(user, journey);
-  await journey.chooseFiles([journey.path(file)], "Choose evidence files to import");
-  await pressServed(user, journey, await screen.findByRole("button", { name: "Select Files…" }), "ChooseImportSources");
-  await within(screen.getByRole("region", { name: "Declared sources" })).findByText(new RegExp(file.split("/").pop() ?? file));
-  await user.selectOptions(screen.getByLabelText("Framing"), "batch");
-  await user.selectOptions(await screen.findByLabelText("Batch boundary"), "segment-start");
-  await user.selectOptions(screen.getByLabelText("Terminator"), "cr");
-  // Several panels carry a Preview button of this name now; this one belongs
-  // to the import's own bounded-preview section.
-  const extraction = within(screen.getByRole("region", { name: "Extraction preview" }));
-  await pressServed(user, journey, extraction.getByRole("button", { name: "Preview" }), "PreviewImport");
-  const commit = within(screen.getByRole("region", { name: "Commit import" }));
-  await whenEnabled(commit.getByRole("button", { name: "Import" }));
-  await enter(user, commit.getByLabelText("Case bundle folder name"), caseName);
-  await enter(user, commit.getByLabelText("Receipt file name"), `${caseName}-receipt.json`);
-  await enter(user, commit.getByLabelText("Case title"), title);
-  await pressServed(user, journey, commit.getByRole("button", { name: "Import" }), "CommitImport");
-  expect(await commit.findByText("Import Completed Successfully")).toBeTruthy();
-  await press(user, commit.getByRole("button", { name: "Open case" }));
-  await openedCase();
+ * case named title, then opens that case. Returns the entry the import
+ * generated for it. */
+export async function importExport(user: UserEvent, journey: Journey, file: string, title: string): Promise<string> {
+  await declareImport(user, journey, file, "batch", title);
+  return finishImport(user, journey);
 }
 
 /** Waits for the case just opened to show its Messages list, and returns it. */

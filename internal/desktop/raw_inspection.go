@@ -115,7 +115,7 @@ func (r *FileMessagesResult) refuse(state State, reason string) { r.State, r.Rea
 // Nothing is imported, written or retained; a later window reads the file
 // again. It holds the operation slot but is not interruptible.
 func (a *App) ListFileMessages(request FileMessagesRequest) FileMessagesResult {
-	return run(a, false, false, func(context.Context) FileMessagesResult {
+	return runRead(a, false, func(context.Context) FileMessagesResult {
 		fail := func(state State, reason string) FileMessagesResult {
 			return FileMessagesResult{State: state, Reason: reason, Rows: []FileMessage{}}
 		}
@@ -178,7 +178,7 @@ type FileInspectRequest struct {
 // Offsets are within the file. Identity is the file's digest. Nothing is
 // written; it holds the operation slot but is not interruptible.
 func (a *App) InspectFileMessage(request FileInspectRequest) InspectionResult {
-	return run(a, false, false, func(context.Context) InspectionResult {
+	return runRead(a, false, func(context.Context) InspectionResult {
 		fail := func(state State, reason string) InspectionResult {
 			return InspectionResult{State: state, Reason: reason}
 		}
@@ -233,7 +233,7 @@ func (r *FileBytesResult) refuse(state State, reason string) { r.State, r.Reason
 // did not parse still has. The printable column is present only when
 // revealed. Nothing is written.
 func (a *App) ReadFileBytes(request FileBytesRequest) FileBytesResult {
-	return run(a, false, false, func(context.Context) FileBytesResult {
+	return runRead(a, false, func(context.Context) FileBytesResult {
 		fail := func(state State, reason string) FileBytesResult {
 			return FileBytesResult{State: state, Reason: reason, Rows: []HexRow{}}
 		}

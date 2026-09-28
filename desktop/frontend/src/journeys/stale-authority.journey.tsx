@@ -53,7 +53,7 @@ test("a note restored after a reopen cannot be stored once the activation is rel
   await activateLicense(user, journey);
   const project = await createProject(user, journey, "investigations", "", "Scheduling handover");
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
 
   // A note about the case, written and left unstored.
   await press(user, page().getByRole("button", { name: "Back to cases" }));

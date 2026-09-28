@@ -67,12 +67,17 @@ const (
 	// AttachmentItem is a file attached to a case. It is named by a
 	// reference like any object, and listed only as its case's attachments.
 	AttachmentItem ItemKind = "attachment"
+	// MappingItem is a saved mapping preset, and SourceItem a saved capture
+	// source (#552).
+	MappingItem ItemKind = "mapping"
+	SourceItem  ItemKind = "source"
 )
 
 var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, EnvironmentItem, ObservationItem,
 	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem,
 	AnalysisSettingsItem, FindingReviewItem,
-	LinkRulesItem, CoverageItem, LinkReviewItem}
+	LinkRulesItem, CoverageItem, LinkReviewItem,
+	MappingItem, SourceItem}
 
 // Availability is whether an object's backing can be read now. Readability
 // grants nothing: whether an action is permitted is Capabilities.
@@ -178,6 +183,8 @@ type ItemSummary struct {
 	LinkRules        *LinkRulesSummary        `json:"link_rules,omitzero"`
 	Coverage         *CoverageSummary         `json:"coverage,omitzero"`
 	LinkReview       *LinkReviewSummary       `json:"link_review,omitzero"`
+	Mapping          *MappingSummary          `json:"mapping,omitzero"`
+	Source           *SourceSummary           `json:"source,omitzero"`
 }
 
 // ProjectSummary is a project as the project document declares it. Folder is
@@ -530,7 +537,7 @@ func (r *CatalogResult) refuse(state State, reason string) { r.State, r.Reason =
 // snapshot, whatever changed on disk since. A cursor whose snapshot is no
 // longer held is refused, and the list is read again from its start.
 func (a *App) ListCatalog(query CatalogQuery) CatalogResult {
-	return run(a, false, false, func(ctx context.Context) CatalogResult {
+	return runRead(a, false, func(ctx context.Context) CatalogResult {
 		result := CatalogResult{Context: query.Context}
 		if !slices.Contains(itemKinds, query.Kind) {
 			result.refuse(Failed, "the catalog lists one of the object kinds this release names")
@@ -716,7 +723,7 @@ func (r *ItemResult) refuse(state State, reason string) { r.State, r.Reason = st
 // opened the object (readmit-desktop-opened/v1) is written here, and the
 // catalog reads it back as the object's last_opened_at.
 func (a *App) OpenItem(request ItemRequest) ItemResult {
-	return run(a, false, false, func(ctx context.Context) ItemResult {
+	return runRead(a, false, func(ctx context.Context) ItemResult {
 		result := a.reread(ctx, request.Context, request.Ref)
 		if result.Item != nil && request.Ref.Kind != ProjectItem {
 			if stamp := a.recordOpened(result.Item.ProjectID, result.Item.Ref.ID); stamp != "" {

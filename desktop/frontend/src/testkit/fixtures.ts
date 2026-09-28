@@ -208,9 +208,9 @@ export function shellResult(): ShellResult {
         {
           id: "capture",
           activity: "Capture and source collection",
-          destination: "The declared source, or the local port the listener serves.",
+          destination: "The saved capture source, or the address its listener serves.",
           data: "The bytes the source delivers, into a new local case bundle.",
-          authorization: "A saved registration and policy, and an explicit start.",
+          authorization: "A saved capture source and an explicit Start capture.",
         },
         {
           id: "observe",
@@ -322,6 +322,20 @@ export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): V
     affected_test_impacts: ["affected", "unaffected", "current", "unrelated", "unknown"],
     observation_starts: [{"schema": "readmit-observation-source/v1", "source": {"kind": "file-export", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": {"envelope": "csv", "encoding": "utf-8", "csv": {"delimiter": ",", "record_separator": "lf", "header": "present", "fields": 2}, "record_key": []}, "file": {"path": "", "max_bytes": 65536}, "http": null, "capture": null}, {"schema": "readmit-observation-source/v1", "source": {"kind": "http-api", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": {"envelope": "json", "encoding": "utf-8", "json": {"record_path": []}, "record_key": []}, "file": null, "http": {"url": "", "classification": "unclassified", "ca_file": "", "server_name": "", "timeout": "10s", "max_bytes": 1048576, "retry": {"attempts": 1, "delay": "1s"}, "credential": null}, "capture": null}, {"schema": "readmit-observation-source/v2", "source": {"kind": "downstream-capture", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": null, "file": null, "http": null, "capture": {"path": "", "kinds": ["message"], "record_key": "", "max_occurrences": 1000}}, {"schema": "readmit-observation-source/v3", "source": {"kind": "database-query", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": null, "file": null, "http": null, "capture": null, "database": {"driver": "postgresql", "address": "", "classification": "unclassified", "name": "", "username": "", "ca_file": "", "server_name": "", "credential": {"store": "os-keychain", "address": "", "purpose": "database-observation", "command": "", "arguments": []}, "view": [], "record_key": "", "key_type": "text", "filters": [], "limits": null}}],
     coverage: { declared_coverages: ["partial", "complete"], retry_bases: ["operator_reported_retry"], max_clock_tolerance_seconds: 86400 },
+    import_engines: [
+      { engine: "mirth", name: "Mirth Connect", version: "4.5.2", formats: ["raw", "message-xml"], terminators: ["cr", "lf", "crlf"] },
+      { engine: "oie", name: "Open Integration Engine", version: "4.6.0", formats: ["raw", "message-xml"], terminators: ["cr", "lf", "crlf"] },
+    ],
+    capture_source_starts: [{"type": "local-folder", "evidence": {"schema": "readmit-source/v1", "name": "", "kind": "directory", "scope": "", "quota": {"max_entries": 64, "max_entry_bytes": 4194304, "max_total_bytes": 33554432}, "retry": {"attempts": 1, "backoff": "250ms"}}, "plan": {"schema": "readmit-import-plan/v1", "framing": "raw", "terminator": "cr", "encoding": "utf-8", "direction": "inbound", "members": [".hl7", ".mllp"]}}, {"type": "transfer", "evidence": {"schema": "readmit-source/v1", "name": "", "kind": "transfer", "scope": "", "quota": {"max_entries": 64, "max_entry_bytes": 4194304, "max_total_bytes": 33554432}, "retry": {"attempts": 1, "backoff": "250ms"}, "classification": "unclassified"}, "plan": {"schema": "readmit-import-plan/v1", "framing": "raw", "terminator": "cr", "encoding": "utf-8", "direction": "inbound", "members": [".hl7", ".mllp"]}}, {"type": "mllp-listener", "listener": {"schema": "readmit-capture-listener/v1", "bind_address": "127.0.0.1", "port": 0, "transport": "plain", "message_limit": 0, "connection_limit": 1, "idle_timeout": "30s", "ack_code": "AA", "allow_remote": false}, "responder_choices": {"name": "listener", "source_label": "listener", "accepted_message_types": {"operator": "any-message-type", "values": []}, "enhanced": false, "fault": "none", "fault_delay_ms": 50}}],
+    capture_source_types: [
+      { type: "local-folder", available: true },
+      { type: "transfer", available: true },
+      { type: "mllp-listener", available: true },
+      { type: "api", available: false },
+    ],
+    listener_transports: ["plain", "tls", "mutual-tls"],
+    ack_codes: ["AA", "AE", "AR"],
+    import_time_operators: ["unknown", "rfc3339", "unix-seconds", "unix-milliseconds", "hl7-dtm"],
   };
 }
 

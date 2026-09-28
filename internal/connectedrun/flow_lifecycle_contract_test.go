@@ -213,6 +213,16 @@ func newFlowContractHarnessForRecovery(t *testing.T, mutation ...string) *flowCo
 }
 func newFlowContractHarnessWithSource(t *testing.T, coherentHTTP bool, mutation ...string) *flowContractHarness {
 	t.Helper()
+	return newFlowContractHarnessWithTiming(t, coherentHTTP, coherentHTTP, mutation...)
+}
+
+// newFlowContractHarnessWithTiming selects the source and, separately, whether
+// acquisitions get the patient budget: two seconds per read and a coverage gap
+// bounded only by the parent deadline. A test whose subject is not scheduling
+// latency takes the patient budget whatever its source, so a slow runner
+// cannot stop it before the behavior it tests.
+func newFlowContractHarnessWithTiming(t *testing.T, coherentHTTP, patient bool, mutation ...string) *flowContractHarness {
+	t.Helper()
 	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 	root := t.TempDir()
 	t.Cleanup(func() {
@@ -344,12 +354,13 @@ func newFlowContractHarnessWithSource(t *testing.T, coherentHTTP bool, mutation 
 		for i := range definitions {
 			ds := &definitions[i]
 			files[ds.Projection.File] = oldFiles["dependencies/"+ds.Projection.SHA256]
-			if coherentHTTP {
+			if patient {
 				projection, err := dataset.DecodeProjection(files[ds.Projection.File])
 				if err != nil {
 					t.Fatal(err)
 				}
-				// HTTP authorization and TLS are part of acquisition. The file
+				// Authorization, TLS and the per-read re-verification of the
+				// selected configuration are part of acquisition. The file
 				// helper's 300ms budget expires before those complete under race.
 				projection.Limits.TimeoutMS = 2000
 				pinned := ref(ds.Projection.ID, dataset.ProjectionSchema, ds.Projection.File, projection)
@@ -361,7 +372,7 @@ func newFlowContractHarnessWithSource(t *testing.T, coherentHTTP bool, mutation 
 			}
 			interval.Source = ds.Source
 			interval.HorizonMS, interval.SampleMS, interval.MaxGapMS = 120, 20, 1000
-			if coherentHTTP {
+			if patient {
 				// These positive lifecycle fixtures qualify state/authority,
 				// not scheduling latency. A healthy admitted two-second HTTP read must
 				// fit coverage within the unchanged finite parent deadline.

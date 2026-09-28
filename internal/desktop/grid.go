@@ -173,7 +173,7 @@ func (r refusal) buildIndex() BuildIndexResult {
 // the case reader's own limits once it starts, so it holds the operation slot
 // but is not interruptible.
 func (a *App) OpenGrid(workspace, name, indexName string, offset, limit int) GridResult {
-	return run(a, false, false, func(context.Context) GridResult {
+	return runRead(a, false, func(context.Context) GridResult {
 		return a.openGrid(workspace, name, indexName, offset, limit)
 	})
 }
@@ -358,7 +358,7 @@ func indexReplacementReason(path string, opened *bundle.Bundle) string {
 // DescribeIndex reports what one named index retains of a case, or finds an
 // index of that case's exact evidence in the workspace.
 func (a *App) DescribeIndex(workspace, caseName, indexName string) IndexResult {
-	return run(a, false, false, func(context.Context) IndexResult {
+	return runRead(a, false, func(context.Context) IndexResult {
 		return a.describeIndex(workspace, caseName, indexName)
 	})
 }

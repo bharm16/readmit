@@ -471,11 +471,15 @@ func (a *App) StartSampleFixture(request SampleFixtureRequest) SampleFixtureResu
 		}
 		observationEntry := caseEntry + "-observation.json"
 		defer a.endCaptureProgress()
-		capture := CaptureRequest{Address: request.Address, FixtureMode: string(mode), IdleTimeout: request.IdleTimeout, MaxMessages: messages}
-		config := listenConfig(capture, filepath.Join(root, caseEntry), filepath.Join(root, observationEntry))
+		idle := operation.DefaultIdleTimeout
+		if stated, err := time.ParseDuration(request.IdleTimeout); err == nil && stated > 0 {
+			idle = stated
+		}
+		config := operation.ListenConfig{Address: request.Address, Mode: mode, OutputPath: filepath.Join(root, caseEntry),
+			ObservationPath: filepath.Join(root, observationEntry), MaxFrameBytes: operation.DefaultMaxFrameBytes, IdleTimeout: idle, MaxMessages: messages}
 		config.Listening = a.reportCaptureProgress("listen")
 		served, serveErr := operation.StartListen(ctx, config)
-		session := a.finishCapture(ctx, CaptureSessionResult{BoundAddress: served.BoundAddress, CasePath: caseEntry, ObservationPath: observationEntry}, served.Bundle, serveErr, CaptureListening)
+		session := a.finishCapture(ctx, CaptureSessionResult{BoundAddress: served.BoundAddress, CasePath: caseEntry, ObservationPath: observationEntry}, served.Bundle, serveErr)
 		result.State, result.Reason, result.Phase, result.BoundAddress, result.Ledger = session.State, session.Reason, session.Phase, session.BoundAddress, session.Ledger
 		if served.Observation != nil {
 			result.Received = len(served.Observation.Processed)

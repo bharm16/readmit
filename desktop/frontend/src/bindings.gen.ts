@@ -24,6 +24,9 @@
 // declarations; regenerate this file whenever a Go type the facade reaches
 // changes, and never edit it.
 
+/** internal/desktop.AckCode */
+export type AckCode = "AA" | "AE" | "AR";
+
 /** internal/desktop.ActionID */
 export type ActionID =
   | "item.open"
@@ -569,15 +572,6 @@ export interface CanonicalTestResult {
   identity?: string;
 }
 
-/** internal/desktop.CaptureJournalResult */
-export interface CaptureJournalResult {
-  state: State;
-  reason?: string;
-  phase?: CapturePhase;
-  journal?: CaptureJournalSummary;
-  path?: string;
-}
-
 /** internal/capturejournal.Summary */
 export interface CaptureJournalSummary {
   schema: string;
@@ -592,6 +586,19 @@ export interface CaptureJournalSummary {
   journal_incomplete: boolean;
 }
 
+/** internal/desktop.CaptureLimits */
+export interface CaptureLimits {
+  max_messages?: number;
+  max_capture_bytes?: number;
+}
+
+/** internal/desktop.CaptureMessage */
+export interface CaptureMessage {
+  at: string;
+  type: string;
+  connection: number;
+}
+
 /** internal/operation.CaptureObservationBinding */
 export interface CaptureObservationBinding {
   case_path: string;
@@ -603,28 +610,33 @@ export interface CaptureObservationBinding {
   freshness: string;
 }
 
-/** internal/desktop.CapturePhase */
-export type CapturePhase =
-  | "idle"
-  | "previewing"
-  | "listening"
-  | "collecting"
-  | "stopping"
-  | "stopped"
-  | "failed";
+/** internal/desktop.CaptureOutcome */
+export type CaptureOutcome =
+  | "finished"
+  | "cancelled"
+  | "interrupted"
+  | "finalize-failed"
+  | "running";
 
-/** internal/desktop.CapturePreviewResult */
-export interface CapturePreviewResult {
-  state: State;
-  reason?: string;
-  phase?: CapturePhase;
-  preview?: OperationCapturePreview;
-}
+/** internal/desktop.CapturePathKind */
+export type CapturePathKind = "source-root" | "transfer-program" | "certificate" | "client-ca";
+
+/** internal/desktop.CapturePhase */
+export type CapturePhase = "idle" | "collecting" | "stopping" | "stopped" | "failed";
 
 /** internal/desktop.CaptureProgress */
 export interface CaptureProgress {
   kind: string;
   bound_address: string;
+  session?: string;
+  name?: string;
+  source?: ItemRef;
+  source_name?: string;
+  source_type?: CaptureSourceType;
+  started_at?: string;
+  received?: number;
+  finishing?: boolean;
+  messages?: CaptureMessage[];
 }
 
 /** internal/desktop.CaptureProgressResult */
@@ -636,27 +648,18 @@ export interface CaptureProgressResult {
 
 /** internal/desktop.CaptureRequest */
 export interface CaptureRequest {
-  workspace: string;
-  kind: string;
-  address: string;
-  approved_bind?: boolean;
-  policy_file?: string;
-  policy?: ReceiverPolicy;
-  fixture_mode?: string;
-  output_name: string;
-  journal_name?: string;
-  observation_name?: string;
-  max_frame_bytes?: number;
-  idle_timeout?: string;
-  application_ack_timeout?: string;
-  max_messages?: number;
-  max_connections?: number;
-  max_sessions?: number;
-  max_capture_bytes?: number;
-  tls_certificate_file?: string;
-  tls_key_reference?: string;
-  secrets_file?: string;
-  client_ca_file?: string;
+  context?: RequestContext;
+  source?: ItemRef;
+  name?: string;
+  environment?: ItemRef;
+  limits?: CaptureLimits;
+  intent_id?: string;
+}
+
+/** internal/desktop.CaptureSessionRequest */
+export interface CaptureSessionRequest {
+  context: RequestContext;
+  session: string;
 }
 
 /** internal/desktop.CaptureSessionResult */
@@ -668,13 +671,60 @@ export interface CaptureSessionResult {
   case?: CaseEvidence;
   case_path?: string;
   journal?: CaptureJournalSummary;
-  journal_path?: string;
   observation_path?: string;
   received?: number;
   connections?: number;
   dropped?: number;
-  preview?: OperationCapturePreview;
   ledger?: FixtureLedger;
+  outcome?: CaptureOutcome;
+  session?: string;
+  case_ref?: ItemRef;
+  replayed?: boolean;
+}
+
+/** internal/desktop.CaptureSessionRow */
+export interface CaptureSessionRow {
+  id: string;
+  name: string;
+  source: ItemRef;
+  source_name: string;
+  source_type: CaptureSourceType;
+  environment: ItemRef | null;
+  started_at: string | null;
+  ended_at: string | null;
+  state: CaptureOutcome;
+  reason?: string;
+  received: number;
+  recovered: boolean;
+  case: ItemRef | null;
+  retained: boolean;
+}
+
+/** internal/desktop.CaptureSessionsResult */
+export interface CaptureSessionsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  sessions: CaptureSessionRow[];
+}
+
+/** internal/desktop.CaptureSourceDraft */
+export interface CaptureSourceDraft {
+  type: CaptureSourceType;
+  evidence?: EvidenceSource;
+  plan?: ImportPlan;
+  listener?: ListenerSettings;
+  responder?: ReceiverPolicy;
+  responder_choices?: ResponderChoices;
+}
+
+/** internal/desktop.CaptureSourceType */
+export type CaptureSourceType = "local-folder" | "transfer" | "mllp-listener" | "api";
+
+/** internal/desktop.CaptureSourceTypeChoice */
+export interface CaptureSourceTypeChoice {
+  type: CaptureSourceType;
+  available: boolean;
 }
 
 /** internal/desktop.CaseDraft */
@@ -1852,6 +1902,22 @@ export interface DriftTargetSide {
   revision: string;
 }
 
+/** internal/desktop.DroppedRefusal */
+export interface DroppedRefusal {
+  name: string;
+  reason: string;
+}
+
+/** internal/desktop.DroppedSourcesResult */
+export interface DroppedSourcesResult {
+  state: State;
+  reason?: string;
+  files: string[];
+  folders: string[];
+  archives: string[];
+  refused: DroppedRefusal[];
+}
+
 /** internal/durablerun.Cleanup */
 export interface DurableRunCleanup {
   schema: string;
@@ -1916,6 +1982,18 @@ export interface EditorDraftsResult {
   drafts?: EditorDraft[];
 }
 
+/** internal/engineexport.Engine */
+export interface EngineExportEngine {
+  engine: string;
+  name: string;
+  version: string;
+  formats: EngineExportFormat[];
+  terminators: HL7Terminator[];
+}
+
+/** internal/engineexport.Format */
+export type EngineExportFormat = "raw" | "message-xml";
+
 /** internal/engineexport.Record */
 export interface EngineExportRecord {
   offset: number;
@@ -1929,8 +2007,8 @@ export interface EnginePlan {
   schema: string;
   engine: string;
   version: string;
-  format: string;
-  terminator: string;
+  format: EngineExportFormat;
+  terminator: HL7Terminator;
 }
 
 /** internal/desktop.EnvironmentCheckResult */
@@ -2326,20 +2404,6 @@ export interface FiltersResult {
   reason?: string;
   filters: Filter[];
   selected: string;
-}
-
-/** internal/desktop.FinalizeCaptureRequest */
-export interface FinalizeCaptureRequest {
-  workspace: string;
-  project?: string;
-  folder: string;
-  collection_receipt: string;
-  output_name: string;
-  receipt_name?: string;
-  register_in_project?: boolean;
-  case_title?: string;
-  case_owner?: string;
-  case_version?: string;
 }
 
 /** internal/findingreview.Decision */
@@ -3004,35 +3068,24 @@ export interface ImportCSVDialect {
   fields: number;
 }
 
-/** internal/desktop.ImportCommitRequest */
-export interface ImportCommitRequest {
-  workspace: string;
-  project?: string;
-  mode: string;
-  output_name: string;
-  receipt_name?: string;
-  files?: string[];
-  folders?: string[];
-  archives?: string[];
-  plan?: ImportPlan;
-  recipe?: MappingRecipe;
-  engine_plan?: EnginePlan;
-  register_in_project?: boolean;
-  case_title?: string;
-  case_owner?: string;
-  case_version?: string;
-  source_names?: ProjectSource[];
+/** internal/desktop.ImportCaseRequest */
+export interface ImportCaseRequest {
+  context: RequestContext;
+  name: string;
+  source: ImportRequest;
+  preview_token: string;
+  intent_id: string;
 }
 
-/** internal/desktop.ImportCommitResult */
-export interface ImportCommitResult {
+/** internal/desktop.ImportCaseResult */
+export interface ImportCaseResult {
   state: State;
   reason?: string;
-  case?: CaseEvidence;
-  case_path?: string;
-  receipt_path?: string;
-  registered?: boolean;
-  project?: ProjectDocument;
+  context: RequestContext;
+  case?: ItemRef;
+  replayed: boolean;
+  stale?: boolean;
+  operation?: string;
 }
 
 /** internal/importer.Container */
@@ -3078,6 +3131,18 @@ export type ImportFraming = "raw" | "mllp" | "batch";
 /** internal/importer.Header */
 export type ImportHeader = "present" | "absent";
 
+/** internal/desktop.ImportInspectRequest */
+export interface ImportInspectRequest {
+  context?: RequestContext;
+  source: ImportRequest;
+  preview_token: string;
+  row: number;
+  path: string;
+  node_offset: number;
+  byte_offset: number;
+  reveal: boolean;
+}
+
 /** internal/importer.Kind */
 export type ImportKind = "file" | "folder" | "archive";
 
@@ -3090,6 +3155,9 @@ export interface ImportLabelMapping {
 
 /** internal/importer.LabelOperator */
 export type ImportLabelOperator = "unknown" | "declared" | "field";
+
+/** internal/desktop.ImportLocation */
+export type ImportLocation = "file" | "staged" | "folder" | "archive";
 
 /** internal/importer.Mapping */
 export interface ImportMapping {
@@ -3175,6 +3243,77 @@ export interface ImportPreviewResult {
   plan_preview?: ImportPreview;
   recipe_preview?: ImportMappingPreview;
   engine_preview?: OperationEngineExportPreview;
+  preview_token?: string;
+  rows?: ImportPreviewRow[];
+  row_total?: number;
+  problems?: ImportProblems;
+}
+
+/** internal/desktop.ImportPreviewRow */
+export interface ImportPreviewRow {
+  index: number;
+  time: string | null;
+  type: string;
+  source: string;
+  direction: string;
+  kind: string;
+  member: string;
+}
+
+/** internal/importer.ProbeFormat */
+export interface ImportProbeFormat {
+  mode: string;
+  label: string;
+  plan?: ImportPlan;
+  envelope?: ImportEnvelope;
+}
+
+/** internal/desktop.ImportProbeInput */
+export interface ImportProbeInput {
+  source: ImportLocation;
+  index: number;
+  member?: string;
+  container: number;
+  name: string;
+  kind: ImportKind;
+  size: number;
+  accepted: boolean;
+  reason?: string;
+}
+
+/** internal/desktop.ImportProbeRequest */
+export interface ImportProbeRequest {
+  context?: RequestContext;
+  files?: string[];
+  folders?: string[];
+  archives?: string[];
+  staged?: string[];
+}
+
+/** internal/desktop.ImportProbeResult */
+export interface ImportProbeResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  inputs: ImportProbeInput[];
+  formats: ImportProbeFormat[];
+  selected: number | null;
+  sample: ImportProbeSample | null;
+}
+
+/** internal/importer.ProbeSample */
+export interface ImportProbeSample {
+  envelope: ImportEnvelope;
+  fields?: number;
+  columns: string[];
+  paths: string[][];
+}
+
+/** internal/desktop.ImportProblems */
+export interface ImportProblems {
+  excluded?: number;
+  unparsed?: number;
+  unmapped?: number;
 }
 
 /** internal/importer.Record */
@@ -3187,6 +3326,7 @@ export interface ImportRecord {
 
 /** internal/desktop.ImportRequest */
 export interface ImportRequest {
+  context?: RequestContext;
   workspace: string;
   project?: string;
   mode: string;
@@ -3196,6 +3336,7 @@ export interface ImportRequest {
   plan?: ImportPlan;
   recipe?: MappingRecipe;
   engine_plan?: EnginePlan;
+  staged?: string[];
 }
 
 /** internal/importer.Row */
@@ -3477,6 +3618,8 @@ export interface ItemDraft {
   scenario?: ScenarioDraft;
   link_rules?: CorrelationRulesDocument;
   coverage?: CoverageDraft;
+  mapping?: MappingRecipe;
+  source?: CaptureSourceDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -3522,7 +3665,9 @@ export type ItemKind =
   | "link-rules"
   | "coverage"
   | "link-review"
-  | "attachment";
+  | "attachment"
+  | "mapping"
+  | "source";
 
 /** internal/desktop.ItemRef */
 export interface ItemRef {
@@ -3580,6 +3725,8 @@ export interface ItemSummary {
   link_rules?: LinkRulesSummary;
   coverage?: CoverageSummary;
   link_review?: LinkReviewSummary;
+  mapping?: MappingSummary;
+  source?: SourceSummary;
 }
 
 /** internal/desktop.Kind */
@@ -3811,6 +3958,26 @@ export interface ListedProtectionControl {
   control: ProtectionControl;
 }
 
+/** internal/desktop.ListenerSettings */
+export interface ListenerSettings {
+  schema: string;
+  bind_address: string;
+  port: number;
+  transport: ListenerTransport;
+  message_limit: number;
+  connection_limit: number;
+  idle_timeout: string;
+  ack_code: AckCode;
+  allow_remote: boolean;
+  tls_certificate?: string;
+  tls_key_reference?: string;
+  secrets_file?: string;
+  client_ca?: string;
+}
+
+/** internal/desktop.ListenerTransport */
+export type ListenerTransport = "plain" | "tls" | "mutual-tls";
+
 /** internal/localprofile.Profile */
 export interface LocalProfile {
   schema: string;
@@ -3988,6 +4155,11 @@ export interface MappingRecipe {
   source: ImportLabelMapping;
   direction: ImportDirectionMapping;
   channel: ImportLabelMapping;
+}
+
+/** internal/desktop.MappingSummary */
+export interface MappingSummary {
+  envelope: string;
 }
 
 /** internal/desktop.Match */
@@ -4699,32 +4871,6 @@ export interface ObservationWindowWatermark {
 /** internal/bundle.EventKind */
 export type OccurrenceKind = "message" | "ack" | "unparsed";
 
-/** internal/operation.CapturePreview */
-export interface OperationCapturePreview {
-  kind: string;
-  address: string;
-  approved_bind: boolean;
-  policy_name?: string;
-  policy_schema?: string;
-  source_label?: string;
-  acknowledgement?: string;
-  enhanced?: string;
-  fixture_mode?: string;
-  fixture_label?: string;
-  transport: string;
-  client_certificate: boolean;
-  key_reference?: string;
-  max_connections?: number;
-  max_messages?: number;
-  max_sessions?: number;
-  max_capture_bytes?: number;
-  max_frame_bytes: number;
-  idle_timeout: string;
-  journal_enabled: boolean;
-  output_name?: string;
-  observation_name?: string;
-}
-
 /** internal/desktop.OperationDisclosure */
 export interface OperationDisclosure {
   id: string;
@@ -4927,9 +5073,8 @@ export interface PacketView {
 
 /** internal/desktop.PastedSourceRequest */
 export interface PastedSourceRequest {
-  workspace: string;
-  project?: string;
-  name: string;
+  context: RequestContext;
+  name?: string;
   content: string;
   encoding?: string;
 }
@@ -4937,8 +5082,8 @@ export interface PastedSourceRequest {
 /** internal/desktop.PastedSourceResult */
 export interface PastedSourceResult {
   state: State;
+  staged_id?: string;
   reason?: string;
-  path?: string;
   name?: string;
   size?: number;
   sha256?: string;
@@ -5759,36 +5904,6 @@ export interface ReceiverPolicy {
   accepted_message_types: CollectionMessageTypeRule;
   enhanced_acknowledgement?: CollectionEnhancedRule;
   faults?: CollectionFaultPolicy;
-}
-
-/** internal/desktop.ReceiverPolicyChoices */
-export interface ReceiverPolicyChoices {
-  name: string;
-  source_label: string;
-  acknowledgement: CollectionAckRule;
-  accepted_message_types: CollectionMessageTypeRule;
-  enhanced: boolean;
-  fault?: string;
-  fault_delay_ms?: number;
-  endpoint?: string;
-  opened?: ReceiverPolicy;
-}
-
-/** internal/desktop.ReceiverPolicyRequest */
-export interface ReceiverPolicyRequest {
-  workspace: string;
-  policy_file: string;
-  policy?: ReceiverPolicy;
-  choices?: ReceiverPolicyChoices;
-}
-
-/** internal/desktop.ReceiverPolicyResult */
-export interface ReceiverPolicyResult {
-  state: State;
-  reason?: string;
-  policy?: ReceiverPolicy;
-  policy_file?: string;
-  choices?: ReceiverPolicyChoices;
 }
 
 /** internal/desktop.ReceiverSnapshot */
@@ -6688,6 +6803,16 @@ export interface ResetReviewAction {
   observation_name?: string;
 }
 
+/** internal/desktop.ResponderChoices */
+export interface ResponderChoices {
+  name?: string;
+  source_label?: string;
+  accepted_message_types?: CollectionMessageTypeRule;
+  enhanced: boolean;
+  fault?: string;
+  fault_delay_ms?: number;
+}
+
 /** internal/desktop.ResumeRunRequest */
 export interface ResumeRunRequest {
   workspace: string;
@@ -6701,6 +6826,16 @@ export interface ResumeRunResult {
   state: State;
   reason?: string;
   resume?: DurableRunResumption;
+}
+
+/** internal/desktop.RetainedCaptureResult */
+export interface RetainedCaptureResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  session: string;
+  workspace?: string;
+  case?: CaseEvidence;
 }
 
 /** internal/desktop.RetentionHold */
@@ -8250,84 +8385,17 @@ export interface SimilarResult {
   name?: string;
 }
 
-/** internal/desktop.SourceAccessResult */
-export interface SourceAccessResult {
-  state: State;
-  reason?: string;
-  access?: SourceAccessSummary;
-}
-
-/** internal/desktop.SourceAccessSummary */
-export interface SourceAccessSummary {
-  schema: string;
-  status: string;
-  reason?: string;
-  listed: boolean;
-  declared: number;
-  selected: number;
-  readable: number;
-  unreadable: number;
-  not_read: number;
-  source_name?: string;
-  source_kind?: string;
-  scope?: string;
-}
-
-/** internal/desktop.SourceCollectionResult */
-export interface SourceCollectionResult {
-  state: State;
-  reason?: string;
-  collection?: SourceCollectionSummary;
-  output_path?: string;
-  receipt_path?: string;
-}
-
-/** internal/desktop.SourceCollectionSummary */
-export interface SourceCollectionSummary {
-  schema: string;
-  status: string;
-  reason?: string;
-  declared: number;
-  collected: number;
-  duplicates: number;
-  excluded: number;
-  unreadable: number;
-  not_read: number;
-  bytes: number;
-  records: number;
-  occurrences: number;
-}
-
 /** internal/desktop.SourceFacet */
 export interface SourceFacet {
   id: string;
   name: string;
 }
 
-/** internal/desktop.SourceRegistrationRequest */
-export interface SourceRegistrationRequest {
-  workspace: string;
-  source_file: string;
-  source: EvidenceSource;
-}
-
-/** internal/desktop.SourceRegistrationResult */
-export interface SourceRegistrationResult {
-  state: State;
-  reason?: string;
-  source?: EvidenceSource;
-  source_file?: string;
-}
-
-/** internal/desktop.SourceWorkRequest */
-export interface SourceWorkRequest {
-  workspace: string;
-  source_file?: string;
-  source?: EvidenceSource;
-  policy_file?: string;
-  plan?: ImportPlan;
-  output_name?: string;
-  receipt_name?: string;
+/** internal/desktop.SourceSummary */
+export interface SourceSummary {
+  type: CaptureSourceType;
+  address?: string;
+  transport?: ListenerTransport;
 }
 
 /** internal/desktop.State */
@@ -9747,6 +9815,7 @@ export interface ViewsResult {
 export interface Vocabulary {
   diagnosis_builtins: DiagnosisBuiltin[];
   import_plan: ImportPlanVocabulary;
+  import_engines: EngineExportEngine[];
   reset_operators: ResetReview[];
   receiver_faults: ReceiverFaultVocabulary;
   bounds: WindowBounds;
@@ -9757,6 +9826,11 @@ export interface Vocabulary {
   fixture_modes: ObservationMode[];
   affected_test_impacts: string[];
   observation_starts: ObservationSource[];
+  capture_source_starts: CaptureSourceDraft[];
+  capture_source_types: CaptureSourceTypeChoice[];
+  listener_transports: ListenerTransport[];
+  ack_codes: AckCode[];
+  import_time_operators: ImportTimeOperator[];
   coverage: CoverageVocabulary;
 }
 
@@ -9815,7 +9889,7 @@ export interface Facade {
   CheckTarget(request: TargetCheckRequest): Promise<TargetCheckResult>;
   ChooseBackup(): Promise<StorageBackupResult>;
   ChooseBackupLocation(): Promise<ProjectLocationResult>;
-  ChooseCapturePath(kind: string): Promise<PathChoiceResult>;
+  ChooseCapturePath(kind: CapturePathKind): Promise<PathChoiceResult>;
   ChooseCommercialDestinations(): Promise<CommercialStatusResult>;
   ChooseCorpusPath(kind: string): Promise<CorpusPathResult>;
   ChooseEnvironmentFile(kind: string): Promise<PathChoiceResult>;
@@ -9833,13 +9907,12 @@ export interface Facade {
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
+  ClassifyDroppedSources(paths: string[]): Promise<DroppedSourcesResult>;
   CleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult>;
   ClearViews(workspace: string): Promise<ViewsResult>;
   CollectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult>;
-  CollectSource(request: SourceWorkRequest): Promise<SourceCollectionResult>;
   CollectionProgress(): Promise<CollectionProgressResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
-  CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
   CompareProfileVersions(request: ProfileVersionsRequest): Promise<ProfileComparisonResult>;
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
@@ -9860,7 +9933,6 @@ export interface Facade {
   DescribeIndex(workspace: string, caseName: string, indexName: string): Promise<IndexResult>;
   DescribeSearchSettings(workspace: string, caseName: string, identity: string): Promise<SearchSettingsResult>;
   DiagnoseHub(): Promise<HubDiagnosisResult>;
-  DiagnoseSource(request: SourceWorkRequest): Promise<SourceAccessResult>;
   DiscardEditorDraft(id: string): Promise<EditorDraftsResult>;
   DiscardIncompleteSave(request: IncompleteSaveRequest): Promise<CatalogResult>;
   DiscardProtectedPackage(request: ProtectionDiscardRequest): Promise<ProtectionDiscardResult>;
@@ -9891,9 +9963,9 @@ export interface Facade {
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   ExportTestItem(request: ItemRequest): Promise<ExportTestResult>;
   Filters(): Promise<FiltersResult>;
-  FinalizeCaptureImport(request: FinalizeCaptureRequest): Promise<ImportCommitResult>;
   FindSimilarFindings(request: SimilarRequest): Promise<SimilarResult>;
   FindingReviewHistory(request: ItemRequest): Promise<FindingReviewHistoryResult>;
+  FinishCapture(): Promise<CaptureProgressResult>;
   ForgetProject(id: string): Promise<ProjectForgetResult>;
   GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
   GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
@@ -9902,6 +9974,7 @@ export interface Facade {
   Guide(workspace: string): Promise<GuideResult>;
   HubStatus(): Promise<HubResult>;
   ImportAnalysisSettings(request: RequestContext): Promise<ItemDraftResult>;
+  ImportCase(request: ImportCaseRequest): Promise<ImportCaseResult>;
   ImportLibraryItem(request: LibraryImportRequest): Promise<ItemDraftResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
   ImportTestDraft(request: RequestContext): Promise<ItemDraftResult>;
@@ -9910,6 +9983,7 @@ export interface Facade {
   InspectCompletion(request: CompletionRequest): Promise<CompletionInspectionResult>;
   InspectFileMessage(request: FileInspectRequest): Promise<InspectionResult>;
   InspectGatePolicy(path: string): Promise<GatePolicyResult>;
+  InspectImportPreview(request: ImportInspectRequest): Promise<InspectionResult>;
   InspectOccurrence(request: InspectRequest): Promise<InspectionResult>;
   InspectProjectQuota(path: string): Promise<ProjectQuotaResult>;
   InspectProtectedPackage(workspace: string, entry: string): Promise<ProtectionPackageResult>;
@@ -9922,6 +9996,7 @@ export interface Facade {
   ListAnalysisProfiles(request: ItemRequest): Promise<AnalysisProfilesResult>;
   ListAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   ListBackups(): Promise<StorageBackupsResult>;
+  ListCaptureSessions(request: RequestContext): Promise<CaptureSessionsResult>;
   ListCatalog(query: CatalogQuery): Promise<CatalogResult>;
   ListConnections(request: RequestContext): Promise<ConnectionsResult>;
   ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
@@ -9945,7 +10020,6 @@ export interface Facade {
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
   ObservationSupport(): Promise<ObservationSupportResult>;
   OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
-  OpenCaptureJournal(workspace: string, journalPath: string): Promise<CaptureJournalResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
   OpenCaseFindings(request: FindingsRequest): Promise<FindingsResult>;
   OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
@@ -9966,6 +10040,7 @@ export interface Facade {
   OpenProject(path: string): Promise<ProjectResult>;
   OpenProjectOverview(path: string): Promise<ProjectOverviewResult>;
   OpenProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult>;
+  OpenRetainedCapture(request: CaptureSessionRequest): Promise<RetainedCaptureResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
@@ -9986,7 +10061,6 @@ export interface Facade {
   PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
   PrepareSuite(request: SuitePrepareRequest): Promise<SuitePreparedResult>;
   PrepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult>;
-  PreviewCapture(request: CaptureRequest): Promise<CapturePreviewResult>;
   PreviewFindingReview(request: DraftRequest): Promise<FindingReviewPreview>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
@@ -10001,6 +10075,7 @@ export interface Facade {
   PreviewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult>;
   PreviewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
+  ProbeImport(request: ImportProbeRequest): Promise<ImportProbeResult>;
   ProfileAffectedTests(request: ItemRequest): Promise<AffectedTestsResult>;
   ProjectFiles(request: ItemRequest): Promise<ProjectFilesResult>;
   ProjectLocation(): Promise<ProjectLocationResult>;
@@ -10010,7 +10085,6 @@ export interface Facade {
   ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
   ReadPreferences(): Promise<PreferencesResult>;
   ReadProtection(workspace: string, entry: string): Promise<ProtectionResult>;
-  ReadReceiverPolicy(workspace: string, policyFile: string): Promise<ReceiverPolicyResult>;
   ReadRedactInventory(workspace: string, entry: string): Promise<RedactInventoryResult>;
   ReadRedactPolicy(workspace: string, entry: string): Promise<RedactPolicyResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
@@ -10019,7 +10093,6 @@ export interface Facade {
   ReadSecrets(workspace: string, secretsFile: string): Promise<SecretsResult>;
   ReadSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult>;
   ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
-  ReadSourceRegistration(workspace: string, sourceFile: string): Promise<SourceRegistrationResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
   RecordCredentialRotation(request: CredentialRequest): Promise<CredentialsResult>;
@@ -10044,6 +10117,7 @@ export interface Facade {
   RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
   ResumeDurableRun(request: ResumeRunRequest): Promise<ResumeRunResult>;
   RetireProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
+  RetryCaptureFinalization(request: CaptureSessionRequest): Promise<ImportCaseResult>;
   RevealBackup(id: string): Promise<RevealResult>;
   RevealIncomplete(folder: string): Promise<RevealResult>;
   RevealItem(request: ItemRequest): Promise<RevealResult>;
@@ -10072,7 +10146,6 @@ export interface Facade {
   SaveObservationWindow(request: ObservationWindowRequest): Promise<ObservationWindowResult>;
   SavePreferences(p: Preferences): Promise<PreferencesResult>;
   SaveProtectionControl(request: ProtectionControlRequest): Promise<ProtectionResult>;
-  SaveReceiverPolicy(request: ReceiverPolicyRequest): Promise<ReceiverPolicyResult>;
   SaveRedactInventory(request: RedactInventoryRequest): Promise<RedactInventoryResult>;
   SaveRedactPolicy(request: RedactPolicyRequest): Promise<RedactPolicyResult>;
   SaveResetPlan(request: ResetPlanSaveRequest): Promise<ResetPlanResult>;
@@ -10084,7 +10157,6 @@ export interface Facade {
   SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
   SaveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult>;
   SaveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult>;
-  SaveSourceRegistration(request: SourceRegistrationRequest): Promise<SourceRegistrationResult>;
   SaveSuite(request: RuleDocumentSaveRequest): Promise<SuiteDocumentResult>;
   SaveSuiteCoverage(request: SuiteCoverageSaveRequest): Promise<SuiteCoverageResult>;
   SaveSuiteReleases(request: RuleDocumentSaveRequest): Promise<SuiteReleasesResult>;

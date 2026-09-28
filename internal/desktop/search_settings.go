@@ -80,7 +80,7 @@ func (a *App) SaveSearchSettings(request SearchSettingsRequest) BuildIndexResult
 // for the Search settings sheet to be prefilled with. It reads and writes no
 // other file, and an expired index is described, not extended.
 func (a *App) DescribeSearchSettings(workspace, caseName, identity string) SearchSettingsResult {
-	return run(a, false, false, func(context.Context) SearchSettingsResult {
+	return runRead(a, false, func(context.Context) SearchSettingsResult {
 		root, opened, declined := openedCase(workspace, caseName, identity)
 		if root == "" {
 			return SearchSettingsResult{State: declined.state, Reason: declined.reason}
@@ -168,7 +168,7 @@ func (r *SearchSettingsListResult) refuse(state State, reason string) {
 // reports one case's. It reads and writes no other file, and an expired
 // index is described, not extended. Saving stays SaveSearchSettings'.
 func (a *App) ListSearchSettings(workspace string) SearchSettingsListResult {
-	return run(a, false, false, func(ctx context.Context) SearchSettingsListResult {
+	return runRead(a, false, func(ctx context.Context) SearchSettingsListResult {
 		result := SearchSettingsListResult{Cases: []CaseSearchSettings{}}
 		root, declined := resolveFolder(workspace)
 		if root == "" {

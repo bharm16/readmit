@@ -21,7 +21,9 @@ import (
 func TestFlowPermissionAndCleanupFailureRemainUnresolved(t *testing.T) {
 	for _, kind := range []string{"setup-revoked", "phase-revoked", "cleanup-revoked", "uncertain-send"} {
 		t.Run(kind, func(t *testing.T) {
-			h := newFlowContractHarnessWithSource(t, kind != "uncertain-send")
+			// An uncertain send needs the file source the target removes; its
+			// subject is retained uncertainty, not acquisition latency.
+			h := newFlowContractHarnessWithTiming(t, kind != "uncertain-send", true)
 			p := h.prepare(t, "failure")
 			if kind == "setup-revoked" {
 				if err := os.Remove(filepath.Join(h.root, "setup-isolation-grant.json")); err != nil {

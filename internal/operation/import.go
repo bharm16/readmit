@@ -41,6 +41,13 @@ type EngineExportPreview struct {
 	Records       []engineexport.Record `json:"records"`
 }
 
+// ProbeImport reads the first bytes of the declared locations' members and
+// proposes the formats that could read them, declaring nothing: whichever is
+// chosen is declared in full and recorded verbatim by the import's receipt.
+func ProbeImport(ctx context.Context, files, folders, archives []string) (importer.Probe, error) {
+	return importer.ProbeInputs(ctx, files, folders, archives)
+}
+
 // ImportPlanPreview extracts sources under an import plan without writing evidence.
 func ImportPlanPreview(ctx context.Context, plan importer.Plan, files, folders, archives []string) (importer.Preview, error) {
 	if err := plan.Validate(); err != nil {

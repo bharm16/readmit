@@ -24,7 +24,7 @@ func TestAStoppedCaptureSaysWhoStoppedIt(t *testing.T) {
 		{"bounded", expired, Failed, CaptureFailed},
 		{"orderly", context.Background(), Completed, CaptureStopped},
 	} {
-		got := (&App{}).finishCapture(stopped.ctx, CaptureSessionResult{}, nil, nil, CaptureListening)
+		got := (&App{}).finishCapture(stopped.ctx, CaptureSessionResult{}, nil, nil)
 		if got.State != stopped.state || got.Phase != stopped.phase {
 			t.Errorf("%s: %+v, want %s in phase %s", stopped.name, got, stopped.state, stopped.phase)
 		}

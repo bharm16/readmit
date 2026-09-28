@@ -11,9 +11,9 @@ import "github.com/bharm16/readmit/internal/operationguard"
 // ledger's rows for these operations state exactly these admissions, and the
 // facade's tests read the ledger against this table.
 //
-// A connectivity check, a source diagnosis and a queued or single run take
-// execution admission alone, as their commands do. A source collection, a
-// capture, a fixture reset and an observation collection also admit the
+// A connectivity check and a queued or single run take execution admission
+// alone, as their commands do. A capture, which collects from a saved source,
+// a fixture reset and an observation collection also admit the
 // author, which their commands do not, and so do runner enrollment, which its
 // command leaves to the hub, and runner execution, whose jobs the runner
 // admits one by one.
@@ -34,9 +34,7 @@ var profiles = map[string]operationguard.Profile{
 	"ExecuteRunnerJob": {Name: runnerOperation, Interruptible: true, Author: true, Execution: operationguard.ExecuteEachJob},
 
 	// Sources and capture.
-	"DiagnoseSource": {Name: "source-diagnosis", Interruptible: true, Execution: operationguard.Execute},
-	"CollectSource":  {Name: "collect", Interruptible: true, Author: true, Execution: operationguard.Execute},
-	"StartCapture":   {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
+	"StartCapture": {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
 	// The built-in SIU fixture of the library's sample data, stopped by the
 	// capture's own cancel.
 	"StartSampleFixture": {Name: captureOperation, Interruptible: true, Author: true, Execution: operationguard.Execute},
@@ -89,19 +87,20 @@ var profiles = map[string]operationguard.Profile{
 	"OpenProtectedPackage":     {Name: protectOperation, Interruptible: true},
 
 	// Local work a panel names so its own cancel control stops it.
-	"FinalizeCaptureImport": {Name: importOperation, Interruptible: true, Author: true},
-	"PreviewImport":         {Name: importOperation, Interruptible: true},
-	"CommitImport":          {Name: importOperation, Interruptible: true, Author: true},
-	"GenerateCorpus":        {Name: corpusOperation, Interruptible: true, Author: true},
-	"ScanCorpus":            {Name: corpusOperation, Interruptible: true},
-	"ExplainRun":            {Name: explanationOperation, Interruptible: true},
-	"CompareRuns":           {Name: runComparisonOperation, Interruptible: true},
-	"AssemblePacket":        {Name: packetOperation, Interruptible: true},
-	"ExportPacketReview":    {Name: packetOperation, Interruptible: true},
-	"PublishSupportSummary": {Name: supportOperation, Interruptible: true},
-	"VerifyCIGate":          {Name: ciGateVerifyOperation, Interruptible: true},
-	"CheckScenarioLibrary":  {Name: scenarioCheckOperation, Interruptible: true},
-	"AssessSuiteCoverage":   {Name: suiteCoverageOperation, Interruptible: true},
+	"PreviewImport":            {Name: importOperation, Interruptible: true},
+	"ProbeImport":              {Name: importOperation, Interruptible: true},
+	"ImportCase":               {Name: importOperation, Interruptible: true, Author: true},
+	"RetryCaptureFinalization": {Name: importOperation, Interruptible: true, Author: true},
+	"GenerateCorpus":           {Name: corpusOperation, Interruptible: true, Author: true},
+	"ScanCorpus":               {Name: corpusOperation, Interruptible: true},
+	"ExplainRun":               {Name: explanationOperation, Interruptible: true},
+	"CompareRuns":              {Name: runComparisonOperation, Interruptible: true},
+	"AssemblePacket":           {Name: packetOperation, Interruptible: true},
+	"ExportPacketReview":       {Name: packetOperation, Interruptible: true},
+	"PublishSupportSummary":    {Name: supportOperation, Interruptible: true},
+	"VerifyCIGate":             {Name: ciGateVerifyOperation, Interruptible: true},
+	"CheckScenarioLibrary":     {Name: scenarioCheckOperation, Interruptible: true},
+	"AssessSuiteCoverage":      {Name: suiteCoverageOperation, Interruptible: true},
 
 	// The Findings view's analysis and comparison, which write into the
 	// project only when an analysis is made or a comparison saved.

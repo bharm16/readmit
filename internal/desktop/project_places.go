@@ -186,7 +186,7 @@ func (r *ProjectFilesResult) refuse(state State, reason string) { r.State, r.Rea
 // lists — and none of the project's own documents or the application's
 // storage. It is a read: nothing is opened, verified or written.
 func (a *App) ProjectFiles(request ItemRequest) ProjectFilesResult {
-	return run(a, false, false, func(ctx context.Context) ProjectFilesResult {
+	return runRead(a, false, func(ctx context.Context) ProjectFilesResult {
 		result := ProjectFilesResult{Context: request.Context, Files: []ProjectFile{}}
 		root, declined := a.projectRoot(ctx, request.Context)
 		if root == "" {

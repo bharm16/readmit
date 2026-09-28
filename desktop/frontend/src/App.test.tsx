@@ -673,8 +673,10 @@ test("closing asks before dropping text the store refused to retain, and not aft
   });
   await openFolder(user);
   await user.click(page().getAllByRole("button", { name: "Import" })[0]!);
-  await user.type(await screen.findByLabelText("Pasted evidence content"), "unacknowledged");
-  expect(await screen.findByText("This edit was not retained.")).toBeTruthy();
+  // The Import flow keeps its choices as a draft; the store refuses it.
+  const flow = within(await screen.findByRole("dialog", { name: "Import" }));
+  await user.type(flow.getByLabelText("Case"), "unacknowledged");
+  await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(0));
 
   // The window asks by cancelling the close, so the test counts the closes
   // the window actually refused, reading that from the event itself.
@@ -688,11 +690,15 @@ test("closing asks before dropping text the store refused to retain, and not aft
   try {
     window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
     expect(closeAsked).toBe(1);
-    // The retention lands, and closing is safe again.
+    // The next retention lands, and closing is safe again.
     facade.reply({ SaveEditorDraft: () => ({ state: "completed" }) });
-    await user.click(screen.getByRole("button", { name: "Retry draft save" }));
-    await screen.findByText("Retained. It will come back if this window stops.");
-    window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+    const refused = facade.callsTo("SaveEditorDraft").length;
+    await user.type(flow.getByLabelText("Case"), "!");
+    await waitFor(() => expect(facade.callsTo("SaveEditorDraft").length).toBeGreaterThan(refused));
+    await waitFor(() => {
+      window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+      expect(closeAsked).toBe(1);
+    });
     expect(closeAsked).toBe(1);
   } finally {
     window.removeEventListener("beforeunload", guard);

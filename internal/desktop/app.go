@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -325,6 +326,14 @@ type App struct {
 	operation string
 	runOutput string
 	cancel    context.CancelFunc
+	// beside is set while a read runs beside a capture that holds the slot
+	// (claimBeside). Only one does at a time, and no operation claims the
+	// slot while one does, so a read never overlaps anything but a capture.
+	beside bool
+	// besideName and besideCancel are the name a read beside a capture runs
+	// under, if any, and how Cancel with that name stops it.
+	besideName   string
+	besideCancel context.CancelFunc
 	// programs counts the operator-declared programs the operation holding
 	// the slot is running now, as the programs report themselves; see
 	// declaredProgramStarted.
@@ -376,6 +385,14 @@ type App struct {
 	// holds. captureProgress is nil while nothing listens.
 	captureMu       sync.Mutex
 	captureProgress *CaptureProgress
+	// captureStop is the running collector's controlled stop, and
+	// captureFinishing records that a person asked to finish, possibly
+	// before the collector existed to be stopped (#552).
+	captureStop      func()
+	captureFinishing bool
+	// captureConnections numbers the running capture's connections in the
+	// order they first sent.
+	captureConnections map[string]int
 
 	// projectsMu serializes the remembered projects document alone, and
 	// openedMu the document of the objects this viewer opened.
@@ -440,6 +457,10 @@ func New(chooser FolderChooser, documents ShellDocuments) *App {
 func (a *App) Cancel(operation string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if operation != "" && operation == a.besideName && a.besideCancel != nil {
+		a.besideCancel()
+		return
+	}
 	if a.cancel == nil {
 		return
 	}
@@ -457,12 +478,62 @@ func (a *App) Cancel(operation string) {
 func (a *App) claim(operation string) (func(), bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running {
+	if a.running || a.beside {
 		return nil, false
 	}
 	a.running, a.operation = true, operation
 	return a.release, true
 }
+
+// claimBeside admits a read while a capture holds the slot (#552): a capture
+// records in the background, and the window keeps reading while it does.
+// One read runs beside it at a time. The read takes neither the slot's name
+// nor its cancellation, which stay the capture's, so the privacy status still
+// reports the capture and Cancel("") still reaches it; a read that names
+// itself is stopped by Cancel with its own name, and every read's context
+// ends when it releases.
+func (a *App) claimBeside(name string) (context.Context, func(), bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.running || a.operation != captureOperation || a.beside {
+		return nil, nil, false
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.beside, a.besideName, a.besideCancel = true, name, cancel
+	return ctx, func() {
+		cancel()
+		a.mu.Lock()
+		a.beside, a.besideName, a.besideCancel = false, "", nil
+		a.mu.Unlock()
+	}, true
+}
+
+// busyReason is why a call that found the slot held did not start. While a
+// capture holds it, the reason names the capture: only reads run beside it.
+func (a *App) busyReason() string {
+	a.mu.Lock()
+	capturing := a.running && a.operation == captureOperation
+	a.mu.Unlock()
+	if !capturing {
+		return busyRefusal.reason
+	}
+	a.captureMu.Lock()
+	name := ""
+	if a.captureProgress != nil {
+		name = a.captureProgress.Name
+	}
+	a.captureMu.Unlock()
+	if name == "" {
+		return captureBusyReason
+	}
+	return "the capture " + strconv.Quote(name) + " is recording; " + captureBusyRule
+}
+
+// captureBusyRule is what waits for a capture, and until when.
+const (
+	captureBusyRule   = "only reads run while it records, and this waits until it is finished or cancelled"
+	captureBusyReason = "a capture is recording; " + captureBusyRule
+)
 
 // release frees the slot and cancels whatever the operation that held it
 // started, so nothing it began outlives it.
@@ -508,7 +579,7 @@ func (a *App) declaredProgramStarted() func() {
 func (a *App) begin(operation string) (context.Context, func(), bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running {
+	if a.running || a.beside {
 		return nil, nil, false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -590,7 +661,7 @@ func (a *App) createSampleWorkspace(ctx context.Context) WorkspaceResult {
 // reader's own limits and runs to completion once it starts, so it holds the
 // operation slot but is not interruptible.
 func (a *App) OpenCase(workspace, name string) CaseResult {
-	return run(a, false, false, func(context.Context) CaseResult {
+	return runRead(a, false, func(context.Context) CaseResult {
 		return a.openCase(workspace, name)
 	})
 }
