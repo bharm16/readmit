@@ -98,6 +98,33 @@ about additional permission is drawn from that retrieval failure, from a FHIR
 license, or from a third-party mirror. An appropriate reviewer must resolve the
 specific incorporated-rights question against authoritative current terms.
 
+## v5 packs: additional material for the same review
+
+The v5 packs ([receipt](profile-extraction-v4-receipt.json), `readmit-profile-extraction/v4`)
+add material from sources this packet has not yet covered. They stay outside
+source control and release archives with the v3 packs, and the review above
+does not extend to them.
+
+- Usage codes, lengths, conformance lengths, table numbers and table types from
+  NIST's JSON export of the HL7 v2 database
+  ([usnistgov/igamt-hl7Tools-service](https://github.com/usnistgov/igamt-hl7Tools-service)
+  at `09374475cc9cb3038f1fd79448b458e945ca9b62`). The repository has no
+  license file at that commit; its readme describes the JSON as converted from
+  the official HL7 v2 standards database. NIST's status as author of the
+  converter decides nothing about the incorporated HL7 content.
+- Typed condition predicates in [the conditions registry](profile-conditions.json),
+  read from the HL7 Europe chapter pages (hl7.eu) and, for 2.8.2 Chapter 2A,
+  the owner-supplied rendering attached to #577. The registry stores predicates
+  and the location and hash of each basis sentence, never the sentence.
+- v2.7.1 conformance lengths from the same chapters' attribute tables, and table
+  types from the database's hl7.eu table index where the export leaves them unset.
+- The HL7 Terminology package pinned for reference (`hl7.terminology.r4` 7.3.0);
+  no terminology value is copied into a pack.
+
+[The source manifest](profile-standard-sources.json) names every frozen file,
+its URL, retrieval time and hash. The same three questions above apply to this
+material, and question 2 applies in full: the database is HL7's own.
+
 ## Separate technical coverage gates
 
 [The coverage-gap matrix](profile-coverage-gaps.json) records version,

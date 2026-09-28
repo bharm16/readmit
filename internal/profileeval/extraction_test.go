@@ -9,6 +9,8 @@ import (
 	"github.com/bharm16/readmit/internal/profileeval"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -228,4 +230,73 @@ func TestPinnedOrderDetailChoice(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Opt-in: the v5 packs built from the pinned HL7 database export and the
+// reviewed conditions stay outside the repository with the other withheld
+// packs. The HD pairing below is the v2.8.2 Chapter 2A rule, independently
+// restated here rather than read from the pack under test.
+func TestPinnedDatabasePacks(t *testing.T) {
+	dir := os.Getenv("READMIT_PROFILE_V5_EXTRACTION")
+	if dir == "" {
+		t.Skip("set READMIT_PROFILE_V5_EXTRACTION to the offline database build")
+	}
+	packs := map[string][]byte{}
+	for _, version := range []string{"2.3.1", "2.4", "2.5", "2.5.1", "2.6", "2.7.1", "2.8.2"} {
+		raw, err := os.ReadFile(filepath.Join(dir, "pack-"+version+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pack, err := profileeval.DecodePack(raw)
+		if err != nil {
+			t.Fatalf("%s: %v", version, err)
+		}
+		if pack.Schema != profileeval.PackSchemaV5 || pack.Metadata.Bundleable() == nil {
+			t.Fatalf("%s: %s or rights approved by the builder", version, pack.Schema)
+		}
+		packs[version] = raw
+	}
+	evaluate := func(t *testing.T, version, body string) profileeval.Report {
+		t.Helper()
+		pack, _ := profileeval.DecodePack(packs[version])
+		local, _ := fixture(t)
+		var definition localprofile.Profile
+		if err := json.Unmarshal(local, &definition); err != nil {
+			t.Fatal(err)
+		}
+		definition.Base.Pack, definition.Base.HL7Version, definition.Base.Family = pack.Metadata.Identity, version, "ADT"
+		definition.Segments = []localprofile.Segment{{ID: "MSH", Fields: []localprofile.Field{{Position: 10, Usage: localprofile.UsageRequired}}}}
+		profile, err := json.Marshal(definition)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw := []byte("MSH|^~\\&|OWNED|LAB|||20260101120000||ADT^A01^ADT_A01|M1|P|" + version + "\rEVN|A01|20260101120000\r" + body + "PV1|1|I\r")
+		got, err := profileeval.Evaluate(context.Background(), profile, packs[version], []profileeval.Occurrence{{ID: "one", Bytes: raw}}, profileeval.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Operator != profileeval.UsageOperatorVersion || got.Verdict == "pass" && strings.Contains(body, "&1.2.3^") {
+			t.Fatalf("unexpected report: %+v", got)
+		}
+		return got
+	}
+	has := func(r profileeval.Report, rule, selector string) bool {
+		return slices.ContainsFunc(r.Findings, func(f profileeval.Finding) bool { return f.Rule == rule && f.Selector == selector })
+	}
+	t.Run("2.8.2 HD pairing", func(t *testing.T) {
+		missingType := evaluate(t, "2.8.2", "PID|1||MRN1^^^LAB_A&1.2.3^MR||DOE^JANE\r")
+		if !has(missingType, "required-conditional-component", "PID[1]-3[1].4.3") {
+			t.Fatalf("universal identifier without its type passed: %+v", missingType.Findings)
+		}
+		paired := evaluate(t, "2.8.2", "PID|1||MRN1^^^LAB_A&1.2.3&ISO^MR||DOE^JANE\r")
+		if has(paired, "required-conditional-component", "PID[1]-3[1].4.3") || has(paired, "required-conditional-component", "PID[1]-3[1].4.2") {
+			t.Fatalf("a complete HD pair failed: %+v", paired.Findings)
+		}
+	})
+	t.Run("2.3.1 components are unclassified", func(t *testing.T) {
+		got := evaluate(t, "2.3.1", "PID|1||MRN1^^^LAB_A^MR||DOE^JANE\r")
+		if got.Verdict == "pass" || !slices.ContainsFunc(got.Findings, func(f profileeval.Finding) bool { return strings.HasPrefix(f.Rule, "component-usage-unclassified-") }) {
+			t.Fatalf("the edition defines no component usage, so it cannot pass: %+v", got)
+		}
+	})
 }

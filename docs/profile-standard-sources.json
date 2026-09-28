@@ -1,0 +1,2793 @@
+{
+ "rights_issue": 627,
+ "rights_review": "pending",
+ "schema": "readmit-profile-standard-sources/v1",
+ "sources": [
+  {
+   "bytes": 701834,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH2.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH2.html",
+   "http_status": 200,
+   "id": "v231/std231/CH2.html",
+   "retrieved_at": "2026-09-28T07:55:37Z",
+   "roles": [
+    "control",
+    "datatypes",
+    "chapter"
+   ],
+   "sha256": "9e47ad245a4768a5f718bb04008aa6444d2af9b2a8251870eb89747977234e35",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH2.html"
+  },
+  {
+   "bytes": 1468193,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__AppendixA.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/AppendixA.html",
+   "http_status": 200,
+   "id": "v231/std231/AppendixA.html",
+   "retrieved_at": "2026-09-28T07:55:39Z",
+   "roles": [
+    "tables"
+   ],
+   "sha256": "3304142a0fb1e72cf233dd23a7e108e4f18e3f73920dace36b3abaceed88db6b",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/AppendixA.html"
+  },
+  {
+   "bytes": 615848,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH3.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH3.html",
+   "http_status": 200,
+   "id": "v231/std231/CH3.html",
+   "retrieved_at": "2026-09-28T07:55:40Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "8e17f5b40130815f0c0feaf04b4a6025e16ee2edd7aaee9c356ddad2148a7b6b",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH3.html"
+  },
+  {
+   "bytes": 719605,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH4.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH4.html",
+   "http_status": 200,
+   "id": "v231/std231/CH4.html",
+   "retrieved_at": "2026-09-28T07:55:41Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "5b0dc830cdd8168155e662ed1ba21db287bb3592abba143da279913af7d0d9a5",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH4.html"
+  },
+  {
+   "bytes": 1448,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH5.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH5.html",
+   "http_status": 200,
+   "id": "v231/std231/CH5.html",
+   "retrieved_at": "2026-09-28T07:55:42Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "d49ca9920385c656cf9b56bc9fbd51b0f6d65424cbc954a46a3f3a4850f681ef",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH5.html"
+  },
+  {
+   "bytes": 441347,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH6.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH6.html",
+   "http_status": 200,
+   "id": "v231/std231/CH6.html",
+   "retrieved_at": "2026-09-28T07:55:43Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "98515bc4504b4331dfece9343851e4fbc9fd64a3a8ebbebb9f016c814bbd2f6b",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH6.html"
+  },
+  {
+   "bytes": 676108,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__Ch7.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/Ch7.html",
+   "http_status": 200,
+   "id": "v231/std231/Ch7.html",
+   "retrieved_at": "2026-09-28T07:55:44Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e6bb57370731608f85dfc132f15e8c3f559bfae92a546c2eb7a338b9d4706505",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/Ch7.html"
+  },
+  {
+   "bytes": 409887,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__Ch8.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/Ch8.html",
+   "http_status": 200,
+   "id": "v231/std231/Ch8.html",
+   "retrieved_at": "2026-09-28T07:55:45Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "5a399169a1658705316f0248483c57a393122df8ad0d3f50bc34f7a4a33aae0a",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/Ch8.html"
+  },
+  {
+   "bytes": 110787,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH9.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH9.html",
+   "http_status": 200,
+   "id": "v231/std231/CH9.html",
+   "retrieved_at": "2026-09-28T07:55:46Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "27a67804512bfc613b3e7f2d938a8b7448bceb85da82b46270c1ce864e71b6b3",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH9.html"
+  },
+  {
+   "bytes": 301760,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH10.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH10.html",
+   "http_status": 200,
+   "id": "v231/std231/CH10.html",
+   "retrieved_at": "2026-09-28T07:55:47Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "7b0c56f69a8edcf65edd789d9a323653eae5425eb5632d2e1e031695abdcd1e4",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH10.html"
+  },
+  {
+   "bytes": 201151,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH11.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH11.html",
+   "http_status": 200,
+   "id": "v231/std231/CH11.html",
+   "retrieved_at": "2026-09-28T07:55:48Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "40061836090bc0883f5b5d694f2ee4c446eca438a8c08329fbfa185c46824a04",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH11.html"
+  },
+  {
+   "bytes": 190220,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "v231__std231__CH12.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/std231/CH12.html",
+   "http_status": 200,
+   "id": "v231/std231/CH12.html",
+   "retrieved_at": "2026-09-28T07:55:49Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "73d8fc027a58b6fb8417036ede4a0dd8f33c8ee0ccca44775567307507b8086b",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/std231/CH12.html"
+  },
+  {
+   "bytes": 671770,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch02.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch02.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch02.htm",
+   "retrieved_at": "2026-09-28T07:55:50Z",
+   "roles": [
+    "control",
+    "datatypes",
+    "chapter"
+   ],
+   "sha256": "14993bf8c8c02d2e0a121973302059c4c1699c796bf59a6604f638d2a023d7ee",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch02.htm"
+  },
+  {
+   "bytes": 1934560,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__AppendixA.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/AppendixA.htm",
+   "http_status": 200,
+   "id": "v24/std24/AppendixA.htm",
+   "retrieved_at": "2026-09-28T07:55:51Z",
+   "roles": [
+    "tables"
+   ],
+   "sha256": "2d96de879c4acef355194338234bf3036f2ce7f8618d1fc9fef6b6ecf9351150",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/AppendixA.htm"
+  },
+  {
+   "bytes": 813326,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch03.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch03.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch03.htm",
+   "retrieved_at": "2026-09-28T07:55:52Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "038aff13a972eaad1aaf2ee7cafceec5f3cc4f9b1d663a4e30220b19d0f66300",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch03.htm"
+  },
+  {
+   "bytes": 845462,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch04.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch04.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch04.htm",
+   "retrieved_at": "2026-09-28T07:55:54Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a55feca0f98af7cd7ade943734380031ed901fcdc41b116a5a25d7a022a65784",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch04.htm"
+  },
+  {
+   "bytes": 743252,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch05.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch05.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch05.htm",
+   "retrieved_at": "2026-09-28T07:55:55Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e3219b7aab11a66fb365c51d1ca5ff0029dcc102b39efb0186debcf126f65f1c",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch05.htm"
+  },
+  {
+   "bytes": 551272,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch06.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch06.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch06.htm",
+   "retrieved_at": "2026-09-28T07:55:56Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "221b4adb9a8c7dd9eecaaca39d211c2159dafce38934db29526cc6701eb49508",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch06.htm"
+  },
+  {
+   "bytes": 685194,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch07.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch07.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch07.htm",
+   "retrieved_at": "2026-09-28T07:55:57Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "b0b8f357d5a97d0126b8e415abf48abc4f2e9759519baa7ab4600789950cb83a",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch07.htm"
+  },
+  {
+   "bytes": 403285,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch08.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch08.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch08.htm",
+   "retrieved_at": "2026-09-28T07:55:58Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "25fc29bb01239d21bea373d96e610ffcc459f4ed721e12585452836838d2f817",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch08.htm"
+  },
+  {
+   "bytes": 106324,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch09.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch09.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch09.htm",
+   "retrieved_at": "2026-09-28T07:55:59Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "cce189d642c5d833574ff60265582dbf01cb432b3f083f8ed32bf3c4271a79cc",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch09.htm"
+  },
+  {
+   "bytes": 299877,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch10.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch10.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch10.htm",
+   "retrieved_at": "2026-09-28T07:56:00Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "d4481e02986653dd137696e3bcca56608d52c1de99e678aa814bdd85f23cffa4",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch10.htm"
+  },
+  {
+   "bytes": 192442,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch11.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch11.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch11.htm",
+   "retrieved_at": "2026-09-28T07:56:01Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "5a2ecd867b8ddbcffdb9fc4d7d7ba84c29d87acccfeb9743f0805bfd8c2c0ae0",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch11.htm"
+  },
+  {
+   "bytes": 192911,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch12.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch12.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch12.htm",
+   "retrieved_at": "2026-09-28T07:56:02Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "f08249a4117a612abbd69d2fcd4409c1c75f1589dc7971441c71192b4ea3c355",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch12.htm"
+  },
+  {
+   "bytes": 243454,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch13.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch13.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch13.htm",
+   "retrieved_at": "2026-09-28T07:56:03Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "b132cf7d05e0c19559d56978c92ccaaa8ef63e1163e07eeff26eb12fbe8651e9",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch13.htm"
+  },
+  {
+   "bytes": 41317,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch14.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch14.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch14.htm",
+   "retrieved_at": "2026-09-28T07:56:04Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a89a88f7afaef1080778b0d65a035c914e8b3f09d0975831ac3ed95a11a0171e",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch14.htm"
+  },
+  {
+   "bytes": 132829,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "v24__std24__ch15.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/std24/ch15.htm",
+   "http_status": 200,
+   "id": "v24/std24/ch15.htm",
+   "retrieved_at": "2026-09-28T07:56:04Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "07ac3db2843d151a18b7ec0cdfc61945ff6d14781da6abed83b69d7308220afa",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/std24/ch15.htm"
+  },
+  {
+   "bytes": 461572,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch02.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch02.html",
+   "http_status": 200,
+   "id": "v25/std25/ch02.html",
+   "retrieved_at": "2026-09-28T07:56:05Z",
+   "roles": [
+    "control",
+    "chapter"
+   ],
+   "sha256": "35d00ec37513f41939ed770dd44e9e70ca65417bdb9e24d4d407c4bc6b565d84",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch02.html"
+  },
+  {
+   "bytes": 502675,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch02A.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch02A.html",
+   "http_status": 200,
+   "id": "v25/std25/ch02A.html",
+   "retrieved_at": "2026-09-28T07:56:06Z",
+   "roles": [
+    "datatypes"
+   ],
+   "sha256": "ded503fe0364cee711a511554a5417c5c45e545663f6c41ac32e5387cd76a566",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch02A.html"
+  },
+  {
+   "bytes": 798539,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch03.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch03.html",
+   "http_status": 200,
+   "id": "v25/std25/ch03.html",
+   "retrieved_at": "2026-09-28T07:56:07Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "673f0e66686c6acfb4867155448099107b9a2ae83f1a6331167a891cc9c47836",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch03.html"
+  },
+  {
+   "bytes": 1102083,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch04.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch04.html",
+   "http_status": 200,
+   "id": "v25/std25/ch04.html",
+   "retrieved_at": "2026-09-28T07:56:09Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "139e04e1ed954c4c5f6f5aae3b46c569627209a9c5f8025abf0fe3dcd485344c",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch04.html"
+  },
+  {
+   "bytes": 568532,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch05.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch05.html",
+   "http_status": 200,
+   "id": "v25/std25/ch05.html",
+   "retrieved_at": "2026-09-28T07:56:10Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "4413cd2ec25c73c04e6d2fac950b84957947e793157d32085009f5e5b8f1875e",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch05.html"
+  },
+  {
+   "bytes": 544806,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch06.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch06.html",
+   "http_status": 200,
+   "id": "v25/std25/ch06.html",
+   "retrieved_at": "2026-09-28T07:56:11Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a17f86d103f13e75773b304572212a824de093c57abea20b4c3c0ef1738873d3",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch06.html"
+  },
+  {
+   "bytes": 684802,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch07.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch07.html",
+   "http_status": 200,
+   "id": "v25/std25/ch07.html",
+   "retrieved_at": "2026-09-28T07:56:12Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "1c5a93e638b9865688cbfb8b5ac8db70a851d3389297d42ad66f94bca1b90bb0",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch07.html"
+  },
+  {
+   "bytes": 427647,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch08.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch08.html",
+   "http_status": 200,
+   "id": "v25/std25/ch08.html",
+   "retrieved_at": "2026-09-28T07:56:13Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "c63f6b60325a2605efb7ad7a8b507ac23f7a076910442cb19b41a1ce05588eef",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch08.html"
+  },
+  {
+   "bytes": 207890,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch09.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch09.html",
+   "http_status": 200,
+   "id": "v25/std25/ch09.html",
+   "retrieved_at": "2026-09-28T07:56:14Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a88c67f8c1a870cd65e5da1805d01566f5adb0e805ea6917e5d8c67c9712d69e",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch09.html"
+  },
+  {
+   "bytes": 300456,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch10.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch10.html",
+   "http_status": 200,
+   "id": "v25/std25/ch10.html",
+   "retrieved_at": "2026-09-28T07:56:15Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "ba99f8cc6363537fe32dfbb044228d593bb96690a8aa93fecb0604138ce80ddb",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch10.html"
+  },
+  {
+   "bytes": 187505,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch11.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch11.html",
+   "http_status": 200,
+   "id": "v25/std25/ch11.html",
+   "retrieved_at": "2026-09-28T07:56:16Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "668d1cbb190a37cd1be91f7ab50189adf83370c1a9063cfd114bcce1a3226f53",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch11.html"
+  },
+  {
+   "bytes": 179426,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch12.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch12.html",
+   "http_status": 200,
+   "id": "v25/std25/ch12.html",
+   "retrieved_at": "2026-09-28T07:56:17Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a24fac3724dd5dc3b77252e00a58f4cca1db6de7ee5cbbff35db5d6441683a01",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch12.html"
+  },
+  {
+   "bytes": 230523,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch13.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch13.html",
+   "http_status": 200,
+   "id": "v25/std25/ch13.html",
+   "retrieved_at": "2026-09-28T07:56:18Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "da077e1a1d79fa8240cf6f43ca88730dd24d5ef702ebda0a48261091149422cd",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch13.html"
+  },
+  {
+   "bytes": 40789,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch14.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch14.html",
+   "http_status": 200,
+   "id": "v25/std25/ch14.html",
+   "retrieved_at": "2026-09-28T07:56:19Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "017397fcb737b8bcf070f5c3f36cebe1c9f0ea277e067daac5f7d301f118676b",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch14.html"
+  },
+  {
+   "bytes": 188063,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "v25__std25__ch15.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/std25/ch15.html",
+   "http_status": 200,
+   "id": "v25/std25/ch15.html",
+   "retrieved_at": "2026-09-28T07:56:20Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "27abfe0bdd6df69237b33ce5497ed0468d97567b3c8ab39406053142bbed3166",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/std25/ch15.html"
+  },
+  {
+   "bytes": 460944,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch02.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch02.html",
+   "http_status": 200,
+   "id": "v251/std251/ch02.html",
+   "retrieved_at": "2026-09-28T07:56:21Z",
+   "roles": [
+    "control",
+    "chapter"
+   ],
+   "sha256": "a29374812fa56d302b2cfd1674d337e98033f29a208169efeb8aa8393b3a1732",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch02.html"
+  },
+  {
+   "bytes": 503898,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch02a.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch02a.html",
+   "http_status": 200,
+   "id": "v251/std251/ch02a.html",
+   "retrieved_at": "2026-09-28T07:56:22Z",
+   "roles": [
+    "datatypes"
+   ],
+   "sha256": "b8952ceefbcc161587e6bb53c8868d48af4451de7c236c2bb97467367bd45565",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch02a.html"
+  },
+  {
+   "bytes": 804164,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch03.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch03.html",
+   "http_status": 200,
+   "id": "v251/std251/ch03.html",
+   "retrieved_at": "2026-09-28T07:56:23Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "75e4d0d14243a5f08d91ca0d7d360230d5b980b92a8179f56ce98022b2e4f8cd",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch03.html"
+  },
+  {
+   "bytes": 1103949,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch04.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch04.html",
+   "http_status": 200,
+   "id": "v251/std251/ch04.html",
+   "retrieved_at": "2026-09-28T07:56:25Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "f8afdbf67d0018d8c04f05de451ca1c51d1533c1e5289939526cd1e247dc47b6",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch04.html"
+  },
+  {
+   "bytes": 570151,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch05.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch05.html",
+   "http_status": 200,
+   "id": "v251/std251/ch05.html",
+   "retrieved_at": "2026-09-28T07:56:26Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "b5ac05ce733d235730ba1d4109f4c4fbadf276a824805e239a23dc4a5860b837",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch05.html"
+  },
+  {
+   "bytes": 546249,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch06.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch06.html",
+   "http_status": 200,
+   "id": "v251/std251/ch06.html",
+   "retrieved_at": "2026-09-28T07:56:27Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "2d8dddfa628777eadedaa7a7f884cce740f7997d1a937890b272b1b82d5ee51d",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch06.html"
+  },
+  {
+   "bytes": 705112,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch07.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch07.html",
+   "http_status": 200,
+   "id": "v251/std251/ch07.html",
+   "retrieved_at": "2026-09-28T07:56:28Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e54ad216acc4a4c2a211c0ecf1a567a3efd9855799c6edcc351b0574cb99dfd1",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch07.html"
+  },
+  {
+   "bytes": 435879,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch08.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch08.html",
+   "http_status": 200,
+   "id": "v251/std251/ch08.html",
+   "retrieved_at": "2026-09-28T07:56:29Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "2aa4d1e8fe490b5c0776bc1c6f8147b076dae9b379708bafb7aa8f477d7777d2",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch08.html"
+  },
+  {
+   "bytes": 208657,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch09.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch09.html",
+   "http_status": 200,
+   "id": "v251/std251/ch09.html",
+   "retrieved_at": "2026-09-28T07:56:30Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "8bb607cdb9c7df10ca7260e84881013e3b104ce95587f5494153db7ba9909f62",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch09.html"
+  },
+  {
+   "bytes": 297523,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch10.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch10.html",
+   "http_status": 200,
+   "id": "v251/std251/ch10.html",
+   "retrieved_at": "2026-09-28T07:56:31Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "9f2dbd015e0e0de67f8adc9f4d7955d2f9588f287ddff2ceab968bad56194095",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch10.html"
+  },
+  {
+   "bytes": 187161,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch11.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch11.html",
+   "http_status": 200,
+   "id": "v251/std251/ch11.html",
+   "retrieved_at": "2026-09-28T07:56:33Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "1c1c1af490553f84e13d48d748e7060b6a346775f816946324d5038a9cd09a99",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch11.html"
+  },
+  {
+   "bytes": 179912,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch12.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch12.html",
+   "http_status": 200,
+   "id": "v251/std251/ch12.html",
+   "retrieved_at": "2026-09-28T07:56:33Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "c82b6d19d50793d594449d1e02740a556fae5d1c42f06305ae02e964c807b4dd",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch12.html"
+  },
+  {
+   "bytes": 231252,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch13.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch13.html",
+   "http_status": 200,
+   "id": "v251/std251/ch13.html",
+   "retrieved_at": "2026-09-28T07:56:34Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "10d662380cb029fbcde6409d22e9b2768f033922e2fa3da0403fa8a1dac71e3d",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch13.html"
+  },
+  {
+   "bytes": 40424,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch14.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch14.html",
+   "http_status": 200,
+   "id": "v251/std251/ch14.html",
+   "retrieved_at": "2026-09-28T07:56:35Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "67b1341c72bc8bdfe227f8c744b61135c72e4ad3c4fdbe3c4aceb03fc39ca746",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch14.html"
+  },
+  {
+   "bytes": 187873,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "v251__std251__ch15.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/std251/ch15.html",
+   "http_status": 200,
+   "id": "v251/std251/ch15.html",
+   "retrieved_at": "2026-09-28T07:56:36Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "608aa5572e354db5108f5cdaff6b75b85648aa1d9277c6280ab8ad1f052ddef7",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/std251/ch15.html"
+  },
+  {
+   "bytes": 433121,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch02.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch02.html",
+   "http_status": 200,
+   "id": "v26/std26/ch02.html",
+   "retrieved_at": "2026-09-28T07:56:37Z",
+   "roles": [
+    "control",
+    "chapter"
+   ],
+   "sha256": "73a7a3ec9e3265ebe23084f745860667caef6a3e1c967f10e7e92d23bc18116f",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch02.html"
+  },
+  {
+   "bytes": 523797,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch02a.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch02a.html",
+   "http_status": 200,
+   "id": "v26/std26/ch02a.html",
+   "retrieved_at": "2026-09-28T07:56:38Z",
+   "roles": [
+    "datatypes"
+   ],
+   "sha256": "260eebe9743ce09f19b3ddfdafe1673120612b5939ba7f5e61704f62eea9d883",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch02a.html"
+  },
+  {
+   "bytes": 1219116,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__AppendixA.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/AppendixA.html",
+   "http_status": 200,
+   "id": "v26/std26/AppendixA.html",
+   "retrieved_at": "2026-09-28T07:56:39Z",
+   "roles": [
+    "tables"
+   ],
+   "sha256": "eb9588e8feafa62465cb705e5fdce529bd431f946888567fbe17b82521fcccd0",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/AppendixA.html"
+  },
+  {
+   "bytes": 107887,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch02b.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch02b.html",
+   "http_status": 200,
+   "id": "v26/std26/ch02b.html",
+   "retrieved_at": "2026-09-28T07:56:40Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "4d3c57b212d22ac5d8b55fcd43e3565a42d103749759093d5fe7397501a1c249",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch02b.html"
+  },
+  {
+   "bytes": 849690,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch03.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch03.html",
+   "http_status": 200,
+   "id": "v26/std26/ch03.html",
+   "retrieved_at": "2026-09-28T07:56:41Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "5d122343679c64a3c414cf97d56b0b8d2c33cc7078a5fbe052b31beae0e4a81a",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch03.html"
+  },
+  {
+   "bytes": 1217444,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch04.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch04.html",
+   "http_status": 200,
+   "id": "v26/std26/ch04.html",
+   "retrieved_at": "2026-09-28T07:56:43Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "c42ef640459338fa04d7f51834b72728f8a8c38fc6b7aef8b763fdc8e1f3e211",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch04.html"
+  },
+  {
+   "bytes": 528694,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch05.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch05.html",
+   "http_status": 200,
+   "id": "v26/std26/ch05.html",
+   "retrieved_at": "2026-09-28T07:56:44Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "d55d92d0fc0f2ed4d45e12ab4ec85ddee9bc3c1ebb339526f5e6b30a05eaac67",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch05.html"
+  },
+  {
+   "bytes": 580834,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch06.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch06.html",
+   "http_status": 200,
+   "id": "v26/std26/ch06.html",
+   "retrieved_at": "2026-09-28T07:56:45Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "3c232742e76d8e04827a15b8972545d9d008e7595764ea6ddf8dec0fa00654d4",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch06.html"
+  },
+  {
+   "bytes": 738584,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch07.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch07.html",
+   "http_status": 200,
+   "id": "v26/std26/ch07.html",
+   "retrieved_at": "2026-09-28T07:56:46Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "fc3940aa027e399d8c9ef9c5c3120f546f595cb41959e677a99ea654dcaf962f",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch07.html"
+  },
+  {
+   "bytes": 469314,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch08.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch08.html",
+   "http_status": 200,
+   "id": "v26/std26/ch08.html",
+   "retrieved_at": "2026-09-28T07:56:47Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "302cfc9414df0215a47a40c214407aedb59d46edb89a595b7f498df5cbde4a95",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch08.html"
+  },
+  {
+   "bytes": 186242,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch09.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch09.html",
+   "http_status": 200,
+   "id": "v26/std26/ch09.html",
+   "retrieved_at": "2026-09-28T07:56:48Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "ec214300420a57ebed8612b51f3f040971ce05faa6fae816610a4af8698da242",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch09.html"
+  },
+  {
+   "bytes": 315745,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch10.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch10.html",
+   "http_status": 200,
+   "id": "v26/std26/ch10.html",
+   "retrieved_at": "2026-09-28T07:56:49Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "218fb357dbce10007b393a534af0ce282c4edd8dc999ab29002d05311bd8a1fc",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch10.html"
+  },
+  {
+   "bytes": 207979,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch11.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch11.html",
+   "http_status": 200,
+   "id": "v26/std26/ch11.html",
+   "retrieved_at": "2026-09-28T07:56:50Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "dd69fbaad0684bd1fcd019c374ac8a989f5531a6c9a3a6fa2ce6dbff99f9f666",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch11.html"
+  },
+  {
+   "bytes": 208867,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch12.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch12.html",
+   "http_status": 200,
+   "id": "v26/std26/ch12.html",
+   "retrieved_at": "2026-09-28T07:56:51Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e614b62c209f38ef8e36fc7af0dcfa688d0d5acecae8d0632dc82f61eb7e4232",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch12.html"
+  },
+  {
+   "bytes": 241902,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch13.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch13.html",
+   "http_status": 200,
+   "id": "v26/std26/ch13.html",
+   "retrieved_at": "2026-09-28T07:56:52Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "74766005c262e2a82912ca9406729150c145850340bea4b05725d389fa5698f1",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch13.html"
+  },
+  {
+   "bytes": 41715,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch14.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch14.html",
+   "http_status": 200,
+   "id": "v26/std26/ch14.html",
+   "retrieved_at": "2026-09-28T07:56:53Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "872ffd295501402fed8341ec5559ade46e96547386a6e73d45635d767293d92f",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch14.html"
+  },
+  {
+   "bytes": 205850,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch15.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch15.html",
+   "http_status": 200,
+   "id": "v26/std26/ch15.html",
+   "retrieved_at": "2026-09-28T07:56:54Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "cedcb6eca6943c0a793367763215ef7394bf7c34e12e8901a50dcd11f408ab5a",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch15.html"
+  },
+  {
+   "bytes": 260978,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch16.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch16.html",
+   "http_status": 200,
+   "id": "v26/std26/ch16.html",
+   "retrieved_at": "2026-09-28T07:56:55Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "cbafd72bf8ecf59f1b35c75b99468a484da1675f42d2e6a22d73fff162ba2b39",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch16.html"
+  },
+  {
+   "bytes": 243417,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "v26__std26__ch17.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/std26/ch17.html",
+   "http_status": 200,
+   "id": "v26/std26/ch17.html",
+   "retrieved_at": "2026-09-28T07:56:56Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "d38e40cb03705a440b1fe17af0cec95e8def5430d32fc7fb1d006f005889e2f3",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/std26/ch17.html"
+  },
+  {
+   "bytes": 330523,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch02.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02.html",
+   "http_status": 200,
+   "id": "v271/std271/ch02.html",
+   "retrieved_at": "2026-09-28T07:56:57Z",
+   "roles": [
+    "control",
+    "chapter"
+   ],
+   "sha256": "e9e2b1c165874232f3dbbfef7b5a7c514bbe9e078e953d7fff7eac99004d168b",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02.html"
+  },
+  {
+   "bytes": 493863,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch02a.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02a.html",
+   "http_status": 200,
+   "id": "v271/std271/ch02a.html",
+   "retrieved_at": "2026-09-28T07:56:58Z",
+   "roles": [
+    "datatypes"
+   ],
+   "sha256": "ebb56717a13eda8c9a81da102c9d7b9d90487a8233bf261ebe27054057ffb519",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02a.html"
+  },
+  {
+   "bytes": 744301,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch02c.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02c.html",
+   "http_status": 200,
+   "id": "v271/std271/ch02c.html",
+   "retrieved_at": "2026-09-28T07:56:59Z",
+   "roles": [
+    "tables"
+   ],
+   "sha256": "e44534e7a552d7f2881ad653a1a0ce9bcf05ec48f377e6f2c534300f27238c53",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02c.html"
+  },
+  {
+   "bytes": 82982,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch02b.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02b.html",
+   "http_status": 200,
+   "id": "v271/std271/ch02b.html",
+   "retrieved_at": "2026-09-28T07:57:00Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "0fedfa0942eb781f839671c479e68a1cbd0f7ba98ca38b86eff2ad450e30c1e6",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch02b.html"
+  },
+  {
+   "bytes": 576205,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch04a.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch04a.html",
+   "http_status": 200,
+   "id": "v271/std271/ch04a.html",
+   "retrieved_at": "2026-09-28T07:57:01Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "382c2963581dd0db3e45817980431d9648399a8df3dfead3f87acd282088e9b8",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch04a.html"
+  },
+  {
+   "bytes": 1108428,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch03.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch03.html",
+   "http_status": 200,
+   "id": "v271/std271/ch03.html",
+   "retrieved_at": "2026-09-28T07:57:02Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "f646e642531068266d8176c18a4410365ac5095d29e0efa8b1df639dc2cfdde5",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch03.html"
+  },
+  {
+   "bytes": 770901,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch04.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch04.html",
+   "http_status": 200,
+   "id": "v271/std271/ch04.html",
+   "retrieved_at": "2026-09-28T07:57:03Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "d2eebed9057a8f19d786103a54cd3175abe18f217d38ba04d0af0e2a7d361faa",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch04.html"
+  },
+  {
+   "bytes": 458985,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch05.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch05.html",
+   "http_status": 200,
+   "id": "v271/std271/ch05.html",
+   "retrieved_at": "2026-09-28T07:57:04Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "f928b06c527c47f8aae0402ff5443388699ef219ce2bf0ff17fb107744346eeb",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch05.html"
+  },
+  {
+   "bytes": 838135,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch06.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch06.html",
+   "http_status": 200,
+   "id": "v271/std271/ch06.html",
+   "retrieved_at": "2026-09-28T07:57:06Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "90f1a304e653800b91e8c262f5b6b80927b1bcc335c1672d3616f919842bc543",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch06.html"
+  },
+  {
+   "bytes": 865097,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch07.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch07.html",
+   "http_status": 200,
+   "id": "v271/std271/ch07.html",
+   "retrieved_at": "2026-09-28T07:57:07Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "8c8b4c730c40285a0cc17335e63199afa1220c5de629a0938aa7a3acbcfd0124",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch07.html"
+  },
+  {
+   "bytes": 528210,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch08.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch08.html",
+   "http_status": 200,
+   "id": "v271/std271/ch08.html",
+   "retrieved_at": "2026-09-28T07:57:08Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "ff66fa5abb0cede10689da1ca8e41a914edaaa3db2b0a67a21e60011324fc9ac",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch08.html"
+  },
+  {
+   "bytes": 204117,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch09.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch09.html",
+   "http_status": 200,
+   "id": "v271/std271/ch09.html",
+   "retrieved_at": "2026-09-28T07:57:09Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "8ab22ac6b1e998b4fd638359c40e524dcb09616891ebe8e1fe56529caf582880",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch09.html"
+  },
+  {
+   "bytes": 409909,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch10.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch10.html",
+   "http_status": 200,
+   "id": "v271/std271/ch10.html",
+   "retrieved_at": "2026-09-28T07:57:10Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "5a4be2d2734bdd161f07e3f4988f94c91a2f8053ac7e27345bd3dbf57d9f68c7",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch10.html"
+  },
+  {
+   "bytes": 372772,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch11.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch11.html",
+   "http_status": 200,
+   "id": "v271/std271/ch11.html",
+   "retrieved_at": "2026-09-28T07:57:11Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "8f72f75dd9ee0c0334c55ce79b6a7ea8f352f4ea68e7249bcd17ccfffc74fb37",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch11.html"
+  },
+  {
+   "bytes": 240170,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch12.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch12.html",
+   "http_status": 200,
+   "id": "v271/std271/ch12.html",
+   "retrieved_at": "2026-09-28T07:57:12Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "eec20fc4c75ec00f4edb50be98029d264a7fa3967c53cfd037764a8d26cf4134",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch12.html"
+  },
+  {
+   "bytes": 261551,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch13.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch13.html",
+   "http_status": 200,
+   "id": "v271/std271/ch13.html",
+   "retrieved_at": "2026-09-28T07:57:13Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "7e226a134760cf4209e2050d7483c32a6edca02a016167fcc44c84c4bd97c0ac",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch13.html"
+  },
+  {
+   "bytes": 39177,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch14.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch14.html",
+   "http_status": 200,
+   "id": "v271/std271/ch14.html",
+   "retrieved_at": "2026-09-28T07:57:14Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e419acd3f06455be9a1c301f8a20bec205b420a3ee614e37e161ee10c1bcc24f",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch14.html"
+  },
+  {
+   "bytes": 295100,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch15.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch15.html",
+   "http_status": 200,
+   "id": "v271/std271/ch15.html",
+   "retrieved_at": "2026-09-28T07:57:15Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "6a3eef91786654801a19786baf750e177ca6f7e5c9fc29695db036744c998630",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch15.html"
+  },
+  {
+   "bytes": 334713,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch16.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch16.html",
+   "http_status": 200,
+   "id": "v271/std271/ch16.html",
+   "retrieved_at": "2026-09-28T07:57:16Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "6c1a450059bf73703d8c12b228fea1c7e4cd2d94941a95595eed1943eda6e2f1",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch16.html"
+  },
+  {
+   "bytes": 305880,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "v271__std271__ch17.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/std271/ch17.html",
+   "http_status": 200,
+   "id": "v271/std271/ch17.html",
+   "retrieved_at": "2026-09-28T07:57:17Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "2b2068fb7874f3979c040b92a83c6ac162c90d4b7f66754f72168bb7d3d6d7bf",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/std271/ch17.html"
+  },
+  {
+   "bytes": 347897,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch02.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02.html",
+   "http_status": 200,
+   "id": "v282/std282/ch02.html",
+   "retrieved_at": "2026-09-28T07:57:18Z",
+   "roles": [
+    "control",
+    "chapter"
+   ],
+   "sha256": "4c322a51a147ba587749510917b8fa7effc24dadd6a6952e34105085294056e1",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02.html"
+  },
+  {
+   "bytes": 483324,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch02a.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02a.html",
+   "http_status": 200,
+   "id": "v282/std282/ch02a.html",
+   "retrieved_at": "2026-09-28T07:57:19Z",
+   "roles": [
+    "datatypes"
+   ],
+   "sha256": "d55ff51f2a52452cbc721b42108ef074103b413914bb6cba7de8b24ca9d961c2",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02a.html"
+  },
+  {
+   "bytes": 1054934,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch02c.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02c.html",
+   "http_status": 200,
+   "id": "v282/std282/ch02c.html",
+   "retrieved_at": "2026-09-28T07:57:20Z",
+   "roles": [
+    "tables"
+   ],
+   "sha256": "df66edfbc419d090b0b4fce94db9d997be43f3577a252f643579dd0a592c0ceb",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02c.html"
+  },
+  {
+   "bytes": 194604,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch02b.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02b.html",
+   "http_status": 200,
+   "id": "v282/std282/ch02b.html",
+   "retrieved_at": "2026-09-28T07:57:21Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "2875848300da342993ce131a4d35e6df238d595a7bdd2ce81a406e0f33f1eff6",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch02b.html"
+  },
+  {
+   "bytes": 569523,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch04a.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch04a.html",
+   "http_status": 200,
+   "id": "v282/std282/ch04a.html",
+   "retrieved_at": "2026-09-28T07:57:22Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "7e34e0d489d46f0a093a86ddf6bfea80118e378821969d957834156f5163c733",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch04a.html"
+  },
+  {
+   "bytes": 975198,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch03.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch03.html",
+   "http_status": 200,
+   "id": "v282/std282/ch03.html",
+   "retrieved_at": "2026-09-28T07:57:23Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "0f4ed74085652d0cb107c712002a5c3b539287997e74e132e0f5bef0f775fa14",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch03.html"
+  },
+  {
+   "bytes": 923953,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch04.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch04.html",
+   "http_status": 200,
+   "id": "v282/std282/ch04.html",
+   "retrieved_at": "2026-09-28T07:57:24Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "47624ee46ef035b204ca1c0bde72a2513a26ddcf4cf15b0b4522647bef19e42a",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch04.html"
+  },
+  {
+   "bytes": 428812,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch05.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch05.html",
+   "http_status": 200,
+   "id": "v282/std282/ch05.html",
+   "retrieved_at": "2026-09-28T07:57:25Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e0544a63ab65bcd8094378a7390fd50b2f081a86fd3dcbcb465e7429e9240a77",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch05.html"
+  },
+  {
+   "bytes": 806842,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch06.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch06.html",
+   "http_status": 200,
+   "id": "v282/std282/ch06.html",
+   "retrieved_at": "2026-09-28T07:57:26Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "c21602db7d0fc0936e8df0bbaddaf4f452ca6a992ce9fd4f883d265f8f8c679d",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch06.html"
+  },
+  {
+   "bytes": 917556,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch07.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch07.html",
+   "http_status": 200,
+   "id": "v282/std282/ch07.html",
+   "retrieved_at": "2026-09-28T07:57:28Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a0bf083535c9c7982f7477dcc324bce4a2e018f53b9e2fa9cfe3b9282a519598",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch07.html"
+  },
+  {
+   "bytes": 577829,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch08.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch08.html",
+   "http_status": 200,
+   "id": "v282/std282/ch08.html",
+   "retrieved_at": "2026-09-28T07:57:29Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e5bec2ca61c48bea34078be23b55912c08aeddc4661cc9bb6008f7121fe99169",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch08.html"
+  },
+  {
+   "bytes": 186894,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch09.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch09.html",
+   "http_status": 200,
+   "id": "v282/std282/ch09.html",
+   "retrieved_at": "2026-09-28T07:57:30Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "6df724de77985c73a57fce683bc797428a7a12927e62c2e256cffc7e77ed314d",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch09.html"
+  },
+  {
+   "bytes": 359447,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch10.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch10.html",
+   "http_status": 200,
+   "id": "v282/std282/ch10.html",
+   "retrieved_at": "2026-09-28T07:57:31Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "7ca6c2fc20cc3d7e138f66765d3b842452eb20e31ad671108d67af0194c98cee",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch10.html"
+  },
+  {
+   "bytes": 405820,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch11.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch11.html",
+   "http_status": 200,
+   "id": "v282/std282/ch11.html",
+   "retrieved_at": "2026-09-28T07:57:32Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "340c51b7ebf93e7c8881daa555dbfcd59473f7e44c9ad47704c9e48107f09b3c",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch11.html"
+  },
+  {
+   "bytes": 191862,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch12.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch12.html",
+   "http_status": 200,
+   "id": "v282/std282/ch12.html",
+   "retrieved_at": "2026-09-28T07:57:33Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "6dc0485180cbcec61f3e2a217c63ef0d46420448e18c319f83e95fa071f45688",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch12.html"
+  },
+  {
+   "bytes": 252818,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch13.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch13.html",
+   "http_status": 200,
+   "id": "v282/std282/ch13.html",
+   "retrieved_at": "2026-09-28T07:57:34Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "a7193738d35af04c31397a0377d41313d7fa00eaa8f7741bd14c4779d5679ea3",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch13.html"
+  },
+  {
+   "bytes": 34975,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch14.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch14.html",
+   "http_status": 200,
+   "id": "v282/std282/ch14.html",
+   "retrieved_at": "2026-09-28T07:57:35Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "3090987e970624d42d263680c98821325412f003dda32b7456abc2cfbb270895",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch14.html"
+  },
+  {
+   "bytes": 269378,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch15.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch15.html",
+   "http_status": 200,
+   "id": "v282/std282/ch15.html",
+   "retrieved_at": "2026-09-28T07:57:36Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "d219e0ea0e13fc44f6e4e54c161e786869a0109055dbf9c5cfea96402aa8c913",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch15.html"
+  },
+  {
+   "bytes": 305827,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch16.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch16.html",
+   "http_status": 200,
+   "id": "v282/std282/ch16.html",
+   "retrieved_at": "2026-09-28T07:57:37Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "e624c91e1f38377c0db5fded6b617445abe936c19b77b22b3e7baa452c71a790",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch16.html"
+  },
+  {
+   "bytes": 302220,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "v282__std282__ch17.html",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/std282/ch17.html",
+   "http_status": 200,
+   "id": "v282/std282/ch17.html",
+   "retrieved_at": "2026-09-28T07:57:38Z",
+   "roles": [
+    "chapter"
+   ],
+   "sha256": "43d6a2a14a910601a683a4af5b7b7a36e286929023edb3ef3e20dc1d0437550f",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/std282/ch17.html"
+  },
+  {
+   "bytes": 272965,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/fields.json",
+   "retrieved_at": "2026-09-28T07:57:39Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "b9a073976f7045da344deceba98abb4a544f15118dc0fc4d03a0d4bdc68490a2",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/fields.json"
+  },
+  {
+   "bytes": 237954,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:39Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "649fdee0ecb7b4a2e2bf968f777b23c5e81e00925396fa0d5af100b5988c1d97",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/data_elements.json"
+  },
+  {
+   "bytes": 164885,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/components.json",
+   "retrieved_at": "2026-09-28T07:57:39Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "09cad52a155969f4191ed79a221a3044ed1b1af7d595d4d515a0778a6fd08898",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/components.json"
+  },
+  {
+   "bytes": 13307,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:40Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "85f201ec249847a19ddb0531d3d16d7d7cbdb8baeb018973da8a8ecae0d7a160",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/datatypes.json"
+  },
+  {
+   "bytes": 35573,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/tables.json",
+   "retrieved_at": "2026-09-28T07:57:40Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "bfa43ec9d07c29bf4ac42df08e6d0f08b93c30c851f3b87e164d399628249223",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/tables.json"
+  },
+  {
+   "bytes": 265473,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/codes.json",
+   "retrieved_at": "2026-09-28T07:57:40Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "79b625cedde13e03802ad887a6835ac49d98677938ea6c4c8eda62c11b8ce546",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/codes.json"
+  },
+  {
+   "bytes": 11225,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7db__2.3.1__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.3.1/segments.json",
+   "retrieved_at": "2026-09-28T07:57:41Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "dd44fa7434e6d088df5cee939ad6dd37f864e5d024da7021d989996d40795c7f",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.3.1/segments.json"
+  },
+  {
+   "bytes": 78580,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.3.1",
+   "file": "hl7eu__v231__hl7v231tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v231/hl7v231tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v231/hl7v231tab.htm",
+   "retrieved_at": "2026-09-28T07:57:41Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "b2b0d4c484a8b3a7270b7919963e719b09ade9edc9e93a3c4f58452b22e6132c",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v231/hl7v231tab.htm"
+  },
+  {
+   "bytes": 333025,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/fields.json",
+   "retrieved_at": "2026-09-28T07:57:42Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "f55939c89981af32597d4d183b4a863aa584db4869e4b990ca5caec9c972b71d",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/fields.json"
+  },
+  {
+   "bytes": 293668,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:42Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "f98a0f535f29107fc919a7f180139092b6fdc7964ba1aef34b69770551ee2843",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/data_elements.json"
+  },
+  {
+   "bytes": 267178,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/components.json",
+   "retrieved_at": "2026-09-28T07:57:43Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "df42bdfb406955506d6e5d3667e71b04c6f2c68e403da0afc31718687d00b1c3",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/components.json"
+  },
+  {
+   "bytes": 17208,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:43Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "8ca411d3965c83a5e21e4ee956398b7f18837f1f63ecd2a52ea8dc4326d5a255",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/datatypes.json"
+  },
+  {
+   "bytes": 49644,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/tables.json",
+   "retrieved_at": "2026-09-28T07:57:43Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "1bad9de870d0d24654924fc204eba91acc7f5439b7d6f30ab1195647ec97fe6b",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/tables.json"
+  },
+  {
+   "bytes": 402635,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/codes.json",
+   "retrieved_at": "2026-09-28T07:57:43Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "614f563a315fc292a6f482cc88dc21673800fba83f28c697300d4b7a682712e6",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/codes.json"
+  },
+  {
+   "bytes": 12339,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7db__2.4__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.4/segments.json",
+   "retrieved_at": "2026-09-28T07:57:44Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "f637de12d3fd67d539663b14ac49e4da7f2057e2599037281b1256cc2c1284a2",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.4/segments.json"
+  },
+  {
+   "bytes": 102993,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.4",
+   "file": "hl7eu__v24__hl7v24tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v24/hl7v24tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v24/hl7v24tab.htm",
+   "retrieved_at": "2026-09-28T07:57:44Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "d39a857b8cfe91932b0f415cedbea275984566b10edfb5f709a4a16ed7d6201d",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v24/hl7v24tab.htm"
+  },
+  {
+   "bytes": 385419,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/fields.json",
+   "retrieved_at": "2026-09-28T07:57:45Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "4becc64a72a2a9e319d454893a3de2300b59ff0d6aca4dcc171b230f13310e06",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/fields.json"
+  },
+  {
+   "bytes": 344898,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:45Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "1e94ff677ebb48c21554c2ac7cbfe802756a6f14b1c340a33beb179d656c17e6",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/data_elements.json"
+  },
+  {
+   "bytes": 95510,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/components.json",
+   "retrieved_at": "2026-09-28T07:57:45Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "c4809777dafb60ed83c4308c2cb3fa936438149f60637d8a2dfb2409bc40d295",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/components.json"
+  },
+  {
+   "bytes": 9802,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:46Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "873d7848964af00322d4a2d8dd50278240753c7726ae4490e27107cb2322c765",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/datatypes.json"
+  },
+  {
+   "bytes": 61474,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/tables.json",
+   "retrieved_at": "2026-09-28T07:57:46Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "8b613135fbb8a5b105812566e0901e93b65c89190c4048f89b76c294c82e16d6",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/tables.json"
+  },
+  {
+   "bytes": 487946,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/codes.json",
+   "retrieved_at": "2026-09-28T07:57:46Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "7dad2adefd97d70f4049c89880714b4c60e777c5f30c6abd8535a68fd32d4987",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/codes.json"
+  },
+  {
+   "bytes": 13405,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7db__2.5__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.5/segments.json",
+   "retrieved_at": "2026-09-28T07:57:47Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "ea0f5528d7fdee0eb7001eb95aeefee4de5e9c86f1def5c1e8ccab478f526c17",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5/segments.json"
+  },
+  {
+   "bytes": 142926,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5",
+   "file": "hl7eu__v25__hl7v25tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v25/hl7v25tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v25/hl7v25tab.htm",
+   "retrieved_at": "2026-09-28T07:57:47Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "b7c98d0443453cd8d3437e1e7fa6dee3bf50dd621fc6601b3c475689f333449f",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v25/hl7v25tab.htm"
+  },
+  {
+   "bytes": 386910,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/fields.json",
+   "retrieved_at": "2026-09-28T07:57:48Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "9e19c6a0cfadeef78582d72dfe8bb8f9114f45d4f19145d59a25d8d74b32141e",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/fields.json"
+  },
+  {
+   "bytes": 345955,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:48Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "c21554f1c9f671598cc83f915d336b6c9828420ab151d021a7c0aa270887fdf8",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/data_elements.json"
+  },
+  {
+   "bytes": 95510,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/components.json",
+   "retrieved_at": "2026-09-28T07:57:49Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "c4809777dafb60ed83c4308c2cb3fa936438149f60637d8a2dfb2409bc40d295",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/components.json"
+  },
+  {
+   "bytes": 10052,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:49Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "23b47e4ca7d8b361f3d5d9950b767a7eb8226009a2d58150c9d9d77d83bdbf4b",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/datatypes.json"
+  },
+  {
+   "bytes": 61569,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/tables.json",
+   "retrieved_at": "2026-09-28T07:57:49Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "af7aa9c1b123ff6c04babb26ba5db0f581df49cba7c9c73ba6364572c787fa73",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/tables.json"
+  },
+  {
+   "bytes": 502282,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/codes.json",
+   "retrieved_at": "2026-09-28T07:57:49Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "3c7a690a09de4b67567a8c2ae0cc4a6cf2612bd681a44029756e1e10d45e4b02",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/codes.json"
+  },
+  {
+   "bytes": 13384,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7db__2.5.1__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.5.1/segments.json",
+   "retrieved_at": "2026-09-28T07:57:50Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "a846d2c5a02c750f1e37336736b009e64d99bfa8f7a924e615ec1525a2a4c34f",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.5.1/segments.json"
+  },
+  {
+   "bytes": 142795,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.5.1",
+   "file": "hl7eu__v251__hl7v251tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v251/hl7v251tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v251/hl7v251tab.htm",
+   "retrieved_at": "2026-09-28T07:57:50Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "03139b50f7267457b4e08faa1e46246ac6f34405bd99b25dc49a3eba9c8a4c16",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v251/hl7v251tab.htm"
+  },
+  {
+   "bytes": 453905,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/fields.json",
+   "retrieved_at": "2026-09-28T07:57:51Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "a80716483d7a58bc41a1ea2de202b33fd49ca4ba0424575a576536fd2267aabe",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/fields.json"
+  },
+  {
+   "bytes": 410167,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:51Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "c23aa3b66af8b985c73baabcc8a8cb87ac7513cba4a5da3e304e271e23d811f7",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/data_elements.json"
+  },
+  {
+   "bytes": 98480,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/components.json",
+   "retrieved_at": "2026-09-28T07:57:52Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "bcebda2a6aac2339ad8737f75539a8e8cf4ca5d76bfcaa316d8beadad14c6d8f",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/components.json"
+  },
+  {
+   "bytes": 9887,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:52Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "df4e8953b4da0bd9812e5ac5157f66196343257b482ea42a38951eb5c06c53f8",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/datatypes.json"
+  },
+  {
+   "bytes": 69405,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/tables.json",
+   "retrieved_at": "2026-09-28T07:57:52Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "1d253077b50f761a98290738e104be3be9cc11fe761e0d6f0c66b750031186f6",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/tables.json"
+  },
+  {
+   "bytes": 558474,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/codes.json",
+   "retrieved_at": "2026-09-28T07:57:53Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "f532604f0886c92b1f679eabdc9f6d3ecc6eefb6d3f4adb7889a0ade49a1e737",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/codes.json"
+  },
+  {
+   "bytes": 15172,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7db__2.6__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.6/segments.json",
+   "retrieved_at": "2026-09-28T07:57:53Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "78f0b1a5ff2280acce993ec14178a4ca23d9d1f8cb65091c33b4d6b9545eba38",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.6/segments.json"
+  },
+  {
+   "bytes": 158080,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.6",
+   "file": "hl7eu__v26__hl7v26tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v26/hl7v26tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v26/hl7v26tab.htm",
+   "retrieved_at": "2026-09-28T07:57:53Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "753095042131ea29af93bcea9767a770149d910829a2e0e96726cd79c0568d26",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v26/hl7v26tab.htm"
+  },
+  {
+   "bytes": 463899,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/fields.json",
+   "retrieved_at": "2026-09-28T07:57:54Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "dbfdbfa9de4b7b0ee9267409704bade5565b62c9c18d58577b9a632db5fa19df",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/fields.json"
+  },
+  {
+   "bytes": 418279,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:54Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "7816d24f96edfccb70e0170e75389b93aab50f88f7e6ccd286be8b78f375d52e",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/data_elements.json"
+  },
+  {
+   "bytes": 95688,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/components.json",
+   "retrieved_at": "2026-09-28T07:57:55Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "2b4f6317b92bbeb7d3093e810a74334e1879695e97c4367d8bd07e88051ab2d2",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/components.json"
+  },
+  {
+   "bytes": 9345,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:55Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "5cf16335ae7b5e14b6cb87d7cd0db6128a7bbd1be4311b032c234f98de429861",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/datatypes.json"
+  },
+  {
+   "bytes": 69299,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/tables.json",
+   "retrieved_at": "2026-09-28T07:57:55Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "9b5c9b6ae25bf0b69c7b615411246b0f8d94e183f3d9f5e4733b51153ddcf9c5",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/tables.json"
+  },
+  {
+   "bytes": 551641,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/codes.json",
+   "retrieved_at": "2026-09-28T07:57:55Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "66ef099b2ca2201444099be28b21ff7c5bdf813afe7084c6ceecd2121b663bfe",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/codes.json"
+  },
+  {
+   "bytes": 15277,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7db__2.7.1__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.7.1/segments.json",
+   "retrieved_at": "2026-09-28T07:57:56Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "8c729c428144438c7c015bfb820546491b05e803647a84feddf3bb52fcae6aa7",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.7.1/segments.json"
+  },
+  {
+   "bytes": 158277,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.7.1",
+   "file": "hl7eu__v271__hl7v271tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v271/hl7v271tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v271/hl7v271tab.htm",
+   "retrieved_at": "2026-09-28T07:57:56Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "e5dbf5b4be2187d6ad38563387ce3f94f03aa858df163c6edd48a884086826e0",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v271/hl7v271tab.htm"
+  },
+  {
+   "bytes": 500467,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__fields.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/fields.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/fields.json",
+   "retrieved_at": "2026-09-28T07:57:57Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "0f3fbf22c4a76239a30c9f741d701851e2631518ca687a610c735e96aecc14dc",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/fields.json"
+  },
+  {
+   "bytes": 459757,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__data_elements.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/data_elements.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/data_elements.json",
+   "retrieved_at": "2026-09-28T07:57:57Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "05e5c4267983224c68539f4de4fd5600c62c9a77ebf46b9d7345004a0dd32820",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/data_elements.json"
+  },
+  {
+   "bytes": 96523,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__components.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/components.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/components.json",
+   "retrieved_at": "2026-09-28T07:57:58Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "015da0f460c869dea933f32b1ea32abc1b8af4c9b8106bc05f14e1c8edd11885",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/components.json"
+  },
+  {
+   "bytes": 9211,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__datatypes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/datatypes.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/datatypes.json",
+   "retrieved_at": "2026-09-28T07:57:58Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "4451fcfb39c04bdd93740c18188be665a965c584083f1b8a88517399b95b31d6",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/datatypes.json"
+  },
+  {
+   "bytes": 73343,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__tables.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/tables.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/tables.json",
+   "retrieved_at": "2026-09-28T07:57:58Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "1aded68c3a4145416af37023ae66dc5037aa73c44424be78bd963fd235dfc801",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/tables.json"
+  },
+  {
+   "bytes": 593118,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__codes.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/codes.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/codes.json",
+   "retrieved_at": "2026-09-28T07:57:58Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "eec244891d9e6972bc30bb82bfc9c9daa5fa7eb8a53680484c7e803a8b6bd86e",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/codes.json"
+  },
+  {
+   "bytes": 16159,
+   "content_type": "text/plain; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7db__2.8.2__segments.json",
+   "final_url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/segments.json",
+   "http_status": 200,
+   "id": "hl7db/2.8.2/segments.json",
+   "retrieved_at": "2026-09-28T07:57:59Z",
+   "roles": [
+    "hl7db"
+   ],
+   "sha256": "7defd1e65534db52d48729547469cbf253c458aa13d002c320282a12fb56d6d8",
+   "status": "acquired",
+   "url": "https://raw.githubusercontent.com/usnistgov/igamt-hl7Tools-service/09374475cc9cb3038f1fd79448b458e945ca9b62/src/main/resources/hl7db/2.8.2/segments.json"
+  },
+  {
+   "bytes": 166723,
+   "content_type": "text/html; charset=utf-8",
+   "edition": "2.8.2",
+   "file": "hl7eu__v282__hl7v282tab.htm",
+   "final_url": "https://www.hl7.eu/HL7v2x/v282/hl7v282tab.htm",
+   "http_status": 200,
+   "id": "hl7eu/v282/hl7v282tab.htm",
+   "retrieved_at": "2026-09-28T07:57:59Z",
+   "roles": [
+    "hl7db-rendering"
+   ],
+   "sha256": "cdf4fe0ef4ac6c917c9c5c2ff7a48f4c3329961a593702faca7f60cdafb8f6bf",
+   "status": "acquired",
+   "url": "https://www.hl7.eu/HL7v2x/v282/hl7v282tab.htm"
+  },
+  {
+   "bytes": 4865259,
+   "content_type": "application/tar+gzip",
+   "edition": "THO 7.3.0",
+   "file": "tho-r4-7.3.0",
+   "final_url": "https://packages.fhir.org/hl7.terminology.r4/7.3.0",
+   "http_status": 200,
+   "id": "tho-r4-7.3.0",
+   "retrieved_at": "2026-09-28T07:58:00Z",
+   "roles": [
+    "terminology"
+   ],
+   "sha256": "1a1ef2aa22ecc820341267f2bdba3b2d1f4adafb9bdddfc9e51c611cd64f3b54",
+   "status": "acquired",
+   "url": "https://packages.fhir.org/hl7.terminology.r4/7.3.0"
+  },
+  {
+   "bytes": 3802512,
+   "file": "owner__v282-ch02a.pdf",
+   "id": "owner/v282-ch02a.pdf",
+   "note": "Owner-supplied Chrome rendering of the 2.8.2 Chapter 2A page, attached to #577 on 2026-09-28",
+   "sha256": "3cb96a09c1a5dc6cc7c990dd08c03c8433677dd21d67afc9da2effceffef2080",
+   "status": "supplied",
+   "url": "https://github.com/user-attachments/files/32729676/HL7.Version.2.8.2.Chapter.2.pdf"
+  }
+ ]
+}

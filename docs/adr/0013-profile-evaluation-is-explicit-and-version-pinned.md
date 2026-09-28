@@ -52,3 +52,28 @@ takes a choice only from the same version's HL7apy group declaration, where
 nHapi's generated constructors flatten it, and refuses any disagreement between
 the two pinned sources. The new outputs are new pack identities under a new
 receipt, and remain withheld pending the exact-content review in #627.
+
+## 2026-09-28: edition usage from the HL7 database, reviewed conditions
+
+A conditional requirement is not optional. `readmit-profile-pack/v5` states
+each base field and component's edition usage code (R, RE, O, C, X, or
+unclassified where the source defines none), the typed condition of a C
+element with its R/RE/O/X branches, length facets with the edition's counting
+rule, and table bindings with their kind. It selects evaluator v4. An
+unreadable operand or information the message does not carry leaves a
+condition undecided; a C element without an encoded condition and an
+unclassified element are unsupported. None can produce a pass. New
+evaluations of v2-v4 packs report their not-required base declarations as
+unclassified, because the upstream sources collapse optional and conditional;
+their operator identities and stored results are unchanged.
+
+The structural facts come from NIST's JSON export of the HL7-provided v2
+database, pinned by commit and file hash, not from parsed prose tables. The
+database records a conditional element only as C, so each predicate is
+encoded by reading its own edition sentence; the committed registry holds
+typed predicates and the location and hash of each basis sentence in the
+frozen text, never the text. Every edition lets a site extend an HL7 table,
+so an unfamiliar code in one is no base violation; user-defined values are
+suggestions; an external or imported vocabulary is unsupported until pinned.
+The sources, database files and v5 packs stay outside distribution pending
+#627.

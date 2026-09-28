@@ -32,7 +32,7 @@ func decodeProfile(raw []byte) (ProfileV2, error) {
 		p = ProfileV2{Schema: localprofile.Schema, Definition: d}
 	case ProfileSchemaV3:
 		var v ProfileV3
-		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes) != nil {
+		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes, false) != nil {
 			return p, invalid
 		}
 		p = ProfileV2{Schema: v.Schema, Definition: v.Definition, Structure: v.Structure, datatypes: v.Datatypes}
@@ -123,9 +123,9 @@ func decodePack(raw []byte) (PackV2, error) {
 			return p, err
 		}
 		p = PackV2{Schema: profilepack.Schema, Metadata: d}
-	case PackSchemaV3, PackSchemaV4:
+	case PackSchemaV3, PackSchemaV4, PackSchemaV5:
 		var v PackV3
-		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes) != nil {
+		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes, v.Schema == PackSchemaV5) != nil {
 			return p, invalid
 		}
 		p = PackV2{Schema: v.Schema, Metadata: v.Metadata, Messages: v.Messages, datatypes: v.Datatypes}
@@ -163,7 +163,7 @@ func decodePack(raw []byte) (PackV2, error) {
 			return p, invalid
 		}
 		seen[k] = true
-		if err := validateNodes(m.Sequence, 0, &count, p.Schema == PackSchemaV4); err != nil {
+		if err := validateNodes(m.Sequence, 0, &count, p.Schema == PackSchemaV4 || p.Schema == PackSchemaV5); err != nil {
 			return p, err
 		}
 		ss := map[string]bool{}
@@ -174,7 +174,10 @@ func decodePack(raw []byte) (PackV2, error) {
 			ss[s.ID] = true
 			positions := map[int]bool{}
 			for _, f := range s.Fields {
-				if f.Position < 1 || f.Position > 999 || positions[f.Position] || f.MaxRepetitions < 0 || f.MaxRepetitions > 9999 || f.MaxLength < 0 || f.MaxLength > MaxBytes || !token.MatchString(f.DataType) {
+				v5 := p.Schema == PackSchemaV5
+				if f.Position < 1 || f.Position > 999 || positions[f.Position] || f.MaxRepetitions < 0 || f.MaxRepetitions > 9999 || f.MaxLength < 0 || f.MaxLength > MaxBytes || !token.MatchString(f.DataType) ||
+					validateUsage(f.Usage, f.Condition, f.Length, v5, f.Position, 999) != nil || v5 && (f.Required || f.MaxLength != 0) ||
+					!v5 && (f.Table != "" || f.TableKind != "" || f.Policy != "" || f.Codes != nil) || v5 && (validateBinding(f.Table, f.TableKind, f.Policy, f.Codes) != nil || f.Table != "" && !token.MatchString(f.Table)) {
 					return p, invalid
 				}
 				positions[f.Position] = true
