@@ -321,6 +321,7 @@ export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): V
     fixture_modes: ["fixed", "defective"],
     affected_test_impacts: ["affected", "unaffected", "current", "unrelated", "unknown"],
     observation_starts: [{"schema": "readmit-observation-source/v1", "source": {"kind": "file-export", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": {"envelope": "csv", "encoding": "utf-8", "csv": {"delimiter": ",", "record_separator": "lf", "header": "present", "fields": 2}, "record_key": []}, "file": {"path": "", "max_bytes": 65536}, "http": null, "capture": null}, {"schema": "readmit-observation-source/v1", "source": {"kind": "http-api", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": {"envelope": "json", "encoding": "utf-8", "json": {"record_path": []}, "record_key": []}, "file": null, "http": {"url": "", "classification": "unclassified", "ca_file": "", "server_name": "", "timeout": "10s", "max_bytes": 1048576, "retry": {"attempts": 1, "delay": "1s"}, "credential": null}, "capture": null}, {"schema": "readmit-observation-source/v2", "source": {"kind": "downstream-capture", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": null, "file": null, "http": null, "capture": {"path": "", "kinds": ["message"], "record_key": "", "max_occurrences": 1000}}, {"schema": "readmit-observation-source/v3", "source": {"kind": "database-query", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": null, "file": null, "http": null, "capture": null, "database": {"driver": "postgresql", "address": "", "classification": "unclassified", "name": "", "username": "", "ca_file": "", "server_name": "", "credential": {"store": "os-keychain", "address": "", "purpose": "database-observation", "command": "", "arguments": []}, "view": [], "record_key": "", "key_type": "text", "filters": [], "limits": null}}],
+    coverage: { declared_coverages: ["partial", "complete"], retry_bases: ["operator_reported_retry"], max_clock_tolerance_seconds: 86400 },
   };
 }
 
@@ -642,8 +643,15 @@ export function editorDraft(
 export function sequenceResult(events: Sequence["events"], overrides: Partial<Sequence> = {}): SequenceResult {
   return {
     state: "completed",
+    context: { project: WORKSPACE_ROOT, generation: 0 },
     sequence: {
-      analysis_entry: "",
+      context: { project: WORKSPACE_ROOT, generation: 0 },
+      basis: "observed",
+      clocks: [{ id: "session", kind: "session", sources: ["s0001"] }],
+      untimed: 0,
+      relations: [],
+      problems: { unresolved_links: 0, gaps: 0 },
+      fields: [],
       case: CASE_ENTRY,
       identity: CASE_IDENTITY,
       rules: "",
@@ -653,6 +661,7 @@ export function sequenceResult(events: Sequence["events"], overrides: Partial<Se
       lanes: [
         {
           source_id: "s0001",
+          source_name: "",
           occurrences: events.length,
           messages: events.length,
           acknowledgements: 0,
@@ -662,10 +671,6 @@ export function sequenceResult(events: Sequence["events"], overrides: Partial<Se
           earliest: "2026-01-01T12:00:00Z",
           latest: "2026-01-01T12:01:00Z",
         },
-      ],
-      gaps: [
-        { gap: "unacknowledged_message", count: 0 },
-        { gap: "unknown_observed_time", count: 0 },
       ],
       summary: {
         occurrences: events.length,
@@ -685,8 +690,6 @@ export function sequenceResult(events: Sequence["events"], overrides: Partial<Se
       limit: 200,
       total: events.length,
       events,
-      clock: "A recorded time is one capture's own clock.",
-      scope: "Order is not causality.",
       ...overrides,
     },
   };
@@ -705,6 +708,8 @@ export function sequenceEvent(
     direction: "outbound",
     offset: 0,
     size: 256,
+    source_sequence: position,
+    at: new Date(Date.UTC(2026, 0, 1, 12, 0, position * 10)).toISOString(),
     ordering: "observed",
     observed_at: "2026-01-01T12:00:00Z",
     declared_state: "present",

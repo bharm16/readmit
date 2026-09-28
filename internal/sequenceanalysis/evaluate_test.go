@@ -49,7 +49,7 @@ func day(source string) Window {
 func kinds(r *Report) map[string]int {
 	found := map[string]int{}
 	for _, f := range r.Findings {
-		found[f.Kind]++
+		found[string(f.Kind)]++
 	}
 	return found
 }

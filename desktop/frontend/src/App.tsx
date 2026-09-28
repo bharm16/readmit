@@ -82,13 +82,8 @@ import {
   type FieldState,
   type FindingStatus,
   type TestExpectation,
-  openSequence,
-  openCorrelationReview,
-  decideCorrelation,
   normalizeCompare,
   type NormalizeResult,
-  type CorrelationReviewResult,
-  type SequenceResult,
   openReview,
   previewTransformation,
   saveTransformPlan,
@@ -130,7 +125,7 @@ import {
 import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
 import { GuidedSample } from "./GuidedSample";
-import { Sequence } from "./Sequence";
+import { useTimeline } from "./Timeline";
 import { MessageReader } from "./Inspector";
 import { MessageList, NO_QUERY, sameQuery, SearchSettingsSheet, type FilterSeed } from "./Messages";
 import { Reproducer, type ReproducerView } from "./Reproducer";
@@ -210,8 +205,6 @@ type Running =
   | "comparison"
   | "revisions"
   | "practice"
-  | "sequence"
-  | "correlation-review"
   | "transformation"
   | "transform-plan"
   | "transform-open"
@@ -276,8 +269,6 @@ const PROGRESS: Record<Running, string> = {
   comparison: "Comparing…",
   revisions: "Comparing revisions…",
   practice: "Running the demo test…",
-  sequence: "Loading the timeline…",
-  "correlation-review": "Reviewing correlations…",
   transformation: "Previewing the transformation…",
   "transform-plan": "Saving the transformation plan…",
   "transform-open": "Opening the transformation plan…",
@@ -352,7 +343,6 @@ export default function App() {
   const [guideResult, setGuideResult] = useState<GuideResult | null>(null);
   const [practiceResult, setPracticeResult] = useState<PracticeResult | null>(null);
   const [sampleCapture, setSampleCapture] = useState<CaseResult | null>(null);
-  const [sequenceResult, setSequenceResult] = useState<SequenceResult | null>(null);
   const [transformResult, setTransformResult] = useState<TransformResult | null>(null);
   const [planResult, setPlanResult] = useState<TransformPlanResult | null>(null);
   const [reductionResult, setReductionResult] = useState<ReductionResult | null>(null);
@@ -697,7 +687,6 @@ export default function App() {
     setInspectionResult(null);
     setReproducerResult(null);
     setComparisonResult(null);
-    setSequenceResult(null);
     setRevisionResult(null);
     setComparisonSeed(null);
     setTransformResult(null);
@@ -1324,32 +1313,6 @@ export default function App() {
     [bounds, evidence, root, run],
   );
 
-  // A sequence is bound to the identity the window verified for the open case,
-  // so one is never drawn beside counts from evidence that has changed. Asking
-  // for the next window is another sequence: the case is verified and the rules
-  // are read again rather than an event list being held here.
-  const layOutSequence = useCallback(
-    async (rules: string, offset: number, analysis = "") => {
-      const open = evidence?.case;
-      if (!root || !open || !bounds) return;
-      await run("sequence", async () => {
-        setSequenceResult(null);
-        setSequenceResult(
-          await openSequence({
-            workspace: root,
-            case: open.name,
-            identity: open.identity,
-            rules,
-            analysis,
-            offset,
-            limit: bounds.sequence,
-          }),
-        );
-      });
-    },
-    [bounds, evidence, root, run],
-  );
-
   // Comparing two built revisions reads two finished reproducers and the runs
   // retained for them. It is bound to nothing the window is holding: both are
   // named entries of the open workspace and are verified again on every call.
@@ -1939,6 +1902,19 @@ export default function App() {
   // Use in test: the chosen check group, until a test is picked for it.
   const [usingInTest, setUsingInTest] = useState<{ ref: ItemRef; name: string } | null>(null);
 
+  // Timeline reads under its own request scope, only while it is shown.
+  const timelineCase = verified ? (listedCases.current.find((item) => item.summary.case?.entry === verified.name)?.ref ?? null) : null;
+  const timeline = useTimeline({
+    root,
+    caseRef: timelineCase,
+    caseEntry: verified?.name ?? "",
+    identity: verified?.identity ?? "",
+    shown: place === "cases" && caseView === "timeline" && verified !== null,
+    busy,
+    onInspect: (occurrence) => void inspect(occurrence, "", 0, -1),
+    onImport: () => setImporting(true),
+  });
+
   const environments = useEnvironments({
     root,
     context: environmentContext,
@@ -2169,7 +2145,9 @@ export default function App() {
   const selectedRow = messages?.rows.find((row) => row.id === selectedOccurrence) ?? null;
   const fileSelection = place === "inspect-file" && fileReader.details !== null;
   const findingShown = place === "cases" && verified !== null && subpage === null && caseView === "findings" && findings.selected !== null;
-  const detailsShown = (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting) || findingShown || fileSelection;
+  const linkShown = place === "cases" && verified !== null && subpage === null && caseView === "timeline" && timeline.selectedLink !== null;
+  const detailsShown =
+    (place === "cases" && verified !== null && subpage === null && caseView !== "findings" && inspecting && !linkShown) || findingShown || linkShown || fileSelection;
   const inspected =
     selectedOccurrence && inspectionResult?.inspection
       ? { occurrence: selectedOccurrence, path: inspectionResult.inspection.selected.path }
@@ -2586,31 +2564,8 @@ export default function App() {
                   />
                 </TaskPanel>
                 <TaskPanel tabs="case-views" tab="timeline" className="task-panel view-panel" shown={caseView === "timeline"}>
-                  <Sequence
-                    workspace={root}
-                    caseIdentity={verified.identity}
-                    onSaved={() => void refreshListing()}
-                    onReview={async (request, write) => {
-                      let result: CorrelationReviewResult = { state: "failed", reason: "The review did not run." };
-                      await run("correlation-review", async () => {
-                        result = await (write ? decideCorrelation(request) : openCorrelationReview(request));
-                      });
-                      // A recorded decision is a new directory of the open folder, so
-                      // the listing is read again and the retained reviews offer it.
-                      if (write && result.state === "completed") await refreshListing();
-                      return result;
-                    }}
-                    rulesEntries={named("rules")}
-                    analyses={named("analysis")}
-                    reviews={named("correlation-review")}
-                    result={sequenceResult}
-                    busy={busy}
-                    active={destination === "cases" && caseView === "timeline" && caseFlow === null}
-                    progress={running === "sequence" ? "Loading the timeline." : null}
-                    indicators={indicators}
-                    onOpen={(rules, offset, analysis) => void layOutSequence(rules, offset, analysis)}
-                    onSelect={(occurrence) => void inspect(occurrence, "", 0, -1)}
-                  />
+                  {timeline.toolbar}
+                  {timeline.body}
                 </TaskPanel>
                 <TaskPanel tabs="case-views" tab="findings" className="task-panel view-panel" shown={caseView === "findings"}>
                   {findings.toolbar}
@@ -3293,6 +3248,12 @@ export default function App() {
         {detailOnly ? <BackLink label="Findings" onBack={findings.close} /> : null}
         {findings.details}
       </>
+    ) : linkShown ? (
+      <>
+        {/* Shown alone, the link offers the way back to the Timeline. */}
+        {detailOnly ? <BackLink label="Timeline" onBack={timeline.close} /> : null}
+        {timeline.details}
+      </>
     ) : (
       <>
         {verified ? (
@@ -3312,7 +3273,7 @@ export default function App() {
               setFilterSeed({ selector, value, state });
             }}
             onClose={closeDetails}
-            {...(detailOnly ? { backLabel: "Messages", onBack: closeDetails } : {})}
+            {...(detailOnly ? { backLabel: caseView === "timeline" ? "Timeline" : "Messages", onBack: closeDetails } : {})}
           />
         ) : null}
       </>

@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { BundleMode, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
+import type { BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -127,6 +127,18 @@ export const PROVENANCES: DisplayMap<BundleMode> = {
   derived: "Variant",
   collected: "Collected",
 };
+
+/** Where a reviewed link stands. */
+export const REVIEW_STATUSES: DisplayMap<CorrelationReviewStatus> = { unreviewed: "Not reviewed", accepted: "Accepted", rejected: "Rejected", withdrawn: "Withdrawn" };
+
+/** What one relationship decision did, as History lists it. */
+export const DECISION_ACTIONS: DisplayMap<CorrelationDecisionAction> = { accept: "Accepted", reject: "Rejected", add: "Added", withdraw: "Undone" };
+
+/** What a source window's capture is declared to hold. */
+export const DECLARED_COVERAGES: DisplayMap<SequenceAnalysisDeclaredCoverage> = { partial: "Partial", complete: "Complete" };
+
+/** What a retry declaration rests on. */
+export const RETRY_BASES: DisplayMap<SequenceAnalysisRetryBasis> = { operator_reported_retry: "Reported by an operator" };
 
 export const THEMES: DisplayMap<Theme> = { system: "System", light: "Light", dark: "Dark" };
 

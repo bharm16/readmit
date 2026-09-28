@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const reviewDocument = `{"schema":"readmit-correlation-review/v1","machine":"digest","parent":"prefix","decisions":[{"action":"add","link":"","from":"s0001-e000001","to":"s0002-e000001","actor":"analyst","reason":"local context"}]}`
+const reviewDocument = `{"schema":"readmit-correlation-review/v1","machine":"digest","parent":"prefix","decisions":[{"action":"add","link":"","from":"s0001-e000001","to":"s0002-e000001","actor":"analyst","reason":"local context","at":"2026-01-01T12:00:00Z"}]}`
 
 func TestCorrelationReviewReaderRequiresEveryNestedMember(t *testing.T) {
 	if _, err := correlate.DecodeReview([]byte(reviewDocument)); err != nil {
@@ -56,6 +56,8 @@ func TestCorrelationReviewReaderRequiresEveryNestedMember(t *testing.T) {
 		strings.Replace(reviewDocument, `"actor":"analyst"`, `"actor":null`, 1),
 		strings.Replace(reviewDocument, `"actor":"analyst"`, `"actor":"a","actor":"b"`, 1),
 		strings.Replace(reviewDocument, "readmit-correlation-review/v1", "readmit-correlation-review/v2", 1),
+		strings.Replace(reviewDocument, "2026-01-01T12:00:00Z", "0001-01-01T00:00:00Z", 1),
+		strings.Replace(reviewDocument, `"2026-01-01T12:00:00Z"`, `"yesterday"`, 1),
 		strings.Repeat(" ", correlate.MaxReviewBytes) + reviewDocument,
 	} {
 		if _, err := correlate.DecodeReview([]byte(bad)); err == nil {

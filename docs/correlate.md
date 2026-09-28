@@ -343,10 +343,19 @@ Save each decision to a new workspace directory. `internal/correlate` writes:
   reproduced over the verified case and exact rules.
 - `decisions.json`: strict `readmit-correlation-review/v1` with `schema`,
   `machine` (the machine document digest), `parent` (the previous mapping
-  identity), and the full ordered `decisions` history. Every decision requires
-  `action`, `link`, `from`, `to`, `actor` and `reason`; unused strings are empty.
-  `accept` and `reject` name a link and leave both occurrence strings empty;
-  `add` names two occurrences and leaves the link empty.
+  identity), and the full ordered `decisions` history. Every retained decision
+  requires `action`, `link`, `from`, `to`, `actor`, `reason` and `at`; unused
+  strings are empty. `at` is the RFC 3339 time the application recorded the
+  decision, stamped by the desktop facade rather than typed: a decision the
+  window submits carries none. `actor` is the reviewer's
+  name as the person declared it, never an operating-system account name
+  supplied in its place. `accept` and `reject` name a
+  link and leave both occurrence strings empty; `add` names two occurrences and
+  leaves the link empty. `withdraw` names a link and restores the status it had
+  before its latest decision still in effect: an accepted or rejected link
+  returns to what it was, and a withdrawn addition is `withdrawn`, inactive and
+  kept. Undoing a decision is therefore one more decision, never an edit of
+  history, and a link with no decision in effect cannot be withdrawn.
 - `identity.sha256`: the completion marker, written last. The identity hashes
   canonical JSON containing `schema`, `machine` and `decisions`. The parent
   must equal the identity of the preceding history prefix; it is checked
@@ -360,8 +369,8 @@ one bounded local operation once admitted. Cancel does not interrupt the write
 or replay it after restart. No network work is started.
 
 The reviewed mapping is a derived view that retains original observed/inferred
-linkage beside its human status (`unreviewed`, `accepted`, `rejected`); an added
-link has `manual` linkage. `OpenCorrelationReview` and `DecideCorrelation`
+linkage beside its human status (`unreviewed`, `accepted`, `rejected`, and
+`withdrawn` for a withdrawn addition); an added link has `manual` linkage. `OpenCorrelationReview` and `DecideCorrelation`
 re-verify evidence, reproduce the machine report and validate every retained
 decision. A changed case, rules document, machine finding, history, unknown
 member, unsupported version, missing member, symlink or incomplete artifact is
@@ -376,6 +385,34 @@ revisions remain readable as historical mappings, selected explicitly, and are
 not relabelled as the newer result. Original CLI, transformation, replay and
 assertion consumers do not consume human mappings and are unaffected. There is
 no implicit global current mapping, team synchronization or authorization.
+
+### Reviews held in a project
+
+The desktop timeline keeps a project's reviews in its catalog instead of in
+named directories. Link rules and coverage declarations are the project's
+named `link-rules` and `coverage` objects, and the review of one case under one
+exact link rule version is one `link-review` object whose every revision holds
+the whole `readmit-correlation-review/v1` history as its one member. The machine
+finding is not stored beside it: it is reproduced from the case and the exact
+link rule revision, which are immutable, and the history's `machine` digest must
+match it or the review is refused. A review made for any other case or rules is
+never applied to a timeline.
+
+With no link rules chosen, the timeline reviews the case's recorded links: the
+acknowledgements the case itself matched to exactly one message of their
+source. Their machine finding is a `readmit-correlation/v1` report with an
+empty `rules_sha256`, one observed `acknowledges` link per match named
+`recorded-N` by its position among the case's correlations, and the review of
+it is the case's own `link-review` object, separate from any review under link
+rules. An acknowledgement matching no message or more than one is not a link:
+it is shown as ambiguous and is never accepted, rejected or undone, and neither
+is a rule's collision. Each decision publishes one new revision, submitted
+once under its submission identity, and only when the revision the window
+opened is still current; every earlier revision stays readable. A decision is
+recorded under the reviewer the window names for it, or else the Reviewer set in
+the local preferences; with neither it is refused with a problem at
+`decision.actor` and nothing is saved. The account's own name is never recorded
+in its place: a reviewer is a local declaration, not an authenticated identity.
 
 A history holds at most 1,000 decisions in 2 MiB; its machine report is bounded
 at 32 MiB. Analyst declarations allow 256 UTF-8 bytes and reasons 1,024, both

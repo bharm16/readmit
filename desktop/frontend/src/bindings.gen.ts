@@ -835,6 +835,16 @@ export interface CleanRunResult {
   cleanup?: DurableRunCleanup;
 }
 
+/** internal/desktop.Clock */
+export interface Clock {
+  id: string;
+  kind: ClockKind;
+  sources: string[];
+}
+
+/** internal/desktop.ClockKind */
+export type ClockKind = "session" | "source" | "sender";
+
 /** internal/desktop.CollectReview */
 export interface CollectReview {
   revision: string;
@@ -1298,13 +1308,17 @@ export interface CorrelationCollision {
 
 /** internal/correlate.Decision */
 export interface CorrelationDecision {
-  action: string;
+  action: CorrelationDecisionAction;
   link: string;
   from: string;
   to: string;
   actor: string;
   reason: string;
+  at?: string;
 }
+
+/** internal/correlate.DecisionAction */
+export type CorrelationDecisionAction = "accept" | "reject" | "add" | "withdraw";
 
 /** internal/correlate.Linkage */
 export type CorrelationLinkage = "observed" | "inferred";
@@ -1321,16 +1335,21 @@ export type CorrelationOperator = "acknowledges" | "control-id" | "identifier";
 
 /** internal/desktop.CorrelationReviewRequest */
 export interface CorrelationReviewRequest {
+  context?: RequestContext;
   rules_sha256: string;
   offset: number;
   workspace: string;
   case: string;
   identity: string;
   rules: string;
+  link_rules?: ItemRef;
+  review?: ItemRef;
+  link?: string;
+  intent_id?: string;
   previous: string;
   mapping: string;
   show_values: boolean;
-  decision: CorrelationDecision;
+  decision?: CorrelationDecision;
   output: string;
 }
 
@@ -1338,9 +1357,16 @@ export interface CorrelationReviewRequest {
 export interface CorrelationReviewResult {
   state: State;
   reason?: string;
+  problems?: FieldProblem[];
+  context: RequestContext;
   view?: CorrelationReviewView;
+  review?: ItemRef;
+  saved?: ItemRef;
   output?: string;
 }
+
+/** internal/correlate.ReviewStatus */
+export type CorrelationReviewStatus = "unreviewed" | "accepted" | "rejected" | "withdrawn";
 
 /** internal/correlate.ReviewedView */
 export interface CorrelationReviewView {
@@ -1369,7 +1395,7 @@ export interface CorrelationReviewedLink {
   linkage: string;
   rule: string;
   occurrences: CorrelationOccurrence[];
-  status: string;
+  status: CorrelationReviewStatus;
   total_occurrences: number;
 }
 
@@ -1402,16 +1428,6 @@ export interface CorrelationRulesDocument {
   rules: CorrelationRule[];
 }
 
-/** internal/desktop.CorrelationRulesResult */
-export interface CorrelationRulesResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  sha256?: string;
-  rules?: CorrelationRulesDocument;
-}
-
 /** internal/correlate.Scope */
 export type CorrelationScope = "source" | "session" | "declared";
 
@@ -1422,6 +1438,42 @@ export interface CorrelationUnsupported {
   occurrence?: string;
   field?: string;
   detail: string;
+}
+
+/** internal/desktop.CoverageDraft */
+export interface CoverageDraft {
+  case: ItemRef;
+  link_rules?: ItemRef;
+  clock_tolerance_seconds: number;
+  windows: CoverageWindow[];
+  retries: SequenceAnalysisRetry[];
+  expected: SequenceAnalysisDownstream[];
+}
+
+/** internal/desktop.CoverageSummary */
+export interface CoverageSummary {
+  case: ItemRef | null;
+  link_rules: ItemRef | null;
+  binds_link_rules: boolean;
+  windows: number;
+  retries: number;
+  expected: number;
+}
+
+/** internal/desktop.CoverageVocabulary */
+export interface CoverageVocabulary {
+  declared_coverages: SequenceAnalysisDeclaredCoverage[];
+  retry_bases: SequenceAnalysisRetryBasis[];
+  max_clock_tolerance_seconds: number;
+}
+
+/** internal/desktop.CoverageWindow */
+export interface CoverageWindow {
+  source: string;
+  start: string;
+  end: string;
+  time_zone?: string;
+  coverage: SequenceAnalysisDeclaredCoverage;
 }
 
 /** internal/desktop.CredentialCheckResult */
@@ -2518,12 +2570,6 @@ export type Gap =
   | "unmatched_ack"
   | "ambiguous_ack";
 
-/** internal/desktop.GapCount */
-export interface GapCount {
-  gap: Gap;
-  count: number;
-}
-
 /** internal/desktop.GatePolicyResult */
 export interface GatePolicyResult {
   state: State;
@@ -3429,6 +3475,8 @@ export interface ItemDraft {
   profile?: ProfileDraft;
   check_group?: CheckGroupDraft;
   scenario?: ScenarioDraft;
+  link_rules?: CorrelationRulesDocument;
+  coverage?: CoverageDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -3471,6 +3519,9 @@ export type ItemKind =
   | "schedule"
   | "analysis-settings"
   | "finding-review"
+  | "link-rules"
+  | "coverage"
+  | "link-review"
   | "attachment";
 
 /** internal/desktop.ItemRef */
@@ -3526,6 +3577,9 @@ export interface ItemSummary {
   schedule?: ScheduleSummary;
   analysis_settings?: AnalysisSettingsSummary;
   finding_review?: FindingReviewSummary;
+  link_rules?: LinkRulesSummary;
+  coverage?: CoverageSummary;
+  link_review?: LinkReviewSummary;
 }
 
 /** internal/desktop.Kind */
@@ -3573,6 +3627,7 @@ export type Kind =
 /** internal/desktop.Lane */
 export interface Lane {
   source_id: string;
+  source_name: string;
   occurrences: number;
   messages: number;
   acknowledgements: number;
@@ -3738,6 +3793,17 @@ export interface LifecyclePlan {
 
 /** internal/lifecycle.RetireState */
 export type LifecycleRetireState = "retained" | "deleted" | "removal-incomplete";
+
+/** internal/desktop.LinkReviewSummary */
+export interface LinkReviewSummary {
+  decisions: number;
+}
+
+/** internal/desktop.LinkRulesSummary */
+export interface LinkRulesSummary {
+  rules: number;
+  operators: CorrelationOperator[];
+}
 
 /** internal/desktop.ListedProtectionControl */
 export interface ListedProtectionControl {
@@ -4700,7 +4766,7 @@ export interface OperationResult {
 }
 
 /** internal/desktop.Ordering */
-export type Ordering = "observed" | "unknown";
+export type Ordering = "observed" | "unknown" | "message" | "source";
 
 /** internal/desktop.PacketExportRequest */
 export interface PacketExportRequest {
@@ -6135,6 +6201,31 @@ export interface RegisteredRevision {
 export interface RelatedWork {
   kind: ItemKind;
   count: number;
+}
+
+/** internal/desktop.Relation */
+export interface Relation {
+  id: string;
+  basis: RelationBasis;
+  basis_name: string;
+  rule?: string;
+  operator?: CorrelationOperator;
+  linkage?: CorrelationLinkage;
+  reason?: string;
+  status?: CorrelationReviewStatus;
+  ambiguous: boolean;
+  endpoints: RelationEnd[];
+  occurrences: number;
+}
+
+/** internal/desktop.RelationBasis */
+export type RelationBasis = "recorded" | "rule" | "reviewed";
+
+/** internal/desktop.RelationEnd */
+export interface RelationEnd {
+  occurrence: string;
+  source_id: string;
+  in_window: boolean;
 }
 
 /** internal/desktop.RemoveItemResult */
@@ -7916,8 +8007,20 @@ export interface SendPolicySaveRequest {
 
 /** internal/desktop.Sequence */
 export interface Sequence {
+  context: RequestContext;
+  basis: TimeBasis;
+  clocks: Clock[];
+  untimed: number;
+  relations: Relation[];
+  problems: TimelineProblems;
+  fields: string[];
+  link_rules?: ItemRef;
+  link_rules_name?: string;
+  coverage?: ItemRef;
+  coverage_name?: string;
+  review?: ItemRef;
+  mapping?: string;
   analysis?: SequenceAnalysisReport;
-  analysis_entry: string;
   case: string;
   identity: string;
   rules: string;
@@ -7927,14 +8030,11 @@ export interface Sequence {
   declared: CorrelationRuleReport[];
   unsupported: CorrelationUnsupported[];
   lanes: Lane[];
-  gaps: GapCount[];
   summary: SequenceSummary;
   offset: number;
   limit: number;
   total: number;
   events: SequenceEvent[];
-  clock: string;
-  scope: string;
   boundary?: string;
 }
 
@@ -7948,16 +8048,8 @@ export interface SequenceAnalysisCoverage {
   untimed: number;
 }
 
-/** internal/sequenceanalysis.Declaration */
-export interface SequenceAnalysisDeclaration {
-  rules_sha256: string;
-  schema: string;
-  case_identity: string;
-  clock_tolerance_seconds: number;
-  windows: SequenceAnalysisWindow[];
-  retries: SequenceAnalysisRetry[];
-  downstream: SequenceAnalysisDownstream[];
-}
+/** internal/sequenceanalysis.DeclaredCoverage */
+export type SequenceAnalysisDeclaredCoverage = "partial" | "complete";
 
 /** internal/sequenceanalysis.Downstream */
 export interface SequenceAnalysisDownstream {
@@ -7968,12 +8060,27 @@ export interface SequenceAnalysisDownstream {
 
 /** internal/sequenceanalysis.Finding */
 export interface SequenceAnalysisFinding {
-  kind: string;
+  kind: SequenceAnalysisFindingKind;
   occurrence: string;
   related: string;
   source: string;
   detail: string;
 }
+
+/** internal/sequenceanalysis.FindingKind */
+export type SequenceAnalysisFindingKind =
+  | "duplicate_occurrence"
+  | "clock_mismatch"
+  | "clock_unknown"
+  | "accept_ack_stage"
+  | "application_ack_stage"
+  | "ack_coverage_unknown"
+  | "missing_ack"
+  | "likely_retransmission"
+  | "retry_unresolved"
+  | "unobserved_downstream_output"
+  | "downstream_unresolved"
+  | "downstream_link_observed";
 
 /** internal/sequenceanalysis.Report */
 export interface SequenceAnalysisReport {
@@ -7984,30 +8091,15 @@ export interface SequenceAnalysisReport {
   boundary: string;
 }
 
-/** internal/desktop.SequenceAnalysisResult */
-export interface SequenceAnalysisResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  sha256?: string;
-  declaration?: SequenceAnalysisDeclaration;
-}
-
 /** internal/sequenceanalysis.Retry */
 export interface SequenceAnalysisRetry {
   first: string;
   retry: string;
-  basis: string;
+  basis: SequenceAnalysisRetryBasis;
 }
 
-/** internal/sequenceanalysis.Window */
-export interface SequenceAnalysisWindow {
-  source: string;
-  start: string;
-  end: string;
-  coverage: string;
-}
+/** internal/sequenceanalysis.RetryBasis */
+export type SequenceAnalysisRetryBasis = "operator_reported_retry";
 
 /** internal/desktop.SequenceEvent */
 export interface SequenceEvent {
@@ -8020,6 +8112,11 @@ export interface SequenceEvent {
   size: number;
   ordering: Ordering;
   observed_at: string | null;
+  source_sequence: number;
+  at: string | null;
+  clock?: string;
+  message_type?: string;
+  trigger?: string;
   declared_state: FieldState;
   declared_time?: string;
   decoded: boolean;
@@ -8030,11 +8127,18 @@ export interface SequenceEvent {
 
 /** internal/desktop.SequenceRequest */
 export interface SequenceRequest {
+  context?: RequestContext;
   analysis: string;
   workspace: string;
   case: string;
   identity: string;
   rules: string;
+  link_rules?: ItemRef;
+  coverage?: ItemRef;
+  review?: ItemRef;
+  basis?: TimeBasis;
+  sources?: string[];
+  filter?: TimelineFilter;
   offset: number;
   limit: number;
 }
@@ -8043,6 +8147,7 @@ export interface SequenceRequest {
 export interface SequenceResult {
   state: State;
   reason?: string;
+  context: RequestContext;
   sequence?: Sequence;
 }
 
@@ -9361,6 +9466,18 @@ export interface TestVersion {
 /** internal/desktop.Theme */
 export type Theme = "system" | "light" | "dark";
 
+/** internal/desktop.TimeBasis */
+export type TimeBasis = "observed" | "message" | "source";
+
+/** internal/desktop.TimelineFilter */
+export type TimelineFilter = "unresolved" | "gaps" | "untimed";
+
+/** internal/desktop.TimelineProblems */
+export interface TimelineProblems {
+  unresolved_links: number;
+  gaps: number;
+}
+
 /** internal/transform.Artifact */
 export interface TransformArtifact {
   schema: string;
@@ -9640,6 +9757,7 @@ export interface Vocabulary {
   fixture_modes: ObservationMode[];
   affected_test_impacts: string[];
   observation_starts: ObservationSource[];
+  coverage: CoverageVocabulary;
 }
 
 /** internal/desktop.WindowBounds */
@@ -9831,7 +9949,6 @@ export interface Facade {
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
   OpenCaseFindings(request: FindingsRequest): Promise<FindingsResult>;
   OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
-  OpenCorrelationRules(workspace: string, entry: string): Promise<CorrelationRulesResult>;
   OpenDiagnoseConfig(workspace: string, entry: string): Promise<DiagnoseConfigResult>;
   OpenDiagnosisGroupsReport(workspace: string, entry: string, offset: number): Promise<DiagnosisGroupsResult>;
   OpenDiagnosisReport(workspace: string, entry: string, offset: number): Promise<DiagnosisResult>;
@@ -9853,7 +9970,6 @@ export interface Facade {
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
-  OpenSequenceAnalysis(workspace: string, entry: string): Promise<SequenceAnalysisResult>;
   OpenSimilarFindings(request: ItemRequest): Promise<SimilarResult>;
   OpenSuite(workspace: string, entry: string): Promise<SuiteDocumentResult>;
   OpenSyntheticPacket(path: string): Promise<SyntheticPacketResult>;
@@ -9941,7 +10057,6 @@ export interface Facade {
   RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
-  SaveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult>;
   SaveCredential(request: CredentialSaveRequest): Promise<CredentialsResult>;
   SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
   SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;
@@ -9968,7 +10083,6 @@ export interface Facade {
   SaveSearchSettings(request: SearchSettingsRequest): Promise<BuildIndexResult>;
   SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
   SaveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult>;
-  SaveSequenceAnalysis(request: RuleDocumentSaveRequest): Promise<SequenceAnalysisResult>;
   SaveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult>;
   SaveSourceRegistration(request: SourceRegistrationRequest): Promise<SourceRegistrationResult>;
   SaveSuite(request: RuleDocumentSaveRequest): Promise<SuiteDocumentResult>;

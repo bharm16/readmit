@@ -9,7 +9,6 @@ import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
 import { HelpTopics } from "../ContextHelp";
 import { ControlledDetails } from "../ControlledDetails";
-import { CorrelationReview } from "../CorrelationReview";
 import { EnvironmentBanner } from "../EnvironmentBanner";
 import { GuidedSample } from "../GuidedSample";
 import { HubAdministration } from "../HubAdministration";
@@ -32,15 +31,12 @@ import { Reproducer } from "../Reproducer";
 import { Review } from "../Review";
 import { RevisionComparison } from "../RevisionComparison";
 import {
-  CorrelationRulesEditor,
-  SequenceAnalysisEditor,
   NormalizationPolicyEditor,
 } from "../RulesEditor";
 import { RunComparison } from "../RunComparison";
 import { RunExplanation } from "../RunExplanation";
 import { RunPanel } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
-import { Sequence } from "../Sequence";
 import { SuitePanel } from "../SuitePanel";
 import { SyntheticPackets } from "../SyntheticPackets";
 import { TaskTabs, TaskPanel } from "../TaskTabs";
@@ -82,7 +78,6 @@ import {
 } from "../ui";
 
 const noop = () => {};
-const empty = async () => ({ state: "empty" as const });
 const common = {
   workspace: f.WORKSPACE_ROOT,
   project: f.WORKSPACE_ROOT,
@@ -139,20 +134,6 @@ export const examples: Example[] = [
   e("HelpTopics", () => <HelpTopics />),
   e("ControlledDetails", () => (
     <ControlledDetails summary="Details">{content}</ControlledDetails>
-  )),
-  e("CorrelationReview", () => (
-    <CorrelationReview
-      busy={false}
-      reviews={list}
-      context={{
-        workspace: f.WORKSPACE_ROOT,
-        case: f.CASE_ENTRY,
-        identity: f.CASE_IDENTITY,
-        rules: "rules.json",
-        rules_sha256: "synthetic-digest",
-      }}
-      onReview={empty}
-    />
   )),
   e("EnvironmentBanner", () => <EnvironmentBanner />),
   e("GuidedSample", () => (
@@ -252,16 +233,6 @@ export const examples: Example[] = [
   e("RevisionComparison", () => (
     <RevisionComparison {...resultProps} entries={list} onCompare={noop} />
   )),
-  e("CorrelationRulesEditor", () => (
-    <CorrelationRulesEditor {...common} entries={list} />
-  )),
-  e("SequenceAnalysisEditor", () => (
-    <SequenceAnalysisEditor
-      {...common}
-      caseIdentity={f.CASE_IDENTITY}
-      entries={list}
-    />
-  )),
   e("NormalizationPolicyEditor", () => (
     <NormalizationPolicyEditor {...common} entries={list} />
   )),
@@ -269,18 +240,6 @@ export const examples: Example[] = [
   e("RunExplanation", () => <RunExplanation {...common} />),
   e("RunPanel", () => <RunPanel {...common} onWatch={async () => {}} />),
   e("RunnerPanel", () => <RunnerPanel />),
-  e("Sequence", () => (
-    <Sequence
-      {...common}
-      onReview={empty}
-      rulesEntries={list}
-      analyses={list}
-      reviews={list}
-      result={f.sequenceResult([f.sequenceEvent(f.GRID_OCCURRENCE, 1)])}
-      onOpen={noop}
-      onSelect={noop}
-    />
-  )),
   e("SuitePanel", () => <SuitePanel {...common} />),
   e("SyntheticPackets", () => <SyntheticPackets onRefresh={noop} />),
   e("TaskTabs", () => (

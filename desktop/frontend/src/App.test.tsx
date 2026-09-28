@@ -42,7 +42,6 @@ import {
   SUITE_ENTRY,
   SUITE_PREPARED,
   SUITE_RELEASES,
-
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { windowWidth } from "./testkit/window";
@@ -233,21 +232,13 @@ test("a sequence event selected from the timeline selects the same occurrence in
   const user = userEvent.setup();
   const { facade } = await renderApp({
     InspectOccurrence: () => inspectionResult(),
-    OpenSequence: () => sequenceResult([sequenceEvent(GRID_OCCURRENCE, 0), sequenceEvent(NEXT_OCCURRENCE, 1)]),
+    OpenSequence: (request) => ({ ...sequenceResult([sequenceEvent(GRID_OCCURRENCE, 1), sequenceEvent(NEXT_OCCURRENCE, 2)]), context: request.context! }),
   });
   await openWorkspaceWithVerifiedCase(facade, user);
   await user.click(screen.getByRole("tab", { name: "Timeline" }));
-  const request = facade.oneCall("OpenSequence")[0];
-  expect(request).toMatchObject({
-    workspace: WORKSPACE_ROOT,
-    case: CASE_ENTRY,
-    identity: CASE_IDENTITY,
-    rules: "",
-    offset: 0,
-    limit: 200,
-  });
-  expect(await screen.findByRole("button", { name: NEXT_OCCURRENCE })).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: NEXT_OCCURRENCE }));
+  expect(facade.oneCall("OpenSequence")[0]).toMatchObject({ case: CASE_ENTRY, identity: CASE_IDENTITY, offset: 0 });
+  const grid = await screen.findByRole("grid", { name: "Timeline" });
+  await user.click(within(grid).getAllByRole("button", { name: /Message/ })[1]!);
   expect(facade.oneCall("InspectOccurrence")[0]).toMatchObject({
     case: CASE_ENTRY,
     identity: CASE_IDENTITY,

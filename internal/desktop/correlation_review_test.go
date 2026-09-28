@@ -115,7 +115,7 @@ func TestCorrelationReviewRefusesInvalidDecisionsAndRecovers(t *testing.T) {
 	req.Output = "refused"
 	good := correlate.Decision{Action: "add", From: "s0001-e000001", To: "s0002-e000001", Actor: "analyst", Reason: "local context"}
 	for name, change := range map[string]func(*desktop.CorrelationReviewRequest){
-		"no actor":           func(r *desktop.CorrelationReviewRequest) { r.Decision.Actor = "" },
+		"unprintable actor":  func(r *desktop.CorrelationReviewRequest) { r.Decision.Actor = "a\x01b" },
 		"no reason":          func(r *desktop.CorrelationReviewRequest) { r.Decision.Reason = " " },
 		"control":            func(r *desktop.CorrelationReviewRequest) { r.Decision.Reason = "a\x00b" },
 		"oversized reason":   func(r *desktop.CorrelationReviewRequest) { r.Decision.Reason = strings.Repeat("x", 1025) },
@@ -222,7 +222,7 @@ func TestCorrelationReviewRejectsReacceptingADuplicateManualPair(t *testing.T) {
 	req := desktop.CorrelationReviewRequest{Workspace: root, Case: "incident", Identity: identity, Rules: seqRulesEntry}
 	view := app.OpenCorrelationReview(req).View
 	firstID := ""
-	for i, action := range []string{"add", "reject", "add", "accept"} {
+	for i, action := range []correlate.DecisionAction{"add", "reject", "add", "accept"} {
 		req.Mapping = view.Mapping
 		req.Output = fmt.Sprintf("revision-%d", i)
 		req.Decision = correlate.Decision{Action: action, Actor: "analyst", Reason: "local decision"}

@@ -78,18 +78,6 @@
     "line": 8
   },
   {
-    "name": "Occurrence",
-    "source": "desktop/frontend/src/CorrelationReview.tsx",
-    "exported": false,
-    "line": 11
-  },
-  {
-    "name": "CorrelationReview",
-    "source": "desktop/frontend/src/CorrelationReview.tsx",
-    "exported": true,
-    "line": 20
-  },
-  {
     "name": "DataTable",
     "source": "desktop/frontend/src/DataTable.tsx",
     "exported": true,
@@ -378,18 +366,6 @@
     "line": 143
   },
   {
-    "name": "CorrelationRulesEditor",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": true,
-    "line": 223
-  },
-  {
-    "name": "SequenceAnalysisEditor",
-    "source": "desktop/frontend/src/RulesEditor.tsx",
-    "exported": true,
-    "line": 591
-  },
-  {
     "name": "NormalizationPolicyEditor",
     "source": "desktop/frontend/src/RulesEditor.tsx",
     "exported": true,
@@ -502,18 +478,6 @@
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": true,
     "line": 1371
-  },
-  {
-    "name": "Relations",
-    "source": "desktop/frontend/src/Sequence.tsx",
-    "exported": false,
-    "line": 75
-  },
-  {
-    "name": "Sequence",
-    "source": "desktop/frontend/src/Sequence.tsx",
-    "exported": true,
-    "line": 120
   },
   {
     "name": "SuitePanel",

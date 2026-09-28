@@ -14,6 +14,7 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/project"
+	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
 // The window's focus order, statuses, commands and shortcuts are declared once,
@@ -513,6 +514,19 @@ func TestTheFacadePublishesTheWindowsChoicesAndBounds(t *testing.T) {
 	}
 	exactly("ResetOperator", operators)
 
+	var coverages, retryBases []string
+	for _, v := range vocabulary.Coverage.DeclaredCoverages {
+		coverages = append(coverages, string(v))
+	}
+	for _, v := range vocabulary.Coverage.RetryBases {
+		retryBases = append(retryBases, string(v))
+	}
+	exactly("SequenceAnalysisDeclaredCoverage", coverages)
+	exactly("SequenceAnalysisRetryBasis", retryBases)
+	if vocabulary.Coverage.MaxClockToleranceSeconds != sequenceanalysis.MaxClockToleranceSeconds {
+		t.Errorf("the most clock tolerance is published as %d seconds", vocabulary.Coverage.MaxClockToleranceSeconds)
+	}
+
 	faults := vocabulary.ReceiverFaults
 	if !slices.Equal(faults.Actions, collection.FaultActions()) {
 		t.Errorf("the facade publishes fault actions %v, a step declares %v", faults.Actions, collection.FaultActions())
@@ -554,6 +568,9 @@ func TestTheFacadePublishesTheWindowsChoicesAndBounds(t *testing.T) {
 	// composes is written into it.
 	sources := interfaceSources(t)
 	retired := []string{"readmit-receiver-policy/v", "readmit-observation-source/v"}
+	for _, basis := range vocabulary.Coverage.RetryBases {
+		retired = append(retired, `"`+string(basis)+`"`)
+	}
 	for _, builtin := range vocabulary.DiagnosisBuiltins {
 		retired = append(retired, `"`+builtin.Ruleset+`"`)
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/scenario"
 	"github.com/bharm16/readmit/internal/scenariogen"
+	"github.com/bharm16/readmit/internal/sequenceanalysis"
 	"github.com/bharm16/readmit/internal/testauthor"
 )
 
@@ -56,6 +57,18 @@ type Vocabulary struct {
 	// ObservationStarts are where a new observation source of each kind
 	// starts when the editor switches to that kind.
 	ObservationStarts []observesource.Source `json:"observation_starts"`
+	// Coverage is every value the coverage editor offers.
+	Coverage CoverageVocabulary `json:"coverage"`
+}
+
+// CoverageVocabulary is every value a coverage declaration's editor offers,
+// as the sequence analysis reader accepts them: the coverage a source window
+// is declared with, the bases a retry is declared on, and the most seconds of
+// clock tolerance.
+type CoverageVocabulary struct {
+	DeclaredCoverages        []sequenceanalysis.DeclaredCoverage `json:"declared_coverages"`
+	RetryBases               []sequenceanalysis.RetryBasis       `json:"retry_bases"`
+	MaxClockToleranceSeconds int                                 `json:"max_clock_tolerance_seconds"`
 }
 
 // CheckVocabulary is every value a check's editor offers: the sixteen
@@ -196,6 +209,8 @@ func vocabulary() Vocabulary {
 			GeneratorVersion: scenariogen.Version, MaxSeed: maxWindowSeed,
 		},
 		FixtureModes: []observation.Mode{observation.Fixed, observation.Defective},
+		Coverage: CoverageVocabulary{DeclaredCoverages: sequenceanalysis.DeclaredCoverages(), RetryBases: sequenceanalysis.RetryBases(),
+			MaxClockToleranceSeconds: sequenceanalysis.MaxClockToleranceSeconds},
 		AffectedTestImpacts: []string{string(profileversion.ImpactAffected), string(profileversion.ImpactUnaffected),
 			string(profileversion.ImpactCurrent), string(profileversion.ImpactUnrelated), ImpactUnknown},
 	}

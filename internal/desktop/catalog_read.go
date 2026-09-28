@@ -306,6 +306,7 @@ var familyKinds = map[string]ItemKind{
 	"readmit-order-scenario/":     ScenarioItem,
 	"readmit-scenario-generator/": ScenarioItem,
 	"readmit-sequence-analysis/":  AnalysisItem,
+	"readmit-correlation-rules/":  LinkRulesItem,
 	"readmit-transform-plan/":     VariantItem,
 	"readmit-runner/":             RunnerItem,
 	"readmit-hub-schedules/":      ScheduleItem,
@@ -359,6 +360,8 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 		return "", false
 	case DiagnosisArtifact, DiagnosisGroupsArtifact, AnalysisArtifact:
 		return AnalysisItem, true
+	case RulesArtifact:
+		return LinkRulesItem, true
 	case ProfileArtifact, PackArtifact, PackageArtifact:
 		return ProfileItem, true
 	case PlanArtifact:
@@ -888,6 +891,9 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 
 	AnalysisSettingsItem: readAnalysisSettings,
 	FindingReviewItem:    readFindingReview,
+	LinkRulesItem:        readLinkRules,
+	CoverageItem:         readCoverage,
+	LinkReviewItem:       readLinkReview,
 }
 
 // readCase verifies a case the project has not registered.

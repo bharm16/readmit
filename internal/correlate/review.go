@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -20,15 +21,43 @@ const MaxReviewBytes = 2 << 20
 
 // Decision is a local declaration, not authenticated identity. Accept/reject
 // name an existing machine or manual link. Add names exactly two occurrences;
-// it never upgrades a collision into observed evidence.
+// it never upgrades a collision into observed evidence. Withdraw names a link
+// and restores the status it had before its latest decision that is still in
+// effect: undoing a decision is one more decision, never an edit of history.
+// At is when the decision was recorded, stamped by the application that
+// recorded it. A decision being submitted carries none; every retained
+// decision requires it, which DecodeReview and Review hold it to.
 type Decision struct {
-	Action string `json:"action"`
-	Link   string `json:"link"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Actor  string `json:"actor"`
-	Reason string `json:"reason"`
+	Action DecisionAction `json:"action"`
+	Link   string         `json:"link"`
+	From   string         `json:"from"`
+	To     string         `json:"to"`
+	Actor  string         `json:"actor"`
+	Reason string         `json:"reason"`
+	At     time.Time      `json:"at,omitzero"`
 }
+
+// DecisionAction is what one decision does.
+type DecisionAction string
+
+const (
+	AcceptDecision   DecisionAction = "accept"
+	RejectDecision   DecisionAction = "reject"
+	AddDecision      DecisionAction = "add"
+	WithdrawDecision DecisionAction = "withdraw"
+)
+
+// ReviewStatus is where a reviewed link stands under the history applied:
+// no one decided it yet, it is accepted or rejected, or, for a link an
+// analyst added, the addition was withdrawn.
+type ReviewStatus string
+
+const (
+	Unreviewed ReviewStatus = "unreviewed"
+	Accepted   ReviewStatus = "accepted"
+	Rejected   ReviewStatus = "rejected"
+	Withdrawn  ReviewStatus = "withdrawn"
+)
 
 func (d *Decision) UnmarshalJSON(data []byte) error {
 	var required struct {
@@ -38,6 +67,7 @@ func (d *Decision) UnmarshalJSON(data []byte) error {
 		To     *string `json:"to"`
 		Actor  *string `json:"actor"`
 		Reason *string `json:"reason"`
+		At     *string `json:"at"`
 	}
 	if json.Unmarshal(data, &required) != nil || required.Action == nil || required.Link == nil || required.From == nil || required.To == nil || required.Actor == nil || required.Reason == nil {
 		return errors.New("a correlation decision requires action, link, from, to, actor and reason")
@@ -61,12 +91,12 @@ type ReviewRevision struct {
 }
 
 type ReviewedLink struct {
-	ID               string      `json:"id"`
-	Linkage          string      `json:"linkage"`
-	Rule             string      `json:"rule"`
-	Occurrences      []Reference `json:"occurrences"`
-	Status           string      `json:"status"`
-	TotalOccurrences int         `json:"total_occurrences"`
+	ID               string       `json:"id"`
+	Linkage          string       `json:"linkage"`
+	Rule             string       `json:"rule"`
+	Occurrences      []Reference  `json:"occurrences"`
+	Status           ReviewStatus `json:"status"`
+	TotalOccurrences int          `json:"total_occurrences"`
 }
 
 // ReviewedCollision retains the original finding and its complete membership count.
@@ -92,8 +122,18 @@ type ReviewedView struct {
 	Boundary        string              `json:"boundary"`
 }
 
-func reviewBytes(v any) []byte        { data, _ := json.Marshal(v, json.Deterministic(true)); return data }
-func reviewDigest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
+func reviewBytes(v any) []byte { data, _ := json.Marshal(v, json.Deterministic(true)); return data }
+
+// EncodeReview is the canonical encoding of one revision, the bytes a
+// retained review holds as its decisions.
+func EncodeReview(r ReviewRevision) []byte { return reviewBytes(r) }
+
+// MachineDigest is the digest a revision's machine member names for report:
+// the identity of the machine finding a review history applies to. Two
+// reports share it only when they are the same finding over the same case and
+// the same rules.
+func MachineDigest(report Report) string { return newRevision(report).Machine }
+func reviewDigest(data []byte) string    { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 
 // Identity commits to all history and its machine input. Parent is derived
 // from the preceding prefix and validated separately, keeping validation linear.
@@ -144,8 +184,11 @@ func Review(opened *bundle.Bundle, report Report, prior *ReviewRevision, showVal
 		view.Collisions = append(view.Collisions, ReviewedCollision{Finding: finding, TotalOccurrences: len(finding.Occurrences)})
 	}
 	for _, link := range report.Links {
-		view.Links = append(view.Links, ReviewedLink{ID: link.ID, Linkage: string(link.Linkage), Rule: link.Rule, Occurrences: link.Occurrences, Status: "unreviewed"})
+		view.Links = append(view.Links, ReviewedLink{ID: link.ID, Linkage: string(link.Linkage), Rule: link.Rule, Occurrences: link.Occurrences, Status: Unreviewed})
 	}
+	// replaced holds, per link, the statuses its decisions still in effect
+	// replaced, latest last; a withdrawal restores the last of them.
+	replaced := map[string][]ReviewStatus{}
 	occurrences := map[string]Reference{}
 	for _, event := range opened.Events {
 		if event.Kind != bundle.Unparsed {
@@ -153,11 +196,11 @@ func Review(opened *bundle.Bundle, report Report, prior *ReviewRevision, showVal
 		}
 	}
 	for i, d := range r.Decisions {
-		if !reviewText(d.Actor, 256) || !reviewText(d.Reason, 1024) {
+		if !reviewText(d.Actor, 256) || !reviewText(d.Reason, 1024) || d.At.IsZero() {
 			return fail()
 		}
 		switch d.Action {
-		case "accept", "reject":
+		case AcceptDecision, RejectDecision:
 			if d.From != "" || d.To != "" {
 				return fail()
 			}
@@ -165,18 +208,34 @@ func Review(opened *bundle.Bundle, report Report, prior *ReviewRevision, showVal
 			if at < 0 {
 				return fail()
 			}
-			status := "accepted"
-			if d.Action == "reject" {
-				status = "rejected"
+			status := Accepted
+			if d.Action == RejectDecision {
+				status = Rejected
 			}
 			if view.Links[at].Status == status {
 				return fail()
 			}
-			if status == "accepted" && view.Links[at].Linkage == "manual" && manualPairExists(view.Links, view.Links[at].Occurrences[0].Occurrence, view.Links[at].Occurrences[1].Occurrence) {
+			if status == Accepted && view.Links[at].Linkage == "manual" && manualPairExists(view.Links, view.Links[at].Occurrences[0].Occurrence, view.Links[at].Occurrences[1].Occurrence) {
 				return fail()
 			}
+			replaced[d.Link] = append(replaced[d.Link], view.Links[at].Status)
 			view.Links[at].Status = status
-		case "add":
+		case WithdrawDecision:
+			if d.From != "" || d.To != "" {
+				return fail()
+			}
+			at := slices.IndexFunc(view.Links, func(link ReviewedLink) bool { return link.ID == d.Link })
+			held := replaced[d.Link]
+			if at < 0 || len(held) == 0 {
+				return fail()
+			}
+			restored := held[len(held)-1]
+			if restored == Accepted && view.Links[at].Linkage == "manual" && manualPairExists(view.Links, view.Links[at].Occurrences[0].Occurrence, view.Links[at].Occurrences[1].Occurrence) {
+				return fail()
+			}
+			replaced[d.Link] = held[:len(held)-1]
+			view.Links[at].Status = restored
+		case AddDecision:
 			from, ok := occurrences[d.From]
 			to, exists := occurrences[d.To]
 			if d.Link != "" || !ok || !exists || d.From == d.To {
@@ -186,7 +245,11 @@ func Review(opened *bundle.Bundle, report Report, prior *ReviewRevision, showVal
 				return fail()
 			}
 
-			view.Links = append(view.Links, ReviewedLink{ID: fmt.Sprintf("manual-%06d", i+1), Linkage: "manual", Occurrences: []Reference{from, to}, Status: "accepted"})
+			id := fmt.Sprintf("manual-%06d", i+1)
+			// Before it was added, a manual link was not asserted at all:
+			// withdrawing the addition leaves it withdrawn, never unreviewed.
+			replaced[id] = []ReviewStatus{Withdrawn}
+			view.Links = append(view.Links, ReviewedLink{ID: id, Linkage: "manual", Occurrences: []Reference{from, to}, Status: Accepted})
 		default:
 			return fail()
 		}
@@ -226,6 +289,9 @@ func DecodeReview(data []byte) (ReviewRevision, error) {
 	if len(data) > MaxReviewBytes || json.Unmarshal(data, &required) != nil || required.Schema == nil || required.Machine == nil || required.Parent == nil || required.Decisions == nil || json.Unmarshal(data, &r, json.RejectUnknownMembers(true)) != nil || r.Schema != ReviewSchema || len(r.Decisions) > MaxDecisions {
 		return ReviewRevision{}, errors.New("invalid correlation review JSON")
 	}
+	if slices.ContainsFunc(r.Decisions, func(d Decision) bool { return d.At.IsZero() }) {
+		return ReviewRevision{}, errors.New("a retained correlation decision requires at")
+	}
 	return r, nil
 }
 
@@ -233,7 +299,7 @@ func DecodeReview(data []byte) (ReviewRevision, error) {
 // cannot create two simultaneously active decisions about that same pair.
 func manualPairExists(links []ReviewedLink, from, to string) bool {
 	for _, link := range links {
-		if link.Linkage != "manual" || link.Status == "rejected" {
+		if link.Linkage != "manual" || link.Status == Rejected || link.Status == Withdrawn {
 			continue
 		}
 		a, b := link.Occurrences[0].Occurrence, link.Occurrences[1].Occurrence
@@ -242,4 +308,38 @@ func manualPairExists(links []ReviewedLink, from, to string) bool {
 		}
 	}
 	return false
+}
+
+// recordedScope is the boundary a finding of recorded links states.
+const recordedScope = "Only the case's own recorded acknowledgement matches are here: an acknowledgement whose control ID exactly one message of its own source carries. No rule was applied. An acknowledgement matching no message or more than one is not a link."
+
+// Recorded is the machine finding of a case's recorded links: each
+// acknowledgement the case itself matched to exactly one message of its
+// source, as one observed link from the message to its acknowledgement. No
+// rule produced it, so RulesSHA256 is empty; it is what a review of recorded
+// links is bound to, the way a review of rule links is bound to the report of
+// its rules. A link is named recorded-N by the position of its match among
+// the case's correlations, so the name is the timeline's for the same match.
+func Recorded(b *bundle.Bundle) Report {
+	report := Report{
+		Schema: ReportSchema, CaseIdentity: b.Identity, SessionDeclared: b.Manifest.Provenance.SessionID != "",
+		Rules: []RuleReport{}, Links: []Link{}, Collisions: []Collision{}, Unsupported: []Unsupported{},
+		Summary: Summary{Occurrences: len(b.Events)}, Scope: recordedScope,
+	}
+	references := make(map[string]Reference, len(b.Events))
+	for _, event := range b.Events {
+		references[event.ID] = Reference{Occurrence: event.ID, SourceID: event.SourceID, Kind: string(event.Kind)}
+	}
+	for i, correlation := range b.Correlations {
+		if correlation.Kind != bundle.Matched {
+			continue
+		}
+		link := Link{ID: fmt.Sprintf("recorded-%d", i+1), Operator: Acknowledges, Linkage: Observed, Occurrences: []Reference{}}
+		for _, occurrence := range append(slices.Clone(correlation.MessageIDs), correlation.ACKID) {
+			link.Occurrences = append(link.Occurrences, references[occurrence])
+		}
+		report.Links = append(report.Links, link)
+	}
+	report.Summary.Links, report.Summary.Observed = len(report.Links), len(report.Links)
+	return report
 }

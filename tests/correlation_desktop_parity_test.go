@@ -167,8 +167,7 @@ func TestTheWindowLinksTheCaseExactlyAsReadmitCorrelateDoes(t *testing.T) {
 
 // Every rules document `readmit correlate` refuses is refused by the window
 // in the same sentence wherever the window reads one: laying a case out under
-// it, opening it in the editor, reviewing links under it, and saving it as a
-// new entry, which writes nothing. A document changed on disk after a
+// it and reviewing links under it, which writes nothing. A document changed on disk after a
 // sequence was laid out under it is refused for review, because the canonical
 // rules the command line now reports are not the ones on screen; a change
 // that keeps the declarations the same keeps the digest, and the review.
@@ -198,17 +197,9 @@ func TestTheWindowRefusesTheRulesReadmitCorrelateRefuses(t *testing.T) {
 		if laid.State != desktop.Failed || laid.Reason != declared.sentence || laid.Sequence != nil {
 			t.Fatalf("%s: the sequence answered %+v", entry, laid)
 		}
-		opened := app.OpenCorrelationRules(workspace, entry)
-		if opened.State != desktop.Failed || opened.Reason != declared.sentence || opened.Rules != nil {
-			t.Fatalf("%s: the editor opened %+v", entry, opened)
-		}
 		review := app.OpenCorrelationReview(desktop.CorrelationReviewRequest{Workspace: workspace, Case: "two-sources", Identity: identity, Rules: entry})
 		if review.State != desktop.Failed || review.Reason != declared.sentence || review.View != nil {
 			t.Fatalf("%s: the review answered %+v", entry, review)
-		}
-		saved := app.SaveCorrelationRules(desktop.RuleDocumentSaveRequest{Workspace: workspace, Document: declared.document, Output: "saved-" + entry})
-		if saved.State != desktop.Failed || saved.Reason != declared.sentence || saved.Output != "" {
-			t.Fatalf("%s: the editor saved %+v", entry, saved)
 		}
 	}
 	if !reflect.DeepEqual(treeOf(t, workspace), before) {
@@ -335,7 +326,17 @@ func TestTheWindowRecordsCorrelationDecisionsBesideTheReportReadmitCorrelateProd
 			t.Fatalf("review %d retains a machine finding other than the one the command line printed: %v", index+1, err)
 		}
 		retained, err := correlate.ReadReview(directory, openedBundle(t, casePath), report)
-		if err != nil || len(retained.Decisions) != index+1 || retained.Decisions[index] != decision || retained.Identity() != saved.View.Mapping {
+		// The window records when each decision was made; everything else is
+		// the decision exactly as the person made it.
+		var recorded correlate.Decision
+		if err == nil && len(retained.Decisions) == index+1 {
+			recorded = retained.Decisions[index]
+		}
+		if recorded.At.IsZero() {
+			t.Fatalf("review %d records no time for its decision: %+v", index+1, retained)
+		}
+		recorded.At = decision.At
+		if err != nil || len(retained.Decisions) != index+1 || recorded != decision || retained.Identity() != saved.View.Mapping {
 			t.Fatalf("review %d is not read back against the command line's report: %v %+v", index+1, err, retained)
 		}
 		previous, mapping = request.Output, saved.View.Mapping
@@ -345,7 +346,13 @@ func TestTheWindowRecordsCorrelationDecisionsBesideTheReportReadmitCorrelateProd
 	reopened := app.OpenCorrelationReview(desktop.CorrelationReviewRequest{
 		Workspace: workspace, Case: "two-sources", Identity: identity, Rules: correlationRulesEntry, RulesSHA256: report.RulesSHA256, Previous: "review-1", ShowValues: true,
 	})
-	if reopened.State != desktop.Completed || len(reopened.View.History) != 1 || reopened.View.History[0] != decisions[0] || reopened.View.Links[0].Status != "accepted" {
+	if reopened.State != desktop.Completed || len(reopened.View.History) != 1 || reopened.View.Links[0].Status != "accepted" {
+		t.Fatalf("the first revision did not reopen as itself: %+v", reopened)
+	}
+	kept := reopened.View.History[0]
+	stampedAt := kept.At
+	kept.At = decisions[0].At
+	if stampedAt.IsZero() || kept != decisions[0] {
 		t.Fatalf("the first revision did not reopen as itself: %+v", reopened)
 	}
 	// A decision written over an existing revision is refused and changes it not.
@@ -381,15 +388,12 @@ func openedBundle(t *testing.T, path string) *bundle.Bundle {
 	return opened
 }
 
-// A retained sequence-analysis declaration opens in the window as the shared
-// reader reads it, named by the digest of its exact bytes, and the sequence
-// laid out under it explains the case exactly as the shared evaluator does
-// over the report `readmit correlate` produces. Saved again from what was
-// opened, it reopens as itself. Every declaration the reader refuses is
-// refused by opening, saving and laying out in one sentence, writing nothing;
-// a declaration of another case opens, and laying this case out under it is
-// refused.
-func TestTheWindowOpensTheSequenceAnalysisTheSequenceApplies(t *testing.T) {
+// A sequence laid out under a retained sequence-analysis declaration explains
+// the case exactly as the shared evaluator does over the report `readmit
+// correlate` produces, and leaves the declaration as it was. Every
+// declaration the reader refuses is refused in its sentence, writing nothing,
+// and laying this case out under another case's declaration is refused.
+func TestTheSequenceExplainsTheCaseUnderASequenceAnalysisAsTheSharedEvaluatorDoes(t *testing.T) {
 	workspace := correlationParityWorkspace(t)
 	app := desktopApp(t, workspace)
 	report, _ := correlated(t, workspace, "two-sources", correlationRulesEntry)
@@ -412,18 +416,10 @@ func TestTheWindowOpensTheSequenceAnalysisTheSequenceApplies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened := app.OpenSequenceAnalysis(workspace, "analysis.json")
-	if opened.State != desktop.Completed || opened.Declaration == nil || !reflect.DeepEqual(*opened.Declaration, parsed) || opened.SHA256 != sha256Hex([]byte(declared)) {
-		t.Fatalf("the declaration opened as %+v, the shared reader reads %+v", opened, parsed)
-	}
-	if canonical, err := sequenceanalysis.Parse([]byte(opened.Document)); err != nil || !reflect.DeepEqual(canonical, parsed) {
-		t.Fatalf("the document the editor holds is not the declaration it opened: %v", err)
-	}
-
 	laid := app.OpenSequence(desktop.SequenceRequest{
 		Workspace: workspace, Case: "two-sources", Identity: identity, Rules: correlationRulesEntry, Analysis: "analysis.json", Limit: desktop.MaxSequenceEvents,
 	})
-	if laid.State != desktop.Completed || laid.Sequence == nil || laid.Sequence.Analysis == nil || laid.Sequence.AnalysisEntry != "analysis.json" {
+	if laid.State != desktop.Completed || laid.Sequence == nil || laid.Sequence.Analysis == nil {
 		t.Fatalf("the sequence was not laid out under the declaration: %+v", laid)
 	}
 	evaluated, err := sequenceanalysis.Evaluate(openedBundle(t, filepath.Join(workspace, "two-sources")), parsed, &report)
@@ -434,26 +430,12 @@ func TestTheWindowOpensTheSequenceAnalysisTheSequenceApplies(t *testing.T) {
 		t.Fatalf("the window explained the case as %+v, the shared evaluator over the command line's report as %+v", laid.Sequence.Analysis, evaluated)
 	}
 
-	saved := app.SaveSequenceAnalysis(desktop.RuleDocumentSaveRequest{Workspace: workspace, Document: opened.Document, Output: "analysis-2.json"})
-	written, err := os.ReadFile(filepath.Join(workspace, "analysis-2.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if saved.State != desktop.Completed || string(written) != saved.Document || saved.SHA256 != sha256Hex(written) || !reflect.DeepEqual(*saved.Declaration, parsed) {
-		t.Fatalf("the declaration was saved as %+v", saved)
-	}
-	if again := app.OpenSequenceAnalysis(workspace, "analysis-2.json"); again.SHA256 != saved.SHA256 || again.Document != saved.Document {
-		t.Fatalf("a saved declaration does not reopen as itself: %+v", again)
-	}
 	if current, _ := os.ReadFile(path); string(current) != declared {
-		t.Fatal("opening and saving a declaration changed the one it was opened from")
+		t.Fatal("laying a case out under a declaration changed it")
 	}
 
 	other := strings.Replace(declared, identity, strings.Repeat("a", 64), 1)
 	writeDocument(t, workspace, "other-case.json", other)
-	if got := app.OpenSequenceAnalysis(workspace, "other-case.json"); got.State != desktop.Completed || got.Declaration.CaseIdentity != strings.Repeat("a", 64) {
-		t.Fatalf("a declaration of another case did not open as that case's: %+v", got)
-	}
 	if got := app.OpenSequence(desktop.SequenceRequest{Workspace: workspace, Case: "two-sources", Identity: identity, Rules: correlationRulesEntry, Analysis: "other-case.json", Limit: desktop.MaxSequenceEvents}); got.State != desktop.Failed || got.Reason != "sequence analysis names a different case identity" || got.Sequence != nil {
 		t.Fatalf("this case was laid out under another case's declaration: %+v", got)
 	}
@@ -469,12 +451,6 @@ func TestTheWindowOpensTheSequenceAnalysisTheSequenceApplies(t *testing.T) {
 	}
 	before := treeOf(t, workspace)
 	for entry, declaration := range refused {
-		if got := app.OpenSequenceAnalysis(workspace, entry); got.State != desktop.Failed || got.Reason != declaration.sentence || got.Declaration != nil {
-			t.Fatalf("%s opened as %+v", entry, got)
-		}
-		if got := app.SaveSequenceAnalysis(desktop.RuleDocumentSaveRequest{Workspace: workspace, Document: declaration.document, Output: "saved-" + entry}); got.State != desktop.Failed || got.Reason != declaration.sentence {
-			t.Fatalf("%s saved as %+v", entry, got)
-		}
 		if got := app.OpenSequence(desktop.SequenceRequest{Workspace: workspace, Case: "two-sources", Identity: identity, Rules: correlationRulesEntry, Analysis: entry, Limit: desktop.MaxSequenceEvents}); got.State != desktop.Failed || got.Reason != declaration.sentence {
 			t.Fatalf("the case was laid out under %s: %+v", entry, got)
 		}

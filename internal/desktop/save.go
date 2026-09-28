@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/observesource"
@@ -29,10 +30,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups and scenarios whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules and coverage whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -84,7 +85,9 @@ type ItemDraft struct {
 	CheckGroup *CheckGroupDraft `json:"check_group,omitzero"`
 	// Scenario is a synthetic generator plan, saved as the
 	// readmit-scenario-generator/v1 document `readmit scenario generate` reads.
-	Scenario *ScenarioDraft `json:"scenario,omitzero"`
+	Scenario  *ScenarioDraft   `json:"scenario,omitzero"`
+	LinkRules *correlate.Rules `json:"link_rules,omitzero"`
+	Coverage  *CoverageDraft   `json:"coverage,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -146,7 +149,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -493,6 +496,18 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(problems) == 0 {
 			staged, normalized.Scenario = members, plan
 		}
+	case LinkRulesItem:
+		members, rules, found := validateLinkRulesDraft(draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.LinkRules = members, rules
+		}
+	case CoverageItem:
+		members, coverage, found := validateCoverageDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.Coverage = members, coverage
+		}
 	default:
 		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: savedKindsRule})
 	}
@@ -555,6 +570,15 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return verifyCheckGroup(files)
 		case ScenarioItem:
 			return verifyScenario(files)
+		case LinkRulesItem:
+			_, err := readRulesFile(files[string(LinkRulesItem)])
+			return err
+		case CoverageItem:
+			_, err := readCoverageFile(files[string(CoverageItem)])
+			return err
+		case LinkReviewItem:
+			_, err := readReviewFile(files[string(LinkReviewItem)])
+			return err
 		}
 		return errors.New("this release does not save this kind of object")
 	}
