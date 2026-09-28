@@ -179,32 +179,3 @@ func TestEditDetailsNamesTheSourcesTheCaseDeclares(t *testing.T) {
 		t.Fatalf("an unnamed source was stored: %+v %v", reread, err)
 	}
 }
-
-// An import registered in a v2 project records the names given to its
-// sources, and refuses to register one the case does not declare.
-func TestImportRegistersTheSourceNamesItWasGiven(t *testing.T) {
-	folder := t.TempDir()
-	if err := project.WriteDocument(folder, project.Document{Schema: project.SchemaV2, Settings: project.Settings{Title: "Scheduling QA"},
-		InterfaceVersions: []string{"siu-2.5.1-v1"}}); err != nil {
-		t.Fatal(err)
-	}
-	source := filepath.Join(t.TempDir(), "capture.hl7")
-	if err := os.WriteFile(source, []byte(framed(gridBooking)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	app := workspaceApp(t)
-	request := registeredImport(folder, "named", source)
-	request.SourceNames = []project.Source{{ID: "s0001", Name: "Pasted messages"}}
-	if imported := app.CommitImport(request); imported.State != desktop.Completed || !imported.Registered {
-		t.Fatalf("import: %+v", imported)
-	}
-	opened, err := project.Open(folder)
-	if err != nil || opened.Document.Cases[0].SourceNamed("s0001") != "Pasted messages" {
-		t.Fatalf("the registered names: %+v %v", opened, err)
-	}
-	request = registeredImport(folder, "undeclared", source)
-	request.SourceNames = []project.Source{{ID: "s0002", Name: "Nothing"}}
-	if imported := app.CommitImport(request); imported.Registered || imported.Reason == "" {
-		t.Fatalf("an undeclared source name was registered: %+v", imported)
-	}
-}

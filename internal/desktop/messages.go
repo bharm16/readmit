@@ -133,7 +133,7 @@ func refusedMessages(state State, reason string) MessagesResult {
 // and an index whose declared retention has ended is passed over rather than
 // read. It holds the operation slot but is not interruptible.
 func (a *App) ReadMessages(request MessagesRequest) MessagesResult {
-	return run(a, false, false, func(ctx context.Context) MessagesResult {
+	return runRead(a, false, func(ctx context.Context) MessagesResult {
 		return readMessages(ctx, request)
 	})
 }

@@ -1,872 +1,429 @@
-import { expect, test } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+// Capture, driven as a person drives it: setup from a saved source, the
+// running session, Stop, Cancel capture, history and retained data, over the
+// real components with only the typed facade stubbed. Whether a capture
+// finishes, what it keeps and what it publishes is decided on the Go side
+// (internal/desktop's capture session tests); these tests prove the window
+// asks for exactly that and shows what the facade answered.
+import { StrictMode } from "react";
+import { expect, test, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  CASE_ENTRY,
-  WORKSPACE_ROOT,
-  folderChosen,
-  projectOverviewResult,
-  shellResult,
-} from "./testkit/fixtures";
+import { useCapture } from "./Capture";
+import { VocabularyContext } from "./vocabulary";
+import { installFacade, type FacadeHandlers, type FacadeStub } from "./testkit/wails";
+import { WORKSPACE_ROOT, caseResult, folderChosen, messageRow, messagesResult, projectOverviewResult, vocabularyFixture } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
-import type { FacadeHandlers } from "./testkit/wails";
+import { page, sidebar } from "./testkit/navigation";
 import type {
-  CaptureJournalResult,
-  CapturePreviewResult,
-  CaptureProgressResult,
+  CaptureProgress,
   CaptureSessionResult,
-  EvidenceSource,
-  ItemRequest,
-  PathChoiceResult,
-  ReceiverPolicy,
-  ReceiverPolicyChoices,
-  ReceiverPolicyResult,
-  SourceAccessResult,
-  SourceCollectionResult,
-  SourceRegistrationResult,
+  CaptureSessionRow,
+  CaptureSourceDraft,
+  CatalogItem,
+  CatalogQuery,
+  CatalogResult,
+  ItemRef,
+  RequestContext,
+  SaveItemRequest,
 } from "./bindings";
 
-async function openProject(user: ReturnType<typeof userEvent.setup>, handlers: FacadeHandlers = {}) {
-  const { facade } = await renderApp({
-    SelectWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: "project.json", kind: "project", schema: "readmit-project/v1" },
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-      ]),
-    OpenProjectOverview: () =>
-      projectOverviewResult([
-        {
-          name: CASE_ENTRY,
-          identity: "sha256:1111",
-          schema: "readmit-case/v3",
-          provenance: "generated",
-          interface_version: "siu-2.5.1-v1",
-          title: "Initial Case",
-          status: "open",
-          owner: "test-user",
-          tags: ["test"],
-          incidents: [],
-          evidence: "verified",
-        },
-      ]),
-    ...handlers,
-  });
-  // The first-run card and the command region's action bar both offer the same
-  // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open" })[0]!);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
-  return { facade };
+type User = ReturnType<typeof userEvent.setup>;
+
+const CONTEXT: RequestContext = { project: WORKSPACE_ROOT, project_id: "p1", generation: 1 };
+const LISTENER: ItemRef = { kind: "source", id: "src-listener", revision: "2" };
+const FOLDER: ItemRef = { kind: "source", id: "src-folder", revision: "1" };
+const API: ItemRef = { kind: "source", id: "src-api", revision: "1" };
+const CASE_REF: ItemRef = { kind: "case", id: "case-case-001", revision: "1" };
+const STARTS = vocabularyFixture().capture_source_starts;
+
+function item(ref: ItemRef, name: string): CatalogItem {
+  return { ref, name, created_at: null, updated_at: null, last_opened_at: null, availability: "available", capabilities: [], summary: {} };
 }
 
-test("opens capture panel and shows empty idle phase", async () => {
-  const user = userEvent.setup();
-  await openProject(user);
-  const evidence = screen.getByRole("region", { name: "Main content" });
-  await user.click(within(evidence).getByRole("button", { name: "Capture" }));
-  expect(await screen.findByRole("heading", { name: "Capture", level: 2 })).toBeTruthy();
-  expect(screen.getByText(/Phase: idle/)).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Back to cases" })).toBeTruthy();
-});
+const SOURCES = [item(LISTENER, "Scheduling QA"), item(FOLDER, "Nightly exports"), item(API, "Vendor API")];
 
-test("source diagnose validation error and successful diagnose", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
+const DRAFTS: Record<string, CaptureSourceDraft> = {
+  [LISTENER.id]: { ...structuredClone(STARTS[2]!), listener: { ...STARTS[2]!.listener!, port: 2575, ack_code: "AE" } },
+  [FOLDER.id]: { ...structuredClone(STARTS[0]!), evidence: { ...STARTS[0]!.evidence!, name: "exports", scope: "appointments", root: "/exports/nightly" } },
+  [API.id]: { type: "api" },
+};
 
-  facade.reply({
-    SaveSourceRegistration: (): Promise<SourceRegistrationResult> =>
-      Promise.resolve({ state: "failed", reason: "the source name is not a valid label" }),
-  });
-  await user.click(screen.getByRole("button", { name: "Save registration" }));
-  expect(await screen.findByText(/the source name is not a valid label/)).toBeTruthy();
+function session(overrides: Partial<CaptureSessionRow>): CaptureSessionRow {
+  return {
+    id: "0123456789abcdef01234567",
+    name: "Morning capture",
+    source: LISTENER,
+    source_name: "Scheduling QA",
+    source_type: "mllp-listener",
+    environment: null,
+    started_at: "2026-09-27T09:00:00Z",
+    ended_at: "2026-09-27T09:10:00Z",
+    state: "finished",
+    received: 3,
+    recovered: false,
+    case: null,
+    retained: false,
+    ...overrides,
+  };
+}
 
-  facade.reply({
-    SaveSourceRegistration: (): Promise<SourceRegistrationResult> =>
-      Promise.resolve({ state: "completed", source_file: "source.json" }),
-    DiagnoseSource: (): Promise<SourceAccessResult> =>
-      Promise.resolve({
-        state: "completed",
-        access: {
-          schema: "readmit-source-access/v1",
-          status: "complete",
-          listed: true,
-          declared: 2,
-          selected: 2,
-          readable: 2,
-          unreadable: 0,
-          not_read: 0,
-        },
-      }),
-  });
-  await user.click(screen.getByRole("button", { name: "Save registration" }));
-  await user.click(screen.getByRole("button", { name: "Diagnose access" }));
-  expect(await screen.findByText(/Access: complete/)).toBeTruthy();
-  expect(screen.getByText(/Declared: 2/)).toBeTruthy();
-});
-
-test("collect preview, busy, cancel, and journal recovery", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-
-  facade.reply({
-    SaveReceiverPolicy: () => Promise.resolve({ state: "completed", policy_file: "receiver-policy.json" }),
-    PreviewCapture: (): Promise<CapturePreviewResult> =>
-      Promise.resolve({
-        state: "completed",
-        phase: "previewing",
-        preview: {
-          kind: "collect",
-          address: "",
-          approved_bind: false,
-          policy_name: "downstream-sink",
-          source_label: "downstream-test-endpoint",
-          transport: "plain",
-          client_certificate: false,
-          max_frame_bytes: 1048576,
-          idle_timeout: "30s",
-          journal_enabled: true,
-        },
-      }),
-  });
-  await user.click(screen.getByRole("button", { name: "Preview collector" }));
-  expect(await screen.findByText("downstream-sink")).toBeTruthy();
-  expect(screen.getByText(/Phase: previewing/)).toBeTruthy();
-
-  let resolveStart: (value: CaptureSessionResult) => void = () => undefined;
-  const startPromise = new Promise<CaptureSessionResult>((resolve) => {
-    resolveStart = resolve;
-  });
-  facade.reply({
-    StartCapture: () => startPromise,
-    PreviewCapture: (): Promise<CapturePreviewResult> =>
-      Promise.resolve({ state: "busy", reason: "another operation is already running" }),
-  });
-  await user.click(screen.getByRole("button", { name: "Start collecting" }));
-  expect(await screen.findByText(/Phase: collecting/)).toBeTruthy();
-  await user.click(within(screen.getByRole("heading", { name: "Capture", level: 2 }).closest("section")!).getByRole("button", { name: "Cancel" }));
-  // The collector runs under StartCapture's own operation name; source
-  // collection's name would not reach it.
-  expect(facade.oneCall("Cancel")).toEqual(["capture"]);
-  resolveStart({
-    state: "cancelled",
-    phase: "stopped",
-    reason: "the operation was cancelled",
+function running(overrides: Partial<CaptureProgress> = {}): CaptureProgress {
+  return {
+    kind: "mllp-listener",
+    bound_address: "127.0.0.1:2575",
+    session: "0123456789abcdef01234567",
+    name: "Morning capture",
+    source: LISTENER,
+    source_name: "Scheduling QA",
+    source_type: "mllp-listener",
+    started_at: new Date(Date.now() - 32_000).toISOString(),
     received: 0,
-  });
-  await waitFor(() => expect(screen.getByText(/Phase: stopped|Phase: idle|Phase: collecting/)).toBeTruthy());
+    messages: [],
+    ...overrides,
+  };
+}
 
-  facade.reply({
-    OpenCaptureJournal: (): Promise<CaptureJournalResult> =>
-      Promise.resolve({
-        state: "completed",
-        phase: "stopped",
-        journal: {
-          schema: "readmit-capture-journal/v1",
-          state: "interrupted",
-          stop_reason: "interrupted",
-          delivery_uncertain: false,
-          received: 3,
-          acknowledged: 2,
-          unsent: 0,
-          uncertain: 1,
-          recovered: true,
-          journal_incomplete: false,
-        },
-      }),
-  });
-  await user.click(screen.getByRole("button", { name: "Reopen journal" }));
-  expect(await screen.findByText(/Journal interrupted/)).toBeTruthy();
-  expect(screen.getByText(/recovery never resumes or resends/)).toBeTruthy();
+function captureHandlers(handlers: FacadeHandlers = {}): FacadeHandlers {
+  return {
+    CaptureProgress: () => ({ state: "empty" }),
+    ListCaptureSessions: (context) => ({ state: "empty", context, sessions: [] }),
+    ListCatalog: (query: CatalogQuery): CatalogResult => {
+      const items = query.kind === "source" ? SOURCES : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+    },
+    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, draft: { name: "", source: DRAFTS[request.ref.id]! } }),
+    ListCredentials: (request) => ({ state: "empty", context: request.context, credentials: [], referring: [] }),
+    ...handlers,
+  };
+}
+
+/** The open project's request context, one callback for the page's life as
+ * the window holds it. */
+const projectContext = () => CONTEXT;
+
+/** The Capture page as Cases shows it, over the open project. */
+function CaptureHost({ onOpenCase }: { onOpenCase: (ref: ItemRef) => void }) {
+  const capture = useCapture({ root: WORKSPACE_ROOT, context: projectContext, busy: false, setupRequest: 0, onOpenCase });
+  return (
+    <main aria-label="Capture page">
+      <h1>{capture.title}</h1>
+      {capture.actions}
+      {capture.body}
+    </main>
+  );
+}
+
+function renderCapture(handlers: FacadeHandlers = {}) {
+  const facade = installFacade(captureHandlers(handlers));
+  const onOpenCase = vi.fn();
+  render(
+    <StrictMode>
+      <VocabularyContext.Provider value={vocabularyFixture()}>
+        <CaptureHost onOpenCase={onOpenCase} />
+      </VocabularyContext.Provider>
+    </StrictMode>,
+  );
+  return { facade, onOpenCase };
+}
+
+function capturePage() {
+  return within(screen.getByRole("main", { name: "Capture page" }));
+}
+
+async function openSetup(user: User) {
+  await user.click(capturePage().getAllByRole("button", { name: "New capture" })[0]!);
+  return within(await screen.findByRole("dialog", { name: "New capture" }));
+}
+
+/** Starts a capture of the listener named Morning capture, its start parked. */
+async function startListener(user: User, facade: FacadeStub) {
+  const started = facade.park("StartCapture");
+  const setup = await openSetup(user);
+  await user.type(setup.getByLabelText("Name"), "Morning capture");
+  await user.selectOptions(await setup.findByLabelText("Source"), LISTENER.id);
+  await setup.findByText("127.0.0.1:2575");
+  await user.click(setup.getByRole("button", { name: "Start capture" }));
+  return started;
+}
+
+test("Capture setup shows only the selected source's settings and Start capture is last", async () => {
+  const user = userEvent.setup();
+  const { facade } = renderCapture();
+  const setup = await openSetup(user);
+  const source = await setup.findByLabelText("Source");
+  await waitFor(() => expect(within(source).getAllByRole("option")).toHaveLength(5));
+  expect(within(source).getAllByRole("option").map((option) => option.textContent)).toEqual(["Choose a source", "Scheduling QA", "Nightly exports", "Vendor API", "New source…"]);
+  expect((setup.getByRole("button", { name: "Start capture" }) as HTMLButtonElement).disabled).toBe(true);
+
+  await user.selectOptions(source, FOLDER.id);
+  expect(await setup.findByText("/exports/nightly")).toBeTruthy();
+  expect(setup.getByRole("heading", { name: "Local folder" })).toBeTruthy();
+  expect(setup.queryByText("Transport")).toBeNull();
+  await user.selectOptions(source, LISTENER.id);
+  expect(await setup.findByText("127.0.0.1:2575")).toBeTruthy();
+  expect(setup.getByText("Plain MLLP")).toBeTruthy();
+  expect(setup.getByText("AE")).toBeTruthy();
+  expect(setup.queryByText("/exports/nightly")).toBeNull();
+
+  // The saved settings are read, never edited in place; Start capture is the
+  // sheet's last action, and nothing starts before it.
+  expect(setup.queryAllByRole("textbox").map((field) => field.id)).toEqual(["capture-name", "capture-message-limit"]);
+  expect(setup.getAllByRole("button").at(-1)!.textContent).toBe("Start capture");
+  expect(facade.callsTo("StartCapture")).toHaveLength(0);
+  await user.type(setup.getByLabelText("Name"), "Morning capture");
+  await user.type(setup.getByLabelText("Message limit"), "10");
+  facade.park("StartCapture");
+  await user.click(setup.getByRole("button", { name: "Start capture" }));
+  const [request] = facade.oneCall("StartCapture");
+  expect(request).toMatchObject({ context: CONTEXT, source: LISTENER, name: "Morning capture", limits: { max_messages: 10 } });
+  expect(request.intent_id).not.toBe("");
 });
 
-test("permission denied on start and fixture labelling", async () => {
+test("a remote bind requires Allow remote connections beside the address", async () => {
   const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
-  expect(screen.getByText(/Separately labelled test fixture/)).toBeTruthy();
-
-  facade.reply({
-    PreviewCapture: (): Promise<CapturePreviewResult> =>
-      Promise.resolve({
-        state: "completed",
-        phase: "previewing",
-        preview: {
-          kind: "listen",
-          address: "",
-          approved_bind: false,
-          fixture_mode: "fixed",
-          fixture_label: "built-in synthetic SIU fixture (readmit-siu-v1)",
-          transport: "plain",
-          client_certificate: false,
-          max_frame_bytes: 1048576,
-          idle_timeout: "30s",
-          journal_enabled: false,
-        },
-      }),
+  const { facade } = renderCapture({
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", replayed: false, problems: [], saved: { kind: "source", id: "src-new", revision: "1" } }),
   });
-  await user.click(screen.getByRole("button", { name: "Preview fixture" }));
-  expect(await screen.findByText("built-in synthetic SIU fixture (readmit-siu-v1)")).toBeTruthy();
-
-  facade.reply({
-    StartCapture: (): Promise<CaptureSessionResult> =>
-      Promise.resolve({ state: "permission_denied", phase: "failed", reason: "operations are not activated" }),
-  });
-  await user.click(screen.getByRole("button", { name: "Start listener" }));
-  expect(await screen.findByText(/operations are not activated/)).toBeTruthy();
+  const setup = await openSetup(user);
+  await user.selectOptions(await setup.findByLabelText("Source"), "new");
+  const editor = within(await screen.findByRole("dialog", { name: "New source" }));
+  expect(editor.queryByRole("checkbox", { name: /Allow remote connections/ })).toBeNull();
+  await user.type(editor.getByLabelText("Name"), "Lab listener");
+  await user.clear(editor.getByLabelText("Bind address"));
+  await user.type(editor.getByLabelText("Bind address"), "10.0.0.5");
+  const allow = editor.getByRole("checkbox", { name: "Allow remote connections to 10.0.0.5" });
+  expect((allow as HTMLInputElement).checked).toBe(false);
+  await user.click(allow);
+  await user.clear(editor.getByLabelText("Port"));
+  await user.type(editor.getByLabelText("Port"), "2575");
+  await user.click(editor.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const [saved] = facade.oneCall("SaveItem") as [SaveItemRequest];
+  expect(saved.draft.source!.listener).toMatchObject({ bind_address: "10.0.0.5", port: 2575, allow_remote: true });
 });
 
-test("source collect finalize offers exploration", async () => {
+test("an API source is Unavailable", async () => {
   const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
+  renderCapture();
+  const setup = await openSetup(user);
+  await user.selectOptions(await setup.findByLabelText("Source"), API.id);
+  expect(await setup.findByText("Unavailable")).toBeTruthy();
+  await user.type(setup.getByLabelText("Name"), "Vendor feed");
+  expect((setup.getByRole("button", { name: "Start capture" }) as HTMLButtonElement).disabled).toBe(true);
 
-  facade.reply({
-    ChooseCapturePath: (): Promise<PathChoiceResult> =>
-      Promise.resolve({ state: "completed", kind: "source-root", paths: ["/exports"] }),
-    SaveSourceRegistration: (): Promise<SourceRegistrationResult> =>
-      Promise.resolve({ state: "completed", source_file: "source.json" }),
-    CollectSource: (): Promise<SourceCollectionResult> =>
-      Promise.resolve({
-        state: "completed",
-        output_path: "collected",
-        receipt_path: "collection.json",
-        collection: {
-          schema: "readmit-source-collection/v1",
-          status: "complete",
-          declared: 1,
-          collected: 1,
-          duplicates: 0,
-          excluded: 0,
-          unreadable: 0,
-          not_read: 0,
-          bytes: 120,
-          records: 1,
-          occurrences: 1,
-        },
-      }),
-    FinalizeCaptureImport: () =>
-      Promise.resolve({
-        state: "completed",
-        registered: true,
-        case: {
-          name: "imported-from-capture.case",
-          identity: "sha256:abcd",
-          schema: "readmit-case/v3",
-          provenance: "imported",
-          sources: 1,
-          occurrences: 1,
-          messages: 1,
-          acknowledgements: 0,
-          unparsed: 0,
-        },
-      }),
-    OpenCase: () =>
-      Promise.resolve({
-        state: "completed",
-        case: {
-          name: "imported-from-capture.case",
-          identity: "sha256:abcd",
-          schema: "readmit-case/v3",
-          provenance: "imported",
-          sources: 1,
-          occurrences: 1,
-          messages: 1,
-          acknowledgements: 0,
-          unparsed: 0,
-        },
-      }),
-  });
-  await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-  await user.click(screen.getByRole("button", { name: "Save registration" }));
-  await user.click(screen.getByRole("button", { name: "Collect" }));
-  expect(await screen.findByText(/Collected: 1 \/ 1/)).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Create case…" }));
-  expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
-  // The staged folder is finalized with the receipt it was collected under,
-  // which records its plan; the request carries none of its own.
-  const [finalize] = facade.oneCall("FinalizeCaptureImport");
-  expect(finalize.folder).toBe("collected");
-  expect(finalize.collection_receipt).toBe("collection.json");
-  expect("plan" in finalize).toBe(false);
-  await user.click(within(capturePanel()).getByRole("button", { name: /^Open case(?: |$)/ }));
-  expect(facade.oneCall("OpenCase")[1]).toBe("imported-from-capture.case");
+  await user.selectOptions(setup.getByLabelText("Source"), "new");
+  const editor = within(await screen.findByRole("dialog", { name: "New source" }));
+  const api = within(editor.getByLabelText("Type")).getByRole("option", { name: "API (Unavailable)" }) as HTMLOptionElement;
+  expect(api.disabled).toBe(true);
 });
 
-test("a collection that did not complete is not offered to finalize", async () => {
+test("an active capture shows the bound address, elapsed time and Waiting for messages", async () => {
   const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
+  const { facade } = renderCapture();
+  await startListener(user, facade);
+  facade.reply({ CaptureProgress: () => ({ state: "completed", progress: running() }) });
+  expect(await capturePage().findByText("Waiting for messages", undefined, { timeout: 3000 })).toBeTruthy();
+  // Setup closes once the capture is recording.
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New capture" })).toBeNull());
+  expect(capturePage().getByText("127.0.0.1:2575")).toBeTruthy();
+  expect(capturePage().getByText(/^00:3\d$/)).toBeTruthy();
+  expect(capturePage().queryByText("Received")).toBeNull();
+  expect(capturePage().getByText("Recording")).toBeTruthy();
+
+  // What arrives is listed as it arrives, and only then is a count shown.
   facade.reply({
-    CollectSource: (): Promise<SourceCollectionResult> =>
-      Promise.resolve({
-        state: "failed",
-        reason: "the source holds entries this collection could not read; what it staged is not the whole of the declared scope",
-        output_path: "collected",
-        receipt_path: "collection.json",
-        collection: {
-          schema: "readmit-source-collection/v1",
-          status: "failed",
-          declared: 2,
-          collected: 1,
-          duplicates: 0,
-          excluded: 0,
-          unreadable: 1,
-          not_read: 0,
-          bytes: 120,
-          records: 1,
-          occurrences: 1,
-        },
-      }),
+    CaptureProgress: () => ({
+      state: "completed",
+      progress: running({ received: 1, messages: [{ at: new Date().toISOString(), type: "SIU^S12", connection: 1 }] }),
+    }),
   });
-  await user.click(screen.getByRole("button", { name: "Collect" }));
-  expect(await screen.findByText(/Collected: 1 \/ 2/)).toBeTruthy();
-  expect(screen.getByText(/what it staged is not the whole of the declared scope/)).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Create case…" })).toBeNull();
-  expect(facade.callsTo("FinalizeCaptureImport")).toHaveLength(0);
+  const incoming = await capturePage().findByRole("table", { name: "Incoming messages" }, { timeout: 3000 });
+  expect(within(incoming).getByText("SIU · S12")).toBeTruthy();
+  expect(capturePage().getByText("Received")).toBeTruthy();
+  expect(capturePage().queryByText("Waiting for messages")).toBeNull();
 });
 
-test("a finalized capture's Set up observation opens Add observation started from that capture", async () => {
+test("Stop finishes the capture and opens the case", async () => {
   const user = userEvent.setup();
-  const { facade } = await openProject(user);
+  const { facade, onOpenCase } = renderCapture({ FinishCapture: () => ({ state: "completed", progress: running({ finishing: true }) }) });
+  const started = await startListener(user, facade);
+  facade.reply({ CaptureProgress: () => ({ state: "completed", progress: running() }) });
+  await user.click(await capturePage().findByRole("button", { name: "Stop" }, { timeout: 3000 }));
+  expect(facade.callsTo("FinishCapture")).toHaveLength(1);
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  facade.reply({ CaptureProgress: () => ({ state: "empty" }) });
+  started.resolve({ state: "completed", phase: "stopped", outcome: "finished", session: "0123456789abcdef01234567", case_ref: CASE_REF } satisfies CaptureSessionResult);
+  await waitFor(() => expect(onOpenCase).toHaveBeenCalledWith(CASE_REF));
+  // There is no separate Finalize step.
+  expect(capturePage().queryByRole("button", { name: /Finalize/ })).toBeNull();
+});
+
+test("Cancel capture publishes no case", async () => {
+  const user = userEvent.setup();
+  const { facade, onOpenCase } = renderCapture({ Cancel: async () => {}, CancelOperation: async () => {} });
+  const started = await startListener(user, facade);
+  facade.reply({ CaptureProgress: () => ({ state: "completed", progress: running() }) });
+  await user.click(await capturePage().findByRole("button", { name: "More capture actions" }, { timeout: 3000 }));
+  await user.click(await screen.findByRole("menuitem", { name: "Cancel capture" }));
+  // Cancel stops exactly the capture, by its operation name.
+  await waitFor(() => expect(facade.callsTo("Cancel").map((call) => call.args[0])).toEqual(["capture"]));
+  expect(facade.callsTo("FinishCapture")).toHaveLength(0);
   facade.reply({
-    ChooseCapturePath: (): Promise<PathChoiceResult> =>
-      Promise.resolve({ state: "completed", paths: ["/workspace-under-test/exports"] }),
-    SaveSourceRegistration: (): Promise<SourceRegistrationResult> =>
-      Promise.resolve({ state: "completed", source_file: "source.json" }),
-    CollectSource: (): Promise<SourceCollectionResult> =>
-      Promise.resolve({
-        state: "completed",
-        output_path: "staged-collection",
-        collection: {
-          schema: "readmit-source-collection/v1",
-          status: "complete",
-          declared: 1,
-          collected: 1,
-          duplicates: 0,
-          excluded: 0,
-          unreadable: 0,
-          not_read: 0,
-          bytes: 120,
-          records: 1,
-          occurrences: 1,
-        },
-      }),
-    FinalizeCaptureImport: () =>
-      Promise.resolve({
-        state: "completed",
-        registered: true,
-        case: {
-          name: "imported-from-capture.case",
-          identity: "sha256:abcd",
-          schema: "readmit-case/v3",
-          provenance: "imported",
-          sources: 1,
-          occurrences: 1,
-          messages: 1,
-          acknowledgements: 0,
-          unparsed: 0,
-        },
-      }),
-    ObservationSupport: () => ({ state: "completed", support: [] }),
-    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
-    OpenItemDraft: (request) => ({
+    CaptureProgress: () => ({ state: "empty" }),
+    ListCaptureSessions: (context) => ({ state: "completed", context, sessions: [session({ state: "cancelled", retained: true })] }),
+  });
+  started.resolve({ state: "cancelled", reason: "the operation was cancelled", outcome: "cancelled", session: "0123456789abcdef01234567" } satisfies CaptureSessionResult);
+  const history = await capturePage().findByRole("table", { name: "Capture history" });
+  expect(await within(history).findByText("Cancelled · 3")).toBeTruthy();
+  expect(onOpenCase).not.toHaveBeenCalled();
+  expect(capturePage().queryByRole("alert")).toBeNull();
+});
+
+test("Retry finalization never restarts collection", async () => {
+  const user = userEvent.setup();
+  const reason = "the capture finished and its case could not be published: the editable project document cannot be read";
+  const { facade, onOpenCase } = renderCapture({
+    RetryCaptureFinalization: (request) => ({ state: "completed", context: request.context, case: CASE_REF, replayed: false }),
+  });
+  const started = await startListener(user, facade);
+  facade.reply({ ListCaptureSessions: (context) => ({ state: "completed", context, sessions: [session({ state: "finalize-failed", reason, retained: true })] }) });
+  started.resolve({ state: "failed", reason, outcome: "finalize-failed", session: "0123456789abcdef01234567" } satisfies CaptureSessionResult);
+  const notice = await capturePage().findByText(reason, { selector: ".notice p" });
+  await user.click(within(notice.parentElement!).getByRole("button", { name: "Retry finalization" }));
+  await waitFor(() => expect(onOpenCase).toHaveBeenCalledWith(CASE_REF));
+  expect(facade.oneCall("RetryCaptureFinalization")[0]).toEqual({ context: CONTEXT, session: "0123456789abcdef01234567" });
+  // Nothing listened, collected or started again.
+  expect(facade.callsTo("StartCapture")).toHaveLength(1);
+});
+
+test("Capture history lists sessions read-only", async () => {
+  const user = userEvent.setup();
+  const { onOpenCase } = renderCapture({
+    ListCaptureSessions: (context) => ({
+      state: "completed",
+      context,
+      sessions: [
+        session({ id: "a".repeat(24), name: "Morning capture", state: "finished", case: CASE_REF }),
+        session({ id: "b".repeat(24), name: "Overnight", state: "interrupted", received: 0, reason: "the application ended while this capture ran", retained: true }),
+      ],
+    }),
+  });
+  const history = await capturePage().findByRole("table", { name: "Capture history" });
+  const rows = await within(history).findAllByRole("row");
+  expect(rows.slice(1).map((row) => row.getAttribute("aria-label"))).toEqual(["Morning capture", "Overnight"]);
+  expect(within(history).getByText("Finished · 3")).toBeTruthy();
+  expect(within(history).getByText("Interrupted")).toBeTruthy();
+  // History offers opening, never resuming.
+  await user.click(within(history).getByRole("button", { name: "More actions for Overnight" }));
+  expect((await screen.findAllByRole("menuitem")).map((entry) => entry.textContent)).toEqual(["Open retained data"]);
+  await user.keyboard("{Escape}");
+  await user.click(within(history).getByRole("button", { name: "More actions for Morning capture" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Open case" }));
+  expect(onOpenCase).toHaveBeenCalledWith(CASE_REF);
+  expect(screen.queryByRole("menuitem", { name: /Resume/ })).toBeNull();
+});
+
+test("Open retained data reads a cancelled capture's messages without publishing a case", async () => {
+  const user = userEvent.setup();
+  const kept = "/workspace-under-test/.readmit/captures/0123456789abcdef01234567";
+  const { facade, onOpenCase } = renderCapture({
+    ListCaptureSessions: (context) => ({ state: "completed", context, sessions: [session({ state: "cancelled", retained: true })] }),
+    OpenRetainedCapture: (request) => ({
       state: "completed",
       context: request.context,
-      new: true,
-      draft: {
-        observation: {
-          source: {
-            schema: "readmit-observation-source/v2",
-            source: { kind: "downstream-capture", identity: "downstream-capture", scope: "appointments" },
-            enabled: true,
-            freshness: { max_age: "1h" },
-            extraction: null,
-            file: null,
-            http: null,
-            capture: { path: request.capture?.case_path ?? "", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 100 },
-          },
-          window: {
-            schema: "readmit-observation-window/v1",
-            source: { kind: "downstream-capture", identity: "downstream-capture", scope: "appointments" },
-            watermark: { kind: "none", position: "" },
-            pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
-            completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
-          },
-        },
-      },
+      session: request.session,
+      workspace: kept,
+      case: { ...caseResult("case").case!, identity: "kept-identity" },
     }),
+    ReadMessages: () => messagesResult([messageRow("s0001-e000001")]),
   });
-
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("button", { name: "Choose folder…" }));
-  await user.click(screen.getByRole("button", { name: "Save registration" }));
-  await user.click(screen.getByRole("button", { name: "Collect" }));
-  await user.click(screen.getByRole("button", { name: "Create case…" }));
-  expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Set up observation" }));
-  const sheet = await screen.findByRole("dialog", { name: "Add observation" });
-  // The new observation starts from the facade's draft of that capture; nothing is collected.
-  const started = facade.callsTo("OpenItemDraft").map((call) => call.args[0] as ItemRequest).find((request) => request.ref.kind === "observation");
-  expect(started).toMatchObject({ ref: { kind: "observation", id: "" }, capture: { case_path: "imported-from-capture.case", record_key: "SCH-1.1" } });
-  expect((within(sheet).getByRole("combobox", { name: "Type" }) as HTMLSelectElement).value).toBe("downstream-capture");
-  expect((within(sheet).getByRole("textbox", { name: "Record key HL7 field" }) as HTMLInputElement).value).toBe("SCH-1.1");
-  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
-  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+  const history = await capturePage().findByRole("table", { name: "Capture history" });
+  await user.click(await within(history).findByRole("button", { name: "More actions for Morning capture" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Open retained data" }));
+  const table = await capturePage().findByRole("table", { name: "Kept messages" });
+  expect(within(table).getAllByRole("row")).toHaveLength(2);
+  expect(facade.callsTo("OpenRetainedCapture")[0]!.args[0]).toEqual({ context: CONTEXT, session: "0123456789abcdef01234567" });
+  expect(facade.callsTo("ReadMessages")[0]!.args[0]).toMatchObject({ workspace: kept, case: "case", identity: "kept-identity" });
+  expect(onOpenCase).not.toHaveBeenCalled();
+  for (const publishing of ["RetryCaptureFinalization", "ImportCase", "StartCapture", "SaveItem"] as const) {
+    expect(facade.callsTo(publishing)).toHaveLength(0);
+  }
 });
 
-function capturePanel(): HTMLElement {
-  return screen.getByRole("heading", { name: "Capture", level: 2 }).closest("section")!;
-}
+test("a responder fault is saved as choices for this listener only", async () => {
+  const user = userEvent.setup();
+  const { facade } = renderCapture({
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", replayed: false, problems: [], saved: { ...LISTENER, revision: "3" } }),
+  });
+  const setup = await openSetup(user);
+  await user.selectOptions(await setup.findByLabelText("Source"), LISTENER.id);
+  await setup.findByText("127.0.0.1:2575");
+  await user.click(setup.getByRole("button", { name: "Edit" }));
+  const editor = within(await screen.findByRole("dialog", { name: "Edit source" }));
+  await user.click(editor.getByRole("button", { name: "Responder…" }));
+  const responder = within(await screen.findByRole("dialog", { name: "Responder" }));
+  await user.selectOptions(responder.getByLabelText("Simulated fault"), "delay");
+  await user.clear(responder.getByLabelText("Delay (ms)"));
+  await user.type(responder.getByLabelText("Delay (ms)"), "200");
+  await user.click(responder.getByRole("button", { name: "Done" }));
+  await user.click(editor.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const [saved] = facade.oneCall("SaveItem") as [SaveItemRequest];
+  expect(saved).toMatchObject({ kind: "source", item: LISTENER.id, base_revision: "2" });
+  // The window sends the choices; the facade composes the responder and
+  // holds its fault to this listener's address.
+  expect(saved.draft.source!.responder_choices).toMatchObject({ fault: "delay", fault_delay_ms: 200, enhanced: false });
+  expect(JSON.stringify(saved.draft.source!.responder_choices)).not.toContain("approved_test_endpoints");
+});
 
-async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLElement) {
-  for (let step = 0; step < 120 && document.activeElement !== target; step++) await user.tab();
-  expect(document.activeElement).toBe(target);
-}
+// ---------- Through the window ----------
 
-const fixturePreview: CapturePreviewResult = {
-  state: "completed",
-  phase: "previewing",
-  preview: {
-    kind: "listen",
-    address: "declared-address",
-    approved_bind: false,
-    fixture_mode: "defective",
-    fixture_label: "built-in synthetic SIU fixture (readmit-siu-v1)",
-    transport: "plain",
-    client_certificate: false,
-    max_frame_bytes: 1048576,
-    idle_timeout: "30s",
-    journal_enabled: false,
-  },
+const PROJECT: CatalogItem = {
+  ...item({ kind: "project", id: "p1", revision: "rev-project-1" }, "Scheduling investigation"),
+  last_opened_at: "2026-09-26T10:00:00Z",
+  summary: { project: { folder: WORKSPACE_ROOT, schema: "readmit-project/v2", cases: 0, interface_versions: ["v1"], owner: "Integration team", tags: [], revisions: [{ id: "v1", name: "v1", default: true }] } },
 };
 
-test("a running fixture listener shows where it listens, is cancelled from the keyboard and shows the ledger it sealed", async () => {
+test("Escape closes a sheet without stopping capture and the indicator returns to it", async () => {
   const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
-  const panel = within(capturePanel());
-  await user.selectOptions(panel.getByLabelText("Mode"), "defective");
-  const progress: CaptureProgressResult[] = [{ state: "empty" }];
-  facade.reply({
-    PreviewCapture: () => fixturePreview,
-    CaptureProgress: () => progress[progress.length - 1]!,
-  });
-  const started = facade.park("StartCapture");
-  await user.click(panel.getByRole("button", { name: "Preview fixture" }));
-  const start = panel.getByRole("button", { name: "Start listener" });
-  await waitFor(() => expect((start as HTMLButtonElement).disabled).toBe(false));
-  await user.click(start);
-  // Until the fixture has bound, the window names no port; once it has, the
-  // port is the one a sender is pointed at, and Cancel holds the focus.
-  expect(await panel.findByText(/Phase: listening/)).toBeTruthy();
-  expect(panel.queryByText(/Listening on/)).toBeNull();
-  progress.push({ state: "completed", progress: { kind: "listen", bound_address: "bound-loopback-port" } });
-  expect(await panel.findByText("Phase: listening · Listening on bound-loopback-port")).toBeTruthy();
-  const stop = panel.getByRole("button", { name: "Cancel" });
-  await waitFor(() => expect(document.activeElement).toBe(stop));
-  await user.keyboard("{Enter}");
-  expect(facade.oneCall("Cancel")).toEqual(["capture"]);
-  const [request] = facade.oneCall("StartCapture");
-  expect(request).toMatchObject({ kind: "listen", fixture_mode: "defective", approved_bind: false });
-
-  started.resolve({
-    state: "cancelled",
-    reason: "the operation was cancelled",
-    phase: "stopped",
-    bound_address: "bound-loopback-port",
-    case_path: "capture.case",
-    observation_path: "observation.json",
-    received: 1,
-    connections: 1,
-    case: {
-      name: "capture.case",
-      identity: "sha256:2222",
-      schema: "readmit-case/v2",
-      provenance: "recorded",
-      sources: 1,
-      occurrences: 2,
-      messages: 1,
-      acknowledgements: 1,
-      unparsed: 0,
+  let progress: CaptureProgress | null = null;
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]),
+    OpenProjectOverview: () => projectOverviewResult([]),
+    OpenNamedProject: () => ({ state: "completed", context: { project: "", generation: 0 }, recorded: true }),
+    ...captureHandlers(),
+    ListCatalog: (query: CatalogQuery): CatalogResult => {
+      const items = query.kind === "project" ? [PROJECT] : query.kind === "source" ? SOURCES : [];
+      return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
     },
-    ledger: {
-      schema: "readmit-observation/v1",
-      profile: "readmit-siu-v1",
-      mode: "defective",
-      processed: 1,
-      records: 1,
-      consistent: true,
-    },
-  } satisfies CaptureSessionResult);
-  expect(await panel.findByText("the operation was cancelled")).toBeTruthy();
-  expect(panel.getByText(/Phase: stopped · Received: 1/)).toBeTruthy();
-  expect(panel.queryByText(/Listening on/)).toBeNull();
-  expect(panel.getByText("Case sealed: capture.case · 1 messages · 1 sources")).toBeTruthy();
-  expect(
-    panel.getByText(
-      "Appointment ledger observation.json: readmit-observation/v1 · Receiver mode: defective · Processed occurrences: 1 · Ledger records: 1 · Consistent: true",
-    ),
-  ).toBeTruthy();
-  // Focus is back on the control that started the listen.
-  await waitFor(() => expect(document.activeElement).toBe(start));
-});
-
-test("the fixture tab listens on loopback only and never carries the collector tab's bind approval", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  const panel = within(capturePanel());
-  // An approval ticked for the collector stays with the collector.
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-  await user.click(panel.getByLabelText("Approved nonloopback bind"));
-  expect((panel.getByLabelText("Approved nonloopback bind") as HTMLInputElement).checked).toBe(true);
-  await user.click(screen.getByRole("tab", { name: "SIU fixture" }));
-  expect(panel.queryByLabelText("Approved nonloopback bind")).toBeNull();
-
-  const refusal = "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address";
-  facade.reply({ PreviewCapture: () => ({ state: "failed", reason: refusal, phase: "failed" }) });
-  await user.clear(panel.getByLabelText("Listen address"));
-  await user.type(panel.getByLabelText("Listen address"), "0.0.0.0:0");
-  await user.click(panel.getByRole("button", { name: "Preview fixture" }));
-  expect(await panel.findByText("Choose a loopback listen address for the SIU fixture.")).toBeTruthy();
-  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "listen", address: "0.0.0.0:0", approved_bind: false });
-  expect((panel.getByRole("button", { name: "Start listener" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(facade.callsTo("StartCapture")).toHaveLength(0);
-});
-
-test.each(["delay", "missing-response", "reject", "disconnect", "malformed-ack"] as const)(
-  "the collector sends the %s fault its controls chose and leaves the contract version to the facade",
-  async (action) => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-  const panel = within(capturePanel());
-  facade.reply({
-    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy_file: request.policy_file }),
-    PreviewCapture: (): CapturePreviewResult => ({ state: "completed", phase: "previewing" }),
+    CaptureProgress: () => (progress ? { state: "completed", progress } : { state: "empty" }),
+    FinishCapture: () => ({ state: "completed", progress: { ...progress!, finishing: true } }),
+    OpenCase: (_workspace, name) => caseResult(name),
   });
+  await user.click(screen.getAllByRole("button", { name: "Open" })[0] as HTMLElement);
+  await sidebar().findByRole("button", { name: "Project: Scheduling investigation" });
+  await user.click(page().getByRole("button", { name: "Capture" }));
+  const setup = within(await screen.findByRole("dialog", { name: "New capture" }));
+  await user.type(setup.getByLabelText("Name"), "Morning capture");
+  await user.selectOptions(await setup.findByLabelText("Source"), LISTENER.id);
+  await setup.findByText("127.0.0.1:2575");
+  facade.park("StartCapture");
+  await user.click(setup.getByRole("button", { name: "Start capture" }));
+  progress = running();
+  await page().findByText("Waiting for messages", undefined, { timeout: 3000 });
 
-  await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), action);
-  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
-  await user.click(panel.getByRole("button", { name: "Preview collector" }));
-  await waitFor(() => expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(1));
-  const [request] = facade.oneCall("SaveReceiverPolicy");
-  // The person's choices, and no document: which version holds them, and the
-  // fault step they compose, are the facade's to decide.
-  expect(request.policy).toBeUndefined();
-  expect(request.choices).toMatchObject({ enhanced: false, fault: action, fault_delay_ms: 50, endpoint: "127.0.0.1:2575" });
-  expect(JSON.stringify(request)).not.toContain("readmit-receiver-policy/");
-  expect(facade.callsTo("PreviewCapture")).toHaveLength(1);
-  },
-);
+  // Escape closes a menu opened over the running capture and goes no
+  // further: the capture keeps recording.
+  await user.click(page().getByRole("button", { name: "More capture actions" }));
+  await user.keyboard("{Escape}");
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  expect(facade.callsTo("FinishCapture")).toHaveLength(0);
 
-// The fault actions offered, whether each waits for a delay, and the delay a
-// waiting one starts with are the ones the facade publishes.
-test("the fault controls offer the actions, waits and starting delay the facade publishes", async () => {
-  const user = userEvent.setup();
-  const described = shellResult();
-  const shell = described.shell;
-  if (!shell) throw new Error("fixture shell missing");
-  shell.vocabulary.receiver_faults = {
-    actions: [
-      { action: "reject", waits: false },
-      { action: "delay", waits: true },
-    ],
-    default_delay_ms: 70,
-  };
-  await openProject(user, { Shell: () => described });
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-  const panel = within(capturePanel());
-  const fault = panel.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement;
-  expect(Array.from(fault.options).map((option) => option.value)).toEqual(["none", "reject", "delay"]);
-  await user.selectOptions(fault, "reject");
-  expect(panel.queryByLabelText("Fault delay (ms)")).toBeNull();
-  await user.selectOptions(fault, "delay");
-  expect((panel.getByLabelText("Fault delay (ms)") as HTMLInputElement).value).toBe("70");
-});
-
-test("a reader refusal at port zero stops preview, and a collector bind refusal names its checkbox", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-  const panel = within(capturePanel());
-  await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), "reject");
-  await user.clear(panel.getByLabelText("Listen address"));
-  await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:0");
-  facade.reply({
-    SaveReceiverPolicy: (): ReceiverPolicyResult => ({ state: "failed", reason: "fault endpoints must be literal unicast IP addresses and nonzero ports" }),
-  });
-  await user.click(panel.getByRole("button", { name: "Preview collector" }));
-  expect(await panel.findByText("fault endpoints must be literal unicast IP addresses and nonzero ports")).toBeTruthy();
-  expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(1);
-  expect(facade.callsTo("PreviewCapture")).toHaveLength(0);
-
-  await user.clear(panel.getByLabelText("Listen address"));
-  await user.type(panel.getByLabelText("Listen address"), "192.0.2.1:2575");
-  facade.reply({
-    SaveReceiverPolicy: (request): ReceiverPolicyResult => ({ state: "completed", policy_file: request.policy_file }),
-    PreviewCapture: (): CapturePreviewResult => ({
-      state: "failed",
-      reason: "accepting connections from beyond this machine is opt-in: pass --approved-bind to bind a nonloopback address",
-    }),
-  });
-  await user.click(panel.getByRole("button", { name: "Preview collector" }));
-  expect(await panel.findByText("To bind beyond this machine, select Approved nonloopback bind in this window.")).toBeTruthy();
-  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ approved_bind: false });
-});
-
-const declaredPolicy: ReceiverPolicy = {
-  schema: "readmit-receiver-policy/v3",
-  name: "faulting-sink",
-  source_label: "downstream-test-endpoint",
-  acknowledgement: { operator: "original-mode-fixed-code", code: "AE" },
-  accepted_message_types: { operator: "message-type-in", values: ["SIU^S12", "SIU^S13"] },
-  enhanced_acknowledgement: {
-    operator: "unsupported",
-    accept_code: "",
-    application_code: "",
-    application_delivery: "",
-    application_endpoint: "",
-    approved_transport: false,
-  },
-  faults: {
-    environment_class: "nonproduction",
-    approved_test_endpoints: ["127.0.0.1:2575"],
-    steps: [
-      { message: 1, stage: "application", action: "delay", delay_ms: 25 },
-      { message: 3, stage: "application", action: "reject", delay_ms: 0 },
-    ],
-  },
-};
-
-/** What the facade decides the controls show for declaredPolicy: no enhanced
- * rule they express, its first fault step and delay, and its test endpoint. */
-const declaredControls: ReceiverPolicyChoices = {
-  name: declaredPolicy.name,
-  source_label: declaredPolicy.source_label,
-  acknowledgement: declaredPolicy.acknowledgement,
-  accepted_message_types: declaredPolicy.accepted_message_types,
-  enhanced: false,
-  fault: "delay",
-  fault_delay_ms: 25,
-  endpoint: "127.0.0.1:2575",
-};
-
-test("fault selection and opening a policy preserve an address the operator entered", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-  const panel = within(capturePanel());
-  await user.clear(panel.getByLabelText("Listen address"));
-  await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:42");
-  await user.selectOptions(panel.getByLabelText("Controlled fault (v3 synthetic)"), "reject");
-  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:42");
-
-  await user.clear(panel.getByLabelText("Listen address"));
-  await user.type(panel.getByLabelText("Listen address"), "127.0.0.1:0");
-  facade.reply({
-    ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "policy", paths: ["policies/faulting.json"] }),
-    ReadReceiverPolicy: (): ReceiverPolicyResult => ({
-      state: "completed",
-      policy: declaredPolicy,
-      policy_file: "policies/faulting.json",
-      choices: declaredControls,
-    }),
-  });
-  await user.click(panel.getByRole("button", { name: "Open policy…" }));
-  await panel.findByLabelText("Opened responder policy");
-  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:0");
-});
-
-test("a declared responder policy reopens for review, is previewed as it is and keeps what the form cannot show once edited", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  await user.click(screen.getByRole("tab", { name: "MLLP collect" }));
-  const panel = within(capturePanel());
-  const open = panel.getByRole("button", { name: "Open policy…" });
-
-  // A dismissed dialog opens nothing.
-  facade.reply({ ChooseCapturePath: (): PathChoiceResult => ({ state: "cancelled", reason: "no file was chosen" }) });
-  await tabTo(user, open);
-  await user.keyboard("{Enter}");
-  await waitFor(() => expect(facade.callsTo("ChooseCapturePath")).toHaveLength(1));
-  expect(facade.callsTo("ChooseCapturePath")[0]?.args).toEqual(["policy"]);
-  expect(facade.callsTo("ReadReceiverPolicy")).toHaveLength(0);
-  expect(panel.queryByRole("definition", { name: "Opened responder policy" })).toBeNull();
-
-  // From the keyboard, the chosen document opens for review and fills the form.
-  facade.reply({
-    ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "policy", paths: ["policies/faulting.json"] }),
-    ReadReceiverPolicy: (): ReceiverPolicyResult => ({
-      state: "completed",
-      policy: declaredPolicy,
-      policy_file: "policies/faulting.json",
-      choices: declaredControls,
-    }),
-  });
-  await tabTo(user, open);
-  await user.keyboard("{Enter}");
-  const review = within(await panel.findByLabelText("Opened responder policy"));
-  expect(facade.oneCall("ReadReceiverPolicy")[1]).toBe("policies/faulting.json");
-  expect(review.getByText("readmit-receiver-policy/v3")).toBeTruthy();
-  expect(review.getByText("original-mode-fixed-code AE")).toBeTruthy();
-  expect(review.getByText("message-type-in: SIU^S12, SIU^S13")).toBeTruthy();
-  expect(review.getByText("unsupported")).toBeTruthy();
-  expect(
-    review.getByText("nonproduction · approved 127.0.0.1:2575 · message 1 application delay 25 ms; message 3 application reject"),
-  ).toBeTruthy();
-  expect((panel.getByLabelText("Policy file") as HTMLInputElement).value).toBe("policies/faulting.json");
-  expect((panel.getByLabelText("Policy name") as HTMLInputElement).value).toBe("faulting-sink");
-  expect((panel.getByLabelText("Acknowledgement code") as HTMLSelectElement).value).toBe("AE");
-  expect((panel.getByLabelText("Controlled fault (v3 synthetic)") as HTMLSelectElement).value).toBe("delay");
-  expect((panel.getByLabelText("Fault delay (ms)") as HTMLInputElement).value).toBe("25");
-  expect((panel.getByLabelText("Listen address") as HTMLInputElement).value).toBe("127.0.0.1:2575");
-  await waitFor(() => expect(document.activeElement).toBe(open));
-
-  // Previewing what was opened previews the document on disk and rewrites nothing.
-  facade.reply({ PreviewCapture: (): CapturePreviewResult => ({ state: "completed", phase: "previewing" }) });
-  await user.click(panel.getByRole("button", { name: "Preview collector" }));
-  await waitFor(() => expect((panel.getByRole("button", { name: "Start collecting" }) as HTMLButtonElement).disabled).toBe(false));
-  expect(facade.callsTo("SaveReceiverPolicy")).toHaveLength(0);
-  expect(facade.oneCall("PreviewCapture")[0]).toMatchObject({ kind: "collect", address: "127.0.0.1:2575", policy_file: "policies/faulting.json" });
-
-  // An edit is saved over the same document as the person's choices beside
-  // the document they opened, so the facade keeps both fault steps and the
-  // approved endpoint the form never showed; the review shows what it saved.
-  const saves: ReceiverPolicyChoices[] = [];
-  facade.reply({
-    SaveReceiverPolicy: (request): ReceiverPolicyResult => {
-      if (request.choices) saves.push(request.choices);
-      return {
-        state: "completed",
-        policy: { ...declaredPolicy, source_label: "scheduling-archive" },
-        policy_file: request.policy_file,
-        choices: { ...declaredControls, source_label: "scheduling-archive" },
-      };
-    },
-  });
-  await user.clear(panel.getByLabelText("Source label"));
-  await user.type(panel.getByLabelText("Source label"), "scheduling-archive");
-  await user.click(panel.getByRole("button", { name: "Preview collector" }));
-  await waitFor(() => expect(saves).toHaveLength(1));
-  expect(saves[0]).toEqual({
-    name: "faulting-sink",
-    source_label: "scheduling-archive",
-    acknowledgement: declaredPolicy.acknowledgement,
-    accepted_message_types: declaredPolicy.accepted_message_types,
-    enhanced: false,
-    fault: "delay",
-    fault_delay_ms: 25,
-    endpoint: "127.0.0.1:2575",
-    opened: declaredPolicy,
-  });
-  expect(facade.callsTo("SaveReceiverPolicy")[0]?.args[0]).toMatchObject({ policy_file: "policies/faulting.json" });
-  expect(await review.findByText("scheduling-archive")).toBeTruthy();
-
-  // A document the reader refuses is shown refused and leaves the form and
-  // the review as they were.
-  facade.reply({ ReadReceiverPolicy: (): ReceiverPolicyResult => ({ state: "failed", reason: "invalid receiver policy JSON" }) });
-  await user.click(open);
-  expect(await panel.findByText("invalid receiver policy JSON")).toBeTruthy();
-  expect((panel.getByLabelText("Source label") as HTMLInputElement).value).toBe("scheduling-archive");
-  expect(review.getByText("scheduling-archive")).toBeTruthy();
-});
-
-test("a declared source registration reopens for review and is saved with every member it declares", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
-  const panel = within(capturePanel());
-  const declared: EvidenceSource = {
-    schema: "readmit-source/v1",
-    name: "scheduling-sftp",
-    kind: "transfer",
-    scope: "appointments",
-    quota: { max_entries: 64, max_entry_bytes: 4194304, max_total_bytes: 33554432 },
-    retry: { attempts: 2, backoff: "250ms" },
-    address: "declared-source-address",
-    classification: "nonproduction",
-    command: "declared-transfer-program",
-    arguments: ["--path", "appointments"],
-    secrets_file: "declared-store",
-    credential: "declared-reference",
-  };
-  const saved: SourceRegistrationResult[] = [];
-  facade.reply({
-    ChooseCapturePath: (): PathChoiceResult => ({ state: "completed", kind: "source", paths: ["sources/sftp.json"] }),
-    ReadSourceRegistration: (): SourceRegistrationResult => ({ state: "completed", source: declared, source_file: "sources/sftp.json" }),
-    SaveSourceRegistration: (request): SourceRegistrationResult => {
-      const answer = { state: "completed" as const, source: request.source, source_file: request.source_file };
-      saved.push(answer);
-      return answer;
-    },
-  });
-  const open = panel.getByRole("button", { name: "Open registration…" });
-  await tabTo(user, open);
-  await user.keyboard("{Enter}");
-  const review = within(await panel.findByLabelText("Opened source registration"));
-  expect(facade.oneCall("ChooseCapturePath")).toEqual(["source"]);
-  expect(facade.oneCall("ReadSourceRegistration")[1]).toBe("sources/sftp.json");
-  expect(review.getByText("64 entries, 4194304 bytes per entry, 33554432 bytes in total")).toBeTruthy();
-  expect(review.getByText("2 attempts, backoff 250ms")).toBeTruthy();
-  expect(review.getByText("declared-source-address (nonproduction)")).toBeTruthy();
-  expect(review.getByText("declared-transfer-program --path appointments")).toBeTruthy();
-  expect(review.getByText("declared-reference in declared-store")).toBeTruthy();
-  expect((panel.getByLabelText("Registration file") as HTMLInputElement).value).toBe("sources/sftp.json");
-  expect((panel.getByLabelText("Kind") as HTMLSelectElement).value).toBe("transfer");
-  expect((panel.getByLabelText("Scope") as HTMLInputElement).value).toBe("appointments");
-  await waitFor(() => expect(document.activeElement).toBe(open));
-
-  await user.clear(panel.getByLabelText("Scope"));
-  await user.type(panel.getByLabelText("Scope"), "referrals");
-  await user.click(panel.getByRole("button", { name: "Save registration" }));
-  await waitFor(() => expect(saved).toHaveLength(1));
-  expect(facade.oneCall("SaveSourceRegistration")[0]).toEqual({
-    workspace: WORKSPACE_ROOT,
-    source_file: "sources/sftp.json",
-    source: { ...declared, scope: "referrals" },
-  });
-  expect(await review.findByText("referrals")).toBeTruthy();
-
-  facade.reply({
-    ReadSourceRegistration: (): SourceRegistrationResult => ({ state: "failed", reason: "unsupported evidence source schema version" }),
-  });
-  await user.click(open);
-  expect(await panel.findByText("unsupported evidence source schema version")).toBeTruthy();
-  expect((panel.getByLabelText("Scope") as HTMLInputElement).value).toBe("referrals");
-  expect(review.getByText("referrals")).toBeTruthy();
-
-  // An api source is declarable and reopens as the kind it declares, which
-  // the kind control names rather than showing another.
-  facade.reply({
-    ReadSourceRegistration: (): SourceRegistrationResult => ({
-      state: "completed",
-      source_file: "sources/api.json",
-      source: {
-        schema: "readmit-source/v1",
-        name: "scheduling-api",
-        kind: "api",
-        scope: "appointments",
-        quota: declared.quota,
-        retry: declared.retry,
-        address: "declared-api-address",
-        classification: "nonproduction",
-      },
-    }),
-  });
-  await user.click(open);
-  expect(await review.findByText("scheduling-api")).toBeTruthy();
-  const kind = panel.getByLabelText("Kind") as HTMLSelectElement;
-  expect(kind.value).toBe("api");
-  expect(kind.selectedOptions[0]?.textContent).toBe("api (declared; not collected in this release)");
+  // Elsewhere in the window, the indicator says it records and returns to it.
+  await user.click(sidebar().getByRole("button", { name: "Settings" }));
+  const indicator = await screen.findByRole("button", { name: "Recording" }, { timeout: 3000 });
+  expect(facade.callsTo("Cancel")).toHaveLength(0);
+  await user.click(indicator);
+  expect(await page().findByText("Waiting for messages", undefined, { timeout: 3000 })).toBeTruthy();
+  expect(page().getByRole("heading", { level: 1, name: "Capture" })).toBeTruthy();
 });

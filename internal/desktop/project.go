@@ -173,7 +173,7 @@ func (a *App) refreshOverview(path string) ProjectOverviewResult {
 // documents. It writes nothing. It runs to completion once it starts, so it
 // holds the operation slot but is not interruptible.
 func (a *App) OpenProjectOverview(path string) ProjectOverviewResult {
-	return run(a, false, false, func(context.Context) ProjectOverviewResult {
+	return runRead(a, false, func(context.Context) ProjectOverviewResult {
 		return a.readOverview(path)
 	})
 }

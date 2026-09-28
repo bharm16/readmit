@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -42,31 +41,26 @@ func TestADiskRefusalDuringAnImportRegistersNothingAndAcceptsNoPartialCase(t *te
 	}
 
 	app := workspaceApp(t)
-	if _, err := os.Lstat(filepath.Join(folder, "refused")); err != nil {
-		t.Fatalf("the refused import retained nothing to inspect: %v", err)
-	}
-	if opened := app.OpenCase(folder, "refused"); opened.State == desktop.Completed {
-		t.Fatalf("the reader accepted an import the disk refused: %+v", opened)
-	}
-	if _, err := os.Lstat(filepath.Join(folder, "refused-receipt.json")); !os.IsNotExist(err) {
-		t.Fatalf("a receipt claims an import the disk refused: %v", err)
-	}
 	if opened := app.OpenProject(folder); opened.State != desktop.Empty || opened.Project == nil || len(opened.Project.Cases) != 0 {
 		t.Fatalf("the project registered an import the disk refused: %+v", opened)
 	}
-	again := app.CommitImport(registeredImport(folder, "imported", mllpSource(t, 3)))
-	if again.State != desktop.Completed || !again.Registered {
+	if listed := entries(t, folder); len(listed) != 2 {
+		t.Fatalf("a refused import added project entries: %v", listed)
+	}
+	again := app.ImportCase(previewedImport(t, app, folder, "Imported", mllpSource(t, 3), "imported"))
+	if again.State != desktop.Completed || again.Case == nil {
 		t.Fatalf("importing again once the disk had room did not complete: %+v", again)
 	}
 }
 
-// importDiskFullChildRun writes its license fixture before the limit drops,
-// then imports a case whose event record is past the account's file size limit
+// importDiskFullChildRun writes its license fixture and previews before the
+// limit drops, then imports a case whose event record is past the account's file size limit
 // — the operation clock record admission writes is far below it — and reports
 // what the facade answered.
 func importDiskFullChildRun(t *testing.T) {
 	folder := os.Getenv(importDiskFullProject)
 	app := workspaceApp(t)
+	request := previewedImport(t, app, folder, "Refused", os.Getenv(importDiskFullSource), "refused")
 	var limit syscall.Rlimit
 	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
 		fmt.Printf("RESULT:getrlimit failed\n")
@@ -77,6 +71,6 @@ func importDiskFullChildRun(t *testing.T) {
 		fmt.Printf("RESULT:setrlimit failed\n")
 		return
 	}
-	result := app.CommitImport(registeredImport(folder, "refused", os.Getenv(importDiskFullSource)))
-	fmt.Printf("RESULT:%s registered=%t\n", result.State, result.Registered)
+	result := app.ImportCase(request)
+	fmt.Printf("RESULT:%s registered=%t\n", result.State, result.Case != nil)
 }

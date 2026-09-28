@@ -13,8 +13,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Journey, press, region } from "../testkit/journey";
-import { accepts, entries, exists, freeLoopbackAddress } from "./probes.js";
+import { enter, Journey, press, region } from "../testkit/journey";
+import { accepts, entries, freeLoopbackAddress, namesIn } from "./probes.js";
 import { BOOKING, declareMllpImport, framed, licensedProject, logTiming } from "./steps";
 
 let journey: Journey;
@@ -40,9 +40,7 @@ const STARTS = [
   "EnrollRunner",
   "ResetTarget",
   "DurableRunProgress",
-  "CollectSource",
   "CollectObservation",
-  "DiagnoseSource",
   "DiagnoseHub",
   "ConnectHub",
   "StartHubAuth",
@@ -60,44 +58,53 @@ const STARTS = [
   "StoreOperatorHubArtifact",
 ] as const;
 
-test("a collector started in the capture panel stops when that panel's Cancel is pressed, and reopening after a kill starts nothing", async () => {
+test("a capture started from a saved listener stops when Cancel capture is pressed, and reopening after a kill starts nothing", async () => {
   const user = userEvent.setup();
   await licensedProject(journey, user);
   const address = await freeLoopbackAddress();
+  const port = address.slice(address.lastIndexOf(":") + 1);
 
-  await press(user, await within(region("Evidence")).findByRole("button", { name: "Capture" }));
-  const capture = within(await screen.findByRole("region", { name: "Capture" }));
-  await press(user, capture.getByRole("tab", { name: "MLLP collect" }));
-  await user.clear(capture.getByLabelText("Listen address"));
-  await user.type(capture.getByLabelText("Listen address"), address);
-  await press(user, capture.getByRole("button", { name: "Preview collector" }));
-  expect(await capture.findByText(/^Phase: previewing/)).toBeTruthy();
-  await press(user, capture.getByRole("button", { name: "Start collecting" }));
-  expect(await capture.findByText(/^Phase: collecting/)).toBeTruthy();
+  // The listener is saved as the project's capture source, from New capture.
+  await press(user, await screen.findByRole("button", { name: "Capture" }));
+  let setup = within(await screen.findByRole("dialog", { name: "New capture" }));
+  await journey.settled();
+  await user.selectOptions(await setup.findByLabelText("Source"), "new");
+  const editor = within(await screen.findByRole("dialog", { name: "New source" }));
+  await enter(user, editor.getByLabelText("Name"), "Scheduling QA");
+  await enter(user, editor.getByLabelText("Port"), port);
+  await press(user, editor.getByRole("button", { name: "Save" }));
+  setup = within(await screen.findByRole("dialog", { name: "New capture" }));
+  await setup.findByText(address);
+  await enter(user, setup.getByLabelText("Name"), "Morning capture");
+  await press(user, setup.getByRole("button", { name: "Start capture" }));
   await waitFor(async () => {
-    if (!(await accepts(address))) throw new Error("the collector is not listening yet");
+    if (!(await accepts(address))) throw new Error("the capture is not listening yet");
   });
+  expect(await screen.findByText("Waiting for messages")).toBeTruthy();
 
-  // The panel's own Cancel is what a person presses; it must reach the
-  // operation the collector actually runs under.
+  // Cancel capture is what a person presses; it must reach the operation
+  // the capture actually runs under, and it publishes no case.
   const started = performance.now();
-  await user.click(capture.getByRole("button", { name: "Cancel" }));
-  expect(await capture.findByText(/^Phase: stopped/)).toBeTruthy();
-  logTiming("collector Cancel to stopped", [performance.now() - started]);
+  await press(user, screen.getByRole("button", { name: "More capture actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: "Cancel capture" }));
+  await waitFor(async () => {
+    if (await accepts(address)) throw new Error("the capture still listens");
+  });
+  logTiming("Cancel capture to not listening", [performance.now() - started]);
   expect(journey.callsTo("Cancel").at(-1)?.args).toEqual(["capture"]);
-  expect(await accepts(address)).toBe(false);
+  const history = within(await screen.findByRole("table", { name: "Capture history" }));
+  expect(await history.findByText(/^Cancelled/)).toBeTruthy();
 
   // Start it again and kill the application while it listens.
-  await user.clear(capture.getByLabelText("Case output name"));
-  await user.type(capture.getByLabelText("Case output name"), "second.case");
-  await user.clear(capture.getByLabelText("Journal name"));
-  await user.type(capture.getByLabelText("Journal name"), "second.journal");
-  // Starting waits for the new preview: the window offers it only once the
-  // preview has completed.
-  await press(user, capture.getByRole("button", { name: "Preview collector" }));
-  await press(user, capture.getByRole("button", { name: "Start collecting" }));
+  await press(user, screen.getByRole("button", { name: "New capture" }));
+  setup = within(await screen.findByRole("dialog", { name: "New capture" }));
+  await journey.settled();
+  await enter(user, setup.getByLabelText("Name"), "Second capture");
+  await user.selectOptions(await setup.findByLabelText("Source"), "Scheduling QA");
+  await setup.findByText(address);
+  await press(user, setup.getByRole("button", { name: "Start capture" }));
   await waitFor(async () => {
-    if (!(await accepts(address))) throw new Error("the collector is not listening yet");
+    if (!(await accepts(address))) throw new Error("the capture is not listening yet");
   });
   await journey.crash();
   expect(await accepts(address)).toBe(false);
@@ -170,33 +177,29 @@ test("cancelling an import while it writes its case stops it there, registers no
   journey.writeFile("exports/feed.mllp", framed(BOOKING).repeat(occurrences));
   const project = await licensedProject(journey, user);
 
-  await declareMllpImport(user, journey, "exports/feed.mllp");
-  // Several panels carry a Preview button of this name now; this one belongs
-  // to the import's own bounded-preview section.
-  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
-  const preview = within(screen.getByRole("region", { name: "Extraction preview" }));
+  await declareMllpImport(user, journey, "exports/feed.mllp", "Feed");
+  const flow = within(screen.getByRole("dialog", { name: "Import" }));
   await waitFor(() => {
-    expect(preview.getByText("Occurrences").previousSibling?.textContent).toBe(String(occurrences));
+    expect(journey.callsTo("PreviewImport").at(-1)?.result).toMatchObject({ state: "completed", row_total: occurrences });
   });
 
-  const commit = within(screen.getByRole("region", { name: "Commit import" }));
-  await user.clear(commit.getByLabelText("Case bundle folder name"));
-  await user.type(commit.getByLabelText("Case bundle folder name"), "feed");
-  await press(user, commit.getByRole("button", { name: "Import" }));
-  const payloads = journey.path("investigations", "interface", "feed", "payloads");
+  await press(user, flow.getByRole("button", { name: "Import" }));
+  // The case is written in the project's own import area first.
+  const incoming = journey.path("investigations", "interface", ".readmit", "incoming");
+  const payloads = () => namesIn(incoming).reduce((count: number, intent: string) => count + entries(`${incoming}/${intent}/case/payloads`), 0);
   await waitFor(() => {
-    if (entries(payloads) === 0) throw new Error("the case is not being written yet");
+    if (payloads() === 0) throw new Error("the case is not being written yet");
   });
+  // The window's operation indicator stops the running import.
   const started = performance.now();
-  await user.click(commit.getByRole("button", { name: "Cancel" }));
-  expect(await commit.findByText("the operation was cancelled")).toBeTruthy();
+  await user.click(within(region("Navigation")).getByRole("button", { name: "Stop" }));
+  expect(await flow.findByText("the operation was cancelled")).toBeTruthy();
   logTiming("import Cancel while writing to cancelled shown", [performance.now() - started]);
 
-  // The write stopped short of the last payload, with no completion marker,
+  // The write stopped short of the last payload, in the project's own area,
   // and the project registers nothing.
-  expect(entries(payloads)).toBeLessThan(occurrences);
-  expect(exists(journey.path("investigations", "interface", "feed", "identity.sha256"))).toBe(false);
+  expect(payloads()).toBeLessThan(occurrences);
   const shown = await journey.commandLine(["project", "show", project]);
   expect(shown.code).toBe(0);
-  expect(shown.stdout).not.toContain("feed");
+  expect(shown.stdout).toContain("Cases: 0");
 });

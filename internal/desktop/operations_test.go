@@ -178,7 +178,7 @@ func TestACancellationDuringExecutionAdmissionIsCancelledNotDenied(t *testing.T)
 		if err := os.Remove(retained); err != nil {
 			t.Fatal(err)
 		}
-		if result := app.DiagnoseSource(desktop.SourceWorkRequest{Workspace: root}); result.State == desktop.PermissionDenied || result.State == desktop.Cancelled {
+		if result := app.CheckTarget(desktop.TargetCheckRequest{Workspace: root}); result.State == desktop.PermissionDenied || result.State == desktop.Cancelled {
 			t.Fatalf("admission did not decide once %s was gone: %+v", update, result)
 		}
 	}

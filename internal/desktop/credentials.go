@@ -131,7 +131,7 @@ func (a *App) projectSecrets(ctx context.Context, request RequestContext) (strin
 // ListCredentials lists the references the open project registers. A project
 // that registers none lists nothing. It is a read.
 func (a *App) ListCredentials(request ItemRequest) CredentialsResult {
-	return run(a, false, false, func(ctx context.Context) CredentialsResult {
+	return runRead(a, false, func(ctx context.Context) CredentialsResult {
 		result := CredentialsResult{Context: request.Context, Credentials: []CredentialRow{}, Referring: []Referrer{}}
 		_, path, declined := a.projectSecrets(ctx, request.Context)
 		if path == "" {
@@ -274,8 +274,8 @@ func (a *App) RecordCredentialRotation(request CredentialRequest) CredentialsRes
 }
 
 // RemoveCredential removes one reference from the project's secrets entry.
-// It is refused, naming them, while an environment's or an observation's
-// current revision presents it; the credential in its store is never
+// It is refused, naming them, while an environment's, an observation's or a
+// capture source's current revision presents it; the credential in its store is never
 // touched.
 func (a *App) RemoveCredential(request CredentialRequest) CredentialsResult {
 	return run(a, false, true, func(ctx context.Context) CredentialsResult {
@@ -299,13 +299,18 @@ func (a *App) RemoveCredential(request CredentialRequest) CredentialsResult {
 					links, err := readObservationLinks(paths["links"])
 					presents = err == nil && links.Credential == request.Name
 				}
+			case string(SourceItem):
+				if paths, availability, _ := loaded.backing(item); availability == ItemAvailable && paths["listener"] != "" {
+					source, err := readCaptureSource(paths)
+					presents = err == nil && source.Listener.TLSKeyReference == request.Name && filepath.Clean(source.Listener.SecretsFile) == ProjectSecrets
+				}
 			}
 			if presents {
 				result.Referring = append(result.Referring, Referrer{Ref: ItemRef{Kind: ItemKind(item.Kind), ID: item.ID, Revision: item.RevisionLabel()}, Name: loaded.read(item).Name})
 			}
 		}
 		if len(result.Referring) > 0 {
-			result.refuse(Failed, "an environment or an observation presents this credential; choose another credential there first. Nothing was removed")
+			result.refuse(Failed, "an environment, an observation or a capture source presents this credential; choose another credential there first. Nothing was removed")
 			return result
 		}
 		document, err := operation.RemoveSecretReference(filepath.Join(loaded.root, ProjectSecrets), request.Name)

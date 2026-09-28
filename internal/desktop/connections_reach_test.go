@@ -19,10 +19,8 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/catalog"
-	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/evidencesource"
-	"github.com/bharm16/readmit/internal/mllp"
 )
 
 // reachedRow is the one active row an operation is listed as.
@@ -190,58 +188,34 @@ func TestEveryActiveOperationNamesTheObjectItReaches(t *testing.T) {
 					OutputFile: "completion.json", SnapshotDir: "snapshot", Authorize: true, Produced: []string{"A1"}})
 			}, reachedRow{"operation:observation", "scheduling-archive", "export.csv", "observation"}
 		}},
-		{"source access check", func(t *testing.T) (*desktop.App, desktop.RequestContext, func(), reachedRow) {
-			app, root := sourceWorkspace(t)
-			return app, desktop.RequestContext{}, func() {
-				app.DiagnoseSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", PolicyFile: "policy.json"})
-			}, reachedRow{"operation:source-diagnosis", "exports", "exports.example.test:22", "source-diagnosis"}
+		{"capture from a saved transfer source", func(t *testing.T) (*desktop.App, desktop.RequestContext, func(), reachedRow) {
+			app, context := namedProject(t)
+			source := transferSource(t, app, context)
+			return app, context, func() {
+				app.StartCapture(desktop.CaptureRequest{Context: context, Source: &source, Name: "Exported appointments", IntentID: "transfer-1"})
+			}, reachedRow{"operation:capture", "Exported appointments", "exports.example.test:22", "capture"}
 		}},
-		{"source collection", func(t *testing.T) (*desktop.App, desktop.RequestContext, func(), reachedRow) {
-			app, root := sourceWorkspace(t)
-			return app, desktop.RequestContext{}, func() {
-				app.CollectSource(desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", PolicyFile: "policy.json",
-					OutputName: "staged", ReceiptName: "receipt.json"})
-			}, reachedRow{"operation:collect", "exports", "exports.example.test:22", "collect"}
-		}},
-		{"capture", func(t *testing.T) (*desktop.App, desktop.RequestContext, func(), reachedRow) {
-			app := workspaceApp(t)
-			root := t.TempDir()
-			policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
+		{"capture from a saved listener", func(t *testing.T) (*desktop.App, desktop.RequestContext, func(), reachedRow) {
+			app, context := namedProject(t)
+			free, err := net.Listen("tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: "receiver.json", Policy: policy}); saved.State != desktop.Completed {
-				t.Fatalf("receiver policy: %+v", saved)
+			address := free.Addr().String()
+			free.Close()
+			port := free.Addr().(*net.TCPAddr).Port
+			listener := desktop.ListenerSettings{BindAddress: "127.0.0.1", Port: port, Transport: desktop.PlainTransport, ConnectionLimit: 1, IdleTimeout: "5s", AckCode: "AA"}
+			saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.SourceItem, IntentID: "save-listener",
+				Draft: desktop.ItemDraft{Name: "Scheduling QA", Source: &desktop.CaptureSourceDraft{Type: desktop.MLLPListenerSource, Listener: &listener}}})
+			if saved.Outcome != desktop.SavedOutcome {
+				t.Fatalf("save the listener: %+v", saved)
 			}
-			listener, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
-			}
-			address := listener.Addr().String()
-			listener.Close()
-			return app, desktop.RequestContext{}, func() {
-				done := make(chan desktop.CaptureSessionResult, 1)
-				go func() {
-					done <- app.StartCapture(desktop.CaptureRequest{Workspace: root, Kind: "collect", Address: address,
-						PolicyFile: "receiver.json", OutputName: "case", JournalName: "journal", MaxMessages: 1, IdleTimeout: "5s"})
-				}()
-				var conn net.Conn
-				for deadline := time.Now().Add(5 * time.Second); conn == nil && time.Now().Before(deadline); {
-					if conn, err = net.DialTimeout("tcp", address, 50*time.Millisecond); err != nil {
-						conn = nil
-						time.Sleep(10 * time.Millisecond)
-					}
-				}
-				if conn == nil {
-					app.Cancel("capture")
-					<-done
-					t.Error("the capture never listened on its port")
-					return
-				}
-				_, _ = conn.Write(mllp.Frame([]byte("MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r")))
-				_ = conn.Close()
-				<-done
-			}, reachedRow{"operation:capture", "case", address, "capture"}
+			return app, context, func() {
+				done, progress := startedCapture(t, app, context, *saved.Saved, "listener-1")
+				deliver(t, progress.BoundAddress)
+				app.FinishCapture()
+				awaitCapture(t, done)
+			}, reachedRow{"operation:capture", "Morning capture", address, "capture"}
 		}},
 		{"runner enrollment", func(t *testing.T) (*desktop.App, desktop.RequestContext, func(), reachedRow) {
 			fixture := newRunnerGateFixture(t, "scheduling-lead", []string{"evidence.read", "enrollment", "execution"})
@@ -321,21 +295,23 @@ func targetWorkspace(t *testing.T) (*desktop.App, string, string) {
 
 // sourceWorkspace is a workspace registering a transfer source named exports
 // at a name the test's resolver refuses, and a policy for it.
-func sourceWorkspace(t *testing.T) (*desktop.App, string) {
+// transferSource saves a transfer program capture source that reaches a
+// named address, and answers its reference.
+func transferSource(t *testing.T, app *desktop.App, context desktop.RequestContext) desktop.ItemRef {
 	t.Helper()
-	app := workspaceApp(t)
-	root := t.TempDir()
-	source := evidencesource.Source{
+	evidence := evidencesource.Source{
 		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Transfer, Scope: "appointments",
 		Address: "exports.example.test:22", Classification: "nonproduction", Command: "/bin/cat",
 		Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
 		Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
 	}
-	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: root, SourceFile: "source.json", Source: source}); saved.State != desktop.Completed {
-		t.Fatalf("source: %+v", saved)
+	plan := validDesktopPlan()
+	saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.SourceItem, IntentID: "save-transfer",
+		Draft: desktop.ItemDraft{Name: "Exports", Source: &desktop.CaptureSourceDraft{Type: desktop.TransferSource, Evidence: &evidence, Plan: &plan}}})
+	if saved.Outcome != desktop.SavedOutcome {
+		t.Fatalf("save the transfer source: %+v", saved)
 	}
-	writeDocument(t, root, "policy.json", `{"schema":"readmit-send-policy/v1","approved_destinations":["192.0.2.0/24"]}`)
-	return app, root
+	return *saved.Saved
 }
 
 // The runner a window last read, saved or enrolled with is listed from what

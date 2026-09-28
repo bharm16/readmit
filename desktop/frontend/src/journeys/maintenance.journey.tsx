@@ -65,7 +65,7 @@ function values(scope: HTMLElement): [string, string][] {
 async function projectWithCase(user: UserEvent): Promise<string> {
   const folder = await licensedProject(journey, user);
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", CASE_TITLE);
+  await importExport(user, journey, "exports/scheduling-feed.hl7", CASE_TITLE);
   return folder;
 }
 

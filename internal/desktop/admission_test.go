@@ -163,7 +163,7 @@ func TestEveryDeclaredExecutionIsBoundedAndSettled(t *testing.T) {
 	if executions < 13 {
 		t.Fatalf("implausibly few declared executions: %d", executions)
 	}
-	for _, method := range []string{"DiagnoseSource", "CollectSource", "CheckTarget", "ResetTarget", "CollectObservation"} {
+	for _, method := range []string{"StartCapture", "CheckTarget", "ResetTarget", "CollectObservation"} {
 		if profile := desktop.DeclaredProfilesForTest()[method]; profile.Execution != operationguard.Execute {
 			t.Errorf("%s declares execution %v, want one execution held and bounded for the operation", method, profile.Execution)
 		}
@@ -281,7 +281,8 @@ func TestAnUnapprovedSendIsRefusedWhileItHoldsTheSlotBeforeAdmission(t *testing.
 // the failed phase; one its author admission declines, first, reports none,
 // as it always has.
 func TestACaptureDeclinedByItsExecutionAdmissionReportsTheFailedPhase(t *testing.T) {
-	request := desktop.CaptureRequest{Workspace: t.TempDir(), Kind: "collect", OutputName: "captured"}
+	request := desktop.CaptureRequest{Context: desktop.RequestContext{Project: t.TempDir()}, Source: &desktop.ItemRef{Kind: desktop.SourceItem, ID: "0123456789abcdef01234567"},
+		Name: "Captured", IntentID: "capture-1"}
 	unactivated := windowWith(t, "").StartCapture(request)
 	if unactivated.State != desktop.PermissionDenied || unactivated.Phase != "" {
 		t.Errorf("a capture refused by its author admission: %s, phase %q", unactivated.State, unactivated.Phase)

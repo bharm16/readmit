@@ -117,7 +117,7 @@ func (r *FindingsResult) refuse(state State, reason string) { r.State, r.Reason 
 // reads as not analyzed until it is analyzed again. It runs nothing and
 // writes nothing.
 func (a *App) OpenCaseFindings(request FindingsRequest) FindingsResult {
-	return run(a, false, false, func(ctx context.Context) FindingsResult {
+	return runRead(a, false, func(ctx context.Context) FindingsResult {
 		return a.openCaseFindings(ctx, request)
 	})
 }

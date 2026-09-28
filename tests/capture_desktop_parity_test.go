@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/observation"
@@ -64,28 +63,28 @@ func fixtureExchange(t *testing.T, address string, fixtures ...string) []string 
 	return answered
 }
 
-// windowListening waits until the window's running capture reports the
-// address it bound, as the capture screen reads it.
-func windowListening(t *testing.T, app *desktop.App, answered chan desktop.CaptureSessionResult) string {
+// windowListening waits until the window's running fixture reports the
+// address it bound, as Sample data reads it.
+func windowListening(t *testing.T, app *desktop.App, answered chan desktop.SampleFixtureResult) string {
 	t.Helper()
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
 		select {
 		case result := <-answered:
-			t.Fatalf("the window's capture answered before it listened: %+v", result)
+			t.Fatalf("the window's fixture answered before it listened: %+v", result)
 		default:
 		}
-		if progress := app.CaptureProgress(); progress.State == desktop.Completed && progress.Progress != nil {
+		if progress := app.CaptureProgress(); progress.State == desktop.Completed && progress.Progress != nil && progress.Progress.BoundAddress != "" {
 			return progress.Progress.BoundAddress
 		}
 	}
-	t.Fatal("the window's capture never reported where it listens")
+	t.Fatal("the window's fixture never reported where it listens")
 	return ""
 }
 
-// The capture screen's SIU fixture runs the listen operation `readmit listen`
-// runs, so what is left to prove is what crosses between the two on disk and
-// on the wire: the window reports where it listens as the command prints it,
-// on the declared host and the port it chose, once its initial ledger is
+// Sample data's SIU fixture runs the listen operation `readmit listen` runs,
+// so what is left to prove is what crosses between the two on disk and on
+// the wire: the window reports where it listens as the command prints it, on
+// the declared host and the port it chose, once its initial ledger is
 // installed; it acknowledges the frozen exchange as the fixture does; it
 // exports the hand-authored ledger for its mode; and it seals a case the
 // command line reads exactly as the window described it. `readmit listen`'s
@@ -93,25 +92,20 @@ func windowListening(t *testing.T, app *desktop.App, answered chan desktop.Captu
 func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 	for _, mode := range []string{"fixed", "defective"} {
 		t.Run(mode, func(t *testing.T) {
-			workspace := t.TempDir()
-			app := desktopApp(t, workspace)
-			answered := make(chan desktop.CaptureSessionResult, 1)
+			workspace := newProject(t)
+			app := desktopApp(t, t.TempDir())
+			answered := make(chan desktop.SampleFixtureResult, 1)
 			go func() {
-				answered <- app.StartCapture(desktop.CaptureRequest{
-					Workspace: workspace, Kind: "listen", Address: "127.0.0.1:0", FixtureMode: mode,
-					OutputName: "window.case", ObservationName: "window-ledger.json", MaxMessages: 2, IdleTimeout: "10s",
-				})
+				answered <- app.StartSampleFixture(desktop.SampleFixtureRequest{Context: desktop.RequestContext{Project: workspace},
+					Mode: mode, Address: "127.0.0.1:0", MaxMessages: 2, IdleTimeout: "10s"})
 			}()
 			bound := windowListening(t, app, answered)
 			if host, port, err := net.SplitHostPort(bound); err != nil || host != "127.0.0.1" || port == "0" {
 				t.Fatalf("the window bound %q for a declared 127.0.0.1:0", bound)
 			}
-			if _, err := observation.Read(filepath.Join(workspace, "window-ledger.json")); err != nil {
-				t.Fatalf("the window reported listening before its initial ledger was installed: %v", err)
-			}
 			acks := fixtureExchange(t, bound, "listen-s12.hl7", "listen-s13.hl7")
 			result := <-answered
-			if result.State != desktop.Completed || result.Case == nil || result.Ledger == nil {
+			if result.State != desktop.Completed || result.CaseEntry == "" || result.Ledger == nil {
 				t.Fatalf("the window's listen: %+v", result)
 			}
 			for i, control := range []string{"LISTEN-BOOK", "LISTEN-MOVE"} {
@@ -123,7 +117,7 @@ func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 
 			// The exported ledger is the hand-authored expectation for the mode.
 			expected := readStrictDocument[[]observation.Record](t, filepath.Join("..", "testdata", "fixtures", "listen-"+mode+".json"))
-			ledger, err := observation.Read(filepath.Join(workspace, "window-ledger.json"))
+			ledger, err := observation.Read(filepath.Join(workspace, result.ObservationEntry))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,17 +126,16 @@ func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 			}
 
 			// The command line reads the window's case as the window reported it.
-			timeline, stderr, err := run(t, "timeline", filepath.Join(workspace, "window.case"))
+			sealed, err := bundle.Open(filepath.Join(workspace, result.CaseEntry))
+			if err != nil || !reflect.DeepEqual(sealed.Observation.Records, expected) {
+				t.Fatalf("the sealed ledger is not the exported one: %v", err)
+			}
+			timeline, stderr, err := run(t, "timeline", filepath.Join(workspace, result.CaseEntry))
 			if err != nil || stderr != "" {
 				t.Fatalf("timeline of the window's case: %v %s", err, stderr)
 			}
 			for _, line := range []string{
-				"Bundle: " + result.Case.Identity,
-				"Schema: " + result.Case.Schema,
-				"Provenance: " + string(result.Case.Provenance),
-				fmt.Sprintf("Sources: %d", result.Case.Sources),
-				fmt.Sprintf("Messages: %d", result.Case.Messages),
-				fmt.Sprintf("ACKs: %d", result.Case.Acknowledgements),
+				"Bundle: " + sealed.Identity,
 				"Observation: " + result.Ledger.Schema,
 				"Observation profile: " + result.Ledger.Profile,
 				"Receiver mode: " + result.Ledger.Mode,
@@ -154,186 +147,6 @@ func TestTheWindowsFixtureListenIsTheCommandLinesListen(t *testing.T) {
 					t.Errorf("the window reported %q, which `readmit timeline` does not read", line)
 				}
 			}
-			sealed, err := bundle.Open(filepath.Join(workspace, "window.case"))
-			if err != nil || !reflect.DeepEqual(sealed.Observation.Records, expected) {
-				t.Fatalf("the sealed ledger is not the exported one: %v", err)
-			}
 		})
-	}
-}
-
-// enhancedAsPrinted is how `readmit collect` names a policy's enhanced
-// acknowledgement on its startup lines.
-func enhancedAsPrinted(p collection.Policy) string {
-	if !p.SupportsEnhanced() {
-		return collection.EnhancedUnsupported
-	}
-	return fmt.Sprintf("%s %s %s %s", p.Enhanced.Operator, p.Enhanced.AcceptCode, p.Enhanced.ApplicationCode, p.Enhanced.ApplicationDelivery)
-}
-
-// A responder policy hand-authored for `readmit collect`, and the copy the
-// window saves once it has reopened it, are the policy the command line
-// serves: it states the same declarations on its startup lines as the window
-// reopened. What the command line refuses to serve under, the window refuses
-// to reopen in the same words, and a fault policy is held to the endpoints it
-// approves before anything binds in both.
-func TestAReopenedResponderPolicyIsTheOneTheCommandLineServes(t *testing.T) {
-	workspace := t.TempDir()
-	app := desktopApp(t, workspace)
-	approved := freeLoopbackAddress(t, "tcp")
-	documents := map[string]string{
-		"v1": `{"schema": "readmit-receiver-policy/v1", "name": "downstream-sink", "source_label": "downstream-test-endpoint",
-  "acknowledgement": {"operator": "original-mode-fixed-code", "code": "AR"},
-  "accepted_message_types": {"operator": "message-type-in", "values": ["SIU^S12", "ADT"]}}`,
-		"v2": `{"schema": "readmit-receiver-policy/v2", "name": "enhanced-sink", "source_label": "downstream-test-endpoint",
-  "acknowledgement": {"operator": "original-mode-fixed-code", "code": "AA"},
-  "accepted_message_types": {"operator": "any-message-type", "values": []},
-  "enhanced_acknowledgement": {"operator": "enhanced-mode-fixed-codes", "accept_code": "CA", "application_code": "AE",
-    "application_delivery": "same-connection", "application_endpoint": "", "approved_transport": false}}`,
-		"v3": `{"schema": "readmit-receiver-policy/v3", "name": "faulting-sink", "source_label": "downstream-test-endpoint",
-  "acknowledgement": {"operator": "original-mode-fixed-code", "code": "AA"},
-  "accepted_message_types": {"operator": "any-message-type", "values": []},
-  "enhanced_acknowledgement": {"operator": "unsupported", "accept_code": "", "application_code": "",
-    "application_delivery": "", "application_endpoint": "", "approved_transport": false},
-  "faults": {"environment_class": "nonproduction", "approved_test_endpoints": ["` + approved + `"],
-    "steps": [{"message": 1, "stage": "application", "action": "delay", "delay_ms": 25},
-              {"message": 2, "stage": "application", "action": "malformed-ack", "delay_ms": 0}]}}`,
-	}
-	for version, document := range documents {
-		authored := writeDocument(t, workspace, version+".json", document)
-		opened := app.ReadReceiverPolicy(workspace, version+".json")
-		if opened.State != desktop.Completed || opened.Policy == nil {
-			t.Fatalf("%s reopened as %+v", version, opened)
-		}
-		if saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: workspace, PolicyFile: "window-" + version + ".json", Policy: *opened.Policy}); saved.State != desktop.Completed {
-			t.Fatalf("%s saved as %+v", version, saved)
-		}
-		for _, file := range []string{authored, filepath.Join(workspace, "window-"+version+".json")} {
-			reopened := app.ReadReceiverPolicy(workspace, file)
-			if reopened.State != desktop.Completed || !reflect.DeepEqual(reopened.Policy, opened.Policy) {
-				t.Fatalf("%s reopened as %+v, want %+v", file, reopened.Policy, opened.Policy)
-			}
-			p := *reopened.Policy
-			address := "127.0.0.1:0"
-			if p.Faults != nil {
-				address = approved
-			}
-			collector := startReceiver(t, 20*time.Second, "collect", "--address", address, "--policy", file,
-				"--output", filepath.Join(t.TempDir(), "case"), "--max-messages", "1")
-			want := fmt.Sprintf("Policy: %s\nSource label: %s\nAcknowledgement: %s %s\nEnhanced acknowledgement: %s\n",
-				p.Name, p.SourceLabel, p.Acknowledgement.Operator, p.Acknowledgement.Code, enhancedAsPrinted(p))
-			if startup := collector.startup(t, 4); startup != want {
-				t.Fatalf("`readmit collect --policy %s` serves\n%s\nthe window reopened\n%s", filepath.Base(file), startup, want)
-			}
-			collector.kill(t)
-		}
-	}
-
-	// A fault policy at an address it does not approve: both refuse before
-	// binding, in the same words.
-	elsewhere := filepath.Join(workspace, "v3.json")
-	_, stderr, err := run(t, "collect", "--address", "127.0.0.1:0", "--policy", elsewhere, "--output", filepath.Join(t.TempDir(), "case"))
-	if err == nil {
-		t.Fatal("`readmit collect` served a fault policy where it approves nothing")
-	}
-	preview := app.PreviewCapture(desktop.CaptureRequest{Workspace: workspace, Kind: "collect", Address: "127.0.0.1:0", PolicyFile: "v3.json", OutputName: "case"})
-	if preview.State != desktop.Failed || preview.Reason != refusedAs(stderr) {
-		t.Fatalf("the window previewed %+v, the command line refused with %q", preview, refusedAs(stderr))
-	}
-
-	// What the command line will not serve under, the window will not reopen.
-	anyTypes := `{"schema":"readmit-receiver-policy/v1","name":"sink","source_label":"label","acknowledgement":{"operator":"original-mode-fixed-code","code":"AA"},"accepted_message_types":{"operator":"any-message-type","values":[]}}`
-	for name, document := range map[string]string{
-		"unknown-member.json": strings.Replace(anyTypes, `"name"`, `"extra":1,"name"`, 1),
-		"v1-enhanced.json":    strings.Replace(anyTypes, `"name"`, `"enhanced_acknowledgement":null,"name"`, 1),
-		"v3-no-faults.json":   strings.Replace(documents["v2"], "/v2", "/v3", 1),
-		"later.json":          strings.Replace(anyTypes, "/v1", "/v4", 1),
-		"code.json":           strings.Replace(anyTypes, `"AA"`, `"CA"`, 1),
-		"oversized.json":      anyTypes + strings.Repeat(" ", collection.MaxPolicyBytes),
-	} {
-		path := writeDocument(t, workspace, name, document)
-		_, stderr, err := run(t, "collect", "--address", "127.0.0.1:0", "--policy", path, "--output", filepath.Join(t.TempDir(), "case"))
-		if err == nil || stderr == "" {
-			t.Fatalf("`readmit collect` served under %s", name)
-		}
-		if opened := app.ReadReceiverPolicy(workspace, name); opened.State != desktop.Failed || opened.Reason != refusedAs(stderr) {
-			t.Errorf("%s reopened as %+v, the command line refused with %q", name, opened, refusedAs(stderr))
-		}
-	}
-}
-
-// A source registration hand-authored for `readmit source`, and the copy the
-// window saves once it has reopened it, are the source the command line
-// diagnoses: its whole diagnosis of each is the same, and names what the window
-// reopened. What the command line refuses to read, the window refuses to
-// reopen in the same words.
-func TestAReopenedSourceRegistrationIsTheOneTheCommandLineDiagnoses(t *testing.T) {
-	workspace, authored := sourceDeclarations(t, map[string]string{"a.hl7": sourceMessage, "b.hl7": sourceMessage})
-	app := desktopApp(t, workspace)
-	opened := app.ReadSourceRegistration(workspace, "source.json")
-	if opened.State != desktop.Completed || opened.Source == nil {
-		t.Fatalf("reopened as %+v", opened)
-	}
-	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: workspace, SourceFile: "window-source.json", Source: *opened.Source}); saved.State != desktop.Completed {
-		t.Fatalf("saved as %+v", saved)
-	}
-	copied := filepath.Join(workspace, "window-source.json")
-	if reopened := app.ReadSourceRegistration(workspace, copied); reopened.State != desktop.Completed || !reflect.DeepEqual(reopened.Source, opened.Source) {
-		t.Fatalf("the window's copy reopened as %+v, want %+v", reopened.Source, opened.Source)
-	}
-	diagnosis := func(file string) string {
-		t.Helper()
-		stdout, stderr, err := run(t, append([]string{"source", "diagnose", file}, sourcePlanFlags()...)...)
-		if err != nil || stderr != "" {
-			t.Fatalf("source diagnose %s: %v %s", filepath.Base(file), err, stderr)
-		}
-		return stdout
-	}
-	fromAuthored, fromWindow := diagnosis(authored), diagnosis(copied)
-	if fromAuthored != fromWindow {
-		t.Fatalf("the command line diagnoses the window's copy as\n%s\nand the authored registration as\n%s", fromWindow, fromAuthored)
-	}
-	s := opened.Source
-	for _, line := range []string{
-		"Source: " + s.Name, "Kind: " + string(s.Kind), "Scope: " + s.Scope,
-		fmt.Sprintf("Quota: %d entries, %d bytes per entry, %d bytes in total", s.Quota.MaxEntries, s.Quota.MaxEntryBytes, s.Quota.MaxTotalBytes),
-	} {
-		if !strings.Contains(fromAuthored, line+"\n") {
-			t.Errorf("the window reopened %q, which the command line's diagnosis does not name", line)
-		}
-	}
-
-	// An api source is declarable and read, and only refused when reached; the
-	// others are refused by the reader itself.
-	for _, declared := range []struct {
-		name     string
-		read     bool
-		document func(string) string
-	}{
-		{"unknown-member.json", false, func(d string) string { return strings.Replace(d, `"name"`, `"extra": 1, "name"`, 1) }},
-		{"foreign-member.json", false, func(d string) string { return strings.Replace(d, `"root"`, `"address": "192.0.2.10:22", "root"`, 1) }},
-		{"later.json", false, func(d string) string { return strings.Replace(d, "/v1", "/v2", 1) }},
-		{"no-scope.json", false, func(d string) string { return strings.Replace(d, `"scope": "appointments",`, "", 1) }},
-		{"api.json", true, func(string) string { return sourceAPIDocument }},
-	} {
-		original, err := os.ReadFile(authored)
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := writeDocument(t, workspace, declared.name, declared.document(string(original)))
-		stdout, stderr, err := run(t, append([]string{"source", "diagnose", path}, sourcePlanFlags()...)...)
-		if err == nil {
-			t.Fatalf("`readmit source diagnose` reached %s", declared.name)
-		}
-		opened := app.ReadSourceRegistration(workspace, declared.name)
-		if declared.read {
-			if opened.State != desktop.Completed || !strings.Contains(stdout, "Source: "+opened.Source.Name+"\nKind: "+string(opened.Source.Kind)+"\n") {
-				t.Errorf("%s: the command line read %q, the window reopened %+v", declared.name, stdout, opened)
-			}
-			continue
-		}
-		if stdout != "" || opened.State != desktop.Failed || opened.Reason != refusedAs(stderr) {
-			t.Errorf("%s reopened as %+v, the command line refused with %q", declared.name, opened, refusedAs(stderr))
-		}
 	}
 }

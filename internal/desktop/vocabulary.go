@@ -1,11 +1,13 @@
 package desktop
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/engineexport"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/grid"
 	"github.com/bharm16/readmit/internal/hl7"
@@ -33,6 +35,10 @@ type Vocabulary struct {
 	DiagnosisBuiltins []DiagnosisBuiltin `json:"diagnosis_builtins"`
 	// ImportPlan is every value a readmit-import-plan/v1 member can declare.
 	ImportPlan importer.PlanVocabulary `json:"import_plan"`
+	// ImportEngines are the engine exports an import can declare, each by
+	// its engine, product name and one exact version, with the formats and
+	// terminators it takes; an engine is chosen, never inferred.
+	ImportEngines []engineexport.Engine `json:"import_engines"`
 	// ResetOperators are the reviewed reset operators, each with the one
 	// authority a plan records beside it.
 	ResetOperators []fixturereset.Review `json:"reset_operators"`
@@ -57,6 +63,20 @@ type Vocabulary struct {
 	// ObservationStarts are where a new observation source of each kind
 	// starts when the editor switches to that kind.
 	ObservationStarts []observesource.Source `json:"observation_starts"`
+	// CaptureSourceStarts are where a new capture source of each type the
+	// source editor can save starts when the editor switches to that type.
+	CaptureSourceStarts []CaptureSourceDraft `json:"capture_source_starts"`
+	// CaptureSourceTypes are the capture source types a source editor
+	// offers, in its order, each saying whether this release can save and
+	// start it.
+	CaptureSourceTypes []CaptureSourceTypeChoice `json:"capture_source_types"`
+	// ListenerTransports and AckCodes are what an MLLP listener accepts
+	// connections over and answers with.
+	ListenerTransports []ListenerTransport `json:"listener_transports"`
+	AckCodes           []AckCode           `json:"ack_codes"`
+	// ImportTimeOperators are how a mapping reads a record's time, unknown
+	// included.
+	ImportTimeOperators []importer.TimeOperator `json:"import_time_operators"`
 	// Coverage is every value the coverage editor offers.
 	Coverage CoverageVocabulary `json:"coverage"`
 }
@@ -177,11 +197,17 @@ func vocabulary() Vocabulary {
 		builtins = append(builtins, DiagnosisBuiltin{ID: builtin.id, Name: profileName(config.Profile), Profile: config.Profile, Ruleset: config.Ruleset})
 	}
 	return Vocabulary{
-		DiagnosisBuiltins: builtins,
-		ImportPlan:        importer.Vocabulary(),
-		ResetOperators:    fixturereset.Reviewed(),
-		ObservationStarts: operation.ObservationStarts(),
-		ReceiverFaults:    ReceiverFaultVocabulary{Actions: collection.FaultActions(), DefaultDelayMS: defaultFaultDelayMS},
+		DiagnosisBuiltins:   builtins,
+		ImportPlan:          importer.Vocabulary(),
+		ImportEngines:       engineexport.Supported(),
+		ResetOperators:      fixturereset.Reviewed(),
+		ObservationStarts:   operation.ObservationStarts(),
+		CaptureSourceStarts: captureSourceStarts(),
+		CaptureSourceTypes:  slices.Clone(captureSourceTypes),
+		ListenerTransports:  slices.Clone(listenerTransports),
+		AckCodes:            slices.Clone(ackCodes),
+		ImportTimeOperators: importer.TimeOperators(),
+		ReceiverFaults:      ReceiverFaultVocabulary{Actions: collection.FaultActions(), DefaultDelayMS: defaultFaultDelayMS},
 		Bounds: WindowBounds{
 			Grid: grid.MaxRows, Comparison: MaxComparisonRows, Review: MaxReviewFindings,
 			Sequence: MaxSequenceEvents, Diagnosis: MaxDiagnosisFindings,

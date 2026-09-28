@@ -87,7 +87,7 @@ test("a filter applied stores nothing, a saved view shows exactly its messages a
   const user = userEvent.setup();
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   await licensedProject(journey, user);
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
   const messages = await openedCase();
   await waitFor(() => expect(rows()).toEqual([BOOKING_ROW, RESCHEDULE_ROW]));
   expect(currentView()).toBe("All messages");
@@ -156,7 +156,7 @@ test("a name another view holds and a views document a later release wrote are r
   const user = userEvent.setup();
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   await licensedProject(journey, user);
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
   const messages = await openedCase();
   await waitFor(() => expect(rows()).toEqual([BOOKING_ROW, RESCHEDULE_ROW]));
 

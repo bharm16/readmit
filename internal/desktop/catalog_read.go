@@ -634,12 +634,14 @@ func primaryRole(kind ItemKind) string {
 	switch kind {
 	case EnvironmentItem:
 		return "target"
-	case ObservationItem:
+	case ObservationItem, SourceItem:
 		return "source"
 	case AnalysisSettingsItem:
 		return "config"
 	case FindingReviewItem:
 		return "decisions"
+	case MappingItem:
+		return "recipe"
 	}
 	return string(kind)
 }
@@ -894,6 +896,8 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	LinkRulesItem:        readLinkRules,
 	CoverageItem:         readCoverage,
 	LinkReviewItem:       readLinkReview,
+	MappingItem:          readMappingItem,
+	SourceItem:           readSourceItem,
 }
 
 // readCase verifies a case the project has not registered.

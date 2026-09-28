@@ -66,7 +66,7 @@ type NoteSaveRequest struct {
 // ListNotes lists the notes of one case, or the project's notes that are
 // about no case. It is a read.
 func (a *App) ListNotes(request NotesRequest) NotesResult {
-	return run(a, false, false, func(ctx context.Context) NotesResult {
+	return runRead(a, false, func(ctx context.Context) NotesResult {
 		result := NotesResult{Context: request.Context, Notes: []NoteItem{}}
 		loaded, declined := a.loadCatalog(ctx, request.Context, false)
 		if loaded == nil {

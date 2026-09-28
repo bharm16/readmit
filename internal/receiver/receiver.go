@@ -143,6 +143,10 @@ func (r *Receiver) Serve(ctx context.Context, listener net.Listener) (*bundle.Bu
 	return b, err
 }
 
+// Stop ends the fixture's session in a controlled way, as reaching its
+// message limit does. Stopping before Serve starts makes Serve stop at once.
+func (r *Receiver) Stop() { r.stop() }
+
 func (r *Receiver) bounds() limits {
 	return limits{maxFrameBytes: r.config.MaxFrameBytes, maxMessages: r.config.MaxMessages, maxConnections: 1, idle: r.config.IdleTimeout}
 }

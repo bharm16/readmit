@@ -101,7 +101,7 @@ test("a transformation plan refused on save is corrected from the keyboard, save
       steps: [{ operator: "shift-dates/v1", shift: "24h", entry: "t000001" }],
     }),
   );
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
   await goToView(user, "Reports", "Transform and export");
   const panel = within(transformPanel());
   await panel.findByRole("option", { name: RULES });

@@ -493,7 +493,7 @@ type ItemDraftResult struct {
 func (r *ItemDraftResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // draftKinds are the kinds whose editor starts from OpenItemDraft.
-var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem}
+var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem}
 
 // OpenItemDraft answers the draft an editor starts from. A reference with no
 // identity is a new object: a new environment starts unclassified with its
@@ -503,20 +503,23 @@ var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsIt
 // configuration; a new check group empty; a new profile at version 1 with
 // nothing pinned yet; and a new scenario from the basic synthetic workflow,
 // its seed allocated once and its base time the current time to the whole
-// second. New link rules declare no rule yet, and new coverage no window. An existing object answers the members its current revision
+// second. New link rules declare no rule yet, and new coverage no window. A
+// new capture source starts as a loopback MLLP listener; a mapping preset is
+// only ever saved from an import's mapping, so it has no new draft. An
+// existing object answers the members its current revision
 // declares, exactly as saved; a test, check group, profile or scenario also
 // the earlier revision its reference names, read-only. A check group holding checks this release does not
 // evaluate answers them as unsupported, never dropped. A copy is this draft
 // saved under no identity. It is a read: nothing is connected, collected,
 // generated or written.
 func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
-	return run(a, false, false, func(ctx context.Context) ItemDraftResult {
+	return runRead(a, false, func(ctx context.Context) ItemDraftResult {
 		result := ItemDraftResult{Context: request.Context}
 		if request.Ref.Kind == TestItem {
 			return a.openTestDraft(ctx, request)
 		}
 		if !slices.Contains(draftKinds, request.Ref.Kind) {
-			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule and coverage drafts")
+			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping and capture source drafts")
 			return result
 		}
 		if request.Ref.ID == "" && request.Ref.Kind == FindingReviewItem {
@@ -539,6 +542,11 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				draft = a.newLibraryDraft(request.Ref.Kind)
 			case LinkRulesItem, CoverageItem:
 				draft = *newTimelineDraft(request.Ref.Kind)
+			case MappingItem:
+				result.refuse(Failed, "a mapping preset is saved from an import's mapping")
+				return result
+			case SourceItem:
+				draft.Source = defaultCaptureSource()
 			case EnvironmentItem:
 				target := operation.DefaultTarget()
 				target.Classification, target.Transport = replay.Unclassified, ""
@@ -631,6 +639,27 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				review.Analysis = *analysis
 			}
 			draft.FindingReview = &review
+		case MappingItem, SourceItem:
+			paths, availability, reason := loaded.backing(record)
+			if availability != ItemAvailable {
+				result.refuse(Failed, reason)
+				return result
+			}
+			if request.Ref.Kind == MappingItem {
+				recipe, err := readMapping(paths["recipe"])
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				draft.Mapping = &recipe
+			} else {
+				source, err := readCaptureSource(paths)
+				if err != nil {
+					result.refuse(Failed, err.Error())
+					return result
+				}
+				draft.Source = source
+			}
 		case EnvironmentItem:
 			members, err := loaded.environmentOf(record)
 			if err != nil {

@@ -9,13 +9,13 @@
 // longer the complete, unmodified evidence that was shown: no row is drawn in
 // its place.
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ROW_REM } from "../geometry";
 import { rootFontSize } from "../measure";
-import { enter, Journey, press } from "../testkit/journey";
+import { Journey, press } from "../testkit/journey";
 import { filesUnder } from "./probes.js";
-import { BOOKING, declareMllpImport, framed, GRID_WINDOW, licensedProject, openedCase } from "./steps";
+import { BOOKING, declareMllpImport, finishImport, framed, GRID_WINDOW, licensedProject, openedCase } from "./steps";
 
 let journey: Journey;
 
@@ -45,16 +45,9 @@ test("a 10,000-message case is read one window at a time with no index set up, a
   // this case needs.
   journey.writeFile("exports/feed.mllp", framed(BOOKING).repeat(OCCURRENCES));
   const project = await licensedProject(journey, user);
-  await declareMllpImport(user, journey, "exports/feed.mllp");
-  // Several panels carry a Preview button of this name now; this one belongs
-  // to the import's own bounded-preview section.
-  await press(user, within(screen.getByRole("region", { name: "Extraction preview" })).getByRole("button", { name: "Preview" }));
-  const commit = within(screen.getByRole("region", { name: "Commit import" }));
-  await enter(user, commit.getByLabelText("Case bundle folder name"), "feed");
-  await press(user, commit.getByRole("button", { name: "Import" }));
-  expect(await commit.findByText("Import Completed Successfully", undefined, { timeout: 60_000 })).toBeTruthy();
+  await declareMllpImport(user, journey, "exports/feed.mllp", "feed");
+  await finishImport(user, journey);
   const imported = filesUnder(project);
-  await press(user, commit.getByRole("button", { name: "Open case" }));
   const messages = await openedCase();
   const table = await messages.findByRole("table", { name: "Messages" }, { timeout: 30_000 });
   const listed = () => Array.from(table.querySelectorAll("tr[data-row-id]"));

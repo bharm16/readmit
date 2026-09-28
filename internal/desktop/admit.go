@@ -42,7 +42,20 @@ func run[R any, PR interface {
 	*R
 	refused
 }](a *App, interruptible, writes bool, work func(context.Context) R) R {
-	return operate[R, PR](a, operationguard.Profile{Interruptible: interruptible, Author: writes}, nil, work)
+	return operate[R, PR](a, operationguard.Profile{Interruptible: interruptible, Author: writes}, false, nil, work)
+}
+
+// runRead is run for local work that only reads: it writes, sends, collects
+// and executes nothing and takes no admission. It holds the slot as run does,
+// and while a capture holds the slot it runs beside the capture instead
+// (claimBeside), so the window can read while a capture records (#552).
+// Such a read never takes the slot's name or its cancellation: the capture
+// keeps both, and the read runs to completion once it starts.
+func runRead[R any, PR interface {
+	*R
+	refused
+}](a *App, interruptible bool, work func(context.Context) R) R {
+	return operate[R, PR](a, operationguard.Profile{Interruptible: interruptible}, true, nil, work)
 }
 
 // runNamed is run for an operation that names itself, under the profile the
@@ -81,6 +94,21 @@ func runNamed[R any, PR interface {
 	return runNamedChecked[R, PR](a, profile, nil, work)
 }
 
+// runNamedRead is runNamed for local work that only reads and names itself
+// so its panel's cancel control can stop it, such as an import's probe and
+// preview. While a capture holds the slot it runs beside the capture, as
+// runRead does, and Cancel with its name still stops it there. A profile that
+// takes any admission is not a read and runs as runNamed runs it.
+func runNamedRead[R any, PR interface {
+	*R
+	refused
+}](a *App, profile operationguard.Profile, work func(context.Context) R) R {
+	if profile.Name == "" || profile.Author || profile.Execution != operationguard.NoExecution {
+		return runNamedChecked[R, PR](a, profile, nil, work)
+	}
+	return operate[R, PR](a, profile, true, nil, work)
+}
+
 // runNamedChecked is runNamed for an operation that refuses a request it can
 // judge on its own — a send nobody approved — while it holds the slot and
 // before admission is asked: check answers that refusal, or proceeds.
@@ -93,11 +121,12 @@ func runNamedChecked[R any, PR interface {
 		PR(&undeclared).refuse(Failed, "this operation declares no profile to run under")
 		return undeclared
 	}
-	return operate[R, PR](a, profile, check, work)
+	return operate[R, PR](a, profile, false, check, work)
 }
 
-// operate holds the slot under profile, answers check's refusal if it has
-// one, takes the admission the profile declares, runs the work and answers
+// operate holds the slot under profile — or, for a read (runRead) while a
+// capture holds it, runs beside the capture — answers check's refusal if it
+// has one, takes the admission the profile declares, runs the work and answers
 // with the work's result or the one refusal admission or settlement gave. A
 // cancellation that arrives while admission waits — it retries while another
 // update of the operation clock is retained — is the person's cancellation:
@@ -106,7 +135,7 @@ func runNamedChecked[R any, PR interface {
 func operate[R any, PR interface {
 	*R
 	refused
-}](a *App, profile operationguard.Profile, check func() (R, bool), work func(context.Context) R) R {
+}](a *App, profile operationguard.Profile, reads bool, check func() (R, bool), work func(context.Context) R) R {
 	var release func()
 	var claimed bool
 	ctx := context.Background()
@@ -115,9 +144,12 @@ func operate[R any, PR interface {
 	} else {
 		release, claimed = a.claim(profile.Name)
 	}
+	if !claimed && reads {
+		ctx, release, claimed = a.claimBeside(profile.Name)
+	}
 	if !claimed {
 		var busy R
-		PR(&busy).refuse(Busy, busyRefusal.reason)
+		PR(&busy).refuse(Busy, a.busyReason())
 		return busy
 	}
 	defer release()

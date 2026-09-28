@@ -24,8 +24,9 @@ func TestTheWindowsImportRefusesUnsafeArchivesAndWritesNothing(t *testing.T) {
 	const planted = "PLANTED-ENTRY-NAME-111"
 	plan := decodeImportPlan(t, writeDocument(t, t.TempDir(), "plan.json",
 		`{"schema":"readmit-import-plan/v1","framing":"raw","terminator":"cr","encoding":"utf-8","direction":"unknown","members":[".hl7"]}`))
-	workspace := t.TempDir()
-	window := desktopApp(t, workspace)
+	workspace := newProject(t)
+	window := desktopApp(t, t.TempDir())
+	context := desktop.RequestContext{Project: workspace}
 	before := treeOf(t, workspace)
 	for name, entries := range map[string][]namedEntry{
 		"parent traversal": {{name: "../" + planted + ".hl7", content: importFixture("ONE")}},
@@ -39,20 +40,17 @@ func TestTheWindowsImportRefusesUnsafeArchivesAndWritesNothing(t *testing.T) {
 			archive := filepath.Join(archives, "hostile.zip")
 			writeNamedArchive(t, archive, entries)
 			beside := treeOf(t, archives)
-			preview := window.PreviewImport(desktop.ImportRequest{Workspace: workspace, Mode: "plan", Archives: []string{archive}, Plan: &plan})
+			request := desktop.ImportRequest{Context: context, Mode: "plan", Archives: []string{archive}, Plan: &plan}
+			preview := window.PreviewImport(request)
 			if preview.State != desktop.Failed || strings.Contains(preview.Reason, planted) {
 				t.Fatalf("preview of a hostile archive: %+v", preview)
 			}
-			commit := window.CommitImport(desktop.ImportCommitRequest{Workspace: workspace, Mode: "plan", OutputName: "imported", ReceiptName: "imported-receipt.json",
-				Archives: []string{archive}, Plan: &plan})
-			if commit.State != desktop.Failed || strings.Contains(commit.Reason, planted) {
-				t.Fatalf("commit of a hostile archive: %+v", commit)
+			imported := window.ImportCase(desktop.ImportCaseRequest{Context: context, Name: "Imported", Source: request, PreviewToken: "previewed", IntentID: "import-1"})
+			if imported.State != desktop.Failed || strings.Contains(imported.Reason, planted) {
+				t.Fatalf("import of a hostile archive: %+v", imported)
 			}
 			if after := treeOf(t, workspace); !reflect.DeepEqual(before, after) {
 				t.Fatalf("a refused import changed the workspace: %v", after)
-			}
-			if _, err := os.Lstat(filepath.Join(workspace, "imported")); !os.IsNotExist(err) {
-				t.Fatal("a refused import left a case directory behind")
 			}
 			if after := treeOf(t, archives); !reflect.DeepEqual(beside, after) {
 				t.Fatalf("a refused import wrote beside the archive: %v", after)

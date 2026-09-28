@@ -20,13 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bharm16/readmit/internal/bundle"
-	"github.com/bharm16/readmit/internal/collection"
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/evidencesource"
 	"github.com/bharm16/readmit/internal/guide"
-	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/importer"
 )
 
 // plantHostile puts a folder and a FIFO in the workspace, and for each named
@@ -573,117 +568,6 @@ func besideWorkspace(t *testing.T) (root, outside string) {
 		}
 	}
 	return resolved(t, filepath.Join(parent, "workspace")), resolved(t, filepath.Join(parent, "outside"))
-}
-
-// A collection's staging folder and receipt, a capture's case and
-// observation, and the case a staged collection is finalized into
-// are new entries of the workspace. Their creation is exclusive, but a name
-// that is not one entry would still place them somewhere else: beside the
-// workspace, inside one of its folders, or through a linked folder out of it.
-// Each request below is complete: the collection and
-// finalization write under fresh names at the end, and a capture handed a name
-// the rule missed would start listening.
-func TestEveryGeneratedCollectedOrCapturedOutputIsOneNewEntryOfTheWorkspace(t *testing.T) {
-	app := workspaceApp(t)
-	root, outside := besideWorkspace(t)
-	payload := "MSH|^~\\&|SEND|FAC|RECV|FAC|20260101120000||ADT^A01|MSG001|P|2.5.1\rPID|||1||DOE^JOHN\r"
-	for _, folder := range []string{"export", "folder"} {
-		if err := os.Mkdir(filepath.Join(root, folder), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeDocument(t, filepath.Join(root, "export"), "one.hl7", payload)
-	collectStaged(t, root)
-	source := evidencesource.Source{
-		Schema: evidencesource.Schema, Name: "exports", Kind: evidencesource.Directory,
-		Scope: "appointments", Root: filepath.Join(root, "export"),
-		Quota: evidencesource.Quota{MaxEntries: 8, MaxEntryBytes: 1 << 20, MaxTotalBytes: 8 << 20},
-		Retry: evidencesource.Retry{Attempts: 1, Backoff: "1ms"},
-	}
-	if saved := app.SaveSourceRegistration(desktop.SourceRegistrationRequest{Workspace: root, SourceFile: "source.json", Source: source}); saved.State != desktop.Completed {
-		t.Fatalf("source registration: %+v", saved)
-	}
-	policy, err := collection.DecodePolicy([]byte(facadeAnyPolicy))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if saved := app.SaveReceiverPolicy(desktop.ReceiverPolicyRequest{Workspace: root, PolicyFile: "policy.json", Policy: policy}); saved.State != desktop.Completed {
-		t.Fatalf("receiver policy: %+v", saved)
-	}
-	importPlan := importer.Plan{Schema: importer.PlanSchema, Framing: importer.RawFraming, Terminator: hl7.CR,
-		Encoding: importer.UTF8, Direction: bundle.Inbound, Members: []string{".hl7"}}
-	if err := os.Symlink(outside, filepath.Join(root, "link-folder")); err != nil {
-		t.Fatal(err)
-	}
-	listed, before := entriesOf(t, root), bytesUnder(t, outside)
-
-	collect := func(output, receipt string) desktop.SourceWorkRequest {
-		return desktop.SourceWorkRequest{Workspace: root, SourceFile: "source.json", Plan: &importPlan, OutputName: output, ReceiptName: receipt}
-	}
-	// A capture that were started would listen until its idle timeout, so a
-	// name the rule missed answers late and with the capture's own outcome.
-	capture := func(kind, output, observation string) desktop.CaptureRequest {
-		return desktop.CaptureRequest{Workspace: root, Kind: kind, Address: "127.0.0.1:0", PolicyFile: "policy.json",
-			FixtureMode: "fixed", OutputName: output, ObservationName: observation, MaxMessages: 1, IdleTimeout: "1s"}
-	}
-	finalize := func(output, receipt string) desktop.FinalizeCaptureRequest {
-		return desktop.FinalizeCaptureRequest{Workspace: root, Folder: "staged", CollectionReceipt: "staged.json", OutputName: output, ReceiptName: receipt}
-	}
-	names := map[string]string{
-		"a `..` escape":                                       filepath.Join("..", "outside", "fresh"),
-		"an absolute path outside the workspace":              filepath.Join(outside, "fresh"),
-		"an absolute path inside the workspace":               filepath.Join(root, "fresh"),
-		"a name inside a folder of the workspace":             filepath.Join("folder", "fresh"),
-		"a name through a symbolic link out of the workspace": filepath.Join("link-folder", "fresh"),
-	}
-	caseDestination := []string{"the case destination must be one valid directory entry name"}
-	refusesEveryEntry(t, []confinedMember{
-		{"CollectSource(OutputName)", []string{"the staging folder must be one new entry of the open workspace"}, names, func(name string) refused {
-			result := app.CollectSource(collect(name, "fresh-receipt.json"))
-			return refused{result.State, result.Reason}
-		}},
-		{"CollectSource(ReceiptName)", []string{"the collection receipt must be one new entry of the open workspace"}, names, func(name string) refused {
-			result := app.CollectSource(collect("fresh-staged", name))
-			return refused{result.State, result.Reason}
-		}},
-		{"StartCapture(OutputName) collecting", []string{"the captured case must be one new entry of the open workspace"}, names, func(name string) refused {
-			result := app.StartCapture(capture("collect", name, ""))
-			return refused{result.State, result.Reason}
-		}},
-		{"StartCapture(OutputName) listening", []string{"the captured case must be one new entry of the open workspace"}, names, func(name string) refused {
-			result := app.StartCapture(capture("listen", name, "fresh-observation.json"))
-			return refused{result.State, result.Reason}
-		}},
-		{"StartCapture(ObservationName)", []string{"the observation record must be one new entry of the open workspace"}, names, func(name string) refused {
-			result := app.StartCapture(capture("listen", "fresh-capture", name))
-			return refused{result.State, result.Reason}
-		}},
-		{"FinalizeCaptureImport(OutputName)", caseDestination, names, func(name string) refused {
-			result := app.FinalizeCaptureImport(finalize(name, "fresh-import.json"))
-			return refused{result.State, result.Reason}
-		}},
-		{"FinalizeCaptureImport(ReceiptName)", []string{"the receipt destination must be one valid file entry name"}, names, func(name string) refused {
-			result := app.FinalizeCaptureImport(finalize("fresh-import", name))
-			return refused{result.State, result.Reason}
-		}},
-	})
-	if after := entriesOf(t, root); !reflect.DeepEqual(listed, after) {
-		t.Fatalf("a refused output created an entry in the workspace: %v, was %v", after, listed)
-	}
-	if inside := entriesOf(t, filepath.Join(root, "folder")); len(inside) != 0 {
-		t.Fatalf("a refused output was written inside a folder of the workspace: %v", inside)
-	}
-	if after := bytesUnder(t, outside); !reflect.DeepEqual(before, after) {
-		t.Fatal("a refused output was written outside the workspace")
-	}
-
-	// The same requests, each naming fresh entries of the workspace, write.
-	if result := app.CollectSource(collect("fresh-staged", "fresh-receipt.json")); result.State != desktop.Completed {
-		t.Fatalf("a collection into fresh entries: %+v", result)
-	}
-	if result := app.FinalizeCaptureImport(finalize("fresh-import", "fresh-import.json")); result.State != desktop.Completed {
-		t.Fatalf("finalizing into fresh entries: %+v", result)
-	}
 }
 
 // accessedAt reports when path was last read.

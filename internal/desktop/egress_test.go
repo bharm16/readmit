@@ -304,7 +304,7 @@ var destinationActivities = map[string]string{
 	"StartDurableRun": "run", "ResumeDurableRun": "run", "StartSuiteRun": "run", "RunPractice": "run",
 	"DeriveExportReview": "run", "ExportDerivedPacket": "run", "GenerateSyntheticPacket": "run", "SendReplay": "run", "ReexecuteReviewedEvidence": "run",
 	"EnrollRunner": "runner", "ExecuteRunnerJob": "runner",
-	"DiagnoseSource": "capture", "CollectSource": "capture", "StartCapture": "capture", "StartSampleFixture": "capture",
+	"StartCapture": "capture", "StartSampleFixture": "capture",
 	"CheckTarget": "environment", "CheckEnvironment": "environment", "CheckEnvironmentDestination": "environment", "ResetTarget": "environment", "EvaluateSendPolicy": "environment", "StartReduction": "environment", "PreviewReplay": "environment",
 	"CollectObservation": "observe",
 	"DiagnoseHub":        "hub", "ConnectHub": "hub", "StartHubAuth": "hub", "CompleteHubAuth": "hub", "HubStatus": "hub",
@@ -341,7 +341,7 @@ var operationsRunningDeclaredPrograms = []string{
 	"DiagnoseHub", "ConnectHub", "CompleteHubAuth", "ConnectOperatorHub",
 	"EnrollRunner", "ExecuteRunnerJob",
 	"CheckTarget", "ResetTarget", "StartReduction",
-	"DiagnoseSource", "CollectSource", "StartCapture",
+	"StartCapture",
 	"CollectObservation",
 }
 

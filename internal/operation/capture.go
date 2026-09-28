@@ -246,6 +246,12 @@ type CollectConfig struct {
 	// known from here. An error it returns stops the collector before it
 	// serves anyone.
 	Listening func(bound string, policy collection.Policy) error
+	// Started, when set, is handed the collector's controlled stop once the
+	// collector exists and before it serves, so an adapter can finish the
+	// capture — journal finalized — rather than cancel it.
+	Started func(stop func())
+	// Observe, when set, is told the metadata of each received frame.
+	Observe func(receiver.FrameSeen)
 }
 
 // ListenConfig is what one SIU fixture serve needs after preview and approval.
@@ -430,9 +436,13 @@ func StartCollect(ctx context.Context, cfg CollectConfig) (CollectResult, error)
 		MaxCaptureBytes:    cfg.MaxCaptureBytes,
 		TLS:                secured != nil,
 		ClientCertificate:  cfg.ClientCAPath != "",
+		Observe:            cfg.Observe,
 	})
 	if err != nil {
 		return CollectResult{}, err
+	}
+	if cfg.Started != nil {
+		cfg.Started(collector.Stop)
 	}
 	if cfg.Listening != nil {
 		if err := cfg.Listening(bound, policy); err != nil {

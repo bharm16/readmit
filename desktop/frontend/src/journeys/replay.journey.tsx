@@ -144,7 +144,7 @@ test("selected case messages are previewed as readmit replay previews them and s
   await journey.launch();
   await activateLicense(user, journey);
   await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
   await configureTarget(user, downstream.address);
   await configureRefusals(user, downstream.address);
   await openedCase();
@@ -269,7 +269,7 @@ test("a replay cancelled while its acknowledgement is held leaves that delivery 
   await journey.launch();
   await activateLicense(user, journey);
   await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
+  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
   await configureTarget(user, downstream.address);
   await openedCase();
 

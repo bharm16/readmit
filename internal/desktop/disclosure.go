@@ -141,8 +141,6 @@ var slotActivities = []slotActivity{
 		id: "capture",
 		ops: []namedOperation{
 			{"capture", captureInProgress},
-			{"collect", captureInProgress},
-			{"source-diagnosis", "A source access check is in progress now; it reaches the source its registration declares and collects nothing."},
 		},
 		idle: "No capture or collection is in progress. Nothing listens and no source is read until you start one.",
 	},
@@ -166,9 +164,8 @@ var slotActivities = []slotActivity{
 	},
 }
 
-// captureInProgress is what a capture and a source collection say while one
-// runs: to a person they are the same activity.
-const captureInProgress = "A capture or collection is in progress now, on the sources and local port its registration and policy declare."
+// captureInProgress is what a capture says while one runs.
+const captureInProgress = "A capture is in progress now: it reads the folder or runs the transfer program its saved source declares, or accepts connections on the address and port its listener binds."
 
 // hubOperations are the names the hub's requests and its sign-in run under,
 // each with the sentence for the hub while it holds the slot.
@@ -209,9 +206,7 @@ var declaredProgramOperations = []namedOperation{
 	{targetCheckOperation, "An operator-declared program is running now: the locator of the private key the connectivity check's client certificate presents." + declaredProgramReach},
 	{targetResetOperation, "An operator-declared program is running now: the locator of the private key the client certificate of a fixture reset's check presents." + declaredProgramReach},
 	{"reduction", "An operator-declared program is running now: the locator of the private key the client certificate of a reduction's fixture reset presents." + declaredProgramReach},
-	{"source-diagnosis", "An operator-declared program is running now: the transfer program or credential locator the source registration declares, for a source access check." + declaredProgramReach},
-	{"collect", "An operator-declared program is running now: the transfer program or credential locator the source registration declares, for a source collection." + declaredProgramReach},
-	{"capture", "An operator-declared program is running now: the locator of the private key a TLS capture listener presents." + declaredProgramReach},
+	{"capture", "An operator-declared program is running now: the transfer program or credential locator a capture source declares, or the locator of the private key a TLS capture listener presents." + declaredProgramReach},
 	{"observation", "An operator-declared program is running now: the credential locator the observation source declares." + declaredProgramReach},
 }
 

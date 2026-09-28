@@ -24,8 +24,6 @@ function p(
 }
 export const privateExamples: Example[] = [
   p("App", "SuiteHandoffNotice", privateData.suiteHandoff),
-  p("CapturePanel", "PolicyReview", privateData.policyReview),
-  p("CapturePanel", "SourceReview", privateData.sourceReview),
   p("Comparison", "NormalizationView", {
     normalization: f.normalizeResult([], []).normalization,
     busy: false,

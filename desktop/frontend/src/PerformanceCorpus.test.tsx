@@ -14,8 +14,9 @@ const STREAM = `${WORKSPACE_ROOT}/corpora/corpus.mllp`;
 const DIGEST = "a".repeat(64);
 const TARGETS = "engineering targets, not measurements or customer requirements";
 
+// The plan as the window sends it: the facade names its version.
 const plan: ImportPlan = {
-  schema: "readmit-import-plan/v1",
+  schema: "",
   framing: "mllp",
   terminator: "cr",
   encoding: "us-ascii",
@@ -170,7 +171,7 @@ test("generating a corpus takes every declaration from structured controls and r
     profile_version: "readmit-siu-v1",
     messages: 5000,
     plan: {
-      schema: "readmit-import-plan/v1",
+      schema: "",
       framing: "batch",
       batch_boundary: "segment-start",
       terminator: "cr",
@@ -543,7 +544,7 @@ test("each task offers only its own format vocabulary, captioned in words over t
   await screen.findByLabelText("Scan report");
   expect(facade.oneCall("ScanCorpus")[0]).toMatchObject({
     plan: {
-      schema: "readmit-import-plan/v1",
+      schema: "",
       framing: "batch",
       batch_boundary: "hl7-batch",
       terminator: "crlf",

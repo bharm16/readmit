@@ -57,7 +57,7 @@ function complete(declared: Declared): boolean {
 // the import plan's own.
 function planOf(declared: Declared): ImportPlan {
   const plan: ImportPlan = {
-    schema: "readmit-import-plan/v1",
+    schema: "",
     framing: declared.framing as ImportFraming,
     terminator: declared.terminator as HL7Terminator,
     encoding: declared.encoding as ImportEncoding,

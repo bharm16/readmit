@@ -559,8 +559,9 @@ artifacts are never reported as completed.
 | `PrepareSyntheticRerun` | Prepares runnable copies of a verified synthetic packet in a new folder outside it on a numeric loopback address, exactly as `readmit report prepare` does; the sealed packet is never edited and no connection is opened. |
 | `Cancel` | Stops the operation that is running now, when it can be interrupted. The caller names the operation it means to cancel, so one panel's cancel control can never stop another panel's work; the window's own cancel command names none and cancels whatever is running. |
 
-Exactly one operation runs at a time. A second request reports `busy` rather
-than racing the first, and a finished operation always releases the slot,
+Exactly one operation runs at a time, except that a local read runs beside a
+capture (see *A capture records in the background* under Capture, collect and
+listen). A second request reports `busy` rather than racing the first, and a finished operation always releases the slot,
 including after a failure or a cancellation, so the next request proceeds.
 `Filters`, `Shell`, `RecordView`, `SaveEditorDraft`,
 `DiscardEditorDraft` and `EditorDrafts` are the exceptions. The first three read one small local file each — `Shell` reads
@@ -601,12 +602,12 @@ would miss. Authoring, sending, listening and collecting are admitted first, and
 admission can wait while an update of the operation clock is retained; a
 cancellation that arrives meanwhile answers `cancelled` without waiting for
 admission to give up, never `permission_denied`, because nothing was refused. A
-source collection stopped part way answers `cancelled`, as its receipt records
-it, rather than `failed`. `CommitImport` and `FinalizeCaptureImport` are
-cancellable while they write the case, which is an import's longest step — one
-synced file per occurrence — between one payload and the next: the case is
-retained incomplete, every reader refuses it, no receipt claims it and the
-project registers nothing, and importing again needs a new destination. Reading
+capture stopped part way answers `cancelled`, and keeps what it received under
+its session. `ImportCase` is cancellable while it writes the case, which is an
+import's longest step — one synced file per occurrence — between one payload
+and the next: the incomplete case stays in the project's own import area,
+where nothing lists it, the project registers nothing, and the same click
+writes it whole again. Reading
 one declared container, dividing one member, and building the case in memory
 before its first file is written each run to completion once started, bounded by
 the import limits. `BuildIndex` removes the index it replaces only once the
@@ -746,7 +747,11 @@ are written into must be an existing folder that is not a symbolic link;
 anything else is refused before anything is read or written. Pasted content is
 staged in that folder's fixed `staged-sources` folder, which is created when
 nothing is at its name; a symbolic link there, wherever it points, a file or a
-FIFO is refused before anything is written.
+FIFO is refused before anything is written. The Import flow stages pasted
+messages in the project's own area instead, `.readmit/staged-sources/<id>`,
+removes each once an import that read it is registered, and removes those no
+import read within seven days whenever it stages another; an import draft
+naming one removed that way is told it is no longer held.
 
 The environment, credential, observation and capture screens accept an outside
 path, because their documents may live outside the workspace: the target, the
@@ -4966,69 +4971,159 @@ Fixture reset plans return nonproduction test fixtures to a declared starting st
 
 Contextual offline help and recovery codes, with ADT/SIU/ORM/ORU recipes: [workflow help](workflow-help.md).
 
-## Capture, collect and listen
+## Import
 
-**Capture** is the evidence-region panel that exposes source diagnosis and
-collection, the generic MLLP collector, and the built-in SIU fixture receiver
-through the typed facade. It does not replace the receiver and does not add a
-production inline proxy. Customer programs and listeners retain exactly their
-current bounded authority; there is no arbitrary command console.
+**Import** (Cases › Import) is one started flow — Source, Format, Preview — that
+turns chosen messages into one case of the open project. The Source step
+chooses files, a folder or ZIP archives in the host's dialogs, takes files
+dropped on the window, and takes pasted messages as their own source named
+Pasted messages; it lists each input by name, type and size, and names the case
+after a single source, or Imported messages for several. The Format step shows
+the reading a probe of the inputs proposed (`ProbeImport`), which it chooses
+only when exactly one fits: an HL7 file one reading fits goes straight to its
+preview, and anything else asks Choose format, where an engine export is always
+the person's choice, by its product name and one supported version. CSV, JSON,
+XML and text envelopes are mapped in the Mapping sheet, from the input's own
+columns or paths; what is not mapped stays unknown, and Save mapping publishes
+the mapping as a preset only when asked. The Preview step reads the inputs
+under exactly that declaration (`PreviewImport`), shows the messages and any
+unparsed, unmapped or excluded counts, and reads a selected row
+(`InspectImportPreview`). Import writes the case and registers it on the
+project as one intent (`ImportCase`) and opens it on Messages; the same inputs
+and name again are the same intent, and a changed input or mapping withdraws
+the preview. The flow's choices are kept as a draft until the case lands.
+Each row the probe answers names the chosen location it belongs to — its list
+in the request (`file`, `staged`, `folder` or `archive`) and its position
+there — and, inside a folder or archive, its member, so removing a row removes
+that location; a folder or archive that holds nothing is still one row. The
+window sends a plan, a mapping recipe or an engine plan without its contract
+version, which the facade fills in, and offers the capture source types, the
+listener transports and ACK codes, the time operators and each engine export's
+formats and terminators from the vocabulary rather than its own copies.
+See [import](import.md).
+
+## Capture
+
+**Capture** (Cases › Capture) records one bounded session from a saved capture
+source — a local folder, a transfer program or an MLLP listener — and finishes
+into one case. New capture names the case, chooses the saved source, whose
+settings it shows read-only, an environment where one applies and a message
+limit, and Start capture is its last action. The source editor starts each type
+from the facade's validated starts and saves the source and, for a listener,
+its responder as one revision. The running capture shows where it listens, how
+long it has run and what it received — each message with the number of the
+connection it arrived on, counted from 1 — or Waiting for messages; Stop
+finishes a listener's capture and opens its case, and Cancel capture stops it
+and publishes nothing. A folder or transfer capture finishes on its own once it
+has read its source, so it offers no Stop: `FinishCapture` refuses it, and the
+running capture's `source_type` says which it is. A folder or transfer capture
+whose source was read whole and whose import then failed keeps what it staged
+as not finalized, and Retry finalization imports it again without reading the
+source; one whose source could not be read is interrupted. A
+capture keeps recording while the person is elsewhere, and the sidebar's
+Recording indicator returns to it. Capture history lists every session
+read-only; a session that did not publish can be opened as retained data, and
+one whose finalization failed can be finalized again without collecting again.
 
 | Facade operation | What it does |
 | --- | --- |
-| `ChooseCapturePath` | Native dialogs for source roots, transfer programs, certificates, policies and journals. |
-| `SaveSourceRegistration` / `ReadSourceRegistration` | Write and reopen a `readmit-source/v1` registration with structured controls. |
-| `DiagnoseSource` / `CollectSource` | The shared operations behind `readmit source diagnose` and `readmit source collect`. |
-| `SaveReceiverPolicy` / `ReadReceiverPolicy` | Author and reopen declarative `readmit-receiver-policy/v1`–`/v3` responder policies. |
-| `PreviewCapture` | Value-free preview of address, policy, fixture label, credential references, retention and limits without binding. |
-| `StartCapture` | Starts a collector or the separately labelled SIU fixture only on explicit authorized action. |
-| `CaptureProgress` | The address a running collector or fixture bound, read without waiting for it; with port 0 the only place the port is known. |
-| `OpenCaptureJournal` | Read-only recovery of a `readmit-capture-journal/v1`; never sends, resends or resumes. |
-| `FinalizeCaptureImport` | Imports a staged collection, named by its folder and its collection receipt, into a new verified case and offers exploration. It runs the operation `readmit import --collection` runs — under the plan the receipt records, refusing a collection that did not complete or a folder that does not hold what it staged — through the same import-and-register flow as `CommitImport`; an unnamed receipt is the case name followed by `-receipt.json`, as it is there. |
+| `ChooseCapturePath` | Native dialogs for a local folder, a transfer program, a certificate and a client authority. |
+| `StartCapture` | Starts a capture from a saved source on the explicit Start capture action. |
+| `CaptureProgress` | The running capture's bound address, elapsed time and received messages, read without waiting for it. |
 
-Start only after preview. Cancel stops through the shared engine. A collector
-and the fixture receiver both run under the `capture` operation name, which is
-the name their Cancel controls send; source collection is a separate operation
-named `collect`, and a cancellation naming one never reaches the other. Stopping
-a collector or the fixture is its controlled stop, so it answers cancelled with
-the case it sealed from what arrived before the stop.
-Reopening a project never restarts a listener and never fabricates complete
-capture after a crash. On completion the panel offers opening the case, setting
-up an index, and Set up observation, which opens Add observation started from
-the retained case through `OpenItemDraft` with `capture`; nothing is collected
-until the saved observation's own reviewed Collect.
-
-While a collector or the fixture runs, the capture panel says where it listens,
-`Listening on 127.0.0.1:PORT`: the address `readmit listen` and `readmit
-collect` print first, read through `CaptureProgress` once the listener is
-ready. Cancel holds the focus while a capture runs, and focus returns to the
-control that started it. A completed or cancelled fixture listen shows the case
-it sealed and its appointment ledger counted as `readmit listen` prints them:
-observation schema, receiver mode, processed occurrences, ledger records and
-consistency. The ledger itself is the observation file the tab names, the one
-`readmit listen --observation` writes. The fixture listens on loopback only:
-the collector tab's approval of a nonloopback bind never reaches it, every
-other address is refused before anything binds, in the command line's words,
-and an address another program holds is refused at the bind.
-
-**Open registration…** and **Open policy…** choose a `readmit-source/v1`
-registration or a `readmit-receiver-policy/v1`–`/v3` responder policy in the
-host's file dialog and read it with the command line's own reader, so a
-document the command line refuses is refused in the same words and opens
-nothing. The opened document is shown for review, every member it declares,
-and fills the form for further editing. Members the form has no control for —
-a transfer program's arguments and credential reference, a second fault step,
-the approved test endpoints — are kept as declared. Saving writes to the file
-the file field names, so a new name saves a copy and leaves the original as it
-was. On the collector tab, Preview saves the policy the form describes to that
-file before previewing it, as it always has; a reopened policy nothing has
-changed since is previewed as it is on disk and never rewritten, and changing
-its enhanced or fault control replaces those members with what the control
-expresses. A fault policy's approved test
-endpoints are checked against the listen address at preview, before anything
-binds, as `readmit collect` checks them.
+A capture runs under the `capture` operation name, which is the name Cancel
+capture sends. Reopening a project never restarts a capture and never
+fabricates a complete one after a crash: a session its process did not finish
+reads as interrupted. Sample data's built-in SIU fixture (`StartSampleFixture`)
+runs under the same name and listens on loopback only.
 
 See [source](source.md), [collect](collect.md) and [listen](listen.md).
+
+### Capture sessions from saved sources (#552)
+
+A capture that starts from a saved capture source records as a session in the
+project's own area, `.readmit/captures/<session>`, and publishes only when it
+finishes. Its sessions and what a session that did not publish kept are read
+through these operations:
+
+| Facade operation | What it does |
+| --- | --- |
+| `FinishCapture` | Asks the running listener capture to finish: it stops accepting, seals its case, and the capture publishes and registers it. It does not wait for the operation slot. |
+| `RetryCaptureFinalization` | Publishes a session whose finalization failed; it never listens, collects or sends again. |
+| `ListCaptureSessions` | Lists the project's sessions read-only, newest first. A row's `retained` says a cancelled, interrupted or unfinalized session kept a case bundle. |
+| `OpenRetainedCapture` | Opens that bundle read-only through the reader `OpenCase` verifies a case with, and answers the session's folder as `workspace` beside the case, so its messages, grid and occurrences are read by that folder, the case's name and its identity as any case's are. It never registers, publishes or resumes anything, refuses a finished session, whose case is the registered one, and refuses a bundle that was never sealed with the reader's reason. |
+
+The source editor starts each type it can save from the vocabulary's
+`capture_source_starts` — a local folder and a transfer program with bounded
+reads, one attempt per entry and the default import plan, and a loopback MLLP
+listener — and leaves what has no default empty: the source's name and scope,
+the folder, the transfer program and the address it reaches. An API source has
+no start; it cannot be saved or started. A listener's responder is saved as
+`responder_choices` — name and label (the listener's by default), accepted
+message types (any by default), the fixed-code enhanced rule, and one simulated
+fault with its delay — and a save composes the published responder from them
+with the composer the older Responder panel uses: the acknowledgement code is
+the listener's `ack_code`, and a fault is held to the listener's exact bind
+address and port, refused at `source.responder.faults` unless that is a
+loopback address with a fixed port. `OpenItemDraft` answers the choices a saved
+responder shows, and saving them unchanged keeps what the controls cannot
+express, such as a second fault step. The Import Format step offers engine
+exports from the vocabulary's `import_engines`, which is exactly the set the
+engine export reader accepts.
+
+The environment a capture names, when it names one, must be one of the
+project's and is recorded on the session and in its history row. For a
+transfer program source, which reaches off this machine, the environment's
+approved-destination policy decides where it may reach, exactly as it decides
+a send; without one only a loopback source is reached. What a listener listens
+on and answers is its saved source's alone.
+
+A TLS listener presents its certificate's private key from one of the
+project's named credentials: `tls_key_reference` names a reference in the
+project's `secrets.json`, registered for an MLLP endpoint and scoped to the
+exact address the listener binds, which a save checks and the listener checks
+again when it binds. A draft need not name `secrets_file`; a save records it as
+`secrets.json` and refuses any other. The certificate and, for mutual TLS, the client
+authority are files directly in the project folder: a save takes the path the
+file dialog chose, records the file's entry name, and refuses a file inside a
+folder of the project, outside it or reached through a link at
+`source.listener.tls_certificate` or `source.listener.client_ca`. A credential a capture source presents is
+not removed while that source's current revision presents it.
+
+**A capture records in the background.** While a capture holds the operation
+slot, a local read that writes nothing into the project, sends, collects and
+executes nothing and takes no admission runs beside it, one at a time: the
+catalog, opening a saved object (which records when this viewer opened it, in
+the viewer's own shell document), a saved object's draft and its history, a
+draft's validation, a case's messages, grid, fields, occurrences, findings,
+notes and attachments, a raw file's messages and bytes, the project's files
+and credentials, search settings, an import's probe, preview and preview
+inspector, sorting a drop and the capture history and retained data.
+Everything else — every save, import, paste, send, check, collection, second
+capture, and every other operation that declares a named profile — answers
+`busy` with a reason naming the capture it waits for, `the capture "NAME" is
+recording; only reads run while it records, and this waits until it is
+finished or cancelled`. A read beside a capture takes neither the slot's name
+nor its cancellation: the privacy status still reports the capture as active,
+and the window's own `Cancel` still reaches the capture. An import's probe and
+preview run beside it under their own name, and `Cancel("import")` stops them
+there; every other read runs to completion. The facade's tests hold every read
+admitted this way to a profile that takes no admission and reaches no
+destination.
+
+### Dropping files on Import
+
+The shell enables the host's file drop, so a file or folder dropped on an
+element the window styles `--wails-drop-target: drop` reaches the window as its
+path, through the runtime's `OnFileDrop` (`onFileDrop` in `bindings.ts`), which
+the window registers as it starts; once registered, the runtime stops the
+webview opening a dropped file itself. `ClassifyDroppedSources` sorts the paths
+as the pickers' choices are: a folder is a folder, a regular file named `.zip`
+an archive and any other regular file a file, each in the order dropped, and a
+symbolic link, a device, a pipe, a relative path or a path that is not there is
+refused by its base name. It reads each path's own type and nothing inside it,
+at most 256 paths a drop; the sorted paths then reach `ProbeImport` exactly as
+chosen ones do.
 
 ## Observation sources and windows
 

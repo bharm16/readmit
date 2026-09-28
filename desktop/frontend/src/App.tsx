@@ -121,6 +121,7 @@ import {
   type WorkspaceResult,
   messageFields,
   type RequestContext,
+  onFileDrop,
 } from "./bindings";
 import { Comparison, readsComparison } from "./Comparison";
 import { Review } from "./Review";
@@ -155,8 +156,8 @@ import {
   SIDEBAR_REM,
 } from "./geometry";
 import { VocabularyContext } from "./vocabulary";
-import { ImportPanel } from "./ImportPanel";
-import { CapturePanel } from "./CapturePanel";
+import { ImportFlow, importDrop } from "./Import";
+import { useCapture } from "./Capture";
 import { DeleteSourceSheet, StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
@@ -355,6 +356,8 @@ export default function App() {
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Each new count opens Capture's setup sheet once.
+  const [captureSetup, setCaptureSetup] = useState(0);
   // The retained capture Add observation starts from, when a capture started it.
   const [captureBinding, setCaptureBinding] = useState<CaptureObservationBinding | null>(null);
 
@@ -1286,6 +1289,44 @@ export default function App() {
     await refreshListing();
   }, [investigation, readProject, refreshListing]);
 
+  // The case an import or a finished capture published opens on its
+  // Messages, once the project lists it.
+  const openImportedCase = useCallback(
+    async (ref: ItemRef) => {
+      await leaveImport();
+      await refreshCases();
+      const entry = listedCases.current.find((item) => item.ref.id === ref.id)?.summary.case?.entry;
+      if (root && entry) await verifyCase(root, entry);
+    },
+    [leaveImport, refreshCases, root, verifyCase],
+  );
+
+  // Files dropped on the window go to the Import flow while it is open. One
+  // listener is registered for the window's life, which also stops the
+  // webview opening a dropped file itself.
+  useEffect(() => onFileDrop((paths) => importDrop.deliver?.(paths)), []);
+
+  // Capture and Import read under their own scopes, so their reads never make
+  // the Cases list's answer look stale.
+  const captureScope = useRef(new RequestScope());
+  const captureContext = useCallback(() => captureScope.current.enter(root ?? ""), [root]);
+  const importScope = useRef(new RequestScope());
+  const importContext = useCallback(() => importScope.current.enter(root ?? ""), [root]);
+  const capture = useCapture({
+    root,
+    context: captureContext,
+    busy,
+    setupRequest: captureSetup,
+    onOpenCase: (ref) => {
+      setCapturing(false);
+      void openImportedCase(ref);
+    },
+  });
+  const startCaptureSetup = () => {
+    setCapturing(true);
+    setCaptureSetup((count) => count + 1);
+  };
+
   // A policy-scoped reading of the same comparison. It never edits the raw
   // comparison, which stays displayed above it, and never changes a source
   // byte; the policy is read again on every call.
@@ -2124,7 +2165,7 @@ export default function App() {
   const named = (kind: string) => artifacts.filter((artifact) => artifact.kind === kind).map((artifact) => artifact.name);
   const projectName = overview?.title || (root ? folderName(root) : "");
   const caseTitle = verified ? overview?.cases.find((entry) => entry.name === verified.name)?.title || verified.name : "";
-  const subpage = importing && root ? "import" : capturing && root ? "capture" : null;
+  const subpage = capturing && root ? "capture" : null;
   // The open case's own menu, which the palette also lists while the case is
   // on screen.
   const caseMenu: MenuItem[] = [
@@ -2162,10 +2203,6 @@ export default function App() {
     focusRegion("evidence");
   };
   const leaveSubpage = () => {
-    if (importing) {
-      setImporting(false);
-      void leaveImport();
-    }
     setCapturing(false);
     setCaptureBinding(null);
   };
@@ -2240,6 +2277,10 @@ export default function App() {
         </ul>
         {busy ? (
           <OperationIndicator label={running ? PROGRESS[running] : "Working…"} onStop={interruptible ? () => cancel() : undefined} />
+        ) : capture.recording && !(place === "cases" && subpage === "capture") ? (
+          // A capture keeps recording while the person is elsewhere; this
+          // returns to it, and its Stop finishes it.
+          <OperationIndicator label="Recording" onOpen={() => { go("cases"); setCapturing(true); }} onStop={capture.finish} />
         ) : null}
       </>
     ),
@@ -2318,20 +2359,20 @@ export default function App() {
             ) : null
           }
           title={
-            subpage === "import"
-              ? "Import evidence"
-              : subpage === "capture"
-                ? "Capture"
-                : verified
+            subpage === "capture"
+              ? capture.title
+              : verified
                     ? caseFlow !== null
                       ? CASE_FLOW_TITLES[caseFlow]
                       : caseTitle
                     : "Cases"
           }
           actions={
-            root && subpage === null && !verified ? (
+            subpage === "capture" ? (
+              capture.actions
+            ) : root && subpage === null && !verified ? (
               <>
-                <button type="button" disabled={busy} onClick={() => setCapturing(true)}>
+                <button type="button" disabled={busy} onClick={startCaptureSetup}>
                   Capture
                 </button>
                 <button type="button" className="primary" disabled={busy} onClick={() => setImporting(true)}>
@@ -2349,45 +2390,21 @@ export default function App() {
           }
         >
           {!root ? noProject("cases") : null}
-          {capturing && root ? (
-            <CapturePanel
-              workspace={root}
-              project={investigation?.overview?.root ?? null}
-              busy={busy}
-              indicators={indicators}
-              onOpenCase={(name) => {
-                setCapturing(false);
-                void verifyCase(root, name);
-              }}
-              onSetupIndex={(name) => {
-                setCapturing(false);
-                void verifyCase(root, name);
-              }}
-              onBindObservation={(binding) => {
-                setCapturing(false);
-                setCaptureBinding(binding);
-                open({ destination: "environments", view: "add-observation" });
-              }}
-              onClose={() => setCapturing(false)}
-            />
-          ) : importing && root ? (
-            <ImportPanel
-              workspace={root}
-              project={investigation?.overview?.root ?? null}
+          {capturing && root ? capture.body : null}
+          {root ? (
+            <ImportFlow
+              open={importing}
+              root={root}
+              context={importContext}
               drafts={drafts}
               busy={busy}
-              indicators={indicators}
-              onOpenCase={(name) => {
-                setImporting(false);
-                void leaveImport().then(() => verifyCase(root, name));
-              }}
-              onSetupIndex={(name) => {
-                setImporting(false);
-                void leaveImport().then(() => verifyCase(root, name));
-              }}
               onClose={() => {
                 setImporting(false);
                 void leaveImport();
+              }}
+              onImported={(ref) => {
+                setImporting(false);
+                void openImportedCase(ref);
               }}
             />
           ) : null}
