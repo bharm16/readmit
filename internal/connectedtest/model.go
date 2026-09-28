@@ -12,6 +12,8 @@ const (
 	TestSchema        = "readmit-connected-test/v1"
 	PhaseTestSchema   = "readmit-connected-phase-test/v1"
 	PhasePlanSchema   = "readmit-connected-phase-plan/v1"
+	PhaseTestSchemaV2 = "readmit-connected-phase-test/v2"
+	PhasePlanSchemaV2 = "readmit-connected-phase-plan/v2"
 	TestSchemaV3      = "readmit-connected-test/v3"
 	PlanSchemaV3      = "readmit-execution-plan/v3"
 	TestSchemaV2      = "readmit-connected-test/v2"
@@ -95,6 +97,9 @@ type Step struct {
 	BusinessKeys []BusinessKey `json:"business_keys"`
 	V2           *V2Stimulus   `json:"v2_message,omitzero"`
 	FHIR         *FHIRRequest  `json:"fhir_request,omitzero"`
+	// Interaction is an executable reviewed FHIR request; only v5 flows and
+	// their v2 phase plans accept it. FHIR above stays a frozen template.
+	Interaction *FHIRInteraction `json:"fhir_interaction,omitzero"`
 }
 type Completion struct {
 	Policy     *Reference `json:"policy,omitzero"`
@@ -149,6 +154,10 @@ type Test struct {
 	Profiles        []Reference `json:"profiles"`
 	OperatorVersion string      `json:"operator_version"`
 	Limits          Limits      `json:"limits"`
+	// FHIR members exist only in readmit-connected-phase-test/v2.
+	Servers     []FHIRServer      `json:"fhir_servers,omitzero"`
+	Responses   []ResponseCheck   `json:"responses,omitzero"`
+	Validations []ValidationCheck `json:"validations,omitzero"`
 }
 type Effect struct {
 	Step     string `json:"step"`
@@ -212,4 +221,6 @@ type RevisionEvidence struct {
 
 const RevisionEvidenceSchema = "readmit-target-revision-evidence/v1"
 
-func intervalTest(schema string) bool { return schema == TestSchemaV3 || schema == PhaseTestSchema }
+func intervalTest(schema string) bool {
+	return schema == TestSchemaV3 || schema == PhaseTestSchema || schema == PhaseTestSchemaV2
+}

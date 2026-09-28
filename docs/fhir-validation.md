@@ -6,14 +6,16 @@ HL7 FHIR validator locally, inside a network-less container worker built from
 pinned inputs. Go stays the execution authority: it prepares the request, owns
 the worker's lifecycle and limits, interprets the validator's OperationOutcome
 under one pinned policy, and retains the evidence. Java is an optional local
-capability. Nothing else in readmit needs it, and no other command, test or
-runner step starts it.
+capability. Nothing else in readmit needs it; only a validation check of a v5
+connected lifecycle whose configuration selects the local engine starts it.
 
 A resource that conforms to its profiles has passed schema and profile rules. That
 is not downstream workflow success or clinical correctness. Nothing is sent to
-a public validator or terminology service. IG13 connects this check to FHIR test
-execution. IG21 delivers the administrator deployment recipe. There is no
-command, desktop screen or runner step for it yet.
+a public validator or terminology service. A v5 connected lifecycle can ask it
+to check a step's returned resource; the configuration's optional `validation`
+selection names the staged capability ([connected FHIR lifecycle
+tests](connected-fhir.md)). IG21 delivers the administrator deployment recipe.
+There is no desktop screen or runner step for it yet.
 
 ## The pinned capability
 

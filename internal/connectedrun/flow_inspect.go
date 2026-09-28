@@ -25,13 +25,15 @@ func InspectFlow(ctx context.Context, path string) (FlowResult, error) {
 		return openFlowFiles(ctx, path, files)
 	}
 	var start FlowResult
-	if json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || start.Schema != FlowSchema || start.StartedAt.IsZero() || !safeID(start.Instance) {
+	if json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || start.Schema != FlowSchema && start.Schema != FlowSchemaV4 || start.StartedAt.IsZero() || !safeID(start.Instance) {
 		return FlowResult{}, invalid
 	}
 	plan, err := connectedtest.OpenFlowPlan(filepath.Join(path, "plan"))
-	if err != nil || plan.Identity() != start.Plan || !artifactdir.MatchesSubtree(files, "plan", connectedtest.FlowPlanSchema, artifactdir.Identity(connectedtest.FlowPlanSchema, plan.Files())) {
+	if err != nil || plan.Identity() != start.Plan || flowSchemaFor(plan) != start.Schema || !artifactdir.MatchesSubtree(files, "plan", plan.Document().Schema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return FlowResult{}, invalid
 	}
+	fhir := plan.Document().Schema == connectedtest.FHIRFlowPlanSchema
+	bound := map[string]string{}
 	expected, e := expectedFlowStart(ctx, path, files, plan, start)
 	if e != nil {
 		return FlowResult{}, e
@@ -69,6 +71,29 @@ func InspectFlow(ctx context.Context, path string) (FlowResult, error) {
 		var intent flowIntent
 		if json.Unmarshal(raw, &intent, json.RejectUnknownMembers(true)) != nil || intent.Phase != phase.ID || intent.Plan != plan.Phase(phase.ID).Identity() || intent.At.Before(r.StartedAt) {
 			return FlowResult{}, invalid
+		}
+		if fhir {
+			prefix := "phases/" + phase.ID
+			if _, sealed := files[prefix+"/identity.sha256"]; sealed {
+				evaluated, child, identity, e := openFHIRPhase(ctx, plan, phase, filepath.Join(path, "phases", phase.ID), artifactdir.Subtree(files, prefix), bound)
+				if e != nil || child.Plan != intent.Plan || child.Instance != r.Instance || !artifactdir.MatchesSubtree(files, prefix, PhaseSchemaV2, identity) {
+					return FlowResult{}, invalid
+				}
+				if raw, ok := files["phase-"+phase.ID+".json"]; ok && !bytes.Equal(raw, canonicalFlow(evaluated)) {
+					return FlowResult{}, invalid
+				}
+				for k, v := range child.Bound {
+					bound[k] = v
+				}
+				r.Phases[i] = evaluated
+				continue
+			}
+			partial, e := interruptedFHIRPhase(plan, phase, artifactdir.Subtree(files, prefix))
+			if e != nil {
+				return FlowResult{}, e
+			}
+			r.Phases[i] = partial
+			continue
 		}
 		verified, e := OpenEvidence(ctx, filepath.Join(path, "phases", phase.ID))
 		child := verified.Result

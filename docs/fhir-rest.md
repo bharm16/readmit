@@ -5,7 +5,8 @@ the existing scoped HTTPS transport. `Prepare` is offline; `Execute` requires
 current external authority, performs an explicit capability preflight, and writes
 an immutable acquisition artifact. `Open` and `Inspect` never contact a target,
 resolve credentials, retry an action or resume interrupted work. These engine
-APIs are the shared adapter for later connected FHIR integration; they add no
+APIs are the shared adapter v5 connected lifecycles use for every FHIR request
+and search ([connected FHIR lifecycle tests](connected-fhir.md)); they add no
 desktop console or separate HTTP scripting workflow.
 
 ## Reviewed request and capability boundary

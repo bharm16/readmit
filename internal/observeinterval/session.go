@@ -32,13 +32,37 @@ type Session struct {
 	result                 Result
 	ended                  bool
 	failed                 error
+	sampleSchema           string
+	opener                 SampleOpener
 }
 
 func Arm(ctx context.Context, d Definition, b dataset.Binding, path string, clock Clock) (*Session, error) {
+	return arm(ctx, d, b, path, clock, "")
+}
+
+// ArmSamples arms an interval whose samples are retained under another typed
+// contract, named by sampleSchema and verified by opener. It is sealed as
+// SamplesSchema so a reader of dataset/v1 intervals never reinterprets it; its
+// completion logic is the same.
+func ArmSamples(ctx context.Context, d Definition, b dataset.Binding, path string, clock Clock, sampleSchema string, opener SampleOpener) (*Session, error) {
+	if !sampleContract.MatchString(sampleSchema) || sampleSchema == dataset.Schema || opener == nil || d.Mode != "snapshots" || d.Freshness != "snapshot-only" {
+		return nil, invalid
+	}
+	s, err := arm(ctx, d, b, path, clock, sampleSchema)
+	if s != nil {
+		s.opener = opener
+	}
+	return s, err
+}
+func arm(ctx context.Context, d Definition, b dataset.Binding, path string, clock Clock, sampleSchema string) (*Session, error) {
 	if ctx.Err() != nil || d.Validate() != nil || dataset.ValidateBinding(b) != nil || b.Source != d.Source || b.Namespace != d.Namespace || clock == nil {
 		return nil, invalid
 	}
-	w, err := artifactdir.Create(path, family, artifactdir.Durable)
+	f, schema := family, ResultSchema
+	if sampleSchema != "" {
+		f, schema = samplesFamily, SamplesSchema
+	}
+	w, err := artifactdir.Create(path, f, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
@@ -56,16 +80,19 @@ func Arm(ctx context.Context, d Definition, b dataset.Binding, path string, cloc
 	if w.WriteFile("definition.json", def) != nil || w.WriteFile("binding.json", binding) != nil || w.Mkdir("samples") != nil {
 		return nil, invalid
 	}
-	f, err := w.Open("journal.jsonl")
+	if sampleSchema != "" && w.WriteFile("samples.json", sampleDeclaration(sampleSchema)) != nil {
+		return nil, invalid
+	}
+	journal, err := w.Open("journal.jsonl")
 	if err != nil {
 		return nil, err
 	}
 	if w.Sync() != nil {
-		f.Close()
+		journal.Close()
 		return nil, invalid
 	}
-	s := &Session{clock: clock, writer: w, file: f, result: Result{Schema: ResultSchema, Binding: b, Definition: d, State: "incomplete", Reason: "not-ready", Records: []Record{}}}
-	s.log = durablelog.NewWriter(f, durablelog.Digest(append(def, binding...)), 4<<20, durablelog.Messages{Limit: invalid, Sync: invalid, Encode: invalid})
+	s := &Session{clock: clock, writer: w, file: journal, sampleSchema: sampleSchema, result: Result{Schema: schema, Binding: b, Definition: d, State: "incomplete", Reason: "not-ready", Records: []Record{}}}
+	s.log = durablelog.NewWriter(journal, durablelog.Digest(append(def, binding...)), 4<<20, durablelog.Messages{Limit: invalid, Sync: invalid, Encode: invalid})
 	fail = false
 	if !d.Enabled {
 		s.result.Reason = "disabled"
@@ -130,6 +157,30 @@ func (s *Session) Append(ctx context.Context, o Observation) error {
 				r.Status = "barrier-preexisting"
 			}
 		}
+	}
+	if o.Sample != nil && (s.sampleSchema == "" || o.Snapshot != nil || o.CapturePath != "") || o.Snapshot != nil && s.sampleSchema != "" {
+		return invalid
+	}
+	if o.Sample != nil {
+		if r.Barrier != nil && r.Barrier.Complete && o.BarrierSnapshot != nil && o.Sample.Started().Before(o.BarrierSnapshot.Document().Acquisition.CompletedAt) {
+			r.Status = "snapshot-before-barrier"
+		}
+		if !s.lastAcquisition.IsZero() && !o.Sample.Started().After(s.lastAcquisition) {
+			r.Status = "reused-acquisition"
+		}
+		s.lastAcquisition = o.Sample.Completed()
+		if o.Sample.Binding() != o.Binding || !o.Sample.Usable() {
+			r.Status = "unusable-snapshot"
+		}
+		name := fmt.Sprintf("samples/%04d", len(s.result.Records)+1)
+		if err := o.Sample.Write(ctx, filepath.Join(s.writer.Path(), name)); err != nil {
+			s.failed = err
+			return err
+		}
+		r.Snapshot = name
+		r.Identity = o.Sample.Identity()
+		r.Records = o.Sample.Records()
+		r.Bytes = o.Sample.Size()
 	}
 	if o.Snapshot != nil {
 		doc := o.Snapshot.Document()
@@ -213,6 +264,9 @@ func (s *Session) Finish(ctx context.Context) (Result, error) {
 	}
 	if _, err = s.writer.Seal(nil); err != nil {
 		return Result{}, err
+	}
+	if s.opener != nil {
+		return OpenSamples(context.WithoutCancel(ctx), s.writer.Path(), s.opener)
 	}
 	return Open(context.WithoutCancel(ctx), s.writer.Path())
 }

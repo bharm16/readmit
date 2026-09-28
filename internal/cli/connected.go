@@ -24,7 +24,7 @@ func connectedCommand() *cobra.Command {
 		var head struct {
 			Schema string `json:"schema"`
 		}
-		if readErr == nil && json.Unmarshal(raw, &head) == nil && head.Schema == connectedtest.FlowTestSchema {
+		if readErr == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedtest.FlowTestSchema || head.Schema == connectedtest.FHIRFlowTestSchema) {
 			p, err := connectedtest.PrepareFlowDirectory(a[0], connectedtest.Generation{Seed: seed, BaseTime: base})
 			if err != nil {
 				return refusal(err)

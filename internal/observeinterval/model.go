@@ -103,6 +103,8 @@ func (d Definition) Validate() error {
 // Observation is the adapter's coverage report, with the exact source/run
 // scope, retained snapshot and health independently of its record count.
 type Observation struct {
+	// Sample replaces Snapshot only in a session armed with ArmSamples.
+	Sample          Sample
 	BarrierSnapshot *dataset.Snapshot
 	CapturePath     string
 	Excluded        map[string]string

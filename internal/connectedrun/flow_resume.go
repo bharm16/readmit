@@ -25,7 +25,9 @@ type FlowResume struct {
 // of completed phases and an unchanged ready isolation checkpoint are required.
 // An unresolved phase intent is never converted into permission to repeat it.
 func PrepareFlowResume(p *PreparedFlow, previous string) (*FlowResume, error) {
-	if p == nil || p.unchanged() != nil {
+	// A v5 lifecycle is inspection-only after a stop: response-bound identities
+	// and FHIR effects are never continued from retained evidence.
+	if p == nil || p.fhir != nil || p.unchanged() != nil {
 		return nil, invalid
 	}
 	files, err := artifactdir.Read(previous, flowResultFamily.Layout)

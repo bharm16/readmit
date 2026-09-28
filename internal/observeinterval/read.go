@@ -17,16 +17,29 @@ import (
 
 // Recover is strictly read-only. A torn tail or missing completion marker is
 // interrupted evidence, never permission to resume a collector or a send.
-func Recover(ctx context.Context, path string) (Result, error) { return read(ctx, path, false) }
-func Open(ctx context.Context, path string) (Result, error)    { return read(ctx, path, true) }
-func read(ctx context.Context, path string, sealed bool) (Result, error) {
-	layout := family.Layout
+func Recover(ctx context.Context, path string) (Result, error) { return read(ctx, path, false, nil) }
+func Open(ctx context.Context, path string) (Result, error)    { return read(ctx, path, true, nil) }
+func read(ctx context.Context, path string, sealed bool, opener SampleOpener) (Result, error) {
+	layout, schema, primarySchema := family.Layout, ResultSchema, dataset.Schema
+	if opener != nil {
+		layout, schema = samplesFamily.Layout, SamplesSchema
+	}
 	if !sealed {
 		layout.RequiredFiles = []string{"definition.json", "binding.json", "journal.jsonl"}
+		if opener != nil {
+			layout.RequiredFiles = append(layout.RequiredFiles, "samples.json")
+		}
 	}
 	files, err := artifactdir.Read(path, layout)
 	if err != nil {
 		return Result{}, err
+	}
+	if opener != nil {
+		var head sampleHead
+		if json.Unmarshal(files["samples.json"], &head, json.RejectUnknownMembers(true)) != nil || !sampleContract.MatchString(head.Schema) || head.Schema == dataset.Schema || string(sampleDeclaration(head.Schema)) != string(files["samples.json"]) {
+			return Result{}, invalid
+		}
+		primarySchema = head.Schema
 	}
 	d, err := Decode(files["definition.json"])
 	if err != nil {
@@ -36,7 +49,10 @@ func read(ctx context.Context, path string, sealed bool) (Result, error) {
 	if json.Unmarshal(files["binding.json"], &binding, json.RejectUnknownMembers(true)) != nil || dataset.ValidateBinding(binding) != nil || binding.Source != d.Source || binding.Namespace != d.Namespace {
 		return Result{}, invalid
 	}
-	r := Result{Schema: ResultSchema, Definition: d, Binding: binding, Records: []Record{}}
+	if opener != nil && (d.Mode != "snapshots" || d.Freshness != "snapshot-only") {
+		return Result{}, invalid
+	}
+	r := Result{Schema: schema, Definition: d, Binding: binding, Records: []Record{}}
 	var lastAcquisition, lastBarrierAcquisition time.Time
 	lastBarrierIdentity := ""
 	torn, err := durablelog.Scan(files["journal.jsonl"], durablelog.Digest(append(bytes.Clone(files["definition.json"]), files["binding.json"]...)), invalid, func(raw []byte) durablelog.Record {
@@ -54,34 +70,34 @@ func read(ctx context.Context, path string, sealed bool) (Result, error) {
 			if !strings.HasPrefix(record.Snapshot, "samples/") || strings.Contains(record.Snapshot, "..") || strings.Contains(record.Snapshot, "\\") {
 				return invalid
 			}
-			snapshot, err := dataset.Open(ctx, filepath.Join(path, record.Snapshot))
-			if err != nil || snapshot.Identity() != record.Identity || !artifactdir.MatchesSubtree(files, record.Snapshot, dataset.Schema, snapshot.Identity()) {
+			sample, err := openPrimary(ctx, filepath.Join(path, record.Snapshot), opener)
+			if err != nil || sample.identity != record.Identity || !artifactdir.MatchesSubtree(files, record.Snapshot, primarySchema, sample.identity) {
 				return invalid
 			}
-			doc := snapshot.Document()
 			if d.Mode == "snapshots" {
-				if record.Status == "healthy" && !lastAcquisition.IsZero() && !doc.Acquisition.StartedAt.After(lastAcquisition) {
+				if record.Status == "healthy" && !lastAcquisition.IsZero() && !sample.started.After(lastAcquisition) {
 					return invalid
 				}
-				lastAcquisition = doc.Acquisition.CompletedAt
+				lastAcquisition = sample.completed
 			}
-			if record.Status == "healthy" && (d.Mode == "snapshots" && doc.Acquisition.Kind == "capture" || d.Mode == "stream" && doc.Acquisition.Kind != "capture") {
+			if record.Status == "healthy" && (d.Mode == "snapshots" && sample.kind == "capture" || d.Mode == "stream" && sample.kind != "capture") {
 				return invalid
 			}
-			if record.Status == "healthy" && d.Freshness == "source-timestamp" && (doc.Acquisition.Facts == nil || !record.SourceAt.Equal(doc.Acquisition.Facts.AsOf)) {
+			if record.Status == "healthy" && d.Freshness == "source-timestamp" && (sample.asOf == nil || !record.SourceAt.Equal(*sample.asOf)) {
 				return invalid
 			}
-			if record.Status == "healthy" && (!snapshot.Usable() || record.Binding == nil || doc.Binding != *record.Binding) {
+			if record.Status == "healthy" && (!sample.usable || record.Binding == nil || sample.binding != *record.Binding) {
 				return invalid
 			}
-			if doc.Binding.Run != binding.Run || doc.Binding.Source != binding.Source || doc.Binding.Namespace != binding.Namespace || doc.Binding.Phase != binding.Phase && (record.Kind != "baseline" || doc.Binding.Phase != "before") || record.Records != len(doc.Rows) || record.Bytes != doc.Material.Size {
+			if sample.binding.Run != binding.Run || sample.binding.Source != binding.Source || sample.binding.Namespace != binding.Namespace || sample.binding.Phase != binding.Phase && (record.Kind != "baseline" || sample.binding.Phase != "before") || record.Records != sample.records || record.Bytes != sample.size {
 				return invalid
 			}
 
 			if record.CapturePath != "" {
-				if record.CapturePath != "capture" {
+				if record.CapturePath != "capture" || sample.snapshot == nil {
 					return invalid
 				}
+				doc := sample.snapshot.Document()
 				readback, err := networkaction.OpenCaptureEvidence(filepath.Join(path, "capture"))
 				result, capture := readback.Result, readback.Capture
 				if err != nil || capture == nil || result.Binding.Source != binding.Source || !artifactdir.MatchesSubtree(files, "capture", networkaction.ResultSchema, readback.Identity) {
@@ -137,8 +153,8 @@ func read(ctx context.Context, path string, sealed bool) (Result, error) {
 			}
 			if err == nil {
 				if expected.Complete && record.Snapshot != "" && record.Status == "healthy" {
-					primary, e := dataset.Open(ctx, filepath.Join(path, record.Snapshot))
-					if e != nil || !artifactdir.MatchesSubtree(files, record.Snapshot, dataset.Schema, primary.Identity()) || primary.Document().Acquisition.StartedAt.Before(barrierDocument.Acquisition.CompletedAt) {
+					sample, e := openPrimary(ctx, filepath.Join(path, record.Snapshot), opener)
+					if e != nil || !artifactdir.MatchesSubtree(files, record.Snapshot, primarySchema, sample.identity) || sample.started.Before(barrierDocument.Acquisition.CompletedAt) {
 						return invalid
 					}
 				}
@@ -167,7 +183,7 @@ func read(ctx context.Context, path string, sealed bool) (Result, error) {
 		r.Boundary = "insufficient"
 		return r, nil
 	}
-	if torn || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(ResultSchema, files) {
+	if torn || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(schema, files) {
 		return Result{}, invalid
 	}
 	var declared Result

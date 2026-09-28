@@ -24,23 +24,28 @@ func OpenFlow(ctx context.Context, path string) (FlowResult, error) {
 }
 func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (FlowResult, error) {
 	var err error
-	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(FlowSchema, files) {
+	var r, start FlowResult
+	if json.Unmarshal(files["manifest.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || r.Schema != FlowSchema && r.Schema != FlowSchemaV4 || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {
 		return FlowResult{}, invalid
 	}
-	var r, start FlowResult
-	if json.Unmarshal(files["manifest.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || r.Schema != FlowSchema || !safeID(r.Instance) || r.StartedAt.IsZero() || r.CompletedAt.Before(r.StartedAt) {
+	if strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(r.Schema, files) {
 		return FlowResult{}, invalid
 	}
 	plan, err := connectedtest.OpenFlowPlan(filepath.Join(path, "plan"))
-	if err != nil || plan.Identity() != r.Plan || !artifactdir.MatchesSubtree(files, "plan", connectedtest.FlowPlanSchema, artifactdir.Identity(connectedtest.FlowPlanSchema, plan.Files())) {
+	if err != nil || plan.Identity() != r.Plan || flowSchemaFor(plan) != r.Schema || !artifactdir.MatchesSubtree(files, "plan", plan.Document().Schema, artifactdir.Identity(plan.Document().Schema, plan.Files())) {
 		return FlowResult{}, invalid
 	}
+	fhir := plan.Document().Schema == connectedtest.FHIRFlowPlanSchema
+	if fhir && (r.Previous != "" || r.RecoveryStore != nil) || !fhir && r.Qualification != nil {
+		return FlowResult{}, invalid
+	}
+	bound := map[string]string{}
 	expected, e := expectedFlowStart(ctx, path, files, plan, r)
 	if e != nil {
 		return FlowResult{}, e
 	}
 
-	if !bytes.Equal(canonicalFlow(start), canonicalFlow(expected)) || len(r.Phases) != len(expected.Phases) || r.Boundary != expected.Boundary {
+	if !bytes.Equal(canonicalFlow(start), canonicalFlow(expected)) || len(r.Phases) != len(expected.Phases) || r.Boundary != expected.Boundary || !bytes.Equal(canonicalFlow(r.Qualification), canonicalFlow(expected.Qualification)) {
 		return FlowResult{}, invalid
 	}
 	if r.Previous != "" {
@@ -177,10 +182,25 @@ func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (F
 		}
 		prefix := "phases/" + phase.ID
 		if _, sealed := files[prefix+"/identity.sha256"]; !sealed {
-			partial, e := interruptedPhase(plan, phase, artifactdir.Subtree(files, prefix))
+			interrupted := interruptedPhase
+			if fhir {
+				interrupted = interruptedFHIRPhase
+			}
+			partial, e := interrupted(plan, phase, artifactdir.Subtree(files, prefix))
 			if e != nil || !bytes.Equal(canonicalFlow(got), canonicalFlow(partial)) {
 				return FlowResult{}, invalid
 			}
+			continue
+		}
+		if fhir {
+			evaluated, child, identity, err := openFHIRPhase(ctx, plan, phase, filepath.Join(path, "phases", phase.ID), artifactdir.Subtree(files, prefix), bound)
+			if err != nil || child.Plan != intent.Plan || child.Instance != r.Instance || child.StartedAt.Before(intent.At) || child.CompletedAt.After(r.CompletedAt) || !artifactdir.MatchesSubtree(files, prefix, PhaseSchemaV2, identity) || !bytes.Equal(canonicalFlow(got), canonicalFlow(evaluated)) {
+				return FlowResult{}, invalid
+			}
+			for k, v := range child.Bound {
+				bound[k] = v
+			}
+			priorTime = child.CompletedAt
 			continue
 		}
 		verified, err := OpenEvidence(ctx, filepath.Join(path, "phases", phase.ID))

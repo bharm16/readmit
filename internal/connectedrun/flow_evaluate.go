@@ -77,9 +77,15 @@ func evaluateFlowPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase 
 			}
 		}
 	}
-	r.Verdict = assertion.VerdictUndecided
+	r.Verdict = phaseVerdict(r.Checks, run.State)
+	return r, nil
+}
+
+// phaseVerdict is a phase's verdict: any failed check fails it, and it passes
+// only when every check decided, at least one passed and the phase completed.
+func phaseVerdict(checks []FlowCheck, state string) assertion.Verdict {
 	passed, failed, undecided := 0, 0, false
-	for _, c := range r.Checks {
+	for _, c := range checks {
 		switch c.Outcome {
 		case assertion.OutcomePassed:
 			passed++
@@ -90,11 +96,12 @@ func evaluateFlowPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase 
 		}
 	}
 	if failed > 0 {
-		r.Verdict = assertion.VerdictFail
-	} else if passed > 0 && !undecided && run.State == "complete" {
-		r.Verdict = assertion.VerdictPass
+		return assertion.VerdictFail
 	}
-	return r, nil
+	if passed > 0 && !undecided && state == "complete" {
+		return assertion.VerdictPass
+	}
+	return assertion.VerdictUndecided
 }
 func flowWireEvidence(ctx context.Context, plan *connectedtest.FlowPlan, phase connectedtest.FlowPhase, result Result, path string) (assertion.Evidence, error) {
 	evidence := assertion.Evidence{Input: map[string]assertion.Message{}, Observed: map[string]assertion.Message{}}

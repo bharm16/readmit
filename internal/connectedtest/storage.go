@@ -25,7 +25,7 @@ func OpenPlan(directory string) (*Plan, error) {
 	var declared struct {
 		Schema string `json:"schema"`
 	}
-	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 && declared.Schema != PlanSchemaV3 && declared.Schema != PhasePlanSchema {
+	if json.Unmarshal(files["plan.json"], &declared) != nil || declared.Schema != PlanSchema && declared.Schema != PlanSchemaV2 && declared.Schema != PlanSchemaV3 && declared.Schema != PhasePlanSchema && declared.Schema != PhasePlanSchemaV2 {
 		return nil, invalid
 	}
 	if !sealed(declared.Schema, files) {
@@ -39,7 +39,7 @@ func sealed(schema string, files map[string][]byte) bool {
 }
 func readPlan(files map[string][]byte) (*Plan, error) {
 	var d PlanDocument
-	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 && d.Schema != PlanSchemaV3 && d.Schema != PhasePlanSchema {
+	if json.Unmarshal(files["plan.json"], &d, json.RejectUnknownMembers(true)) != nil || d.Schema != PlanSchema && d.Schema != PlanSchemaV2 && d.Schema != PlanSchemaV3 && d.Schema != PhasePlanSchema && d.Schema != PhasePlanSchemaV2 {
 		return nil, invalid
 	}
 	supplied := map[string][]byte{}
@@ -53,7 +53,7 @@ func readPlan(files map[string][]byte) (*Plan, error) {
 		}
 		supplied[receipt.Source.File] = files["dependencies/"+receipt.Source.SHA256]
 	}
-	p, err := compile(files["test.json"], supplied, d.Generation, d.Schema == PhasePlanSchema)
+	p, err := compile(files["test.json"], supplied, d.Generation, d.Schema == PhasePlanSchema || d.Schema == PhasePlanSchemaV2)
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +83,12 @@ func references(d Test) []Reference {
 		if s.FHIR != nil && s.FHIR.Body != nil {
 			refs = append(refs, *s.FHIR.Body)
 		}
+		if s.Interaction != nil && s.Interaction.Body != nil {
+			refs = append(refs, *s.Interaction.Body)
+		}
+	}
+	for _, server := range d.Servers {
+		refs = append(refs, server.Capability)
 	}
 	for _, ds := range d.Datasets {
 		if ds.Projection != nil {

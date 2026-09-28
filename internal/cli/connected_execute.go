@@ -16,7 +16,7 @@ func runConnectedTest(cmd *cobra.Command, plan, config, instance, output string,
 	var head struct {
 		Schema string `json:"schema"`
 	}
-	if readErr == nil && json.Unmarshal(raw, &head) == nil && head.Schema == connectedrun.FlowConfigSchema {
+	if readErr == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedrun.FlowConfigSchema || head.Schema == connectedrun.FHIRFlowConfigSchema) {
 		return runConnectedFlow(cmd, plan, config, instance, output, send)
 	}
 	prepared, err := connectedrun.Prepare(plan, config)
@@ -79,6 +79,24 @@ func printConnectedFlow(cmd *cobra.Command, r connectedrun.FlowResult) error {
 	copy(phases, r.Phases)
 	for i := range phases {
 		phases[i].Wire = nil
+	}
+	if r.Schema == connectedrun.FlowSchemaV4 {
+		// A FHIR lifecycle summary states each declared observation boundary,
+		// so its verdict is never read as more than that boundary shows.
+		if err := writeConnected(cmd, struct {
+			Schema        string                         `json:"schema"`
+			State         string                         `json:"state"`
+			Verdict       assertion.Verdict              `json:"verdict"`
+			Boundary      string                         `json:"boundary"`
+			Setup         string                         `json:"setup"`
+			Cleanup       string                         `json:"cleanup"`
+			Engine        string                         `json:"engine"`
+			Qualification []connectedrun.FlowClaim       `json:"qualification"`
+			Phases        []connectedrun.FlowPhaseResult `json:"phases"`
+		}{"readmit-connected-summary/v2", r.State, r.Verdict, r.Boundary, r.Setup, r.Cleanup, r.Engine, r.Qualification, phases}); err != nil {
+			return err
+		}
+		return connectedFlowExit(r)
 	}
 	if err := writeConnected(cmd, struct {
 		Schema   string                         `json:"schema"`

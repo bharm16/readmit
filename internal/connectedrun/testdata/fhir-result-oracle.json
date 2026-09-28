@@ -1,0 +1,9 @@
+{
+  "note": "Expected laboratory results, authored from the reviewed LIS interface contract and not from the engine under test.",
+  "status_system": "http://hl7.org/fhir/observation-status",
+  "report_status_system": "http://hl7.org/fhir/diagnostic-report-status",
+  "unit": "mmol/L",
+  "unit_system": "http://unitsofmeasure.org",
+  "final": {"status": "final", "value": "7.10"},
+  "corrected": {"status": "corrected", "value": "7.30"}
+}

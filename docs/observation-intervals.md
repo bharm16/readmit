@@ -130,3 +130,8 @@ explicit clock/IO handshakes rather than sleeps to decide completion:
 
 The legacy `observewindow` tests still reopen their independently authored v1
 completion records without acquiring these new semantics.
+
+A FHIR search sample is retained under its own contract. Its interval uses the
+same completion rules but is sealed as `readmit-observation-interval-samples/v1`
+and read only with that contract's reader (`OpenSamples`); the dataset/v1
+interval reader refuses it ([connected FHIR lifecycle tests](connected-fhir.md)).

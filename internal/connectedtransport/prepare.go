@@ -51,12 +51,14 @@ func Prepare(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
 	return prepare(plan, s, false)
 }
 
-// PrepareSequence is selected only by the v4 lifecycle, never old standalone plans.
+// PrepareSequence is selected only by the v4 and v5 lifecycles' phase plans,
+// never old standalone plans.
 func PrepareSequence(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
 	return prepare(plan, s, true)
 }
 func prepare(plan *connectedtest.Plan, s Selection, sequence bool) (*Prepared, error) {
-	if plan == nil || sequence && plan.Document().Schema != connectedtest.PhasePlanSchema || !sequence && plan.Document().Schema == connectedtest.PhasePlanSchema {
+	phase := plan != nil && (plan.Document().Schema == connectedtest.PhasePlanSchema || plan.Document().Schema == connectedtest.PhasePlanSchemaV2)
+	if plan == nil || sequence != phase {
 		return nil, refused
 	}
 	p := &Prepared{sequence: sequence, plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}

@@ -143,25 +143,62 @@ type DatasetReport struct {
 	Evidence map[string]string `json:"evidence"`
 }
 
+// Table is one verified typed dataset under its own retained contract. Old
+// dataset/v1 snapshots and other typed contracts (such as FHIR resource
+// observations) share this carrier so every contract uses one evaluator.
+// Columns declare the type, key, repetition and code system each value must
+// satisfy; Ordered states that source order is declared and meaningful.
+type Table struct {
+	Identity     string
+	Binding      dataset.Binding
+	Projection   string
+	ProjectionID string
+	Columns      []dataset.Column
+	Ordered      bool
+	Usable       bool
+	Rows         []dataset.Row
+}
+
+// SnapshotTable adapts a verified dataset/v1 snapshot without changing its
+// meaning: database acquisitions never declare order.
+func SnapshotTable(snapshot *dataset.Snapshot) Table {
+	if snapshot == nil {
+		return Table{}
+	}
+	d := snapshot.Document()
+	return Table{Identity: snapshot.Identity(), Binding: d.Binding, Projection: d.Projection.Identity(), ProjectionID: d.Projection.ID, Columns: d.Projection.Columns, Ordered: d.Projection.Order == "source" && d.Acquisition.Kind != "database", Usable: snapshot.Usable(), Rows: d.Rows}
+}
+
 // Evaluate uses only verified retained snapshots. Old occurrence and key-only
 // assertions keep their independent contract and semantics.
 func (s *DatasetSet) Evaluate(ctx context.Context, run string, evidence map[string]*dataset.Snapshot) (DatasetReport, error) {
+	tables := map[string]Table{}
+	for name, snapshot := range evidence {
+		if snapshot != nil {
+			tables[name] = SnapshotTable(snapshot)
+		}
+	}
+	return s.EvaluateTables(ctx, run, tables)
+}
+
+// EvaluateTables is the same evaluator over explicitly adapted typed tables.
+// An unusable, missing or differently bound table is an incomplete observation.
+func (s *DatasetSet) EvaluateTables(ctx context.Context, run string, evidence map[string]Table) (DatasetReport, error) {
 	if s == nil || !datasetID.MatchString(run) {
 		return DatasetReport{}, &Error{Class: ErrorNotDecoded}
 	}
-	documents := map[string]dataset.Document{}
+	documents := map[string]Table{}
 	report := DatasetReport{Results: []DatasetResult{}, Evidence: map[string]string{}}
 	for _, b := range s.document.Bindings {
-		snapshot := evidence[b.Name]
-		if snapshot == nil || !snapshot.Usable() {
+		t, ok := evidence[b.Name]
+		if !ok || !t.Usable {
 			return DatasetReport{}, &Error{Class: ErrorIncompleteObservation}
 		}
-		d := snapshot.Document()
-		if d.Binding.Run != run || d.Binding.Namespace != b.Namespace || d.Binding.Phase != b.Phase || d.Binding.Source != b.Source || d.Projection.Identity() != b.ProjectionIdentity {
+		if t.Binding.Run != run || t.Binding.Namespace != b.Namespace || t.Binding.Phase != b.Phase || t.Binding.Source != b.Source || t.Projection == "" || t.Projection != b.ProjectionIdentity {
 			return DatasetReport{}, &Error{Class: "dataset_binding_mismatch"}
 		}
-		documents[b.Name] = d
-		report.Evidence[b.Name] = snapshot.Identity()
+		documents[b.Name] = t
+		report.Evidence[b.Name] = t.Identity
 	}
 	passed, failed, undecided := 0, 0, 0
 	for _, a := range s.document.Assertions {
@@ -182,7 +219,7 @@ func (s *DatasetSet) Evaluate(ctx context.Context, run string, evidence map[stri
 	report.Verdict = overallVerdict(passed, failed, undecided)
 	return report, nil
 }
-func selectRows(s RowSelection, docs map[string]dataset.Document) (dataset.Document, []dataset.Row, string) {
+func selectRows(s RowSelection, docs map[string]Table) (Table, []dataset.Row, string) {
 	d, ok := docs[s.Dataset]
 	if !ok {
 		return d, nil, "unknown-dataset"
@@ -193,7 +230,7 @@ func selectRows(s RowSelection, docs map[string]dataset.Document) (dataset.Docum
 		if i < 0 {
 			return d, nil, "unknown-column"
 		}
-		if !dataset.Compatible(d.Projection.Columns[i], w.Equals) {
+		if !dataset.Compatible(d.Columns[i], w.Equals) {
 			return d, nil, "incompatible-filter"
 		}
 		indexes = append(indexes, i)
@@ -216,10 +253,10 @@ func selectRows(s RowSelection, docs map[string]dataset.Document) (dataset.Docum
 	}
 	return d, rows, ""
 }
-func columnIndex(d dataset.Document, name string) int {
-	return slices.IndexFunc(d.Projection.Columns, func(c dataset.Column) bool { return c.Name == name })
+func columnIndex(d Table, name string) int {
+	return slices.IndexFunc(d.Columns, func(c dataset.Column) bool { return c.Name == name })
 }
-func oneValue(s RowSelection, column string, docs map[string]dataset.Document) (dataset.Value, string) {
+func oneValue(s RowSelection, column string, docs map[string]Table) (dataset.Value, string) {
 	d, rows, reason := selectRows(s, docs)
 	if reason != "" {
 		return dataset.Value{}, reason
@@ -236,7 +273,7 @@ func oneValue(s RowSelection, column string, docs map[string]dataset.Document) (
 	}
 	return rows[0].Values[i], ""
 }
-func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) DatasetResult {
+func decideDataset(a DatasetAssertion, docs map[string]Table) DatasetResult {
 	r := DatasetResult{ID: a.ID, Operator: a.Operator, Outcome: OutcomeUndecided, Rows: []string{}}
 	if a.When != nil {
 		v, why := oneValue(a.When.Subject, a.When.Column, docs)
@@ -246,7 +283,7 @@ func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) Dataset
 		}
 		conditionDoc := docs[a.When.Subject.Dataset]
 		conditionColumn := columnIndex(conditionDoc, a.When.Column)
-		if conditionColumn < 0 || !dataset.Compatible(conditionDoc.Projection.Columns[conditionColumn], a.When.Equals) {
+		if conditionColumn < 0 || !dataset.Compatible(conditionDoc.Columns[conditionColumn], a.When.Equals) {
 			r.Reason = "incompatible-condition"
 			return r
 		}
@@ -266,7 +303,7 @@ func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) Dataset
 	// do not duplicate up to 10000 qualified row IDs in every assertion result.
 	if len(rows) == 1 {
 		row := rows[0]
-		r.Rows = append(r.Rows, d.Binding.Run+"/"+d.Binding.Phase+"/"+d.Binding.Namespace+"/"+d.Binding.Source+"/"+d.Projection.ID+"/"+row.ID)
+		r.Rows = append(r.Rows, d.Binding.Run+"/"+d.Binding.Phase+"/"+d.Binding.Namespace+"/"+d.Binding.Source+"/"+d.ProjectionID+"/"+row.ID)
 	}
 	if a.Expected != nil {
 		column := columnIndex(d, a.Column)
@@ -274,7 +311,7 @@ func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) Dataset
 			r.Reason = "unknown-column"
 			return r
 		}
-		if !dataset.Compatible(d.Projection.Columns[column], *a.Expected) {
+		if !dataset.Compatible(d.Columns[column], *a.Expected) {
 			r.Reason = "incompatible-expectation"
 			return r
 		}
@@ -286,7 +323,7 @@ func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) Dataset
 			return r
 		}
 		for _, v := range a.Sequence {
-			if !dataset.Compatible(d.Projection.Columns[column], v) {
+			if !dataset.Compatible(d.Columns[column], v) {
 				r.Reason = "incompatible-expectation"
 				return r
 			}
@@ -301,7 +338,7 @@ func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) Dataset
 		matches = true
 		for _, row := range rows {
 			values := []dataset.Value{}
-			for i, c := range d.Projection.Columns {
+			for i, c := range d.Columns {
 				if c.Key {
 					if row.Values[i].State != "present" {
 						r.Reason = "unusable-key"
@@ -354,7 +391,7 @@ func decideDataset(a DatasetAssertion, docs map[string]dataset.Document) Dataset
 			return r
 		}
 		if a.Operator == "sequence-equals" {
-			if d.Projection.Order != "source" || d.Acquisition.Kind == "database" {
+			if !d.Ordered {
 				r.Reason = "order-not-declared"
 				return r
 			}

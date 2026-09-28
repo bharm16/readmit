@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/connectedtest"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/fhirobserve"
 	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/testisolation"
 )
@@ -29,7 +31,18 @@ type FlowPhaseResult struct {
 	Wire            *assertion.Report       `json:"wire,omitzero"`
 	EvaluationError string                  `json:"evaluation_error,omitzero"`
 }
+
+// FlowClaim is the fixed meaning of one declared FHIR observation boundary.
+// It comes from the reviewed plan, never from observed data, and limits what
+// a verdict over that observation may be read to say.
+type FlowClaim struct {
+	Phase    string `json:"phase"`
+	Dataset  string `json:"dataset"`
+	Boundary string `json:"boundary"`
+	Meaning  string `json:"meaning"`
+}
 type FlowResult struct {
+	Qualification []FlowClaim       `json:"qualification,omitzero"`
 	RecoveryStore *RecoveryStore    `json:"recovery_store,omitzero"`
 	Previous      string            `json:"previous,omitzero"`
 	Inherited     int               `json:"inherited,omitzero"`
@@ -67,7 +80,7 @@ func ExecuteFlow(ctx context.Context, p *PreparedFlow, output string, confirmati
 	}
 	ctx, cancel := context.WithTimeout(ctx, duration(p.plan.Document().Test.Limits.DeadlineMS))
 	defer cancel()
-	w, err := artifactdir.Create(output, flowResultFamily, artifactdir.Durable)
+	w, err := artifactdir.Create(output, flowFamilyFor(p.plan), artifactdir.Durable)
 	if err != nil {
 		return FlowResult{}, err
 	}
@@ -159,11 +172,33 @@ func ExecuteFlow(ctx context.Context, p *PreparedFlow, output string, confirmati
 
 	return finish()
 }
+
+// flowFamilyFor seals a v5 flow under its own result version.
+func flowFamilyFor(plan *connectedtest.FlowPlan) artifactdir.Family {
+	f := flowResultFamily
+	f.Seal = artifactdir.DirectoryHash(flowSchemaFor(plan))
+	return f
+}
+func flowSchemaFor(plan *connectedtest.FlowPlan) string {
+	if plan.Document().Schema == connectedtest.FHIRFlowPlanSchema {
+		return FlowSchemaV4
+	}
+	return FlowSchema
+}
 func initialFlow(plan *connectedtest.FlowPlan, instance string, at time.Time) FlowResult {
 	d := plan.Document().Test
-	r := FlowResult{Schema: FlowSchema, Plan: plan.Identity(), Instance: instance, Boundary: d.Boundary, Engine: engine.Version(), State: "incomplete", Verdict: assertion.VerdictUndecided, StartedAt: at, Setup: "not-started", Cleanup: "not-started", Phases: []FlowPhaseResult{}}
+	r := FlowResult{Schema: flowSchemaFor(plan), Plan: plan.Identity(), Instance: instance, Boundary: d.Boundary, Engine: engine.Version(), State: "incomplete", Verdict: assertion.VerdictUndecided, StartedAt: at, Setup: "not-started", Cleanup: "not-started", Phases: []FlowPhaseResult{}}
 	for _, phase := range d.Phases {
 		r.Phases = append(r.Phases, unexecutedPhase(plan, phase, "not-attempted"))
+		for _, ds := range phase.Datasets {
+			if ds.Kind != "fhir-resources" {
+				continue
+			}
+			o, _, _, err := plan.Phase(phase.ID).ObservationURL(ds.ID)
+			if err == nil {
+				r.Qualification = append(r.Qualification, FlowClaim{Phase: phase.ID, Dataset: ds.ID, Boundary: o.Boundary, Meaning: fhirobserve.Meaning(o.Boundary)})
+			}
+		}
 	}
 	return r
 }
@@ -183,8 +218,19 @@ func unexecutedPhase(plan *connectedtest.FlowPlan, p connectedtest.FlowPhase, st
 			r.Checks = append(r.Checks, FlowCheck{ID: "wire:" + c.ID, Outcome: outcome})
 		}
 	}
+	for _, c := range p.Responses {
+		r.Checks = append(r.Checks, FlowCheck{ID: "response:" + c.ID, Outcome: outcome})
+	}
+	for _, c := range p.Validations {
+		r.Checks = append(r.Checks, FlowCheck{ID: "validation:" + c.ID, Outcome: outcome})
+	}
+	steps := plan.Document().Test.Steps
 	for _, id := range p.Steps {
-		r.Steps = append(r.Steps, connectedtest.Attempt{Step: id, Kind: "v2-send", Outcome: state})
+		kind := "v2-send"
+		if i := slices.IndexFunc(steps, func(s connectedtest.Step) bool { return s.ID == id }); i >= 0 && steps[i].Interaction != nil {
+			kind = "fhir-interaction"
+		}
+		r.Steps = append(r.Steps, connectedtest.Attempt{Step: id, Kind: kind, Outcome: state})
 	}
 	return r
 }
@@ -268,6 +314,7 @@ func canonicalFlow(v any) []byte { b, _ := json.Marshal(v, json.Deterministic(tr
 func flowDigest(v any) string    { return networkaction.Digest(canonicalFlow(v)) }
 
 func executeFlowPhases(ctx context.Context, p *PreparedFlow, w *artifactdir.Writer, r *FlowResult, start int, check func(context.Context) error, accept func(connectedtest.FlowPhase, FlowPhaseResult) error, observer func(FlowPhaseResult)) error {
+	bound := map[string]string{}
 	for i, phase := range p.plan.Document().Test.Phases {
 		if i < start {
 			continue
@@ -283,6 +330,16 @@ func executeFlowPhases(ctx context.Context, p *PreparedFlow, w *artifactdir.Writ
 		intent := flowIntent{Phase: phase.ID, Plan: p.plan.Phase(phase.ID).Identity(), At: time.Now().UTC()}
 		if put(w, "intents/"+phase.ID+".json", intent) != nil || w.Sync() != nil {
 			return invalid
+		}
+		if p.fhir != nil {
+			stop, err := executeFlowFHIRPhase(ctx, p, w, r, i, phase, bound, accept, observer)
+			if err != nil {
+				return err
+			}
+			if stop {
+				break
+			}
+			continue
 		}
 		result, runErr := Execute(ctx, p.phases[phase.ID], p.instance, filepath.Join(w.Path(), "phases", phase.ID))
 		if runErr != nil {
@@ -319,4 +376,44 @@ func executeFlowPhases(ctx context.Context, p *PreparedFlow, w *artifactdir.Writ
 		}
 	}
 	return nil
+}
+
+// executeFlowFHIRPhase runs and verifies one v5 phase, carrying response
+// values only from the verified retained phase into later phases.
+func executeFlowFHIRPhase(ctx context.Context, p *PreparedFlow, w *artifactdir.Writer, r *FlowResult, i int, phase connectedtest.FlowPhase, bound map[string]string, accept func(connectedtest.FlowPhase, FlowPhaseResult) error, observer func(FlowPhaseResult)) (bool, error) {
+	dir := filepath.Join(w.Path(), "phases", phase.ID)
+	run, runErr := executeFHIRPhase(ctx, p, phase, bound, dir)
+	nested, err := artifactdir.Read(dir, fhirPhaseFamily.Layout)
+	if err != nil {
+		return true, err
+	}
+	if runErr != nil {
+		partial, e := interruptedFHIRPhase(p.plan, phase, nested)
+		if e != nil {
+			return true, e
+		}
+		r.Phases[i] = partial
+		return true, nil
+	}
+	evaluated, verified, _, err := openFHIRPhase(context.WithoutCancel(ctx), p.plan, phase, dir, nested, bound)
+	if err != nil {
+		r.Phases[i].State = "uncertain"
+		return true, nil
+	}
+	r.Phases[i] = evaluated
+	for k, v := range verified.Bound {
+		bound[k] = v
+	}
+	if accept != nil && accept(phase, evaluated) != nil {
+		return true, nil
+	}
+	if put(w, "phase-"+phase.ID+".json", evaluated) != nil || w.Sync() != nil {
+		return true, invalid
+	}
+	if observer != nil {
+		var detached FlowPhaseResult
+		_ = json.Unmarshal(canonicalFlow(evaluated), &detached)
+		observer(detached)
+	}
+	return run.State == "uncertain" || run.State == "cancelled", nil
 }

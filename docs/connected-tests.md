@@ -25,7 +25,8 @@ independently authored assertion-set revision and operator/profile pins.
 seed/base time. v2 assignments use canonical selectors and the shared rewrite
 API; original bytes stay retained separately. Intentional duplicate values
 are preserved. FHIR request templates pin R4 4.0.1 and a relative resource URL;
-this release's connected adapter does not send them.
+the v1–v4 connected adapters never send them. Reviewed FHIR interactions run only
+in v5 lifecycles ([connected FHIR lifecycle tests](connected-fhir.md)).
 
 To create an explicit new revision from a named nonproduction legacy ACK test:
 

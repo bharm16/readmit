@@ -37,6 +37,7 @@ type PreparedFlow struct {
 	plan                           *connectedtest.FlowPlan
 	phases                         map[string]*Prepared
 	isolation                      *testisolation.Prepared
+	fhir                           *fhirFlow
 	selection                      IsolationSelection
 	instance, planPath, configPath string
 	raw                            []byte
@@ -57,6 +58,9 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 	if err != nil {
 		return nil, err
 	}
+	if plan.Document().Schema == connectedtest.FHIRFlowPlanSchema {
+		return prepareFHIRFlow(plan, planPath, configPath, instance, raw)
+	}
 	var c FlowConfig
 	if json.Unmarshal(raw, &c, json.RejectUnknownMembers(true)) != nil || c.Schema != FlowConfigSchema || len(c.Phases) != len(plan.Document().Test.Phases) {
 		return nil, invalid
@@ -71,23 +75,8 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 		}
 		return artifactpath.JoinReference(root, s)
 	}
-	selection := c.Isolation
-	selection.Registry = anchor(selection.Registry)
-	selection.Policy = anchor(selection.Policy)
-	selection.Read.Path = anchor(selection.Read.Path)
-	selection.Setup.Path = anchor(selection.Setup.Path)
-	selection.Cleanup.Path = anchor(selection.Cleanup.Path)
-	if selection.TransitionRead != nil {
-		v := *selection.TransitionRead
-		v.Path = anchor(v.Path)
-		selection.TransitionRead = &v
-	}
-	if selection.TransitionCleanup != nil {
-		v := *selection.TransitionCleanup
-		v.Path = anchor(v.Path)
-		selection.TransitionCleanup = &v
-	}
-	isolation, err := testisolation.Prepare(plan.Dependency(plan.Document().Test.Isolation), selection.Registry, selection.Policy, testisolation.Options{ParentPlan: plan.Identity(), Instance: instance, Seed: c.Seed})
+	selection := anchorIsolation(c.Isolation, anchor)
+	isolation, err := prepareFlowIsolation(plan, selection, instance, c.Seed)
 	if err != nil {
 		return nil, err
 	}
@@ -99,17 +88,8 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 		}
 		p.store = &store
 	}
-	policy := flowTransitionPolicy(plan)
-	if len(policy.Phases) > 0 {
-		if selection.TransitionRead == nil || selection.TransitionCleanup == nil {
-			return nil, invalid
-		}
-		p.transitions, err = testisolation.PrepareTransitions(isolation, policy)
-		if err != nil {
-			return nil, err
-		}
-	} else if selection.TransitionRead != nil || selection.TransitionCleanup != nil {
-		return nil, invalid
+	if err = p.prepareTransitions(); err != nil {
+		return nil, err
 	}
 	for _, phase := range plan.Document().Test.Phases {
 		config, ok := c.Phases[phase.ID]
@@ -140,8 +120,49 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 	}
 	return p, nil
 }
+func anchorIsolation(selection IsolationSelection, anchor func(string) string) IsolationSelection {
+	selection.Registry = anchor(selection.Registry)
+	selection.Policy = anchor(selection.Policy)
+	selection.Read.Path = anchor(selection.Read.Path)
+	selection.Setup.Path = anchor(selection.Setup.Path)
+	selection.Cleanup.Path = anchor(selection.Cleanup.Path)
+	if selection.TransitionRead != nil {
+		v := *selection.TransitionRead
+		v.Path = anchor(v.Path)
+		selection.TransitionRead = &v
+	}
+	if selection.TransitionCleanup != nil {
+		v := *selection.TransitionCleanup
+		v.Path = anchor(v.Path)
+		selection.TransitionCleanup = &v
+	}
+	return selection
+}
+func prepareFlowIsolation(plan *connectedtest.FlowPlan, selection IsolationSelection, instance string, seed uint64) (*testisolation.Prepared, error) {
+	return testisolation.Prepare(plan.Dependency(plan.Document().Test.Isolation), selection.Registry, selection.Policy, testisolation.Options{ParentPlan: plan.Identity(), Instance: instance, Seed: seed})
+}
+
+// prepareTransitions binds declared successor states to their own reviews.
+func (p *PreparedFlow) prepareTransitions() error {
+	policy := flowTransitionPolicy(p.plan)
+	if len(policy.Phases) == 0 {
+		if p.selection.TransitionRead != nil || p.selection.TransitionCleanup != nil {
+			return invalid
+		}
+		return nil
+	}
+	if p.selection.TransitionRead == nil || p.selection.TransitionCleanup == nil {
+		return invalid
+	}
+	var err error
+	p.transitions, err = testisolation.PrepareTransitions(p.isolation, policy)
+	return err
+}
 func (p *PreparedFlow) Bindings() map[string]networkaction.Binding {
 	out := map[string]networkaction.Binding{}
+	if p.fhir != nil {
+		out = p.fhir.bindings(p.store)
+	}
 	for id, phase := range p.phases {
 		for role, b := range phase.Bindings() {
 			out[id+":"+role] = scopeStore(b, p.store)
@@ -195,6 +216,18 @@ func (p *PreparedFlow) unchanged() error {
 		for i, s := range phase.sources {
 			if s.source.Identity() != fresh.phases[id].sources[i].source.Identity() {
 				return invalid
+			}
+		}
+	}
+	if (p.fhir == nil) != (fresh.fhir == nil) {
+		return invalid
+	}
+	if p.fhir != nil {
+		for id, phase := range p.fhir.phases {
+			for i, s := range phase.sources {
+				if s.source.Identity() != fresh.fhir.phases[id].sources[i].source.Identity() {
+					return invalid
+				}
 			}
 		}
 	}

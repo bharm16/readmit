@@ -87,3 +87,54 @@ func TestFlowPlanRefusesUnsafeCompositionBeforeEffects(t *testing.T) {
 		})
 	}
 }
+
+// FHIR members exist only in v5 flows and their derived v2 phase plans; a
+// frozen schema carrying them is refused rather than reinterpreted.
+func TestFrozenConnectedSchemasRefuseFHIRMembers(t *testing.T) {
+	v3, f := intervalDefinition(t)
+	server := []connectedtest.FHIRServer{{ID: "lab", Base: "https://lab.test/fhir"}}
+	for name, change := range map[string]func(*connectedtest.Test){
+		"v3 servers":           func(d *connectedtest.Test) { d.Servers = server },
+		"v3 empty servers":     func(d *connectedtest.Test) { d.Servers = []connectedtest.FHIRServer{} },
+		"v3 empty validations": func(d *connectedtest.Test) { d.Validations = []connectedtest.ValidationCheck{} },
+		"v3 response checks": func(d *connectedtest.Test) {
+			d.Responses = []connectedtest.ResponseCheck{{ID: "ok", Step: d.Steps[0].ID, Outcome: "succeeded"}}
+		},
+		"v3 response variable": func(d *connectedtest.Test) {
+			d.Variables = append(d.Variables, connectedtest.Variable{ID: "server-id", Kind: "response"})
+		},
+		"v3 interaction": func(d *connectedtest.Test) {
+			d.Steps[0].Interaction = &connectedtest.FHIRInteraction{Server: "lab", Method: "GET", Path: "Patient"}
+		},
+		"standalone v2 phase schema": func(d *connectedtest.Test) { d.Schema = connectedtest.PhaseTestSchemaV2 },
+	} {
+		d := v3
+		d.Steps = append([]connectedtest.Step(nil), v3.Steps...)
+		d.Variables = append([]connectedtest.Variable(nil), v3.Variables...)
+		change(&d)
+		raw, _ := json.Marshal(d)
+		if _, err := connectedtest.Compile(raw, f, connectedtest.Generation{BaseTime: "2026-01-01T00:00:00Z"}); err == nil {
+			t.Error(name, "accepted")
+		}
+	}
+	// A v1 declaration of a FHIR resource dataset keeps compiling exactly as it
+	// did; only a v2 phase plan reads it as an executable FHIR observation.
+	raw, files := example(t)
+	var legacy connectedtest.Test
+	if err := json.Unmarshal(raw, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Datasets = append(legacy.Datasets, connectedtest.Dataset{ID: "resources", Kind: "fhir-resources", Phase: "after", Source: "declared-fhir", Completion: connectedtest.Completion{Kind: "bounded-horizon", HorizonMS: 1000, MaxRecords: 10, MaxBytes: 65536}})
+	raw, _ = json.Marshal(legacy)
+	if _, err := connectedtest.Compile(raw, files, connectedtest.Generation{BaseTime: "2026-01-01T00:00:00Z"}); err != nil {
+		t.Error("a v1 FHIR resource dataset declaration no longer compiles", err)
+	}
+	for _, servers := range [][]connectedtest.FHIRServer{server, {}} {
+		flow, files := flowDefinition(t)
+		flow.Servers = servers
+		raw, _ := json.Marshal(flow)
+		if _, err := connectedtest.CompileFlow(raw, files, connectedtest.Generation{BaseTime: "2026-01-01T00:00:00Z"}); err == nil {
+			t.Error("a v4 flow accepted FHIR servers", len(servers))
+		}
+	}
+}

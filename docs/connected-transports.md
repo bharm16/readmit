@@ -87,7 +87,8 @@ Execution retains its exact configuration, operation decision and durable intent
 before the one request. A failed response after a possible write is uncertain;
 no redirect, reconnect or write retry occurs. SMART response bodies are never
 retained or serialized; protocol adapters explicitly expose their in-memory body.
-Protocol semantics and SMART signing remain with IG09–IG13.
+Protocol semantics and SMART signing live in the FHIR packages; v5 connected
+lifecycles execute them ([connected FHIR lifecycle tests](connected-fhir.md)).
 
 The scoped capture action admits its bind and purpose-bound TLS key before
 starting the existing collector. Each accept/read/write rechecks authority.
