@@ -71,4 +71,64 @@ DATATYPES_STRUCTS = {'CX': (('CX_1', DATATYPES['CX_1'], (1, 1), 'CMP'), ('CX_2',
         first = extract.pack("nhapi", "2.5.1", [], [{"name": "OWNED", "components": []}])
         second = extract.pack("nhapi", "2.5.1", [], [{"name": "OTHER", "components": []}])
         self.assertNotEqual(first["metadata"]["provenance"]["extraction"]["content_digest"], second["metadata"]["provenance"]["extraction"]["content_digest"])
-        self.assertEqual(first["schema"], "readmit-profile-pack/v3")
+        self.assertEqual(first["schema"], "readmit-profile-pack/v4")
+
+
+class ChoiceSupplementTests(unittest.TestCase):
+    ROOT = "src/NHapi.Model.V251/"
+    GROUPS = """
+GROUPS = {
+    'ORM_O01_KIND': ('choice', (['OBR', SEGMENTS['OBR'], (1, 1), 'SEG'], ['RQD', SEGMENTS['RQD'], (1, 1), 'SEG'],)),
+    'ORM_O01_ORDER_DETAIL': ('sequence', (['ORM_O01_KIND', None, (1, 1), 'GRP'], ['NTE', SEGMENTS['NTE'], (0, -1), 'SEG'],)),
+    'ORR_O02_KIND': ('choice', (['OBR', SEGMENTS['OBR'], (1, 1), 'SEG'], ['RQD', SEGMENTS['RQD'], (1, 1), 'SEG'],)),
+    'ORR_O02_ORDER': ('sequence', (['ORR_O02_KIND', None, (1, 1), 'GRP'],)),
+}
+"""
+
+    def nhapi_files(self, detail):
+        field = 'this.add(typeof(ST), false, 1, 20, new System.Object[]{message}, "Owned");'
+        files = {self.ROOT + "Message/ORM_O01.cs": "this.add(typeof(MSH), true, false);\nthis.add(typeof(ORM_O01_ORDER_DETAIL), false, false);",
+                 self.ROOT + "Group/ORM_O01_ORDER_DETAIL.cs": detail}
+        for segment in ("MSH", "OBR", "RQD", "NTE"):
+            files[self.ROOT + "Segment/" + segment + ".cs"] = field
+        return files
+
+    def choices(self):
+        return extract.hl7apy_choices({"hl7apy/v2_5_1/groups.py": self.GROUPS}, "v2_5_1")
+
+    def test_only_extracted_families_are_read(self):
+        self.assertEqual(list(self.choices()), ["ORM_O01_ORDER_DETAIL"])
+
+    def test_flattened_alternatives_become_one_version_matched_choice(self):
+        files = self.nhapi_files("this.add(typeof(OBR), true, false);\nthis.add(typeof(RQD), true, false);\nthis.add(typeof(NTE), false, true);")
+        detail = extract.nhapi(files, "2.5.1", "V251", self.choices())[0]["sequence"][1]
+        self.assertEqual(detail["children"][0], {"name": "ORM_O01_KIND-0", "min": 1, "max": "1", "choice": True, "children": [
+            {"name": "OBR-0", "min": 1, "max": "1", "segment": "OBR"}, {"name": "RQD-1", "min": 1, "max": "1", "segment": "RQD"}]})
+        self.assertEqual(detail["children"][1]["name"], "NTE-2")
+
+    def test_disagreement_refuses_instead_of_guessing(self):
+        for detail in ("this.add(typeof(RQD), true, false);\nthis.add(typeof(OBR), true, false);\nthis.add(typeof(NTE), false, true);",
+                       "this.add(typeof(OBR), true, false);\nthis.add(typeof(RQD), false, false);\nthis.add(typeof(NTE), false, true);",
+                       "this.add(typeof(OBR), true, false);\nthis.add(typeof(RQD), true, false);\nthis.add(typeof(NTE), false, false);",
+                       "this.add(typeof(OBR), true, false);\nthis.add(typeof(RQD), true, false);"):
+            with self.assertRaisesRegex(ValueError, "differ"):
+                extract.nhapi(self.nhapi_files(detail), "2.5.1", "V251", self.choices())
+
+    def test_a_choice_without_an_nhapi_group_is_not_dropped(self):
+        files = self.nhapi_files("this.add(typeof(OBR), true, false);\nthis.add(typeof(RQD), true, false);\nthis.add(typeof(NTE), false, true);")
+        del files[self.ROOT + "Message/ORM_O01.cs"]
+        with self.assertRaisesRegex(ValueError, "no nHapi counterpart"):
+            extract.nhapi(files, "2.5.1", "V251", self.choices())
+
+    def test_unsupported_choice_shapes_are_refused(self):
+        for groups in (self.GROUPS.replace("['RQD', SEGMENTS['RQD'], (1, 1), 'SEG'],)),\n    'ORM_O01_ORDER_DETAIL'", "['RQD', SEGMENTS['RQD'], (0, 1), 'SEG'],)),\n    'ORM_O01_ORDER_DETAIL'"),
+                       self.GROUPS.replace("['NTE', SEGMENTS['NTE'], (0, -1), 'SEG'],)),", "['ORM_O01_KIND', None, (0, 1), 'GRP'],)),")):
+            with self.assertRaisesRegex(ValueError, "unsupported upstream choice"):
+                extract.hl7apy_choices({"hl7apy/v2_5_1/groups.py": groups}, "v2_5_1")
+
+    def test_file_notice_is_recorded_only_when_the_file_carries_one(self):
+        self.assertEqual(extract.preamble("from x import y\nGROUPS = {}\n"), "")
+        mit = "# Copyright (c) owned\n#\n# Permission is hereby granted, free of charge\n\n\nGROUPS = {}\n"
+        self.assertEqual(extract.preamble(mit), "# Copyright (c) owned\n#\n# Permission is hereby granted, free of charge\n\n\n")
+        with self.assertRaisesRegex(ValueError, "unrecognized file notice"):
+            extract.preamble("# All rights reserved\nGROUPS = {}\n")

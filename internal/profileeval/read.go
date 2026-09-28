@@ -64,7 +64,7 @@ func decodeProfile(raw []byte) (ProfileV2, error) {
 		return p, errors.New("unsupported local profile version")
 	}
 	count := 0
-	if err := validateNodes(p.Structure, 0, &count); err != nil {
+	if err := validateNodes(p.Structure, 0, &count, false); err != nil {
 		return p, err
 	}
 	if len(p.Workflows) > 32 {
@@ -123,7 +123,7 @@ func decodePack(raw []byte) (PackV2, error) {
 			return p, err
 		}
 		p = PackV2{Schema: profilepack.Schema, Metadata: d}
-	case PackSchemaV3:
+	case PackSchemaV3, PackSchemaV4:
 		var v PackV3
 		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes) != nil {
 			return p, invalid
@@ -163,7 +163,7 @@ func decodePack(raw []byte) (PackV2, error) {
 			return p, invalid
 		}
 		seen[k] = true
-		if err := validateNodes(m.Sequence, 0, &count); err != nil {
+		if err := validateNodes(m.Sequence, 0, &count, p.Schema == PackSchemaV4); err != nil {
 			return p, err
 		}
 		ss := map[string]bool{}
@@ -183,7 +183,7 @@ func decodePack(raw []byte) (PackV2, error) {
 	}
 	return p, nil
 }
-func validateNodes(nodes []Node, depth int, count *int) error {
+func validateNodes(nodes []Node, depth int, count *int, choice bool) error {
 	if depth > 16 {
 		return invalid
 	}
@@ -191,6 +191,13 @@ func validateNodes(nodes []Node, depth int, count *int) error {
 		*count++
 		if *count > 20000 || !token.MatchString(n.Name) || n.Min < 0 || n.Min > 9999 || (n.Segment == "") == (len(n.Children) == 0) {
 			return invalid
+		}
+		if n.Choice {
+			// An alternative that matches nothing would hide optionality the
+			// choice's own cardinality must state.
+			if !choice || len(n.Children) < 2 || slices.ContainsFunc(n.Children, func(c Node) bool { return c.Min < 1 }) {
+				return invalid
+			}
 		}
 		if n.Max != "*" {
 			max, err := strconv.Atoi(n.Max)
@@ -201,7 +208,7 @@ func validateNodes(nodes []Node, depth int, count *int) error {
 		if n.Segment != "" && !segment.MatchString(n.Segment) {
 			return invalid
 		}
-		if err := validateNodes(n.Children, depth+1, count); err != nil {
+		if err := validateNodes(n.Children, depth+1, count, choice); err != nil {
 			return err
 		}
 	}

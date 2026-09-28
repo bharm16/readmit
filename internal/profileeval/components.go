@@ -12,6 +12,8 @@ import (
 const ProfileSchemaV3 = "readmit-local-profile/v3"
 const PackSchemaV3 = "readmit-profile-pack/v3"
 const ComponentOperatorVersion = "readmit-profile-evaluator/v2"
+const PackSchemaV4 = "readmit-profile-pack/v4"
+const ChoiceOperatorVersion = "readmit-profile-evaluator/v3"
 
 // Component metadata is explicitly versioned. It is never inferred from a type
 // name in a historical pack. Codes are a finite declared local vocabulary.
@@ -42,6 +44,10 @@ type PackV3 struct {
 	Messages  []MessageRule    `json:"messages"`
 	Datatypes []DatatypeRule   `json:"datatypes"`
 }
+
+// components reports whether the pinned documents selected an operator that
+// reads composite metadata; evaluator v3 keeps v2's component semantics.
+func (e *evaluator) components() bool { return e.report.Operator != OperatorVersion }
 
 func validateDatatypes(types []DatatypeRule) error {
 	if len(types) > 256 {
@@ -91,7 +97,7 @@ func (e *evaluator) evaluateDatatype(kind, selector, origin string, r hl7.Readin
 	}
 	if declaration == nil {
 		outcome := datatype(kind, string(r.Decoded))
-		if outcome != "unsupported" && e.report.Operator == ComponentOperatorVersion && !r.Literal && depth < 2 {
+		if outcome != "unsupported" && e.components() && !r.Literal && depth < 2 {
 			delimiters := e.doc.Messages[0].Delimiters
 			separators := []byte{delimiters.Subcomponent}
 			if depth == 0 {

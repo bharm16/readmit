@@ -9,11 +9,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
+      "pack_sha256": "fff29041d769717050afb131d0b2aa79f79f0b9e29a4c522ef00ae373991d7b4",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ADT",
@@ -38,11 +38,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
+      "pack_sha256": "fff29041d769717050afb131d0b2aa79f79f0b9e29a4c522ef00ae373991d7b4",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/SIU",
@@ -67,11 +67,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
+      "pack_sha256": "fff29041d769717050afb131d0b2aa79f79f0b9e29a4c522ef00ae373991d7b4",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORM",
@@ -86,6 +86,43 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-negative.hl7",
           "sha256": "04578520fd3c39e4f979eb29e23fae7b5d16fbf35948d3ab0122c1b13552de2b"
         }
+      },
+      "upstream_order_detail_test": "TestPinnedOrderDetailChoice/2.3.1",
+      "upstream_order_detail_support": "tested-version-matched-choice-only",
+      "upstream_order_detail_source": "hl7apy:hl7apy/v2_3_1/groups.py",
+      "upstream_order_detail_fixtures": {
+        "OBR": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-OBR.hl7",
+          "sha256": "a7e4b72b0330ccfb91ce444efd72d470ba7bfcc13b38893afcdf5c9a85c5c727"
+        },
+        "RQD": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-RQD.hl7",
+          "sha256": "dd615dacb0ef4ed60c6a1e7e56bf070097a0e6ec852c6ab919879aa82b9dd854"
+        },
+        "RQ1": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-RQ1.hl7",
+          "sha256": "43dfe434ad591f3fad1d58744216b99725bb3e1952d2948e6fea9ace6be85272"
+        },
+        "RXO": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-RXO.hl7",
+          "sha256": "96932e1e89d393c4955e7e02d1c7e89a810697e4bd0732a0398135ac66c560d5"
+        },
+        "ODS": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-ODS.hl7",
+          "sha256": "cb42c34c50b8100306e47581738db1b14a2b1333c5a3d7b652a735b0bf04d3bd"
+        },
+        "ODT": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-ODT.hl7",
+          "sha256": "800b9e8d8540e625004fae80bb3a16f3ad9254ea4b9d2059a143029711211ca8"
+        },
+        "mixed": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-mixed.hl7",
+          "sha256": "e1ca6b43f3b4ddeafcc5e6425a0605d462ff39183f7b12d7ff9da527ca6ca7ec"
+        },
+        "missing": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.3.1/ORM-detail-missing.hl7",
+          "sha256": "2c5c25f7cd8157f0174db1da3e88959bf223157700c7c1c628b155cafe9980f8"
+        }
       }
     },
     {
@@ -96,11 +133,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "997d6c201897918ff7028b0b511531743ca7d301e52b6d0caf982083b09c0811",
+      "pack_sha256": "fff29041d769717050afb131d0b2aa79f79f0b9e29a4c522ef00ae373991d7b4",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.3.1/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORU",
@@ -125,11 +162,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
+      "pack_sha256": "e888231e736d9c4064d3572192aa1e7f41bf84178fd383e09fce0fd3910f4931",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ADT",
@@ -154,11 +191,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
+      "pack_sha256": "e888231e736d9c4064d3572192aa1e7f41bf84178fd383e09fce0fd3910f4931",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/SIU",
@@ -183,11 +220,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
+      "pack_sha256": "e888231e736d9c4064d3572192aa1e7f41bf84178fd383e09fce0fd3910f4931",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORM",
@@ -202,6 +239,43 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-negative.hl7",
           "sha256": "816406fd84d494bd2800931bda293487885bc87efc2fbdd2c02f75d4f786003d"
         }
+      },
+      "upstream_order_detail_test": "TestPinnedOrderDetailChoice/2.4",
+      "upstream_order_detail_support": "tested-version-matched-choice-only",
+      "upstream_order_detail_source": "hl7apy:hl7apy/v2_4/groups.py",
+      "upstream_order_detail_fixtures": {
+        "OBR": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-OBR.hl7",
+          "sha256": "2c478d1007066a928380aaba19f019ef71007d85336ba902486ad74021f310d2"
+        },
+        "RQD": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-RQD.hl7",
+          "sha256": "79dee21a80084db9355243fe4b663b88b24fda65ec7e364fd20d2af5ec960266"
+        },
+        "RQ1": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-RQ1.hl7",
+          "sha256": "b471f57cd169afb67c310cd1ef477ba7fbb3fd7fbc548dc61de6a224772004fe"
+        },
+        "RXO": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-RXO.hl7",
+          "sha256": "7b50df4856b914b8134fb706904f90ddf250ca444b405412a4ac6968195462aa"
+        },
+        "ODS": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-ODS.hl7",
+          "sha256": "0d7de8e9ac6b69fc55d516d1893dad11ebc39cc1e4c45948fff1b1bcc0f09f42"
+        },
+        "ODT": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-ODT.hl7",
+          "sha256": "72b28410be57490874fcf0f84fcde99df8288585b6412ac4b829609fc8aa5a32"
+        },
+        "mixed": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-mixed.hl7",
+          "sha256": "52032a104359b763ffda9f1470bd77fe718e4a5afff1801057fb82291e0868a4"
+        },
+        "missing": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.4/ORM-detail-missing.hl7",
+          "sha256": "1756dc2986e71990f8e768b05a3661236a8c10c039f73cbfd22320637c515ba1"
+        }
       }
     },
     {
@@ -212,11 +286,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "260c4db26d885fcb7f391adc0172ca2fbcee3de837420d5ad1fc3fd159834de0",
+      "pack_sha256": "e888231e736d9c4064d3572192aa1e7f41bf84178fd383e09fce0fd3910f4931",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.4/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORU",
@@ -241,11 +315,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
+      "pack_sha256": "46c408045fb9dc058ef92f347473fde009308625c81f9f373865848cf14c0159",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ADT",
@@ -270,11 +344,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
+      "pack_sha256": "46c408045fb9dc058ef92f347473fde009308625c81f9f373865848cf14c0159",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/SIU",
@@ -299,11 +373,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
+      "pack_sha256": "46c408045fb9dc058ef92f347473fde009308625c81f9f373865848cf14c0159",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORM",
@@ -318,6 +392,43 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-negative.hl7",
           "sha256": "c3ef7519ca9e68667df01d7ea0da1e23350efa00020c05d5866589c54cafc233"
         }
+      },
+      "upstream_order_detail_test": "TestPinnedOrderDetailChoice/2.5",
+      "upstream_order_detail_support": "tested-version-matched-choice-only",
+      "upstream_order_detail_source": "hl7apy:hl7apy/v2_5/groups.py",
+      "upstream_order_detail_fixtures": {
+        "OBR": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-OBR.hl7",
+          "sha256": "cac5b49b6e5bb674c8aea6e1d2a1d409ca91ed67bdc8bc1f3881b25d7e56f4e9"
+        },
+        "RQD": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-RQD.hl7",
+          "sha256": "3869ca0f3c57a70b6ea62df3c89fd18b88ee05ad75f7f0a972f2bf98bcd986e7"
+        },
+        "RQ1": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-RQ1.hl7",
+          "sha256": "9737761cdffeca92d454859784c7b3e2a410e502a22ca3b64b3ff0d60d77519e"
+        },
+        "RXO": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-RXO.hl7",
+          "sha256": "32a4c51dbe374b45eab56e2443f49ddaaae1afdd24cc9f0c64c88e175294ed13"
+        },
+        "ODS": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-ODS.hl7",
+          "sha256": "efe0d23cf20c12f3b6fbb4933c183b1cc1b3a1701935a21332dd6cd397a6fa5e"
+        },
+        "ODT": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-ODT.hl7",
+          "sha256": "27c8258c1c9ff35014a1dc75f9fe1002c369815bf464e2c9356c88ecdef462a2"
+        },
+        "mixed": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-mixed.hl7",
+          "sha256": "5f75f00c804c4f296160cd69e5f8b917d57e2f27a27b2bd7016973aaf1ff7186"
+        },
+        "missing": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5/ORM-detail-missing.hl7",
+          "sha256": "c792781bbe7bde820912f6d07504c476aa987b41508de71b984c699cea261c9a"
+        }
       }
     },
     {
@@ -328,11 +439,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d753ee5796c57f027c66a1610b3ae62667bd3d6ece93fad515e92f6929a594fa",
+      "pack_sha256": "46c408045fb9dc058ef92f347473fde009308625c81f9f373865848cf14c0159",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORU",
@@ -357,11 +468,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
+      "pack_sha256": "6c08022e1c9f556e96fcf9705d0ac289dc19376dfa02183c225f50fddaaa4c33",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ADT",
@@ -386,11 +497,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
+      "pack_sha256": "6c08022e1c9f556e96fcf9705d0ac289dc19376dfa02183c225f50fddaaa4c33",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/SIU",
@@ -415,11 +526,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
+      "pack_sha256": "6c08022e1c9f556e96fcf9705d0ac289dc19376dfa02183c225f50fddaaa4c33",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORM",
@@ -434,6 +545,43 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-negative.hl7",
           "sha256": "1a142aa8991b84c0c180a6782ee3f8e759a834efe2213c23ab83e47c59991d4d"
         }
+      },
+      "upstream_order_detail_test": "TestPinnedOrderDetailChoice/2.5.1",
+      "upstream_order_detail_support": "tested-version-matched-choice-only",
+      "upstream_order_detail_source": "hl7apy:hl7apy/v2_5_1/groups.py",
+      "upstream_order_detail_fixtures": {
+        "OBR": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-OBR.hl7",
+          "sha256": "9cb4688bc1fbc042d6773d78c5926b1ddd497cf70616f7752cf8626cc12d02a2"
+        },
+        "RQD": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-RQD.hl7",
+          "sha256": "6cdd330ff0126d235e9bbc8beec3c2e7ebfbc098f776a2064ea9924844c34af8"
+        },
+        "RQ1": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-RQ1.hl7",
+          "sha256": "d7d35efe32e8c8d48ec045f64ba204f01c1f5e8d480b1638c3286d5697435ed9"
+        },
+        "RXO": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-RXO.hl7",
+          "sha256": "a72bf1fd84f76e89aa6b4c81c970faca43ea7a3eb8c560c7924301a3629750db"
+        },
+        "ODS": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-ODS.hl7",
+          "sha256": "5182b81c523e8e86021f4556955c93ecbe5940f67f27ec1550de8c5fd7a53ec8"
+        },
+        "ODT": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-ODT.hl7",
+          "sha256": "59def48f359dc01bcab7658369e6a415cbd8b4952e9e658d7b60321c6eb09ec3"
+        },
+        "mixed": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-mixed.hl7",
+          "sha256": "41ab67854fa0e5fb2371abd16dcde4f72bb2550f46296d9a4a3c466e71ae558e"
+        },
+        "missing": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.5.1/ORM-detail-missing.hl7",
+          "sha256": "ef865747039a2dfc11466b4b4f252ce2c76ff0566cece587a18b4b2e21dd08f4"
+        }
       }
     },
     {
@@ -444,11 +592,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "6095708c1a364c485e27c3f9f8fc8e92a5ae428681011b3edc6914467146c57c",
+      "pack_sha256": "6c08022e1c9f556e96fcf9705d0ac289dc19376dfa02183c225f50fddaaa4c33",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.5.1/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORU",
@@ -473,11 +621,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
+      "pack_sha256": "eb01f5e8f0968767e2d9233f4e85d41e0c79d007b4f81ba2a2eda8bfc9aa6bdd",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ADT",
@@ -502,11 +650,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
+      "pack_sha256": "eb01f5e8f0968767e2d9233f4e85d41e0c79d007b4f81ba2a2eda8bfc9aa6bdd",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/SIU",
@@ -531,11 +679,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
+      "pack_sha256": "eb01f5e8f0968767e2d9233f4e85d41e0c79d007b4f81ba2a2eda8bfc9aa6bdd",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORM",
@@ -550,6 +698,43 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-negative.hl7",
           "sha256": "b41a13ac9e328eebf586246b2912cf2572c3480a1ad3df0f80bd3447c3cc1c76"
         }
+      },
+      "upstream_order_detail_test": "TestPinnedOrderDetailChoice/2.6",
+      "upstream_order_detail_support": "tested-version-matched-choice-only",
+      "upstream_order_detail_source": "hl7apy:hl7apy/v2_6/groups.py",
+      "upstream_order_detail_fixtures": {
+        "OBR": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-OBR.hl7",
+          "sha256": "07419773e8bf4bc00831991e1c3490ec2c10219f76f4d3356d0af9a223428c89"
+        },
+        "RQD": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-RQD.hl7",
+          "sha256": "0d649fa5908779b94d6bd3c8ed65b48ff5bea566b879bc0b52907b9703300bd8"
+        },
+        "RQ1": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-RQ1.hl7",
+          "sha256": "b68439950fc8d9bda4aec3bdb3387a795f799fc8e2573a4d90d728b7dd659d1f"
+        },
+        "RXO": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-RXO.hl7",
+          "sha256": "05ebbc12568ea8e746e607c10ec1ba5af99c834aa8d6216d6df6d0d57cda8e69"
+        },
+        "ODS": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-ODS.hl7",
+          "sha256": "b897c75720792b9cacedc4d89660ecb45501b610f4a28b09e98066b5bf32dde2"
+        },
+        "ODT": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-ODT.hl7",
+          "sha256": "13f8a8e97d303fce8d1932f39a6a18d988f6cf64bf78a9d25fd2e714c8501fd2"
+        },
+        "mixed": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-mixed.hl7",
+          "sha256": "dbc758997cb500562d0e069f2fe650dbf635dfb891b3fca6f579d7e3e503cbfe"
+        },
+        "missing": {
+          "path": "testdata/profile-evaluation/upstream-grouping/2.6/ORM-detail-missing.hl7",
+          "sha256": "fe96ee40a263678a6f9d3c00c7dd9c20323d2d817c9ec37d3876e518f851b2b4"
+        }
       }
     },
     {
@@ -560,11 +745,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "d8b912133eef1e28ab86afac10b1c9519da3579aa77d1e3cb792bbeef71b3983",
+      "pack_sha256": "eb01f5e8f0968767e2d9233f4e85d41e0c79d007b4f81ba2a2eda8bfc9aa6bdd",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.6/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORU",
@@ -589,11 +774,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
+      "pack_sha256": "ab1ee9a36a10529f3b55b5a0066a44abc96a92c6301a446c1cd4d6841f894f39",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ADT",
@@ -618,11 +803,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
+      "pack_sha256": "ab1ee9a36a10529f3b55b5a0066a44abc96a92c6301a446c1cd4d6841f894f39",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/SIU",
@@ -647,11 +832,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
+      "pack_sha256": "ab1ee9a36a10529f3b55b5a0066a44abc96a92c6301a446c1cd4d6841f894f39",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORM",
@@ -666,7 +851,8 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.7.1/ORM-negative.hl7",
           "sha256": "38dc9abd0e9b6d95b443a6a363060c1ab8def2fe64e2b33e4513730ba2b92092"
         }
-      }
+      },
+      "upstream_order_detail_support": "schema-absent"
     },
     {
       "hl7_version": "2.7.1",
@@ -676,11 +862,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "nhapi",
-      "pack_sha256": "ce477aa5e219550cab5ece780e96497e88e0527011f0b6e2ccfeb6d685a929c5",
+      "pack_sha256": "ab1ee9a36a10529f3b55b5a0066a44abc96a92c6301a446c1cd4d6841f894f39",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.7.1/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORU",
@@ -705,11 +891,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
+      "pack_sha256": "410eac0ec5df8b576d2d4101e9d629a3a333fa07276589db5b7ee7fffc108c42",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/ADT",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ADT",
@@ -734,11 +920,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
+      "pack_sha256": "410eac0ec5df8b576d2d4101e9d629a3a333fa07276589db5b7ee7fffc108c42",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/SIU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/SIU",
@@ -763,11 +949,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
+      "pack_sha256": "410eac0ec5df8b576d2d4101e9d629a3a333fa07276589db5b7ee7fffc108c42",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/ORM",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORM",
@@ -782,7 +968,8 @@
           "path": "testdata/profile-evaluation/upstream-grouping/2.8.2/ORM-negative.hl7",
           "sha256": "e8e398d74df3c46553dcd9e9ac1ef6a96d3cf802d1c2593fbecac6482d10675a"
         }
-      }
+      },
+      "upstream_order_detail_support": "schema-absent"
     },
     {
       "hl7_version": "2.8.2",
@@ -792,11 +979,11 @@
       "upstream_structural_support": "unqualified",
       "upstream_workflow_support": "unqualified",
       "source": "hl7apy",
-      "pack_sha256": "9efbec16c536bbee4afcc8160f73c52ed4b2a35bcdced29adaa4b40750f8db3e",
+      "pack_sha256": "410eac0ec5df8b576d2d4101e9d629a3a333fa07276589db5b7ee7fffc108c42",
       "rights_review": "pending",
       "shipped": false,
-      "pack_schema": "readmit-profile-pack/v3",
-      "extraction_receipt": "docs/profile-extraction-v2-receipt.json",
+      "pack_schema": "readmit-profile-pack/v4",
+      "extraction_receipt": "docs/profile-extraction-v3-receipt.json",
       "owned_semantic_test": "TestOwnedSemanticMatrix/2.8.2/ORU",
       "owned_semantic_provenance": "docs/profile-semantic-fixtures.json",
       "upstream_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORU",

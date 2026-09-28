@@ -84,6 +84,29 @@ composite constraints, namespaces, dates, lifecycle transitions and capture
 gaps at an explicitly finite level. They do not qualify the 235 upstream
 message structures or establish universal clinical workflow semantics.
 
+## Version-matched choice groups
+
+`readmit-profile-pack/v4` is v3 plus one node form: a group with
+`"choice": true` whose repetitions each match exactly one of its children.
+A choice needs at least two alternatives and no alternative that can match
+nothing; the choice's own `min` states whether it may be absent. A v4 pack
+selects evaluator operator v3, which keeps v2's component semantics. A v1–v3
+pack or any local profile that names `choice` is refused; none gains the
+operator by being re-read.
+
+nHapi's generated constructors never declare a choice element: the
+three-argument `add` they call inserts every member with `choiceElement`
+false. So the adopted 2.3.1–2.6 ORM_O01 ORDER_DETAIL groups list OBR, RQD,
+RQ1, RXO, ODS and ODT as six required segments. That is an upstream model
+limitation, not an extraction omission. The same pinned HL7apy archive
+declares those six segments as one choice group for each of those versions,
+in nHapi's order and with the same remaining members. Extractor v3 reads
+only the operator, member order and cardinalities from that version's
+`groups.py` and replaces the flattened members with one choice node. Any
+disagreement in member identity, order or cardinality refuses extraction.
+HL7apy has no 2.7.1 metadata, and neither 2.7.1 nor 2.8.2 has an ORM_O01
+source, so nothing is borrowed for them.
+
 ## Reproduce the upstream extraction
 
 The development-only normalizer reads these adopted archives offline:
@@ -95,27 +118,31 @@ The development-only normalizer reads these adopted archives offline:
 
 ```
 python3 tools/profile_extract.py --nhapi NHAPI_ARCHIVE --hl7apy HL7APY_ARCHIVE --output NEW_REVIEW_DIRECTORY
-READMIT_PROFILE_EXTRACTION=NEW_REVIEW_DIRECTORY go test -short -tags readmit_nosync ./internal/profileeval -run TestPinnedExtractionReadback
+READMIT_PROFILE_EXTRACTION=NEW_REVIEW_DIRECTORY go test -short -tags readmit_nosync ./internal/profileeval -run TestPinned
 ```
 
 The extractor checks both archive hashes, reads C# declarations and a restricted
 literal Python syntax without importing/executing upstream code, and produces
-seven v3 packs plus exact notices and an extraction receipt. It refuses unknown
+seven v4 packs plus exact notices and an extraction receipt. It refuses unknown
 syntax instead of silently dropping it. It extracts structural and component metadata:
 no upstream prose or external code-table values. nHapi component usage is
 explicitly unavailable; table references without approved finite values remain
 unsupported. TSComponentOne is adapted to the DTM lexical operator.
 HL7apy's extracted fields supply no maximum lengths; zero records that absence.
-Neither .NET nor Python is added to the shipped Go runtime.
+The 2.3.1–2.6 ORDER_DETAIL choices come from HL7apy as described above; the
+receipt's `supplements` record each source file, hash, declaration lines and
+notice basis. Neither .NET nor Python is added to the shipped Go runtime.
 
-[The v2 extraction receipt](profile-extraction-v2-receipt.json) names 235
+[The v3 extraction receipt](profile-extraction-v3-receipt.json) names 235
 normalized message structures and exact output hashes. The outputs were read
 back through the Go reader. They remain outside source control and distribution.
 [The 28-cell matrix](profile-evaluation-matrix.json) distinguishes independently
 tested local constraints from unqualified upstream structure/workflow support.
 The local matrix tests do not certify any complete base-standard cell. The
 [exact-content rights packet](profile-redistribution-review.md) records the
-pending owner decision; the original v1 extraction receipt remains available.
+pending owner decision. The earlier v1 and
+[v2](profile-extraction-v2-receipt.json) receipts remain available; the packs
+they name are superseded by new identities (pack version 3), never rewritten.
 
 ## Published source grouping level
 
@@ -130,11 +157,13 @@ standard chapters also state that ORM was withdrawn as of v2.7; the separate
 source and applicability evidence is recorded in the
 [coverage-gap matrix](profile-coverage-gaps.json). Those cells explicitly
 produce `base-message-structure-unavailable`; no newer order message substitutes
-for it. In earlier nHapi versions the ORDER_DETAIL constructor declares all six
-order-detail segments required and supplies no choice flag. The finite ORM
-grouping qualification therefore uses ORC without that optional detail group;
-it does not claim the absent choice semantics. The source matrix names each
-fixture, its hash, selected structure, exact source pack and tested level.
+for it. The minimum ORM grouping fixtures use ORC without the optional detail
+group. `TestPinnedOrderDetailChoice` qualifies the 2.3.1–2.6 order detail at
+its choice level: each of the six alternatives alone passes, while two
+alternatives in one detail or notes without an alternative fail. It also
+asserts that the 2.7.1 and 2.8.2 packs contain no choice. The source matrix
+names each fixture, its hash, selected structure, exact source pack and tested
+level. Fields inside each alternative keep their separate gaps.
 
 ## Open completion gates for #577
 
@@ -150,7 +179,11 @@ claims. The [bounded distribution proposal](profile-redistribution-review.md)
 does not approve the proposed package or waive technical gaps.
 
 Composite metadata is now evaluated explicitly within the two wire levels.
-Upstream component usage absent from nHapi, terminology requirements beyond
+The pinned HL7apy archive cannot fill nHapi's component usage gap: it declares
+every 2.3.1–2.5.1 component (0, 1), its 2.6 (min, max) pairs cannot express
+conditional usage, and it has no 2.7.1 metadata. The same limit leaves 2.8.2's
+optional versus conditional components unqualified. The gap matrix records each
+survey. Upstream component usage absent from nHapi, terminology requirements beyond
 approved local sets, coverage outside the explicitly published source grouping and owned semantic
 levels remains unqualified. The source absence/unsupported results do not
 acquire support by selecting a nearby version or another message family.

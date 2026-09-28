@@ -76,6 +76,12 @@ func (m *matcher) node(n *Node, start int) map[int]bool {
 				if pos < len(m.segments) && m.segments[pos].ID == n.Segment {
 					ends[pos+1] = true
 				}
+			} else if n.Choice {
+				for i := range n.Children {
+					for end := range m.node(&n.Children[i], pos) {
+						ends[end] = true
+					}
+				}
 			} else {
 				ends = m.sequence(n.Children, pos)
 			}

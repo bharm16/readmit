@@ -42,3 +42,13 @@ metadata remain unsupported. No source table is fetched during evaluation.
 The owned 28-cell fixture matrix qualifies finite local interfaces only.
 Extractor v2 keeps the new upstream output outside distribution pending the
 exact-content owner review recorded in docs/profile-redistribution-review.md.
+
+## 2026-09-28: version-matched choice groups
+
+`readmit-profile-pack/v4` adds one node form, a choice whose repetitions each
+match exactly one alternative, and selects evaluator v3 with v2's component
+semantics. Earlier packs and every local profile refuse the node. Extractor v3
+takes a choice only from the same version's HL7apy group declaration, where
+nHapi's generated constructors flatten it, and refuses any disagreement between
+the two pinned sources. The new outputs are new pack identities under a new
+receipt, and remain withheld pending the exact-content review in #627.

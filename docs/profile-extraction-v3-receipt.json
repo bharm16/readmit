@@ -1,0 +1,164 @@
+{
+  "adaptations": [
+    "Group and segment additions become ordered cardinality nodes",
+    "Field metadata becomes required, repetition, datatype and length declarations",
+    "Composite positions, datatype references and code-table identifiers are extracted; code-table values and upstream prose are not copied",
+    "nHapi has no extracted component usage; usage_known false remains an unsupported requirement",
+    "nHapi's generated constructors declare no choice elements; where the same HL7apy version declares a choice group whose alternatives and remaining members agree exactly, those flattened members become one choice node, otherwise extraction is refused",
+    "TSComponentOne is normalized to DTM lexical syntax; no timezone is inferred",
+    "HL7apy supplies no extracted maximum length; zero records that absence",
+    "All source coverage remains unqualified pending independent fixtures and rights review"
+  ],
+  "extractor": "readmit-profile-extractor/v3",
+  "notices": {
+    "licenses/hl7apy.txt": {
+      "bytes": 1054,
+      "sha256": "5656ff729ec3a0de702317f3032912904d88553a9d1a2ea27d6db1529a9d4989"
+    },
+    "licenses/nhapi.txt": {
+      "bytes": 16725,
+      "sha256": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    }
+  },
+  "packs": {
+    "pack-2.3.1.json": {
+      "datatypes": 78,
+      "messages": 53,
+      "sha256": "fff29041d769717050afb131d0b2aa79f79f0b9e29a4c522ef00ae373991d7b4"
+    },
+    "pack-2.4.json": {
+      "datatypes": 80,
+      "messages": 27,
+      "sha256": "e888231e736d9c4064d3572192aa1e7f41bf84178fd383e09fce0fd3910f4931"
+    },
+    "pack-2.5.1.json": {
+      "datatypes": 78,
+      "messages": 29,
+      "sha256": "6c08022e1c9f556e96fcf9705d0ac289dc19376dfa02183c225f50fddaaa4c33"
+    },
+    "pack-2.5.json": {
+      "datatypes": 78,
+      "messages": 29,
+      "sha256": "46c408045fb9dc058ef92f347473fde009308625c81f9f373865848cf14c0159"
+    },
+    "pack-2.6.json": {
+      "datatypes": 78,
+      "messages": 29,
+      "sha256": "eb01f5e8f0968767e2d9233f4e85d41e0c79d007b4f81ba2a2eda8bfc9aa6bdd"
+    },
+    "pack-2.7.1.json": {
+      "datatypes": 72,
+      "messages": 27,
+      "sha256": "ab1ee9a36a10529f3b55b5a0066a44abc96a92c6301a446c1cd4d6841f894f39"
+    },
+    "pack-2.8.2.json": {
+      "datatypes": 71,
+      "messages": 41,
+      "sha256": "410eac0ec5df8b576d2d4101e9d629a3a333fa07276589db5b7ee7fffc108c42"
+    }
+  },
+  "rights_review": "pending",
+  "schema": "readmit-profile-extraction/v3",
+  "sources": {
+    "hl7apy": {
+      "archive_sha256": "8b496e4e94221b8472a9df81be73d98b8726c1d6b386637a6f08264fc83ddb63",
+      "commit": "9550b6eca2c580e9615d756b294dbe5ea471667c"
+    },
+    "nhapi": {
+      "archive_sha256": "165a28565b88ba1a9a26f9be893639490af074a529774f8a8da77f0905330882",
+      "commit": "2495edd1e23a85ab9146cb03947c17d45120cf1f"
+    }
+  },
+  "supplements": [
+    {
+      "artifact": "pack-2.3.1.json",
+      "bytes": 84619,
+      "declaration_lines": [
+        315,
+        334
+      ],
+      "file_notice_sha256": null,
+      "groups": [
+        "ORM_O01_ORDER_DETAIL"
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "material": "choice operator, member order and cardinality of the named groups; nHapi supplies all other content",
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "sha256": "7439e888c9d59bd841e7ad69d73554ac66b501d77953b269923d452ec9e1b85f",
+      "source_file": "hl7apy:hl7apy/v2_3_1/groups.py",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_3_1/groups.py"
+    },
+    {
+      "artifact": "pack-2.4.json",
+      "bytes": 149932,
+      "declaration_lines": [
+        629,
+        649
+      ],
+      "file_notice_sha256": null,
+      "groups": [
+        "ORM_O01_ORDER_DETAIL"
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "material": "choice operator, member order and cardinality of the named groups; nHapi supplies all other content",
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "sha256": "f8211b59f05d79b7cddfacd165c7016d8612d792e8b2f46debca2c7ee0cdf0cc",
+      "source_file": "hl7apy:hl7apy/v2_4/groups.py",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_4/groups.py"
+    },
+    {
+      "artifact": "pack-2.5.json",
+      "bytes": 201372,
+      "declaration_lines": [
+        1132,
+        1148
+      ],
+      "file_notice_sha256": null,
+      "groups": [
+        "ORM_O01_ORDER_DETAIL"
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "material": "choice operator, member order and cardinality of the named groups; nHapi supplies all other content",
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "sha256": "d2ee99eb271464f58f4f44418179e2aa1fe441d45b1854fa0cb881822285cd62",
+      "source_file": "hl7apy:hl7apy/v2_5/groups.py",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_5/groups.py"
+    },
+    {
+      "artifact": "pack-2.5.1.json",
+      "bytes": 178340,
+      "declaration_lines": [
+        1130,
+        1146
+      ],
+      "file_notice_sha256": null,
+      "groups": [
+        "ORM_O01_ORDER_DETAIL"
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "material": "choice operator, member order and cardinality of the named groups; nHapi supplies all other content",
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "sha256": "cc47e31cba9a247ad02706d63ed494821a45a15b784d364013d1364ae5c92bd0",
+      "source_file": "hl7apy:hl7apy/v2_5_1/groups.py",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_5_1/groups.py"
+    },
+    {
+      "artifact": "pack-2.6.json",
+      "bytes": 224471,
+      "declaration_lines": [
+        1439,
+        1459
+      ],
+      "file_notice_sha256": null,
+      "groups": [
+        "ORM_O01_ORDER_DETAIL"
+      ],
+      "license_basis": "repository LICENSE: MIT",
+      "material": "choice operator, member order and cardinality of the named groups; nHapi supplies all other content",
+      "notice_status": "no file preamble observed; retain the repository notice",
+      "sha256": "97b5f3a156c166bb22a0a486574f94bdf3d457c511e3e86eeb5c7b4c264c78a5",
+      "source_file": "hl7apy:hl7apy/v2_6/groups.py",
+      "url": "https://github.com/crs4/hl7apy/blob/9550b6eca2c580e9615d756b294dbe5ea471667c/hl7apy/v2_6/groups.py"
+    }
+  ]
+}

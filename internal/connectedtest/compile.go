@@ -229,7 +229,7 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 		switch ref.Schema {
 		case profileeval.ProfileSchema, profileeval.ProfileSchemaV3:
 			_, err = profileeval.DecodeProfile(b)
-		case profileeval.PackSchema, profileeval.PackSchemaV3:
+		case profileeval.PackSchema, profileeval.PackSchemaV3, profileeval.PackSchemaV4:
 			_, err = profileeval.DecodePack(b)
 		case localprofile.Schema:
 			_, err = localprofile.Decode(b)

@@ -110,6 +110,15 @@ func TestPublishedSourceMatrixBindsEverySelectedGroupingFixture(t *testing.T) {
 				Path   string `json:"path"`
 				SHA256 string `json:"sha256"`
 			} `json:"upstream_grouping_fixtures"`
+			PackSchema    string `json:"pack_schema"`
+			Receipt       string `json:"extraction_receipt"`
+			DetailTest    string `json:"upstream_order_detail_test"`
+			DetailSupport string `json:"upstream_order_detail_support"`
+			DetailSource  string `json:"upstream_order_detail_source"`
+			Detail        map[string]struct {
+				Path   string `json:"path"`
+				SHA256 string `json:"sha256"`
+			} `json:"upstream_order_detail_fixtures"`
 		} `json:"rows"`
 	}
 	raw, err := os.ReadFile("../../docs/profile-evaluation-matrix.json")
@@ -124,7 +133,7 @@ func TestPublishedSourceMatrixBindsEverySelectedGroupingFixture(t *testing.T) {
 			SHA256 string `json:"sha256"`
 		} `json:"packs"`
 	}
-	raw, err = os.ReadFile("../../docs/profile-extraction-v2-receipt.json")
+	raw, err = os.ReadFile("../../docs/profile-extraction-v3-receipt.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +150,38 @@ func TestPublishedSourceMatrixBindsEverySelectedGroupingFixture(t *testing.T) {
 			t.Fatal("duplicate source cell")
 		}
 		seen[key] = true
-		if row.Shipped || row.Rights != "pending" || row.Pack != receipt.Packs["pack-"+row.Version+".json"].SHA256 {
+		if row.Shipped || row.Rights != "pending" || row.Pack != receipt.Packs["pack-"+row.Version+".json"].SHA256 || row.Receipt != "docs/profile-extraction-v3-receipt.json" || row.PackSchema != profileeval.PackSchemaV4 {
 			t.Fatalf("unreviewed source gained distribution or moved pin: %s", key)
+		}
+		detail := map[string]string{"2.3.1": "v2_3_1", "2.4": "v2_4", "2.5": "v2_5", "2.5.1": "v2_5_1", "2.6": "v2_6"}
+		switch {
+		case row.Family != "ORM":
+			if row.DetailSupport != "" || len(row.Detail) != 0 {
+				t.Fatalf("order-detail qualification outside ORM: %s", key)
+			}
+		case detail[row.Version] == "":
+			// No version-matched source: never borrowed from a neighbour.
+			if row.DetailSupport != "schema-absent" || len(row.Detail) != 0 {
+				t.Fatalf("overstated order-detail support: %s", key)
+			}
+		default:
+			if row.DetailSupport != "tested-version-matched-choice-only" || row.DetailTest != "TestPinnedOrderDetailChoice/"+row.Version || row.DetailSource != "hl7apy:hl7apy/"+detail[row.Version]+"/groups.py" || len(row.Detail) != 8 {
+				t.Fatalf("order-detail qualification incomplete: %s", key)
+			}
+			for _, kind := range []string{"OBR", "RQD", "RQ1", "RXO", "ODS", "ODT", "mixed", "missing"} {
+				fixture, ok := row.Detail[kind]
+				if !ok || fixture.Path != "testdata/profile-evaluation/upstream-grouping/"+row.Version+"/ORM-detail-"+kind+".hl7" {
+					t.Fatalf("order-detail fixture %s: %s", kind, key)
+				}
+				raw, err := os.ReadFile(filepath.Join("../..", fixture.Path))
+				if err != nil {
+					t.Fatal(err)
+				}
+				sum := sha256.Sum256(raw)
+				if hex.EncodeToString(sum[:]) != fixture.SHA256 {
+					t.Fatal("order-detail fixture differs from source qualification matrix")
+				}
+			}
 		}
 		wanted := "tested-minimum-order-cardinality-only"
 		if row.Family == "ORM" && (row.Version == "2.7.1" || row.Version == "2.8.2") {

@@ -34,7 +34,7 @@ func (e *evaluator) evaluateBase() {
 	m := e.baseRule()
 	if m == nil {
 		e.report.BaseSupport = "unsupported"
-		if e.report.Operator == ComponentOperatorVersion {
+		if e.components() {
 			e.add("base-message-structure-unavailable", "profile", "unsupported", "MSH-9", e.read("MSH-9"))
 		}
 		return

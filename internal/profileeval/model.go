@@ -34,6 +34,10 @@ type Node struct {
 	Min      int    `json:"min"`
 	Max      string `json:"max"`
 	Children []Node `json:"children,omitzero"`
+	// Choice makes each repetition match exactly one child. Only a
+	// readmit-profile-pack/v4 sequence may declare it; earlier documents
+	// that name it are refused rather than given a new meaning.
+	Choice bool `json:"choice,omitzero"`
 }
 type Transition struct {
 	From string `json:"from"`
