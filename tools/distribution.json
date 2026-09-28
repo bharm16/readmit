@@ -66,6 +66,7 @@
     "docs/fhir-rest.md",
     "docs/fhir-validation.md",
     "docs/connected-fhir.md",
+    "docs/connected-report.md",
     "docs/durable-runs.md",
     "docs/customer-runner.md",
     "docs/customer-ci.md",

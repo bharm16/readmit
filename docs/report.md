@@ -325,4 +325,8 @@ Cancellation, invalid input and I/O failure may leave an incomplete destination,
 which cannot pass verification. Retry with a new destination; existing outputs
 and paths inside evidence are refused. No automatic resend or recovery occurs.
 
+Retained packets, comparison, portable reviews and value-free extracts of
+actual connected lifecycle runs use the separate `readmit-retained-packet/v2`
+family; see [retained connected proof](connected-report.md).
+
 For disclosure to support, use [`share`](redact.md#reviewed-support-diagnostics-and-sharing-policy) to generate a separately reviewed value-free diagnostic summary. Exporting a portable report remains a customer-local evidence copy and grants no disclosure or team approval.

@@ -50,7 +50,7 @@ func reportCommand() *cobra.Command {
 	}}
 	prepare.Flags().StringVar(&workspace, "output", "", "New mutable workspace outside the sealed packet")
 	prepare.Flags().StringVar(&address, "address", "127.0.0.1:2575", "Explicit numeric loopback endpoint for manual fixture reruns")
-	command.AddCommand(verify, prepare, retainedAssembleCommand(), retainedVerifyCommand(), portableExportCommand(), portableReviewCommand())
+	command.AddCommand(verify, prepare, retainedAssembleCommand(), retainedVerifyCommand(), portableExportCommand(), portableReviewCommand(), reportConnectedCommand())
 	return command
 }
 

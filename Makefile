@@ -19,7 +19,8 @@ test-focused:
 # The small resource boundary and the small stream keep race coverage; their
 # production-sized variants run once without instrumentation. The FHIR lab
 # keeps one v2-to-FHIR defect cycle under race and runs its whole lifecycle
-# set once without instrumentation. No behavior is omitted from the full gate,
+# set, and the retained proof read from those lifecycles, once without
+# instrumentation. No behavior is omitted from the full gate,
 # and each variant asserts the same contract.
 # Start the long packages first; Go de-duplicates them from ./... so each
 # still runs once, overlapping the short packages instead of trailing them.
@@ -36,7 +37,7 @@ test-corpus:
 	go test ./internal/importer -run '^TestScanHoldsOneParsingBatchWhateverTheStreamLength$$/production-stream$$'
 
 test-fhir-lab:
-	go test -tags readmit_nosync ./internal/connectedrun -run '^TestFHIRFlow'
+	go test -tags readmit_nosync ./internal/connectedrun ./internal/report -run '^(TestFHIRFlow|TestConnectedRetainedProof|TestConnectedExtractMaps)'
 
 test-tools:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py' -v

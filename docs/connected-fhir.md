@@ -246,3 +246,5 @@ vendor. The acceptance tests in `internal/connectedrun`:
 | The desktop adapter runs the same service and expectations | `TestConnectedLifecycleAdapterRunsTheSharedServiceWithSavedExpectations` (`internal/desktop`) |
 
 See [ADR 0023](adr/0023-fhir-execution-composes-into-the-connected-lifecycle.md).
+Retained results are packeted, compared, reviewed and extracted offline as
+[retained connected proof](connected-report.md).
