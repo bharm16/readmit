@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -88,5 +89,57 @@ func TestConnectedEvidenceSurfaceNamesThePhaseAndKind(t *testing.T) {
 		if got := EvidenceSurface(rel); got != want {
 			t.Errorf("%s: %q, want %q", rel, got, want)
 		}
+	}
+}
+
+// A transformed resource carries only what a rule keeps or pseudonymizes:
+// references keep their type and share the pseudonym of the ID they name,
+// opaque content is dropped, and content that cannot be shown safely without
+// its opaque part is excluded whole.
+func TestTransformedResourceKeepsReferencesAndDropsOpaqueContent(t *testing.T) {
+	tr := &transformer{key: []byte("0123456789abcdef0123456789abcdef"), bases: []string{"https://ehr.example/fhir"}, elements: map[string]string{"Appointment|status": "keep", "*|identifier.value": "pseudonymize"}, originals: map[string]bool{}, kept: map[string]bool{}}
+	excluded := []string{}
+	appointment := map[string]any{"resourceType": "Appointment", "id": "appt-9", "status": "booked", "identifier": []any{map[string]any{"system": "urn:x", "value": "APPT-SECRET-1"}},
+		"text":                  map[string]any{"status": "generated", "div": "<div>NARRATIVE-SECRET</div>"},
+		"extension":             []any{map[string]any{"url": "urn:note", "valueString": "EXTENSION-SECRET"}},
+		"contained":             []any{map[string]any{"resourceType": "Patient", "id": "pat-7", "identifier": []any{map[string]any{"value": "PAT-SECRET-2"}}}},
+		"participant":           []any{map[string]any{"actor": map[string]any{"reference": "https://ehr.example/fhir/Patient/pat-7", "display": "DISPLAY-SECRET"}}, map[string]any{"actor": map[string]any{"reference": "https://elsewhere.example/Practitioner/1"}}},
+		"supportingInformation": []any{map[string]any{"reference": "Patient/pat-7/_history/3"}}}
+	out := tr.resource(appointment, &excluded)
+	raw, _ := json.Marshal(out, json.Deterministic(true))
+	for _, secret := range []string{"appt-9", "pat-7", "APPT-SECRET-1", "PAT-SECRET-2", "NARRATIVE-SECRET", "EXTENSION-SECRET", "DISPLAY-SECRET", "ehr.example", "elsewhere.example", "urn:x"} {
+		if strings.Contains(string(raw), secret) {
+			t.Errorf("the transformed resource carries %q: %s", secret, raw)
+		}
+	}
+	patient := tr.pseudonym("pat-7")
+	if !strings.Contains(string(raw), `"reference":"Patient/`+patient+`"`) || strings.Count(string(raw), patient) != 3 || out["status"] != "booked" || out["id"] != tr.pseudonym("appt-9") {
+		t.Fatalf("references are not consistent with the contained resource: %s", raw)
+	}
+	if !tr.originals["NARRATIVE-SECRET"] && !tr.originals["<div>NARRATIVE-SECRET</div>"] || !tr.originals["APPT-SECRET-1"] || tr.kept["APPT-SECRET-1"] {
+		t.Fatal("excluded and pseudonymized originals are not all scanned for")
+	}
+	for _, whole := range []map[string]any{
+		{"resourceType": "Binary", "data": "U0VDUkVU"},
+		{"resourceType": "Observation", "status": "final", "modifierExtension": []any{map[string]any{"url": "urn:negated", "valueBoolean": true}}},
+	} {
+		excluded = []string{}
+		if tr.resource(whole, &excluded) != nil || len(excluded) != 1 {
+			t.Errorf("%v was not excluded whole", whole["resourceType"])
+		}
+	}
+	excluded = []string{}
+	bundle := tr.resource(map[string]any{"resourceType": "Bundle", "type": "searchset", "entry": []any{
+		map[string]any{"fullUrl": "https://ehr.example/fhir/Observation/o-1", "resource": map[string]any{"resourceType": "Observation", "id": "o-1", "modifierExtension": []any{map[string]any{"url": "urn:negated", "valueBoolean": true}}}},
+		map[string]any{"fullUrl": "https://ehr.example/fhir/Appointment/appt-9", "resource": map[string]any{"resourceType": "Appointment", "id": "appt-9", "status": "booked"}},
+	}}, &excluded)
+	if entries, _ := bundle["entry"].([]any); len(entries) != 1 || len(excluded) != 1 || entries[0].(map[string]any)["resource"].(map[string]any)["id"] != tr.pseudonym("appt-9") {
+		t.Fatalf("a bundle entry with a modifier extension excluded its siblings: %v %v", bundle, excluded)
+	}
+	if p, ok := tr.path("https://ehr.example/fhir/Patient/pat-7/_history/3?identifier=urn%3Ax%7CAPPT-SECRET-1&_count=5"); !ok || p != "Patient/"+patient+"/_history/"+tr.pseudonym("3")+"?_count=[excluded]&identifier=[excluded]" {
+		t.Fatalf("request path: %q", p)
+	}
+	if _, ok := tr.path("https://elsewhere.example/Patient"); ok {
+		t.Fatal("a request outside the declared servers was transformed")
 	}
 }

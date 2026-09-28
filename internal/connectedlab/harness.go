@@ -53,6 +53,9 @@ type Harness struct {
 	targetIdentity       string
 	smart                *smartbackend.JWK
 	smartProvider        string
+	// Sources selects each typed-rows dataset's observation source.
+	Sources     map[string]connectedrun.SourceSelection
+	projections map[string]string
 }
 
 // Message is one original v2 message a flow step sends, by step ID.
@@ -67,7 +70,7 @@ func New(t testing.TB, root string, messages ...Message) *Harness {
 		root = t.TempDir()
 	}
 	lab := StartFHIRLab(t)
-	h := &Harness{T: t, Root: root, Lab: lab, Engine: StartEngine(t, lab), Files: map[string][]byte{}, Occurrences: map[string]string{}, messages: map[string]string{}, observations: map[string]fhirobserve.Observation{}, HorizonMS: 150}
+	h := &Harness{T: t, Root: root, Lab: lab, Engine: StartEngine(t, lab), Files: map[string][]byte{}, Occurrences: map[string]string{}, messages: map[string]string{}, observations: map[string]fhirobserve.Observation{}, HorizonMS: 150, Sources: map[string]connectedrun.SourceSelection{}, projections: map[string]string{}}
 	fixture := StartFixture(t, func() { lab.Reset(); lab.Seed() })
 	wire := []byte{}
 	for _, m := range messages {
@@ -188,7 +191,11 @@ func (h *Harness) Observe(phase, id, when, resource, query, boundary string, col
 func (h *Harness) Checks(phase string, datasets []connectedtest.Dataset, assertions ...assertion.DatasetAssertion) connectedtest.Reference {
 	set := assertion.DatasetSetDocument{Schema: assertion.DatasetSchema, Bindings: []assertion.DatasetBinding{}, Assertions: assertions}
 	for _, ds := range datasets {
-		set.Bindings = append(set.Bindings, assertion.DatasetBinding{Name: ds.ID, Namespace: ds.Namespace, Phase: ds.Phase, Source: ds.Source, ProjectionIdentity: h.observations[ds.Source].ProjectionIdentity()})
+		projection := h.projections[ds.Source]
+		if o, ok := h.observations[ds.Source]; ok {
+			projection = o.ProjectionIdentity()
+		}
+		set.Bindings = append(set.Bindings, assertion.DatasetBinding{Name: ds.ID, Namespace: ds.Namespace, Phase: ds.Phase, Source: ds.Source, ProjectionIdentity: projection})
 	}
 	return h.RefJSON(phase+"-checks", assertion.DatasetSchema, phase+"-checks.json", set)
 }
@@ -362,6 +369,10 @@ func (h *Harness) writeConfig(flow connectedtest.FlowTest) {
 			selection.Grants["preflight:lab"] = grant(phase.ID + ":preflight:lab")
 		}
 		for _, ds := range phase.Datasets {
+			if ds.Kind == "typed-rows" {
+				selection.Sources[ds.ID] = h.Sources[ds.ID]
+				continue
+			}
 			selection.Grants["dataset:"+ds.ID] = grant(phase.ID + ":dataset:" + ds.ID)
 		}
 		config.Phases[phase.ID] = selection

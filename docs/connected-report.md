@@ -5,16 +5,20 @@ A result from an actual connected lifecycle run
 integration, or [`readmit-connected-run/v4`](connected-fhir.md) with FHIR)
 can be retained in a packet, moved to another machine, verified and
 re-analyzed there, compared with another run, rendered as a portable review
-and reduced to a value-free extract for sharing. None of these operations sends
-a message, repeats a request, re-fetches an API, queries a database, reruns a
-fixture or regenerates a baseline. Everything is read from retained bytes.
+and shared as a value-free extract or a reviewed transformed extract. None of
+these operations sends a message, repeats a request, re-fetches an API,
+queries a database, reruns a fixture or regenerates a baseline. Everything is
+read from retained bytes. One explicit operation, revalidation, runs the
+installed validator again on retained resources as a separate analysis; no
+other operation starts a program.
 
 | Artifact | Contract |
 | --- | --- |
 | Retained connected packet | `readmit-retained-packet/v2` |
 | Portable review / typed report | `readmit-portable-review/v2` / `readmit-portable-report/v2` |
-| Disclosure policy | `readmit-connected-disclosure-policy/v1` |
-| Disclosure-reviewed extract | `readmit-connected-extract/v1` |
+| Disclosure policy | `readmit-connected-disclosure-policy/v1` (value-free), `/v2` (reviewed transformations) |
+| Disclosure-reviewed extract | `readmit-connected-extract/v1` (value-free), `/v2` (reviewed transformed) |
+| Explicit revalidation | `readmit-connected-revalidation/v1` |
 
 `readmit-retained-packet/v1`, `readmit-portable-review/v1` and
 `readmit-portable-report/v1` ([sealed packets](report.md)) keep their readers
@@ -26,6 +30,7 @@ and bytes unchanged; each version's reader refuses the other.
 | --- | --- | --- |
 | `original-customer-local` | The packet and its portable review: every retained byte of the lifecycles, including observed resources, requests, responses, bound server identities and historical configuration. | A reviewed extract, a disclosure approval or a de-identification. |
 | `disclosure-reviewed-extract` | A value-free document of outcomes, counts, declared boundaries and commitments, published only when a policy maps every evidence surface. | An equivalent reproducer: no external replay of an extract exists, so its equivalence is always `unverified`. |
+| `reviewed-transformed-extract` | A derived representation for one approved disclosure: transformed resources, requests, typed records and identity mappings, each value kept or pseudonymized by an explicit rule, beside the same value-free summary. | An original observation, response or finding, an equivalent reproducer, or a legal de-identification. Its equivalence is always `unverified`. |
 | A reproduced regression | A packet whose `equivalence` is `reproduced`: two retained actual executions of the same plan against the same declared target and revision, both complete, failing with the same failure signature. | Proof about target software beyond its declared revision, or a hash-based authenticity claim. |
 
 A residual scan, a built-in fixture or a transformed extract never establishes
@@ -110,10 +115,56 @@ reports it beside the sealed original: the original engine and verdict, the
 current engine and re-derived verdict, and every limitation. Typed, wire and
 response checks are re-evaluated from retained snapshots, acknowledgements
 and responses with the check sets the plan pinned. A validation is
-reinterpreted from the retained output of the pinned validator capability; the
-validator is not rerun, and a validation with no retained outcome stays
-undecided. A different original engine is stated, never silently reinterpreted.
-Reanalysis is never written into the packet.
+reinterpreted from the retained output of the pinned validator capability;
+verification never starts the validator, and a validation with no retained
+outcome stays undecided. A different original engine is stated, never
+silently reinterpreted. Reanalysis is never written into the packet.
+
+### Explicit revalidation
+
+```sh
+readmit report connected revalidate PACKET --capability INSTALLED_CAPABILITY --output NEW_ANALYSIS
+readmit report connected revalidate PACKET --capability INSTALLED_CAPABILITY --socket ENGINE_SOCKET --output NEW_ANALYSIS
+readmit report connected revalidate PACKET --capability INSTALLED_CAPABILITY --engine none --output NEW_ANALYSIS
+readmit report connected revalidation NEW_ANALYSIS PACKET
+```
+
+`revalidate` is the only connected operation that starts a program. It verifies
+the packet, then for every declared validation of every attempted phase:
+
+- takes the retained resource bytes and the historical request, and uses them
+  only when the request is the plan's declared validation of that check;
+- runs them with the administrator's installed capability (see
+  [FHIR validation](connected-fhir.md)), only when its identity is exactly the
+  historical capability pin;
+- runs through the local worker, with networking disabled, isolation verified
+  before the container starts, and the historical time and output bounds.
+
+Nothing is re-fetched, no target is contacted, and nothing is downloaded. The
+capability copy retained inside the packet is evidence and is refused as the
+installed capability; nothing the packet holds is executed.
+
+The result is a new sealed `readmit-connected-revalidation/v1` beside the
+packet. For each validation it records the historical and new outcomes by
+identity, and whether they `agrees`, `differs` (naming state, verdict or
+findings) or had a `no-historical-outcome` (for example, a run whose engine was
+missing). The packet and its historical verdicts never change.
+
+A validation that is not run again says why:
+
+| Reason | Meaning |
+| --- | --- |
+| `capability-not-installed` / `capability-mismatch` | No capability was selected, or it is not the historical pin. |
+| `no-retained-validation` / `phase-not-attempted` | There are no retained bytes and request to run again. |
+| `request-not-declared` / `request-refused` / `request-identity-mismatch` | The retained request is not the plan's validation, or does not prepare to the historical identity. |
+| `worker-missing`, `worker-unavailable`, `unsupported-runtime` | No engine, or one that does not apply the required isolation. |
+| `timed-out`, `output-limit`, `worker-crashed`, ... | The worker started and did not answer within its bounds. |
+
+A result that ran but could not decide, such as `terminology-unavailable`, is
+the validator's own undecided state. None of these is a pass, and no newer
+validator is substituted. `revalidation` verifies an analysis offline against
+its packet: the seal, every new result through its own reader, that each ran on
+exactly the historical input and request identity, and every claim.
 
 ## Comparison
 
@@ -203,8 +254,8 @@ A `readmit-connected-disclosure-policy/v1` maps surfaces to a disposition:
 {"schema":"readmit-connected-disclosure-policy/v1","surfaces":{"fhir-resource":"exclude","fhir-narrative":"exclude"}}
 ```
 
-The only disposition this version offers is `exclude`: the surface's bytes
-never leave the packet and only its file count is reported. A surface the
+The only disposition `v1` offers is `exclude`: the surface's bytes never leave
+the packet and only its file count is reported. A surface the
 packet holds that the policy does not name blocks the extract, and so does
 **credential material** — a bearer token, a JWT, an OAuth token member, a
 client assertion or a private key found in any retained file — which no policy
@@ -227,6 +278,101 @@ extract/
   identity.sha256    SHA-256 of extract.json, written last
 ```
 
+## Reviewed transformed extract
+
+```sh
+readmit report connected pseudonym-key --output KEY_FILE
+readmit report connected extract PACKET --policy POLICY_V2 --key KEY_FILE
+readmit report connected extract PACKET --policy POLICY_V2 --key KEY_FILE --format markdown|json|html
+readmit report connected extract PACKET --policy POLICY_V2 --key KEY_FILE --approve PREVIEW_ID --output NEW_EXTRACT
+```
+
+A `readmit-connected-disclosure-policy/v2` carries the evidence a reviewer
+needs to understand a result, not only its outcomes. It still maps every
+surface the packet holds (the example abbreviates the excluded ones). Only four surfaces may be `transform`ed:
+`fhir-resource`, `typed-dataset`, `identity-mapping` and `http-exchange`.
+Every other surface is opaque in this version and can only be `exclude`d; a
+policy that transforms one is refused.
+
+```json
+{"schema":"readmit-connected-disclosure-policy/v2","names":"authored",
+ "surfaces":{"fhir-resource":"transform","typed-dataset":"transform","identity-mapping":"transform","http-exchange":"transform","fhir-narrative":"exclude","fhir-extension":"exclude","validator-diagnostics":"exclude"},
+ "elements":[{"resource":"Patient","path":"identifier.system","action":"keep"},{"resource":"Patient","path":"identifier.value","action":"pseudonymize"},{"resource":"Appointment","path":"start","action":"keep"}],
+ "columns":[{"dataset":"appointments","column":"key","action":"pseudonymize"},{"dataset":"appointments","column":"start","action":"keep"},{"dataset":"appointments","column":"family","action":"redact"}],
+ "parameters":[{"name":"identifier","action":"pseudonymize"}]}
+```
+
+The rules are:
+
+- An element (by resource type, or `*`, and its dotted path without indexes) or
+  a query parameter is `keep` or `pseudonymize`. A typed column is `keep`,
+  `pseudonymize` or `redact` (its present, empty, null or absent state kept, its
+  value removed).
+- Anything no rule names is excluded. Narrative, extensions and attachments
+  are never copied.
+- Some content is excluded whole, and the extract says why:
+  - a resource carrying a modifier extension, which cannot be shown without it
+    and still mean the same;
+  - `Binary` content;
+  - a non-FHIR body;
+  - a reference or request URL outside the declared servers.
+- `names` is `authored` to show phase, step, dataset, column and variable IDs,
+  or `positions` to show positions only.
+
+Pseudonyms keep relationships. Each is an HMAC of the original under the key
+file, which stays customer-local and is never written into an extract, so
+equal originals get equal pseudonyms:
+
+- a resource's logical ID in its `id`, in every relative or declared-server
+  reference to it, in typed identity columns (`Patient/p-…`), in the runtime
+  identity mapping and in request paths;
+- a business identifier across resources, typed rows and token searches (which
+  keep their system and pseudonymize their code).
+
+The same key and policy reproduce the same bytes, so a previewed identity can
+be approved and published later. Another key, or a changed packet or policy,
+needs review again. A key is a 0600 file of 64 hex characters created by
+`pseudonym-key`; keep it with the packet, never with the extract.
+
+The extract holds:
+
+- the same value-free run summary and comparison as `v1`;
+- per phase, the transformed FHIR exchanges: method, relative path, status,
+  outcome, request and response bodies;
+- each observation's transformed typed records and returned resources;
+- the pseudonymized identity mapping.
+
+Every transformed item states `"derivation":"transformed"` and names its
+original by position (`phase 1 step 1 attempt 2`). It never relabels a
+transformed response or finding as an original observation. The Markdown and
+HTML renderings are generated from `extract.json` alone.
+
+Publication is blocked by any of:
+
+- an unmapped surface;
+- credential material;
+- a residual scan hit: every original value read while transforming, and every
+  value the packet observed, bound or declared, unless a rule kept it, is
+  searched for in the extract, its decoded strings and both renderings.
+
+Opaque bodies count too, whole and by their identifier-like tokens.
+Publication writes a fresh preparation only when its bytes are exactly the
+approved identity.
+
+```text
+extract/
+  extract.json       readmit-connected-extract/v2
+  report.md          regenerated from extract.json on open
+  report.html        regenerated from extract.json on open
+  identity.sha256    SHA-256 of extract.json, written last
+```
+
+Its equivalence is always `unverified`. A pseudonymized case is not a
+reproduced regression, and passing disclosure review establishes no
+behavioral equivalence: that still needs the retained actual executions a
+packet's `reproduced` claim requires. Each extract version's reader refuses
+the other.
+
 ## Limits of the claims
 
 Hashes establish integrity, not source authenticity, target software identity,
@@ -240,4 +386,5 @@ authority; a new execution needs its own authorized plan and configuration
 
 The redesigned Report and Share views bind these readers in a later change;
 this release adds the Go operations and the command line only. See
-[ADR 0024](adr/0024-connected-proof-is-retained-whole-and-extracted-value-free.md).
+[ADR 0024](adr/0024-connected-proof-is-retained-whole-and-extracted-value-free.md)
+and [ADR 0025](adr/0025-connected-proof-is-revalidated-explicitly-and-extracted-through-reviewed-transformations.md).

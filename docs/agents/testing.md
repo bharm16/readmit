@@ -215,7 +215,23 @@ production boundary assert the same retained-prefix and refused-ACK behavior.
 The FHIR lab lifecycles re-verify the whole selected configuration at every
 effect, so the race suite keeps one v2-to-FHIR defect cycle and
 `make test-fhir-lab` runs the whole set once without instrumentation, with the
-`internal/report` tests that retain, compare and extract those lifecycles.
+`internal/report` tests that retain, compare, revalidate and extract those
+lifecycles (`TestConnectedLab*` among them).
+
+Those tests extend `internal/connectedlab` with three more parts:
+
+- A stand-in local container engine on a private Unix socket. The installed
+  `docker` command line drives it through `fhirvalidator.LocalEngine`, and its
+  worker speaks the validator worker protocol over the exact bind-mounted
+  input.
+- An application rejection hook, for HTTP error bodies.
+- A disposable real PostgreSQL cluster over TLS, for typed database fields. It
+  needs `READMIT_POSTGRES_BIN` (as the hub journeys do), and PostgreSQL refuses
+  to run as root.
+
+Without the command line or PostgreSQL a local run skips those parts. Under
+`CI` it fails instead, and `go-tests` provides both. The real validator image is
+qualified only by the opt-in live test (`READMIT_FHIR_VALIDATOR_CAPABILITY`).
 The race command lists `./tests` and `./internal/desktop` before `./...` so the
 long packages start early; Go de-duplicates the package list.
 

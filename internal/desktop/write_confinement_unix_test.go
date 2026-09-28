@@ -49,8 +49,8 @@ func TestPastedContentIsStagedOnlyInARealStagingFolderOfTheProject(t *testing.T)
 	for how, plant := range map[string]func() error{
 		"a symbolic link out of the project":         func() error { return os.Symlink(outside, staged) },
 		"a symbolic link to a folder of the project": func() error { return os.Symlink(filepath.Join(root, "folder"), staged) },
-		"a regular file":                             func() error { return os.WriteFile(staged, []byte("synthetic"), 0o600) },
-		"a FIFO":                                     func() error { return syscall.Mkfifo(staged, 0o600) },
+		"a regular file": func() error { return os.WriteFile(staged, []byte("synthetic"), 0o600) },
+		"a FIFO":         func() error { return syscall.Mkfifo(staged, 0o600) },
 	} {
 		if err := plant(); err != nil {
 			t.Fatal(err)

@@ -37,7 +37,7 @@ test-corpus:
 	go test ./internal/importer -run '^TestScanHoldsOneParsingBatchWhateverTheStreamLength$$/production-stream$$'
 
 test-fhir-lab:
-	go test -tags readmit_nosync ./internal/connectedrun ./internal/report -run '^(TestFHIRFlow|TestConnectedRetainedProof|TestConnectedExtractMaps)'
+	go test -tags readmit_nosync ./internal/connectedrun ./internal/report -run '^(TestFHIRFlow|TestConnectedRetainedProof|TestConnectedExtractMaps|TestConnectedLab)'
 
 test-tools:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py' -v

@@ -324,44 +324,8 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 		}
 	}
 	x := Extract{Schema: ExtractSchema, PacketIdentity: packet.Identity, PolicyIdentity: digest(raw), EvidenceClass: EvidenceExtract, Equivalence: ConnectedEquivalence{State: EquivalenceUnverified, Reason: "No external replay of this extract is retained, so it is not described as an equivalent reproducer. Its disclosure review is unaffected."}, Runs: []ExtractRun{}, Inventory: inventory, Scope: extractScope}
-	runs := map[string]*ConnectedRun{"current": &packet.Manifest.Current, "baseline": packet.Manifest.Baseline, "replay": packet.Manifest.Replay}
-	for _, section := range connectedSections {
-		r := runs[section]
-		if r == nil {
-			continue
-		}
-		run := ExtractRun{Section: section, Identity: r.Identity, Schema: r.Schema, Plan: r.Plan, State: r.State, Verdict: r.Verdict, Setup: r.Setup, Cleanup: r.Cleanup, Boundary: r.Boundary, Classification: r.Environment.Classification, Boundaries: []string{}, Phases: []ExtractPhase{}}
-		for _, q := range r.Qualification {
-			run.Boundaries = append(run.Boundaries, q.Boundary)
-		}
-		for i, phase := range r.Phases {
-			p := ExtractPhase{Position: i + 1, State: phase.State, Verdict: phase.Verdict, Checks: []ExtractCheck{}}
-			for j, check := range phase.Checks {
-				p.Checks = append(p.Checks, ExtractCheck{Position: j + 1, Claim: checkClaim(check.ID), Outcome: string(check.Outcome)})
-			}
-			run.Phases = append(run.Phases, p)
-		}
-		x.Runs = append(x.Runs, run)
-	}
-	if cmp := packet.Comparison; cmp != nil {
-		ec := &ExtractComparison{Dimensions: []string{}, Attribution: cmp.Attribution.Outcome, Behavior: []string{}, Records: []string{}}
-		for _, d := range cmp.Dimensions {
-			ec.Dimensions = append(ec.Dimensions, d.Dimension+": "+d.State)
-		}
-		for _, check := range cmp.Checks {
-			ec.Behavior = append(ec.Behavior, check.Baseline+" -> "+check.Current+"; definition "+check.Definition+"; behavior "+check.Behavior)
-		}
-		for _, r := range cmp.Records {
-			if r.State != "compared" {
-				ec.Records = append(ec.Records, r.State)
-				continue
-			}
-			for _, k := range r.Keys {
-				ec.Records = append(ec.Records, strconv.Itoa(k.Baseline)+" -> "+strconv.Itoa(k.Current)+"; "+k.State+"; "+strconv.Itoa(len(k.Values))+" field columns; "+strconv.Itoa(len(k.Identities))+" server-assigned columns")
-			}
-		}
-		x.Comparison = ec
-	}
+	x.Runs = valueFreeRuns(packet)
+	x.Comparison = valueFreeComparison(packet)
 	// The extract is scanned for every value the packet observed or bound, so
 	// a value that reached it through any path blocks it.
 	x.Residual = exportreview.Scan{Status: "passed", Locations: []string{}}
@@ -381,6 +345,59 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 		return nil, errors.New("the extract exceeds 4 MiB; select a smaller packet")
 	}
 	return c, nil
+}
+
+// valueFreeRuns summarizes every retained lifecycle by position and claim:
+// states, verdicts, declared boundaries and check outcomes, never authored
+// text or a value.
+func valueFreeRuns(packet *ConnectedPacket) []ExtractRun {
+	out := []ExtractRun{}
+	runs := map[string]*ConnectedRun{"current": &packet.Manifest.Current, "baseline": packet.Manifest.Baseline, "replay": packet.Manifest.Replay}
+	for _, section := range connectedSections {
+		r := runs[section]
+		if r == nil {
+			continue
+		}
+		run := ExtractRun{Section: section, Identity: r.Identity, Schema: r.Schema, Plan: r.Plan, State: r.State, Verdict: r.Verdict, Setup: r.Setup, Cleanup: r.Cleanup, Boundary: r.Boundary, Classification: r.Environment.Classification, Boundaries: []string{}, Phases: []ExtractPhase{}}
+		for _, q := range r.Qualification {
+			run.Boundaries = append(run.Boundaries, q.Boundary)
+		}
+		for i, phase := range r.Phases {
+			p := ExtractPhase{Position: i + 1, State: phase.State, Verdict: phase.Verdict, Checks: []ExtractCheck{}}
+			for j, check := range phase.Checks {
+				p.Checks = append(p.Checks, ExtractCheck{Position: j + 1, Claim: checkClaim(check.ID), Outcome: string(check.Outcome)})
+			}
+			run.Phases = append(run.Phases, p)
+		}
+		out = append(out, run)
+	}
+	return out
+}
+
+// valueFreeComparison is the packet's baseline comparison by dimension state,
+// behavior and record counts only.
+func valueFreeComparison(packet *ConnectedPacket) *ExtractComparison {
+	cmp := packet.Comparison
+	if cmp == nil {
+		return nil
+	}
+	ec := &ExtractComparison{Dimensions: []string{}, Attribution: cmp.Attribution.Outcome, Behavior: []string{}, Records: []string{}}
+	for _, d := range cmp.Dimensions {
+		ec.Dimensions = append(ec.Dimensions, d.Dimension+": "+d.State)
+	}
+	for _, check := range cmp.Checks {
+		ec.Behavior = append(ec.Behavior, check.Baseline+" -> "+check.Current+"; definition "+check.Definition+"; behavior "+check.Behavior)
+	}
+	for _, r := range cmp.Records {
+		if r.State != "compared" {
+			ec.Records = append(ec.Records, r.State)
+			continue
+		}
+		for _, k := range r.Keys {
+			ec.Records = append(ec.Records, strconv.Itoa(k.Baseline)+" -> "+strconv.Itoa(k.Current)+"; "+k.State+"; "+strconv.Itoa(len(k.Values))+" field columns; "+strconv.Itoa(len(k.Identities))+" server-assigned columns")
+		}
+	}
+	return ec
 }
 
 // knownValues are the values the packet's lifecycles observed, bound and

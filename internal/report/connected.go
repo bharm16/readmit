@@ -18,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/connectedtest"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/fhirvalidator"
 	"github.com/bharm16/readmit/internal/runcompare"
 )
 
@@ -152,6 +153,9 @@ type ConnectedPacket struct {
 	Reanalysis []ConnectedReanalysis
 	Comparison *runcompare.FlowComparison
 	evidence   map[string]connectedrun.FlowEvidence
+	// historical is every retained validation's verified outcome, by
+	// section/phase/check.
+	historical map[string]*ValidationOutcome
 }
 
 // EvidenceChange names one retained file whose bytes are not what the packet
@@ -336,11 +340,20 @@ func OpenConnected(ctx context.Context, dir string) (*ConnectedPacket, error) {
 	if len(changes) > 0 {
 		return nil, &ChangedEvidenceError{Changes: changes}
 	}
-	p := &ConnectedPacket{Manifest: expected, Identity: digest(raw), Reanalysis: []ConnectedReanalysis{}, Comparison: comparison, evidence: evidence}
+	p := &ConnectedPacket{Manifest: expected, Identity: digest(raw), Reanalysis: []ConnectedReanalysis{}, Comparison: comparison, evidence: evidence, historical: map[string]*ValidationOutcome{}}
 	for _, section := range connectedSections {
 		e, ok := evidence[section]
 		if !ok {
 			continue
+		}
+		for phase, pe := range e.Phases {
+			for check := range pe.Validators {
+				retained, err := fhirvalidator.Open(ctx, filepath.Join(dir, section, "phases", phase, "validations", check))
+				if err != nil {
+					return nil, &ChangedEvidenceError{Changes: []EvidenceChange{{Path: section + "/phases/" + phase + "/validations/" + check + "/", Section: section, Surface: "phase " + phase + ": validator evidence", Kind: "refused"}}}
+				}
+				p.historical[section+"/"+phase+"/"+check] = outcomeOf(retained)
+			}
 		}
 		analysis, err := reanalyze(ctx, filepath.Join(dir, section), section, e)
 		if err != nil {
@@ -652,11 +665,11 @@ func reanalyze(ctx context.Context, path, section string, e connectedrun.FlowEvi
 			case !ok:
 				r.Limitations = append(r.Limitations, "Phase "+phase.ID+" validation "+check.ID+": no validation was retained; it stays undecided and cannot be supplied now.")
 			case v.RuntimeState != "":
-				r.Limitations = append(r.Limitations, "Phase "+phase.ID+" validation "+check.ID+": no validator outcome was retained ("+v.RuntimeState+"); it stays undecided.")
+				r.Limitations = append(r.Limitations, "Phase "+phase.ID+" validation "+check.ID+": no validator outcome was retained ("+v.RuntimeState+"); it stays undecided. Verification never starts a validator; an explicit revalidation with the installed, identically pinned capability runs it on the retained resource as a separate analysis.")
 			case v.EngineVersion == "":
 				r.Limitations = append(r.Limitations, "Phase "+phase.ID+" validation "+check.ID+": the validator's container engine version was not recorded; its retained output is reinterpreted with capability "+v.Capability+" only.")
 			default:
-				r.Limitations = append(r.Limitations, "Phase "+phase.ID+" validation "+check.ID+": the retained output of validator capability "+v.Capability+" (engine "+v.EngineVersion+") is reinterpreted offline; the validator itself is not rerun.")
+				r.Limitations = append(r.Limitations, "Phase "+phase.ID+" validation "+check.ID+": the retained output of validator capability "+v.Capability+" (engine "+v.EngineVersion+") is reinterpreted offline; verification never starts a validator. An explicit revalidation with the installed, identically pinned capability reruns it on the retained resource as a separate analysis.")
 			}
 		}
 	}
