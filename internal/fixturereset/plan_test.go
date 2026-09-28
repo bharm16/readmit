@@ -125,6 +125,7 @@ func TestReviewedTableIsTheClosedSet(t *testing.T) {
 	expected := map[Operator]Authority{
 		OperatorConfirms: NoAuthority,
 		ObservationEmpty: ReadDeclaredFile,
+		CollectionEmpty:  ReadDeclaredFile,
 		EndpointQuiet:    ConnectApprovedTarget,
 	}
 	if len(reviewed) != len(expected) {
@@ -152,12 +153,12 @@ func TestReviewedIsTheTableTheReaderApplies(t *testing.T) {
 }
 
 // An action an author adds records the authority the review requires of its
-// operator, keeps an observation file only for the operator that reads one,
+// operator, keeps an observation file only for the operators that read one,
 // and names no operator the review does not.
 func TestReviewedActionRecordsTheAuthorityTheReviewRequires(t *testing.T) {
 	for _, review := range Reviewed() {
 		action, err := ReviewedAction("step-1", review.Operator, "Confirm it.", "ledger.json")
-		if err != nil || action.Authority != review.Authority || (action.Observation != "") != (review.Operator == ObservationEmpty) {
+		if err != nil || action.Authority != review.Authority || (action.Observation != "") != (review.Authority == ReadDeclaredFile) {
 			t.Errorf("%s: %+v %v", review.Operator, action, err)
 		}
 	}

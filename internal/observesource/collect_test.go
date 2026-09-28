@@ -506,3 +506,26 @@ func replaceWithDirectory(t *testing.T, export string) {
 		t.Fatal(err)
 	}
 }
+
+func TestProgressReportsWhatEachRecordedReadMeasured(t *testing.T) {
+	export := exportHeader + "A1,booked\nA2,booked\n"
+	source, _, snapshot := declared(t, declaredFileSource, export)
+	var reached []observesource.Progress
+	completion, err := observesource.Collect(context.Background(), source, window(t, declaredWindow), observesource.Options{
+		Snapshot: snapshot, Progress: func(progress observesource.Progress) { reached = append(reached, progress) }})
+	if err != nil || completion.Status != observewindow.Complete {
+		t.Fatalf("%+v %v", completion, err)
+	}
+	if len(reached) != len(completion.Samples) {
+		t.Fatalf("%d reports for %d samples", len(reached), len(completion.Samples))
+	}
+	for i, progress := range reached {
+		if progress.Samples != i+1 || !progress.Observed || progress.Records != 2 || progress.Bytes != int64((i+1)*len(export)) ||
+			progress.OpenedAt.IsZero() || !progress.Closes.After(progress.OpenedAt) {
+			t.Fatalf("report %d: %+v", i, progress)
+		}
+	}
+	if last := reached[len(reached)-1]; last.Stable != completion.StableSamples {
+		t.Fatalf("the last report's stable run %d, the completion's %d", last.Stable, completion.StableSamples)
+	}
+}

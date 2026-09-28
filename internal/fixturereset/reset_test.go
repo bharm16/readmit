@@ -9,9 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/environment"
+	"github.com/bharm16/readmit/internal/observesource"
+	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 )
@@ -436,5 +439,67 @@ func TestEncodedOutcomeCarriesItsVersionAndNothingPrivate(t *testing.T) {
 		if strings.Contains(string(data), private) {
 			t.Errorf("the retained outcome echoed %q", private)
 		}
+	}
+}
+
+const collectedSource = `{"schema":"readmit-observation-source/v1","source":{"kind":"file-export","identity":"scheduling-archive","scope":"appointments"},` +
+	`"enabled":true,"freshness":{"max_age":"1h"},"extraction":{"envelope":"csv","encoding":"utf-8",` +
+	`"csv":{"delimiter":",","record_separator":"lf","header":"present","fields":2},"record_key":["appointment"]},` +
+	`"file":{"path":"export.csv","max_bytes":65536},"http":null}`
+
+const collectedWindow = `{"schema":"readmit-observation-window/v1","source":{"kind":"file-export","identity":"scheduling-archive","scope":"appointments"},` +
+	`"watermark":{"kind":"none","position":""},"pre_existing_state":{"declaration":"declared-empty","baseline_identity":""},` +
+	`"completion":{"deadline":"3s","quiet_period":"10ms","stable_samples":2,"max_records":100,"max_samples":32}}`
+
+// collectInto collects the source in directory once over export and retains
+// the completion as entry, as a reviewed collection does.
+func collectInto(t *testing.T, directory, export, entry string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(directory, "export.csv"), []byte(export), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source, err := observesource.ReadSource(filepath.Join(directory, "source.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	window, err := observewindow.DecodeWindow([]byte(collectedWindow))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completion, err := observesource.Collect(context.Background(), source, window, observesource.Options{Snapshot: filepath.Join(t.TempDir(), "snapshot")})
+	if err != nil || !completion.Trustworthy() {
+		t.Fatalf("%+v %v", completion, err)
+	}
+	if err := observewindow.WriteCompletion(filepath.Join(directory, entry), completion); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestACollectionEmptyActionReadsTheLatestCompletedCollectionOfItsSource(t *testing.T) {
+	directory := planDirectory(t, map[string]string{"source.json": collectedSource})
+	now := time.Now()
+	if outcome, reason := emptyCollection(directory, "source.json", now); outcome != Unconfirmed || reason != NoCompletedCollection {
+		t.Fatalf("with no collection: %s %s", outcome, reason)
+	}
+	collectInto(t, directory, "appointment,status\n", "observation-completion-001.json")
+	if outcome, reason := emptyCollection(directory, "source.json", now); outcome != Confirmed || reason != CollectionEmptied {
+		t.Fatalf("after an empty collection: %s %s", outcome, reason)
+	}
+	if outcome, reason := emptyCollection(directory, "source.json", now.Add(2*time.Hour)); outcome != Unconfirmed || reason != CollectionStale {
+		t.Fatalf("after the source's freshness bound: %s %s", outcome, reason)
+	}
+	collectInto(t, directory, "appointment,status\nA1,booked\n", "observation-completion-002.json")
+	if outcome, reason := emptyCollection(directory, "source.json", time.Now()); outcome != Failed || reason != CollectionNotEmpty {
+		t.Fatalf("after a collection that observed a record: %s %s", outcome, reason)
+	}
+	if outcome, reason := emptyCollection(directory, "absent.json", now); outcome != Unconfirmed || reason != ObservationUnreadable {
+		t.Fatalf("an absent source: %s %s", outcome, reason)
+	}
+	if _, err := ReviewedAction("empty", CollectionEmpty, "The store is empty.", ""); err != nil {
+		t.Fatal(err)
+	}
+	plan := `{"schema":"readmit-reset-plan/v1","environment":"lab-siu","actions":[{"id":"empty","operator":"collection_empty","authority":"read_declared_file","instructions":"Empty."}]}`
+	if _, err := DecodePlan([]byte(plan)); err == nil {
+		t.Fatal("a collection_empty action naming no source was read")
 	}
 }

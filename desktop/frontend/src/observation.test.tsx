@@ -1,1129 +1,27 @@
-import { goTo, goToView, page } from "./testkit/navigation";
-import { expect, test, vi } from "vitest";
+// Named observations: where a test reads its downstream result and when that
+// result is complete. The page shows the saved source, completion rule and
+// actual collections; Edit is one editor with one Save, and Collect is a
+// reviewed, read-only collection. Fixtures name sources by synthetic tokens,
+// never a network address, and credentials by name, never a value.
+import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  CASE_ENTRY,
-  WORKSPACE_ROOT,
-  folderChosen,
-  projectOverviewResult,
-} from "./testkit/fixtures";
+import { WORKSPACE_ROOT, caseCatalogItem, folderChosen } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
-import { expectTabPattern } from "./testkit/tabs";
-import { Parked, type FacadeHandlers } from "./testkit/wails";
+import { goTo, page } from "./testkit/navigation";
+import { Parked, type FacadeHandlers, type FacadeStub } from "./testkit/wails";
 import type {
   CatalogItem,
   CollectionRow,
+  CredentialRow,
   ItemDraft,
-  ObservationCollectFacadeRequest,
+  ObservationAdapterSupport,
   ReviewedActionResult,
-  ObservationCompletionResult,
-  ObservationSource,
-  ObservationSourceRequest,
-  ObservationSourceResult,
-  ObservationSupportResult,
-  ObservationValidateResult,
-  ObservationWindowRequest,
-  ObservationWindowResult,
+  SaveItemRequest,
+  SaveItemResult,
 } from "./bindings";
 
-/** The source the facade answers for a save of these choices: the document
- * it wrote, under the contract version it picked for the chosen kind, which
- * the test states as the facade's reader declares it. */
-function savedSource(request: ObservationSourceRequest): ObservationSource {
-  const choices = request.choices!;
-  const versions: Record<string, string> = {
-    "file-export": "readmit-observation-source/v1",
-    "http-api": "readmit-observation-source/v1",
-    "downstream-capture": "readmit-observation-source/v2",
-    "database-query": "readmit-observation-source/v3",
-  };
-  return { schema: versions[choices.source.kind] ?? "", ...choices };
-}
-
-async function openProject(user: ReturnType<typeof userEvent.setup>, defaults = false) {
-  const { facade } = await renderApp({
-    SelectWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: "project.json", kind: "project", schema: "readmit-project/v1" },
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-      ]),
-    OpenProjectOverview: () =>
-      projectOverviewResult([
-        {
-          name: CASE_ENTRY,
-          identity: "sha256:1111",
-          schema: "readmit-case/v3",
-          provenance: "generated",
-          interface_version: "siu-2.5.1-v1",
-          title: "Initial Case",
-          status: "open",
-          owner: "test-user",
-          tags: ["test"],
-          incidents: [],
-          evidence: "verified",
-        },
-      ]),
-    ObservationSupport: (): Promise<ObservationSupportResult> =>
-      Promise.resolve({
-        state: "completed",
-        support: [
-          {
-            kind: "file-export",
-            schema: "readmit-observation-source/v1",
-            adapter: "file-export",
-            version: "v1",
-            qualification: "supported",
-            production_claim: true,
-          },
-          {
-            kind: "database-query",
-            schema: "readmit-observation-source/v3",
-            adapter: "postgresql",
-            version: "lab-harness",
-            qualification: "unqualified",
-            production_claim: false,
-            notes: "Live qualification evidence is owned by bharm16/readmit#75",
-          },
-        ],
-      }),
-    OpenObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({
-        state: "completed",
-        source: {
-          schema: "readmit-observation-source/v1",
-          source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
-          enabled: true,
-          freshness: { max_age: "1h" },
-          extraction: {
-            envelope: "csv",
-            encoding: "utf-8",
-            csv: { delimiter: ",", record_separator: "lf", header: "present", fields: 2 },
-            record_key: ["appointment"],
-          },
-          file: { path: "export.csv", max_bytes: 65536 },
-          http: null,
-          capture: null,
-        },
-        ...(defaults ? {} : { identity: "source-identity" }),
-      }),
-    OpenObservationWindow: (): Promise<ObservationWindowResult> =>
-      Promise.resolve({
-        state: "completed",
-        window: {
-          schema: "readmit-observation-window/v1",
-          source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
-          watermark: { kind: "none", position: "" },
-          pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
-          completion: {
-            deadline: "30s",
-            quiet_period: "2s",
-            stable_samples: 3,
-            max_records: 100,
-            max_samples: 16,
-          },
-        },
-        ...(defaults ? {} : { identity: "window-identity" }),
-      }),
-  });
-  // The first-run card and the command region's action bar both offer the same
-  // open-workspace action, so either button starts the same chooser.
-  await user.click(screen.getAllByRole("button", { name: "Open" })[0]!);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await screen.findByRole("button", { name: "Project: Scheduling investigation" });
-  return { facade };
-}
-
-test("opening observation editor never queries and shows qualification state", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const collect = vi.fn();
-  facade.reply({
-    CollectObservation: (req: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult> => {
-      collect(req);
-      return Promise.resolve({ state: "failed", reason: "should not collect on open" });
-    },
-  });
-
-  await startObservationSetup(user);
-  expect(await screen.findByRole("heading", { name: "Observations", level: 3 })).toBeTruthy();
-  expect(screen.getByText(/Editor opened locally/)).toBeTruthy();
-  expect(screen.getByText(/postgresql/)).toBeTruthy();
-  expect(screen.getAllByText(/not a production claim/).length).toBeGreaterThan(0);
-  // The selected type's qualification sits beside its choice, and the
-  // support matrix is a named disclosure.
-  expect(screen.getByRole("button", { name: "Database view" }).getAttribute("aria-describedby")).toBe("observation-kind-database-query");
-  expect(document.getElementById("observation-kind-database-query")?.textContent).toBe("unqualified; not a production claim");
-  expect(screen.getByText("Adapter support").tagName).toBe("SUMMARY");
-  expect(collect).not.toHaveBeenCalled();
-});
-
-test("local validation and unauthorized collect stay separate", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const calls: ObservationCollectFacadeRequest[] = [];
-  facade.reply({
-    ValidateObservationPair: (): Promise<ObservationValidateResult> =>
-      Promise.resolve({ state: "completed" }),
-    CollectObservation: (req): Promise<ObservationCompletionResult> => {
-      calls.push(req);
-      if (!req.authorize) {
-        return Promise.resolve({
-          state: "failed",
-          reason: "collection requires explicit authorization; opening an editor never queries a source",
-        });
-      }
-      return Promise.resolve({
-        state: "completed",
-        summary: {
-          supported: true,
-          status: "complete",
-          records_observed: 1,
-          mapped_correlations: 1,
-          unmapped_correlations: 0,
-          stale: false,
-          partial: false,
-          trustworthy: true,
-        },
-      });
-    },
-  });
-
-  await startObservationSetup(user);
-  await screen.findByRole("heading", { name: "Observations", level: 3 });
-
-  await waitFor(() => expect(screen.getByText(byContent(/^Saved window ID/)).textContent).toBe("Saved window ID: window-identity (observation-window.json)"));
-  await user.click(screen.getByRole("button", { name: "Validate saved configuration" }));
-  expect(
-    await screen.findByText(
-      "Saved configuration valid: observation-source.json and observation-window.json as saved. No endpoint was queried.",
-    ),
-  ).toBeTruthy();
-  expect(screen.getByText(/No endpoint is queried\./)).toBeTruthy();
-
-  await user.click(screen.getByRole("tab", { name: "Collect and results" }));
-  await user.click(screen.getByRole("button", { name: "Collect once" }));
-  // Collect stays disabled until authorize is checked; force a click path via authorize.
-  expect(calls).toHaveLength(0);
-  await user.click(screen.getByLabelText(/I authorize a read-only collection/));
-  await user.click(screen.getByRole("button", { name: "Collect once" }));
-  await waitFor(() => expect(calls).toHaveLength(1));
-  expect(calls[0]?.authorize).toBe(true);
-  // The collection names the reviewed saved pair by the identities it was
-  // authorized with, so a document changed on disk since is refused.
-  expect(calls[0]?.expected_source_identity).toBe("source-identity");
-  expect(calls[0]?.expected_window_identity).toBe("window-identity");
-  expect(await screen.findByText(/Absence claim:/)).toBeTruthy();
-  // One authorization is one collection.
-  expect((screen.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement).checked).toBe(false);
-});
-
-test("denied and stale completion summaries stay distinct from absence", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  facade.reply({
-    ExplainObservation: (): Promise<ObservationCompletionResult> =>
-      Promise.resolve({
-        state: "completed",
-        summary: {
-          supported: false,
-          reason: "the source returned state predating the window's watermark",
-          status: "stale",
-          records_observed: 0,
-          mapped_correlations: 0,
-          unmapped_correlations: 0,
-          stale: true,
-          partial: false,
-          trustworthy: false,
-        },
-      }),
-  });
-  await startObservationSetup(user);
-  await screen.findByRole("heading", { name: "Observations", level: 3 });
-  await user.click(screen.getByRole("tab", { name: "Collect and results" }));
-  await user.click(screen.getByRole("button", { name: "Explain completion" }));
-  expect(await screen.findByText(/Status:/)).toBeTruthy();
-  expect(screen.getByText("stale")).toBeTruthy();
-  expect(screen.getByText(/not supported/)).toBeTruthy();
-  expect(screen.getByText(/never evidence of no output/)).toBeTruthy();
-});
-
-test("a source the facade answered is saved again as the person's choices, never under a version the window picked, and a refused save says so", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const saved: ObservationSourceRequest[] = [];
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> => {
-      saved.push(request);
-      // The facade answers with the source struct, whose capture transport
-      // is an explicit null even for a v1 document.
-      return Promise.resolve({ state: "completed", source: { ...savedSource(request), capture: null }, identity: "source-identity" });
-    },
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
-  });
-  await startObservationSetup(user);
-  await screen.findByRole("heading", { name: "Observations", level: 3 });
-  await user.click(screen.getByRole("button", { name: "Save observation" }));
-  expect(await screen.findByText(/^Saved through shared Go writers/)).toBeTruthy();
-  await user.clear(screen.getByLabelText("Export file"));
-  await user.type(screen.getByLabelText("Export file"), "never-exported.csv");
-  await user.click(screen.getByRole("button", { name: "Save observation" }));
-  await waitFor(() => expect(saved).toHaveLength(2));
-  // What the person declared goes back, and the contract version is the
-  // facade's to pick: no document and no version is sent.
-  expect(saved[1]?.choices?.file?.path).toBe("never-exported.csv");
-  expect(saved[1]?.source).toBeUndefined();
-  expect(saved[1]?.choices && "schema" in saved[1].choices).toBe(false);
-  expect(JSON.stringify(saved[1])).not.toContain("readmit-observation-source/");
-
-  facade.reply({
-    SaveObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "failed", reason: "the source document could not be written" }),
-  });
-  await user.click(screen.getByRole("button", { name: "Save observation" }));
-  expect(
-    await screen.findByText(/^Not saved: the source document could not be written\. A collection reads the documents saved before\./),
-  ).toBeTruthy();
-  expect(screen.queryByText(/^Saved through shared Go writers/)).toBeNull();
-});
-
-// A source switched to another kind and back is sent with only the transport
-// its kind declares, and never with a contract version: the facade picks the
-// version the chosen kind needs.
-test("a source switched between kinds is saved as the choices of its own kind, and the facade picks the version", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const saved: ObservationSourceRequest[] = [];
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> => {
-      saved.push(request);
-      return Promise.resolve({ state: "completed", source: savedSource(request), identity: "source-identity" });
-    },
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
-  });
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("button", { name: "HTTPS API" }));
-  await user.click(panel.getByRole("button", { name: "File export" }));
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await waitFor(() => expect(saved).toHaveLength(1));
-  expect(saved[0]?.choices?.source.kind).toBe("file-export");
-  expect(saved[0]?.choices?.file).not.toBeNull();
-  expect(saved[0]?.choices?.http).toBeNull();
-  expect(saved[0]?.choices?.capture).toBeNull();
-  expect(saved[0]?.choices && "database" in saved[0].choices).toBe(false);
-  expect(saved[0]?.choices && "schema" in saved[0].choices).toBe(false);
-  expect(await panel.findByText("Source document observation-source.json: saved readmit-observation-source/v1, identity source-identity.")).toBeTruthy();
-
-  await user.click(panel.getByRole("button", { name: "Downstream capture" }));
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await waitFor(() => expect(saved).toHaveLength(2));
-  expect(saved[1]?.choices?.source.kind).toBe("downstream-capture");
-  expect(saved[1]?.choices?.capture).not.toBeNull();
-  expect(saved[1]?.choices && "database" in saved[1].choices).toBe(false);
-  expect(saved[1]?.choices && "schema" in saved[1].choices).toBe(false);
-  expect(await panel.findByText("Source document observation-source.json: saved readmit-observation-source/v2, identity source-identity.")).toBeTruthy();
-});
-
-/** The innermost element whose whole text matches: a line the panel composes
- * from several elements. */
-function byContent(pattern: RegExp): (content: string, element: Element | null) => boolean {
-  return (_content, element) =>
-    element !== null &&
-    pattern.test(element.textContent ?? "") &&
-    !Array.from(element.children).some((child) => pattern.test(child.textContent ?? ""));
-}
-
-async function tabTo(user: ReturnType<typeof userEvent.setup>, target: HTMLElement) {
-  for (let step = 0; step < 200 && document.activeElement !== target; step++) await user.tab();
-  expect(document.activeElement).toBe(target);
-}
-
-/** The file-level observation setup is a started task, reached from
- * Security's Add connection; the Environments page lists named observations
- * instead. */
-async function startObservationSetup(user: ReturnType<typeof userEvent.setup>) {
-  await goToView(user, "Settings", "Security");
-  await user.click((await screen.findAllByRole("button", { name: "Add connection" }))[0]!);
-  await user.click(await screen.findByRole("menuitem", { name: "Source" }));
-}
-
-async function openObservationSetup(user: ReturnType<typeof userEvent.setup>) {
-  await startObservationSetup(user);
-  return within(await screen.findByRole("region", { name: "Observation setup" }));
-}
-
-type Panel = Awaited<ReturnType<typeof openObservationSetup>>;
-
-/** Names a document in its file field; nothing is read until Open. */
-async function nameFile(user: ReturnType<typeof userEvent.setup>, panel: Panel, kind: "Source" | "Window", name: string) {
-  await user.clear(panel.getByLabelText(`${kind} file`));
-  await user.type(panel.getByLabelText(`${kind} file`), name);
-}
-
-/** Names a document and presses its Open action. */
-async function openFile(user: ReturnType<typeof userEvent.setup>, panel: Panel, kind: "Source" | "Window", name: string) {
-  await nameFile(user, panel, kind, name);
-  await user.click(panel.getByRole("button", { name: `Open ${kind.toLowerCase()}` }));
-}
-
-/** The saved-configuration summary's two lines. */
-function savedIDs(panel: Panel): [string, string] {
-  return [
-    panel.getByText(byContent(/^Saved source ID/)).textContent ?? "",
-    panel.getByText(byContent(/^Saved window ID/)).textContent ?? "",
-  ];
-}
-
-test("new observation defaults have no pinned identity until each document is saved", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user, true);
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: savedSource(request), identity: "saved-source-identity" }),
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "saved-window-identity" }),
-  });
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect(savedIDs(panel)).toEqual(["Saved source ID: not saved", "Saved window ID: not saved"]));
-  await user.click(panel.getByRole("tab", { name: "Completion rules" }));
-  await waitFor(() => expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).disabled).toBe(false));
-  await user.selectOptions(panel.getByLabelText("Pre-existing state"), "Unknown");
-  await waitFor(() => expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await panel.findByText(/^Saved through shared Go writers/);
-  expect(savedIDs(panel)).toEqual([
-    "Saved source ID: saved-source-identity (observation-source.json)",
-    "Saved window ID: saved-window-identity (observation-window.json)",
-  ]);
-});
-
-test("opening another source is explicit: a typed name reads nothing, Open asks before replacing unsaved edits, and Escape keeps them", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).disabled).toBe(false));
-  await user.clear(panel.getByLabelText("Export file"));
-  await user.type(panel.getByLabelText("Export file"), "edited.csv");
-  const reads = facade.callsTo("OpenObservationSource").length;
-  // Typing a name only stages it.
-  await nameFile(user, panel, "Source", "other-source.json");
-  expect(facade.callsTo("OpenObservationSource")).toHaveLength(reads);
-  expect(panel.queryByRole("group", { name: /Replace unsaved source edits/ })).toBeNull();
-  await user.click(panel.getByRole("button", { name: "Open source" }));
-  expect(panel.getByRole("group", { name: "Replace unsaved source edits?" })).toBeTruthy();
-  expect(panel.getByText(/Opening other-source\.json will replace those unsaved edits\./)).toBeTruthy();
-  expect(facade.callsTo("OpenObservationSource")).toHaveLength(reads);
-  expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("edited.csv");
-  await user.keyboard("{Escape}");
-  expect(panel.queryByRole("group", { name: /Replace unsaved source edits/ })).toBeNull();
-  expect((panel.getByLabelText("Source file") as HTMLInputElement).value).toBe("observation-source.json");
-  expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("edited.csv");
-  expect(facade.callsTo("OpenObservationSource")).toHaveLength(reads);
-
-  await openFile(user, panel, "Source", "other-source.json");
-  await user.click(panel.getByRole("button", { name: "Open selected source" }));
-  await waitFor(() => expect(facade.callsTo("OpenObservationSource").length).toBeGreaterThan(reads));
-  expect(facade.callsTo("OpenObservationSource").at(-1)?.args).toEqual([WORKSPACE_ROOT, "other-source.json"]);
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("export.csv"));
-  expect((panel.getByLabelText("Source file") as HTMLInputElement).value).toBe("other-source.json");
-
-  await user.clear(panel.getByLabelText("Export file"));
-  await user.type(panel.getByLabelText("Export file"), "still-edited.csv");
-  facade.reply({
-    OpenObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "failed", reason: "later source version" }),
-  });
-  await openFile(user, panel, "Source", "later-source.json");
-  await user.click(panel.getByRole("button", { name: "Open selected source" }));
-  await panel.findByText("Source document later-source.json not opened: later source version");
-  expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("still-edited.csv");
-  await openFile(user, panel, "Source", "third-source.json");
-  expect(panel.getByRole("group", { name: "Replace unsaved source edits?" })).toBeTruthy();
-  expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("still-edited.csv");
-});
-
-test("opening another window asks before replacing unsaved edits, and Keep retains them", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Completion rules" }));
-  await waitFor(() => expect((panel.getByLabelText("Collection deadline") as HTMLInputElement).disabled).toBe(false));
-  await user.clear(panel.getByLabelText("Collection deadline"));
-  await user.type(panel.getByLabelText("Collection deadline"), "45s");
-  const reads = facade.callsTo("OpenObservationWindow").length;
-  await openFile(user, panel, "Window", "other-window.json");
-  expect(panel.getByRole("group", { name: "Replace unsaved window edits?" })).toBeTruthy();
-  expect(facade.callsTo("OpenObservationWindow")).toHaveLength(reads);
-  await user.click(panel.getByRole("button", { name: "Keep window edits" }));
-  expect((panel.getByLabelText("Window file") as HTMLInputElement).value).toBe("observation-window.json");
-  expect((panel.getByLabelText("Collection deadline") as HTMLInputElement).value).toBe("45s");
-  expect(facade.callsTo("OpenObservationWindow")).toHaveLength(reads);
-
-  facade.reply({
-    OpenObservationWindow: (): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "failed", reason: "later window version" }),
-  });
-  await openFile(user, panel, "Window", "later-window.json");
-  await user.click(panel.getByRole("button", { name: "Open selected window" }));
-  await panel.findByText("Window document later-window.json not opened: later window version");
-  expect((panel.getByLabelText("Collection deadline") as HTMLInputElement).value).toBe("45s");
-  await openFile(user, panel, "Window", "third-window.json");
-  expect(panel.getByRole("group", { name: "Replace unsaved window edits?" })).toBeTruthy();
-});
-
-test("a newly opened document does not show the previous file's identity while its read is pending", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await waitFor(() =>
-    expect(savedIDs(panel)).toEqual([
-      "Saved source ID: source-identity (observation-source.json)",
-      "Saved window ID: window-identity (observation-window.json)",
-    ]),
-  );
-  const reading = facade.park("OpenObservationSource");
-  await openFile(user, panel, "Source", "new-source.json");
-  await waitFor(() => expect(reading.size).toBeGreaterThan(0));
-  expect(savedIDs(panel)).toEqual(["Saved source ID: not saved", "Saved window ID: window-identity (observation-window.json)"]);
-  await waitFor(() => {
-    while (reading.size > 0) reading.resolve({ state: "failed", reason: "not found" });
-    expect(panel.getByText("Source document new-source.json not opened: not found")).toBeTruthy();
-  });
-  const windowReading = facade.park("OpenObservationWindow");
-  await openFile(user, panel, "Window", "new-window.json");
-  await waitFor(() => expect(windowReading.size).toBeGreaterThan(0));
-  expect(savedIDs(panel)).toEqual(["Saved source ID: not saved", "Saved window ID: not saved"]);
-  await waitFor(() => {
-    while (windowReading.size > 0) windowReading.resolve({ state: "failed", reason: "not found" });
-    expect(panel.getByText("Window document new-window.json not opened: not found")).toBeTruthy();
-  });
-});
-
-test("each saved document is validated on its own from the keyboard, with its identity or the reader's refusal", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  facade.reply({
-    ValidateObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({
-        state: "completed",
-        source: {
-          schema: "readmit-observation-source/v1",
-          source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
-          enabled: true,
-          freshness: { max_age: "1h" },
-          extraction: { envelope: "csv", encoding: "utf-8", record_key: ["appointment"] },
-          file: { path: "export.csv", max_bytes: 65536 },
-          http: null,
-          capture: null,
-        },
-        source_file: "observation-source.json",
-        identity: "saved-source-identity",
-      }),
-    ValidateObservationWindow: (): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "failed", reason: "a window whose quiet period outlasts its deadline can never complete" }),
-  });
-  const panel = await openObservationSetup(user);
-
-  await tabTo(user, panel.getByRole("button", { name: "Validate saved source" }));
-  await user.keyboard("{Enter}");
-  expect(
-    await panel.findByText(
-      "Source document observation-source.json: valid readmit-observation-source/v1, identity saved-source-identity. Nothing was collected.",
-    ),
-  ).toBeTruthy();
-  await tabTo(user, panel.getByRole("button", { name: "Validate saved window" }));
-  await user.keyboard(" ");
-  expect(
-    await panel.findByText(
-      "Window document observation-window.json refused: a window whose quiet period outlasts its deadline can never complete",
-    ),
-  ).toBeTruthy();
-  // Each action read the document its own field names, and nothing else.
-  expect(facade.callsTo("ValidateObservationSource").map((call) => call.args)).toEqual([[WORKSPACE_ROOT, "observation-source.json"]]);
-  expect(facade.callsTo("ValidateObservationWindow").map((call) => call.args)).toEqual([[WORKSPACE_ROOT, "observation-window.json"]]);
-  expect(facade.callsTo("ValidateObservationPair")).toHaveLength(0);
-  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
-});
-
-test("a refused source save leaves the window as it was saved, and a refused window save says the source was saved", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  facade.reply({
-    SaveObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "failed", reason: "cannot write an observation source here" }),
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity-2" }),
-  });
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  expect(
-    await panel.findByText("Not saved: cannot write an observation source here. A collection reads the documents saved before."),
-  ).toBeTruthy();
-  expect(panel.getByText("Source document observation-source.json not saved: cannot write an observation source here")).toBeTruthy();
-  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
-  expect(savedIDs(panel)).toEqual([
-    "Saved source ID: source-identity (observation-source.json)",
-    "Saved window ID: window-identity (observation-window.json)",
-  ]);
-
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: savedSource(request), identity: "source-identity-2" }),
-    SaveObservationWindow: (): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "permission_denied", reason: "authoring requires an active license" }),
-  });
-  await tabTo(user, panel.getByRole("button", { name: "Save observation" }));
-  await user.keyboard("{Enter}");
-  expect(
-    await panel.findByText(
-      "Window not saved: authoring requires an active license. The source was saved; a collection reads the window saved before.",
-    ),
-  ).toBeTruthy();
-  expect(panel.getByText("Source document observation-source.json: saved readmit-observation-source/v1, identity source-identity-2.")).toBeTruthy();
-  expect(panel.getByText("Window document observation-window.json not saved: authoring requires an active license")).toBeTruthy();
-  expect(savedIDs(panel)).toEqual([
-    "Saved source ID: source-identity-2 (observation-source.json)",
-    "Saved window ID: window-identity (observation-window.json)",
-  ]);
-  // Neither editor has unsaved edits now, yet the pair is a new source with
-  // the old window: Collect stays closed until both are saved.
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  expect((panel.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Collect once" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(panel.getByText("The last save did not write both documents. Save observation again before collecting.")).toBeTruthy();
-  facade.reply({
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity-2" }),
-  });
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.");
-  expect((panel.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement).disabled).toBe(false);
-});
-
-test("a document the reader refuses is said to be refused on opening, and opening one document never reads the other again", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect(facade.callsTo("OpenObservationWindow").length).toBeGreaterThan(0));
-  facade.reply({
-    OpenObservationWindow: (_workspace, windowFile): Promise<ObservationWindowResult> =>
-      Promise.resolve(
-        windowFile === "later.json"
-          ? { state: "failed", reason: "an observation window must declare readmit-observation-window/v1" }
-          : {
-              state: "completed",
-              window: {
-                schema: "readmit-observation-window/v1",
-                source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
-                watermark: { kind: "none", position: "" },
-                pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
-                completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
-              },
-              identity: "window-identity",
-            },
-      ),
-  });
-  const sourceReads = facade.callsTo("OpenObservationSource").length;
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).disabled).toBe(false));
-  await user.clear(panel.getByLabelText("Export file"));
-  await user.type(panel.getByLabelText("Export file"), "exports/appointments.csv");
-  await openFile(user, panel, "Window", "later.json");
-  expect(
-    await panel.findByText("Window document later.json not opened: an observation window must declare readmit-observation-window/v1"),
-  ).toBeTruthy();
-  expect(savedIDs(panel)).toEqual(["Saved source ID: source-identity (observation-source.json)", "Saved window ID: not saved"]);
-  // The source was not read again, so what was typed into it stands.
-  expect(facade.callsTo("OpenObservationSource")).toHaveLength(sourceReads);
-  expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("exports/appointments.csv");
-  // The refused window is never replaced by what the editor holds.
-  expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(panel.getByText(/^Saving is closed while a named document is refused/)).toBeTruthy();
-  await openFile(user, panel, "Window", "observation-window.json");
-  await waitFor(() => expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false));
-  expect(panel.queryByText(/^Saving is closed/)).toBeNull();
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
-  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
-});
-
-test("an edit abandoned by closing the panel from the keyboard writes nothing, and the panel opened again reads the saved document", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  let panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).disabled).toBe(false));
-  await user.clear(panel.getByLabelText("Export file"));
-  await user.type(panel.getByLabelText("Export file"), "exports/elsewhere.csv");
-  const reads = facade.callsTo("OpenObservationSource").length;
-  // Close is above the editor: Shift+Tab reaches it from the field.
-  const close = panel.getByRole("button", { name: "Close" });
-  for (let step = 0; step < 80 && document.activeElement !== close; step++) await user.tab({ shift: true });
-  expect(document.activeElement).toBe(close);
-  await user.keyboard("{Enter}");
-  await waitFor(() => expect(screen.queryByRole("region", { name: "Observation setup" })).toBeNull());
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
-  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
-  panel = await openObservationSetup(user);
-  await waitFor(() => expect(facade.callsTo("OpenObservationSource").length).toBeGreaterThan(reads));
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("export.csv"));
-  expect(savedIDs(panel)).toEqual([
-    "Saved source ID: source-identity (observation-source.json)",
-    "Saved window ID: window-identity (observation-window.json)",
-  ]);
-});
-
-test("the editor stays closed while a document is read, so a late read never replaces what was typed", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const reading = facade.park("OpenObservationSource");
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect(reading.size).toBeGreaterThan(0));
-  const exportPath = panel.getByLabelText("Export file") as HTMLInputElement;
-  // Nothing can be typed, saved or validated while the document it would
-  // replace is being read; the document's name can still be typed.
-  expect(exportPath.disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByRole("button", { name: "Validate saved source" }) as HTMLButtonElement).disabled).toBe(true);
-  expect((panel.getByLabelText("Source file") as HTMLInputElement).disabled).toBe(false);
-  const answer: ObservationSourceResult = {
-    state: "completed",
-    source: fileSource("exports/appointments.csv"),
-    identity: "source-identity",
-  };
-  // Every read the panel started answers, and the last one fills the editor.
-  await waitFor(() => {
-    while (reading.size > 0) reading.resolve(answer);
-    expect(exportPath.value).toBe("exports/appointments.csv");
-  });
-  await waitFor(() => expect(exportPath.disabled).toBe(false));
-  expect(exportPath.value).toBe("exports/appointments.csv");
-});
-
-/** A file-export source reading the named export. */
-function fileSource(path: string): ObservationSource {
-  return {
-    schema: "readmit-observation-source/v1",
-    source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
-    enabled: true,
-    freshness: { max_age: "1h" },
-    extraction: { envelope: "csv", encoding: "utf-8", record_key: ["appointment"] },
-    file: { path, max_bytes: 65536 },
-    http: null,
-    capture: null,
-  };
-}
-
-test("a slow open of another source, answered after a later one, never commits into the editor", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).disabled).toBe(false));
-  const reading = facade.park("OpenObservationSource");
-  await openFile(user, panel, "Source", "slow.json");
-  await waitFor(() => expect(reading.size).toBe(1));
-  await openFile(user, panel, "Source", "fast.json");
-  await waitFor(() => expect(reading.size).toBe(2));
-  // The read of slow.json answers after fast.json was asked for: it is not
-  // the current read and commits nothing.
-  reading.resolve({ state: "completed", source: fileSource("slow.csv"), identity: "slow-identity" });
-  reading.resolve({ state: "completed", source: fileSource("fast.csv"), identity: "fast-identity" });
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).value).toBe("fast.csv"));
-  expect(savedIDs(panel)[0]).toBe("Saved source ID: fast-identity (fast.json)");
-  expect(panel.queryByText(/slow/)).toBeNull();
-});
-
-test("collection is closed while the editor differs from the reviewed saved pair, and authorization is withdrawn by any change", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const collected: ObservationCollectFacadeRequest[] = [];
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: savedSource(request), identity: "source-identity-2" }),
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity-2" }),
-    CollectObservation: (request): Promise<ObservationCompletionResult> => {
-      collected.push(request);
-      return Promise.resolve({
-        state: "failed",
-        reason: "the saved observation source changed since it was reviewed; open it again before collecting",
-      });
-    },
-  });
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  const authorize = () => panel.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement;
-  const collect = () => panel.getByRole("button", { name: "Collect once" }) as HTMLButtonElement;
-  await waitFor(() => expect(authorize().disabled).toBe(false));
-  await user.click(authorize());
-  expect(collect().disabled).toBe(false);
-  expect(panel.getByText(/This authorizes one collection of the saved source observation-source\.json/)).toBeTruthy();
-
-  // An edit withdraws the authorization and closes collection with a reason
-  // that routes to Save; nothing is saved on its own.
-  await user.click(panel.getByRole("tab", { name: "Source" }));
-  await user.clear(panel.getByLabelText("Export file"));
-  await user.type(panel.getByLabelText("Export file"), "exports/new.csv");
-  expect(panel.getByText("The editor has unsaved edits; these saved IDs do not represent them until the observation is saved.")).toBeTruthy();
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  expect(authorize().checked).toBe(false);
-  expect(authorize().disabled).toBe(true);
-  expect(collect().disabled).toBe(true);
-  expect(
-    panel.getByText("The editor has unsaved edits. Save observation first: Collect reads only the saved documents, never the editor."),
-  ).toBeTruthy();
-  expect(collect().getAttribute("aria-describedby")).toBe("observation-collect-blocked");
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
-
-  // A staged file name that is not open closes it as well.
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.");
-  expect(authorize().checked).toBe(false);
-  await nameFile(user, panel, "Window", "elsewhere.json");
-  expect(authorize().disabled).toBe(true);
-  expect(
-    panel.getByText("The file fields name documents that are not open. Open them, or restore the open names, before collecting."),
-  ).toBeTruthy();
-  await nameFile(user, panel, "Window", "observation-window.json");
-
-  // Collect sends the saved pair it was authorized for, and the facade's
-  // refusal of a document changed on disk since is shown, not a result.
-  await user.click(authorize());
-  await user.click(collect());
-  await waitFor(() => expect(collected).toHaveLength(1));
-  expect(collected[0]).toMatchObject({
-    source_file: "observation-source.json",
-    window_file: "observation-window.json",
-    authorize: true,
-    expected_source_identity: "source-identity-2",
-    expected_window_identity: "window-identity-2",
-  });
-  expect(
-    await panel.findByText("the saved observation source changed since it was reviewed; open it again before collecting", { selector: "p" }),
-  ).toBeTruthy();
-  expect(panel.queryByText(/^Status:/)).toBeNull();
-});
-
-test("saving twice at once writes the pair once", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false));
-  const sourceSaves = facade.park("SaveObservationSource");
-  const save = panel.getByRole("button", { name: "Save observation" });
-  await user.dblClick(save);
-  await user.click(save);
-  await waitFor(() => expect(sourceSaves.size).toBe(1));
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(1);
-  // While the pair is being written, collection stays closed.
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  expect((panel.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement).disabled).toBe(true);
-  expect(panel.getByText("The observation is being saved.")).toBeTruthy();
-  facade.reply({
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
-  });
-  sourceSaves.resolve({ state: "completed", source: fileSource("export.csv"), identity: "source-identity" });
-  await panel.findByText("Saved through shared Go writers. Identities pinned for test binding.");
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(1);
-  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(1);
-});
-
-test("validating the saved configuration names the saved files and says unsaved edits were not validated", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  facade.reply({
-    ValidateObservationPair: (): Promise<ObservationValidateResult> => Promise.resolve({ state: "completed" }),
-  });
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByLabelText("Export file") as HTMLInputElement).disabled).toBe(false));
-  await user.clear(panel.getByLabelText("Export file"));
-  await user.type(panel.getByLabelText("Export file"), "draft-only.csv");
-  await user.click(panel.getByRole("button", { name: "Validate saved configuration" }));
-  expect(
-    await panel.findByText(
-      "Saved configuration valid: observation-source.json and observation-window.json as saved. No endpoint was queried. Unsaved edits in the editor were not validated.",
-    ),
-  ).toBeTruthy();
-  expect(facade.callsTo("ValidateObservationPair").map((call) => call.args)).toEqual([
-    [{ workspace: WORKSPACE_ROOT, source_file: "observation-source.json", window_file: "observation-window.json" }],
-  ]);
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
-  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
-});
-
-test("database filters are controlled rows that survive edit, save and reopening", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const saved: ObservationSourceRequest[] = [];
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> => {
-      saved.push(request);
-      return Promise.resolve({ state: "completed", source: savedSource(request), identity: "db-identity" });
-    },
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> =>
-      Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity" }),
-  });
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect((panel.getByRole("button", { name: "Database view" }) as HTMLButtonElement).disabled).toBe(false));
-  await user.click(panel.getByRole("button", { name: "Database view" }));
-  const filters = within(panel.getByRole("group", { name: "Filters" }));
-  expect(filters.getByText("No filters: every row of the view is in scope.")).toBeTruthy();
-  expect((filters.getByRole("button", { name: "Add filter" }) as HTMLButtonElement).disabled).toBe(true);
-  // The value typed after its column is captured with it; nothing commits
-  // when a field loses focus.
-  await user.type(filters.getByLabelText("Filter column"), "status");
-  await user.tab();
-  await user.type(filters.getByLabelText("Filter value"), "ready");
-  await user.click(filters.getByRole("button", { name: "Add filter" }));
-  await user.type(filters.getByLabelText("Filter column"), "clinic");
-  await user.type(filters.getByLabelText("Filter value"), "north");
-  await user.click(filters.getByRole("button", { name: "Add filter" }));
-  expect(filters.getAllByRole("button", { name: /^Edit filter / }).map((button) => button.textContent)).toEqual(["Edit filter", "Edit filter"]);
-  expect(filters.getByRole("button", { name: "Edit filter status" })).toBeTruthy();
-  expect(filters.getByRole("button", { name: "Remove filter status" })).toBeTruthy();
-  // Editing a row changes that row only.
-  await user.click(filters.getByRole("button", { name: "Edit filter clinic" }));
-  expect((filters.getByLabelText("Filter column") as HTMLInputElement).value).toBe("clinic");
-  await user.clear(filters.getByLabelText("Filter value"));
-  await user.type(filters.getByLabelText("Filter value"), "south");
-  await user.click(filters.getByRole("button", { name: "Update filter" }));
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await waitFor(() => expect(saved).toHaveLength(1));
-  expect(saved[0]?.choices?.database?.filters).toEqual([
-    { column: "status", value: "ready" },
-    { column: "clinic", value: "south" },
-  ]);
-  expect(saved[0]?.choices?.database?.driver).toBe("postgresql");
-
-  // Reopened, every stored filter is shown, and one can be removed on purpose.
-  const stored = savedSource(saved[0]!);
-  facade.reply({
-    OpenObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: stored, identity: "db-identity" }),
-  });
-  await openFile(user, panel, "Source", "observation-source.json");
-  await waitFor(() => expect(within(panel.getByRole("group", { name: "Filters" })).getAllByRole("button", { name: /^Remove filter / })).toHaveLength(2));
-  const reopened = within(panel.getByRole("group", { name: "Filters" }));
-  expect(reopened.getByText("ready")).toBeTruthy();
-  expect(reopened.getByText("south")).toBeTruthy();
-  await user.click(reopened.getByRole("button", { name: "Remove filter status" }));
-  expect(reopened.queryByText("ready")).toBeNull();
-  expect(reopened.getByText("south")).toBeTruthy();
-});
-
-test("a recorded baseline and both collection limits are editable and saved without dropping the other rules", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const windows: ObservationWindowRequest[] = [];
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: savedSource(request), identity: "source-identity" }),
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> => {
-      windows.push(request);
-      return Promise.resolve({ state: "completed", window: request.window!, identity: "window-identity-2" });
-    },
-  });
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Completion rules" }));
-  await waitFor(() => expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).disabled).toBe(false));
-  // The existing declaration stands until the person chooses another; the
-  // baseline field exists only for a recorded baseline.
-  expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).value).toBe("declared-empty");
-  expect(panel.queryByLabelText("Baseline ID")).toBeNull();
-  expect(panel.getByRole("option", { name: "Declared empty" })).toBeTruthy();
-  expect(panel.getByRole("option", { name: "Unknown" })).toBeTruthy();
-  await user.selectOptions(panel.getByLabelText("Pre-existing state"), "Recorded baseline");
-  const baseline = "a".repeat(64);
-  await user.type(panel.getByLabelText("Baseline ID"), baseline);
-  const limits = within(panel.getByRole("group", { name: "Collection limits" }));
-  await user.clear(limits.getByLabelText("Maximum records"));
-  await user.type(limits.getByLabelText("Maximum records"), "250");
-  await user.clear(limits.getByLabelText("Maximum samples"));
-  await user.type(limits.getByLabelText("Maximum samples"), "8");
-  await user.selectOptions(panel.getByLabelText("Watermark"), "Collection start");
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await waitFor(() => expect(windows).toHaveLength(1));
-  expect(windows[0]?.window).toEqual({
-    schema: "readmit-observation-window/v1",
-    source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
-    watermark: { kind: "collection-start", position: "" },
-    pre_existing_state: { declaration: "recorded-baseline", baseline_identity: baseline },
-    completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 250, max_samples: 8 },
-  });
-});
-
-test("a result stays tied to the saved pair and output that produced it", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  facade.reply({
-    CollectObservation: (): Promise<ObservationCompletionResult> =>
-      Promise.resolve({
-        state: "completed",
-        summary: {
-          supported: false,
-          reason: "the window reached its record cap",
-          status: "capped",
-          records_observed: 100,
-          mapped_correlations: 0,
-          unmapped_correlations: 100,
-          stale: false,
-          partial: true,
-          trustworthy: false,
-        },
-      }),
-  });
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  const authorize = panel.getByLabelText(/I authorize a read-only collection/) as HTMLInputElement;
-  await waitFor(() => expect(authorize.disabled).toBe(false));
-  await user.click(authorize);
-  await user.click(panel.getByRole("button", { name: "Collect once" }));
-  expect(
-    await panel.findByText(
-      "Collection of saved source observation-source.json and saved window observation-window.json, into observation-completion.json.",
-    ),
-  ).toBeTruthy();
-  expect(panel.getByText(byContent(/^Status: /)).textContent).toBe("Status: capped (not trustworthy) · partial/incomplete");
-  expect(panel.getByText(byContent(/^Absence claim: /)).textContent).toBe("Absence claim: not supported — the window reached its record cap");
-  // Another output is not what produced this result.
-  await user.clear(panel.getByLabelText("Completion file"));
-  await user.type(panel.getByLabelText("Completion file"), "another.json");
-  expect(panel.getByText(/^Historical result, not evidence for the configuration shown now\./)).toBeTruthy();
-});
-
-test("the three views are keyboard tabs, and every source type keeps a named group and its qualification beside it", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  const list = panel.getByRole("tablist", { name: "Observation views" });
-  const tabs = within(list).getAllByRole("tab");
-  expect(tabs.map((tab) => tab.textContent)).toEqual(["Source", "Completion rules", "Collect and results"]);
-  tabs[0]?.focus();
-  await user.keyboard("{ArrowRight}");
-  expect(within(list).getByRole("tab", { selected: true }).textContent).toBe("Completion rules");
-  expect(document.activeElement).toBe(tabs[1]);
-  await user.keyboard("{End}");
-  expect(within(list).getByRole("tab", { selected: true }).textContent).toBe("Collect and results");
-  await user.keyboard("{Home}");
-  expect(within(list).getByRole("tab", { selected: true }).textContent).toBe("Source");
-  expect(panel.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(tabs[0]?.id);
-  expectTabPattern(list);
-  // The files and their saved state stay in view on every tab.
-  await user.keyboard("{ArrowLeft}");
-  expect(panel.getByLabelText("Source file")).toBeTruthy();
-  expect(panel.getByRole("group", { name: "Saved configuration" })).toBeTruthy();
-  await user.keyboard("{Home}");
-  // Choosing a tab reads, saves, validates and collects nothing.
-  expect(facade.callsTo("SaveObservationSource")).toHaveLength(0);
-  expect(facade.callsTo("ValidateObservationPair")).toHaveLength(0);
-  expect(facade.callsTo("CollectObservation")).toHaveLength(0);
-
-  await waitFor(() => expect((panel.getByRole("button", { name: "HTTPS API" }) as HTMLButtonElement).disabled).toBe(false));
-  const groups: Record<string, string> = {
-    "File export": "Export file",
-    "HTTPS API": "HTTPS URL",
-    "Downstream capture": "Captured case",
-    "Database view": "Database address",
-  };
-  for (const [kind, field] of Object.entries(groups)) {
-    const choice = panel.getByRole("button", { name: kind });
-    await user.click(choice);
-    expect(choice.getAttribute("aria-pressed")).toBe("true");
-    const group = within(panel.getByRole("group", { name: kind }));
-    expect(group.getByLabelText(field)).toBeTruthy();
-    // The qualification is stated beside the choice, including one the
-    // facade reports no support for.
-    const described = document.getElementById(choice.getAttribute("aria-describedby") ?? "");
-    expect(described?.textContent).toBe(
-      kind === "File export" ? "supported" : kind === "Database view" ? "unqualified; not a production claim" : "support not reported",
-    );
-  }
-  // Help stays attached to its field for assistive technology.
-  const address = panel.getByLabelText("Database address");
-  expect(document.getElementById(address.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/not an HTTPS URL/);
-  expect(panel.getByRole("option", { name: "PostgreSQL" })).toBeTruthy();
-  expect(panel.getByRole("option", { name: "SQL Server" })).toBeTruthy();
-  expect(panel.getByRole("option", { name: "Oracle" })).toBeTruthy();
-  await user.click(panel.getByRole("tab", { name: "Collect and results" }));
-  expect(panel.getByText(/^Selected adapter:/)).toBeTruthy();
-});
-
-test("a new window's pre-existing state is the person's explicit choice: nothing is chosen for them and Save says why it waits", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user, true);
-  const windows: ObservationWindowRequest[] = [];
-  facade.reply({
-    SaveObservationSource: (request): Promise<ObservationSourceResult> =>
-      Promise.resolve({ state: "completed", source: savedSource(request), identity: "saved-source-identity" }),
-    SaveObservationWindow: (request): Promise<ObservationWindowResult> => {
-      windows.push(request);
-      return Promise.resolve({ state: "completed", window: request.window!, identity: "saved-window-identity" });
-    },
-  });
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Completion rules" }));
-  await waitFor(() => expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).disabled).toBe(false));
-  // The facade's new window carries a declaration, but the panel offers it
-  // as no choice at all until the person makes one.
-  const state = panel.getByLabelText("Pre-existing state") as HTMLSelectElement;
-  expect(state.value).toBe("");
-  expect(state.selectedOptions[0]?.textContent).toBe("Not chosen");
-  expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(true);
-  expect(panel.getByText("Choose the pre-existing state under Completion rules before saving: readmit does not choose it for you.")).toBeTruthy();
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  expect(facade.callsTo("SaveObservationWindow")).toHaveLength(0);
-
-  await user.selectOptions(state, "Declared empty");
-  expect(panel.queryByText(/readmit does not choose it for you/)).toBeNull();
-  await user.click(panel.getByRole("button", { name: "Save observation" }));
-  await waitFor(() => expect(windows).toHaveLength(1));
-  expect(windows[0]?.window?.pre_existing_state).toEqual({ declaration: "declared-empty", baseline_identity: "" });
-});
-
-test("an existing window opens with its saved pre-existing state", async () => {
-  const user = userEvent.setup();
-  await openProject(user);
-  const panel = await openObservationSetup(user);
-  await user.click(panel.getByRole("tab", { name: "Completion rules" }));
-  await waitFor(() => expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).disabled).toBe(false));
-  expect((panel.getByLabelText("Pre-existing state") as HTMLSelectElement).value).toBe("declared-empty");
-  expect((panel.getByRole("button", { name: "Save observation" }) as HTMLButtonElement).disabled).toBe(false);
-});
-
-test("a validation answered after another file was opened commits nothing into the form", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openProject(user);
-  const panel = await openObservationSetup(user);
-  await waitFor(() => expect(savedIDs(panel)[0]).toBe("Saved source ID: source-identity (observation-source.json)"));
-  const sources = facade.park("ValidateObservationSource");
-  const windows = facade.park("ValidateObservationWindow");
-  const pairs = facade.park("ValidateObservationPair");
-  await user.click(panel.getByRole("button", { name: "Validate saved source" }));
-  await user.click(panel.getByRole("button", { name: "Validate saved window" }));
-  await user.click(panel.getByRole("button", { name: "Validate saved configuration" }));
-  await waitFor(() => expect(sources.size + windows.size + pairs.size).toBe(3));
-
-  // Both files change before the validations answer.
-  await openFile(user, panel, "Source", "other-source.json");
-  await waitFor(() => expect(savedIDs(panel)[0]).toBe("Saved source ID: source-identity (other-source.json)"));
-  await openFile(user, panel, "Window", "other-window.json");
-  await waitFor(() => expect(savedIDs(panel)[1]).toBe("Saved window ID: window-identity (other-window.json)"));
-  sources.resolve({ state: "failed", reason: "late source answer" });
-  windows.resolve({ state: "failed", reason: "late window answer" });
-  pairs.resolve({ state: "failed", reason: "late pair answer" });
-  // A later validation of the current files is shown, so the late answers
-  // had their chance to land before it.
-  facade.reply({
-    ValidateObservationSource: (): Promise<ObservationSourceResult> => Promise.resolve({ state: "failed", reason: "current source answer" }),
-  });
-  await user.click(panel.getByRole("button", { name: "Validate saved source" }));
-  expect(await panel.findByText("Source document other-source.json refused: current source answer")).toBeTruthy();
-  expect(panel.queryByText(/late (source|window|pair) answer/)).toBeNull();
-  expect(screen.queryByText(/late (source|window|pair) answer/)).toBeNull();
-});
-
-// ---------- Named observations, reached from their environment ----------
+type User = ReturnType<typeof userEvent.setup>;
 
 const OBSERVATION_REF = { kind: "observation" as const, id: "obs-appointments", revision: "rev-1" };
 
@@ -1151,6 +49,7 @@ const LINKED_ENVIRONMENT: CatalogItem = {
       classification: "nonproduction",
       address: "peer-under-test:2575",
       transport: "plain",
+      transport_approved: true, approval_required: true,
       last_checked_at: null,
       observation: OBSERVATION_REF,
       observation_name: "Appointments",
@@ -1183,22 +82,63 @@ const OBSERVATION_DRAFT: ItemDraft = {
   },
 };
 
+/** The facade's validated defaults a new observation starts from. */
+const NEW_OBSERVATION: ItemDraft = {
+  observation: {
+    source: { ...OBSERVATION_DRAFT.observation!.source, extraction: { envelope: "csv", encoding: "utf-8", record_key: [] }, file: { path: "", max_bytes: 65536 } },
+    window: OBSERVATION_DRAFT.observation!.window,
+  },
+};
+
 const COLLECTIONS: CollectionRow[] = [
-  { entry: "observation-completion-002.json", closed_at: "2026-01-01T12:14:00Z", status: "complete", trustworthy: true, records: 0 },
+  { entry: "observation-completion-002.json", closed_at: "2026-01-01T12:14:00Z", status: "complete", trustworthy: true, records: 0, baseline: "sha256:baseline-002" },
   { entry: "observation-completion-001.json", closed_at: "2026-01-01T12:10:00Z", status: "timed_out", trustworthy: false, records: null, reason: "the deadline passed before the records held still" },
 ];
 
-async function openNamedObservation(user: ReturnType<typeof userEvent.setup>, extra: FacadeHandlers = {}) {
-  const { facade } = await renderApp({
+function credential(name: string, purpose: CredentialRow["purpose"]): CredentialRow {
+  return { name, purpose, store: "os-keychain", address: "", command: "/opt/locator", argument_count: 0, generation: 1, rotated_at: "", rotation: "not-declared", bindable: true };
+}
+
+const CREDENTIALS = [credential("records-api", "source-endpoint"), credential("records-db-reader", "source-endpoint"), credential("qa-endpoint", "mllp-endpoint")];
+
+const FILE_SUPPORT: ObservationAdapterSupport = { kind: "file-export", schema: "readmit-observation-source/v1", adapter: "file-export", version: "v1", qualification: "supported", production_claim: true };
+const DATABASE_SUPPORT: ObservationAdapterSupport = {
+  kind: "database-query",
+  schema: "readmit-observation-source/v3",
+  adapter: "postgresql",
+  version: "lab-harness",
+  qualification: "unqualified",
+  production_claim: false,
+};
+
+const SAVED: SaveItemResult = { state: "completed", context: { project: WORKSPACE_ROOT, generation: 1 }, outcome: "saved", saved: OBSERVATION_REF, replayed: false, problems: [] };
+
+function handlers(extra: FacadeHandlers = {}): FacadeHandlers {
+  return {
     SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, []),
     ListCatalog: (query) => {
-      const items = query.kind === "environment" ? [LINKED_ENVIRONMENT] : query.kind === "observation" ? [NAMED_OBSERVATION] : [];
+      const items =
+        query.kind === "environment" ? [LINKED_ENVIRONMENT] : query.kind === "observation" ? [NAMED_OBSERVATION] : query.kind === "case" ? [caseCatalogItem("downstream.case")] : [];
       return { state: "completed", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
     },
-    OpenItemDraft: (request) => ({ state: "completed", context: request.context, new: false, ref: request.ref, draft: request.ref.kind === "observation" ? OBSERVATION_DRAFT : { name: "Scheduling QA" } }),
+    OpenItemDraft: (request) =>
+      request.ref.kind === "observation" && request.ref.id === ""
+        ? { state: "completed", context: request.context, new: true, draft: NEW_OBSERVATION }
+        : { state: "completed", context: request.context, new: false, ref: request.ref, draft: request.ref.kind === "observation" ? OBSERVATION_DRAFT : { name: "Scheduling QA" } },
     ObservationHistory: (request) => ({ state: "completed", context: request.context, collections: COLLECTIONS }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: CREDENTIALS, referring: [] }),
+    ObservationSupport: () => ({ state: "completed", support: [FILE_SUPPORT, DATABASE_SUPPORT] }),
+    ObservationFields: (request) => ({
+      state: "completed",
+      context: request.context,
+      fields: request.source.file?.path.endsWith("visits.csv") ? ["visit", "clinic"] : ["appointment", "status"],
+    }),
     ...extra,
-  });
+  };
+}
+
+async function openNamedObservation(user: User, extra: FacadeHandlers = {}): Promise<FacadeStub> {
+  const { facade } = await renderApp(handlers(extra));
   await goTo(user, "Projects");
   await user.click(screen.getByRole("button", { name: "Open" }));
   await goTo(user, "Environments");
@@ -1207,6 +147,36 @@ async function openNamedObservation(user: ReturnType<typeof userEvent.setup>, ex
   await user.click(await page().findByRole("button", { name: "Appointments" }));
   await page().findByRole("heading", { name: "Appointments" });
   return facade;
+}
+
+/** Opens Edit on the observation page, once its saved values are read. */
+async function editObservation(user: User): Promise<HTMLElement> {
+  const edit = await page().findByRole("button", { name: "Edit" });
+  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false));
+  await user.click(edit);
+  const sheet = await screen.findByRole("dialog", { name: "Edit observation" });
+  // The editor lists the named credentials and the adapters this release has.
+  await within(sheet).findByRole("combobox", { name: "Type" });
+  return sheet;
+}
+
+async function chooseType(user: User, sheet: HTMLElement, type: string) {
+  await user.selectOptions(within(sheet).getByRole("combobox", { name: "Type" }), type);
+}
+
+async function retype(user: User, field: HTMLElement, text: string) {
+  await user.clear(field);
+  await user.type(field, text);
+}
+
+function savedDraft(facade: FacadeStub): ItemDraft {
+  return (facade.oneCall("SaveItem")[0] as SaveItemRequest).draft;
+}
+
+/** The value a value row shows beside its label. */
+function valueOf(container: HTMLElement, label: string): string | null {
+  const term = Array.from(container.querySelectorAll("dt")).find((entry) => entry.textContent === label);
+  return term?.nextElementSibling?.textContent ?? null;
 }
 
 test("History lists actual collections and an incomplete one shows its reason instead of zero records", async () => {
@@ -1219,9 +189,13 @@ test("History lists actual collections and an incomplete one shows its reason in
   expect(results).toEqual(["0 records · Complete", "Timed out · the deadline passed before the records held still"]);
   expect(page().getByText("File export")).toBeTruthy();
   expect(page().getByText("appointments.csv")).toBeTruthy();
-  // Opening the observation collected nothing.
+  // Opening the observation read its draft and history, and collected nothing.
+  expect(facade.callsTo("OpenItemDraft").some((call) => (call.args[0] as { ref: { id: string } }).ref.id === OBSERVATION_REF.id)).toBe(true);
+  expect(facade.callsTo("ObservationHistory").length).toBeGreaterThan(0);
   expect(facade.callsTo("PrepareAction")).toHaveLength(0);
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+  expect(facade.callsTo("CollectionProgress")).toHaveLength(0);
+  expect(facade.callsTo("InspectCompletion")).toHaveLength(0);
 });
 
 test("Inspect completion reads the selected collection without collecting again", async () => {
@@ -1235,10 +209,15 @@ test("Inspect completion reads the selected collection without collecting again"
   });
   const table = await page().findByRole("table", { name: "Collections" });
   await waitFor(() => expect(table.querySelector('[data-row-id="observation-completion-001.json"]')).toBeTruthy());
-  await user.click(table.querySelector<HTMLElement>('[data-row-id="observation-completion-001.json"]')!);
+  // The Latest result is the newest collection's.
+  expect(valueOf(page().getByRole("region", { name: "Collections" }), "Latest result")).toBe("0 records · Complete");
+  const row = table.querySelector<HTMLElement>('[data-row-id="observation-completion-001.json"]')!;
+  await user.click(within(row).getByRole("button", { name: /^More actions for the collection of / }));
+  await user.click(await screen.findByRole("menuitem", { name: "Inspect completion" }));
   expect(facade.oneCall("InspectCompletion")[0]).toMatchObject({ ref: OBSERVATION_REF, entry: "observation-completion-001.json" });
-  const sheet = await screen.findByRole("dialog", { name: "Collection" });
-  expect(within(sheet).getByText("4")).toBeTruthy();
+  const sheet = await screen.findByRole("dialog", { name: "Completion" });
+  expect(valueOf(sheet, "Samples")).toBe("4");
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
@@ -1257,7 +236,7 @@ test("Collect reviews the exact source and bounds with its consequence, and a ch
         destination: {},
         requirements: [],
         ready: true,
-        collect: { source: "Appointments", source_type: "file-export", scope: "appointments", window: "rev-1", bounds: OBSERVATION_DRAFT.observation!.window.completion, destination: "Scheduling QA" },
+        collect: { revision: "rev-1", source: "Appointments", source_type: "file-export", scope: "appointments", window: "rev-1", bounds: OBSERVATION_DRAFT.observation!.window.completion, destination: "Scheduling QA" },
       },
     }),
     ExecuteReviewedAction: (request) => {
@@ -1267,6 +246,7 @@ test("Collect reviews the exact source and bounds with its consequence, and a ch
       }
       return { state: "completed", context: request.context, outcome: "completed", replayed: false, collected: COLLECTIONS[0]! };
     },
+    CollectionProgress: () => ({ state: "empty" }),
   });
   await user.click(page().getByRole("button", { name: "Collect" }));
   const sheet = await screen.findByRole("dialog", { name: "Collect" });
@@ -1280,7 +260,7 @@ test("Collect reviews the exact source and bounds with its consequence, and a ch
   expect((await screen.findByRole("status")).textContent).toBe("0 records · Complete");
 });
 
-test("an active collection shows Stop, which stops exactly the click that started it", async () => {
+test("an active collection shows its progress beside Stop, which stops exactly the click that started it", async () => {
   const user = userEvent.setup();
   const running = new Parked();
   const facade = await openNamedObservation(user, {
@@ -1295,18 +275,276 @@ test("an active collection shows Stop, which stops exactly the click that starte
         destination: {},
         requirements: [],
         ready: true,
-        collect: { source: "Appointments", source_type: "file-export", scope: "appointments", window: "rev-1", bounds: OBSERVATION_DRAFT.observation!.window.completion, destination: "" },
+        collect: { revision: "rev-7", source: "Appointments", source_type: "file-export", scope: "appointments", window: "rev-7", bounds: OBSERVATION_DRAFT.observation!.window.completion, destination: "" },
       },
     }),
     ExecuteReviewedAction: () => running.arrive() as Promise<ReviewedActionResult>,
+    CollectionProgress: () => ({
+      state: "completed",
+      progress: { observation: OBSERVATION_REF, samples: 3, records: 12, bytes: 480, stable_samples: 1, required_stable: 3, opened_at: "2026-01-01T12:14:00Z", deadline: null, elapsed: "1s" },
+    }),
     CancelOperation: () => undefined,
   });
   await user.click(page().getByRole("button", { name: "Collect" }));
   const sheet = await screen.findByRole("dialog", { name: "Collect" });
-  await user.click(await within(sheet).findByRole("button", { name: "Collect" }));
-  await user.click(await within(sheet).findByRole("button", { name: "Stop" }));
+  const final = await within(sheet).findByRole("button", { name: "Collect" });
+  // The review names the version and the bounds it will collect under.
+  expect(valueOf(sheet, "Version")).toBe("rev-7");
+  expect(valueOf(sheet, "Quiet period")).toBe("2s");
+  expect(facade.callsTo("CollectionProgress")).toHaveLength(0);
+  await user.click(final);
+  const stop = await within(sheet).findByRole("button", { name: "Stop" });
+  expect((await within(sheet).findByText("Sample 3 · 1 of 3 stable")).closest(".review-running")).toBe(stop.closest(".review-running"));
+  await user.click(stop);
   const intent = (facade.oneCall("ExecuteReviewedAction")[0] as { intent_id: string }).intent_id;
   expect(facade.oneCall("CancelOperation")).toEqual([intent]);
   running.resolve({ state: "cancelled", context: facade.oneCall("ExecuteReviewedAction")[0]!.context, outcome: "cancelled", replayed: false });
   expect((await screen.findByRole("alert")).textContent).toBeTruthy();
+});
+
+// ---------- The one observation editor, one source type at a time ----------
+
+test("a File export observation offers only its own fields, picks the record key from the chosen export's header, and saves source and completion in one save", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, {
+    ChooseEnvironmentFile: (kind) => ({ state: "completed", kind, paths: [`${WORKSPACE_ROOT}/exports/visits.csv`] }),
+    SaveItem: () => SAVED,
+  });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  expect(scope.getByRole("button", { name: "Choose input file" })).toBeTruthy();
+  expect(scope.getByRole("combobox", { name: "Format" })).toBeTruthy();
+  expect(scope.getByRole("textbox", { name: "Maximum size (bytes)" })).toBeTruthy();
+  for (const other of ["URL", "Record key HL7 field", "Address", "View"]) expect(scope.queryByRole("textbox", { name: other })).toBeNull();
+  for (const other of ["Case", "Database", "Credential"]) expect(scope.queryByRole("combobox", { name: other })).toBeNull();
+
+  await user.click(scope.getByRole("button", { name: "Choose input file" }));
+  expect(facade.oneCall("ChooseEnvironmentFile")).toEqual(["observation-input"]);
+  // The record key is one of the chosen export's own fields, read locally.
+  const key = scope.getByRole("combobox", { name: "Record key field" });
+  await waitFor(() => expect(within(key).queryByRole("option", { name: "visit" })).toBeTruthy());
+  const read = facade.callsTo("ObservationFields").at(-1)!.args[0] as { source: { file: { path: string } } };
+  expect(read.source.file.path).toBe(`${WORKSPACE_ROOT}/exports/visits.csv`);
+  await user.selectOptions(key, "visit");
+  await retype(user, scope.getByRole("textbox", { name: "Maximum size (bytes)" }), "4096");
+  await user.click(scope.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const request = facade.oneCall("SaveItem")[0] as SaveItemRequest;
+  expect(request).toMatchObject({ kind: "observation", item: "obs-appointments", base_revision: "rev-1" });
+  const saved = request.draft.observation!;
+  expect(saved.source.file).toEqual({ path: `${WORKSPACE_ROOT}/exports/visits.csv`, max_bytes: 4096 });
+  expect(saved.source.extraction?.record_key).toEqual(["visit"]);
+  expect(saved.window).toEqual(OBSERVATION_DRAFT.observation!.window);
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+});
+
+test("an HTTPS API observation offers its URL, classification, server name, named credential, header and format, and saves them in one save", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, { SaveItem: () => SAVED });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await chooseType(user, sheet, "HTTPS API");
+  expect(scope.queryByRole("button", { name: "Choose input file" })).toBeNull();
+  expect(scope.queryByRole("textbox", { name: "Maximum size (bytes)" })).toBeNull();
+  expect(scope.queryByRole("combobox", { name: "Case" })).toBeNull();
+  expect(scope.queryByRole("combobox", { name: "Database" })).toBeNull();
+  // The header is asked for only once a credential presents one.
+  expect(scope.queryByRole("textbox", { name: "Header" })).toBeNull();
+
+  await user.type(scope.getByRole("textbox", { name: "URL" }), "https://records-endpoint/appointments");
+  await user.selectOptions(scope.getByRole("combobox", { name: "Classification" }), "Nonproduction");
+  await user.type(scope.getByRole("textbox", { name: "Server name" }), "records-endpoint");
+  const picker = scope.getByRole("combobox", { name: "Credential" });
+  await waitFor(() => expect(within(picker).queryByRole("option", { name: "records-api" })).toBeTruthy());
+  // Only source credentials are offered, never an MLLP endpoint's.
+  expect(within(picker).queryByRole("option", { name: "qa-endpoint" })).toBeNull();
+  await user.selectOptions(picker, "records-api");
+  await user.type(scope.getByRole("textbox", { name: "Header" }), "Authorization");
+  await user.selectOptions(scope.getByRole("combobox", { name: "Format" }), "JSON");
+  const keyPath = scope.getByRole("textbox", { name: "Record key path" });
+  await user.clear(keyPath);
+  await user.type(keyPath, "appointment.id");
+  await user.click(scope.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const saved = savedDraft(facade).observation!;
+  expect(saved.credential).toBe("records-api");
+  expect(saved.source.source.kind).toBe("http-api");
+  expect(saved.window.source.kind).toBe("http-api");
+  expect(saved.source.http).toMatchObject({ url: "https://records-endpoint/appointments", classification: "nonproduction", server_name: "records-endpoint", credential: { header: "Authorization" } });
+  expect(saved.source.extraction).toMatchObject({ envelope: "json", record_key: ["appointment", "id"] });
+  expect(saved.source.file).toBeNull();
+  expect(saved.window.completion).toEqual(OBSERVATION_DRAFT.observation!.window.completion);
+});
+
+test("a Downstream capture observation offers its named case, HL7 record key and occurrences, and saves them in one save", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, { SaveItem: () => SAVED });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await chooseType(user, sheet, "Downstream capture");
+  expect(scope.queryByRole("combobox", { name: "Format" })).toBeNull();
+  expect(scope.queryByRole("textbox", { name: "URL" })).toBeNull();
+  expect(scope.queryByRole("combobox", { name: "Credential" })).toBeNull();
+  expect(scope.queryByRole("button", { name: "Choose input file" })).toBeNull();
+
+  const cases = scope.getByRole("combobox", { name: "Case" });
+  await waitFor(() => expect(within(cases).queryByRole("option", { name: "downstream.case" })).toBeTruthy());
+  await user.selectOptions(cases, "downstream.case");
+  await user.type(scope.getByRole("textbox", { name: "Record key HL7 field" }), "SCH-1.1");
+  await retype(user, scope.getByRole("textbox", { name: "Maximum occurrences" }), "250");
+  await user.click(scope.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const saved = savedDraft(facade).observation!;
+  expect(saved.source.capture).toEqual({ path: "downstream.case", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 250 });
+  expect(saved.source.extraction).toBeNull();
+  expect(saved.source.file).toBeNull();
+  expect(saved.window.source.kind).toBe("downstream-capture");
+});
+
+test("a Database view observation offers the adapters this release has, its connection, named credential, view, key and filters, and saves them in one save", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, { SaveItem: () => SAVED });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await chooseType(user, sheet, "Database view");
+  expect(scope.queryByRole("combobox", { name: "Format" })).toBeNull();
+  expect(scope.queryByRole("textbox", { name: "URL" })).toBeNull();
+  expect(scope.queryByRole("combobox", { name: "Case" })).toBeNull();
+
+  const driver = scope.getByRole("combobox", { name: "Database" }) as HTMLSelectElement;
+  await waitFor(() => expect(within(driver).getAllByRole("option").map((option) => option.textContent)).toEqual(["PostgreSQL"]));
+  expect(driver.value).toBe("postgresql");
+  await user.type(scope.getByRole("textbox", { name: "Address" }), "records-db:5432");
+  await user.type(scope.getByRole("textbox", { name: "Database name" }), "scheduling");
+  await user.type(scope.getByRole("textbox", { name: "Username" }), "reader");
+  await user.type(scope.getByRole("textbox", { name: "Server name" }), "records-db");
+  const picker = scope.getByRole("combobox", { name: "Credential" });
+  await waitFor(() => expect(within(picker).queryByRole("option", { name: "records-db-reader" })).toBeTruthy());
+  await user.selectOptions(picker, "records-db-reader");
+  await user.type(scope.getByRole("textbox", { name: "View" }), "scheduling.appointments");
+  await user.type(scope.getByRole("textbox", { name: "Record key column" }), "appointment_id");
+  await user.type(scope.getByRole("textbox", { name: "Filter column" }), "status");
+  await user.type(scope.getByRole("textbox", { name: "Filter value" }), "booked");
+  await user.click(scope.getByRole("button", { name: "Add filter" }));
+  await user.click(scope.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const saved = savedDraft(facade).observation!;
+  expect(saved.credential).toBe("records-db-reader");
+  expect(saved.source.database).toMatchObject({
+    driver: "postgresql",
+    address: "records-db:5432",
+    name: "scheduling",
+    username: "reader",
+    server_name: "records-db",
+    view: ["scheduling", "appointments"],
+    record_key: "appointment_id",
+    filters: [{ column: "status", value: "booked" }],
+  });
+  expect(saved.source.extraction).toBeNull();
+  expect(saved.window.source.kind).toBe("database-query");
+});
+
+test("a database filter is added only whole, an un-added filter holds Save back, and a driver this release lacks says so", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, { ObservationSupport: () => ({ state: "completed", support: [FILE_SUPPORT] }), SaveItem: () => SAVED });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await chooseType(user, sheet, "Database view");
+  expect(await scope.findByText("PostgreSQL is not available in this release.")).toBeTruthy();
+
+  const add = scope.getByRole("button", { name: "Add filter" }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  await user.type(scope.getByRole("textbox", { name: "Filter column" }), "status");
+  expect(add.disabled).toBe(true);
+  await user.type(scope.getByRole("textbox", { name: "Filter value" }), "booked");
+  expect(add.disabled).toBe(false);
+  // A typed filter that was never added is not dropped quietly.
+  await user.click(scope.getByRole("button", { name: "Save" }));
+  expect(await scope.findByText("Add this filter or clear it.")).toBeTruthy();
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+  await user.click(add);
+  const filters = scope.getByRole("table", { name: "Filters" });
+  expect(within(filters).getByText("status")).toBeTruthy();
+  expect((scope.getByRole("textbox", { name: "Filter column" }) as HTMLInputElement).value).toBe("");
+});
+
+test("Completion asks for a Position only for Declared position and a Baseline only for Recorded baseline, chosen from completed collections", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, { SaveItem: () => SAVED });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await user.click(scope.getByRole("tab", { name: "Completion" }));
+  expect(scope.queryByRole("textbox", { name: "Position" })).toBeNull();
+  expect(scope.queryByRole("combobox", { name: "Baseline" })).toBeNull();
+  await user.selectOptions(scope.getByRole("combobox", { name: "Watermark" }), "Declared position");
+  await user.type(scope.getByRole("textbox", { name: "Position" }), "ledger-42");
+  await user.selectOptions(scope.getByRole("combobox", { name: "Initial state" }), "Recorded baseline");
+  const baseline = scope.getByRole("combobox", { name: "Baseline" });
+  // Only a completed collection that recorded a baseline can be one.
+  const options = within(baseline).getAllByRole("option") as HTMLOptionElement[];
+  expect(options.map((option) => option.value)).toEqual(["", "sha256:baseline-002"]);
+  await user.selectOptions(baseline, "sha256:baseline-002");
+  await user.click(scope.getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const window = savedDraft(facade).observation!.window;
+  expect(window.watermark).toEqual({ kind: "declared-position", position: "ledger-42" });
+  expect(window.pre_existing_state).toEqual({ declaration: "recorded-baseline", baseline_identity: "sha256:baseline-002" });
+  expect(window.completion).toEqual(OBSERVATION_DRAFT.observation!.window.completion);
+});
+
+test("a refused observation save opens the step that holds the field and keeps every value, and a non-number stays with its error", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, {
+    SaveItem: (request) => ({
+      state: "failed",
+      context: request.context,
+      outcome: "invalid",
+      replayed: false,
+      problems: [{ field: "observation.window.completion.quiet_period", problem: "The quiet period must be shorter than the deadline." }],
+    }),
+  });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await retype(user, scope.getByRole("textbox", { name: "Scope" }), "appointments-new");
+  await user.click(scope.getByRole("tab", { name: "Completion" }));
+  await retype(user, scope.getByRole("textbox", { name: "Quiet period" }), "40s");
+  await user.click(scope.getByRole("tab", { name: "Source" }));
+  await user.click(scope.getByRole("button", { name: "Save" }));
+
+  expect((await scope.findByRole("alert")).textContent).toBe("The quiet period must be shorter than the deadline.");
+  expect(scope.getByRole("tab", { name: "Completion" }).getAttribute("aria-selected")).toBe("true");
+  expect((scope.getByRole("textbox", { name: "Quiet period" }) as HTMLInputElement).value).toBe("40s");
+  await user.click(scope.getByRole("tab", { name: "Source" }));
+  expect((scope.getByRole("textbox", { name: "Scope" }) as HTMLInputElement).value).toBe("appointments-new");
+
+  await user.click(scope.getByRole("tab", { name: "Completion" }));
+  await retype(user, scope.getByRole("textbox", { name: "Stable samples" }), "three");
+  await user.click(scope.getByRole("button", { name: "Save" }));
+  expect(await scope.findByText("Enter a whole number.")).toBeTruthy();
+  expect((scope.getByRole("textbox", { name: "Stable samples" }) as HTMLInputElement).value).toBe("three");
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+});
+
+test("an observation that changed since it was opened keeps what was typed and says so, and Escape on unsaved edits asks first", async () => {
+  const user = userEvent.setup();
+  const facade = await openNamedObservation(user, {
+    SaveItem: (request) => ({ state: "failed", context: request.context, outcome: "conflict", replayed: false, problems: [] }),
+  });
+  const sheet = await editObservation(user);
+  const scope = within(sheet);
+  await retype(user, scope.getByRole("textbox", { name: "Maximum age" }), "2h");
+  await user.click(scope.getByRole("button", { name: "Save" }));
+  expect((await scope.findByRole("alert")).textContent).toBe("This changed since you opened it. Close and open it again.");
+  expect((scope.getByRole("textbox", { name: "Maximum age" }) as HTMLInputElement).value).toBe("2h");
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+
+  await user.keyboard("{Escape}");
+  const ask = await screen.findByRole("dialog", { name: "Save changes?" });
+  await user.click(within(ask).getByRole("button", { name: "Keep editing" }));
+  expect((scope.getByRole("textbox", { name: "Maximum age" }) as HTMLInputElement).value).toBe("2h");
 });

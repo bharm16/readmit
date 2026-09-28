@@ -267,6 +267,7 @@ export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): V
     reset_operators: [
       { operator: "operator_confirms", authority: "none" },
       { operator: "observation_empty", authority: "read_declared_file" },
+      { operator: "collection_empty", authority: "read_declared_file" },
       { operator: "endpoint_quiet", authority: "connect_approved_target" },
     ],
     receiver_faults: {
@@ -312,6 +313,7 @@ export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): V
     },
     fixture_modes: ["fixed", "defective"],
     affected_test_impacts: ["affected", "unaffected", "current", "unrelated", "unknown"],
+    observation_starts: [{"schema": "readmit-observation-source/v1", "source": {"kind": "file-export", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": {"envelope": "csv", "encoding": "utf-8", "csv": {"delimiter": ",", "record_separator": "lf", "header": "present", "fields": 2}, "record_key": []}, "file": {"path": "", "max_bytes": 65536}, "http": null, "capture": null}, {"schema": "readmit-observation-source/v1", "source": {"kind": "http-api", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": {"envelope": "json", "encoding": "utf-8", "json": {"record_path": []}, "record_key": []}, "file": null, "http": {"url": "", "classification": "unclassified", "ca_file": "", "server_name": "", "timeout": "10s", "max_bytes": 1048576, "retry": {"attempts": 1, "delay": "1s"}, "credential": null}, "capture": null}, {"schema": "readmit-observation-source/v2", "source": {"kind": "downstream-capture", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": null, "file": null, "http": null, "capture": {"path": "", "kinds": ["message"], "record_key": "", "max_occurrences": 1000}}, {"schema": "readmit-observation-source/v3", "source": {"kind": "database-query", "identity": "scheduling-archive", "scope": "appointments"}, "enabled": true, "freshness": {"max_age": "1h"}, "extraction": null, "file": null, "http": null, "capture": null, "database": {"driver": "postgresql", "address": "", "classification": "unclassified", "name": "", "username": "", "ca_file": "", "server_name": "", "credential": {"store": "os-keychain", "address": "", "purpose": "database-observation", "command": "", "arguments": []}, "view": [], "record_key": "", "key_type": "text", "filters": [], "limits": null}}],
   };
 }
 

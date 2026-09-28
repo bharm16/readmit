@@ -162,7 +162,6 @@ import {
 import { VocabularyContext } from "./vocabulary";
 import { ImportPanel } from "./ImportPanel";
 import { CapturePanel } from "./CapturePanel";
-import { ObservationPanel } from "./ObservationPanel";
 import { DeleteSourceSheet, StorageView } from "./Storage";
 import { useFileReader } from "./RawInspection";
 import { PerformanceCorpus } from "./PerformanceCorpus";
@@ -366,7 +365,7 @@ export default function App() {
   const [drafts, setDrafts] = useState<EditorDraft[] | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [observing, setObserving] = useState(false);
+  // The retained capture Add observation starts from, when a capture started it.
   const [captureBinding, setCaptureBinding] = useState<CaptureObservationBinding | null>(null);
 
   // Refusals of navigation the window has not committed: the workspace and
@@ -394,7 +393,7 @@ export default function App() {
   }, []);
   const preferences = usePreferences();
   const [startUpdate, setStartUpdate] = useState(false);
-  // Observation setup opened from Security's Add connection returns there.
+  // Add observation opened from Security's Add connection returns there.
   const [observingFromSecurity, setObservingFromSecurity] = useState(false);
   const [packagesOpen, setPackagesOpen] = useState(false);
   // The inspector width each project was last given, in rem. The shown width
@@ -734,7 +733,6 @@ export default function App() {
           setSampleCapture(null);
           setImporting(false);
           setCapturing(false);
-          setObserving(false);
           setCaptureBinding(null);
           opened = true;
           await refreshGuide(result.workspace.root);
@@ -992,8 +990,8 @@ export default function App() {
         return;
       }
       if (place.observe) {
-        setObserving(true);
-        routeTo({ type: "go", to: { destination: "environments" } });
+        setCaptureBinding(null);
+        routeTo({ type: "go", to: { destination: "environments", view: "add-observation" } });
         return;
       }
       if (place.route) routeTo({ type: "go", to: place.route });
@@ -1064,7 +1062,6 @@ export default function App() {
   const backToProject = useCallback(() => {
     setImporting(false);
     setCapturing(false);
-    setObserving(false);
     setCaptureBinding(null);
     clearCase();
     setCaseFlow(null);
@@ -1943,6 +1940,14 @@ export default function App() {
     back,
     busy,
     onAdded: () => open({ destination: "settings", view: "security" }),
+    capture: captureBinding,
+    onObservationClosed: () => {
+      setCaptureBinding(null);
+      if (observingFromSecurity) {
+        setObservingFromSecurity(false);
+        open({ destination: "settings", view: "security" });
+      } else back();
+    },
   });
 
   const encryption = useEncryption({ root: place === "encryption" ? root : null, busy });
@@ -1971,9 +1976,8 @@ export default function App() {
           open({ destination: "environments", objectId: `observation:${route.id}` });
         } else {
           setCaptureBinding(null);
-          setObserving(true);
           setObservingFromSecurity(true);
-          open({ destination: "environments" });
+          open({ destination: "environments", view: "add-observation" });
         }
         return;
       case "team":
@@ -2145,7 +2149,6 @@ export default function App() {
       void leaveImport();
     }
     setCapturing(false);
-    setObserving(false);
     setCaptureBinding(null);
   };
   const noProject = (what: string) => (
@@ -2345,8 +2348,7 @@ export default function App() {
               onBindObservation={(binding) => {
                 setCapturing(false);
                 setCaptureBinding(binding);
-                setObserving(true);
-                go("environments");
+                open({ destination: "environments", view: "add-observation" });
               }}
               onClose={() => setCapturing(false)}
             />
@@ -2897,43 +2899,11 @@ export default function App() {
         <Page
           id="environments"
           shown={place === "environments"}
-          title={observing && root ? "Observations" : environments.title}
-          back={
-            observing && root ? (
-              <BackLink
-                label="Environments"
-                onBack={() => {
-                  setObserving(false);
-                  setCaptureBinding(null);
-                }}
-              />
-            ) : (
-              environments.back
-            )
-          }
-          actions={root && !observing ? environments.actions : null}
+          title={environments.title}
+          back={environments.back}
+          actions={root ? environments.actions : null}
         >
-          {observing && root ? (
-            <ObservationPanel
-              workspace={root}
-              busy={busy}
-              indicators={indicators}
-              drafts={drafts ?? []}
-              captureBinding={captureBinding}
-              onClose={() => {
-                setObserving(false);
-                setCaptureBinding(null);
-                if (observingFromSecurity) {
-                  setObservingFromSecurity(false);
-                  open({ destination: "settings", view: "security" });
-                }
-              }}
-            />
-          ) : opened ? (
-            environments.body
-          ) : (
-            noProject("environments")
-          )}
+          {opened ? environments.body : noProject("environments")}
         </Page>
 
         <Page

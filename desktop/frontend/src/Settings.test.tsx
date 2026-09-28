@@ -254,6 +254,51 @@ test("Add connection opens the owner's setup for each kind and a saved environme
   await waitFor(() => expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy());
 });
 
+test("Add connection's Source opens Add observation, and closing it unsaved returns to Security", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({
+    SelectWorkspace: () => folderWithCase(),
+    OpenItemDraft: (request) => ({
+      state: "completed",
+      context: request.context,
+      new: true,
+      draft: {
+        observation: {
+          source: {
+            schema: "readmit-observation-source/v1",
+            source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+            enabled: true,
+            freshness: { max_age: "1h" },
+            extraction: { envelope: "csv", encoding: "utf-8", record_key: [] },
+            file: { path: "", max_bytes: 65536 },
+            http: null,
+            capture: null,
+          },
+          window: {
+            schema: "readmit-observation-window/v1",
+            source: { kind: "file-export", identity: "scheduling-archive", scope: "appointments" },
+            watermark: { kind: "none", position: "" },
+            pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
+            completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
+          },
+        },
+      },
+    }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    ObservationSupport: () => ({ state: "completed", support: [] }),
+  });
+  await openProject(user);
+  await goToView(user, "Settings", "Security");
+  await user.click(await page().findByRole("button", { name: "Add connection" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Source" }));
+  const sheet = await screen.findByRole("dialog", { name: "Add observation" });
+  expect(facade.callsTo("OpenItemDraft").map((call) => call.args[0])).toContainEqual(expect.objectContaining({ ref: { kind: "observation", id: "" } }));
+  expect(within(sheet).getByRole("combobox", { name: "Type" })).toBeTruthy();
+  await user.click(within(sheet).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy());
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
+});
+
 test("privacy Edit prefills the case's policy, offers indefinite retention and never extends an expired end", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({
@@ -342,7 +387,7 @@ test("Edit on an environment connection opens its connection sheet and returns t
     last_opened_at: null,
     availability: "available",
     capabilities: [],
-    summary: { environment: { classification: "nonproduction", address: "qa.example.test:2575", transport: "plain", last_checked_at: null, observation: null, has_policy: false, reset_actions: 0 } },
+    summary: { environment: { classification: "nonproduction", address: "qa.example.test:2575", transport: "plain", transport_approved: true, approval_required: true, last_checked_at: null, observation: null, has_policy: false, reset_actions: 0 } },
   };
   const { facade } = await renderApp({
     SelectWorkspace: () => folderWithCase(),

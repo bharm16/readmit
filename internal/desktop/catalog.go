@@ -323,6 +323,12 @@ type EnvironmentSummary struct {
 	HasPolicy         bool     `json:"has_policy"`
 	ResetName         string   `json:"reset_name,omitzero"`
 	ResetActions      int      `json:"reset_actions"`
+	// TransportApproved says a person approved the transport to this address
+	// through its own reviewed action. ApprovalRequired says the address is
+	// one a check, send or reset reaches only once it is approved; a loopback
+	// address needs no approval.
+	TransportApproved bool `json:"transport_approved"`
+	ApprovalRequired  bool `json:"approval_required"`
 }
 
 // ObservationSummary is an observation source's type and its latest completed
@@ -674,6 +680,10 @@ type ItemRequest struct {
 	Context RequestContext `json:"context"`
 	Ref     ItemRef        `json:"ref"`
 	From    *TestOrigin    `json:"from,omitzero"`
+	// Capture starts a new observation from a retained capture: a
+	// downstream-capture source over the case the capture retained in the
+	// project, and a window over that source.
+	Capture *operation.CaptureObservationBinding `json:"capture,omitzero"`
 }
 
 // ItemResult carries one object as it reads now, and the context it answers.

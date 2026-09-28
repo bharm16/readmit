@@ -33,6 +33,8 @@ export function ReviewSheet({
   consequence,
   tone = "primary",
   blocked,
+  onRunning,
+  whileRunning,
 }: {
   open: boolean;
   title: string;
@@ -53,6 +55,10 @@ export function ReviewSheet({
   blocked?: (review: ActionReview, confirmed: string[]) => boolean;
   /** A final action that deletes or resets reads as one. */
   tone?: "primary" | "danger";
+  /** Told when the final action starts and stops running. */
+  onRunning?: (running: boolean) => void;
+  /** What the running action has done so far, shown beside Stop. */
+  whileRunning?: ReactNode;
 }) {
   const [review, setReview] = useState<ActionReview | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -109,7 +115,7 @@ export function ReviewSheet({
         running ? (
           <span className="review-running">
             <span className="spinner" aria-hidden="true" />
-            <span>{finalLabel}…</span>
+            {whileRunning ?? <span>{finalLabel}…</span>}
             {/* Stops the final action the facade is running for this review. */}
             <button type="button" className="quiet" onClick={() => cancelOperation(running)}>
               Stop
@@ -123,7 +129,11 @@ export function ReviewSheet({
         if (!review?.token) return { reason: "This review is not ready." };
         const intent = newIntentId();
         setRunning(intent);
-        const answer = await executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed } }).finally(() => setRunning(null));
+        onRunning?.(true);
+        const answer = await executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed } }).finally(() => {
+          setRunning(null);
+          onRunning?.(false);
+        });
         if (answer.outcome === "stale") {
           await prepare();
           return { reason: "What this review covered changed. Review it again." };

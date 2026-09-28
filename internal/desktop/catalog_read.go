@@ -712,6 +712,9 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 	if kind == CaseItem {
 		actions = append(actions, DeriveReviewAction)
 	}
+	if kind == EnvironmentItem {
+		actions = append(actions, ApproveTransportAction)
+	}
 	if admitted.execute {
 		switch kind {
 		case CaseItem:
@@ -1265,12 +1268,13 @@ func readEnvironment(c *loadedCatalog, item catalog.Item, paths map[string]strin
 	if err := verifyEnvironment(paths); err != nil {
 		return view{}, err
 	}
-	target, err := operation.ReadTarget(paths[primaryRole(EnvironmentItem)])
+	target, err := replay.ReadRecordedTarget(paths[primaryRole(EnvironmentItem)])
 	if err != nil {
 		return view{}, err
 	}
 	environment := target.Environment()
-	summary := &EnvironmentSummary{Classification: string(environment.Classification), Address: target.Address, Transport: target.Transport}
+	summary := &EnvironmentSummary{Classification: string(environment.Classification), Address: target.Address, Transport: target.Transport,
+		TransportApproved: target.ApprovedTransport, ApprovalRequired: approvalRequired(target)}
 	if _, held := paths["policy"]; held {
 		summary.HasPolicy = true
 	}

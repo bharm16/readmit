@@ -10,7 +10,6 @@ import {
   checkEnvironmentDestination,
   listWholeCatalog,
   listCredentials,
-  listReceiverSnapshots,
   locateItem,
   newIntentId,
   openItemDraft,
@@ -19,6 +18,7 @@ import {
   removeItem,
   saveCredential,
   saveItem,
+  type CaptureObservationBinding,
   type CatalogItem,
   type CredentialRow,
   type EnvironmentCheckResult,
@@ -41,20 +41,20 @@ import { BackLink, EmptyState, FormDialog, Menu, Modal, ValueRows, type MenuItem
 import { IconButton } from "./IconButton";
 import { RESET_OPERATORS, RESET_REASONS, SEND_POLICY_REASONS, TARGET_CLASSIFICATIONS } from "./display";
 import { listDate } from "./Projects";
-import { useObservation } from "./Observations";
+import { NewObservationEditor, useObservation } from "./Observations";
 import { ReviewSheet } from "./ReviewSheet";
 import { useVocabulary } from "./vocabulary";
 import "./environments.css";
 
 /** Where Environments is: its list, one environment, its credentials, or one observation. */
 export type EnvironmentPlace =
-  | { kind: "list"; adding?: boolean }
+  | { kind: "list"; adding?: boolean; addingObservation?: boolean }
   | { kind: "environment"; id: string; editing?: boolean }
   | { kind: "credentials"; id: string }
   | { kind: "observation"; id: string; environment?: string };
 
 export function environmentPlace(objectId: string | undefined, view: string | undefined): EnvironmentPlace {
-  if (!objectId) return view === "add" ? { kind: "list", adding: true } : { kind: "list" };
+  if (!objectId) return view === "add" ? { kind: "list", adding: true } : view === "add-observation" ? { kind: "list", addingObservation: true } : { kind: "list" };
   if (objectId.startsWith("observation:")) {
     const [, id = "", environment] = objectId.split(":");
     return environment ? { kind: "observation", id, environment } : { kind: "observation", id };
@@ -101,9 +101,22 @@ const RESET_OUTCOMES: Record<string, string> = {
 
 const RESET_TYPES: Record<ResetOperator, string> = {
   operator_confirms: "Manual confirmation",
-  observation_empty: "Check empty observation",
+  collection_empty: "Check empty observation",
   endpoint_quiet: "Check endpoint",
+  observation_empty: "Check receiver snapshot",
 };
+
+/** The types a new reset action offers; a saved receiver-snapshot check keeps
+ * its own type when edited. */
+const NEW_RESET_TYPES: ResetOperator[] = ["operator_confirms", "collection_empty", "endpoint_quiet"];
+
+/** A whole number typed into a numeric field, or null when it is not one. An
+ * empty field is 0, which the facade reads as its default. */
+export function wholeNumber(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return 0;
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : null;
+}
 
 function summaryOf(item: CatalogItem | null | undefined): EnvironmentSummary | undefined {
   return item?.summary.environment;
@@ -145,14 +158,21 @@ export type EnvironmentsProps = {
   /** Where a save started from elsewhere (Settings → Security → Add
    * connection) returns; without it the saved environment opens. */
   onAdded?: (() => void) | undefined;
+  /** The retained capture a new observation starts from, when a capture
+   * started it. */
+  capture?: CaptureObservationBinding | null | undefined;
+  /** Where Add observation started from elsewhere returns when it is closed
+   * unsaved. */
+  onObservationClosed?: (() => void) | undefined;
 };
 
 /** Environments supplies its page's title, way back, actions and body. */
-export function useEnvironments({ root, context, place, go, back, busy, onAdded }: EnvironmentsProps) {
+export function useEnvironments({ root, context, place, go, back, busy, onAdded, capture, onObservationClosed }: EnvironmentsProps) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [listFailure, setListFailure] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const addRequested = place.kind === "list" && place.adding === true;
+  const observationRequested = place.kind === "list" && place.addingObservation === true;
   useEffect(() => {
     if (addRequested) setAdding(true);
   }, [addRequested]);
@@ -197,9 +217,10 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded 
       header: "Environment",
       priority: 1,
       minWidth: 13.75,
+      flex: true,
       render: (item) => (
         <span className="case-name">
-          <span>{item.name}</span>
+          <span title={item.name}>{item.name}</span>
           {item.availability === "available" ? null : <span className="row-reason">{item.reason ?? "Cannot be read"}</span>}
           {item.availability === "missing" ? (
             <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void locateItem({ context: context(), ref: item.ref }).then(refresh); }}>
@@ -298,6 +319,13 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded 
             else go(saved.id);
           }}
         />
+        <NewObservationEditor
+          open={observationRequested}
+          context={context}
+          capture={capture}
+          onClose={() => (onObservationClosed ? onObservationClosed() : back())}
+          onSaved={(saved) => go(`observation:${saved.id}`)}
+        />
       </>
     ),
   };
@@ -327,14 +355,20 @@ function useEnvironmentDetail({
 }) {
   const [draft, setDraft] = useState<ItemDraft | null>(null);
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
-  const [sheet, setSheet] = useState<null | "connection" | "check" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation">(null);
+  const [sheet, setSheet] = useState<
+    null | "connection" | "approve" | "check" | "ranges" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation" | "observation-link"
+  >(null);
+  // The project's named observations, which the Observation group and the
+  // reset's observation checks name.
+  const [observations, setObservations] = useState<CatalogItem[]>([]);
   const [check, setCheck] = useState<EnvironmentCheckResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const ref = item?.ref ?? null;
 
   const reload = useCallback(async () => {
     if (!ref) return;
-    const answer = await openItemDraft({ context: context(), ref });
+    const [answer, named] = await Promise.all([openItemDraft({ context: context(), ref }), listWholeCatalog({ context: context(), kind: "observation", filter: {} })]);
+    setObservations(named.page?.items ?? []);
     if (answer.state === "completed" && answer.draft) {
       setDraft(answer.draft);
       setDraftFailure(null);
@@ -390,6 +424,11 @@ function useEnvironmentDetail({
   const observationRef = summary?.observation ?? null;
   const reset = draft?.reset;
   const names = draft?.links?.action_names ?? [];
+  const address = target?.address || summary?.address || "";
+  // A saved transport to anything but this computer is approved on its own,
+  // by a reviewed action, before it is checked or sent to.
+  const unapproved = summary?.approval_required === true && !summary.transport_approved && Boolean(target?.transport);
+  const observationName = (id: string | undefined) => observations.find((entry) => entry.ref.id === id)?.name ?? "Observation no longer in the project";
 
   const checkedLine = (): ReactNode => {
     if (check) {
@@ -399,9 +438,22 @@ function useEnvironmentDetail({
     if (summary?.last_checked_at) {
       const outcome = summary.last_check_outcome ?? "";
       const older = summary.last_check_revision && summary.last_check_revision !== ref.revision;
-      return `${CHECK_OUTCOMES[outcome] ?? "Checked"} · ${listDate(summary.last_checked_at)}${older ? " · before the last edit" : ""}`;
+      return `${CHECK_OUTCOMES[outcome] ?? "Checked"} · ${checkedAt(summary.last_checked_at)}${older ? " · before the last edit" : ""}`;
     }
     return "Not checked";
+  };
+
+  const effectOf = (action: NonNullable<ItemDraft["reset"]>["actions"][number]): string => {
+    switch (action.operator) {
+      case "operator_confirms":
+        return action.instructions || "—";
+      case "collection_empty":
+        return observationName(action.observation);
+      case "observation_empty":
+        return "Receiver snapshot";
+      default:
+        return address || "—";
+    }
   };
 
   const body = (
@@ -425,8 +477,8 @@ function useEnvironmentDetail({
         </header>
         <ValueRows
           rows={[
-            { label: "Address", value: target?.address || summary?.address || "—" },
-            { label: "Transport", value: tls ? "TLS" : target?.transport === "plain" ? "TCP/MLLP" : "—" },
+            { label: "Address", value: address || "—" },
+            { label: "Transport", value: `${tls ? "TLS" : target?.transport === "plain" ? "TCP/MLLP" : "—"}${unapproved ? " · Not approved" : ""}` },
             { label: "Classification", value: classificationText(target?.classification ?? summary?.classification) },
             ...(tls && target?.server_name ? [{ label: "Server name", value: target.server_name }] : []),
             ...(tls && target?.ca_file ? [{ label: "CA certificate", value: fileName(target.ca_file) }] : []),
@@ -440,10 +492,15 @@ function useEnvironmentDetail({
       <section className="value-group" aria-labelledby="environment-observation">
         <header className="value-group-header">
           <h2 id="environment-observation">Observation</h2>
+          {observationRef ? (
+            <button type="button" disabled={busy || !draft} onClick={() => setSheet("observation-link")}>
+              Edit
+            </button>
+          ) : null}
         </header>
         {observationRef ? (
           <button type="button" className="object-link" onClick={() => go(`observation:${observationRef.id}:${ref.id}`)}>
-            <span>{summary?.observation_name || "Observation"}</span>
+            <span title={summary?.observation_name}>{summary?.observation_name || "Observation"}</span>
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
               <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -451,6 +508,11 @@ function useEnvironmentDetail({
         ) : (
           <div className="value-empty">
             <span>No observation</span>
+            {observations.length > 0 ? (
+              <button type="button" disabled={busy || !draft} onClick={() => setSheet("observation-link")}>
+                Choose observation
+              </button>
+            ) : null}
             <button type="button" disabled={busy || !draft} onClick={() => setSheet("observation")}>
               Add observation
             </button>
@@ -473,24 +535,27 @@ function useEnvironmentDetail({
           ) : null}
         </header>
         {reset && reset.actions.length > 0 ? (
-          <table className="plain-table" aria-label="Reset actions">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Type</th>
-                <th scope="col">Effect</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reset.actions.map((action, index) => (
-                <tr key={action.id || index}>
-                  <th scope="row">{names[index] || action.id}</th>
-                  <td>{RESET_TYPES[action.operator] ?? RESET_OPERATORS[action.operator]}</td>
-                  <td>{action.operator === "operator_confirms" ? action.instructions || "—" : action.operator === "observation_empty" ? fileName(action.observation) : summary?.address || "—"}</td>
+          <>
+            {draft?.links?.reset_name ? <ValueRows rows={[{ label: "Name", value: draft.links.reset_name }]} /> : null}
+            <table className="plain-table" aria-label="Reset actions">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Effect</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {reset.actions.map((action, index) => (
+                  <tr key={action.id || index}>
+                    <th scope="row">{names[index] || RESET_TYPES[action.operator]}</th>
+                    <td>{RESET_TYPES[action.operator] ?? RESET_OPERATORS[action.operator]}</td>
+                    <td>{effectOf(action)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         ) : (
           <div className="value-empty">
             <span>No reset</span>
@@ -516,6 +581,31 @@ function useEnvironmentDetail({
           if (editingFromElsewhere && onEdited) onEdited();
         }}
       />
+      <ReviewSheet
+        open={sheet === "approve"}
+        title="Approve transport"
+        action="environment.approve-transport"
+        finalLabel="Approve"
+        context={context}
+        items={[ref]}
+        onClose={() => setSheet(null)}
+        onDone={() => void refresh()}
+        consequence={`Readmit may then connect to ${address} this way; nothing is sent now.`}
+        render={(review) => (
+          <ValueRows
+            rows={[
+              { label: "Environment", value: item.name },
+              { label: "Address", value: review.transport?.address ?? address },
+              { label: "Transport", value: review.transport?.transport === "tls" ? "TLS" : "TCP/MLLP" },
+              ...(review.transport?.server_name ? [{ label: "Server name", value: review.transport.server_name }] : []),
+              ...(review.transport?.ca_file ? [{ label: "CA certificate", value: fileName(review.transport.ca_file) }] : []),
+              ...(review.transport?.client_certificate ? [{ label: "Client certificate", value: fileName(review.transport.client_certificate) }] : []),
+              { label: "Classification", value: classificationText(review.transport?.classification) },
+            ]}
+          />
+        )}
+        outcome={() => <p role="status">Transport approved</p>}
+      />
       <FormDialog
         open={sheet === "check"}
         title="Test connection"
@@ -530,24 +620,76 @@ function useEnvironmentDetail({
           return null;
         }}
       >
-        <p className="consequence">Connects to {target?.address || summary?.address}; no messages are sent.</p>
+        <p className="consequence">Connects to {address}; no messages are sent.</p>
       </FormDialog>
+      <Modal
+        open={sheet === "ranges"}
+        title="Allowed destinations"
+        onClose={() => setSheet(null)}
+        footer={
+          <div className="dialog-footer">
+            <button type="button" onClick={() => setSheet("destinations")}>
+              Edit
+            </button>
+            <button type="button" className="primary" onClick={() => setSheet(null)}>
+              Done
+            </button>
+          </div>
+        }
+      >
+        {(draft?.policy?.approved_destinations ?? []).length > 0 ? (
+          <table className="plain-table" aria-label="Allowed ranges">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Range</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(draft?.policy?.approved_destinations ?? []).map((range, index) => (
+                <tr key={`${range}-${index}`}>
+                  <th scope="row">{draft?.links?.range_names?.[index] || "—"}</th>
+                  <td>{range}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p>No allowed ranges</p>
+        )}
+      </Modal>
       <DestinationsSheet
         open={sheet === "destinations"}
         ranges={draft?.policy?.approved_destinations ?? []}
+        names={draft?.links?.range_names ?? []}
         onClose={() => setSheet(null)}
-        onSave={(ranges) =>
-          saveWith((held) => ({ ...held, policy: { schema: held.policy?.schema || "readmit-send-policy/v1", approved_destinations: ranges } }), {
-            "policy.approved_destinations": "destination-range-0",
-          })
+        onSave={(ranges, rangeNames) =>
+          saveWith(
+            (held) => ({
+              ...held,
+              policy: { schema: held.policy?.schema || "readmit-send-policy/v1", approved_destinations: ranges },
+              links: { ...(held.links ?? {}), range_names: rangeNames },
+            }),
+            {
+              "policy.approved_destinations": "destination-range-0",
+              "links.range_names": "destination-name-0",
+              ...Object.fromEntries(ranges.map((_, index) => [`links.range_names.${index}`, `destination-name-${index}`])),
+            },
+          )
         }
       />
-      <CheckDestinationSheet open={sheet === "check-destination"} context={context} environment={ref} onClose={() => setSheet(null)} />
-      <ResetEditSheet
-        open={sheet === "reset-edit"}
+      <CheckDestinationSheet
+        open={sheet === "check-destination"}
         context={context}
         environment={ref}
+        classification={(target?.classification || summary?.classification || "unclassified") as TargetClassification}
+        onClose={() => setSheet(null)}
+      />
+      <ResetEditSheet
+        open={sheet === "reset-edit"}
         draft={draft}
+        address={address}
+        observations={observations}
         onClose={() => setSheet(null)}
         onSave={(plan, name, actionNames) =>
           saveWith(
@@ -556,7 +698,7 @@ function useEnvironmentDetail({
               reset: plan,
               links: { ...(held.links ?? {}), reset_name: name, action_names: actionNames },
             }),
-            { "reset.actions": "reset-action-0-type", "links.reset_name": "reset-name" },
+            { "reset.actions": "reset-add-action", "links.reset_name": "reset-name" },
           )
         }
       />
@@ -565,7 +707,6 @@ function useEnvironmentDetail({
         title="Reset"
         action="environment.reset"
         finalLabel="Reset"
-        tone="danger"
         blocked={(review, confirmed) =>
           review.requirements.includes("confirmations") &&
           (review.reset?.actions ?? []).some((entry) => entry.type === "operator_confirms" && !confirmed.includes(entry.id))
@@ -574,6 +715,7 @@ function useEnvironmentDetail({
         items={[ref]}
         onClose={() => setSheet(null)}
         onDone={() => void refresh()}
+        consequence="Readmit checks each action and deletes nothing."
         render={(review, confirmed, setConfirmed) => (
           <>
             <ValueRows rows={[{ label: "Environment", value: review.reset?.target || item.name }, ...(review.reset?.name ? [{ label: "Reset", value: review.reset.name }] : [])]} />
@@ -581,7 +723,7 @@ function useEnvironmentDetail({
               {(review.reset?.actions ?? []).map((action) => (
                 <li key={action.id}>
                   <p className="review-action-name">
-                    <strong>{action.name || action.id}</strong> · {RESET_TYPES[action.type]}
+                    <strong>{action.name || RESET_TYPES[action.type]}</strong> · {RESET_TYPES[action.type]}
                   </p>
                   <p>{action.type === "operator_confirms" ? action.instructions : action.effect}</p>
                   {action.type === "operator_confirms" ? (
@@ -620,23 +762,39 @@ function useEnvironmentDetail({
           ]}
         />
       </Modal>
-      <NewObservationSheet
+      <ObservationLinkSheet
+        open={sheet === "observation-link"}
+        chosen={observationRef?.id ?? ""}
+        observations={observations}
+        onClose={() => setSheet(null)}
+        onSave={(id) =>
+          saveWith(
+            (held) => {
+              const links = { ...(held.links ?? {}) };
+              if (id) links.observation = id;
+              else delete links.observation;
+              return { ...held, links };
+            },
+            { "links.observation": "environment-observation-choice" },
+          )
+        }
+      />
+      <NewObservationEditor
         open={sheet === "observation"}
         context={context}
         onClose={() => setSheet(null)}
-        onCreated={(observation) =>
-          saveWith((held) => ({ ...held, links: { ...(held.links ?? {}), observation: observation.id } }), {}).then((failure) => {
-            if (!failure) go(`observation:${observation.id}:${ref.id}`);
-            return failure;
-          })
-        }
+        onSaved={async (observation) => {
+          const failure = await saveWith((held) => ({ ...held, links: { ...(held.links ?? {}), observation: observation.id } }), {});
+          if (failure) setNotice(failure.reason);
+          else go(`observation:${observation.id}:${ref.id}`);
+        }}
       />
     </div>
   );
 
   const menu: MenuItem[] = [
     { label: "Credentials", onSelect: () => go(ref.id, "credentials") },
-    { label: "Allowed destinations…", onSelect: () => setSheet("destinations"), disabled: !draft },
+    { label: "Allowed destinations", onSelect: () => setSheet("ranges"), disabled: !draft },
     { label: "Check destination…", onSelect: () => setSheet("check-destination") },
     {
       label: "Duplicate",
@@ -659,6 +817,7 @@ function useEnvironmentDetail({
     { label: "Remove…", onSelect: () => setSheet("remove"), tone: "danger" as const, separated: true },
   ];
 
+  const unusable = busy || !draft || item.availability !== "available";
   return {
     title: item.name,
     // What the palette lists for this environment: its page's actions, each
@@ -666,20 +825,25 @@ function useEnvironmentDetail({
     palette: {
       object: item.name,
       items: [
-        { label: "Test connection…", onSelect: () => setSheet("check"), disabled: busy || !draft || item.availability !== "available" },
+        unapproved
+          ? { label: "Approve transport…", onSelect: () => setSheet("approve"), disabled: unusable }
+          : { label: "Test connection…", onSelect: () => setSheet("check"), disabled: unusable },
         ...(reset && reset.actions.length > 0 ? [{ label: "Reset…", onSelect: () => setSheet("reset"), disabled: busy }] : []),
         ...menu,
       ],
     },
     actions: (
       <>
-        <button type="button" disabled={busy || !draft || item.availability !== "available"} onClick={() => setSheet("check")}>
-          Test connection
-        </button>
-        <Menu
-          label="More environment actions"
-          items={menu}
-        />
+        {unapproved ? (
+          <button type="button" disabled={unusable} onClick={() => setSheet("approve")}>
+            Approve transport
+          </button>
+        ) : (
+          <button type="button" disabled={unusable} onClick={() => setSheet("check")}>
+            Test connection
+          </button>
+        )}
+        <Menu label="More environment actions" items={menu} />
       </>
     ),
     body,
@@ -688,13 +852,19 @@ function useEnvironmentDetail({
 
 function actionName(names: string[], reset: ItemDraft["reset"], id: string): string {
   const index = reset?.actions.findIndex((action) => action.id === id) ?? -1;
-  return (index >= 0 ? names[index] : "") || id;
+  const action = index >= 0 ? reset?.actions[index] : undefined;
+  return (index >= 0 ? names[index] : "") || (action ? RESET_TYPES[action.operator] : "Action");
+}
+
+/** When a check ran: its date and time. */
+function checkedAt(at: string): string {
+  return `${listDate(at)} ${new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 function CheckOutcome({ report, at }: { report: EnvironmentReport; at: string | undefined }) {
   const parts = [CHECK_OUTCOMES[report.outcome] ?? "Unsupported result"];
   if (report.tls_version) parts.push(report.tls_version);
-  if (at) parts.push(new Date(at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }));
+  if (at) parts.push(checkedAt(at));
   return <span role="status">{parts.join(" · ")}</span>;
 }
 
@@ -802,6 +972,11 @@ function ConnectionSheet({
     }
   };
 
+  // A refusal of a field inside More connection settings opens them first.
+  const revealMore = (field: string) => {
+    setMore(true);
+    setTimeout(() => document.getElementById(field)?.focus());
+  };
   const tls = transport === "tls";
   const fields = {
     name: "environment-name",
@@ -826,6 +1001,11 @@ function ConnectionSheet({
       onClose={onClose}
       onSubmit={async () => {
         if (!base) return { reason: "The environment is still being read." };
+        const ackBytes = wholeNumber(maxAck);
+        if (ackBytes === null) {
+          revealMore("environment-max-ack");
+          return { reason: "Enter a whole number of bytes.", field: "environment-max-ack" };
+        }
         const target: Target = {
           ...(base.environment as Target),
           address: host.trim() || port.trim() ? joinAddress(host, port) : "",
@@ -834,7 +1014,7 @@ function ConnectionSheet({
           ...(tls ? { server_name: serverName.trim(), ca_file: caFile, client_certificate: clientCertificate } : { server_name: "", ca_file: "", client_certificate: "" }),
           connect_timeout: connectTimeout.trim(),
           message_timeout: messageTimeout.trim(),
-          max_ack_bytes: Number(maxAck) || 0,
+          max_ack_bytes: ackBytes,
         };
         if (credential && tls) target.credential = { secrets_file: base.environment?.credential?.secrets_file || "secrets.json", reference: credential };
         else delete target.credential;
@@ -849,7 +1029,11 @@ function ConnectionSheet({
           draft: { ...base, name: name.trim(), environment: target },
           intent_id: newIntentId(),
         });
-        if (answer.outcome !== "saved" || !answer.saved) return saveProblem(answer, fields);
+        if (answer.outcome !== "saved" || !answer.saved) {
+          const failure = saveProblem(answer, fields);
+          if (failure.field && MORE_FIELDS.includes(failure.field)) revealMore(failure.field);
+          return failure;
+        }
         setDirty(false);
         await onSaved(answer.saved);
         return null;
@@ -937,8 +1121,10 @@ function ConnectionSheet({
   );
 }
 
+const MORE_FIELDS = ["environment-connect-timeout", "environment-message-timeout", "environment-max-ack"];
+
 /** A file an editor names: the chosen file's name, Choose, and Clear. */
-export function FilePicker({ label, path, onChoose, onClear }: { label: string; path: string; onChoose: () => void; onClear?: () => void }) {
+export function FilePicker({ id: chooseId, label, path, onChoose, onClear }: { id?: string; label: string; path: string; onChoose: () => void; onClear?: () => void }) {
   const id = useId();
   return (
     <div className="file-picker">
@@ -955,7 +1141,7 @@ export function FilePicker({ label, path, onChoose, onClear }: { label: string; 
               Clear
             </button>
           ) : null}
-          <button type="button" aria-label={`Choose ${label.toLowerCase()}`} onClick={onChoose}>
+          <button type="button" {...(chooseId ? { id: chooseId } : {})} aria-label={`Choose ${label.toLowerCase()}`} onClick={onChoose}>
             Choose…
           </button>
         </span>
@@ -966,46 +1152,86 @@ export function FilePicker({ label, path, onChoose, onClear }: { label: string; 
 
 // ---------- Allowed destinations ----------
 
+type RangeRow = { name: string; range: string };
+
 function DestinationsSheet({
   open,
   ranges,
+  names,
   onSave,
   onClose,
 }: {
   open: boolean;
   ranges: string[];
-  onSave: (ranges: string[]) => Promise<SubmitFailure | null>;
+  names: string[];
+  onSave: (ranges: string[], names: string[]) => Promise<SubmitFailure | null>;
   onClose: () => void;
 }) {
-  const [rows, setRows] = useState<string[]>([]);
+  const [rows, setRows] = useState<RangeRow[]>([]);
   useEffect(() => {
-    if (open) setRows(ranges.length > 0 ? [...ranges] : [""]);
-  }, [open, ranges]);
-  const chosen = rows.map((row) => row.trim()).filter(Boolean);
+    if (open) setRows(ranges.length > 0 ? ranges.map((range, index) => ({ name: names[index] ?? "", range })) : [{ name: "", range: "" }]);
+  }, [open, ranges, names]);
+  const used = rows.map((row) => ({ name: row.name.trim(), range: row.range.trim() })).filter((row) => row.name !== "" || row.range !== "");
+  const saved = ranges.map((range, index) => ({ name: names[index] ?? "", range }));
+  const change = (index: number, value: Partial<RangeRow>) => setRows((held) => held.map((row, at) => (at === index ? { ...row, ...value } : row)));
   return (
     <FormDialog
       open={open}
-      title="Allowed destinations"
+      title="Edit allowed destinations"
       submitLabel="Save"
-      dirty={JSON.stringify(chosen) !== JSON.stringify(ranges)}
+      dirty={JSON.stringify(used) !== JSON.stringify(saved)}
       onClose={onClose}
-      onSubmit={() => onSave(chosen)}
+      onSubmit={() => {
+        const incomplete = used.findIndex((row) => row.name === "" || row.range === "");
+        if (incomplete >= 0) {
+          const at = rows.findIndex((row) => row.name.trim() === used[incomplete]!.name && row.range.trim() === used[incomplete]!.range);
+          return { reason: "Name each range and give its addresses.", field: used[incomplete]!.name === "" ? `destination-name-${at}` : `destination-range-${at}` };
+        }
+        return onSave(
+          used.map((row) => row.range),
+          used.map((row) => row.name),
+        );
+      }}
     >
-      {rows.map((row, index) => (
-        <div key={index} className="filter-rule-row">
-          <input
-            id={`destination-range-${index}`}
-            type="text"
-            spellCheck={false}
-            aria-label={`Range ${index + 1}`}
-            value={row}
-            onChange={(event) => setRows((held) => held.map((value, at) => (at === index ? event.target.value : value)))}
-          />
-          <IconButton icon="close" label={`Remove range ${index + 1}`} onClick={() => setRows((held) => (held.length > 1 ? held.filter((_, at) => at !== index) : [""]))} />
-        </div>
-      ))}
+      <table className="plain-table edit-table" aria-label="Allowed ranges">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Range</th>
+            <th scope="col">
+              <span className="visually-hidden">Remove</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              <td>
+                <input id={`destination-name-${index}`} type="text" aria-label={`Name of range ${index + 1}`} value={row.name} onChange={(event) => change(index, { name: event.target.value })} />
+              </td>
+              <td>
+                <input
+                  id={`destination-range-${index}`}
+                  type="text"
+                  spellCheck={false}
+                  aria-label={`Range ${index + 1}`}
+                  value={row.range}
+                  onChange={(event) => change(index, { range: event.target.value })}
+                />
+              </td>
+              <td>
+                <IconButton
+                  icon="close"
+                  label={`Remove range ${index + 1}`}
+                  onClick={() => setRows((held) => (held.length > 1 ? held.filter((_, at) => at !== index) : [{ name: "", range: "" }]))}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <div>
-        <button type="button" className="quiet" onClick={() => setRows((held) => [...held, ""])}>
+        <button type="button" className="quiet" onClick={() => setRows((held) => [...held, { name: "", range: "" }])}>
           Add range
         </button>
       </div>
@@ -1019,16 +1245,30 @@ function decisionText(decision: SendPolicyDecision | undefined): string {
   return decision.allowed ? `Allowed · ${why}` : `Refused · ${why}`;
 }
 
-function CheckDestinationSheet({ open, context, environment, onClose }: { open: boolean; context: () => RequestContext; environment: ItemRef; onClose: () => void }) {
+function CheckDestinationSheet({
+  open,
+  context,
+  environment,
+  classification: saved,
+  onClose,
+}: {
+  open: boolean;
+  context: () => RequestContext;
+  environment: ItemRef;
+  /** The environment's saved classification, which a check starts from. */
+  classification: TargetClassification;
+  onClose: () => void;
+}) {
   const [address, setAddress] = useState("");
-  const [classification, setClassification] = useState<TargetClassification>("nonproduction");
+  const [classification, setClassification] = useState<TargetClassification>(saved);
   const [answer, setAnswer] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
       setAddress("");
+      setClassification(saved);
       setAnswer(null);
     }
-  }, [open]);
+  }, [open, saved]);
   return (
     <FormDialog
       open={open}
@@ -1046,43 +1286,81 @@ function CheckDestinationSheet({ open, context, environment, onClose }: { open: 
       }}
     >
       <label htmlFor="destination-address">Address</label>
-      <input id="destination-address" type="text" autoFocus spellCheck={false} value={address} onChange={(event) => setAddress(event.target.value)} />
+      <input id="destination-address" type="text" autoFocus spellCheck={false} value={address} onChange={(event) => { setAddress(event.target.value); setAnswer(null); }} />
       <label htmlFor="destination-classification">Classification</label>
-      <select id="destination-classification" value={classification} onChange={(event) => setClassification(event.target.value as TargetClassification)}>
-        {(["nonproduction", "production", "unclassified"] as TargetClassification[]).map((value) => (
+      <select id="destination-classification" value={classification} onChange={(event) => { setClassification(event.target.value as TargetClassification); setAnswer(null); }}>
+        {(["unclassified", "nonproduction", "production"] as TargetClassification[]).map((value) => (
           <option key={value} value={value}>
             {TARGET_CLASSIFICATIONS[value]}
           </option>
         ))}
       </select>
-      <p className="consequence">Decides a proposed send against the saved ranges; nothing is sent.</p>
+      <p className="consequence">Simulates a proposed send against the saved ranges; nothing is sent.</p>
+    </FormDialog>
+  );
+}
+
+// ---------- Observation ----------
+
+/** Which named observation the environment reads its results from, or none. */
+function ObservationLinkSheet({
+  open,
+  chosen,
+  observations,
+  onSave,
+  onClose,
+}: {
+  open: boolean;
+  chosen: string;
+  observations: CatalogItem[];
+  onSave: (id: string) => Promise<SubmitFailure | null>;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(chosen);
+  useEffect(() => {
+    if (open) setValue(chosen);
+  }, [open, chosen]);
+  return (
+    <FormDialog open={open} title="Observation" size="small" submitLabel="Save" dirty={value !== chosen} onClose={onClose} onSubmit={() => onSave(value)}>
+      <label htmlFor="environment-observation-choice">Observation</label>
+      <select id="environment-observation-choice" value={value} onChange={(event) => setValue(event.target.value)}>
+        <option value="">None</option>
+        {observations.map((entry) => (
+          <option key={entry.ref.id} value={entry.ref.id}>
+            {entry.name}
+          </option>
+        ))}
+      </select>
     </FormDialog>
   );
 }
 
 // ---------- Reset ----------
 
-type ResetRow = { id: string; name: string; operator: ResetOperator | ""; instructions: string; observation: string };
+type ResetRow = { id: string; name: string; operator: ResetOperator; instructions: string; observation: string };
 
+/** The reset's name and its ordered actions. Each action is added or edited in
+ * its own sheet; nothing runs until the reset itself is reviewed. */
 function ResetEditSheet({
   open,
-  context,
-  environment,
   draft,
+  address,
+  observations,
   onSave,
   onClose,
 }: {
   open: boolean;
-  context: () => RequestContext;
-  environment: ItemRef;
   draft: ItemDraft | null;
+  address: string;
+  observations: CatalogItem[];
   onSave: (plan: NonNullable<ItemDraft["reset"]>, name: string, actionNames: string[]) => Promise<SubmitFailure | null>;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
   const [rows, setRows] = useState<ResetRow[]>([]);
-  const [snapshots, setSnapshots] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
+  // The action its own sheet edits: an index, or "new".
+  const [editing, setEditing] = useState<number | "new" | null>(null);
   // Each operator's authority is the facade's, published in its vocabulary.
   const vocabulary = useVocabulary();
   const authorityOf = (operator: ResetOperator) => vocabulary?.reset_operators.find((entry) => entry.operator === operator)?.authority ?? "none";
@@ -1091,87 +1369,200 @@ function ResetEditSheet({
     const plan = draft?.reset;
     const names = draft?.links?.action_names ?? [];
     setName(draft?.links?.reset_name ?? "");
-    setRows(
-      plan && plan.actions.length > 0
-        ? plan.actions.map((action, index) => ({ id: action.id, name: names[index] ?? "", operator: action.operator, instructions: action.instructions, observation: action.observation ?? "" }))
-        : [{ id: "", name: "", operator: "", instructions: "", observation: "" }],
-    );
+    setRows((plan?.actions ?? []).map((action, index) => ({ id: action.id, name: names[index] ?? "", operator: action.operator, instructions: action.instructions, observation: action.observation ?? "" })));
     setDirty(false);
-    void listReceiverSnapshots({ context: context(), ref: environment }).then((answer) => setSnapshots(answer.snapshots.map((snapshot) => snapshot.entry)));
-  }, [open, draft, context, environment]);
-  const update = (index: number, change: Partial<ResetRow>) => {
-    setRows((held) => held.map((row, at) => (at === index ? { ...row, ...change } : row)));
+    setEditing(null);
+  }, [open, draft]);
+  const change = (next: ResetRow[]) => {
+    setRows(next);
     setDirty(true);
   };
+  const effectOf = (row: ResetRow) =>
+    row.operator === "operator_confirms"
+      ? row.instructions
+      : row.operator === "collection_empty"
+        ? (observations.find((entry) => entry.ref.id === row.observation)?.name ?? "—")
+        : row.operator === "observation_empty"
+          ? "Receiver snapshot"
+          : address || "—";
+  return (
+    <>
+      <FormDialog
+        open={open && editing === null}
+        title="Edit reset"
+        size="wide"
+        submitLabel="Save"
+        dirty={dirty}
+        onClose={onClose}
+        onSubmit={() => {
+          if (name.trim() === "") return { reason: "Name the reset.", field: "reset-name" };
+          const plan = {
+            schema: draft?.reset?.schema || "readmit-reset-plan/v1",
+            environment: draft?.reset?.environment || draft?.environment?.name || "",
+            actions: rows.map((row) => ({
+              id: row.id,
+              operator: row.operator,
+              authority: authorityOf(row.operator),
+              instructions: row.operator === "operator_confirms" ? row.instructions : "",
+              ...(row.operator === "collection_empty" || row.operator === "observation_empty" ? { observation: row.observation } : {}),
+            })),
+          };
+          return onSave(
+            plan,
+            name.trim(),
+            rows.map((row) => row.name),
+          );
+        }}
+      >
+        <label htmlFor="reset-name">Name</label>
+        <input id="reset-name" type="text" value={name} onChange={(event) => { setName(event.target.value); setDirty(true); }} />
+        {rows.length > 0 ? (
+          <table className="plain-table" aria-label="Reset actions">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Type</th>
+                <th scope="col">Effect</th>
+                <th scope="col">
+                  <span className="visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={`${row.id}-${index}`}>
+                  <th scope="row" title={row.name}>
+                    {row.name}
+                  </th>
+                  <td>{RESET_TYPES[row.operator]}</td>
+                  <td>{effectOf(row)}</td>
+                  <td className="row-actions">
+                    <button type="button" className="quiet" onClick={() => setEditing(index)}>
+                      Edit
+                    </button>
+                    <Menu
+                      label={`More actions for ${row.name}`}
+                      items={[
+                        { label: "Move up", disabled: index === 0, onSelect: () => change(rows.map((entry, at) => (at === index - 1 ? rows[index]! : at === index ? rows[index - 1]! : entry))) },
+                        { label: "Move down", disabled: index === rows.length - 1, onSelect: () => change(rows.map((entry, at) => (at === index + 1 ? rows[index]! : at === index ? rows[index + 1]! : entry))) },
+                        { label: "Remove", tone: "danger" as const, separated: true, onSelect: () => change(rows.filter((_, at) => at !== index)) },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+        <div>
+          <button id="reset-add-action" type="button" className="quiet" onClick={() => setEditing("new")}>
+            Add action
+          </button>
+        </div>
+      </FormDialog>
+      <ResetActionSheet
+        open={open && editing !== null}
+        row={typeof editing === "number" ? (rows[editing] ?? null) : null}
+        address={address}
+        observations={observations}
+        onClose={() => setEditing(null)}
+        onDone={(row) => {
+          change(typeof editing === "number" ? rows.map((entry, at) => (at === editing ? row : entry)) : [...rows, row]);
+          setEditing(null);
+        }}
+      />
+    </>
+  );
+}
+
+/** One reset action: its name, its type and what that type needs. Done returns
+ * it to the reset, which is saved once. */
+function ResetActionSheet({
+  open,
+  row,
+  address,
+  observations,
+  onDone,
+  onClose,
+}: {
+  open: boolean;
+  row: ResetRow | null;
+  address: string;
+  observations: CatalogItem[];
+  onDone: (row: ResetRow) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [operator, setOperator] = useState<ResetOperator | "">("");
+  const [instructions, setInstructions] = useState("");
+  const [observation, setObservation] = useState("");
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setName(row?.name ?? "");
+    setOperator(row?.operator ?? "");
+    setInstructions(row?.instructions ?? "");
+    setObservation(row?.observation ?? "");
+    setDirty(false);
+  }, [open, row]);
+  const changed = <T,>(set: (value: T) => void) => (value: T) => {
+    set(value);
+    setDirty(true);
+  };
+  const types = row?.operator === "observation_empty" ? [...NEW_RESET_TYPES, "observation_empty" as const] : NEW_RESET_TYPES;
   return (
     <FormDialog
       open={open}
-      title="Edit reset"
-      size="wide"
-      submitLabel="Save"
+      title={row ? "Edit action" : "Add action"}
+      submitLabel="Done"
       dirty={dirty}
       onClose={onClose}
       onSubmit={() => {
-        const used = rows.filter((row) => row.operator !== "");
-        const missing = used.findIndex((row) => row.name.trim() === "" || (row.operator === "operator_confirms" && row.instructions.trim() === "") || (row.operator === "observation_empty" && row.observation === ""));
-        if (missing >= 0) return { reason: "Complete every action, or remove it.", field: `reset-action-${rows.indexOf(used[missing]!)}-name` };
-        const plan = {
-          schema: draft?.reset?.schema || "readmit-reset-plan/v1",
-          environment: draft?.reset?.environment || draft?.environment?.name || "",
-          actions: used.map((row) => ({
-            id: row.id,
-            operator: row.operator as ResetOperator,
-            authority: authorityOf(row.operator as ResetOperator),
-            instructions: row.operator === "operator_confirms" ? row.instructions.trim() : "",
-            ...(row.operator === "observation_empty" ? { observation: row.observation } : {}),
-          })),
-        };
-        return onSave(plan, name.trim(), used.map((row) => row.name.trim()));
+        if (name.trim() === "") return { reason: "Name the action.", field: "reset-action-name" };
+        if (operator === "") return { reason: "Choose what the action does.", field: "reset-action-type" };
+        if (operator === "operator_confirms" && instructions.trim() === "") return { reason: "Say what the person does.", field: "reset-action-instructions" };
+        if (operator === "collection_empty" && observation === "") return { reason: "Choose the observation to check.", field: "reset-action-observation" };
+        onDone({
+          id: row?.id ?? "",
+          name: name.trim(),
+          operator,
+          instructions: operator === "operator_confirms" ? instructions.trim() : "",
+          observation: operator === "collection_empty" || operator === "observation_empty" ? observation : "",
+        });
+        return null;
       }}
     >
-      <label htmlFor="reset-name">Name</label>
-      <input id="reset-name" type="text" value={name} onChange={(event) => { setName(event.target.value); setDirty(true); }} />
-      {rows.map((row, index) => (
-        <fieldset key={index} className="filter-rule">
-          <legend className="visually-hidden">Action {index + 1}</legend>
-          <div className="filter-rule-row">
-            <input
-              id={`reset-action-${index}-name`}
-              type="text"
-              aria-label={`Name of action ${index + 1}`}
-              value={row.name}
-              onChange={(event) => update(index, { name: event.target.value })}
-            />
-            <select id={`reset-action-${index}-type`} aria-label={`Type of action ${index + 1}`} value={row.operator} onChange={(event) => update(index, { operator: event.target.value as ResetOperator })}>
-              <option value="">Choose a type</option>
-              {(Object.keys(RESET_TYPES) as ResetOperator[]).map((operator) => (
-                <option key={operator} value={operator}>
-                  {RESET_TYPES[operator]}
-                </option>
-              ))}
-            </select>
-            <IconButton icon="close" label={`Remove action ${index + 1}`} onClick={() => { setRows((held) => (held.length > 1 ? held.filter((_, at) => at !== index) : [{ id: "", name: "", operator: "", instructions: "", observation: "" }])); setDirty(true); }} />
-          </div>
-          {row.operator === "operator_confirms" ? (
-            <textarea aria-label={`Instructions of action ${index + 1}`} rows={2} value={row.instructions} onChange={(event) => update(index, { instructions: event.target.value })} />
-          ) : null}
-          {row.operator === "observation_empty" ? (
-            <select aria-label={`Observation of action ${index + 1}`} value={row.observation} onChange={(event) => update(index, { observation: event.target.value })}>
-              <option value="">Choose an observation</option>
-              {snapshots.map((entry) => (
-                <option key={entry} value={entry}>
-                  {entry}
-                </option>
-              ))}
-            </select>
-          ) : null}
-        </fieldset>
-      ))}
-      <div>
-        <button type="button" className="quiet" onClick={() => { setRows((held) => [...held, { id: "", name: "", operator: "", instructions: "", observation: "" }]); setDirty(true); }}>
-          Add action
-        </button>
-      </div>
+      <label htmlFor="reset-action-name">Name</label>
+      <input id="reset-action-name" type="text" autoFocus value={name} onChange={(event) => changed(setName)(event.target.value)} />
+      <label htmlFor="reset-action-type">Type</label>
+      <select id="reset-action-type" value={operator} onChange={(event) => changed(setOperator)(event.target.value as ResetOperator)}>
+        {operator === "" ? <option value="">Choose a type</option> : null}
+        {types.map((value) => (
+          <option key={value} value={value}>
+            {RESET_TYPES[value]}
+          </option>
+        ))}
+      </select>
+      {operator === "operator_confirms" ? (
+        <>
+          <label htmlFor="reset-action-instructions">Instructions</label>
+          <textarea id="reset-action-instructions" rows={3} value={instructions} onChange={(event) => changed(setInstructions)(event.target.value)} />
+        </>
+      ) : null}
+      {operator === "collection_empty" ? (
+        <>
+          <label htmlFor="reset-action-observation">Observation</label>
+          <select id="reset-action-observation" value={observation} onChange={(event) => changed(setObservation)(event.target.value)}>
+            {observation === "" ? <option value="">Choose an observation</option> : null}
+            {observations.map((entry) => (
+              <option key={entry.ref.id} value={entry.ref.id}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : null}
+      {operator === "endpoint_quiet" ? <ValueRows rows={[{ label: "Endpoint", value: address || "—" }]} /> : null}
     </FormDialog>
   );
 }
@@ -1202,43 +1593,6 @@ function RemoveEnvironmentSheet({ open, context, item, onClose, onRemoved }: { o
   );
 }
 
-function NewObservationSheet({
-  open,
-  context,
-  onClose,
-  onCreated,
-}: {
-  open: boolean;
-  context: () => RequestContext;
-  onClose: () => void;
-  onCreated: (saved: ItemRef) => Promise<SubmitFailure | null>;
-}) {
-  const [name, setName] = useState("");
-  useEffect(() => {
-    if (open) setName("");
-  }, [open]);
-  return (
-    <FormDialog
-      open={open}
-      title="Add observation"
-      size="small"
-      submitLabel="Add"
-      submitDisabled={name.trim() === ""}
-      onClose={onClose}
-      onSubmit={async () => {
-        const start = await openItemDraft({ context: context(), ref: { kind: "observation", id: "" } });
-        if (!start.draft) return { reason: start.reason ?? "The observation could not be started." };
-        const answer = await saveItem({ context: context(), kind: "observation", draft: { ...start.draft, name: name.trim() }, intent_id: newIntentId() });
-        if (answer.outcome !== "saved" || !answer.saved) return saveProblem(answer, { name: "observation-name" });
-        return onCreated(answer.saved);
-      }}
-    >
-      <label htmlFor="observation-name">Name</label>
-      <input id="observation-name" type="text" autoFocus value={name} onChange={(event) => setName(event.target.value)} />
-    </FormDialog>
-  );
-}
-
 // ---------- Credentials ----------
 
 function credentialsPage({ item, context, busy }: { item: CatalogItem; context: () => RequestContext; busy: boolean }) {
@@ -1264,6 +1618,7 @@ function CredentialsActions({ item, context, busy }: { item: CatalogItem; contex
         title="Scan configured files"
         action="secret.scan"
         finalLabel="Scan"
+        consequence="Only these files are scanned."
         context={context}
         items={[item.ref]}
         onClose={() => setScanning(false)}
@@ -1421,6 +1776,7 @@ function CredentialSheet({
   const [args, setArgs] = useState<string[]>([""]);
   const [maxAge, setMaxAge] = useState("");
   const [chooseFailure, setChooseFailure] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
     if (!open) return;
     setName(row?.name ?? "");
@@ -1432,13 +1788,27 @@ function CredentialSheet({
     setArgs([""]);
     setMaxAge(row?.max_age ?? "");
     setChooseFailure(null);
+    setDirty(false);
   }, [open, row]);
   const updating = row !== null;
+  const changed = <T,>(set: (value: T) => void) => (value: T) => {
+    set(value);
+    setDirty(true);
+  };
+  const fields: Record<string, string> = {
+    name: "credential-name",
+    store: "credential-store",
+    address: "credential-address",
+    command: "credential-command",
+    arguments: "credential-argument-0",
+    max_age: "credential-max-age",
+  };
   return (
     <FormDialog
       open={open}
       title={updating ? "Edit credential" : "New credential"}
       submitLabel="Save"
+      dirty={dirty}
       onClose={onClose}
       onSubmit={async () => {
         const chosenArgs = args.map((arg) => arg.trim()).filter(Boolean);
@@ -1454,15 +1824,20 @@ function CredentialSheet({
           replace_arguments: replace,
           ...(maxAge.trim() ? { max_age: maxAge.trim() } : {}),
         });
-        if (answer.state !== "completed") return { reason: answer.reason ?? "Not saved." };
+        if (answer.state !== "completed") {
+          const problems = answer.problems ?? [];
+          const field = problems.map((problem) => fields[problem.field]).find(Boolean);
+          return { reason: problems.map((problem) => problem.problem).join(" ") || answer.reason || "Not saved.", ...(field ? { field } : {}) };
+        }
+        setDirty(false);
         onSaved(answer.credentials);
         return null;
       }}
     >
       <label htmlFor="credential-name">Name</label>
-      <input id="credential-name" type="text" autoFocus={!updating} disabled={updating} value={name} onChange={(event) => setName(event.target.value)} />
+      <input id="credential-name" type="text" autoFocus={!updating} disabled={updating} value={name} onChange={(event) => changed(setName)(event.target.value)} />
       <label htmlFor="credential-purpose">Purpose</label>
-      <select id="credential-purpose" disabled={updating} value={purpose} onChange={(event) => setPurpose(event.target.value as SecretPurpose)}>
+      <select id="credential-purpose" disabled={updating} value={purpose} onChange={(event) => changed(setPurpose)(event.target.value as SecretPurpose)}>
         {(Object.keys(PURPOSES) as SecretPurpose[]).map((value) => (
           <option key={value} value={value}>
             {PURPOSES[value]}
@@ -1470,7 +1845,7 @@ function CredentialSheet({
         ))}
       </select>
       <label htmlFor="credential-store">Store</label>
-      <select id="credential-store" value={store} onChange={(event) => setStore(event.target.value as SecretStore)}>
+      <select id="credential-store" value={store} onChange={(event) => changed(setStore)(event.target.value as SecretStore)}>
         {(Object.keys(STORES) as SecretStore[]).map((value) => (
           <option key={value} value={value}>
             {STORES[value]}
@@ -1478,13 +1853,14 @@ function CredentialSheet({
         ))}
       </select>
       <label htmlFor="credential-address">Allowed address</label>
-      <input id="credential-address" type="text" spellCheck={false} value={address} onChange={(event) => setAddress(event.target.value)} />
+      <input id="credential-address" type="text" spellCheck={false} value={address} onChange={(event) => changed(setAddress)(event.target.value)} />
       <FilePicker
+        id="credential-command"
         label="Locator program"
         path={command}
         onChoose={() =>
           void chooseEnvironmentFile("locator-program").then((answer) => {
-            if (answer.state === "completed" && answer.paths?.[0]) setCommand(answer.paths[0]);
+            if (answer.state === "completed" && answer.paths?.[0]) changed(setCommand)(answer.paths[0]);
             else if (answer.state !== "cancelled") setChooseFailure(answer.reason ?? "The program was not chosen.");
           })
         }
@@ -1492,7 +1868,7 @@ function CredentialSheet({
       {chooseFailure ? <p className="field-error" role="alert">{chooseFailure}</p> : null}
       {updating ? (
         <label className="check">
-          <input type="checkbox" checked={replace} onChange={(event) => setReplace(event.target.checked)} />
+          <input type="checkbox" checked={replace} onChange={(event) => changed(setReplace)(event.target.checked)} />
           Replace arguments{row && row.argument_count > 0 ? ` (${row.argument_count} stored)` : ""}
         </label>
       ) : null}
@@ -1501,8 +1877,15 @@ function CredentialSheet({
           <legend>Arguments</legend>
           {args.map((arg, index) => (
             <div key={index} className="filter-rule-row">
-              <input type="text" spellCheck={false} aria-label={`Argument ${index + 1}`} value={arg} onChange={(event) => setArgs((held) => held.map((value, at) => (at === index ? event.target.value : value)))} />
-              <IconButton icon="close" label={`Remove argument ${index + 1}`} onClick={() => setArgs((held) => (held.length > 1 ? held.filter((_, at) => at !== index) : [""]))} />
+              <input
+                id={`credential-argument-${index}`}
+                type="text"
+                spellCheck={false}
+                aria-label={`Argument ${index + 1}`}
+                value={arg}
+                onChange={(event) => changed(setArgs)(args.map((value, at) => (at === index ? event.target.value : value)))}
+              />
+              <IconButton icon="close" label={`Remove argument ${index + 1}`} onClick={() => changed(setArgs)(args.length > 1 ? args.filter((_, at) => at !== index) : [""])} />
             </div>
           ))}
           <button type="button" className="quiet" onClick={() => setArgs((held) => [...held, ""])}>
@@ -1511,7 +1894,7 @@ function CredentialSheet({
         </fieldset>
       ) : null}
       <label htmlFor="credential-max-age">Maximum age</label>
-      <input id="credential-max-age" type="text" value={maxAge} onChange={(event) => setMaxAge(event.target.value)} />
+      <input id="credential-max-age" type="text" value={maxAge} onChange={(event) => changed(setMaxAge)(event.target.value)} />
     </FormDialog>
   );
 }

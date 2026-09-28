@@ -156,12 +156,6 @@
     "line": 25
   },
   {
-    "name": "ObservationPanel",
-    "source": "desktop/frontend/src/ObservationPanel.tsx",
-    "exported": true,
-    "line": 218
-  },
-  {
     "name": "OperationAccess",
     "source": "desktop/frontend/src/OperationAccess.tsx",
     "exported": true,

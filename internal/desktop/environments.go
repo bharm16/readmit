@@ -13,6 +13,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -141,7 +142,7 @@ func (a *App) CheckEnvironment(request ItemRequest) EnvironmentCheckResult {
 		}
 		target, err := operation.ReadTarget(members.paths["target"])
 		if err != nil {
-			result.refuse(Failed, err.Error())
+			result.refuse(Failed, approvalReason(err))
 			return result
 		}
 		a.reach(reachingTarget{ref: "environment:" + item.Ref.ID, name: item.Name, kind: ConnectionEnvironment, destination: target.Address})
@@ -184,14 +185,17 @@ type DestinationCheckRequest struct {
 // CheckEnvironmentDestination evaluates one proposed send against the
 // environment's saved send policy, as a send would ask it. It may resolve a
 // host name; it opens no connection and sends nothing. An environment with
-// no policy has none to allow the send.
+// no policy has none to allow the send. A request that names no
+// classification is decided under the one the environment records, never a
+// nonproduction one assumed for it.
 func (a *App) CheckEnvironmentDestination(request DestinationCheckRequest) SendPolicyEvalResult {
 	return runNamed[SendPolicyEvalResult, *SendPolicyEvalResult](a, profiles["CheckEnvironmentDestination"], func(ctx context.Context) SendPolicyEvalResult {
 		loaded, _, members, declined := a.savedEnvironment(ctx, ItemRequest{Context: request.Context, Ref: request.Ref})
 		if loaded == nil {
 			return SendPolicyEvalResult{State: declined.state, Reason: declined.reason}
 		}
-		decision := operation.EvaluateSendPolicy(ctx, members.policy, request.Address, request.Classification, true, sendpolicy.SystemResolver)
+		classification := cmp.Or(request.Classification, string(members.target.Environment().Classification))
+		decision := operation.EvaluateSendPolicy(ctx, members.policy, request.Address, classification, true, sendpolicy.SystemResolver)
 		return SendPolicyEvalResult{State: Completed, Decision: &decision}
 	})
 }
@@ -322,7 +326,8 @@ func (a *App) RemoveItem(request ItemRequest) RemoveItemResult {
 // referrers are the project's objects that use one environment or
 // observation: a test or a suite binding any file of any revision it was
 // saved as, or the entry it was discovered at, and, for an observation, an
-// environment whose current links name it.
+// environment whose current links name it or whose reset checks it is
+// empty.
 func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
 	files := map[string]bool{}
 	if item.Entry != "" {
@@ -380,6 +385,13 @@ func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
 				if path, held := paths["links"]; held {
 					if links, err := readLinks(path); err == nil && links.Observation == item.ID {
 						uses = true
+					}
+				}
+				if path, held := paths["reset"]; held {
+					if plan, err := operation.ReadResetPlan(path); err == nil {
+						for _, action := range plan.Actions {
+							uses = uses || action.Operator == fixturereset.CollectionEmpty && names(action.Observation)
+						}
 					}
 				}
 			}

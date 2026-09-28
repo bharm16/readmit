@@ -24,7 +24,8 @@ export const TARGET_CLASSIFICATIONS: DisplayMap<TargetClassification> = {
 
 export const RESET_OPERATORS: DisplayMap<ResetOperator> = {
   operator_confirms: "Manual confirmation",
-  observation_empty: "Observation empty",
+  observation_empty: "Receiver snapshot empty",
+  collection_empty: "Observation empty",
   endpoint_quiet: "Endpoint quiet",
 };
 
@@ -46,11 +47,15 @@ export const SEND_POLICY_REASONS: DisplayMap<SendPolicyReason> = {
 export const RESET_REASONS: DisplayMap<ResetReason> = {
   operator_confirmed: "Confirmed",
   ledger_empty: "Empty",
+  collection_empty: "Empty",
   endpoint_reachable: "Endpoint reachable",
   every_action_confirmed: "Every action confirmed",
   awaiting_operator_confirmation: "Not confirmed",
   observation_unreadable: "The observation cannot be read",
   ledger_not_empty: "Not empty",
+  no_completed_collection: "No completed collection",
+  collection_older_than_freshness: "The latest collection is too old",
+  collection_not_empty: "Not empty",
   endpoint_refused_connection: "The endpoint refused the connection",
   endpoint_not_quiet: "The endpoint is not quiet",
   endpoint_not_confirmed: "The endpoint was not confirmed",

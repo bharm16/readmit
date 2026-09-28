@@ -16,10 +16,7 @@ import type {
   CaptureProgressResult,
   CaptureSessionResult,
   EvidenceSource,
-  ObservationCaptureBindRequest,
-  ObservationSourceResult,
-  ObservationSupportResult,
-  ObservationWindowResult,
+  ItemRequest,
   PathChoiceResult,
   ReceiverPolicy,
   ReceiverPolicyChoices,
@@ -332,10 +329,9 @@ test("a collection that did not complete is not offered to finalize", async () =
   expect(facade.callsTo("FinalizeCaptureImport")).toHaveLength(0);
 });
 
-test("finalized capture offers observation binding into Observation setup", async () => {
+test("a finalized capture's Set up observation opens Add observation started from that capture", async () => {
   const user = userEvent.setup();
   const { facade } = await openProject(user);
-  const binds: ObservationCaptureBindRequest[] = [];
   facade.reply({
     ChooseCapturePath: (): Promise<PathChoiceResult> =>
       Promise.resolve({ state: "completed", paths: ["/workspace-under-test/exports"] }),
@@ -375,75 +371,34 @@ test("finalized capture offers observation binding into Observation setup", asyn
           unparsed: 0,
         },
       }),
-    ObservationSupport: (): Promise<ObservationSupportResult> =>
-      Promise.resolve({
-        state: "completed",
-        support: [
-          {
-            kind: "downstream-capture",
+    ObservationSupport: () => ({ state: "completed", support: [] }),
+    ListCredentials: (request) => ({ state: "completed", context: request.context, credentials: [], referring: [] }),
+    OpenItemDraft: (request) => ({
+      state: "completed",
+      context: request.context,
+      new: true,
+      draft: {
+        observation: {
+          source: {
             schema: "readmit-observation-source/v2",
-            adapter: "downstream-capture",
-            version: "v2",
-            qualification: "supported",
-            production_claim: true,
+            source: { kind: "downstream-capture", identity: "downstream-capture", scope: "appointments" },
+            enabled: true,
+            freshness: { max_age: "1h" },
+            extraction: null,
+            file: null,
+            http: null,
+            capture: { path: request.capture?.case_path ?? "", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 100 },
           },
-        ],
-      }),
-    OpenObservationSource: (): Promise<ObservationSourceResult> =>
-      Promise.resolve({
-        state: "completed",
-        source: {
-          schema: "readmit-observation-source/v2",
-          source: { kind: "downstream-capture", identity: "scheduling-archive", scope: "appointments" },
-          enabled: true,
-          freshness: { max_age: "1h" },
-          extraction: null,
-          file: null,
-          http: null,
-          capture: { path: "downstream.case", kinds: ["message"], record_key: "SCH-1.1", max_occurrences: 100 },
-        },
-        identity: "src",
-      }),
-    OpenObservationWindow: (): Promise<ObservationWindowResult> =>
-      Promise.resolve({
-        state: "completed",
-        window: {
-          schema: "readmit-observation-window/v1",
-          source: { kind: "downstream-capture", identity: "scheduling-archive", scope: "appointments" },
-          watermark: { kind: "none", position: "" },
-          pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
-          completion: {
-            deadline: "30s",
-            quiet_period: "2s",
-            stable_samples: 3,
-            max_records: 100,
-            max_samples: 16,
+          window: {
+            schema: "readmit-observation-window/v1",
+            source: { kind: "downstream-capture", identity: "downstream-capture", scope: "appointments" },
+            watermark: { kind: "none", position: "" },
+            pre_existing_state: { declaration: "declared-empty", baseline_identity: "" },
+            completion: { deadline: "30s", quiet_period: "2s", stable_samples: 3, max_records: 100, max_samples: 16 },
           },
         },
-        identity: "win",
-      }),
-    BindCaptureObservation: (req): Promise<ObservationSourceResult> => {
-      binds.push(req);
-      return Promise.resolve({
-        state: "completed",
-        source: {
-          schema: "readmit-observation-source/v2",
-          source: { kind: "downstream-capture", identity: "downstream-capture", scope: "appointments" },
-          enabled: true,
-          freshness: { max_age: "1h" },
-          extraction: null,
-          file: null,
-          http: null,
-          capture: {
-            path: req.relative_case ?? "imported-from-capture.case",
-            kinds: ["message"],
-            record_key: "SCH-1.1",
-            max_occurrences: 100,
-          },
-        },
-        identity: "bound",
-      });
-    },
+      },
+    }),
   });
 
   await user.click(within(screen.getByRole("region", { name: "Main content" })).getByRole("button", { name: "Capture" }));
@@ -453,12 +408,14 @@ test("finalized capture offers observation binding into Observation setup", asyn
   await user.click(screen.getByRole("button", { name: "Create case…" }));
   expect(await screen.findByRole("heading", { name: "Import completed" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Set up observation" }));
-  expect(await screen.findByRole("heading", { name: "Observations", level: 3 })).toBeTruthy();
-  await waitFor(() => expect(binds.length).toBeGreaterThanOrEqual(1));
-  expect(binds[0]?.binding.case_path).toBe("imported-from-capture.case");
-  expect(
-    await screen.findByText(/downstream-capture observation source|Bound retained capture|Nothing was collected/i),
-  ).toBeTruthy();
+  const sheet = await screen.findByRole("dialog", { name: "Add observation" });
+  // The new observation starts from the facade's draft of that capture; nothing is collected.
+  const started = facade.callsTo("OpenItemDraft").map((call) => call.args[0] as ItemRequest).find((request) => request.ref.kind === "observation");
+  expect(started).toMatchObject({ ref: { kind: "observation", id: "" }, capture: { case_path: "imported-from-capture.case", record_key: "SCH-1.1" } });
+  expect((within(sheet).getByRole("combobox", { name: "Type" }) as HTMLSelectElement).value).toBe("downstream-capture");
+  expect((within(sheet).getByRole("textbox", { name: "Record key HL7 field" }) as HTMLInputElement).value).toBe("SCH-1.1");
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
 function capturePanel(): HTMLElement {

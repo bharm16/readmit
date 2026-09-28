@@ -65,6 +65,10 @@ const (
 	// EndpointQuiet confirms that the environment accepts a connection again
 	// and sends nothing unprompted. It sends no HL7 payload.
 	EndpointQuiet Operator = "endpoint_quiet"
+	// CollectionEmpty confirms that the latest completed collection of a
+	// declared observation source, still inside the source's freshness
+	// bound, observed no records. It collects nothing itself.
+	CollectionEmpty Operator = "collection_empty"
 )
 
 // Authority is the narrowest thing a reviewed operator needs to be allowed to
@@ -102,6 +106,7 @@ var reviewed = func() map[Operator]Authority {
 var reviewedTable = []Review{
 	{OperatorConfirms, NoAuthority},
 	{ObservationEmpty, ReadDeclaredFile},
+	{CollectionEmpty, ReadDeclaredFile},
 	{EndpointQuiet, ConnectApprovedTarget},
 }
 
@@ -126,7 +131,7 @@ func ReviewedAction(id string, operator Operator, instructions, observation stri
 		return Action{}, errors.New("a reset action names an operator this release did not review; the reviewed operators are " + strings.Join(reviewedOperators(), ", "))
 	}
 	action := Action{ID: id, Operator: operator, Authority: authority, Instructions: instructions}
-	if operator == ObservationEmpty {
+	if authority == ReadDeclaredFile {
 		action.Observation = observation
 	}
 	return action, nil
@@ -161,10 +166,12 @@ type Action struct {
 	Operator     Operator  `json:"operator"`
 	Authority    Authority `json:"authority"`
 	Instructions string    `json:"instructions"`
-	// Observation is the receiver observation file an ObservationEmpty action
-	// reads, as one path inside the plan's own directory. It is required for
-	// that operator and refused for every other, so no action carries a file
-	// it has no authority to read.
+	// Observation is the one file a read_declared_file action reads, as one
+	// path inside the plan's own directory: the receiver observation an
+	// ObservationEmpty action reads, or the observation source whose
+	// collections a CollectionEmpty action reads. It is required for those
+	// operators and refused for every other, so no action carries a file it
+	// has no authority to read.
 	Observation string `json:"observation,omitzero"`
 }
 
@@ -248,7 +255,7 @@ func validateAction(action Action) error {
 	if action.Instructions == "" || len(action.Instructions) > maxInstructions || !readableProse(action.Instructions) {
 		return errors.New("a reset action requires operator-readable instructions of at most 4096 UTF-8 bytes, with no control characters beyond tab and newline")
 	}
-	if action.Operator != ObservationEmpty {
+	if required != ReadDeclaredFile {
 		if action.Observation != "" {
 			return errors.New("only a reset action with read_declared_file authority declares an observation file")
 		}
@@ -259,6 +266,9 @@ func validateAction(action Action) error {
 	// name alone, so a plan cannot direct a read at a file elsewhere on the
 	// machine, and it is opened read-only through the observation contract.
 	if action.Observation == "" || !filepath.IsLocal(action.Observation) {
+		if action.Operator == CollectionEmpty {
+			return errors.New("a collection_empty action names one observation source file inside the plan's own directory")
+		}
 		return errors.New("an observation_empty action names one receiver observation file inside the plan's own directory")
 	}
 	return nil

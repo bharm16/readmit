@@ -154,6 +154,7 @@ type ActionReview struct {
 	Scan         *ScanReview             `json:"scan,omitzero"`
 	Storage      *StorageReview          `json:"storage,omitzero"`
 	Derive       *DeriveReviewView       `json:"derive,omitzero"`
+	Transport    *TransportReview        `json:"transport,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -247,6 +248,8 @@ type ReviewedActionResult struct {
 	Scan      *ScanOutcome          `json:"scan,omitzero"`
 	Storage   *StorageOutcome       `json:"storage,omitzero"`
 	Derived   *PrivacyReviewOutcome `json:"derived,omitzero"`
+	// Approved is the environment revision a transport approval published.
+	Approved *ItemRef `json:"approved,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -274,6 +277,8 @@ type boundAction struct {
 	scan            *scanBinding
 	storage         storagePlan
 	derive          PrivacyReviewRequest
+	// transport is what a transport approval publishes.
+	transport *transportBinding
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -313,6 +318,8 @@ var actionPolicies = map[ActionID]actionPolicy{
 		bind: bindScan, execute: executeScan},
 	DeriveReviewAction: {consent: DeriveConsent, requirements: []ReviewRequirement{InventoryDeclarationRequirement},
 		review: slot{}, perform: slot{profile: "DeriveExportReview"}, bind: bindDeriveReview, execute: executeDeriveReview},
+	ApproveTransportAction: {consent: ApproveConsent, review: slot{}, perform: slot{writes: true},
+		bind: bindApproveTransport, execute: executeApproveTransport},
 }
 
 // hold runs work holding one slot.

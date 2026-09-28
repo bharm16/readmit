@@ -8,6 +8,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/exportreview"
@@ -26,10 +27,12 @@ import (
 // Each is prepared from the saved objects, binds exactly what its review
 // shows, and runs only on its own final click.
 
-// CollectReview is what one collection reads: the source by its declared
-// identity, kind and scope, the window's identity, the completion bounds it
-// is held to, and where the source is read from.
+// CollectReview is what one collection reads: the observation's revision,
+// the source by its declared identity, kind and scope, the window's
+// identity, the completion bounds it is held to, and where the source is
+// read from.
 type CollectReview struct {
+	Revision    string             `json:"revision"`
 	Source      string             `json:"source"`
 	SourceType  string             `json:"source_type"`
 	Scope       string             `json:"scope"`
@@ -40,13 +43,16 @@ type CollectReview struct {
 
 // ResetReviewAction is one saved reset action as its review shows it: its
 // identity, the name a person gave it, its type, the instructions it
-// carries and what it does.
+// carries and what it does. A check of an empty observation names the
+// observation, at the revision whose collections it reads.
 type ResetReviewAction struct {
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	Type         fixturereset.Operator `json:"type"`
-	Instructions string                `json:"instructions"`
-	Effect       string                `json:"effect"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Type            fixturereset.Operator `json:"type"`
+	Instructions    string                `json:"instructions"`
+	Effect          string                `json:"effect"`
+	Observation     *ItemRef              `json:"observation,omitzero"`
+	ObservationName string                `json:"observation_name,omitzero"`
 }
 
 // EnvironmentResetReview is the reset one environment's saved plan runs: the target it
@@ -80,8 +86,10 @@ type ScanOutcome struct {
 }
 
 type collectBinding struct {
-	request operation.ObservationCollectRequest
-	output  string
+	request     operation.ObservationCollectRequest
+	output      string
+	observation ItemRef
+	stable      int
 }
 
 type resetBinding struct {
@@ -165,9 +173,9 @@ func bindCollect(a *App, ctx context.Context, request PrepareActionRequest, held
 	if !ready {
 		reason = "collection is not enabled for this source; enable it and save the observation first"
 	}
-	review := &CollectReview{Source: source.Observes.Identity, SourceType: source.Observes.Kind, Scope: source.Observes.Scope,
+	review := &CollectReview{Revision: items[0].Ref.Revision, Source: source.Observes.Identity, SourceType: source.Observes.Kind, Scope: source.Observes.Scope,
 		Window: window.Identity(), Bounds: window.Completion, Destination: sourceDestination(declared.Source)}
-	collect := &collectBinding{output: completion, request: operation.ObservationCollectRequest{
+	collect := &collectBinding{output: completion, observation: items[0].Ref, stable: window.Completion.StableSamples, request: operation.ObservationCollectRequest{
 		SourcePath: paths["source"], WindowPath: paths["window"], OutputPath: filepath.Join(loaded.root, completion),
 		SnapshotPath: filepath.Join(loaded.root, snapshot), PolicyPath: policyPath, Authorize: true,
 		ExpectedSourceIdentity: sourceIdentity, ExpectedWindowIdentity: window.Identity()}}
@@ -176,14 +184,18 @@ func bindCollect(a *App, ctx context.Context, request PrepareActionRequest, held
 			records[0].ID, items[0].Ref.Revision, memberDigest(records[0], "source"), memberDigest(records[0], "window"), sourceIdentity, window.Identity(),
 			policyPath, policyDigest, completion, snapshot),
 		review: ActionReview{Items: items[:1], Ready: ready, Refusal: reason, Collect: review,
-			Destination: ReviewDestination{Name: source.Observes.Identity, Address: review.Destination, Output: completion}}}, noRefusal
+			Destination: ReviewDestination{Name: items[0].Name, Address: review.Destination, Output: completion}}}, noRefusal
 }
 
 // executeCollect reads the bound source once and retains its completion. A
 // collection that did not complete is reported with the reason it observed
 // nothing, never as having found no records.
 func executeCollect(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
-	completion, err := operation.CollectObservation(ctx, bound.collect.request)
+	request := bound.collect.request
+	report, done := a.measureCollection(bound.collect.observation, bound.collect.stable)
+	defer done()
+	request.Progress = report
+	completion, err := operation.CollectObservation(ctx, request)
 	result := ReviewedActionResult{Outcome: ActionCompleted}
 	switch {
 	case err != nil && errors.Is(ctx.Err(), context.Canceled):
@@ -209,6 +221,8 @@ func resetEffect(action fixturereset.Action, address string) string {
 		return "You do this step yourself and confirm it; readmit changes nothing."
 	case fixturereset.ObservationEmpty:
 		return "Reads " + action.Observation + " once to check it is empty; nothing is changed."
+	case fixturereset.CollectionEmpty:
+		return "Reads the latest completed collection of " + action.Observation + " to check it found no records; nothing is collected or changed."
 	case fixturereset.EndpointQuiet:
 		return "Connects to " + address + "; no messages are sent."
 	}
@@ -240,11 +254,37 @@ func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held b
 	}
 	target, err := operation.ReadTarget(members.paths["target"])
 	if err != nil {
-		return nil, refusal{Failed, err.Error()}
+		return nil, refusal{Failed, approvalReason(err)}
 	}
 	plan, err := boundedFile(members.paths["reset"], fixturereset.MaxPlanBytes)
 	if err != nil {
 		return nil, refusal{Failed, err.Error()}
+	}
+	// A check of an empty observation reads the observation's current
+	// revision, whichever revision the plan was saved against.
+	current := *members.reset
+	current.Actions = slices.Clone(current.Actions)
+	observed := map[string]catalog.Item{}
+	followed := []string{}
+	missing := ""
+	for i := range current.Actions {
+		action := &current.Actions[i]
+		if action.Operator != fixturereset.CollectionEmpty {
+			continue
+		}
+		item, found := loaded.observationSaving(action.Observation)
+		if !found || sourceMember(item) == "" {
+			missing = "an observation this reset checks is no longer in the project; choose another in the reset first"
+			continue
+		}
+		observed[action.ID] = item
+		action.Observation = sourceMember(item)
+		followed = append(followed, item.ID, item.RevisionLabel(), memberDigest(item, "source"))
+	}
+	if len(observed) > 0 {
+		if plan, err = encodeMember(current); err != nil {
+			return nil, refusal{Failed, err.Error()}
+		}
 	}
 	destination, refused := resetOutput.destination(loaded.root, "")
 	if refused.state != "" {
@@ -253,6 +293,8 @@ func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held b
 	classification := target.Environment().Classification
 	ready, reason := true, ""
 	switch {
+	case missing != "":
+		ready, reason = false, missing
 	case sendpolicy.RefusesEverySend(string(classification)):
 		ready, reason = false, "a production environment is never reset"
 	case classification != replay.Nonproduction:
@@ -260,13 +302,19 @@ func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held b
 	}
 	review := &EnvironmentResetReview{Target: target.Name, Name: members.links.ResetName, Actions: []ResetReviewAction{}}
 	requirements := []ReviewRequirement{}
-	for i, action := range members.reset.Actions {
-		name := action.ID
+	for i, action := range current.Actions {
+		name := ""
 		if i < len(members.links.ActionNames) {
 			name = members.links.ActionNames[i]
 		}
-		review.Actions = append(review.Actions, ResetReviewAction{ID: action.ID, Name: name, Type: action.Operator,
-			Instructions: action.Instructions, Effect: resetEffect(action, target.Address)})
+		reviewed := ResetReviewAction{ID: action.ID, Name: name, Type: action.Operator, Instructions: action.Instructions}
+		if item, found := observed[action.ID]; found {
+			reviewed.Observation = &ItemRef{Kind: ObservationItem, ID: item.ID, Revision: item.RevisionLabel()}
+			reviewed.ObservationName = loaded.read(item).Name
+			action.Observation = reviewed.ObservationName
+		}
+		reviewed.Effect = resetEffect(action, target.Address)
+		review.Actions = append(review.Actions, reviewed)
 		if action.Operator == fixturereset.OperatorConfirms && len(requirements) == 0 {
 			requirements = append(requirements, ConfirmationsRequirement)
 		}
@@ -275,7 +323,8 @@ func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held b
 	return &boundAction{action: ResetEnvironmentAction, origin: request, reset: reset,
 		binding: binding(string(ResetEnvironmentAction), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, true, held),
 			records[0].ID, items[0].Ref.Revision, memberDigest(records[0], "target"), memberDigest(records[0], "reset"), memberDigest(records[0], "policy"),
-			memberDigest(records[0], "links"), fileDigest(members.paths["reset"]), string(classification), target.Address, destination.Name),
+			memberDigest(records[0], "links"), fileDigest(members.paths["reset"]), string(classification), target.Address, destination.Name,
+			strings.Join(followed, "\x00")),
 		review: ActionReview{Items: items, Ready: ready && destination.Fresh, Refusal: cmp.Or(reason, destination.Reason), Reset: review, Requirements: requirements,
 			Destination: ReviewDestination{Name: target.Name, Classification: string(classification), Address: target.Address, Output: destination.Name}}}, noRefusal
 }

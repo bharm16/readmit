@@ -266,15 +266,37 @@ func (w Window) Validate() error {
 		return errors.New("an observation window must declare " + WindowSchema)
 	}
 	if err := w.Source.Validate(); err != nil {
-		return err
+		return AtField("source", err)
 	}
 	if err := w.Watermark.validate(); err != nil {
-		return err
+		return AtField("watermark", err)
 	}
 	if err := w.PreExisting.validate(); err != nil {
-		return err
+		return AtField("pre_existing_state", err)
 	}
 	return w.Completion.validate()
+}
+
+// FieldError is the refusal of one member of a declaration, named by its
+// path in the document, such as "completion.stable_samples". Its text is the
+// refusal's own, so every reader reports the same words; an editor showing
+// the refusal beside the member reads Field.
+type FieldError struct {
+	Field string
+	Err   error
+}
+
+func (e *FieldError) Error() string { return e.Err.Error() }
+func (e *FieldError) Unwrap() error { return e.Err }
+
+// AtField names the member a refusal is about. A refusal already naming a
+// member within it keeps that member, under field.
+func AtField(field string, err error) error {
+	var within *FieldError
+	if errors.As(err, &within) {
+		return &FieldError{Field: field + "." + within.Field, Err: within.Err}
+	}
+	return &FieldError{Field: field, Err: err}
 }
 
 // Validate is shared by the declared window, the retained completion and the
@@ -328,27 +350,27 @@ func (p PreExisting) validate() error {
 func (r Rule) validate() error {
 	deadline, err := duration(r.Deadline)
 	if err != nil {
-		return errors.New("a completion deadline is a positive duration of at most five minutes")
+		return AtField("completion.deadline", errors.New("a completion deadline is a positive duration of at most five minutes"))
 	}
 	quiet, err := duration(r.QuietPeriod)
 	if err != nil {
-		return errors.New("a quiet period is a positive duration of at most five minutes")
+		return AtField("completion.quiet_period", errors.New("a quiet period is a positive duration of at most five minutes"))
 	}
 	if quiet > deadline {
-		return errors.New("a window whose quiet period outlasts its deadline can never complete")
+		return AtField("completion.quiet_period", errors.New("a window whose quiet period outlasts its deadline can never complete"))
 	}
 	// Two observations are the fewest that can show a source holding still.
 	// One reading cannot tell a settled source from one caught mid-write, and
 	// a rule that accepts one reading is a rule that stops at the first
 	// convenient answer.
 	if r.StableSamples < 2 || r.StableSamples > maxSamples {
-		return errors.New("a completion rule requires between 2 and 1024 stable samples")
+		return AtField("completion.stable_samples", errors.New("a completion rule requires between 2 and 1024 stable samples"))
 	}
 	if r.MaxSamples < r.StableSamples || r.MaxSamples > maxSamples {
-		return errors.New("a sample limit is at least the stable sample count and at most 1024")
+		return AtField("completion.max_samples", errors.New("a sample limit is at least the stable sample count and at most 1024"))
 	}
 	if r.MaxRecords < 1 || r.MaxRecords > maxRecords {
-		return errors.New("a record limit is between 1 and 1048576")
+		return AtField("completion.max_records", errors.New("a record limit is between 1 and 1048576"))
 	}
 	return nil
 }

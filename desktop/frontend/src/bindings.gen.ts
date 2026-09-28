@@ -44,7 +44,8 @@ export type ActionID =
   | "storage.delete-source"
   | "storage.move-project"
   | "storage.restore-copy"
-  | "storage.prepare-update";
+  | "storage.prepare-update"
+  | "environment.approve-transport";
 
 /** internal/desktop.ActionReview */
 export interface ActionReview {
@@ -65,6 +66,7 @@ export interface ActionReview {
   scan?: ScanReview;
   storage?: StorageReview;
   derive?: DeriveReviewView;
+  transport?: TransportReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -826,6 +828,7 @@ export interface CleanRunResult {
 
 /** internal/desktop.CollectReview */
 export interface CollectReview {
+  revision: string;
   source: string;
   source_type: string;
   scope: string;
@@ -877,6 +880,26 @@ export interface CollectionMessageTypeRule {
   values: string[];
 }
 
+/** internal/desktop.CollectionProgress */
+export interface CollectionProgress {
+  observation: ItemRef;
+  samples: number;
+  records: number | null;
+  bytes: number;
+  stable_samples: number;
+  required_stable: number;
+  opened_at: string | null;
+  deadline: string | null;
+  elapsed: string;
+}
+
+/** internal/desktop.CollectionProgressResult */
+export interface CollectionProgressResult {
+  state: State;
+  reason?: string;
+  progress?: CollectionProgress;
+}
+
 /** internal/desktop.CollectionRow */
 export interface CollectionRow {
   entry: string;
@@ -884,6 +907,7 @@ export interface CollectionRow {
   status: string;
   trustworthy: boolean;
   records: number | null;
+  baseline?: string;
   reason?: string;
 }
 
@@ -1003,6 +1027,7 @@ export interface CompletionInspection {
   status: string;
   trustworthy: boolean;
   records: number | null;
+  baseline?: string;
   reason?: string;
   opened_at: string | null;
   samples: number;
@@ -1441,6 +1466,7 @@ export interface CredentialsResult {
   context: RequestContext;
   credentials: CredentialRow[];
   referring: Referrer[];
+  problems?: FieldProblem[];
 }
 
 /** internal/customerrunner.Status */
@@ -1870,6 +1896,7 @@ export interface EnvironmentLinks {
   observation?: string;
   reset_name?: string;
   action_names?: string[];
+  range_names?: string[];
 }
 
 /** internal/environment.Outcome */
@@ -1928,6 +1955,8 @@ export interface EnvironmentSummary {
   has_policy: boolean;
   reset_name?: string;
   reset_actions: number;
+  transport_approved: boolean;
+  approval_required: boolean;
 }
 
 /** internal/desktop.EvidenceReference */
@@ -3447,6 +3476,7 @@ export interface ItemRequest {
   context: RequestContext;
   ref: ItemRef;
   from?: TestOrigin;
+  capture?: CaptureObservationBinding;
 }
 
 /** internal/desktop.ItemResult */
@@ -4253,6 +4283,7 @@ export interface ObservationCompletionResult {
 export interface ObservationDraft {
   source: ObservationSource;
   window: ObservationWindow;
+  credential?: string;
 }
 
 /** internal/desktop.ObservationExplainRequest */
@@ -4260,6 +4291,20 @@ export interface ObservationExplainRequest {
   workspace: string;
   completion_file: string;
   window_file?: string;
+}
+
+/** internal/desktop.ObservationFieldsRequest */
+export interface ObservationFieldsRequest {
+  context: RequestContext;
+  source: ObservationSource;
+}
+
+/** internal/desktop.ObservationFieldsResult */
+export interface ObservationFieldsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  fields: string[];
 }
 
 /** internal/desktop.ObservationHistoryResult */
@@ -6447,7 +6492,11 @@ export interface ResetActionResult {
 export type ResetAuthority = "none" | "read_declared_file" | "connect_approved_target";
 
 /** internal/fixturereset.Operator */
-export type ResetOperator = "operator_confirms" | "observation_empty" | "endpoint_quiet";
+export type ResetOperator =
+  | "operator_confirms"
+  | "observation_empty"
+  | "endpoint_quiet"
+  | "collection_empty";
 
 /** internal/fixturereset.Outcome */
 export type ResetOutcome =
@@ -6485,11 +6534,15 @@ export interface ResetPlanSaveRequest {
 export type ResetReason =
   | "operator_confirmed"
   | "ledger_empty"
+  | "collection_empty"
   | "endpoint_reachable"
   | "every_action_confirmed"
   | "awaiting_operator_confirmation"
   | "observation_unreadable"
   | "ledger_not_empty"
+  | "no_completed_collection"
+  | "collection_older_than_freshness"
+  | "collection_not_empty"
   | "endpoint_refused_connection"
   | "endpoint_not_quiet"
   | "endpoint_not_confirmed"
@@ -6530,6 +6583,8 @@ export interface ResetReviewAction {
   type: ResetOperator;
   instructions: string;
   effect: string;
+  observation?: ItemRef;
+  observation_name?: string;
 }
 
 /** internal/desktop.ResumeRunRequest */
@@ -6689,6 +6744,7 @@ export interface ReviewedActionResult {
   scan?: ScanOutcome;
   storage?: StorageOutcome;
   derived?: PrivacyReviewOutcome;
+  approved?: ItemRef;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -9449,6 +9505,16 @@ export interface Transformation {
   boundary: string;
 }
 
+/** internal/desktop.TransportReview */
+export interface TransportReview {
+  address: string;
+  transport: string;
+  server_name?: string;
+  ca_file?: string;
+  client_certificate?: string;
+  classification: string;
+}
+
 /** internal/desktop.UpgradeCheckRequest */
 export interface UpgradeCheckRequest {
   candidate: string;
@@ -9562,6 +9628,7 @@ export interface Vocabulary {
   scenarios: ScenarioVocabulary;
   fixture_modes: ObservationMode[];
   affected_test_impacts: string[];
+  observation_starts: ObservationSource[];
 }
 
 /** internal/desktop.WindowBounds */
@@ -9641,6 +9708,7 @@ export interface Facade {
   ClearViews(workspace: string): Promise<ViewsResult>;
   CollectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult>;
   CollectSource(request: SourceWorkRequest): Promise<SourceCollectionResult>;
+  CollectionProgress(): Promise<CollectionProgressResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
   CommitImport(request: ImportCommitRequest): Promise<ImportCommitResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
@@ -9744,6 +9812,7 @@ export interface Facade {
   MetadataPacks(request: RequestContext): Promise<MetadataPacksResult>;
   MigrateProjectDocument(path: string): Promise<ProjectOverviewResult>;
   NormalizeCompare(request: NormalizeRequest): Promise<NormalizeResult>;
+  ObservationFields(request: ObservationFieldsRequest): Promise<ObservationFieldsResult>;
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
   ObservationSupport(): Promise<ObservationSupportResult>;
   OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;

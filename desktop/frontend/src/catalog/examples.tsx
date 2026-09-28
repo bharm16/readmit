@@ -17,7 +17,6 @@ import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
 import { ImportPanel } from "../ImportPanel";
 import { MessageReader } from "../Inspector";
-import { ObservationPanel } from "../ObservationPanel";
 import { OperationAccess } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
 import { PacketPanel } from "../PacketPanel";
@@ -175,7 +174,6 @@ export const examples: Example[] = [
   e("MessageReader", () => (
     <MessageReader result={f.inspectionResult()} loading={false} busy={false} onInspect={async () => null} onReveal={noop} />
   )),
-  e("ObservationPanel", () => <ObservationPanel {...common} />),
   e("OperationAccess", () => <OperationAccess />),
   e("OperatorHub", () => <OperatorHub />),
   e("PacketPanel", () => <PacketPanel {...common} />),

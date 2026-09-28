@@ -338,7 +338,7 @@ func replayInputsOf(request ReplayRequest) (replayInputs, refusal) {
 	}
 	target, err := operation.ReadTarget(targetPath)
 	if err != nil {
-		return replayInputs{}, refusal{Failed, err.Error()}
+		return replayInputs{}, refusal{Failed, approvalReason(err)}
 	}
 	var policy *sendpolicy.Policy
 	if request.Policy != "" {

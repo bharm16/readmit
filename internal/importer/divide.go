@@ -1,7 +1,10 @@
 package importer
 
 import (
+	"bytes"
+	"encoding/json/jsontext"
 	"errors"
+	"strconv"
 )
 
 // EnvelopeShape is the declared container format of one bounded document, with
@@ -102,4 +105,77 @@ func (s EnvelopeShape) Divide(locators []Locator, data []byte) ([]LocatedRecord,
 		records = append(records, located)
 	}
 	return records, nil
+}
+
+// Fields lists the locators one bounded document offers a record key under
+// the declared shape: each named column of a CSV header, each numbered
+// column of a CSV without one, or each member of the first JSON record that
+// holds a string or a number, the values a locator can read. It is read
+// through the same readers Divide uses. A text or XML shape has no field
+// list this reader can offer and is refused, as is a document that
+// contradicts its declaration.
+func (s EnvelopeShape) Fields(data []byte) ([]Locator, error) {
+	shaped := s.recipe()
+	if err := shaped.validateDialect(); err != nil {
+		return nil, err
+	}
+	if err := shaped.validateEncoding(); err != nil {
+		return nil, err
+	}
+	if err := declaredEncoding(s.Encoding, data); err != nil {
+		return nil, err
+	}
+	fields := []Locator{}
+	switch s.Envelope {
+	case CSVEnvelope:
+		if s.CSV.Header != HeaderPresent {
+			for column := 1; column <= s.CSV.Fields; column++ {
+				fields = append(fields, Locator{strconv.Itoa(column)})
+			}
+			return fields, nil
+		}
+		names, _, _, ok := csvRecord(data, 0, s.CSV.Delimiter[0], separatorBytes(s.CSV.RecordSeparator))
+		if !ok || len(names) != s.CSV.Fields {
+			return nil, ErrDeclaredEnvelope
+		}
+		for _, name := range names {
+			fields = append(fields, Locator{string(name)})
+		}
+		return fields, nil
+	case JSONEnvelope:
+		decoder := jsontext.NewDecoder(bytes.NewReader(data))
+		if !jsonDescend(decoder, s.JSON.RecordPath) {
+			return nil, ErrDeclaredEnvelope
+		}
+		if open, err := decoder.ReadToken(); err != nil || open.Kind() != '[' {
+			return nil, ErrDeclaredEnvelope
+		}
+		if decoder.PeekKind() == ']' {
+			return fields, nil
+		}
+		record, err := decoder.ReadValue()
+		if err != nil || record.Kind() != '{' {
+			return nil, ErrDeclaredEnvelope
+		}
+		members := jsontext.NewDecoder(bytes.NewReader(record))
+		if _, err := members.ReadToken(); err != nil {
+			return nil, ErrDeclaredEnvelope
+		}
+		for members.PeekKind() != '}' {
+			key, err := members.ReadToken()
+			if err != nil {
+				return nil, ErrDeclaredEnvelope
+			}
+			name := key.String()
+			value, err := members.ReadValue()
+			if err != nil {
+				return nil, ErrDeclaredEnvelope
+			}
+			if value.Kind() == '"' || value.Kind() == '0' {
+				fields = append(fields, Locator{name})
+			}
+		}
+		return fields, nil
+	}
+	return nil, errors.New("only a csv or json envelope lists the fields a record key is read from")
 }

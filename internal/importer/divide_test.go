@@ -1,6 +1,7 @@
 package importer_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/importer"
@@ -140,5 +141,41 @@ func TestDivideRefusesADeclarationItCannotApply(t *testing.T) {
 				t.Fatal("the declaration was applied")
 			}
 		})
+	}
+}
+
+func TestFieldsListsWhatARecordKeyCanBeReadFrom(t *testing.T) {
+	csv := importer.EnvelopeShape{Envelope: importer.CSVEnvelope, Encoding: importer.UTF8,
+		CSV: &importer.CSVDialect{Delimiter: ",", RecordSeparator: importer.LFSeparator, Header: importer.HeaderPresent, Fields: 2}}
+	document := importer.EnvelopeShape{Envelope: importer.JSONEnvelope, Encoding: importer.UTF8,
+		JSON: &importer.DocumentDialect{RecordPath: []string{"appointments"}}}
+	for _, test := range []struct {
+		name  string
+		shape importer.EnvelopeShape
+		data  string
+		want  []string
+	}{
+		{"a csv header", csv, "appointment,status\nA1,booked\n", []string{"appointment", "status"}},
+		{"numbered csv columns", importer.EnvelopeShape{Envelope: importer.CSVEnvelope, Encoding: importer.UTF8,
+			CSV: &importer.CSVDialect{Delimiter: ",", RecordSeparator: importer.LFSeparator, Header: importer.HeaderAbsent, Fields: 2}}, "A1,booked\n", []string{"1", "2"}},
+		{"the first json record's readable members", document, `{"appointments":[{"id":"A1","slot":3,"patient":{"mrn":"1"}},{"other":"x"}]}`, []string{"id", "slot"}},
+		{"no json record", document, `{"appointments":[]}`, []string{}},
+	} {
+		fields, err := test.shape.Fields([]byte(test.data))
+		got := []string{}
+		for _, field := range fields {
+			got = append(got, field[0])
+		}
+		if err != nil || !slices.Equal(got, test.want) {
+			t.Errorf("%s: %v %v", test.name, got, err)
+		}
+	}
+	if _, err := csv.Fields([]byte("appointment\nA1\n")); err == nil {
+		t.Error("a header contradicting the declared fields was listed")
+	}
+	text := importer.EnvelopeShape{Envelope: importer.TextEnvelope, Encoding: importer.UnknownEncoding,
+		Text: &importer.TextDialect{FieldSeparator: "|", RecordSeparator: importer.LFSeparator, Fields: 2}}
+	if _, err := text.Fields([]byte("a|b\n")); err == nil {
+		t.Error("a text envelope listed fields")
 	}
 }
