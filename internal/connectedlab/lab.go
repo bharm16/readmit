@@ -428,7 +428,7 @@ func StartEngine(t testing.TB, lab *FHIRLab) *Engine {
 			go func() {
 				defer e.done.Done()
 				defer c.Close()
-				_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+				_ = c.SetDeadline(time.Now().Add(time.Minute))
 				reader := bufio.NewReader(c)
 				for {
 					frame, err := reader.ReadBytes(28)

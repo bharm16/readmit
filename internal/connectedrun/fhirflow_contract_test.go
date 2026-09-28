@@ -96,7 +96,7 @@ func TestFHIRFlowV2ToFHIRDetectsDuplicateAppointmentDefectFixAndReintroduction(t
 		r, _ := h.Run([]string{"defect", "fix", "again"}[i])
 		reschedule := connectedlab.PhaseResult(r, "reschedule")
 		if connectedlab.CheckOutcome(reschedule, "wire:accepted") != assertion.OutcomePassed || connectedlab.CheckOutcome(connectedlab.PhaseResult(r, "booking"), "wire:accepted") != assertion.OutcomePassed {
-			t.Fatal("the engine's positive ACKs were not retained as passing transport checks")
+			t.Fatalf("the engine's positive ACKs were not retained as passing transport checks: %s %s %+v", r.Verdict, r.State, r.Phases)
 		}
 		want := assertion.VerdictPass
 		if mode == "defective" {

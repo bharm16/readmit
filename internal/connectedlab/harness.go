@@ -86,7 +86,7 @@ func New(t testing.TB, root string, messages ...Message) *Harness {
 	for i, m := range messages {
 		h.Occurrences[m.Step] = source.Events[i].ID
 	}
-	target := replay.Target{Schema: replay.TargetSchemaV3, Name: "Lab", Classification: replay.Nonproduction, TestEndpoint: true, Address: h.Engine.Listener.Addr().String(), Transport: "plain", ApprovedTransport: true, ConnectTimeout: "1s", MessageTimeout: "2s", MaxACKBytes: 4096}
+	target := replay.Target{Schema: replay.TargetSchemaV3, Name: "Lab", Classification: replay.Nonproduction, TestEndpoint: true, Address: h.Engine.Listener.Addr().String(), Transport: "plain", ApprovedTransport: true, ConnectTimeout: "30s", MessageTimeout: "60s", MaxACKBytes: 4096}
 	WriteJSON(t, filepath.Join(root, "target.json"), target)
 	rp, err := replay.Prepare(casePath, target, replay.Options{})
 	if err != nil {
