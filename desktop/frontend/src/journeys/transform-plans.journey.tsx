@@ -4,8 +4,9 @@
 // An interface engineer's export holds a booking and its reschedule. Before a
 // reproducer leaves the room, they want its control IDs renamed and its dates
 // moved by a day, and they want to see what that would do before anything is
-// replayed. They write down which relations matter in the Sequence panel's
-// correlation-rules editor, then author the plan in Review and transform. A
+// replayed. The relation that matters — each message's control ID, within its
+// source — is already written down in a correlation rules document in the
+// project, and they author the plan in Review and transform. A
 // shift the decoder cannot read back is refused on save and nothing is
 // written; they remove that step from the keyboard, add the right one, and the
 // saved plan pins the rules digest `readmit correlate` reports. The preview
@@ -24,6 +25,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { enter, Journey, press } from "../testkit/journey";
+import { goToView } from "../testkit/navigation";
 import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport, licensedProject } from "./steps";
 
 let journey: Journey;
@@ -36,7 +38,6 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-const PROJECT = "investigations/interface";
 const RULES = "interface.rules.json";
 const PLAN = "reschedule.plan.json";
 const HAND_EDITED = "hand-edited.plan.json";
@@ -65,20 +66,12 @@ async function addStep(user: UserEvent, operator: string, field: string, value: 
   await press(user, panel.getByRole("button", { name: "Add step" }));
 }
 
-/** Declares the one relation the plan preserves — each message's control
- * ID, within its source — and saves it as a new rules entry. */
-async function declareRules(user: UserEvent): Promise<void> {
-  const sequence = within(screen.getByRole("region", { name: "Sequence" }));
-  await user.click(sequence.getByText("Rules and analysis"));
-  const editor = within(sequence.getByRole("region", { name: "Correlation rules editor" }));
-  await enter(user, editor.getByLabelText("Rule ID"), "message");
-  await user.selectOptions(editor.getByLabelText("Operator"), "control-id");
-  await user.selectOptions(editor.getByLabelText("Scope"), "source");
-  await press(user, editor.getByRole("button", { name: "Add rule" }));
-  await enter(user, editor.getByLabelText("New correlation-rules entry"), RULES);
-  await press(user, editor.getByRole("button", { name: "Save as new" }));
-  expect(await editor.findByText(new RegExp(`^Saved to ${RULES.replace(/\./g, "\\.")} · exact bytes hash to [0-9a-f]{64}$`))).toBeTruthy();
-}
+/** The one relation the plan preserves — each message's control ID, within
+ * its source — as the rules document the project holds. */
+const RULES_DOCUMENT = JSON.stringify({
+  schema: "readmit-correlation-rules/v1",
+  rules: [{ id: "message", operator: "control-id", scope: "source" }],
+});
 
 /** Shift+Tab until the control has focus, as a keyboard user reaches a
  * control just before the one they are in. */
@@ -94,10 +87,13 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   const user = userEvent.setup();
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   const project = await licensedProject(journey, user);
+  // The project's folder, as a path inside the journey's root.
+  const folder = project.slice(journey.path().length + 1);
+  journey.writeFile(`${folder}/${RULES}`, RULES_DOCUMENT);
   // A colleague's plan for the same interface, edited by hand: its date shift
   // also names a sequence entry, which no shift declares.
   journey.writeFile(
-    `${PROJECT}/${HAND_EDITED}`,
+    `${folder}/${HAND_EDITED}`,
     JSON.stringify({
       schema: "readmit-transform-plan/v1",
       case: "a".repeat(64),
@@ -106,7 +102,7 @@ test("a transformation plan refused on save is corrected from the keyboard, save
     }),
   );
   await importExport(user, journey, "exports/scheduling-feed.hl7", "reschedule-feed", "Reschedule is refused");
-  await declareRules(user);
+  await goToView(user, "Reports", "Transform and export");
   const panel = within(transformPanel());
   await panel.findByRole("option", { name: RULES });
   await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
@@ -119,7 +115,7 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   await enter(user, panel.getByLabelText("New plan document in this workspace"), `${PLAN}{Enter}`);
   expect(await panel.findByText(SHIFT_REFUSED)).toBeTruthy();
   expect(journey.callsTo("SaveTransformPlan")[0]?.result).toEqual({ state: "failed", reason: SHIFT_REFUSED });
-  expect(() => journey.readFile(`${PROJECT}/${PLAN}`)).toThrow();
+  expect(() => journey.readFile(`${folder}/${PLAN}`)).toThrow();
   expect(authored()).toHaveLength(2);
   expect((panel.getByLabelText("New plan document in this workspace") as HTMLInputElement).value).toBe(PLAN);
 
@@ -138,7 +134,7 @@ test("a transformation plan refused on save is corrected from the keyboard, save
   expect(correlated.code).toBe(0);
   const digest = (JSON.parse(correlated.stdout) as { rules_sha256: string }).rules_sha256;
   expect(saved.textContent).toContain(`rules digest ${digest}.`);
-  const written = JSON.parse(journey.readFile(`${PROJECT}/${PLAN}`)) as { rules: string; steps: unknown[] };
+  const written = JSON.parse(journey.readFile(`${folder}/${PLAN}`)) as { rules: string; steps: unknown[] };
   expect(written.rules).toBe(digest);
   expect(written.steps).toEqual([
     { operator: "rebase-identifiers/v1", rule: "message" },

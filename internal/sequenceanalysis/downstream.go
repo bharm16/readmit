@@ -30,11 +30,11 @@ func explainDownstream(d Declaration, events map[string]bundle.Event, windows ma
 		if !applied {
 			return errors.New("downstream expectations require a named applied correlation rule")
 		}
-		kind := "unobserved_downstream_output"
+		kind := UnobservedDownstreamOutput
 		detail := "No output is linked by the declared rule inside the downstream observation window. Coverage is operator-declared; missing evidence is not proof of a dropped message or invalid downstream state."
 		for _, u := range links.Unsupported {
 			if (u.Rule == expected.Rule || u.Rule == "") && (u.Occurrence == "" || u.Occurrence == e.ID || events[u.Occurrence].SourceID == expected.Source) {
-				kind = "downstream_unresolved"
+				kind = DownstreamUnresolved
 				detail = "The declared rule cannot evaluate part of the requested evidence; absence cannot be assessed."
 			}
 		}
@@ -42,7 +42,7 @@ func explainDownstream(d Declaration, events map[string]bundle.Event, windows ma
 			if c.Rule == expected.Rule {
 				for _, candidate := range c.Occurrences {
 					if candidate.Occurrence == e.ID {
-						kind = "downstream_unresolved"
+						kind = DownstreamUnresolved
 						detail = "The declared rule has an ambiguous input; no downstream conclusion is selected."
 					}
 				}
@@ -67,10 +67,10 @@ func explainDownstream(d Declaration, events map[string]bundle.Event, windows ma
 					continue
 				}
 				if inside(target, w) {
-					kind = "downstream_link_observed"
+					kind = DownstreamLinkObserved
 					detail = "A retained message in the declared downstream window is linked by the selected rule. This is correlation evidence, not proof of downstream processing."
-				} else if kind != "downstream_link_observed" {
-					kind = "downstream_unresolved"
+				} else if kind != DownstreamLinkObserved {
+					kind = DownstreamUnresolved
 					detail = "A linked target has unknown observation time or lies outside the declared downstream window."
 				}
 			}

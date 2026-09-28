@@ -119,17 +119,16 @@ func Run(path string, rules Rules) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	encoded, err := json.Marshal(rules, json.Deterministic(true))
+	digest, err := RulesDigest(rules)
 	if err != nil {
-		return Report{}, errors.New("cannot encode correlation rules")
+		return Report{}, err
 	}
-	sum := sha256.Sum256(encoded)
 	e := &engine{
 		sources:     make(map[string]bool, len(b.Manifest.Sources)),
 		authorities: authority.NewTable(mappingsOf(rules.Authorities)),
 		seen:        make(map[string]bool),
 		report: Report{
-			Schema: ReportSchema, CaseIdentity: b.Identity, RulesSHA256: hex.EncodeToString(sum[:]),
+			Schema: ReportSchema, CaseIdentity: b.Identity, RulesSHA256: digest,
 			SessionDeclared: b.Manifest.Provenance.SessionID != "",
 			Rules:           []RuleReport{}, Links: []Link{}, Collisions: []Collision{}, Unsupported: []Unsupported{},
 			Summary: Summary{Occurrences: len(b.Events)}, Scope: boundaryStatement,
@@ -146,6 +145,22 @@ func Run(path string, rules Rules) (Report, error) {
 		e.apply(rule)
 	}
 	return e.report, nil
+}
+
+// RulesDigest is the SHA-256 a report's rules_sha256 names: the digest of
+// the canonical encoding of the rules as they were validated, never of the
+// bytes of the file they were read from. A declaration that binds itself to
+// the rules it was written against, such as a sequence analysis, binds this.
+func RulesDigest(rules Rules) (string, error) {
+	if err := rules.validate(); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(rules, json.Deterministic(true))
+	if err != nil {
+		return "", errors.New("cannot encode correlation rules")
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // load reads every occurrence once. An occurrence the case preserved but could

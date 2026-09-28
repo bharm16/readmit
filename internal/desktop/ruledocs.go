@@ -7,11 +7,9 @@ import (
 	"errors"
 	"io/fs"
 
-	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/diagnose"
 	"github.com/bharm16/readmit/internal/diff"
 	"github.com/bharm16/readmit/internal/findingreview"
-	"github.com/bharm16/readmit/internal/sequenceanalysis"
 )
 
 // This file is the authoring seam for the five declared documents the window
@@ -43,8 +41,6 @@ type ruleDocument[T any] struct {
 }
 
 var (
-	correlationRulesDocument    = ruleDocument[correlate.Rules]{"the correlation rules document", correlate.MaxRulesBytes, correlate.ParseRules}
-	sequenceAnalysisDocument    = ruleDocument[sequenceanalysis.Declaration]{"the sequence analysis declaration", sequenceanalysis.MaxBytes, sequenceanalysis.Parse}
 	normalizationPolicyDocument = ruleDocument[diff.Policy]{"the normalization policy", diff.MaxPolicyBytes, diff.DecodePolicy}
 	diagnoseConfigDocument      = ruleDocument[diagnose.Config]{"the diagnosis configuration", diagnose.MaxConfigBytes, diagnose.ParseConfig}
 	findingDecisionsDocument    = ruleDocument[findingreview.Decisions]{"the finding decisions document", findingreview.MaxDecisionsBytes, findingreview.ParseDecisions}
@@ -110,90 +106,6 @@ func (d ruleDocument[T]) saved(request RuleDocumentSaveRequest) (string, string,
 		return "", "", nil, refusal{Failed, err.Error()}
 	}
 	return string(canonical), digestOf(canonical), &parsed, refusal{}
-}
-
-// CorrelationRulesResult carries one authored correlation-rules document.
-// SHA256 is the digest of the exact bytes the entry holds, which names the
-// file an editor opened or saved. It is not the rules digest a sequence or a
-// correlation review binds to: a correlation report's rules_sha256 is computed
-// by the engine over the canonical encoding of the rules it ran.
-type CorrelationRulesResult struct {
-	State    State            `json:"state"`
-	Reason   string           `json:"reason,omitzero"`
-	Document string           `json:"document,omitzero"`
-	Output   string           `json:"output,omitzero"`
-	SHA256   string           `json:"sha256,omitzero"`
-	Rules    *correlate.Rules `json:"rules,omitzero"`
-}
-
-func (r *CorrelationRulesResult) refuse(state State, reason string) {
-	r.State, r.Reason = state, reason
-}
-
-// OpenCorrelationRules reads one correlation-rules document of the open
-// workspace through the same strict parser `readmit correlate` applies. It
-// runs to completion once it starts, so it holds the operation slot but is
-// not interruptible.
-func (a *App) OpenCorrelationRules(workspace, entry string) CorrelationRulesResult {
-	return run(a, false, false, func(context.Context) CorrelationRulesResult {
-		document, sha, rules, declined := correlationRulesDocument.opened(workspace, entry)
-		if rules == nil {
-			return CorrelationRulesResult{State: declined.state, Reason: declined.reason}
-		}
-		return CorrelationRulesResult{State: Completed, Document: document, SHA256: sha, Rules: rules}
-	})
-}
-
-// SaveCorrelationRules validates the editor's text and writes one canonical
-// correlation-rules document into one new entry of the open workspace.
-func (a *App) SaveCorrelationRules(request RuleDocumentSaveRequest) CorrelationRulesResult {
-	return run(a, false, true, func(context.Context) CorrelationRulesResult {
-		document, sha, rules, declined := correlationRulesDocument.saved(request)
-		if rules == nil {
-			return CorrelationRulesResult{State: declined.state, Reason: declined.reason}
-		}
-		return CorrelationRulesResult{State: Completed, Document: document, Output: request.Output, SHA256: sha, Rules: rules}
-	})
-}
-
-// SequenceAnalysisResult carries one authored sequence-analysis declaration.
-// SHA256 is the digest of the exact bytes the entry holds, which names the
-// file an editor opened or saved.
-type SequenceAnalysisResult struct {
-	State       State                         `json:"state"`
-	Reason      string                        `json:"reason,omitzero"`
-	Document    string                        `json:"document,omitzero"`
-	Output      string                        `json:"output,omitzero"`
-	SHA256      string                        `json:"sha256,omitzero"`
-	Declaration *sequenceanalysis.Declaration `json:"declaration,omitzero"`
-}
-
-func (r *SequenceAnalysisResult) refuse(state State, reason string) {
-	r.State, r.Reason = state, reason
-}
-
-// OpenSequenceAnalysis reads one sequence-analysis declaration of the open
-// workspace through the same strict parser the sequence itself applies.
-func (a *App) OpenSequenceAnalysis(workspace, entry string) SequenceAnalysisResult {
-	return run(a, false, false, func(context.Context) SequenceAnalysisResult {
-		document, sha, declaration, declined := sequenceAnalysisDocument.opened(workspace, entry)
-		if declaration == nil {
-			return SequenceAnalysisResult{State: declined.state, Reason: declined.reason}
-		}
-		return SequenceAnalysisResult{State: Completed, Document: document, SHA256: sha, Declaration: declaration}
-	})
-}
-
-// SaveSequenceAnalysis validates the editor's text and writes one canonical
-// sequence-analysis declaration into one new entry of the open workspace.
-func (a *App) SaveSequenceAnalysis(request RuleDocumentSaveRequest) SequenceAnalysisResult {
-	return run(a, false, true, func(context.Context) SequenceAnalysisResult {
-		document, sha, declaration, declined := sequenceAnalysisDocument.saved(request)
-		if declaration == nil {
-			return SequenceAnalysisResult{State: declined.state, Reason: declined.reason}
-		}
-		return SequenceAnalysisResult{State: Completed, Document: document, Output: request.Output, SHA256: sha, Declaration: declaration}
-	})
 }
 
 // NormalizationPolicyResult carries one authored normalization policy. SHA256

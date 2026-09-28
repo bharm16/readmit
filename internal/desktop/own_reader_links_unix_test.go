@@ -149,14 +149,6 @@ func TestSequenceAndCorrelationReadersRefuseALinkToADocumentOfTheirKind(t *testi
 			result := app.DecideCorrelation(request)
 			return refused{result.State, result.Reason}
 		}},
-		{"OpenCorrelationRules", seqRulesEntry, notOneRegularFile("the correlation rules document"), func(entry string) refused {
-			result := app.OpenCorrelationRules(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenSequenceAnalysis", "analysis.json", notOneRegularFile("the sequence analysis declaration"), func(entry string) refused {
-			result := app.OpenSequenceAnalysis(root, entry)
-			return refused{result.State, result.Reason}
-		}},
 	})
 }
 

@@ -62,7 +62,7 @@ func TestSequenceExplainsDuplicatesWithoutInventingRetriesOrCausality(t *testing
 	}
 	kinds := map[string]int{}
 	for _, f := range result.Sequence.Analysis.Findings {
-		kinds[f.Kind]++
+		kinds[string(f.Kind)]++
 	}
 	if kinds["duplicate_occurrence"] != 1 || kinds["likely_retransmission"] != 0 || kinds["clock_mismatch"] != 2 {
 		t.Fatalf("wrong explanations: %+v", kinds)
@@ -106,7 +106,7 @@ func TestSequenceAnalysisDistinguishesUnknownClockAndDownstreamEvidence(t *testi
 	}
 	kinds := map[string]int{}
 	for _, f := range result.Sequence.Analysis.Findings {
-		kinds[f.Kind]++
+		kinds[string(f.Kind)]++
 	}
 	if kinds["downstream_link_observed"] != 1 || kinds["clock_unknown"] != 6 || kinds["clock_mismatch"] != 0 || kinds["ack_coverage_unknown"] == 0 {
 		t.Fatalf("evidence limits lost: %+v", kinds)
@@ -253,7 +253,7 @@ func TestSequenceKeepsCollectionAcceptAndApplicationStagesDistinct(t *testing.T)
 	}
 	kinds := map[string]int{}
 	for _, f := range result.Sequence.Analysis.Findings {
-		kinds[f.Kind]++
+		kinds[string(f.Kind)]++
 	}
 	if kinds["accept_ack_stage"] != 1 || kinds["application_ack_stage"] != 1 || kinds["missing_ack"] != 0 || kinds["ack_coverage_unknown"] != 1 {
 		t.Fatalf("ACK stages collapsed: %+v", kinds)

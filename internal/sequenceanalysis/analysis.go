@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,17 +17,70 @@ import (
 const Schema = "readmit-sequence-analysis/v1"
 const MaxBytes = 1 << 20
 
+// MaxClockToleranceSeconds bounds a declaration's clock tolerance: how far an
+// occurrence's observed and message-declared instants may differ before the
+// analysis reports a clock mismatch. It never aligns one clock with another.
+const MaxClockToleranceSeconds = 86400
+
+// DeclaredCoverage is what an operator declares about the capture through one
+// source window: that it may have missed occurrences, or that it held all of
+// them. Either is a declaration, never a verified completeness.
+type DeclaredCoverage string
+
+const (
+	PartialCoverage  DeclaredCoverage = "partial"
+	CompleteCoverage DeclaredCoverage = "complete"
+)
+
+// DeclaredCoverages are every declared coverage this reader accepts.
+func DeclaredCoverages() []DeclaredCoverage {
+	return []DeclaredCoverage{PartialCoverage, CompleteCoverage}
+}
+
+// RetryBasis is what a retry declaration rests on.
+type RetryBasis string
+
+// OperatorReportedRetry: an operator reported that the retry resent the
+// original. It is the one basis this reader accepts.
+const OperatorReportedRetry RetryBasis = "operator_reported_retry"
+
+// RetryBases are every retry basis this reader accepts.
+func RetryBases() []RetryBasis { return []RetryBasis{OperatorReportedRetry} }
+
+// Window is one declared source window. TimeZone, when declared, is the IANA
+// time zone the window was declared in: its start and end then carry the
+// offset that zone has at each of them, so the window reads back as the wall
+// times it was declared at. It places nothing and adjusts no observed time.
 type Window struct {
-	Source   string    `json:"source"`
-	Start    time.Time `json:"start"`
-	End      time.Time `json:"end"`
-	Coverage string    `json:"coverage"`
+	Source   string           `json:"source"`
+	Start    time.Time        `json:"start"`
+	End      time.Time        `json:"end"`
+	TimeZone string           `json:"time_zone,omitzero"`
+	Coverage DeclaredCoverage `json:"coverage"`
 }
 type Retry struct {
-	First string `json:"first"`
-	Retry string `json:"retry"`
-	Basis string `json:"basis"`
+	First string     `json:"first"`
+	Retry string     `json:"retry"`
+	Basis RetryBasis `json:"basis"`
 }
+
+// Zone is the IANA time zone name reads as: a named zone this machine's zone
+// database holds. The machine's own local zone is never a declared zone.
+func Zone(name string) (*time.Location, error) {
+	location, err := time.LoadLocation(name)
+	if name == "" || name == "Local" || err != nil {
+		return nil, errors.New("a time zone is an IANA time zone name such as America/Chicago or UTC")
+	}
+	return location, nil
+}
+
+// InZone reports whether an instant carries the offset the zone has at it.
+func InZone(at time.Time, location *time.Location) bool {
+	_, offset := at.Zone()
+	_, zoned := at.In(location).Zone()
+	return offset == zoned
+}
+
 type Downstream struct {
 	Occurrence string `json:"occurrence"`
 	Source     string `json:"source"`
@@ -70,6 +124,12 @@ func (w *Window) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &decoded, json.RejectUnknownMembers(true)); err != nil {
 		return errors.New("invalid observation window")
 	}
+	if decoded.TimeZone != "" {
+		location, err := Zone(decoded.TimeZone)
+		if err != nil || !InZone(decoded.Start, location) || !InZone(decoded.End, location) {
+			return errors.New("an observation window's instants carry the offset of its declared time zone")
+		}
+	}
 	*w = Window(decoded)
 	return nil
 }
@@ -108,7 +168,7 @@ func Parse(data []byte) (Declaration, error) {
 	if err := json.Unmarshal(data, &d, json.RejectUnknownMembers(true)); err != nil {
 		return Declaration{}, errors.New("invalid sequence analysis document")
 	}
-	if d.Schema != Schema || d.CaseIdentity == "" || d.ClockToleranceSeconds < 0 || d.ClockToleranceSeconds > 86400 || len(d.Windows) == 0 || len(d.Windows) > 128 || len(d.Retries) > 128 || len(d.Downstream) > 128 {
+	if d.Schema != Schema || d.CaseIdentity == "" || d.ClockToleranceSeconds < 0 || d.ClockToleranceSeconds > MaxClockToleranceSeconds || len(d.Windows) == 0 || len(d.Windows) > 128 || len(d.Retries) > 128 || len(d.Downstream) > 128 {
 		return Declaration{}, errors.New("unsupported sequence analysis declaration or limits")
 	}
 	return d, nil
@@ -122,12 +182,31 @@ type Coverage struct {
 	Outside  int        `json:"outside"`
 	Untimed  int        `json:"untimed"`
 }
+
+// FindingKind is what one finding of the analysis says.
+type FindingKind string
+
+const (
+	DuplicateOccurrence        FindingKind = "duplicate_occurrence"
+	ClockMismatch              FindingKind = "clock_mismatch"
+	ClockUnknown               FindingKind = "clock_unknown"
+	AcceptACKStage             FindingKind = "accept_ack_stage"
+	ApplicationACKStage        FindingKind = "application_ack_stage"
+	ACKCoverageUnknown         FindingKind = "ack_coverage_unknown"
+	MissingACK                 FindingKind = "missing_ack"
+	LikelyRetransmission       FindingKind = "likely_retransmission"
+	RetryUnresolved            FindingKind = "retry_unresolved"
+	UnobservedDownstreamOutput FindingKind = "unobserved_downstream_output"
+	DownstreamUnresolved       FindingKind = "downstream_unresolved"
+	DownstreamLinkObserved     FindingKind = "downstream_link_observed"
+)
+
 type Finding struct {
-	Kind       string `json:"kind"`
-	Occurrence string `json:"occurrence"`
-	Related    string `json:"related"`
-	Source     string `json:"source"`
-	Detail     string `json:"detail"`
+	Kind       FindingKind `json:"kind"`
+	Occurrence string      `json:"occurrence"`
+	Related    string      `json:"related"`
+	Source     string      `json:"source"`
+	Detail     string      `json:"detail"`
 }
 type Report struct {
 	ClockToleranceSeconds int        `json:"clock_tolerance_seconds"`
@@ -154,7 +233,7 @@ func Evaluate(b *bundle.Bundle, d Declaration, links *correlate.Report) (*Report
 	}
 	windows := map[string]Window{}
 	for _, w := range d.Windows {
-		if !sources[w.Source] || !w.Start.Before(w.End) || w.Start.IsZero() || w.End.IsZero() || (w.Coverage != "partial" && w.Coverage != "complete") {
+		if !sources[w.Source] || !w.Start.Before(w.End) || w.Start.IsZero() || w.End.IsZero() || !slices.Contains(DeclaredCoverages(), w.Coverage) {
 			return nil, errors.New("observation windows require a case source, increasing instants and partial or complete coverage")
 		}
 		if _, ok := windows[w.Source]; ok {
@@ -165,7 +244,7 @@ func Evaluate(b *bundle.Bundle, d Declaration, links *correlate.Report) (*Report
 	for _, s := range b.Manifest.Sources {
 		c := Coverage{Source: s.ID, Coverage: "undeclared"}
 		if w, ok := windows[s.ID]; ok {
-			c.Coverage = w.Coverage
+			c.Coverage = string(w.Coverage)
 			c.Start = &w.Start
 			c.End = &w.End
 		}

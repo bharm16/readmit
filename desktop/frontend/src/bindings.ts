@@ -48,7 +48,6 @@ import type {
   CorpusScanResult,
   CorrelationReviewRequest,
   CorrelationReviewResult,
-  CorrelationRulesResult,
   DraftRequest,
   DraftValidation,
   DurableRunRequest,
@@ -211,7 +210,6 @@ import type {
   SchedulePreviewResult,
   SearchResult,
   SendPolicyEvalResult,
-  SequenceAnalysisResult,
   SequenceRequest,
   SequenceResult,
   SessionResult,
@@ -764,7 +762,7 @@ export function captureSample(request: SampleCaptureRequest): Promise<CaseResult
  * collisions and unsupported items are `readmit correlate`'s own report over
  * the same case and the same rules. It reads and changes nothing. */
 export function openSequence(request: SequenceRequest): Promise<SequenceResult> {
-  return guard(() => facade().OpenSequence(request), { state: "failed" });
+  return retryingRead(() => facade().OpenSequence(request), { state: "failed", context: request.context ?? { project: "", generation: 0 } });
 }
 
 export function saveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult> {
@@ -1030,10 +1028,10 @@ export function compareRuns(request: RunComparisonRequest): Promise<RunCompariso
 }
 
 export function openCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult> {
- return guard(() => facade().OpenCorrelationReview(request), {state: "failed"});
+ return guard(() => facade().OpenCorrelationReview(request), { state: "failed", context: request.context ?? { project: "", generation: 0 } });
 }
 export function decideCorrelation(request: CorrelationReviewRequest): Promise<CorrelationReviewResult> {
- return guard(() => facade().DecideCorrelation(request), {state: "failed"});
+ return submitted(() => facade().DecideCorrelation(request), { state: "failed", context: request.context ?? { project: "", generation: 0 } });
 }
 export function chooseOperationPolicy(): Promise<OperationResult> {return guard(() => facade().ChooseOperationPolicy(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
 export function operationStatus(): Promise<OperationResult> {return guard(() => facade().OperationStatus(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
@@ -1338,22 +1336,6 @@ export function finalizeCaptureImport(request: FinalizeCaptureRequest): Promise<
  * never changes a source byte. */
 export function normalizeCompare(request: NormalizeRequest): Promise<NormalizeResult> {
   return guard(() => facade().NormalizeCompare(request), { state: "failed" });
-}
-
-export function openCorrelationRules(workspace: string, entry: string): Promise<CorrelationRulesResult> {
-  return guard(() => facade().OpenCorrelationRules(workspace, entry), { state: "failed" });
-}
-
-export function saveCorrelationRules(request: RuleDocumentSaveRequest): Promise<CorrelationRulesResult> {
-  return guard(() => facade().SaveCorrelationRules(request), { state: "failed" });
-}
-
-export function openSequenceAnalysis(workspace: string, entry: string): Promise<SequenceAnalysisResult> {
-  return guard(() => facade().OpenSequenceAnalysis(workspace, entry), { state: "failed" });
-}
-
-export function saveSequenceAnalysis(request: RuleDocumentSaveRequest): Promise<SequenceAnalysisResult> {
-  return guard(() => facade().SaveSequenceAnalysis(request), { state: "failed" });
 }
 
 export function openNormalizationPolicy(workspace: string, entry: string): Promise<NormalizationPolicyResult> {

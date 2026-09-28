@@ -59,7 +59,16 @@ func sequenceWorkspace(t *testing.T) (*desktop.App, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	app := workspaceApp(t)
-	written := writeInputs(t, root, "incident", []bundle.Input{
+	written := writeInputs(t, root, "incident", incidentInputs())
+	if err := os.WriteFile(filepath.Join(root, seqRulesEntry), []byte(seqRules), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return app, root, written.Identity
+}
+
+// incidentInputs are the two captures of that incident.
+func incidentInputs() []bundle.Input {
+	return []bundle.Input{
 		{
 			Path:    "sender-capture-path",
 			Data:    []byte(framed(seqBooking) + framed(seqBookingACK) + framed(seqUntimed) + framed(seqStrayACK)),
@@ -79,11 +88,7 @@ func sequenceWorkspace(t *testing.T) (*desktop.App, string, string) {
 				1: {Direction: bundle.Inbound, ObservedAt: seqTime(1)},
 			},
 		},
-	})
-	if err := os.WriteFile(filepath.Join(root, seqRulesEntry), []byte(seqRules), 0o600); err != nil {
-		t.Fatal(err)
 	}
-	return app, root, written.Identity
 }
 
 func sequenceRequest(root, identity, rules string) desktop.SequenceRequest {
@@ -115,10 +120,10 @@ func eventAt(t *testing.T, sequence *desktop.Sequence, occurrence string) deskto
 }
 
 // The whole delivery in one sequence: every sent, received and acknowledgement
-// event of both captures, in the order the recorded times put them rather than
-// the order the sources were captured in, with the declared time beside the
-// observed one, and with the occurrence nothing timed listed after all of them
-// instead of being sorted into a position nothing establishes.
+// event of both captures, each source in the order its own recorded times put
+// it, with the declared time beside the observed one, and with the occurrences
+// nothing timed listed after all of them instead of being sorted into a
+// position nothing establishes.
 func TestASequenceOrdersByRecordedTimeAndLeavesUnknownTimesUnplaced(t *testing.T) {
 	app, root, identity := sequenceWorkspace(t)
 	sequence := laidOut(t, app, sequenceRequest(root, identity, seqRulesEntry))
@@ -126,9 +131,11 @@ func TestASequenceOrdersByRecordedTimeAndLeavesUnknownTimesUnplaced(t *testing.T
 	if sequence.Total != 6 || len(sequence.Events) != 6 {
 		t.Fatalf("the two captures hold six occurrences between them: %+v", sequence.Events)
 	}
-	// The receiver recorded the booking a second before the sender did, so the
-	// receiver's copy is first. Source order would have put it fifth.
-	order := []string{"s0002-e000001", "s0001-e000001", "s0001-e000002", "s0001-e000004", "s0001-e000003", "s0002-e000002"}
+	// The receiver recorded the booking a second before the sender did, but
+	// two imported captures are two clocks: the receiver's copy is placed on
+	// its own clock, after the sender's source, never interleaved by a
+	// comparison nothing establishes.
+	order := []string{"s0001-e000001", "s0001-e000002", "s0001-e000004", "s0002-e000001", "s0001-e000003", "s0002-e000002"}
 	for i, want := range order {
 		event := sequence.Events[i]
 		if event.Occurrence != want || event.Position != i+1 {
@@ -177,16 +184,6 @@ func TestASequenceOrdersByRecordedTimeAndLeavesUnknownTimesUnplaced(t *testing.T
 	if untimed.DeclaredTime != "" || untimed.DeclaredState != hl7.Present {
 		t.Fatalf("a declared time that is not a timestamp was displayed anyway: %+v", untimed)
 	}
-
-	// The clock and ordering statements are carried, because reading two
-	// captures beside one another without them invites exactly the conclusion
-	// this view refuses to support.
-	if !strings.Contains(sequence.Clock, "No clock is assumed to agree with another") {
-		t.Fatalf("the sequence does not state its clock assumptions: %q", sequence.Clock)
-	}
-	if !strings.Contains(sequence.Scope, "Order is not causality") {
-		t.Fatalf("the sequence does not state what its order is not: %q", sequence.Scope)
-	}
 }
 
 // Every declared source is a lane, and a lane states its own recorded span
@@ -233,12 +230,11 @@ func TestASequenceReportsEveryGapTheEvidenceAlreadyRecorded(t *testing.T) {
 	app, root, identity := sequenceWorkspace(t)
 	sequence := laidOut(t, app, sequenceRequest(root, identity, seqRulesEntry))
 
-	counted := make(map[desktop.Gap]int, len(sequence.Gaps))
-	for _, gap := range sequence.Gaps {
-		counted[gap.Gap] = gap.Count
-	}
-	if len(sequence.Gaps) != 6 {
-		t.Fatalf("a sequence does not report every gap it knows: %+v", sequence.Gaps)
+	counted := map[desktop.Gap]int{}
+	for _, event := range sequence.Events {
+		for _, gap := range event.Gaps {
+			counted[gap]++
+		}
 	}
 	want := map[desktop.Gap]int{
 		desktop.UnknownObservedTime:       2,
@@ -250,7 +246,7 @@ func TestASequenceReportsEveryGapTheEvidenceAlreadyRecorded(t *testing.T) {
 	}
 	for gap, count := range want {
 		if counted[gap] != count {
-			t.Fatalf("gap %q was counted %d times, not %d: %+v", gap, counted[gap], count, sequence.Gaps)
+			t.Fatalf("gap %q was carried %d times, not %d: %+v", gap, counted[gap], count, counted)
 		}
 	}
 
@@ -416,9 +412,10 @@ func TestASequenceWindowNeverReadsAsTheWholeSequence(t *testing.T) {
 	}
 }
 
-// A sequence carries no message content. The one exception is a declared time
+// A sequence carries no message content. The exceptions are a declared time
 // whose bytes are shaped like a timestamp and can be nothing else, which is the
-// rule `readmit timeline` already applies to the same field.
+// rule `readmit timeline` already applies to the same field, and the message
+// type and trigger the message list shows too.
 func TestASequenceCarriesNoMessageContentBeyondADeclaredTimestamp(t *testing.T) {
 	app, root, identity := sequenceWorkspace(t)
 	encoded, err := json.Marshal(laidOut(t, app, sequenceRequest(root, identity, seqRulesEntry)))
@@ -567,11 +564,5 @@ func TestACaptureThatRecordedNothingStaysVisibleAsMissingEvidence(t *testing.T) 
 		if !containsGap(only.Gaps, gap) {
 			t.Fatalf("the occurrence nothing decoded does not carry %q: %+v", gap, only)
 		}
-	}
-	// Every gap this view knows is still reported, including the ones nothing
-	// here carries, so a case with nothing missing says so rather than showing
-	// an empty list.
-	if len(sequence.Gaps) != 6 {
-		t.Fatalf("a sequence does not report every gap it knows: %+v", sequence.Gaps)
 	}
 }

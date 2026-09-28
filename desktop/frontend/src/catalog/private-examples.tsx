@@ -31,11 +31,6 @@ export const privateExamples: Example[] = [
     busy: false,
     onNormalize: noop,
   }),
-  p("CorrelationReview", "Occurrence", {
-    id: f.GRID_OCCURRENCE,
-    busy: false,
-    onSelect: noop,
-  }),
   p("PacketPanel", "PacketInputRow", {
     label: "Source case",
     view: f.packetPreviewResult().preview?.case,
@@ -116,15 +111,6 @@ export const privateExamples: Example[] = [
   p("RunnerPanel", "SchedulePreviewView", privateData.schedulePreview),
   p("RunnerPanel", "GateVerification", privateData.gateVerification),
   p("RunnerPanel", "RunnerCapacity", {}),
-  p("Sequence", "Relations", {
-    event: {
-      ...f.sequenceEvent(f.GRID_OCCURRENCE, 1),
-      references: [
-        { kind: "ack", related: [f.NEXT_OCCURRENCE], occurrences: 2 },
-      ],
-      gaps: ["unacknowledged_message"],
-    },
-  }),
   p("SuitePanel", "ReleaseRead", {
     result: {
       state: "completed",

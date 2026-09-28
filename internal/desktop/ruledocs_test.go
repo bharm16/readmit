@@ -13,7 +13,7 @@ import (
 	"github.com/bharm16/readmit/internal/findingreview"
 )
 
-// The five authored documents the window offers editors for, each as one valid
+// The three authored documents the window offers editors for, each as one valid
 // example. Every open and save goes through the contract's own strict parser,
 // so what these tests hold the facade to is that the parser is the same one
 // the command line applies — not a second grammar.
@@ -23,9 +23,6 @@ const (
 	docFindingDecisions    = `{"schema":"readmit-finding-decisions/v1","report_sha256":"` +
 		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" +
 		`","decisions":[{"finding":"f000001","verdict":"confirmed","rationale":"the schedule keeps refusing this booking"}]}`
-	docSequenceAnalysis = `{"schema":"readmit-sequence-analysis/v1","case_identity":"` +
-		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" +
-		`","rules_sha256":"","clock_tolerance_seconds":5,"windows":[{"source":"s0001","start":"2026-01-01T12:00:00Z","end":"2026-01-01T12:01:00Z","coverage":"partial"}],"retries":[],"downstream":[]}`
 )
 
 func sha256Of(data []byte) string {
@@ -39,19 +36,10 @@ func sha256Of(data []byte) string {
 func TestOpeningAuthoredDocumentsReportsTheirCanonicalFormAndExactIdentity(t *testing.T) {
 	root := t.TempDir()
 	app := workspaceApp(t)
-	writeDocument(t, root, "correlate.rules.json", seqRules)
 	writeDocument(t, root, "compare.policy.json", docNormalizationPolicy)
 	writeDocument(t, root, "diagnose.config.json", docDiagnoseConfig)
 	writeDocument(t, root, "verdicts.json", docFindingDecisions)
-	writeDocument(t, root, "analysis.json", docSequenceAnalysis)
 
-	rules := app.OpenCorrelationRules(root, "correlate.rules.json")
-	if rules.State != desktop.Completed || rules.Rules == nil || len(rules.Rules.Rules) != 3 {
-		t.Fatalf("correlation rules: %+v", rules)
-	}
-	if rules.SHA256 != sha256Of([]byte(seqRules)) {
-		t.Fatalf("the rules identity is not the digest of the bytes the workspace holds: %s", rules.SHA256)
-	}
 	policy := app.OpenNormalizationPolicy(root, "compare.policy.json")
 	if policy.State != desktop.Completed || policy.Policy == nil || len(policy.Policy.Rules) != 1 {
 		t.Fatalf("normalization policy: %+v", policy)
@@ -72,13 +60,6 @@ func TestOpeningAuthoredDocumentsReportsTheirCanonicalFormAndExactIdentity(t *te
 	}
 	if decisions.SHA256 != sha256Of([]byte(docFindingDecisions)) {
 		t.Fatalf("the decisions identity is not the digest of the bytes the workspace holds: %s", decisions.SHA256)
-	}
-	analysis := app.OpenSequenceAnalysis(root, "analysis.json")
-	if analysis.State != desktop.Completed || analysis.Declaration == nil || len(analysis.Declaration.Windows) != 1 {
-		t.Fatalf("sequence analysis: %+v", analysis)
-	}
-	if analysis.SHA256 != sha256Of([]byte(docSequenceAnalysis)) {
-		t.Fatalf("the declaration identity is not the digest of the bytes the workspace holds: %s", analysis.SHA256)
 	}
 	// Every document is reported in one canonical form an editor holds, which
 	// is itself a document the same parser accepts.
@@ -109,7 +90,7 @@ func TestOpeningAuthoredDocumentsRefusesWhatTheirOwnReadersRefuse(t *testing.T) 
 	if got := app.OpenFindingDecisions(root, "decisions.json"); got.State != desktop.Failed || got.Decisions != nil {
 		t.Fatalf("decisions naming no report identity were accepted: %+v", got)
 	}
-	if got := app.OpenCorrelationRules(root, "absent.json"); got.State != desktop.Failed ||
+	if got := app.OpenNormalizationPolicy(root, "absent.json"); got.State != desktop.Failed ||
 		!strings.Contains(got.Reason, "one regular file of the open workspace") {
 		t.Fatalf("an absent entry was not refused by name: %+v", got)
 	}
@@ -151,13 +132,7 @@ func TestSavingAnAuthoredDocumentWritesOneCanonicalNewEntry(t *testing.T) {
 	if reordered.State != desktop.Completed || reordered.Document != saved.Document {
 		t.Fatalf("one meaning canonicalized to two documents: %+v", reordered)
 	}
-	// The other four contracts save through the same seam.
-	if got := app.SaveCorrelationRules(desktop.RuleDocumentSaveRequest{Workspace: root, Document: seqRules, Output: "rules.json"}); got.State != desktop.Completed {
-		t.Fatalf("save correlation rules: %+v", got)
-	}
-	if got := app.SaveSequenceAnalysis(desktop.RuleDocumentSaveRequest{Workspace: root, Document: docSequenceAnalysis, Output: "analysis.json"}); got.State != desktop.Completed {
-		t.Fatalf("save sequence analysis: %+v", got)
-	}
+	// The other two contracts save through the same seam.
 	config := app.SaveDiagnoseConfig(desktop.RuleDocumentSaveRequest{Workspace: root, Document: docDiagnoseConfig, Output: "config.json"})
 	if config.State != desktop.Completed {
 		t.Fatalf("save diagnose config: %+v", config)

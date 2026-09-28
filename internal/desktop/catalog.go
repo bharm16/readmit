@@ -55,6 +55,15 @@ const (
 	// FindingReviewItem is what a person decided about the findings of one
 	// analysis (readmit-finding-decisions/v1), each save a new revision.
 	FindingReviewItem ItemKind = "finding-review"
+	// LinkRulesItem is a named set of link rules: which occurrences a case's
+	// relationships are read between.
+	LinkRulesItem ItemKind = "link-rules"
+	// CoverageItem is a named coverage declaration over one case: the
+	// windows its sources were observed through, and what was expected.
+	CoverageItem ItemKind = "coverage"
+	// LinkReviewItem is the relationship review history of one case under
+	// one link rule version; each decision is one revision.
+	LinkReviewItem ItemKind = "link-review"
 	// AttachmentItem is a file attached to a case. It is named by a
 	// reference like any object, and listed only as its case's attachments.
 	AttachmentItem ItemKind = "attachment"
@@ -62,7 +71,8 @@ const (
 
 var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, EnvironmentItem, ObservationItem,
 	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem,
-	AnalysisSettingsItem, FindingReviewItem}
+	AnalysisSettingsItem, FindingReviewItem,
+	LinkRulesItem, CoverageItem, LinkReviewItem}
 
 // Availability is whether an object's backing can be read now. Readability
 // grants nothing: whether an action is permitted is Capabilities.
@@ -165,6 +175,9 @@ type ItemSummary struct {
 	// view saves.
 	AnalysisSettings *AnalysisSettingsSummary `json:"analysis_settings,omitzero"`
 	FindingReview    *FindingReviewSummary    `json:"finding_review,omitzero"`
+	LinkRules        *LinkRulesSummary        `json:"link_rules,omitzero"`
+	Coverage         *CoverageSummary         `json:"coverage,omitzero"`
+	LinkReview       *LinkReviewSummary       `json:"link_review,omitzero"`
 }
 
 // ProjectSummary is a project as the project document declares it. Folder is

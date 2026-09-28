@@ -1,0 +1,99 @@
+/* Timeline (Timeline.tsx): a time gutter and one column per source, scrolled
+ * inside the view, with 1px links drawn over the grid. */
+
+.timeline-toolbar .chip[aria-pressed="true"],
+.timeline-toolbar button[aria-pressed="true"] {
+  font-weight: 600;
+}
+
+/* The Timeline fills the case view below its tabs, the way Messages does, so
+   the lanes scroll inside it and their headers stay in view. */
+.page-body:has(.timeline-scroll) {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.case-view .task-panel:not([hidden]):has(> .timeline-toolbar) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.timeline-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+
+.timeline-grid {
+  column-gap: var(--s2);
+  display: grid;
+  position: relative;
+  row-gap: var(--s1);
+}
+
+/* Sources on different clocks are separate grids, never one axis. */
+.timeline-grid + .timeline-grid {
+  margin-top: var(--s8);
+}
+
+.timeline-head {
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  padding: var(--s2) var(--s3);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.timeline-gutter {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding: var(--s2) 0;
+}
+
+.timeline-cell {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  position: relative;
+  z-index: 1;
+}
+
+.timeline-event {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: var(--row);
+  min-width: 0;
+}
+
+.timeline-event[aria-pressed="true"],
+.timeline-link-label[aria-pressed="true"] {
+  outline: 2px solid var(--accent);
+}
+
+.timeline-links {
+  height: 100%;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  stroke: CanvasText;
+  width: 100%;
+}
+
+.timeline-mode {
+  color: var(--muted);
+  margin: 0 0 var(--s2);
+}
+
+/* The coverage sheet's three lists, each under its own heading. */
+.coverage-section {
+  margin: var(--s4) 0 var(--s1);
+}

@@ -532,10 +532,8 @@ artifacts are never reported as completed.
 | `SaveTest` | Writes the generated test spec into a new entry of the open workspace. |
 | `SuggestExpectations` | Proposes the expectations one verified direct result or finalized durable run would support, and records none of them. |
 | `ApproveExpectations` | Records what a person decided about those proposals and reports the draft their approvals produced. |
-| `OpenCorrelationReview` | Rebuilds an explicitly selected human mapping over verified findings; refuses stale dependent mapping identities. |
-| `DecideCorrelation` | Saves an explicit accept, reject or added pair with a local analyst and reason in a new immutable review directory. |
-| `OpenCorrelationRules` | Reads one correlation-rules entry through the reader `readmit correlate` applies and reports its rules and authorities and the SHA-256 of its exact bytes. |
-| `OpenSequenceAnalysis` | Reads one sequence-analysis entry through the reader the sequence applies and reports what it declares and the SHA-256 of its exact bytes. |
+| `OpenCorrelationReview` | Rebuilds the review of a case's recorded links, or of its links under one exact link rule version, and one link's history; refuses stale dependent mapping identities. |
+| `DecideCorrelation` | Records one accept, reject, added pair or undo with its reviewer and reason as a new revision of that review. |
 | `StartDurableRun` | Sends once with an explicit operator action into a fresh workspace entry, under the identity the preflight fixed; a start naming no preflight identity, and a test whose spec, case, selection, target configuration or credential registration changed since, are refused rather than executed. Cancel stops future sends; in-flight effects remain visible. |
 | `ResumeDurableRun` | Explicitly repeats only never-attempted work from a completed retained job into a new workspace entry through the command's shared operation; refuses after any send or changed plan. |
 | `CleanDurableRun` | Verifies a retained job and removes only its stale lease after completion; evidence stays in place. |
@@ -584,8 +582,7 @@ destination is what it reports; Settings › Security describes it.
 folder and listing it are interruptible; `OpenCase`, `OpenProject`,
 `SaveNoteItem`, `Search`, `OpenGrid`, `SaveFilter`,
 `SelectFilter`, `ForgetProject`, `InspectOccurrence`, `Compare`, `NormalizeCompare`,
-`OpenNormalizationPolicy`, `OpenSequence`, `OpenCorrelationRules`,
-`OpenSequenceAnalysis`, `OpenCorrelationReview`, `DecideCorrelation`,
+`OpenNormalizationPolicy`, `OpenSequence`, `OpenCorrelationReview`, `DecideCorrelation`,
 `EditReproducer`, `UndoReproducer`,
 `BuildReproducer`, `CompareReproducers`, `AuthorTest`, `SaveTest`,
 `SuggestExpectations`, `ApproveExpectations`, `PreviewTransformation`,
@@ -3958,14 +3955,51 @@ assertion-set contract. This adds no member to any retained evidence or approval
 
 ## Explaining sequence uncertainty
 
-The Sequence panel optionally reads a `readmit-sequence-analysis/v1` file from
-one regular workspace entry. Select it beside the correlation rules, then lay
-out the case. Results name the selected file; paging keeps that selection and
-re-verifies both evidence and declarations. No analysis is persisted by the shell.
+A case's Timeline lays its events out as source lanes (`OpenSequence`, #550).
+Lanes follow the order sources first appear in the evidence, each headed by the
+name declared for its source (`source_name`, the same name Messages shows) or
+else its exact source ID. Only sources one Readmit recorder session captured
+share a time axis; every other source is its own clock and its events are
+grouped within it, never aligned against another source's. A coverage
+declaration's clock tolerance aligns no clocks. Events the basis places nowhere
+appear under Untimed, and a case with no usable times opens in Source order.
+Each event carries its 1-based `position`, its message type and trigger
+(`message_type`, `trigger`), and no other field value; the answer also names the
+field selectors the case's parsed messages hold a value at (`fields`), which the
+link rule editor offers. Each relationship carries its basis as a person reads
+it (`basis_name`: the link rules' name, Recorded or Reviewed).
+
+Options chooses named link rules (`link-rules`), Observed, Message time or
+Source order, the display time zone and named coverage (`coverage`, a
+`readmit-sequence-analysis/v1` declaration the facade binds to the case
+identity and the link rules' digest), and the case is read again under exactly
+those revisions. Unresolved links and Gaps count the whole case and filter the
+events. A relationship is reviewed (Accept or Reject with a reason), added
+between two messages, or undone as a new revision of the case's `link-review`:
+under Recorded links (no link rules chosen) the review of the case's recorded
+acknowledgement links, and under a link rule version the review of that
+version's links. A relationship is reviewable exactly when it carries a
+`status`; an ambiguous one (an acknowledgement or identifier matching more
+than one occurrence, `ambiguous: true`) carries none and a decision about it
+is refused;
+History lists each decision with its reviewer, time and reason. A decision is
+recorded under the Reviewer set in the local preferences; with none set the
+window asks for one, a local declaration and never an authenticated identity,
+and `DecideCorrelation` refuses a decision with neither with a problem at
+`decision.actor`. The account's own name is never used in its place.
+
+Link rules and coverage are edited whole and saved through `SaveItem` from the
+Timeline menu. A coverage source window has a source, a start and an end, an
+optional IANA time zone and a declared coverage; with a time zone the start and
+end are wall times there, and a time the zone skips or repeats is refused at
+its field. Declared coverages, retry bases and the most clock tolerance come
+from the facade's vocabulary (`vocabulary.coverage`), and every row that cannot
+be saved is a problem at that row.
 
 Every declaration binds the exact case identity and explicitly states a clock
 comparison tolerance (0–86400 seconds). Observation windows use inclusive RFC3339
-instants, one per declared source, with `partial` or `complete` coverage. Those
+instants, one per declared source, with `partial` or `complete` coverage and an
+optional `time_zone`: an IANA zone name whose offset both instants must carry. Those
 are operator assertions, not independently verified completeness. Unlisted sources
 remain undeclared. Untimed occurrences and occurrences outside a window are
 counted separately; earliest/latest captured events never fabricate a window.
