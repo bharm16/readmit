@@ -2,15 +2,12 @@ package fhirr4_test
 
 import (
 	"bytes"
-	"encoding/json/v2"
-	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/fhirr4"
 	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 func contextR4() fhirr4.Context {
@@ -162,22 +159,25 @@ func TestFHIRPrimitiveShapesAndChoiceErrorsStayInvalidNotHL7Null(t *testing.T) {
 		t.Fatal("R4B silently read as R4")
 	}
 }
-func TestFHIRCapabilityClaimsAreFiniteAndNeverPermission(t *testing.T) {
+func TestFHIRCapabilityClaimsStayFiniteAndVersionPinned(t *testing.T) {
 	d := golden(t, "capability.json")
 	claims, err := d.Capabilities("r000001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	requested := fhirr4.Requirements{Schema: fhirr4.RequirementsSchema, FHIRVersion: fhirr4.Version, Formats: []string{"application/fhir+json"}, PatchFormats: []string{"application/json-patch+json"}, Resources: []fhirr4.ResourceRequirement{{Type: "Appointment", Interactions: []string{"read", "update", "patch"}, Search: []fhirr4.SearchParameter{{Name: "date", Type: "date"}}, Versioning: "versioned-update", ConditionalCreate: true, ConditionalRead: "not-match", ConditionalDelete: "single"}, {Type: "Patient", Profiles: []string{"urn:owned:patient-local|2"}}}}
-	result, err := claims.Check(requested)
-	if err != nil || result.State != "satisfied" || !strings.Contains(result.Meaning, "not-permission") {
-		t.Fatalf("%+v %v", result, err)
+	if claims.Schema != fhirr4.ClaimsSchema || claims.FHIRVersion != fhirr4.Version || claims.SourceIdentity != d.Identity() || len(claims.REST) != 1 {
+		t.Fatalf("%+v", claims)
 	}
-	requested.Resources[0].ConditionalUpdate = true
-	requested.Resources[1].Profiles = []string{"urn:owned:patient-local|3"}
-	result, err = claims.Check(requested)
-	if err != nil || result.State != "missing" {
-		t.Fatal("unsupported conditional/profile claim passed", result, err)
+	byType := map[string]fhirr4.ResourceClaims{}
+	for _, rc := range claims.REST[0].Resources {
+		byType[rc.Type] = rc
+	}
+	appointment := byType["Appointment"]
+	if !slices.Contains(appointment.Interactions, "patch") || appointment.Versioning != "versioned-update" || appointment.ConditionalCreate == nil || !*appointment.ConditionalCreate || appointment.ConditionalRead != "full-support" || appointment.ConditionalDelete != "single" {
+		t.Fatalf("declared appointment claims changed: %+v", appointment)
+	}
+	if patient := byType["Patient"]; patient.Profile != "urn:owned:patient-profile|1" || !slices.Contains(patient.SupportedProfiles, "urn:owned:patient-local|2") {
+		t.Fatalf("declared patient claims changed: %+v", patient)
 	}
 	raw := bytes.Replace(d.Raw(), []byte(`"fhirVersion":"4.0.1"`), []byte(`"fhirVersion":"4.3.0"`), 1)
 	wrong, err := fhirr4.Decode(t.Context(), raw, contextR4())
@@ -188,50 +188,23 @@ func TestFHIRCapabilityClaimsAreFiniteAndNeverPermission(t *testing.T) {
 		t.Fatal("wrong capability FHIR version accepted")
 	}
 }
-func TestFHIRRetentionReopensRelocatedBytesAndTypedProjection(t *testing.T) {
+func TestFHIRTypedProjectionOverGoldenCollection(t *testing.T) {
 	raw, err := os.ReadFile("../../testdata/fhir-r4/collection.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := bytes.Clone(raw)
-	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	source := dataset.Digest([]byte("owned-source"))
-	input := fhirr4.Input{Role: "bundle", Context: contextR4(), Acquisition: fhirr4.Acquisition{Kind: "synthetic", SourceIdentity: source, StartedAt: now, CompletedAt: now}, Bytes: raw}
-	evidence, err := fhirr4.Retain(t.Context(), []fhirr4.Input{input})
+	d, err := fhirr4.Decode(t.Context(), raw, contextR4())
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := dataset.Binding{Run: "run-1", Phase: "after", Source: source, Namespace: "fhir-appointments"}
+	binding := dataset.Binding{Run: "run-1", Phase: "after", Source: dataset.Digest([]byte("owned-source")), Namespace: "fhir-appointments"}
 	projection := fhirr4.Projection{Schema: fhirr4.ProjectionSchema, ResourceType: "Appointment", MaxRows: 10, MaxValues: 100, Columns: []fhirr4.Column{{Name: "id", Selector: path("id"), Required: true}, {Name: "start", Selector: path("start"), Required: true}, {Name: "status", Selector: path("status"), Required: true}, {Name: "actors", Selector: path("participant[*]", "actor", "reference"), Required: true, Repeated: true}}}
-	folder := filepath.Join(t.TempDir(), "original")
-	projected, err := evidence.RetainProjection(t.Context(), "s0001", binding, projection, folder)
+	projected, err := d.Project(t.Context(), binding, projection)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if projected.Status != "complete" || len(projected.Rows) != 2 || projected.Rows[0].ID == projected.Rows[1].ID || projected.Rows[0].Provenance.Offset != -1 {
 		t.Fatal(projected)
-	}
-	moved := filepath.Join(t.TempDir(), "relocated")
-	if err := os.Rename(folder, moved); err != nil {
-		t.Fatal(err)
-	}
-	clear(raw)
-	reopened, err := fhirr4.Open(t.Context(), filepath.Join(moved, "evidence"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	retained, err := reopened.Bytes("s0001")
-	if err != nil || !bytes.Equal(original, retained) || reopened.Identity() != evidence.Identity() {
-		t.Fatal("relocation changed original bytes")
-	}
-	again, err := fhirr4.OpenProjection(t.Context(), moved)
-	if err != nil {
-		t.Fatal(err)
-	}
-	a, _ := json.Marshal(projected, json.Deterministic(true))
-	b, _ := json.Marshal(again, json.Deterministic(true))
-	if !bytes.Equal(a, b) {
-		t.Fatal("projection meaning changed on reopen")
 	}
 }
 
@@ -289,26 +262,6 @@ func TestFHIRMissingRepeatedMembersStayAlignedAndUnknownModifiersBlockProjection
 		t.Fatal("unqualified resource was rewritten or qualified")
 	}
 }
-func TestFHIRHTTPFailureAndRequestsCannotBecomeDownstreamAbsence(t *testing.T) {
-	raw, err := os.ReadFile("../../testdata/fhir-r4/operation-outcome.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now()
-	source := dataset.Digest([]byte("failed-source"))
-	p := fhirr4.Projection{Schema: fhirr4.ProjectionSchema, ResourceType: "Patient", MaxRows: 10, MaxValues: 10, Columns: []fhirr4.Column{{Name: "id", Selector: path("id"), Required: true}}}
-	binding := dataset.Binding{Run: "run-1", Phase: "after", Source: source, Namespace: "patients"}
-	for _, role := range []string{"response", "request"} {
-		e, err := fhirr4.Retain(t.Context(), []fhirr4.Input{{Role: role, Context: contextR4(), Acquisition: fhirr4.Acquisition{Kind: "http", SourceIdentity: source, StartedAt: now, CompletedAt: now, Method: "GET", Status: 404}, Bytes: raw}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := e.RetainProjection(t.Context(), "s0001", binding, p, filepath.Join(t.TempDir(), "refused")); err == nil {
-			t.Fatal("HTTP failure became observed empty Patient dataset")
-		}
-	}
-}
-
 func TestFHIRBoundsAndTemporalPrecisionAreExplicit(t *testing.T) {
 	nested := `{"resourceType":"Patient","x":` + strings.Repeat(`{"x":`, fhirr4.MaxDepth) + `1` + strings.Repeat(`}`, fhirr4.MaxDepth) + `}`
 	if _, err := fhirr4.Decode(t.Context(), []byte(nested), contextR4()); err == nil {
@@ -364,85 +317,6 @@ func TestFHIRCanonicalBusinessVersionIsNotResourceVersion(t *testing.T) {
 		t.Fatal(c, err)
 	}
 }
-func TestFHIRInvalidRawEvidenceStillReopensWithoutFabricatedRows(t *testing.T) {
-	now := time.Now()
-	source := dataset.Digest([]byte("source"))
-	raw := []byte(`{"resourceType":"Patient","id":`)
-	e, err := fhirr4.Retain(t.Context(), []fhirr4.Input{{Role: "resource", Context: contextR4(), Acquisition: fhirr4.Acquisition{Kind: "file", SourceIdentity: source, StartedAt: now, CompletedAt: now}, Bytes: raw}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(t.TempDir(), "invalid-evidence")
-	if err := e.Write(t.Context(), out); err != nil {
-		t.Fatal(err)
-	}
-	opened, err := fhirr4.Open(t.Context(), out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := opened.Bytes("s0001")
-	if err != nil || !bytes.Equal(raw, got) || opened.Manifest().Sources[0].State != "invalid" {
-		t.Fatal("invalid raw evidence changed")
-	}
-	if _, err := opened.Document("s0001"); err == nil {
-		t.Fatal("malformed bytes became an empty parsed resource set")
-	}
-}
-func TestFHIRResealedProjectionCannotChangeTypedValuesOrSourceScope(t *testing.T) {
-	d := golden(t, "collection.json")
-	now := time.Now()
-	source := dataset.Digest([]byte("source"))
-	e, err := fhirr4.Retain(t.Context(), []fhirr4.Input{{Role: "bundle", Context: contextR4(), Acquisition: fhirr4.Acquisition{Kind: "synthetic", SourceIdentity: source, StartedAt: now, CompletedAt: now}, Bytes: d.Raw()}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := fhirr4.Projection{Schema: fhirr4.ProjectionSchema, ResourceType: "Patient", MaxRows: 10, MaxValues: 20, Columns: []fhirr4.Column{{Name: "id", Selector: path("id"), Required: true}, {Name: "birth", Selector: path("birthDate")}}}
-	binding := dataset.Binding{Run: "run-1", Phase: "after", Source: source, Namespace: "patients"}
-	out := filepath.Join(t.TempDir(), "projected")
-	if _, err := e.RetainProjection(t.Context(), "s0001", binding, p, out); err != nil {
-		t.Fatal(err)
-	}
-	files := map[string][]byte{}
-	if err := filepath.WalkDir(out, func(name string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		relative, _ := filepath.Rel(out, name)
-		files[filepath.ToSlash(relative)], err = os.ReadFile(name)
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	var record struct {
-		Schema   string         `json:"schema"`
-		Evidence string         `json:"evidence_identity"`
-		Source   string         `json:"source"`
-		Dataset  fhirr4.Dataset `json:"dataset"`
-	}
-	if err := json.Unmarshal(files["projection.json"], &record); err != nil {
-		t.Fatal(err)
-	}
-	record.Dataset.Rows[0].Values[1].Text = "1970-04"
-	files["projection.json"], _ = json.Marshal(record, json.Deterministic(true))
-	files["identity.sha256"] = []byte(artifactdir.Identity(fhirr4.DatasetSchema, files) + "\n")
-	for _, name := range []string{"projection.json", "identity.sha256"} {
-		if err := os.WriteFile(filepath.Join(out, name), files[name], 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := fhirr4.OpenProjection(t.Context(), out); err == nil {
-		t.Fatal("resealed invented FHIR value accepted")
-	}
-	wrong := binding
-	wrong.Source = dataset.Digest([]byte("other-source"))
-	if _, err := e.RetainProjection(t.Context(), "s0001", wrong, p, filepath.Join(t.TempDir(), "wrong-scope")); err == nil {
-		t.Fatal("projection changed source authority scope")
-	}
-}
-
 func TestFHIRUnknownExtensionContentIsRetainedWithoutExecutingIt(t *testing.T) {
 	raw := []byte(`{"resourceType":"Patient","id":"p1","extension":[{"url":"urn:owned:unknown","valueExpression":{"language":"text/fhirpath","expression":"arbitrary expression data"}}]}`)
 	d, err := fhirr4.Decode(t.Context(), raw, contextR4())
@@ -459,37 +333,6 @@ func TestFHIRUnknownExtensionContentIsRetainedWithoutExecutingIt(t *testing.T) {
 	}
 }
 
-func TestFHIRRequestResponseBodiesAndSafeMetadataRemainDistinct(t *testing.T) {
-	now := time.Now()
-	source := dataset.Digest([]byte("request-response"))
-	request := []byte(" {\"resourceType\":\"Patient\",\"active\":true}\n")
-	response := []byte(`{"resourceType":"Patient","id":"server-id","meta":{"versionId":"2"},"active":true}`)
-	acquisition := fhirr4.Acquisition{Kind: "http", SourceIdentity: source, StartedAt: now, CompletedAt: now, Method: "POST", RequestURL: "https://example.test/fhir/Patient", Status: 201, Headers: map[string]string{"Content-Type": "application/fhir+json", "ETag": `W/"2"`, "Location": "https://example.test/fhir/Patient/server-id/_history/2"}}
-	evidence, err := fhirr4.Retain(t.Context(), []fhirr4.Input{{Role: "request", Context: contextR4(), Acquisition: acquisition, Bytes: request}, {Role: "response", Context: contextR4(), Acquisition: acquisition, Bytes: response}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := filepath.Join(t.TempDir(), "exchange")
-	if err := evidence.Write(t.Context(), out); err != nil {
-		t.Fatal(err)
-	}
-	opened, err := fhirr4.Open(t.Context(), out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, _ := opened.Bytes("s0001")
-	second, _ := opened.Bytes("s0002")
-	if !bytes.Equal(first, request) || !bytes.Equal(second, response) || opened.Manifest().Sources[0].Role != "request" || opened.Manifest().Sources[1].Acquisition.Headers["ETag"] != `W/"2"` {
-		t.Fatal("request/response or safe metadata changed")
-	}
-	for _, header := range []string{"Authorization", "Set-Cookie", "X-API-Key"} {
-		unsafe := acquisition
-		unsafe.Headers = map[string]string{header: "private"}
-		if _, err := fhirr4.Retain(t.Context(), []fhirr4.Input{{Role: "response", Context: contextR4(), Acquisition: unsafe, Bytes: response}}); err == nil {
-			t.Fatal("unsafe header retained")
-		}
-	}
-}
 func TestFHIRCapabilityShapeAndConditionalClaimsAreNotDefaulted(t *testing.T) {
 	good, err := os.ReadFile("../../testdata/fhir-r4/capability.json")
 	if err != nil {
@@ -513,10 +356,8 @@ func TestFHIRCapabilityShapeAndConditionalClaimsAreNotDefaulted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := fhirr4.Requirements{Schema: fhirr4.RequirementsSchema, FHIRVersion: fhirr4.Version, Formats: []string{"application/fhir+json"}, Resources: []fhirr4.ResourceRequirement{{Type: "Appointment", ConditionalRead: "not-supported", ConditionalDelete: "not-supported"}}}
-	result, err := claims.Check(req)
-	if err != nil || result.State != "missing" || result.SourceIdentity != d.Identity() || result.RequirementsIdentity == "" {
-		t.Fatal("opposite conditional behavior passed or proof was unbound", result, err)
+	if claims.SourceIdentity != d.Identity() || !slices.Contains(claims.Formats, "json") {
+		t.Fatalf("declared format claim changed: %+v", claims)
 	}
 }
 

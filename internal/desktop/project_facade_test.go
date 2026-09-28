@@ -3,11 +3,15 @@ package desktop_test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/operation"
+	"github.com/bharm16/readmit/internal/profileeval"
+	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
 )
@@ -210,6 +214,17 @@ func TestListingDistinguishesWhatWorkspaceEntriesDeclare(t *testing.T) {
 	writeDocument(t, root, "compare.policy.json", `{"schema":"readmit-normalization-policy/v1","rules":[]}`)
 	writeDocument(t, root, "diagnose.config.json", `{"schema":"readmit-diagnose-config/v1"}`)
 	writeDocument(t, root, "verdicts.json", `{"schema":"readmit-finding-decisions/v1","report_sha256":"x","decisions":[]}`)
+	// Every profile and pack version this release reads is offered to the
+	// library panels; one no reader accepts stays unsupported.
+	claim := func(schema string) string { return `{"schema":` + strconv.Quote(schema) + `}` }
+	for version, schema := range map[string]string{"v1": localprofile.Schema, "v2": profileeval.ProfileSchema, "v3": profileeval.ProfileSchemaV3} {
+		writeDocument(t, root, "profile-"+version+".json", claim(schema))
+	}
+	for version, schema := range map[string]string{"v1": profilepack.Schema, "v2": profileeval.PackSchema, "v3": profileeval.PackSchemaV3,
+		"v4": profileeval.PackSchemaV4, "v5": profileeval.PackSchemaV5} {
+		writeDocument(t, root, "pack-"+version+".json", claim(schema))
+	}
+	writeDocument(t, root, "profile-v9.json", claim("readmit-local-profile/v9"))
 	for directory, marker := range map[string]string{
 		"diagnosis-out":      `{"schema":"readmit-diagnosis/v1"}`,
 		"groups-out":         `{"schema":"readmit-diagnosis-groups/v1"}`,
@@ -254,6 +269,15 @@ func TestListingDistinguishesWhatWorkspaceEntriesDeclare(t *testing.T) {
 		"finding-review-out":     desktop.FindingReviewArtifact,
 		"correlation-review-out": desktop.CorrelationReviewArtifact,
 		"other-report":           desktop.UnsupportedArtifact,
+		"profile-v1.json":        desktop.ProfileArtifact,
+		"profile-v2.json":        desktop.ProfileArtifact,
+		"profile-v3.json":        desktop.ProfileArtifact,
+		"pack-v1.json":           desktop.PackArtifact,
+		"pack-v2.json":           desktop.PackArtifact,
+		"pack-v3.json":           desktop.PackArtifact,
+		"pack-v4.json":           desktop.PackArtifact,
+		"pack-v5.json":           desktop.PackArtifact,
+		"profile-v9.json":        desktop.UnsupportedArtifact,
 	} {
 		if kinds[name] != want {
 			t.Errorf("%s was listed as %q, not %q", name, kinds[name], want)

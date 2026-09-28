@@ -527,7 +527,11 @@ func coverageJob(ctx context.Context, s coverageSuite, j runqueue.Job) (JobCover
 		return row, "", err
 	}
 	row.Stability = comparison.Stability
-	row.Eligible = usable && summary.State == durablerun.Passed && comparison.Current.RunState == string(durablerun.Passed) && comparison.Current.Identity == a.Identity && comparison.Current.Status == string(testrunner.Pass)
+	// Eligibility reads the typed states the comparison's view strings
+	// restate: the lifecycle summary and the result verdict this function
+	// already opened. Identity equality with the retained result was
+	// established above, before the comparison ran.
+	row.Eligible = usable && summary.State == durablerun.Passed && a.Result.Status == testrunner.Pass
 	return row, path, nil
 }
 

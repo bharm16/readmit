@@ -351,12 +351,12 @@ func (a *App) EvaluateProfile(request ProfileEvaluationRequest) ProfileEvaluatio
 		case request.Pack != nil:
 			pack, err = loaded.packBytes(*request.Pack)
 		default:
-			declared, decodeErr := localprofile.Decode(profile)
+			declared, decodeErr := profileeval.DecodeProfile(profile)
 			if decodeErr != nil {
 				result.refuse(Failed, "choose the metadata pack this profile is evaluated with")
 				return result
 			}
-			ref, _ := loaded.pinnedPack(declared.Base.Pack)
+			ref, _ := loaded.pinnedPack(declared.Definition.Base.Pack)
 			if ref == nil {
 				result.refuse(Failed, "the metadata pack this profile pins is not in the project")
 				return result

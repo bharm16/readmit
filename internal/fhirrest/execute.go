@@ -10,7 +10,6 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/dataset"
-	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/fhirr4"
 	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -255,26 +254,13 @@ func (p *Plan) Execute(ctx context.Context, authority networkaction.Authority, p
 			return finish(a.Outcome.State)
 		}
 		page++
-		d, e := decode(p.spec.Base, body)
+		entries, next, e := pageLinks(p.spec.Base, body)
 		if e != nil {
 			return finish("protocol-invalid")
 		}
-		bundle, e := d.HTTPBundle()
-		if e != nil {
-			return finish("protocol-invalid")
-		}
-		totalEntries += len(bundle.Entries)
+		totalEntries += entries
 		if totalEntries > p.spec.Budget.Rows {
 			return finish("row-limit")
-		}
-		next := ""
-		for _, link := range bundle.Links {
-			if link.Relation == "next" {
-				if next != "" {
-					return finish("protocol-invalid")
-				}
-				next = link.URL
-			}
 		}
 		if next == "" {
 			return finish("succeeded")
@@ -282,21 +268,8 @@ func (p *Plan) Execute(ctx context.Context, authority networkaction.Authority, p
 		if page >= p.spec.Budget.Pages {
 			return finish("page-limit")
 		}
-		target, e := destination.ScopedLink(p.spec.Base+"/", next)
+		spec, e = pageRequest(p.spec.Base, body, p.request.Resource, p.spec.HTTP, p.spec.PagePrivateKey, next)
 		if e != nil {
-			return finish("next-link-refused")
-		}
-		spec = p.spec.HTTP
-		spec.HTTP.Method = "GET"
-		spec.HTTP.URL = target
-		spec.HTTP.Body = nil
-		spec.HTTP.ContentType = ""
-		spec.HTTP.Operation = sendpolicy.FHIRSearch
-		if p.spec.PagePrivateKey != nil {
-			spec.HTTP.PrivateKey = p.spec.PagePrivateKey
-		}
-		spec.Page = &networkaction.SearchPageScope{Resource: p.request.Resource, FromResponseSHA256: dataset.Digest(body)}
-		if _, e := parsedRequest(p.spec.Base, spec); e != nil {
 			return finish("next-link-refused")
 		}
 	}

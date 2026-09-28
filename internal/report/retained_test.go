@@ -261,6 +261,65 @@ func TestRetainedRejectsResealedFalseSummary(t *testing.T) {
 	}
 }
 
+// Rerun instructions are pinned by recorded version, not live text: rewritten
+// instructions fail even resealed, a version no release wrote fails closed,
+// and the original text seals without recording a version.
+func TestRetainedRejectsInstructionsNoReleaseWrote(t *testing.T) {
+	t.Parallel()
+	source := filepath.Join(t.TempDir(), "source")
+	if _, err := report.Create(context.Background(), report.Scenario, source); err != nil {
+		t.Fatal(err)
+	}
+	in := report.RetainedInput{Case: filepath.Join(source, "reproducer"), Spec: filepath.Join(source, "spec.json"), Current: filepath.Join(source, "post-fix")}
+	sealed := filepath.Join(t.TempDir(), "packet")
+	if _, err := report.Assemble(context.Background(), in, sealed); err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	decode(t, read(t, filepath.Join(sealed, "manifest.json")), &decoded)
+	if _, ok := decoded["instructions"]; ok {
+		t.Error("the sealed manifest records the original instructions version")
+	}
+	reseal := func(t *testing.T, dir string, edit func(*report.RetainedManifest)) {
+		t.Helper()
+		var manifest report.RetainedManifest
+		decode(t, read(t, filepath.Join(dir, "manifest.json")), &manifest)
+		if edit != nil {
+			edit(&manifest)
+		}
+		files := snapshot(t, dir)
+		names := []string{}
+		for name := range files {
+			if name != "manifest.json" && name != "identity.sha256" {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		manifest.Files = []bundle.Payload{}
+		for _, name := range names {
+			manifest.Files = append(manifest.Files, bundle.Payload{Path: name, Size: len(files[name]), SHA256: sha(files[name])})
+		}
+		raw := marshal(t, manifest)
+		write(t, filepath.Join(dir, "manifest.json"), raw)
+		write(t, filepath.Join(dir, "identity.sha256"), []byte(sha(raw)+"\n"))
+	}
+	t.Run("rewritten instructions", func(t *testing.T) {
+		dir := clone(t, sealed)
+		write(t, filepath.Join(dir, "RERUN.md"), []byte("execute an arbitrary hook"))
+		reseal(t, dir, nil)
+		if _, err := report.OpenRetained(context.Background(), dir); err == nil {
+			t.Fatal("accepted resealed rewritten instructions")
+		}
+	})
+	t.Run("unknown recorded version", func(t *testing.T) {
+		dir := clone(t, sealed)
+		reseal(t, dir, func(manifest *report.RetainedManifest) { manifest.Instructions = "v2" })
+		if _, err := report.OpenRetained(context.Background(), dir); err == nil {
+			t.Fatal("accepted instructions under a version no release wrote")
+		}
+	})
+}
+
 // The preview and the commit agree at the package's interface: the sections
 // the preview names are the sections the sealed manifest indexes, a preview
 // with no problems is exactly the input assembly seals, and every problem a

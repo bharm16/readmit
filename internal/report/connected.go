@@ -130,6 +130,7 @@ type ConnectedManifest struct {
 	Baseline             *ConnectedRun        `json:"baseline"`
 	Replay               *ConnectedRun        `json:"replay"`
 	Equivalence          ConnectedEquivalence `json:"equivalence"`
+	Instructions         string               `json:"instructions,omitzero"`
 	Files                []bundle.Payload     `json:"files"`
 }
 
@@ -273,6 +274,7 @@ func AssembleConnected(ctx context.Context, in ConnectedInput, output string) (*
 			return nil, err
 		}
 	}
+	manifest.Instructions = connectedInstructionsBlock.current
 	manifest.Files = index(files)
 	raw, err := encode(manifest)
 	if err != nil {
@@ -322,6 +324,9 @@ func OpenConnected(ctx context.Context, dir string) (*ConnectedPacket, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The recorded instructions version is a sealed claim checked below
+	// against the known texts, not evidence re-derived above.
+	expected.Instructions = stored.Instructions
 	expected.Files = index(files)
 	canonical, err := encode(expected)
 	if err != nil {
@@ -334,7 +339,7 @@ func OpenConnected(ctx context.Context, dir string) (*ConnectedPacket, error) {
 	if !bytes.Equal(summary, files["SUMMARY.md"]) {
 		changes = append(changes, EvidenceChange{Path: "SUMMARY.md", Section: "packet", Surface: "packet summary claims", Kind: "contradicts evidence"})
 	}
-	if !bytes.Equal(connectedInstructions(), files["RERUN.md"]) {
+	if !connectedInstructionsBlock.check(stored.Instructions, files["RERUN.md"]) {
 		changes = append(changes, EvidenceChange{Path: "RERUN.md", Section: "packet", Surface: "rerun instructions", Kind: "contradicts evidence"})
 	}
 	if len(changes) > 0 {
@@ -348,9 +353,10 @@ func OpenConnected(ctx context.Context, dir string) (*ConnectedPacket, error) {
 		}
 		for phase, pe := range e.Phases {
 			for check := range pe.Validators {
-				retained, err := fhirvalidator.Open(ctx, filepath.Join(dir, section, "phases", phase, "validations", check))
+				validation := connectedrun.ValidationDir(phase, check)
+				retained, err := fhirvalidator.Open(ctx, filepath.Join(dir, section, filepath.FromSlash(validation)))
 				if err != nil {
-					return nil, &ChangedEvidenceError{Changes: []EvidenceChange{{Path: section + "/phases/" + phase + "/validations/" + check + "/", Section: section, Surface: "phase " + phase + ": validator evidence", Kind: "refused"}}}
+					return nil, &ChangedEvidenceError{Changes: []EvidenceChange{{Path: section + "/" + validation + "/", Section: section, Surface: EvidenceSurface(validation + "/"), Kind: "refused"}}}
 				}
 				p.historical[section+"/"+phase+"/"+check] = outcomeOf(retained)
 			}
@@ -396,45 +402,47 @@ func evidenceChange(path, kind string) EvidenceChange {
 }
 
 // EvidenceSurface names the evidence surface one file of a retained
-// lifecycle belongs to, from its relative path alone.
+// lifecycle belongs to, from its relative path alone. The layout itself is
+// classified once, beside its writers; this names the parts.
 func EvidenceSurface(rel string) string {
-	switch {
-	case rel == "identity.sha256":
+	switch loc := connectedrun.Locate(rel); loc.Area {
+	case connectedrun.AreaSeal:
 		return "lifecycle seal"
-	case rel == "manifest.json" || rel == "started.json" || strings.HasPrefix(rel, "phase-") || strings.HasPrefix(rel, "intents/"):
+	case connectedrun.AreaRecord:
 		return "lifecycle record (verdicts, intents and times)"
-	case strings.HasPrefix(rel, "plan/dependencies/"):
+	case connectedrun.AreaPlanDeps:
 		return "pinned dependency (check set, profile, capability, projection or completion policy)"
-	case strings.HasPrefix(rel, "plan/"):
+	case connectedrun.AreaPlan:
 		return "compiled plan (definitions, inputs, environment and policy pins)"
-	case strings.HasPrefix(rel, "preflight/") || strings.HasPrefix(rel, "isolation/") || strings.HasPrefix(rel, "transitions/") || strings.HasPrefix(rel, "continuation/") || strings.HasPrefix(rel, "previous/"):
+	case connectedrun.AreaSetup:
 		return "setup and cleanup evidence"
-	case strings.HasPrefix(rel, "phases/"):
-		phase, rest, _ := strings.Cut(strings.TrimPrefix(rel, "phases/"), "/")
+	case connectedrun.AreaPhase:
 		surface := "phase record"
-		switch {
-		case strings.HasPrefix(rest, "steps/"):
+		switch loc.Sub {
+		case connectedrun.PhaseSteps:
 			surface = "FHIR request and response evidence"
-		case strings.HasPrefix(rest, "transport/"):
+		case connectedrun.PhaseTransport:
 			surface = "v2 transport evidence (sent messages and acknowledgements)"
-		case strings.HasPrefix(rest, "observations/"):
+		case connectedrun.PhaseObservations:
 			surface = "observation snapshot"
-		case strings.HasPrefix(rest, "intervals/") && strings.Contains(rest, "/samples/"):
-			surface = "observation sample (retained search responses and typed rows)"
-		case strings.HasPrefix(rest, "intervals/"):
+		case connectedrun.PhaseIntervals:
 			surface = "observation completion record"
-		case strings.HasPrefix(rest, "validations/"):
+			if loc.Samples {
+				surface = "observation sample (retained search responses and typed rows)"
+			}
+		case connectedrun.PhaseValidations:
 			surface = "validator evidence"
-		case strings.HasPrefix(rest, "preflight/"):
+		case connectedrun.PhasePreflight:
 			surface = "capability preflight"
-		case strings.HasPrefix(rest, "evaluation"):
+		case connectedrun.PhaseEvaluation, connectedrun.PhaseEvaluationDatasets:
 			surface = "phase evaluation"
-		case strings.HasPrefix(rest, "plan/"):
+		case connectedrun.PhasePlan:
 			surface = "phase plan"
 		}
-		return "phase " + phase + ": " + surface
+		return "phase " + loc.Phase + ": " + surface
+	default:
+		return "lifecycle file"
 	}
-	return "lifecycle file"
 }
 
 // manifestChanges names which claims of a stored manifest the evidence does
@@ -674,33 +682,4 @@ func reanalyze(ctx context.Context, path, section string, e connectedrun.FlowEvi
 		}
 	}
 	return r, nil
-}
-
-func connectedInstructions() []byte {
-	return []byte(`# Rerun retained connected evidence
-
-Verification is offline: readmit report connected verify PACKET
-It reads only the retained lifecycles; no server, file export, database or
-credential is contacted, and no historical path is resolved.
-
-Keep this packet immutable. Each lifecycle's plan is under SECTION/plan and
-its original inputs under SECTION/plan/phases. A new execution needs the
-original authored test, a newly prepared plan and a runtime configuration
-naming an authorized nonproduction environment, its grants and credentials.
-None of those are reconstructed from this packet: historical targets, grants
-and bound server identities are evidence, never runnable authority.
-
-    readmit connected prepare INPUT_DIRECTORY PLAN --seed SEED --base-time TIME
-    readmit test PLAN --connected-config CONFIG --instance NEW_INSTANCE
-    readmit test PLAN --connected-config CONFIG --instance NEW_INSTANCE --send --output NEW_RESULT
-
-The first test command prepares without effects. The second explicitly
-authorizes execution. Exit 0 is pass, 1 assertion failure, 2 unresolved.
-Retain the new result beside this one; never overwrite either.
-
-A reproduction claim needs two retained actual executions of the same plan
-against the same declared target (readmit report connected assemble --replay).
-A missing baseline is never recreated, a lost response is never resent, and
-an uncertain effect must be reconciled at the target before any new run.
-`)
 }

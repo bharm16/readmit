@@ -6,13 +6,27 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/diagnose"
+	"github.com/bharm16/readmit/internal/diff"
+	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/findingreview"
+	"github.com/bharm16/readmit/internal/fixturereset"
+	"github.com/bharm16/readmit/internal/index"
+	"github.com/bharm16/readmit/internal/profileeval"
+	"github.com/bharm16/readmit/internal/profilepackage"
 	"github.com/bharm16/readmit/internal/protect"
 	"github.com/bharm16/readmit/internal/redact"
+	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/report"
 	"github.com/bharm16/readmit/internal/runresult"
+	"github.com/bharm16/readmit/internal/secret"
+	"github.com/bharm16/readmit/internal/sendpolicy"
+	"github.com/bharm16/readmit/internal/sequenceanalysis"
 	"github.com/bharm16/readmit/internal/sharing"
+	"github.com/bharm16/readmit/internal/suite"
+	"github.com/bharm16/readmit/internal/testrunner"
+	"github.com/bharm16/readmit/internal/transform"
 )
 
 // maxSchemaSniffBytes bounds how far into a regular file the listing looks for
@@ -55,48 +69,57 @@ var schemaMarkerFiles = []struct {
 // release offers an applicable picker or a coherent context for. An entry
 // whose contract is on this list is offered to the panels that apply; an
 // entry whose contract is not is unsupported here, with the reason, exactly as
-// every other entry this window does not open.
-var declaredSchemas = map[string]Kind{
-	"readmit-index/v1":             IndexArtifact,
-	"readmit-target/v1":            TargetArtifact,
-	"readmit-target/v2":            TargetArtifact,
-	"readmit-target/v3":            TargetArtifact,
-	"readmit-correlation-rules/v1": RulesArtifact,
-	"readmit-transform-plan/v1":    PlanArtifact,
-	"readmit-test/v1":              SpecArtifact,
-	"readmit-profile-pack/v1":      PackArtifact,
-	"readmit-local-profile/v1":     ProfileArtifact,
-	"readmit-profile-package/v1":   PackageArtifact,
-	"readmit-sequence-analysis/v1": AnalysisArtifact,
-	"readmit-secrets/v1":           SecretArtifact,
-	"readmit-send-policy/v1":       PolicyArtifact,
-	"readmit-reset-plan/v1":        ResetArtifact,
-	"readmit-reset-outcome/v1":     ResetArtifact,
+// every other entry this window does not open. The profile and pack versions
+// come from the evaluator that reads them, so a new version is offered here
+// as soon as it is readable.
+var declaredSchemas = func() map[string]Kind {
+	m := map[string]Kind{
+		index.Schema:               IndexArtifact,
+		replay.TargetSchema:        TargetArtifact,
+		replay.TargetSchemaV2:      TargetArtifact,
+		replay.TargetSchemaV3:      TargetArtifact,
+		correlate.RulesSchema:      RulesArtifact,
+		transform.PlanSchema:       PlanArtifact,
+		testrunner.SpecSchema:      SpecArtifact,
+		profilepackage.Schema:      PackageArtifact,
+		sequenceanalysis.Schema:    AnalysisArtifact,
+		secret.Schema:              SecretArtifact,
+		sendpolicy.PolicySchema:    PolicyArtifact,
+		fixturereset.PlanSchema:    ResetArtifact,
+		fixturereset.OutcomeSchema: ResetArtifact,
 
-	"readmit-normalization-policy/v1": NormalizationArtifact,
-	"readmit-diagnose-config/v1":      DiagnoseConfigArtifact,
-	"readmit-finding-decisions/v1":    DecisionsArtifact,
+		diff.PolicySchema:             NormalizationArtifact,
+		diagnose.ConfigSchema:         DiagnoseConfigArtifact,
+		findingreview.DecisionsSchema: DecisionsArtifact,
 
-	// A suite document is what the durable-run panels execute a whole
-	// environment of; its released-expectation references are the separate
-	// pin set that makes one an approved suite. A released test version, a
-	// coverage document and a promotion approval are the suite workflow's own
-	// artifacts; the suite panel opens each through its own strict reader.
-	"readmit-suite/v1":           SuiteArtifact,
-	"readmit-suite-releases/v1":  SuiteReleasesArtifact,
-	"readmit-test-release/v1":    SuiteArtifact,
-	"readmit-suite-coverage/v1":  SuiteArtifact,
-	"readmit-suite-promotion/v1": SuiteArtifact,
+		// A suite document is what the durable-run panels execute a whole
+		// environment of; its released-expectation references are the separate
+		// pin set that makes one an approved suite. A released test version, a
+		// coverage document and a promotion approval are the suite workflow's own
+		// artifacts; the suite panel opens each through its own strict reader.
+		suite.Schema:          SuiteArtifact,
+		suite.ReleasesSchema:  SuiteReleasesArtifact,
+		expectation.Schema:    SuiteArtifact,
+		suite.CoverageSchema:  SuiteArtifact,
+		suite.PromotionSchema: SuiteArtifact,
 
-	// A protection document registers references to keys readmit never holds,
-	// and a sharing policy declares what a support summary may be prepared
-	// for; the protection and support panels offer each through its own strict
-	// reader.
-	"readmit-protection/v1":     ProtectionArtifact,
-	"readmit-sharing-policy/v1": SharingPolicyArtifact,
-	redact.PolicySchema:         RedactPolicyArtifact,
-	redact.InventorySchema:      RedactInventoryArtifact,
-}
+		// A protection document registers references to keys readmit never holds,
+		// and a sharing policy declares what a support summary may be prepared
+		// for; the protection and support panels offer each through its own strict
+		// reader.
+		protect.Schema:         ProtectionArtifact,
+		sharing.PolicySchema:   SharingPolicyArtifact,
+		redact.PolicySchema:    RedactPolicyArtifact,
+		redact.InventorySchema: RedactInventoryArtifact,
+	}
+	for _, schema := range profileeval.ProfileSchemas() {
+		m[schema] = ProfileArtifact
+	}
+	for _, schema := range profileeval.PackSchemas() {
+		m[schema] = PackArtifact
+	}
+	return m
+}()
 
 // classify reports what one workspace entry declares, beyond what the case
 // reader and the two project documents already answer. A directory holding a
@@ -142,11 +165,11 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 // suiteSchemaRoles are the suite workflow's flat documents by the contract
 // each declares.
 var suiteSchemaRoles = map[string]SuiteRole{
-	"readmit-suite/v1":           SuiteDefinitionRole,
-	"readmit-suite-releases/v1":  SuiteReleasesRole,
-	"readmit-test-release/v1":    TestReleaseRole,
-	"readmit-suite-coverage/v1":  SuiteCoverageRole,
-	"readmit-suite-promotion/v1": SuitePromotionRole,
+	suite.Schema:          SuiteDefinitionRole,
+	suite.ReleasesSchema:  SuiteReleasesRole,
+	expectation.Schema:    TestReleaseRole,
+	suite.CoverageSchema:  SuiteCoverageRole,
+	suite.PromotionSchema: SuitePromotionRole,
 }
 
 // suiteRole names which suite artifact one suite-kind entry declares: a

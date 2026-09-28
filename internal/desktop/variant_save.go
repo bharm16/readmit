@@ -11,6 +11,7 @@ import (
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/reproducer"
+	"github.com/bharm16/readmit/internal/transform"
 )
 
 // A variant is a new case derived from one the project registers, saved as
@@ -37,6 +38,37 @@ type variantSource struct {
 	entry  string
 	path   string
 	bundle *bundle.Bundle
+}
+
+func readVariant(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	path := paths[primaryRole(VariantItem)]
+	info, err := os.Stat(path)
+	if err != nil {
+		return view{}, errors.New("the variant cannot be inspected")
+	}
+	if !info.IsDir() {
+		data, err := boundedFile(path, 4<<20)
+		if err != nil {
+			return view{}, err
+		}
+		plan, err := transform.DecodePlan(data)
+		if err != nil {
+			return view{}, err
+		}
+		return view{summary: ItemSummary{Variant: &VariantSummary{Form: "transform-plan", Parent: c.caseByIdentity(plan.Case)}}}, nil
+	}
+	if regular(filepath.Join(path, reproducer.ManifestName)) {
+		manifest, err := reproducer.Open(path)
+		if err != nil {
+			return view{}, err
+		}
+		return view{summary: ItemSummary{Variant: &VariantSummary{Form: "reproducer", Parent: c.caseByIdentity(manifest.Parent.Identity)}}}, nil
+	}
+	// A derived case the project has not registered as a revision.
+	if _, _, err := operation.VerifiedCase(c.root, item.Entry); err != nil {
+		return view{}, err
+	}
+	return view{summary: ItemSummary{Variant: &VariantSummary{Form: "derived-case", Entry: item.Entry}}}, nil
 }
 
 // validateVariantDraft validates a variant's whole plan against its source and

@@ -101,6 +101,7 @@ func Create(ctx context.Context, scenario, output string) (*Packet, error) {
 		}
 		files[name] = data
 	}
+	manifest.Instructions = packetInstructionsBlock.current
 	manifest.Files = index(files)
 	raw, err := encode(manifest)
 	if err != nil {

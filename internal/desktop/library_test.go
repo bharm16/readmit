@@ -22,6 +22,7 @@ import (
 	"github.com/bharm16/readmit/internal/desktop"
 	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/localprofile"
+	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/profilepackage"
 	"github.com/bharm16/readmit/internal/profileversion"
 )
@@ -198,6 +199,115 @@ func profileProject(t *testing.T) (*desktop.App, desktop.RequestContext, desktop
 		t.Fatalf("the support matrix answers every combination, unknown where the pack declares nothing: %d rows, %d unknown", len(matrix), unknown)
 	}
 	return app, context, packs.Packs[0].Item.Ref
+}
+
+// versionedProfileDoc is the owned v3 SIU profile or pack rewritten as the
+// schema version named: v2 drops the v3-only members, v4 and v5 keep the v3
+// shape the SIU fixture's empty segments and datatypes already satisfy.
+func versionedProfileDoc(t *testing.T, name, schema string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "testdata", "profile-evaluation", "v3", "2.5.1", "SIU", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasSuffix(schema, "/v2") {
+		delete(envelope, "datatypes")
+		if workflows, ok := envelope["workflows"].([]any); ok {
+			for _, workflow := range workflows {
+				delete(workflow.(map[string]any), "parent_segments")
+			}
+		}
+	}
+	envelope["schema"] = schema
+	raw, err = json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// A profile or pack this release evaluates is also read where it is kept:
+// the catalog names every readable version, the metadata matrix answers for
+// every readable pack, and evaluation finds the pack a later profile pins.
+func TestLaterProfileAndPackVersionsReadWhereV1Reads(t *testing.T) {
+	app, context := namedProject(t)
+	root := context.Project
+	profiles := map[string][]byte{
+		"profile-v2.json": versionedProfileDoc(t, "profile.json", profileeval.ProfileSchema),
+		"profile-v3.json": versionedProfileDoc(t, "profile.json", profileeval.ProfileSchemaV3),
+	}
+	packs := map[string][]byte{
+		"pack-v2.json": versionedProfileDoc(t, "pack.json", profileeval.PackSchema),
+		"pack-v3.json": versionedProfileDoc(t, "pack.json", profileeval.PackSchemaV3),
+		"pack-v4.json": versionedProfileDoc(t, "pack.json", profileeval.PackSchemaV4),
+		"pack-v5.json": versionedProfileDoc(t, "pack.json", profileeval.PackSchemaV5),
+	}
+	for name, doc := range profiles {
+		writeDocument(t, root, name, string(doc))
+	}
+	for name, doc := range packs {
+		writeDocument(t, root, name, string(doc))
+	}
+	listed := app.ListCatalog(desktop.CatalogQuery{Context: context, Kind: desktop.ProfileItem})
+	if listed.Page == nil || len(listed.Page.Items) != len(profiles)+len(packs) {
+		t.Fatalf("profiles: %+v", listed)
+	}
+	for _, item := range listed.Page.Items {
+		opened := app.OpenItem(desktop.ItemRequest{Context: context, Ref: item.Ref})
+		if opened.State != desktop.Completed || opened.Item.Summary.Profile == nil {
+			t.Fatalf("a later version does not open: %+v", opened)
+		}
+		summary := opened.Item.Summary.Profile
+		if opened.Item.Name != "owned-siu-2-5-1" || summary.Family != "SIU" || summary.ProtocolVersion != "2.5.1" || summary.PublishedVersion != "1" {
+			t.Fatalf("a later version reads as another: %+v", opened.Item)
+		}
+	}
+	answered := app.MetadataPacks(context)
+	if answered.State != desktop.Completed || len(answered.Packs) != len(packs) {
+		t.Fatalf("metadata packs: %+v", answered)
+	}
+	for _, pack := range answered.Packs {
+		if pack.Pack == nil || len(pack.Matrix) != 28 {
+			t.Fatalf("a later pack has no matrix: %+v", pack)
+		}
+	}
+
+	evaluator, project := namedProject(t)
+	place := func(name string, doc []byte) {
+		writeDocument(t, project.Project, name, string(doc))
+	}
+	place("profile.json", profiles["profile-v3.json"])
+	place("pack.json", packs["pack-v3.json"])
+	writeCase(t, project.Project, "booking", framed(repBooking)+framed(repAccepted)+framed(repReschedule))
+	cases := evaluator.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.CaseItem})
+	if cases.Page == nil || len(cases.Page.Items) != 1 {
+		t.Fatalf("cases: %+v", cases)
+	}
+	objects := evaluator.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.ProfileItem})
+	profile := desktop.ItemRef{}
+	for _, item := range objects.Page.Items {
+		if item.Summary.Profile != nil && item.Summary.Profile.Form == "local-profile" {
+			profile = item.Ref
+		}
+	}
+	if profile.ID == "" {
+		t.Fatalf("the v3 profile is not listed: %+v", objects)
+	}
+	evaluated := evaluator.EvaluateProfile(desktop.ProfileEvaluationRequest{Context: project, Profile: profile, Case: cases.Page.Items[0].Ref})
+	if evaluated.State != desktop.Completed || evaluated.Report == nil {
+		t.Fatalf("the v3 profile did not evaluate against its pinned pack: %+v", evaluated)
+	}
+	want, err := profileeval.EvaluateBundle(t.Context(), profiles["profile-v3.json"], packs["pack-v3.json"], filepath.Join(project.Project, "booking"), profileeval.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(*evaluated.Report, want) {
+		t.Fatalf("the window's report differs from the bundle's:\n%+v\n%+v", *evaluated.Report, want)
+	}
 }
 
 // profileOrigin is the fixture origin.

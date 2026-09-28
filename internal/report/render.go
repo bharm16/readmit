@@ -31,62 +31,32 @@ func summary(manifest Manifest) []byte {
 	return out.Bytes()
 }
 
-func packetInstructions() []byte {
-	return []byte(`# Reproduce with only the released binary and this packet
-
-This is a synthetic-only demonstration of the built-in SIU fixture. It requires
-no source checkout, Go, Python, jq, network service, or author contact. Only local
-loopback TCP is used. It makes no production or customer-PHI readiness claim.
-
-Copy the released executable and this entire packet into one new folder. Name
-them readmit (readmit.exe on Windows) and packet. Paths containing spaces work.
-Open two terminals with that folder as their current working directory. All
-commands below use that same directory; do not cd into the sealed packet.
-On Windows PowerShell replace ./readmit with .\readmit.exe; the quoted forward
-slash paths and all flags below work unchanged. On Unix preserve executable
-permission when copying the binary (chmod +x readmit if necessary).
-
-First, in either terminal:
-
-` + "~~~sh\n./readmit report verify \"packet\"\n./readmit report prepare \"packet\" --output \"rerun\" --address 127.0.0.1:2575\n~~~\n" + `
-Both commands must exit 0. Verification is offline. Preparation creates a NEW
-directory outside the packet. It preserves the input case identity and all
-assertions. Its runnable specs change only case, target and observation path
-bindings. Historical specs in the packet are never edited. preparation.json
-links the historical spec and packet identities to each runnable spec hash and
-the explicit loopback target hash. The preparation has its own hash and does
-not seal the workspace: new receiver evidence and results are expected there.
-
-If port 2575 is occupied, select an unused loopback port with --address during
-preparation and use that same address in every listen command below. The
-workspace RERUN.md prints the selected address. No JSON editing is needed.
-If rerun already exists, choose a NEW workspace name and substitute that name
-in the commands. Never overwrite or delete evidence to reset a completed run.
-
-` + string(trialInstructions("127.0.0.1:2575")))
+func trialInstructions(address string) []byte {
+	return trialInstructionsFor(address, "./readmit", "./readmit")
 }
 
-func trialInstructions(address string) []byte {
+// trialInstructionsFor builds the trial commands with a separate invocation
+// for gated execution (listen, test) and ungated verification (diff, report
+// verify), so the prepared workspace names its operation policy where one is
+// required without rewriting sealed text.
+func trialInstructionsFor(address, execute, verify string) []byte {
 	var out bytes.Buffer
 	fmt.Fprintln(&out, "## Reset and run each mode\n\nThe declared initial state is an empty appointment ledger with zero processed occurrences. Each listen invocation creates a new session, observation file and receiver output. Wait for its Listening: line before running test in the other terminal. --max-messages 2 makes the listener finalize and exit after the two messages; wait for that exit before starting the next mode. A startup or execution error is not the expected defective verdict.")
 	for _, trial := range []struct {
 		name, mode, verdict string
 		exit                int
 	}{{"baseline", "defective", "assertion_failure; 2 ledger records", 1}, {"post-fix", "fixed", "pass; 1 ledger record", 0}, {"reintroduced", "defective", "assertion_failure; 2 ledger records", 1}} {
-		fmt.Fprintf(&out, "\n### %s\n\nTerminal A:\n\n~~~sh\n./readmit listen --address \"%s\" --mode %s --max-messages 2 --output \"rerun/%s/receiver\" --observation \"rerun/%s/observation.json\"\n~~~\n\nWait for Listening:. Terminal B:\n\n~~~sh\n./readmit test \"rerun/%s/spec.json\" --send --output \"rerun/%s/result\"\n~~~\n\nExpected exit: %d. Expected result: %s. Both ACK assertions pass. The completed result retains the actual observations, receiver session and mode.\n", trial.name, address, trial.mode, trial.name, trial.name, trial.name, trial.name, trial.exit, trial.verdict)
+		fmt.Fprintf(&out, "\n### %s\n\nTerminal A:\n\n~~~sh\n%s listen --address \"%s\" --mode %s --max-messages 2 --output \"rerun/%s/receiver\" --observation \"rerun/%s/observation.json\"\n~~~\n\nWait for Listening:. Terminal B:\n\n~~~sh\n%s test \"rerun/%s/spec.json\" --send --output \"rerun/%s/result\"\n~~~\n\nExpected exit: %d. Expected result: %s. Both ACK assertions pass. The completed result retains the actual observations, receiver session and mode.\n", trial.name, execute, address, trial.mode, trial.name, trial.name, execute, trial.name, trial.name, trial.exit, trial.verdict)
 	}
-	fmt.Fprintln(&out, "\n## Verify retained evidence\n\nIn Terminal B after all three trials:\n\n~~~sh\n./readmit diff \"rerun/baseline/result\" \"rerun/post-fix/result\"\n./readmit report verify \"packet\"\n~~~\n\nThe field diff reports two unchanged sent messages. The ledger assertions distinguish the outcomes. The sealed packet must still verify with the same identity. Rerun session IDs, timestamps, ports, target hashes and result identities may differ from historical evidence; case identity and assertion semantics must not. ACK receipt differences are not the appointment defect.")
+	fmt.Fprintf(&out, "\n## Verify retained evidence\n\nIn Terminal B after all three trials:\n\n~~~sh\n%s diff \"rerun/baseline/result\" \"rerun/post-fix/result\"\n%s report verify \"packet\"\n~~~\n\nThe field diff reports two unchanged sent messages. The ledger assertions distinguish the outcomes. The sealed packet must still verify with the same identity. Rerun session IDs, timestamps, ports, target hashes and result identities may differ from historical evidence; case identity and assertion semantics must not. ACK receipt differences are not the appointment defect.\n", verify, verify)
 	fmt.Fprintln(&out, "\n## Interrupted or repeated trials\n\nIf a listener remains running after a failed test, stop it with Ctrl-C and wait for it to exit. Preserve the partial evidence. Run report prepare again with a new workspace name, then start fresh listeners and use the new workspace paths. Never reuse an observation file, receiver output or result destination. The command refuses existing destinations. There are no executable reset hooks or expressions in a spec.")
 	return out.Bytes()
 }
 
-// Prepared instructions are not sealed evidence. Keep packetInstructions and
-// retainedInstructions byte-identical for the existing v1 readers; only this
-// newly created runnable workspace receives current invocation setup.
+// Prepared instructions are not sealed evidence. Only this newly created
+// runnable workspace receives current invocation setup; the sealed blocks in
+// instructions.go stay versioned data that verification pins.
 func preparedTrialInstructions(address string) []byte {
 	setup := []byte("## License selection for new manual executions\n\nThe two-terminal listener and sender are two active execution processes and require two runner instances. A one-runner evaluation can use the free single-process desktop practice/report or send to an independently operated test endpoint.\n\nIn BOTH terminals select an already activated policy: READMIT_POLICY=/absolute/path/operation-policy.json in a POSIX shell, or $READMIT_POLICY = 'C:/private/operation-policy.json' in PowerShell. These variables are passed explicitly as command arguments; the engine discovers no environment configuration. Verification and export remain ungated.\n\n")
-	instructions := trialInstructions(address)
-	instructions = bytes.ReplaceAll(instructions, []byte("./readmit listen "), []byte("./readmit --operation-policy \"$READMIT_POLICY\" listen "))
-	instructions = bytes.ReplaceAll(instructions, []byte("./readmit test "), []byte("./readmit --operation-policy \"$READMIT_POLICY\" test "))
-	return append(setup, instructions...)
+	return append(setup, trialInstructionsFor(address, "./readmit --operation-policy \"$READMIT_POLICY\"", "./readmit")...)
 }

@@ -7,15 +7,24 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/index"
 )
+
+// syncDirectory is the directory sync a restore makes, through the shared
+// artifact discipline every sealed write uses. It is the seam package tests
+// take to see which directories a restore syncs, and when.
+var syncDirectory = artifactdir.SyncDirectory
 
 // Verify reads one backup directory whole and returns its manifest.
 //
@@ -184,11 +193,12 @@ func Restore(ctx context.Context, backupPath, destination string, at time.Time) 
 	}
 	defer written.Close()
 	total := int64(0)
+	made := make(map[string]bool)
 	for i, file := range document.Files {
 		if ctx.Err() != nil {
 			return Report{}, errors.New("restore cancelled at file " + position(i) + "; an incomplete restore is retained")
 		}
-		if err := restore(ctx, source, written, file); err != nil {
+		if err := restore(ctx, source, written, file, made); err != nil {
 			return Report{}, errors.New(err.Error() + " at entry " + position(i))
 		}
 		total += file.Size
@@ -217,17 +227,23 @@ func Restore(ctx context.Context, backupPath, destination string, at time.Time) 
 	if ctx.Err() != nil {
 		return Report{}, errors.New("restore cancelled; an incomplete restore is retained")
 	}
+	if err := syncRestored(written, target, made); err != nil {
+		return Report{}, err
+	}
 	return report, nil
 }
 
 // restore writes one stored file at the relative path the backup recorded and
 // checks what landed against what the manifest records for it, so the bytes in
 // the restored project are the bytes the manifest stands behind.
-func restore(ctx context.Context, source, target *os.Root, file File) error {
+func restore(ctx context.Context, source, target *os.Root, file File, made map[string]bool) error {
 	size, digest, err := copyFile(ctx, source, func(name string) (copied, error) {
 		if parent := path.Dir(name); parent != "." {
 			if err := target.MkdirAll(parent, 0700); err != nil {
 				return nil, errors.New("cannot create a directory of the destination")
+			}
+			for directory := parent; directory != "."; directory = path.Dir(directory) {
+				made[directory] = true
 			}
 		}
 		out, err := target.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
@@ -241,6 +257,31 @@ func restore(ctx context.Context, source, target *os.Root, file File) error {
 	}
 	if size != file.Size || digest != file.SHA256 {
 		return errors.New("a file the backup stores changed while it was being restored; an incomplete restore is retained")
+	}
+	return nil
+}
+
+// syncRestored syncs every directory the restore made, the restored project
+// itself and the folder holding it, through the shared artifact discipline,
+// so every name it made survives a power loss. A restored project is a plain
+// directory rather than a sealed family, but its names need the same rule.
+func syncRestored(written *os.Root, target string, made map[string]bool) error {
+	failed := errors.New("cannot sync the restored project directory; the project was written in full but a power loss could still lose it")
+	for _, name := range slices.Sorted(maps.Keys(made)) {
+		if syncDirectory(written, name) != nil {
+			return failed
+		}
+	}
+	if syncDirectory(written, ".") != nil {
+		return failed
+	}
+	parent, err := os.OpenRoot(filepath.Dir(target))
+	if err != nil {
+		return failed
+	}
+	defer parent.Close()
+	if syncDirectory(parent, ".") != nil {
+		return failed
 	}
 	return nil
 }

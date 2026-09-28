@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/backup"
+	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/lifecycle"
 	"github.com/bharm16/readmit/internal/project"
 	"github.com/bharm16/readmit/internal/upgrade"
@@ -291,6 +292,14 @@ func (a *App) ChooseMaintenancePath(kind string) MaintenancePathResult {
 		}
 		return MaintenancePathResult{State: Completed, Kind: kind, Path: folder}
 	})
+}
+
+func readBackup(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	document, err := backup.Verify(paths[primaryRole(BackupItem)])
+	if err != nil {
+		return view{}, err
+	}
+	return view{summary: ItemSummary{Backup: &BackupSummary{Complete: document.Complete(), Evidence: len(document.Evidence)}}}, nil
 }
 
 // CreateProjectBackup copies a project into a new verified backup directory.

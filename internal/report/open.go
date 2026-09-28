@@ -43,16 +43,25 @@ func Open(dir string) (*Packet, error) {
 	if json.Unmarshal(raw, &manifest, json.RejectUnknownMembers(true)) != nil || !reflect.DeepEqual(manifest.Files, index(files)) {
 		return nil, invalid
 	}
+	if !packetInstructionsBlock.check(manifest.Instructions, files["RERUN.md"]) {
+		return nil, invalid
+	}
 	expected, additions, err := inspectEvidence(dir, files)
 	if err != nil {
 		return nil, err
 	}
+	// The recorded instructions version is a sealed claim checked above
+	// against the known texts, not evidence re-derived below.
+	expected.Instructions = manifest.Instructions
 	expected.Files = index(files)
 	expectedBytes, err := encode(expected)
 	if err != nil || !bytes.Equal(raw, expectedBytes) {
 		return nil, invalid
 	}
 	for name, data := range additions {
+		if name == "RERUN.md" {
+			continue // version-pinned above, never live text
+		}
 		if !bytes.Equal(files[name], data) {
 			return nil, invalid
 		}

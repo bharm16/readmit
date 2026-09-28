@@ -6,9 +6,9 @@ dataset projections and CapabilityStatement claims. It is the Go interpreter
 for later UI bindings; no JavaScript parser, FHIR console, network discovery or
 parallel v2 message model is introduced.
 
-This is an evidence/projection implementation. A parsed resource, a satisfied
-capability requirement or a schema/profile-conformant payload does not establish
-workflow success. Whole-profile/implementation-guide validation is the optional
+This is an evidence/projection implementation. A parsed resource or a
+schema/profile-conformant payload does not establish workflow success.
+Whole-profile/implementation-guide validation is the optional
 pinned validator worker in [FHIR profile validation](fhir-validation.md);
 protocol acquisition, search completeness and interactions remain IG11. This
 package has no HTTP client, resolver, credential provider or terminology fetch.
@@ -17,20 +17,19 @@ package has no HTTP client, resolver, credential provider or terminology fetch.
 
 - `Decode` reads bounded original bytes with an explicit version, base and media
   type. `Raw`, `ResourceBytes`, `Resources` and `Findings` expose owned copies or
-  immutable views. Malformed JSON is refused by the decoder; `Retain` can still
-  preserve its bytes as invalid evidence.
+  immutable views. Malformed JSON is refused by the decoder.
 - `Select` accepts only typed field, choice, index and all-items steps. It
   reports present, absent, multiple, ambiguous, invalid or unsupported results.
   It does not evaluate FHIRPath, JavaScript, SQL or expressions inside extensions.
 - `Resolve`, `ResolveCanonical` and `Join` search retained resource identities
   in the document's declared scope. They never fetch an external reference.
-- `Capabilities` parses finite CapabilityStatement claims; `Check` compares
-  explicitly versioned requirements with those claims. The report binds the
-  source and requirements identities and says that it is not permission or
-  workflow success.
-- `Retain`/`Write`/`Open` preserve source bytes and acquisition context as
-  `readmit-fhir-evidence/v1`. `Project`, `RetainProjection` and `OpenProjection`
-  provide `readmit-fhir-projection/v1` and `readmit-fhir-dataset/v1` contracts.
+- `Capabilities` parses finite CapabilityStatement claims: the declared
+  interactions, searches, versioning and conditionals, nothing evaluated or
+  defaulted. Claims are data, never permission or workflow success.
+- `Project` derives a typed `readmit-fhir-dataset/v1` dataset from the decoded
+  document under an explicit `readmit-fhir-projection/v1` projection, every
+  call from the same retained bytes. Sealed retention of HTTP exchanges is the
+  REST layer's `readmit-fhir-http-result/v1` in [FHIR HTTP](fhir-rest.md).
 
 The qualified resource projection vocabulary covers Patient, Encounter,
 Appointment, Practitioner, Location, ServiceRequest, Observation and
@@ -48,8 +47,8 @@ field types is not a claim of complete profile validation.
 | Primitive companions, aligned arrays, null/empty/choice refusals | `TestFHIRPrimitiveShapesAndChoiceErrorsStayInvalidNotHL7Null` |
 | Exact large decimals, partial dates, long fractions and leap-second syntax | `TestFHIRRetainsOriginalBytesExactNumbersAndPrimitiveMetadata`, `TestFHIRBoundsAndTemporalPrecisionAreExplicit` |
 | History-version, fullUrl, URN, contained and logical-reference scope | `TestFHIRReferenceContract*` |
-| Capability presence, wrong version, malformed declarations and conditional behavior | `TestFHIRCapabilityClaimsAreFiniteAndNeverPermission`, `TestFHIRCapabilityShapeAndConditionalClaimsAreNotDefaulted` |
-| Relocation, source binding and resealed projection refusal | `TestFHIRRetentionReopensRelocatedBytesAndTypedProjection`, `TestFHIRResealedProjectionCannotChangeTypedValuesOrSourceScope` |
+| Capability presence, wrong version, malformed declarations and conditional behavior | `TestFHIRCapabilityClaimsStayFiniteAndVersionPinned`, `TestFHIRCapabilityShapeAndConditionalClaimsAreNotDefaulted` |
+| Typed projection over the golden collection | `TestFHIRTypedProjectionOverGoldenCollection` |
 
 The wholly fictional fixtures under `testdata/fhir-r4` are authored separately
 from the decoder. They do not claim EHR compatibility or clinical correctness.
@@ -84,10 +83,8 @@ resources or datatype paths remain explicitly unsupported.
 
 ## Identity and reference scope
 
-An occurrence is an internal sequence identifier, scoped by its document/source,
-not a resource ID or business key. An evidence artifact additionally assigns
-source ordinals, so equal bytes in two source inputs remain two occurrences.
-Resource summaries keep these facts separate:
+An occurrence is an internal sequence identifier, scoped by its document,
+not a resource ID or business key. Resource summaries keep these facts separate:
 
 - resource type, declared base, logical `id`, and `meta.versionId`;
 - each business `Identifier.system` plus `Identifier.value`;
@@ -136,33 +133,24 @@ patient-identifier normalization. An absent code system stays undeclared.
 
 Required absent values, invalid or ambiguous selections, unsupported selected
 complex values and resource/byte/value limits make the projection unusable.
-HTTP error bodies and request bodies cannot become downstream absence datasets.
-`OpenProjection` re-derives every value and its source binding from the retained
-raw evidence, using one byte snapshot for nested verification. Editing and
-resealing a projection does not supply evidence for an invented value.
+Every call re-derives every value from the decoded document's retained bytes,
+so there is no sealed projection to edit or reseal. Refusing HTTP failures and
+request bodies as observation datasets is the REST layer's outcome
+classification in [FHIR HTTP](fhir-rest.md).
 
-## Acquisition and storage
+## Bounds
 
-An evidence input declares resource/Bundle/request/response role, media type,
-base, protocol version, source identity and acquisition times. Original body
-bytes are separate `payload-NNNN.bin` files. For HTTP evidence the context also
-records method, request URL, response status and an explicit metadata allowlist:
-Content-Type, Date, Age, ETag, Last-Modified and Location. Authorization,
-Set-Cookie and arbitrary headers are refused. Request URL and Location
-userinfo is refused without echoing its value, including scheme-relative forms;
-ordinary relative locations and search queries remain unchanged. All evidence remains private
-customer-local material, including identities and queries.
+Decoding is bounded: 16 MiB per JSON body, 100,000 nodes, depth 64, 1 MiB per
+decoded scalar, 4 KiB per JSON pointer and 8 MiB total pointer storage, 4,096
+resources and findings, 10,000 selector matches, 16 selector steps, 32 columns
+and 32 MiB projected output. Exceeding a bound is refusal or an explicit
+unusable status, never a successful prefix.
 
-Invalid JSON/FHIR remains retainable with invalid findings; it does not become
-an empty parsed document. Opening an artifact never reads the original source
-or reaches its endpoint. Raw bytes, the complete deterministic manifest and all
-projections are integrity checked. Integrity does not authenticate a source.
-
-Current finite bounds are 16 MiB per JSON body, eight sources/64 MiB total input,
-100,000 nodes, depth 64, 1 MiB per decoded scalar, 4 KiB per JSON pointer and
-8 MiB total pointer storage, 4,096 resources and findings, 10,000 selector
-matches, 16 selector steps, 32 columns and 32 MiB projected output. Exceeding a
-bound is refusal or an explicit unusable status, never a successful prefix.
+Acquisition context, sealed retention and tamper verification belong to the
+layer that performs the exchange: [FHIR HTTP](fhir-rest.md) for REST
+interactions and [connected FHIR](connected-fhir.md) for lifecycle
+observations. All evidence remains private customer-local material, including
+identities and queries.
 
 ## Fixed primary contracts
 

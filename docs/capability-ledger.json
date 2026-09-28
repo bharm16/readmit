@@ -5960,19 +5960,6 @@
       "implemented": true
     },
     {
-      "id": "desktop.DecideFindings",
-      "source": "desktop.App.DecideFindings",
-      "kind": "desktop",
-      "capability": "decideFindings application operation",
-      "owner": "bharm16/readmit#253",
-      "backend": {"package": "internal/findingreview", "name": "Review"},
-      "inputs": ["readmit-diagnosis/v1", "readmit-finding-decisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
-      "outputs": ["readmit-finding-decisions/v1", "readmit-finding-review/v1"],
-      "prerequisites": ["author"],
-      "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: review decisions are saved as revisions of the analysis's finding review through desktop.App.SaveItem", "successor": "desktop.App.SaveItem"}
-    },
-    {
       "id": "desktop.DurableRunProgress",
       "source": "desktop.App.DurableRunProgress",
       "kind": "desktop",
@@ -6324,19 +6311,6 @@
       "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a saved test is selected from the workspace, preflighted locally, and the preflight names what would run"},
       "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
       "implemented": true
-    },
-    {
-      "id": "desktop.ReviewFindings",
-      "source": "desktop.App.ReviewFindings",
-      "kind": "desktop",
-      "capability": "reviewFindings application operation",
-      "owner": "bharm16/readmit#297",
-      "backend": {"package": "internal/findingreview", "name": "Review"},
-      "inputs": ["readmit-diagnosis/v1", "readmit-finding-decisions/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
-      "outputs": ["readmit-finding-review/v1"],
-      "prerequisites": [],
-      "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: a review decision is previewed through desktop.App.PreviewFindingReview", "successor": "desktop.App.PreviewFindingReview"}
     },
     {
       "id": "desktop.RunDiagnosis",

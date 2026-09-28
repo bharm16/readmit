@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 
@@ -42,6 +43,50 @@ func fieldProblem(prefix string, err error) FieldProblem {
 		return FieldProblem{Field: prefix + "." + at.Field, Problem: at.Err.Error()}
 	}
 	return FieldProblem{Field: prefix, Problem: err.Error()}
+}
+
+func readObservation(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	source, _, err := operation.ValidateObservationSource(paths[primaryRole(ObservationItem)])
+	if err != nil {
+		return view{}, err
+	}
+	if window, held := paths["window"]; held {
+		if _, _, err := operation.ValidateObservationPair(paths["source"], window); err != nil {
+			return view{}, err
+		}
+	}
+	summary := &ObservationSummary{SourceType: source.Observes.Kind, Enabled: source.Enabled}
+	var latest *observewindow.Completion
+	for i, completion := range c.completionRecords() {
+		if completion.Source == source.Observes && completion.Trustworthy() && (latest == nil || completion.ClosedAt.After(latest.ClosedAt)) {
+			latest = &c.completions[i]
+		}
+	}
+	if latest != nil {
+		summary.LatestCollection, summary.LatestStatus = stampedTime(latest.ClosedAt), string(latest.Status)
+	}
+	return view{name: source.Observes.Identity, summary: ItemSummary{Observation: summary}}, nil
+}
+
+// completionRecords are the project's retained completion records.
+func (c *loadedCatalog) completionRecords() []observewindow.Completion {
+	if c.doneRead {
+		return c.completions
+	}
+	c.doneRead = true
+	entries, err := os.ReadDir(c.root)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		path := filepath.Join(c.root, entry.Name())
+		if entry.Type().IsRegular() && declares(path, observewindow.CompletionSchema) {
+			if completion, err := observewindow.ReadCompletion(path); err == nil {
+				c.completions = append(c.completions, completion)
+			}
+		}
+	}
+	return c.completions
 }
 
 // validateObservationDraft validates a whole observation draft: the named

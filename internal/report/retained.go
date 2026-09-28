@@ -50,6 +50,7 @@ type RetainedManifest struct {
 	ContainsSourceValues bool             `json:"contains_source_values"`
 	Current              RetainedRun      `json:"current"`
 	Baseline             *RetainedRun     `json:"baseline"`
+	Instructions         string           `json:"instructions,omitzero"`
 	Files                []bundle.Payload `json:"files"`
 }
 type RetainedPacket struct {
@@ -94,6 +95,7 @@ func Assemble(ctx context.Context, in RetainedInput, output string) (*RetainedPa
 			return nil, err
 		}
 	}
+	manifest.Instructions = retainedInstructionsBlock.current
 	manifest.Files = index(files)
 	raw, err := encode(manifest)
 	if err != nil {
@@ -507,9 +509,12 @@ func OpenRetained(ctx context.Context, dir string) (*RetainedPacket, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The recorded instructions version is a sealed claim checked here
+	// against the known texts, not evidence re-derived above.
+	expected.Instructions = stored.Instructions
 	expected.Files = index(files)
 	canonical, err := encode(expected)
-	if err != nil || !bytes.Equal(raw, canonical) || !bytes.Equal(summary, files["SUMMARY.md"]) || !bytes.Equal(retainedInstructions(), files["RERUN.md"]) {
+	if err != nil || !bytes.Equal(raw, canonical) || !bytes.Equal(summary, files["SUMMARY.md"]) || !retainedInstructionsBlock.check(stored.Instructions, files["RERUN.md"]) {
 		return nil, invalid
 	}
 	return &RetainedPacket{Manifest: expected, Identity: digest(raw)}, nil
@@ -611,39 +616,6 @@ func inspectRetainedRun(casePath, resultPath string) (RetainedRun, error) {
 		}
 	}
 	return RetainedRun{RunState: runState, JournalIncomplete: lifecycle.JournalIncomplete, DeliveryUncertain: lifecycle.DeliveryUncertain, Identity: a.Identity, CaseIdentity: c.Identity, CaseProvenance: string(c.Manifest.Provenance.Mode), SpecIdentity: a.Result.SpecIdentity, TargetIdentity: a.Result.TargetIdentity, Boundary: a.Result.ObservationBoundary, Status: string(a.Result.Status), ErrorClass: a.Result.ErrorClass}, nil
-}
-func retainedInstructions() []byte {
-	return []byte(`# Rerun retained evidence
-
-Verification is offline: readmit report verify-retained PACKET
-No endpoint is contacted and no historical path is resolved by verification.
-
-Keep this packet immutable. Copy case/ and the root spec.json into a separate
-new workspace. If a baseline exists, its own case is baseline-case/ and its
-historical specification is baseline/spec.json (baseline/result/spec.json for
-a durable job). Never overwrite a prior run.
-
-Historical target and observation paths are evidence, not runnable authority.
-An operator must explicitly select an authorized nonproduction target and
-credentials, establish the required setup/reset and observation boundary, and
-rebind only those paths and the copied case path in a new specification. Preserve
-its message selection and assertions. Use readmit test --help for execution
-options. From the separate workspace, after rebinding and operator review:
-
-    readmit test spec.json
-    readmit test spec.json --send --output NEW_RESULT
-
-The first command validates locally without sending. The second explicitly
-authorizes execution. Exit 0 is pass, 1 assertion failure, and 2 execution error.
-New specifications have new identities; retain both.
-
-No packet operation performs setup, reset, recovery or a network send. A missing
-baseline cannot be recreated by a built-in defective fixture. If the original
-target or required observation is unavailable, retain the single-run report and
-state that before/after proof is unavailable. After interruption use a new packet
-destination; an incomplete packet is never verified as complete. Uncertain sends
-must be reconciled at the target before any authorized rerun.
-`)
 }
 
 // retainedResultPrefix is where the execution retained under name keeps its

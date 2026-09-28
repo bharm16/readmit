@@ -3,6 +3,7 @@ package fhirrest
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -10,9 +11,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/dataset"
-	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/networkaction"
-	"github.com/bharm16/readmit/internal/sendpolicy"
 )
 
 var fileName = regexp.MustCompile(`^(intent-[0-9]{4}\.json|attempt-[0-9]{4}\.json|response-[0-9]{4}\.bin)$`)
@@ -175,42 +174,22 @@ func verify(ctx context.Context, files map[string][]byte) (Result, error) {
 			continue
 		}
 		pages++
-		doc, e := decode(p.spec.Base, body)
+		entries, next, e := pageLinks(p.spec.Base, body)
 		if e != nil {
-			return Result{}, e
-		}
-		bundle, e := doc.HTTPBundle()
-		if e != nil {
-			return Result{}, e
-		}
-		totalEntries += len(bundle.Entries)
-		next := ""
-		for _, link := range bundle.Links {
-			if link.Relation == "next" {
-				if next != "" {
-					return Result{}, refused
-				}
-				next = link.URL
+			if errors.Is(e, errDuplicateNextLink) {
+				return Result{}, refused
 			}
+			return Result{}, e
 		}
+		totalEntries += entries
 		if i+1 < len(result.Attempts) {
 			if next == "" || pages >= p.spec.Budget.Pages || totalEntries > p.spec.Budget.Rows || totalBytes > p.spec.Budget.Bytes {
 				return Result{}, refused
 			}
-			target, e := destination.ScopedLink(p.spec.Base+"/", next)
+			expected, e = pageRequest(p.spec.Base, body, p.request.Resource, p.spec.HTTP, p.spec.PagePrivateKey, next)
 			if e != nil {
 				return Result{}, refused
 			}
-			expected = p.spec.HTTP
-			expected.HTTP.Method = "GET"
-			expected.HTTP.URL = target
-			expected.HTTP.Body = nil
-			expected.HTTP.ContentType = ""
-			expected.HTTP.Operation = sendpolicy.FHIRSearch
-			if p.spec.PagePrivateKey != nil {
-				expected.HTTP.PrivateKey = p.spec.PagePrivateKey
-			}
-			expected.Page = &networkaction.SearchPageScope{Resource: p.request.Resource, FromResponseSHA256: dataset.Digest(body)}
 		}
 		if i == len(result.Attempts)-1 && (result.ExecutionState == "succeeded") && next != "" {
 			return Result{}, refused

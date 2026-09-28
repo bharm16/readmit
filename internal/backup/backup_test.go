@@ -425,6 +425,60 @@ func TestCancelledRestoreIsRefusedAndPutsNothingInPlaceOfWhatItDidNotWrite(t *te
 	}
 }
 
+// A restore syncs every directory it made, the restored project itself and the
+// folder holding it, through the shared artifact discipline, so a power loss
+// right after a reported success loses no name the restore made.
+func TestRestoreSyncsEveryDirectoryItMade(t *testing.T) {
+	opened := newProject(t)
+	registerCase(t, opened, "regression", 1)
+	_, stored := create(t, opened.Root)
+
+	var synced []string
+	t.Cleanup(backup.ObserveDirectorySyncsForTest(func(directory string) error {
+		synced = append(synced, directory)
+		return nil
+	}))
+	_, target := restore(t, stored)
+
+	var want []string
+	if err := filepath.WalkDir(target, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			want = append(want, path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk restored project: %v", err)
+	}
+	want = append(want, filepath.Dir(target))
+	slices.Sort(synced)
+	slices.Sort(want)
+	if !slices.Equal(synced, want) {
+		t.Errorf("restore synced %v, want %v", synced, want)
+	}
+}
+
+// A directory a restore cannot sync fails the restore with the bytes' state
+// stated: written in full, but not yet durable.
+func TestRestoreRefusesWhenADirectorySyncFails(t *testing.T) {
+	opened := newProject(t)
+	registerCase(t, opened, "regression", 1)
+	_, stored := create(t, opened.Root)
+
+	t.Cleanup(backup.ObserveDirectorySyncsForTest(func(directory string) error {
+		return errors.New("device lost")
+	}))
+	report, err := backup.Restore(context.Background(), stored, filepath.Join(t.TempDir(), "restored"), builtAt())
+	if err == nil {
+		t.Fatalf("a restore that could not sync reported success: %+v", report)
+	}
+	if want := "cannot sync the restored project directory; the project was written in full but a power loss could still lose it"; err.Error() != want {
+		t.Errorf("a restore that could not sync reported %q, want %q", err, want)
+	}
+}
+
 // A backup whose bytes no longer match the backup that was written is refused
 // whole. Nothing partial is restored from it, because a restore that wrote the
 // files it could still read would be filling the rest from nowhere.

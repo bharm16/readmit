@@ -479,6 +479,114 @@ func TestFindingReviewRefusesAChangedAnalysisAndAStaleBase(t *testing.T) {
 	}
 }
 
+// Previewing joins the typed decisions to the diagnosis and reports every
+// verdict, basis and promotion — writing nothing. Only a confirmation
+// promotes, and a suppression recorded at case scope covers what it covers by
+// scope rather than by a second decision. Neither the preview nor the saved
+// review's history discloses the evidence values the findings were read from.
+func TestPreviewFindingReviewJoinsJudgmentWithoutDisclosingEvidence(t *testing.T) {
+	app, project, acked, identity := findingsProject(t)
+	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
+	draft := desktop.FindingReviewDraft{Analysis: made.Analysis.Ref, ReportSHA256: made.Analysis.ReportSHA256, Decisions: []findingreview.Decision{
+		{Finding: "f000001", Verdict: findingreview.Confirmed, Rationale: "the scheduler must keep rejecting this booking"},
+		{Finding: "f000002", Verdict: findingreview.Suppressed, Scope: findingreview.ScopeCase, Rationale: "the error detail is the vendor's wording"},
+	}}
+	preview := app.PreviewFindingReview(desktop.DraftRequest{Context: project, Kind: desktop.FindingReviewItem, Draft: desktop.ItemDraft{FindingReview: &draft}})
+	if preview.State != desktop.Completed || len(preview.Problems) != 0 {
+		t.Fatalf("the preview did not complete: %+v", preview)
+	}
+	byFinding := map[string]findingreview.Status{}
+	for _, status := range preview.Statuses {
+		byFinding[status.Finding] = status
+	}
+	confirmed := byFinding["f000001"]
+	if confirmed.Verdict != findingreview.Confirmed || confirmed.Basis != findingreview.BasisDecision ||
+		confirmed.Promotion == nil || len(confirmed.Promotion.Expectations) == 0 {
+		t.Fatalf("a confirmed acknowledgement finding promoted nothing: %+v", confirmed)
+	}
+	suppressed := byFinding["f000002"]
+	if suppressed.Verdict != findingreview.Suppressed || suppressed.Scope != findingreview.ScopeCase || suppressed.Promotion != nil {
+		t.Fatalf("a suppressed finding was not reported as suppressed: %+v", suppressed)
+	}
+	encoded, err := json.Marshal(preview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"SECRET-FREE-TEXT", "SECRET-ERR-TEXT"} {
+		if strings.Contains(string(encoded), private) {
+			t.Fatalf("the preview disclosed %q", private)
+		}
+	}
+	saved := reviewSaved(t, app, project, "", "", "review-1", draft)
+	history := app.FindingReviewHistory(desktop.ItemRequest{Context: project, Ref: made.Analysis.Ref})
+	if history.State != desktop.Completed || history.Review == nil || history.Review.ID != saved.Saved.ID {
+		t.Fatalf("the saved review does not read back: %+v", history)
+	}
+	encoded, err = json.Marshal(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"SECRET-FREE-TEXT", "SECRET-ERR-TEXT"} {
+		if strings.Contains(string(encoded), private) {
+			t.Fatalf("the review history disclosed %q", private)
+		}
+	}
+}
+
+// A judgment binds to exactly what was displayed: a report that changed
+// since, a decision about a finding nobody produced, and text a person could
+// not have typed are each reported as problems, and nothing is saved. The
+// stale-report problem names the remedy.
+func TestPreviewFindingReviewRefusesWhatWouldMisattributeAJudgment(t *testing.T) {
+	app, project, acked, identity := findingsProject(t)
+	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
+	confirm := []findingreview.Decision{{Finding: "f000001", Verdict: findingreview.Confirmed, Rationale: "the scheduler must keep rejecting this booking"}}
+	valid := desktop.FindingReviewDraft{Analysis: made.Analysis.Ref, ReportSHA256: made.Analysis.ReportSHA256, Decisions: confirm}
+	preview := func(draft desktop.FindingReviewDraft) desktop.FindingReviewPreview {
+		t.Helper()
+		return app.PreviewFindingReview(desktop.DraftRequest{Context: project, Kind: desktop.FindingReviewItem, Draft: desktop.ItemDraft{FindingReview: &draft}})
+	}
+	for name, change := range map[string]func(*desktop.FindingReviewDraft){
+		"a report that changed since it was displayed": func(d *desktop.FindingReviewDraft) {
+			d.ReportSHA256 = strings.Repeat("0", 64)
+		},
+		"a review naming no report at all": func(d *desktop.FindingReviewDraft) {
+			d.ReportSHA256 = ""
+		},
+		"a decision about a finding nobody produced": func(d *desktop.FindingReviewDraft) {
+			d.Decisions[0].Finding = "f000099"
+		},
+		"a verdict this release does not record": func(d *desktop.FindingReviewDraft) {
+			d.Decisions[0].Verdict = "accepted"
+		},
+		"a rationale carrying a control character": func(d *desktop.FindingReviewDraft) {
+			d.Decisions[0].Rationale = "a\x00b"
+		},
+		"a suppression scope on a confirmation": func(d *desktop.FindingReviewDraft) {
+			d.Decisions[0].Scope = findingreview.ScopeCase
+		},
+		"no rationale at all": func(d *desktop.FindingReviewDraft) {
+			d.Decisions[0].Rationale = ""
+		},
+	} {
+		draft := desktop.FindingReviewDraft{Analysis: valid.Analysis, ReportSHA256: valid.ReportSHA256, Decisions: slices.Clone(valid.Decisions)}
+		change(&draft)
+		if got := preview(draft); len(got.Problems) == 0 || len(got.Statuses) != 0 {
+			t.Fatalf("%s was previewed anyway: %+v", name, got)
+		}
+	}
+	// The stale-report problem names the remedy.
+	stale := valid
+	stale.ReportSHA256 = strings.Repeat("0", 64)
+	if got := preview(stale); len(got.Problems) == 0 || !strings.Contains(got.Problems[0].Problem, "reopen the report before reviewing") {
+		t.Fatalf("a stale report was not refused by name: %+v", got)
+	}
+	// Nothing was saved anywhere in the project.
+	if reviews := app.ListCatalog(desktop.CatalogQuery{Context: project, Kind: desktop.FindingReviewItem}); reviews.Page == nil || len(reviews.Page.Items) != 0 {
+		t.Fatalf("a refused review was recorded: %+v", reviews)
+	}
+}
+
 func TestUndoPublishesANewRevisionAndKeepsHistory(t *testing.T) {
 	app, project, acked, identity := findingsProject(t)
 	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
@@ -703,6 +811,10 @@ func TestFindingReviewSaveIsRefusedWithoutAuthorAdmission(t *testing.T) {
 	made := analyzed(t, app, project, acked, identity, desktop.AnalysisProfileRef{Builtin: "siu"}, "press-1")
 	draft := desktop.FindingReviewDraft{Analysis: made.Analysis.Ref, ReportSHA256: made.Analysis.ReportSHA256,
 		Decisions: []findingreview.Decision{{Finding: made.Analysis.Findings[0].ID, Verdict: findingreview.Confirmed, Rationale: "Reproduced"}}}
+	if previewed := windowWith(t, "").PreviewFindingReview(desktop.DraftRequest{Context: project, Kind: desktop.FindingReviewItem,
+		Draft: desktop.ItemDraft{FindingReview: &draft}}); previewed.State != desktop.Completed {
+		t.Fatalf("an unadmitted shell could not preview what is already there: %+v", previewed)
+	}
 	refused := windowWith(t, "").SaveItem(desktop.SaveItemRequest{Context: project, Kind: desktop.FindingReviewItem, IntentID: "review-1",
 		Draft: desktop.ItemDraft{FindingReview: &draft}})
 	if refused.State != desktop.PermissionDenied || refused.Outcome != desktop.FailedOutcome || refused.Saved != nil {

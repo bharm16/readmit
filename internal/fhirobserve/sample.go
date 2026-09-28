@@ -204,22 +204,15 @@ func derive(ctx context.Context, o Observation, expect Expect, evidence *fhirres
 		for _, resource := range d.Resources() {
 			resources[resource.Occurrence] = resource
 		}
-		for n, entry := range bundle.Entries {
-			if entry.SearchMode != "match" {
+		for _, m := range fhirrest.CorrelateEntries(bundle, d.Resources()) {
+			if m.Mode != "match" || !m.Found || m.Type != o.Resource || m.LogicalID == "" {
 				continue
 			}
-			pointer := fmt.Sprintf("/entry/%d/resource", n)
-			for _, resource := range d.Resources() {
-				identity := resource.Base + "/" + resource.Type + "/" + resource.LogicalID
-				if resource.Pointer != pointer || resource.Type != o.Resource || resource.LogicalID == "" {
-					continue
-				}
-				// Repeated logical resources across pages are one entity, as
-				// fhirrest's own search accounting states; versions are compared there.
-				if !seen[identity] {
-					seen[identity] = true
-					matched[resource.Occurrence] = true
-				}
+			// Repeated logical resources across pages are one entity, as
+			// fhirrest's own search accounting states; versions are compared there.
+			if !seen[m.Identity] {
+				seen[m.Identity] = true
+				matched[m.Occurrence] = true
 			}
 		}
 		projected, err := d.Project(ctx, dataset.Binding{Run: expect.Binding.Run, Phase: expect.Binding.Phase, Namespace: expect.Binding.Namespace, Source: expect.Binding.Source}, o.projection())

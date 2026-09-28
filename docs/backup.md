@@ -145,6 +145,11 @@ backup must be one readmit can open; one it cannot is refused before anything
 is written. Windows is the exception: Go does not expose a directory flush
 through `os.Root` there, so every file is flushed but no directory is.
 
+A restore syncs the same way before it is reported: every directory it made,
+the restored project itself and the folder holding it, through the same
+directory discipline. A restore whose directories cannot be synced is written
+in full but not confirmed against a power loss, and exits non-zero saying so.
+
 A backup that finished but whose bytes no longer match the manifest sealed over
 them is refused the same way, **before the destination is created**. A restore
 that wrote the files it could still read and stopped would leave a directory
@@ -278,6 +283,7 @@ the part that did not fit.
 | The destination exists | Refuses: creation is exclusive |
 | The folder that would hold the backup cannot be opened | Refuses before anything is written: it is synced last |
 | The backup's directories cannot be synced | Reports it written in full but not confirmed against a power loss, and exits non-zero |
+| The restored project's directories cannot be synced | Reports it written in full but not confirmed against a power loss, and exits non-zero |
 | The destination is inside the project, or inside the backup | Refuses: `artifactpath` reserves it against both |
 | The destination is inside retained evidence | Refuses |
 | A backup carries no completion marker | Refuses: it was interrupted |

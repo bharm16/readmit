@@ -527,15 +527,11 @@ func searchMatches(base string, body []byte) (map[string]string, bool) {
 		return nil, false
 	}
 	out := map[string]string{}
-	for n, entry := range bundle.Entries {
-		if entry.SearchMode != "match" {
+	for _, m := range fhirrest.CorrelateEntries(bundle, d.Resources()) {
+		if m.Mode != "match" || !m.Found || m.LogicalID == "" {
 			continue
 		}
-		for _, resource := range d.Resources() {
-			if resource.Pointer == fmt.Sprintf("/entry/%d/resource", n) && resource.LogicalID != "" {
-				out[resource.Type+"/"+resource.LogicalID] = resource.VersionID
-			}
-		}
+		out[m.Type+"/"+m.LogicalID] = m.VersionID
 	}
 	return out, true
 }

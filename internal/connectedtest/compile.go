@@ -20,10 +20,8 @@ import (
 	"github.com/bharm16/readmit/internal/fhirobserve"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/localprofile"
 	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/profileeval"
-	"github.com/bharm16/readmit/internal/profilepack"
 	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -226,16 +224,12 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 		if err != nil {
 			return nil, err
 		}
-		switch ref.Schema {
-		case profileeval.ProfileSchema, profileeval.ProfileSchemaV3:
+		switch {
+		case profileeval.AcceptsProfile(ref.Schema):
 			_, err = profileeval.DecodeProfile(b)
-		case profileeval.PackSchema, profileeval.PackSchemaV3, profileeval.PackSchemaV4:
+		case profileeval.AcceptsPack(ref.Schema):
 			_, err = profileeval.DecodePack(b)
-		case localprofile.Schema:
-			_, err = localprofile.Decode(b)
-		case profilepack.Schema:
-			_, err = profilepack.Decode(b)
-		case profileversion.VersionSchema:
+		case ref.Schema == profileversion.VersionSchema:
 			_, err = profileversion.DecodeVersion(b)
 		default:
 			return nil, errors.New("unsupported profile pin")

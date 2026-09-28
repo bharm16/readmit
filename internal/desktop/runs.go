@@ -448,6 +448,82 @@ func runReaching(saved savedRun, test string, target replay.Target) reachingTarg
 	return reachingTarget{name: cmp.Or(test, target.Name, target.Address), kind: ConnectionRun, destination: target.Address}
 }
 
+func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	path := paths[primaryRole(RunItem)]
+	summary := &RunSummary{}
+	if regular(filepath.Join(path, "suite.json")) {
+		// One execution of a suite: several jobs, each to its own target.
+		execution, err := suiteExecution(item.ID, path)
+		if err != nil {
+			return view{}, err
+		}
+		summary.Outcome, summary.Jobs, summary.Uncertain = execution.outcome, execution.jobs, execution.uncertain
+		summary.DeliveryUncertain = execution.uncertain > 0
+		summary.StartedAt, summary.CompletedAt = stampedTime(execution.started), stampedTime(execution.completed)
+		summary.Suite = c.suiteOf(execution)
+		read := view{summary: ItemSummary{Run: summary}}
+		if !execution.started.IsZero() {
+			read.createdAt = &execution.started
+		}
+		return read, nil
+	}
+	var run *replay.Run
+	if declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema) {
+		receipt, err := connectedtransport.Open(path)
+		if err != nil {
+			return view{}, err
+		}
+		run, err = replay.Open(filepath.Join(path, "run"))
+		if err != nil {
+			return view{}, err
+		}
+		summary.Outcome = receipt.State
+		summary.Boundary = "transport-only"
+		summary.SourceCase = c.caseByIdentity(receipt.Binding.Source)
+	} else if declares(filepath.Join(path, "manifest.json"), replay.Schema) {
+		opened, err := replay.Open(path)
+		if err != nil {
+			return view{}, err
+		}
+		run = opened
+		summary.Outcome = "not-accepted"
+		if opened.Successful() {
+			summary.Outcome = "accepted"
+		}
+	} else {
+		opened, err := runresult.Open(path)
+		if err != nil {
+			return view{}, err
+		}
+		run = opened.Run
+		summary.DeliveryUncertain = opened.Lifecycle.DeliveryUncertain
+		switch {
+		case opened.Artifact != nil:
+			summary.Outcome = string(opened.Artifact.Result.Status)
+			if opened.Artifact.Result.Target != nil {
+				summary.Target = opened.Artifact.Result.Target.Address
+			}
+			summary.Boundary = opened.Artifact.Result.ObservationBoundary
+			summary.SourceCase = c.caseByIdentity(opened.Artifact.Result.InputBundleIdentity)
+		case opened.Durable:
+			summary.Outcome = string(opened.Lifecycle.State)
+		}
+	}
+	read := view{summary: ItemSummary{Run: summary}}
+	if run != nil {
+		summary.Target = run.Manifest.Target.Address
+		summary.StartedAt, summary.CompletedAt = stampedTime(run.Manifest.StartedAt), stampedTime(run.Manifest.CompletedAt)
+		for _, event := range run.Events {
+			if event.Delivery == "uncertain" {
+				summary.Uncertain++
+			}
+		}
+		started := run.Manifest.StartedAt
+		read.createdAt = &started
+	}
+	return read, nil
+}
+
 // runOfEntry resolves the saved test a spec entry is, and the environment it
 // follows, from the project's catalog. It reads and never writes.
 func runOfEntry(root, entry string) (savedRun, refusal) {

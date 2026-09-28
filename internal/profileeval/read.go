@@ -15,6 +15,27 @@ var token = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 var segment = regexp.MustCompile(`^[A-Z][A-Z0-9]{2}$`)
 var invalid = errors.New("invalid profile evaluation contract")
 
+// profileSchemas and packSchemas are the local-profile and profile-pack
+// contracts this release reads, oldest first. They are the one enumeration
+// every caller asks instead of listing versions itself: DecodeProfile and
+// DecodePack read exactly these, and a new version lands here once.
+var (
+	profileSchemas = []string{localprofile.Schema, ProfileSchema, ProfileSchemaV3}
+	packSchemas    = []string{profilepack.Schema, PackSchema, PackSchemaV3, PackSchemaV4, PackSchemaV5}
+)
+
+// ProfileSchemas returns the local-profile contracts this release reads, oldest first.
+func ProfileSchemas() []string { return slices.Clone(profileSchemas) }
+
+// PackSchemas returns the profile-pack contracts this release reads, oldest first.
+func PackSchemas() []string { return slices.Clone(packSchemas) }
+
+// AcceptsProfile reports whether this release reads a local profile declaring schema.
+func AcceptsProfile(schema string) bool { return slices.Contains(profileSchemas, schema) }
+
+// AcceptsPack reports whether this release reads a profile pack declaring schema.
+func AcceptsPack(schema string) bool { return slices.Contains(packSchemas, schema) }
+
 func decodeProfile(raw []byte) (ProfileV2, error) {
 	var head struct {
 		Schema string `json:"schema"`
@@ -128,14 +149,16 @@ func decodePack(raw []byte) (PackV2, error) {
 		if json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)) != nil || validateDatatypes(v.Datatypes, v.Schema == PackSchemaV5) != nil {
 			return p, invalid
 		}
-		p = PackV2{Schema: v.Schema, Metadata: v.Metadata, Messages: v.Messages, datatypes: v.Datatypes}
+		p = PackV2{Schema: v.Schema, Messages: v.Messages, datatypes: v.Datatypes}
 		b, err := json.Marshal(v.Metadata)
 		if err != nil {
 			return p, err
 		}
-		if _, err = profilepack.Decode(b); err != nil {
+		d, err := profilepack.Decode(b)
+		if err != nil {
 			return p, err
 		}
+		p.Metadata = d
 	case PackSchema:
 		if json.Unmarshal(raw, &p, json.RejectUnknownMembers(true)) != nil {
 			return p, invalid

@@ -6,15 +6,12 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"maps"
-	"os"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
-	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/exportreview"
 )
 
@@ -129,6 +126,9 @@ func (p *ConnectedPacket) Inventory(ctx context.Context, dir string) ([]Inventor
 	return items, nil
 }
 
+// surfacesOf maps one packet file to its disclosure surfaces: the credential
+// scan and the FHIR content it carries, over the retained location the
+// lifecycle's own classification answers.
 func surfacesOf(name string, data []byte) []string {
 	surfaces := []string{}
 	if credential(data) {
@@ -139,38 +139,42 @@ func surfacesOf(name string, data []byte) []string {
 		return append(surfaces, SurfacePacket)
 	}
 	fhir := fhirSurfaces(data)
-	switch {
-	case strings.HasPrefix(rel, "isolation/") || strings.HasPrefix(rel, "transitions/") || strings.HasPrefix(rel, "continuation/") || strings.HasPrefix(rel, "previous/") || strings.HasPrefix(rel, "preflight/"):
+	switch loc := connectedrun.Locate(rel); loc.Area {
+	case connectedrun.AreaSetup:
 		return append(surfaces, SurfaceSetup)
-	case strings.HasPrefix(rel, "plan/"):
+	case connectedrun.AreaPlan, connectedrun.AreaPlanDeps:
 		return append(append(surfaces, SurfacePlan), fhir...)
-	case !strings.HasPrefix(rel, "phases/"):
+	case connectedrun.AreaPhase:
+		switch loc.Sub {
+		case connectedrun.PhasePlan:
+			return append(append(surfaces, SurfacePlan), fhir...)
+		case connectedrun.PhaseValidations:
+			return append(append(surfaces, SurfaceValidator), fhir...)
+		case connectedrun.PhaseTransport:
+			return append(surfaces, SurfaceHL7Transport)
+		case connectedrun.PhaseManifest:
+			return append(surfaces, SurfaceMapping)
+		}
+		if loc.Binary && (loc.HTTP || loc.Sub == connectedrun.PhaseSteps || loc.Sub == connectedrun.PhasePreflight) {
+			if len(fhir) > 0 || isFHIR(data) {
+				return append(append(surfaces, SurfaceFHIRResource), fhir...)
+			}
+			return append(surfaces, SurfaceHTTPResponse)
+		}
+		if loc.HTTP || loc.Sub == connectedrun.PhaseSteps || loc.Sub == connectedrun.PhasePreflight {
+			return append(surfaces, SurfaceHTTPExchange)
+		}
+		if loc.Sub == connectedrun.PhaseObservations || loc.Sub == connectedrun.PhaseEvaluationDatasets || loc.Samples ||
+			loc.Sub == connectedrun.PhaseIntervals && loc.Dataset {
+			return append(surfaces, SurfaceTypedDataset)
+		}
+		if loc.Sub == connectedrun.PhaseIntervals {
+			return append(surfaces, SurfaceCompletion)
+		}
+		return append(surfaces, SurfaceLifecycle)
+	default:
 		return append(surfaces, SurfaceLifecycle)
 	}
-	_, rest, _ := strings.Cut(strings.TrimPrefix(rel, "phases/"), "/")
-	http := strings.Contains(rest, "/http/")
-	switch {
-	case strings.HasPrefix(rest, "plan/"):
-		return append(append(surfaces, SurfacePlan), fhir...)
-	case strings.HasPrefix(rest, "validations/"):
-		return append(append(surfaces, SurfaceValidator), fhir...)
-	case strings.HasPrefix(rest, "transport/"):
-		return append(surfaces, SurfaceHL7Transport)
-	case rest == "manifest.json" || rest == "started.json":
-		return append(surfaces, SurfaceMapping)
-	case strings.HasSuffix(rest, ".bin") && (http || strings.HasPrefix(rest, "steps/") || strings.HasPrefix(rest, "preflight/")):
-		if len(fhir) > 0 || isFHIR(data) {
-			return append(append(surfaces, SurfaceFHIRResource), fhir...)
-		}
-		return append(surfaces, SurfaceHTTPResponse)
-	case http || strings.HasPrefix(rest, "steps/") || strings.HasPrefix(rest, "preflight/"):
-		return append(surfaces, SurfaceHTTPExchange)
-	case strings.HasPrefix(rest, "observations/") || strings.HasPrefix(rest, "evaluation/datasets/") || strings.Contains(rest, "/samples/") || strings.HasPrefix(rest, "intervals/") && strings.Contains(rest, "/dataset"):
-		return append(surfaces, SurfaceTypedDataset)
-	case strings.HasPrefix(rest, "intervals/"):
-		return append(surfaces, SurfaceCompletion)
-	}
-	return append(surfaces, SurfaceLifecycle)
 }
 
 func isFHIR(data []byte) bool {
@@ -300,32 +304,14 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 	if err != nil {
 		return nil, err
 	}
-	packet, err := OpenConnected(ctx, packetPath)
+	opened, err := openDisclosedPacket(ctx, packetPath)
 	if err != nil {
 		return nil, err
 	}
-	dir, err := artifactpath.Directory(packetPath)
-	if err != nil {
-		return nil, err
-	}
-	inventory, err := packet.Inventory(ctx, dir)
-	if err != nil {
-		return nil, err
-	}
-	c := &ExtractCandidate{packet: packetPath, policy: policyPath, Blocked: []string{}}
-	for i, item := range inventory {
-		switch {
-		case item.Surface == SurfaceCredential:
-			c.Blocked = append(c.Blocked, "credential material (a token or private key) is retained in "+strconv.Itoa(item.Files)+" files; no policy can admit it and no share-oriented export is made")
-		case policy.Surfaces[item.Surface] == "":
-			c.Blocked = append(c.Blocked, "the policy does not map the "+item.Surface+" surface held in "+strconv.Itoa(item.Files)+" files")
-		default:
-			inventory[i].Disposition = policy.Surfaces[item.Surface]
-		}
-	}
-	x := Extract{Schema: ExtractSchema, PacketIdentity: packet.Identity, PolicyIdentity: digest(raw), EvidenceClass: EvidenceExtract, Equivalence: ConnectedEquivalence{State: EquivalenceUnverified, Reason: "No external replay of this extract is retained, so it is not described as an equivalent reproducer. Its disclosure review is unaffected."}, Runs: []ExtractRun{}, Inventory: inventory, Scope: extractScope}
-	x.Runs = valueFreeRuns(packet)
-	x.Comparison = valueFreeComparison(packet)
+	c := &ExtractCandidate{packet: packetPath, policy: policyPath, Blocked: applyDisclosurePolicy(opened.inventory, policy.Surfaces)}
+	x := Extract{Schema: ExtractSchema, PacketIdentity: opened.packet.Identity, PolicyIdentity: digest(raw), EvidenceClass: EvidenceExtract, Equivalence: ConnectedEquivalence{State: EquivalenceUnverified, Reason: "No external replay of this extract is retained, so it is not described as an equivalent reproducer. Its disclosure review is unaffected."}, Runs: []ExtractRun{}, Inventory: opened.inventory, Scope: extractScope}
+	x.Runs = valueFreeRuns(opened.packet)
+	x.Comparison = valueFreeComparison(opened.packet)
 	// The extract is scanned for every value the packet observed or bound, so
 	// a value that reached it through any path blocks it.
 	x.Residual = exportreview.Scan{Status: "passed", Locations: []string{}}
@@ -333,10 +319,7 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 	if err != nil {
 		return nil, err
 	}
-	x.Residual = exportreview.Residual(map[string][]byte{"extract.json": body}, knownValues(packet))
-	if x.Residual.Status != "passed" {
-		c.Blocked = append(c.Blocked, "a value the packet retained appears in the extract")
-	}
+	c.Blocked, x.Residual = scanResidual(c.Blocked, map[string][]byte{"extract.json": body}, knownValues(opened.packet), "a value the packet retained appears in the extract")
 	c.Extract = x
 	if c.raw, err = encode(x); err != nil {
 		return nil, err
@@ -345,112 +328,6 @@ func PrepareExtract(ctx context.Context, packetPath, policyPath string) (*Extrac
 		return nil, errors.New("the extract exceeds 4 MiB; select a smaller packet")
 	}
 	return c, nil
-}
-
-// valueFreeRuns summarizes every retained lifecycle by position and claim:
-// states, verdicts, declared boundaries and check outcomes, never authored
-// text or a value.
-func valueFreeRuns(packet *ConnectedPacket) []ExtractRun {
-	out := []ExtractRun{}
-	runs := map[string]*ConnectedRun{"current": &packet.Manifest.Current, "baseline": packet.Manifest.Baseline, "replay": packet.Manifest.Replay}
-	for _, section := range connectedSections {
-		r := runs[section]
-		if r == nil {
-			continue
-		}
-		run := ExtractRun{Section: section, Identity: r.Identity, Schema: r.Schema, Plan: r.Plan, State: r.State, Verdict: r.Verdict, Setup: r.Setup, Cleanup: r.Cleanup, Boundary: r.Boundary, Classification: r.Environment.Classification, Boundaries: []string{}, Phases: []ExtractPhase{}}
-		for _, q := range r.Qualification {
-			run.Boundaries = append(run.Boundaries, q.Boundary)
-		}
-		for i, phase := range r.Phases {
-			p := ExtractPhase{Position: i + 1, State: phase.State, Verdict: phase.Verdict, Checks: []ExtractCheck{}}
-			for j, check := range phase.Checks {
-				p.Checks = append(p.Checks, ExtractCheck{Position: j + 1, Claim: checkClaim(check.ID), Outcome: string(check.Outcome)})
-			}
-			run.Phases = append(run.Phases, p)
-		}
-		out = append(out, run)
-	}
-	return out
-}
-
-// valueFreeComparison is the packet's baseline comparison by dimension state,
-// behavior and record counts only.
-func valueFreeComparison(packet *ConnectedPacket) *ExtractComparison {
-	cmp := packet.Comparison
-	if cmp == nil {
-		return nil
-	}
-	ec := &ExtractComparison{Dimensions: []string{}, Attribution: cmp.Attribution.Outcome, Behavior: []string{}, Records: []string{}}
-	for _, d := range cmp.Dimensions {
-		ec.Dimensions = append(ec.Dimensions, d.Dimension+": "+d.State)
-	}
-	for _, check := range cmp.Checks {
-		ec.Behavior = append(ec.Behavior, check.Baseline+" -> "+check.Current+"; definition "+check.Definition+"; behavior "+check.Behavior)
-	}
-	for _, r := range cmp.Records {
-		if r.State != "compared" {
-			ec.Records = append(ec.Records, r.State)
-			continue
-		}
-		for _, k := range r.Keys {
-			ec.Records = append(ec.Records, strconv.Itoa(k.Baseline)+" -> "+strconv.Itoa(k.Current)+"; "+k.State+"; "+strconv.Itoa(len(k.Values))+" field columns; "+strconv.Itoa(len(k.Identities))+" server-assigned columns")
-		}
-	}
-	return ec
-}
-
-// knownValues are the values the packet's lifecycles observed, bound and
-// declared: every retained record field, every server-assigned identity, the
-// server bases, environment names and target revision. Short and purely
-// numeric values would match the extract's own counts and digests, so a
-// known value needs four characters and a letter.
-func knownValues(p *ConnectedPacket) [][]byte {
-	seen := map[string]bool{}
-	add := func(v string) {
-		if len(v) >= 4 && strings.IndexFunc(v, unicode.IsLetter) >= 0 && !hexDigest(v) {
-			seen[v] = true
-		}
-	}
-	for _, e := range p.evidence {
-		env := e.Plan.Document().Test.Environment
-		for _, v := range []string{env.Project, env.ID, env.Name, env.Endpoint, env.TargetRevision.Value} {
-			add(v)
-		}
-		for _, s := range e.Plan.Document().Test.Servers {
-			add(s.Base)
-		}
-		for _, phase := range e.Phases {
-			for _, t := range phase.Tables {
-				for _, row := range t.Rows {
-					for _, v := range row.Values {
-						add(v.Text)
-						for _, item := range v.Items {
-							add(item.Text)
-						}
-					}
-				}
-			}
-			for _, v := range phase.Bound {
-				add(v)
-			}
-			for _, v := range phase.Inputs {
-				add(v)
-			}
-		}
-	}
-	terms := [][]byte{}
-	for _, v := range slices.Sorted(maps.Keys(seen)) {
-		terms = append(terms, []byte(v))
-	}
-	return terms
-}
-
-func hexDigest(v string) bool {
-	if len(v) != 64 {
-		return false
-	}
-	return strings.IndexFunc(v, func(r rune) bool { return !strings.ContainsRune("0123456789abcdef", r) }) < 0
 }
 
 var disclosurePolicyFile = artifactdir.Document{
@@ -470,41 +347,17 @@ var extractFamily = artifactdir.Family{
 // Publish writes the extract only when nothing blocks it and a fresh
 // preparation yields exactly the approved bytes. It transmits nothing.
 func (c *ExtractCandidate) Publish(ctx context.Context, approval, output string) error {
-	if len(c.Blocked) > 0 {
-		return errors.New("the extract is blocked: " + strings.Join(c.Blocked, "; "))
-	}
-	fresh, err := PrepareExtract(ctx, c.packet, c.policy)
-	if err != nil {
-		return err
-	}
-	if approval != c.Identity() || fresh.Identity() != c.Identity() || len(fresh.Blocked) > 0 {
-		return errors.New("the extract requires approval of its exact current identity; changed evidence or policy requires review again")
-	}
-	protected := []os.FileInfo{}
-	for _, path := range []string{c.packet, c.policy} {
-		info, err := os.Stat(path)
-		if err != nil {
-			return err
-		}
-		protected = append(protected, info)
-	}
-	path, err := artifactpath.Destination(output, protected...)
-	if err != nil {
-		return err
-	}
-	w, err := artifactdir.Create(path, extractFamily, artifactdir.Durable)
-	if err != nil {
-		return err
-	}
-	defer w.Close()
-	if err := w.WriteFile("extract.json", fresh.raw); err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	_, err = w.Seal(nil)
-	return err
+	return publishDisclosed(ctx, disclosedPublish{
+		packet: c.packet, policy: c.policy, blocked: c.Blocked, identity: c.Identity(),
+		changed: "evidence or policy", family: extractFamily, approval: approval, output: output,
+		repare: func(ctx context.Context) ([]disclosedFile, []string, string, error) {
+			fresh, err := PrepareExtract(ctx, c.packet, c.policy)
+			if err != nil {
+				return nil, nil, "", err
+			}
+			return []disclosedFile{{name: "extract.json", data: fresh.raw}}, fresh.Blocked, fresh.Identity(), nil
+		},
+	})
 }
 
 // OpenExtract verifies a published extract: its seal and its exact canonical,
@@ -513,22 +366,15 @@ func (c *ExtractCandidate) Publish(ctx context.Context, approval, output string)
 func OpenExtract(dir string) (Extract, error) {
 	var x Extract
 	invalid := errors.New("invalid, incomplete or changed connected extract")
-	dir, err := artifactpath.Directory(dir)
+	_, raw, err := verifyDisclosedSeal(dir, artifactdir.Layout{AllowFile: extractFamily.Layout.AllowFile, MaxFiles: 2, MaxFileBytes: extractMaxBytes, MaxBytes: extractMaxBytes + 128}, invalid)
 	if err != nil {
 		return x, err
 	}
-	files, err := artifactdir.Read(dir, artifactdir.Layout{AllowFile: extractFamily.Layout.AllowFile, MaxFiles: 2, MaxFileBytes: extractMaxBytes, MaxBytes: extractMaxBytes + 128})
-	if err != nil {
-		return x, invalid
-	}
-	raw := files["extract.json"]
-	if string(files["identity.sha256"]) != digest(raw)+"\n" || json.Unmarshal(raw, &x, json.RejectUnknownMembers(true)) != nil || x.Schema != ExtractSchema || x.EvidenceClass != EvidenceExtract || x.Equivalence.State != EquivalenceUnverified || x.Scope != extractScope || x.Residual.Status != "passed" {
+	if json.Unmarshal(raw, &x, json.RejectUnknownMembers(true)) != nil || x.Schema != ExtractSchema || x.EvidenceClass != EvidenceExtract || x.Equivalence.State != EquivalenceUnverified || x.Scope != extractScope || x.Residual.Status != "passed" {
 		return Extract{}, invalid
 	}
-	for _, item := range x.Inventory {
-		if item.Surface == SurfaceCredential || item.Disposition != "exclude" {
-			return Extract{}, invalid
-		}
+	if !inventoryAdmitted(x.Inventory, func(item InventoryItem) bool { return item.Disposition == "exclude" }) {
+		return Extract{}, invalid
 	}
 	canonical, err := encode(x)
 	if err != nil || !bytes.Equal(canonical, raw) {

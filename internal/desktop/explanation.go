@@ -151,6 +151,12 @@ func explainRun(ctx context.Context, request RunExplanationRequest) RunExplanati
 	if root == "" {
 		return RunExplanationResult{State: declined.state, Reason: declined.reason}
 	}
+	return explainRunAt(ctx, root, request)
+}
+
+// explainRunAt decides the same explanation over an already resolved project
+// folder, for callers that hold one.
+func explainRunAt(ctx context.Context, root string, request RunExplanationRequest) RunExplanationResult {
 	if request.Run == "" || request.Assertions == "" {
 		return RunExplanationResult{State: Empty, Reason: "an explanation needs one retained run and one assertion set"}
 	}

@@ -54,6 +54,48 @@ type EnvironmentLinks struct {
 // transport is not chosen.
 const TransportProblem = "Choose a transport"
 
+func readEnvironment(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	if err := verifyEnvironment(paths); err != nil {
+		return view{}, err
+	}
+	target, err := replay.ReadRecordedTarget(paths[primaryRole(EnvironmentItem)])
+	if err != nil {
+		return view{}, err
+	}
+	environment := target.Environment()
+	summary := &EnvironmentSummary{Classification: string(environment.Classification), Address: target.Address, Transport: target.Transport,
+		TransportApproved: target.ApprovedTransport, ApprovalRequired: approvalRequired(target)}
+	if _, held := paths["policy"]; held {
+		summary.HasPolicy = true
+	}
+	if path, held := paths["reset"]; held {
+		if plan, err := operation.ReadResetPlan(path); err == nil {
+			summary.ResetActions = len(plan.Actions)
+		}
+	}
+	if path, held := paths["links"]; held {
+		if links, err := readLinks(path); err == nil {
+			summary.ResetName = links.ResetName
+			if index := c.document.Find(links.Observation); links.Observation != "" && index >= 0 && !c.removed(c.document.Items[index]) {
+				linked := c.document.Items[index]
+				summary.Observation = &ItemRef{Kind: ObservationItem, ID: linked.ID, Revision: linked.RevisionLabel()}
+				summary.ObservationName = linked.Name
+				if linked.Name == "" {
+					if paths, availability, _ := c.backing(linked); availability == ItemAvailable {
+						if source, _, err := operation.ValidateObservationSource(paths["source"]); err == nil {
+							summary.ObservationName = source.Observes.Identity
+						}
+					}
+				}
+			}
+		}
+	}
+	if check, err := readCheck(c.root, item.ID); err == nil {
+		summary.LastCheckedAt, summary.LastCheckOutcome, summary.LastCheckRevision = &check.CheckedAt, check.Outcome, check.Revision
+	}
+	return view{name: target.Name, summary: ItemSummary{Environment: summary}}, nil
+}
+
 // validateEnvironmentDraft validates a whole environment draft: its target
 // under the name the environment keeps, its approval decided from the
 // transport the person chose, and each optional member against the target.

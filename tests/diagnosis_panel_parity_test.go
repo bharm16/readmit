@@ -22,14 +22,14 @@ import (
 // diagnose review` through the same engine and the same readers, so what the
 // window shows and refuses is what they report and refuse over the same files.
 
-// panelWorkspace captures the acknowledged booking and two captures of one
-// reschedule whose booking the capture never held, and copies in the case the
-// native window retained in September (testdata/acceptance/native-109), all as
-// entries of one workspace both entry points read. It returns the verified
-// acknowledged case's identity.
+// panelWorkspace initializes a project, captures the acknowledged booking
+// and two captures of one reschedule whose booking the capture never held,
+// and copies in the case the native window retained in September
+// (testdata/acceptance/native-109), all as entries of one project both entry
+// points read. It returns the verified acknowledged case's identity.
 func panelWorkspace(t *testing.T) (workspace, identity string) {
 	t.Helper()
-	workspace = t.TempDir()
+	workspace = newProject(t)
 	for _, capture := range []struct{ fixture, entry string }{
 		{"diagnose-acknowledged.mllp", "acked"},
 		{"diagnose-reschedule.hl7", "monday"},
@@ -179,36 +179,47 @@ func TestTheWindowReopensTheReportReadmitDiagnoseWrote(t *testing.T) {
 		t.Fatalf("the window reopened other findings than the command line wrote: %+v", shown)
 	}
 
-	// Decisions typed about it are reviewed by the window exactly as the
-	// command line reviews them over the file.
+	// Decisions typed about it are previewed by the window through the
+	// catalog review of its analysis.
+	project := desktop.RequestContext{Project: workspace}
+	acked := catalogCaseRef(t, app, project, "acked")
+	current := app.OpenCaseFindings(desktop.FindingsRequest{Context: project, Case: acked, Identity: identity})
+	if current.State != desktop.Completed || current.Analysis == nil {
+		t.Fatalf("the reopened report is not the case's current analysis: %+v", current)
+	}
 	decisions := decisionsFor(t, sha256Hex(reportData))
-	previewed := app.ReviewFindings(desktop.FindingReviewRequest{
-		Workspace: workspace, Case: "acked", Identity: identity, Report: "acked-diagnosis",
-		ReportSHA256: shown.ReportSHA256, Decisions: decisions.Decisions,
-	})
-	if previewed.State != desktop.Completed || previewed.Review == nil {
+	draft := desktop.FindingReviewDraft{Analysis: current.Analysis.Ref, ReportSHA256: shown.ReportSHA256, Decisions: decisions.Decisions}
+	previewed := app.PreviewFindingReview(desktop.DraftRequest{Context: project, Kind: desktop.FindingReviewItem, Draft: desktop.ItemDraft{FindingReview: &draft}})
+	if previewed.State != desktop.Completed || len(previewed.Problems) != 0 || len(previewed.Statuses) == 0 {
 		t.Fatalf("the reopened report could not be reviewed: %+v", previewed)
 	}
 
 	// Another case's report opens as what it is — run over other evidence —
-	// and reviewing it over this case is refused by both in one sentence.
+	// and opening it over this case is refused by both, each through its own
+	// seam: the window names the object, the command line the files.
 	other := app.OpenDiagnosisReport(workspace, "monday-diagnosis", 0)
 	if other.State != desktop.Completed || other.Diagnosis == nil || other.Diagnosis.CaseIdentity == identity {
 		t.Fatalf("another case's report was not named as another case's: %+v", other)
 	}
-	otherDecisions := decisionsFor(t, other.Diagnosis.ReportSHA256)
-	foreign := app.ReviewFindings(desktop.FindingReviewRequest{
-		Workspace: workspace, Case: "acked", Identity: identity, Report: "monday-diagnosis",
-		ReportSHA256: other.Diagnosis.ReportSHA256, Decisions: otherDecisions.Decisions[:1],
-	})
-	if foreign.State != desktop.Failed || foreign.Review != nil ||
-		foreign.Reason != "this diagnosis was run over different evidence; open the case the report names" {
-		t.Fatalf("the window reviewed another case's report over this case: %+v", foreign)
+	monday := catalogCaseRef(t, app, project, "monday")
+	mondayOpened := app.OpenCase(workspace, "monday")
+	if mondayOpened.State != desktop.Completed || mondayOpened.Case == nil {
+		t.Fatalf("the other case was not verified: %+v", mondayOpened)
 	}
+	mondayCurrent := app.OpenCaseFindings(desktop.FindingsRequest{Context: project, Case: monday, Identity: mondayOpened.Case.Identity})
+	if mondayCurrent.State != desktop.Completed || mondayCurrent.Analysis == nil {
+		t.Fatalf("the other case's analysis did not open: %+v", mondayCurrent)
+	}
+	foreign := app.OpenCaseFindings(desktop.FindingsRequest{Context: project, Case: acked, Identity: identity, Analysis: &mondayCurrent.Analysis.Ref})
+	if foreign.State != desktop.Failed || foreign.Analysis != nil ||
+		foreign.Reason != "this analysis was not made over this case's evidence" {
+		t.Fatalf("the window opened another case's analysis over this case: %+v", foreign)
+	}
+	otherDecisions := decisionsFor(t, other.Diagnosis.ReportSHA256)
 	otherFile := writeDocument(t, t.TempDir(), "other-decisions.json", string(encodeDecisions(t, findingreview.Decisions{
 		Schema: findingreview.DecisionsSchema, Report: other.Diagnosis.ReportSHA256, Decisions: otherDecisions.Decisions[:1],
 	})))
-	refusedByCommandLine(t, foreign.Reason, "diagnose", "review", filepath.Join(workspace, "monday-diagnosis"),
+	refusedByCommandLine(t, "this diagnosis was run over different evidence; open the case the report names", "diagnose", "review", filepath.Join(workspace, "monday-diagnosis"),
 		"--case", filepath.Join(workspace, "acked"), "--decisions", otherFile, "--output", filepath.Join(t.TempDir(), "review"))
 
 	if after := treeOf(t, workspace); !reflect.DeepEqual(after, before) {
@@ -254,20 +265,23 @@ func TestTheWindowPreviewsTheReviewReadmitDiagnoseReviewRecords(t *testing.T) {
 	if opened := app.OpenCase(workspace, "acked"); opened.State != desktop.Completed {
 		t.Fatalf("the case was not verified: %+v", opened)
 	}
-	request := desktop.FindingReviewRequest{
-		Workspace: workspace, Case: "acked", Identity: identity, Report: "acked-diagnosis",
-		ReportSHA256: reportIdentity, Decisions: decisions.Decisions,
+	project := desktop.RequestContext{Project: workspace}
+	current := app.OpenCaseFindings(desktop.FindingsRequest{Context: project, Case: catalogCaseRef(t, app, project, "acked"), Identity: identity})
+	if current.State != desktop.Completed || current.Analysis == nil {
+		t.Fatalf("the report is not the case's current analysis: %+v", current)
 	}
+	draft := desktop.FindingReviewDraft{Analysis: current.Analysis.Ref, ReportSHA256: reportIdentity, Decisions: decisions.Decisions}
 	before := treeOf(t, workspace)
-	previewed := app.ReviewFindings(request)
-	if previewed.State != desktop.Completed || previewed.Review == nil || previewed.Output != "" || previewed.DecisionsOutput != "" {
+	previewed := app.PreviewFindingReview(desktop.DraftRequest{Context: project, Kind: desktop.FindingReviewItem, Draft: desktop.ItemDraft{FindingReview: &draft}})
+	if previewed.State != desktop.Completed || len(previewed.Problems) != 0 || len(previewed.Statuses) == 0 {
 		t.Fatalf("the window did not preview the review: %+v", previewed)
 	}
 	if after := treeOf(t, workspace); !reflect.DeepEqual(after, before) {
 		t.Fatal("a preview wrote into the workspace")
 	}
 	// The same decisions saved as the window's decisions document are what the
-	// command line reviews, and its record is the preview's, byte for byte.
+	// command line reviews, and its record holds the preview's findings, byte
+	// for byte.
 	saved := app.SaveFindingDecisions(desktop.RuleDocumentSaveRequest{
 		Workspace: workspace, Document: string(encodeDecisions(t, decisions)), Output: "decisions.json",
 	})
@@ -279,12 +293,12 @@ func TestTheWindowPreviewsTheReviewReadmitDiagnoseReviewRecords(t *testing.T) {
 		"--case", filepath.Join(workspace, "acked"), "--decisions", filepath.Join(workspace, "decisions.json"), "--output", cliReview); err != nil || stderr != "" {
 		t.Fatalf("diagnose review: %v %s", err, stderr)
 	}
-	record, err := findingreview.JSON(previewed.Review.Record)
-	if err != nil {
+	var record findingreview.Record
+	if err := json.Unmarshal(mustRead(t, filepath.Join(cliReview, "review.json")), &record); err != nil {
 		t.Fatal(err)
 	}
-	if cli := mustRead(t, filepath.Join(cliReview, "review.json")); !bytes.Equal(record, cli) {
-		t.Fatalf("the window previewed %s and the command line recorded %s", record, cli)
+	if shell, cli := statusesBytes(t, previewed.Statuses), statusesBytes(t, record.Findings); !bytes.Equal(shell, cli) {
+		t.Fatalf("the window previewed %s and the command line recorded %s", shell, cli)
 	}
 }
 
@@ -344,24 +358,39 @@ func TestTheWindowOpensAndSavesTheDecisionsReadmitDiagnoseReviewReads(t *testing
 	if again := app.OpenFindingDecisions(workspace, "my-decisions.json"); again.SHA256 != saved.SHA256 || !reflect.DeepEqual(again.Decisions, saved.Decisions) {
 		t.Fatalf("the saved decisions do not reopen as themselves: %+v", again)
 	}
+	// The same decisions saved as the analysis's catalog review are what the
+	// command line reviews, and its record holds the window's findings, byte
+	// for byte, bound to the exact bytes the window saved.
+	project := desktop.RequestContext{Project: workspace}
+	current := app.OpenCaseFindings(desktop.FindingsRequest{Context: project, Case: catalogCaseRef(t, app, project, "acked"), Identity: identity})
+	if current.State != desktop.Completed || current.Analysis == nil {
+		t.Fatalf("the report is not the case's current analysis: %+v", current)
+	}
+	draft := desktop.FindingReviewDraft{Analysis: current.Analysis.Ref, ReportSHA256: reportIdentity, Decisions: saved.Decisions.Decisions}
+	reviewed := app.SaveItem(desktop.SaveItemRequest{Context: project, Kind: desktop.FindingReviewItem, IntentID: "review-1",
+		Draft: desktop.ItemDraft{FindingReview: &draft}})
+	if reviewed.Outcome != desktop.SavedOutcome || reviewed.Saved == nil {
+		t.Fatalf("the window did not save the review: %+v", reviewed)
+	}
+	reviewDecisions := filepath.Join(workspace, singleEntry(t, workspace, "finding-review-"))
 	cliReview := filepath.Join(t.TempDir(), "review")
 	if _, stderr, err := run(t, "diagnose", "review", filepath.Join(workspace, "acked-diagnosis"), "--case", filepath.Join(workspace, "acked"),
-		"--decisions", filepath.Join(workspace, "my-decisions.json"), "--output", cliReview); err != nil || stderr != "" {
+		"--decisions", reviewDecisions, "--output", cliReview); err != nil || stderr != "" {
 		t.Fatalf("diagnose review: %v %s", err, stderr)
 	}
-	previewed := app.ReviewFindings(desktop.FindingReviewRequest{
-		Workspace: workspace, Case: "acked", Identity: identity, Report: "acked-diagnosis",
-		ReportSHA256: reportIdentity, Decisions: saved.Decisions.Decisions,
-	})
-	if previewed.State != desktop.Completed || previewed.Review == nil || previewed.Review.Record.Decisions != saved.SHA256 {
-		t.Fatalf("the window's review does not name the saved decisions: %+v", previewed)
-	}
-	record, err := findingreview.JSON(previewed.Review.Record)
-	if err != nil {
+	var record findingreview.Record
+	if err := json.Unmarshal(mustRead(t, filepath.Join(cliReview, "review.json")), &record); err != nil {
 		t.Fatal(err)
 	}
-	if cli := mustRead(t, filepath.Join(cliReview, "review.json")); !bytes.Equal(record, cli) {
-		t.Fatalf("the window reviewed %s and the command line %s", record, cli)
+	if record.Decisions != sha256Hex(mustRead(t, reviewDecisions)) {
+		t.Fatal("the command line recorded other decisions than the window saved")
+	}
+	history := app.FindingReviewHistory(desktop.ItemRequest{Context: project, Ref: current.Analysis.Ref})
+	if history.State != desktop.Completed || history.Review == nil || history.Review.ID != reviewed.Saved.ID {
+		t.Fatalf("the window does not read the review it saved: %+v", history)
+	}
+	if shell, cli := statusesBytes(t, history.Statuses), statusesBytes(t, record.Findings); !bytes.Equal(shell, cli) {
+		t.Fatalf("the window reviewed %s and the command line %s", shell, cli)
 	}
 	// Saving never overwrites: an entry already there is refused, unchanged.
 	again := app.SaveFindingDecisions(desktop.RuleDocumentSaveRequest{Workspace: workspace, Document: string(written), Output: "shipped-decisions.json"})
