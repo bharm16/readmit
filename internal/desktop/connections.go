@@ -4,11 +4,15 @@ import (
 	"cmp"
 	"context"
 	"net/url"
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/operation"
+	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // The connection inventory. Security lists the external access actually
@@ -101,9 +105,9 @@ type ConnectionDetail struct {
 
 // ConnectionRow is one configured connection or one operation reaching
 // outside the window now. Ref is stable across reads: environment:ID,
-// observation:ID, hub:client, hub:operator, portal, operation:NAME or
-// program. Disclosure is the id of the privacy status operation that states
-// its data and authorization.
+// observation:ID, hub:client, hub:operator, runner:config, portal,
+// operation:NAME or program. Disclosure is the id of the privacy status
+// operation that states its data and authorization.
 type ConnectionRow struct {
 	Ref         string             `json:"ref"`
 	Name        string             `json:"name"`
@@ -132,21 +136,88 @@ type ConnectionsResult struct {
 
 // reachingTarget is what an operation holding the slot is reaching, recorded
 // by the operation itself, so the inventory still names it after its
-// configuration was removed.
+// configuration was removed. An empty ref is the operation itself,
+// operation:NAME, named by the object it carries.
 type reachingTarget struct {
 	ref, name, destination string
 	kind                   ConnectionKind
 }
 
 // reach records what the operation holding the slot reaches, until the slot
-// is released.
+// is released. Each operation that reaches outside the window records it as
+// soon as it has resolved what it reaches, before it reaches it.
 func (a *App) reach(target reachingTarget) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	if a.running {
+		if target.ref == "" {
+			target.ref = "operation:" + a.operation
+		}
 		a.reaching = &target
 	}
+	reached := a.reached
+	a.mu.Unlock()
+	if reached != nil {
+		reached()
+	}
 }
+
+// specNamed is what an active row calls a run of the workspace spec entry:
+// the name the spec declares, or the operation's own activity when the spec
+// cannot be read. A file's name is never the label.
+func specNamed(workspace, entry, operation string) string {
+	if spec, err := testrunner.ReadSpec(filepath.Join(workspace, filepath.FromSlash(entry))); err == nil && spec.Name != "" {
+		return spec.Name
+	}
+	return activityTitle(operation)
+}
+
+// configuredRunner is the runner configuration this window last read, saved
+// or enrolled with: parsed values already in hand, so listing reads no file.
+type configuredRunner struct {
+	path, name, hub string
+	// enrolledAt is when an enrollment with it last succeeded.
+	enrolledAt *time.Time
+}
+
+// runnerName is what the inventory calls a runner: the environment its
+// configuration serves.
+func runnerName(environment string) string {
+	return "Runner " + environment
+}
+
+// configureRunner records the runner configuration at path as the one this
+// window last configured, keeping its enrollment time when it is the same
+// configuration.
+func (a *App) configureRunner(path, environment, hub string, enrolled bool) {
+	a.runnerMu.Lock()
+	defer a.runnerMu.Unlock()
+	next := &configuredRunner{path: path, name: runnerName(environment), hub: hostOf(hub)}
+	if previous := a.runnerConfig; previous != nil && previous.path == path && previous.hub == next.hub {
+		next.enrolledAt = previous.enrolledAt
+	}
+	if enrolled {
+		at := a.now()
+		next.enrolledAt = &at
+	}
+	a.runnerConfig = next
+}
+
+// reachRunner records that the runner operation holding the slot reaches the
+// hub of the configuration at path: the runner row when it is the one this
+// window configured, or else the operation named by that configuration.
+func (a *App) reachRunner(path, environment, hub string) {
+	a.runnerMu.Lock()
+	configured := a.runnerConfig != nil && a.runnerConfig.path == path
+	a.runnerMu.Unlock()
+	target := reachingTarget{name: runnerName(environment), kind: ConnectionRunner, destination: hostOf(hub)}
+	if configured {
+		target.ref = runnerRef
+	}
+	a.reach(target)
+}
+
+// runnerRef is the runner row's ref.
+const runnerRef = "runner:config"
 
 // sessionMark is when this window last connected or ended a session.
 type sessionMark struct {
@@ -192,6 +263,9 @@ func (a *App) ListConnections(request RequestContext) ConnectionsResult {
 		result.ProjectReason = reason
 	}
 	rows = append(rows, a.hubConnections(holder)...)
+	if row, ok := a.runnerConnection(holder, reaching != nil); ok {
+		rows = append(rows, row)
+	}
 	if row, ok := a.portalConnection(); ok {
 		rows = append(rows, row)
 	}
@@ -207,8 +281,12 @@ func (a *App) ListConnections(request RequestContext) ConnectionsResult {
 			}
 		}
 		if !attributed {
+			disclosure := disclosureOf(reaching.kind)
+			if activity, _, ok := activityOf(holder); ok {
+				disclosure = activity
+			}
 			rows = append(rows, ConnectionRow{Ref: reaching.ref, Name: reaching.name, Kind: reaching.kind, Destination: reaching.destination,
-				State: ConnectionActive, Owner: ownerOf(reaching.ref, reaching.kind), Disclosure: disclosureOf(reaching.kind),
+				State: ConnectionActive, Owner: ownerOf(reaching.ref, reaching.kind), Disclosure: disclosure,
 				Actions: []ConnectionAction{}, Detail: ConnectionDetail{Operation: holder}})
 			attributed = true
 		}
@@ -374,6 +452,28 @@ func (a *App) hubConnections(holder string) []ConnectionRow {
 	return rows
 }
 
+// runnerConnection is the runner configuration this window last read, saved
+// or enrolled with, from what it recorded then. It is active while a runner
+// operation holds the slot and recorded nothing else it reaches.
+func (a *App) runnerConnection(holder string, recorded bool) (ConnectionRow, bool) {
+	a.runnerMu.Lock()
+	configured := a.runnerConfig
+	a.runnerMu.Unlock()
+	if configured == nil {
+		return ConnectionRow{}, false
+	}
+	row := ConnectionRow{Ref: runnerRef, Name: configured.name, Kind: ConnectionRunner, Destination: configured.hub,
+		State: ConnectionNotChecked, Owner: ConnectionOwner{Kind: OwnerRunner}, Disclosure: "runner",
+		Actions: []ConnectionAction{ConnectionEdit}, Detail: ConnectionDetail{ConfigPath: configured.path}}
+	if configured.enrolledAt != nil {
+		row.State, row.CheckedAt = ConnectionChecked, catalogStamp(*configured.enrolledAt)
+	}
+	if activity, _, ok := activityOf(holder); ok && activity == "runner" && !recorded {
+		row.State, row.Detail.Operation = ConnectionActive, holder
+	}
+	return row, true
+}
+
 // portalConnection is the customer portal, listed only while a destinations
 // file is selected. The portal is opened in the person's browser; this
 // window never requests it.
@@ -401,13 +501,14 @@ func catalogStamp(at time.Time) *string {
 	return &stamp
 }
 
-// ownerOf is where a reached object is edited.
+// ownerOf is where a reached object is edited: the saved object its ref
+// names, whatever the operation reaching it is, or else the kind's owner.
 func ownerOf(ref string, kind ConnectionKind) ConnectionOwner {
-	switch kind {
-	case ConnectionEnvironment:
-		return ConnectionOwner{Kind: OwnerEnvironment, ObjectID: ref[len("environment:"):]}
-	case ConnectionSource:
-		return ConnectionOwner{Kind: OwnerObservation, ObjectID: ref[len("observation:"):]}
+	if id, ok := strings.CutPrefix(ref, "environment:"); ok {
+		return ConnectionOwner{Kind: OwnerEnvironment, ObjectID: id}
+	}
+	if id, ok := strings.CutPrefix(ref, "observation:"); ok {
+		return ConnectionOwner{Kind: OwnerObservation, ObjectID: id}
 	}
 	return ConnectionOwner{Kind: ConnectionOwnerKind(kind)}
 }
@@ -450,4 +551,58 @@ func activityTitle(id string) string {
 		}
 	}
 	return id
+}
+
+// savedObjectOf is the project's saved object of the kind given whose member
+// in role is the project entry given, when the folder at root is a project
+// that records one. It reads the catalog and nothing it names.
+func savedObjectOf(root string, kind ItemKind, role, entry string) (catalog.Item, bool) {
+	store, err := catalog.Open(root)
+	if err != nil {
+		return catalog.Item{}, false
+	}
+	document, present, err := store.Read()
+	if err != nil || !present {
+		return catalog.Item{}, false
+	}
+	entry = filepath.ToSlash(filepath.Clean(entry))
+	for _, item := range document.Items {
+		current := item.Current()
+		if item.Kind != string(kind) || item.RemovedAt != "" || current == nil {
+			continue
+		}
+		for _, member := range current.Members {
+			if member.Role == role && filepath.ToSlash(filepath.Clean(member.Path)) == entry {
+				return item, true
+			}
+		}
+	}
+	return catalog.Item{}, false
+}
+
+// reachTarget records that the operation holding the slot reaches target,
+// read from the project entry given under root: the saved environment whose
+// target that entry is, or else the operation itself, named by what it
+// carries or by the target's own name.
+func (a *App) reachTarget(root, entry, name string, kind ConnectionKind, target replay.Target) {
+	if item, ok := savedObjectOf(root, EnvironmentItem, primaryRole(EnvironmentItem), entry); ok {
+		a.reach(reachingTarget{ref: "environment:" + item.ID, name: cmp.Or(item.Name, target.Name), kind: kind, destination: target.Address})
+		return
+	}
+	a.reach(reachingTarget{name: cmp.Or(name, target.Name, target.Address), kind: kind, destination: target.Address})
+}
+
+// reachObservation records that the collection holding the slot reads the
+// observation source at the project entry given under root: the saved
+// observation whose source that entry is, or else the collection itself,
+// named by the source it declares.
+func (a *App) reachObservation(root, entry, path string) {
+	target := reachingTarget{kind: ConnectionSource}
+	if source, _, err := operation.ValidateObservationSource(path); err == nil {
+		target.name, target.destination = source.Observes.Identity, sourceDestination(source)
+	}
+	if item, ok := savedObjectOf(root, ObservationItem, "source", entry); ok {
+		target.ref, target.name = "observation:"+item.ID, cmp.Or(item.Name, target.name)
+	}
+	a.reach(target)
 }

@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,6 +21,7 @@ import (
 	"github.com/bharm16/readmit/internal/connectedtransport"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/engine"
+	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/runexplain"
@@ -208,6 +210,12 @@ func (a *App) StartDurableRun(request DurableRunRequest) DurableRunResult {
 		// progress read can tell a journal this window is still writing from
 		// one a crash left behind, which is the difference between a live
 		// count and an interruption.
+		inputs := prepared.PinnedInputs()
+		test := ""
+		if spec, err := testrunner.DecodeSpec(inputs.Spec); err == nil {
+			test = spec.Name
+		}
+		a.reach(runReaching(saved, test, inputs.Configuration))
 		a.setRunOutput(output)
 		defer a.setRunOutput("")
 		result, err := prepared.StartPinned(ctx, output, request.Expected)
@@ -423,9 +431,21 @@ func (a *App) PreflightRun(request RunPreflightRequest) RunPreflightResult {
 // target the spec was saved naming. A spec the project's catalog holds as no
 // test runs exactly as it names.
 type savedRun struct {
-	test        *ItemRef
-	environment *ItemRef
-	target      string
+	test            *ItemRef
+	environment     *ItemRef
+	environmentName string
+	target          string
+}
+
+// runReaching is what a run reaches: the saved environment the test follows,
+// or else the run itself, named by the test it executes, and the address of
+// the target its prepared inputs name either way.
+func runReaching(saved savedRun, test string, target replay.Target) reachingTarget {
+	if saved.environment != nil {
+		return reachingTarget{ref: "environment:" + saved.environment.ID, name: cmp.Or(saved.environmentName, target.Name, target.Address),
+			kind: ConnectionRun, destination: target.Address}
+	}
+	return reachingTarget{name: cmp.Or(test, target.Name, target.Address), kind: ConnectionRun, destination: target.Address}
 }
 
 // runOfEntry resolves the saved test a spec entry is, and the environment it
@@ -475,6 +495,7 @@ func runOfEntry(root, entry string) (savedRun, refusal) {
 				return savedRun{}, refusal{Failed, "the environment this test runs against has no target in the project"}
 			}
 			run.environment = &ItemRef{Kind: EnvironmentItem, ID: environment.ID, Revision: environment.RevisionLabel()}
+			run.environmentName = environment.Name
 			return run, refusal{}
 		}
 	}
@@ -760,6 +781,7 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 			}
 			references = referencePath
 		}
+		a.reach(suiteReaching(root, suitePath, request.Environment))
 		report, runErr := suite.Run(ctx, suite.Request{Path: suitePath, Environment: request.Environment,
 			Output: output, References: references, Identity: request.Expected})
 		if errors.Is(runErr, suite.ErrChanged) {
@@ -784,6 +806,38 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		}
 		return result
 	})
+}
+
+// suiteReaching is what a suite run reaches: the suite, named by its id, and
+// the addresses of the targets its selected environment binds.
+func suiteReaching(root, suitePath, environment string) reachingTarget {
+	target := reachingTarget{kind: ConnectionRun}
+	raw, err := readBoundedEntry(suitePath, suite.MaxBytes)
+	if err != nil {
+		return target
+	}
+	document, err := suite.Decode(raw)
+	if err != nil {
+		return target
+	}
+	target.name = document.ID
+	addresses := []string{}
+	for _, declared := range document.Environments {
+		if declared.ID != environment {
+			continue
+		}
+		for _, binding := range declared.Bindings {
+			path, err := artifactpath.File(root, binding.Target)
+			if err != nil {
+				continue
+			}
+			if read, err := operation.ReadTarget(path); err == nil && !slices.Contains(addresses, read.Address) {
+				addresses = append(addresses, read.Address)
+			}
+		}
+	}
+	target.destination = strings.Join(addresses, ", ")
+	return target
 }
 
 // RunProgressResult is a read of one run folder as it stands now. It claims no

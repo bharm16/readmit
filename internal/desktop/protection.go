@@ -231,12 +231,16 @@ func (a *App) RetireProtectionControl(workspace, entry, name string) ProtectionR
 // ProtectionPackRequest packs the named workspace entries — files or whole
 // directories, each copied, never moved — into one new encrypted transfer
 // package written under the named control of the protection document.
+// Generation is the control's key generation when the person chose it: a
+// control rotated since is refused before anything is read or written. Zero
+// checks nothing.
 type ProtectionPackRequest struct {
-	Workspace string   `json:"workspace"`
-	Entry     string   `json:"entry"`
-	Control   string   `json:"control"`
-	Sources   []string `json:"sources"`
-	Output    string   `json:"output,omitzero"`
+	Workspace  string   `json:"workspace"`
+	Entry      string   `json:"entry"`
+	Control    string   `json:"control"`
+	Generation uint64   `json:"generation,omitzero"`
+	Sources    []string `json:"sources"`
+	Output     string   `json:"output,omitzero"`
 }
 
 // ProtectionPackage is one transfer package as its own descriptor declares it,
@@ -321,7 +325,7 @@ func (a *App) PackProtectedPackage(request ProtectionPackRequest) ProtectionPack
 		if refused.state != "" {
 			return ProtectionPackageResult{State: refused.state, Reason: refused.reason}
 		}
-		descriptor, notRead, err := file.Pack(ctx, request.Control, sources, filepath.Join(root, destination.Name), time.Now())
+		descriptor, notRead, err := file.PackExpecting(ctx, request.Control, request.Generation, sources, filepath.Join(root, destination.Name), time.Now())
 		if err != nil {
 			switch protect.StepOf(err) {
 			case protect.SourcesStep:

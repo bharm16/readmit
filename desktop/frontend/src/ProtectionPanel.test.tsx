@@ -272,3 +272,41 @@ function byText(start: string) {
   return (_content: string, element: Element | null) =>
     element?.tagName === "P" && (element.textContent ?? "").startsWith(start);
 }
+
+/** The protection file's lab-evidence control at the given key generation. */
+function atGeneration(generation: number) {
+  const result = protectionResult();
+  result.document!.controls[0]!.generation = generation;
+  return result;
+}
+
+test("a package is packed under the key generation its control was chosen at", async () => {
+  const user = userEvent.setup();
+  renderPanel({ ReadProtection: () => atGeneration(3), PackProtectedPackage: () => protectionPackageResult() });
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  await user.selectOptions(screen.getByLabelText("Package contents"), SOURCE_ENTRY);
+  await user.click(screen.getByRole("button", { name: "Create encrypted package" }));
+  await waitFor(() => expect(facadeStub().callsTo("PackProtectedPackage")).toHaveLength(1));
+  expect(facadeStub().oneCall("PackProtectedPackage")[0]).toMatchObject({ entry: DOCUMENT_ENTRY, control: CONTROL_NAME, generation: 3, sources: [SOURCE_ENTRY] });
+});
+
+test("a control rotated since it was chosen is withdrawn from the pack task when Packages opens again", async () => {
+  const user = userEvent.setup();
+  installFacade({ ReadProtection: () => atGeneration(1) });
+  const first = render(<ProtectionPanel workspace={WORKSPACE_ROOT} entries={ENTRIES} onRefresh={() => {}} />);
+  await user.selectOptions(packTask().getByLabelText("Protection file"), DOCUMENT_ENTRY);
+  await packTask().findByRole("option", { name: CONTROL_NAME });
+  await user.selectOptions(packTask().getByLabelText("Protection control"), CONTROL_NAME);
+  expect((packTask().getByLabelText("Protection control") as HTMLSelectElement).value).toBe(CONTROL_NAME);
+  first.unmount();
+
+  // The control is rotated in Encryption while Packages is closed.
+  facadeStub().reply({ ReadProtection: () => atGeneration(2) });
+  render(<ProtectionPanel workspace={WORKSPACE_ROOT} entries={ENTRIES} onRefresh={() => {}} />);
+  expect(await screen.findByText("Generation changed; choose the control again.")).toBeTruthy();
+  expect((packTask().getByLabelText("Protection control") as HTMLSelectElement).value).toBe("");
+  expect((screen.getByRole("button", { name: "Create encrypted package" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(facadeStub().callsTo("PackProtectedPackage")).toHaveLength(0);
+});

@@ -200,3 +200,26 @@ test("an emptied interval clears it", async () => {
   await waitFor(() => expect(facade.callsTo("UpdateProtectionControl")).toHaveLength(1));
   expect(facade.callsTo("UpdateProtectionControl")[0]!.args[0]).toMatchObject({ max_age: "", retain: "2160h" });
 });
+
+test("a refused control edit keeps the sheet and its values", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openEncryption(user, {
+    ListProtectionControls: () => listed([control()]),
+    UpdateProtectionControl: () => ({ state: "failed", reason: "The protection document cannot be written.", rotated: false }),
+  });
+  const table = await page().findByRole("table", { name: "Encryption controls" });
+  await waitFor(() => expect(rowsOf(table)).toHaveLength(1));
+  await user.click(within(table).getByText("Lab evidence"));
+  await user.click(within(await screen.findByRole("dialog", { name: "Lab evidence" })).getByRole("button", { name: "Edit" }));
+  const sheet = await screen.findByRole("dialog", { name: "Edit Lab evidence" });
+  await user.selectOptions(within(sheet).getByLabelText("Storage declaration"), "customer-key");
+  const interval = within(sheet).getByLabelText("Rotation interval");
+  await user.clear(interval);
+  await user.type(interval, "45");
+  await user.click(within(sheet).getByRole("button", { name: "Save" }));
+  expect(await within(sheet).findByText("The protection document cannot be written.")).toBeTruthy();
+  expect(facade.callsTo("UpdateProtectionControl")).toHaveLength(1);
+  expect(screen.getByRole("dialog", { name: "Edit Lab evidence" })).toBe(sheet);
+  expect((within(sheet).getByLabelText("Storage declaration") as HTMLSelectElement).value).toBe("customer-key");
+  expect((within(sheet).getByLabelText("Rotation interval") as HTMLInputElement).value).toBe("45");
+});

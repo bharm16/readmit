@@ -27,7 +27,30 @@ import { ViewKey, useViewState } from "./viewstate";
 /** The hub panel sits directly above the privacy screens, so the collaboration
  * journeys it hosts can name the open workspace's sharing-policy entries and
  * published support bundles without retyping a path. */
-export function HubPanel({ workspace, entries = [] }: { workspace?: string | null; entries?: Artifact[] }) {
+export function HubPanel({
+  workspace,
+  entries = [],
+  request = 0,
+  onHandled,
+  onConfigured,
+  operatorRequest = 0,
+  onOperatorHandled,
+  onOperatorConfigured,
+}: {
+  workspace?: string | null;
+  entries?: Artifact[];
+  /** Each new value starts Choose configuration once, as Security's Add
+   * connection › Team does. */
+  request?: number;
+  /** The request was taken up; the window stops asking. */
+  onHandled?: () => void;
+  /** A choice of configuration ended: chosen, or not. */
+  onConfigured?: (chosen: boolean) => void;
+  /** The same, for the operator-only hub below. */
+  operatorRequest?: number;
+  onOperatorHandled?: () => void;
+  onOperatorConfigured?: (chosen: boolean) => void;
+}) {
   const [status, setStatus] = useViewState<HubResult | null>("HubPanel.status", null);
   const [diagnosis, setDiagnosis] = useViewState<HubDiagnosisResult | null>("HubPanel.diagnosis", null);
   const [authUrl, setAuthUrl] = useViewState<string | null>("HubPanel.authUrl", null);
@@ -68,6 +91,17 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
     };
   }, []);
 
+  // A request is handled once: a remount, or StrictMode's second run, does
+  // not start the setup again.
+  const handled = useRef(0);
+  useEffect(() => {
+    if (request === 0) handled.current = 0;
+    if (request === 0 || request === handled.current) return;
+    handled.current = request;
+    onHandled?.();
+    void handleChooseConfig();
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleChooseConfig() {
     await lifecycle.run("working", async () => {
       setMessage(null);
@@ -84,6 +118,7 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
       } else if (res.state !== "cancelled") {
         setMessage(res.reason ?? "The hub configuration was not selected.");
       }
+      onConfigured?.(res.state === "completed");
     });
   }
 
@@ -458,7 +493,11 @@ export function HubPanel({ workspace, entries = [] }: { workspace?: string | nul
         </div>
       ) : null}
 
-      <OperatorHub />
+      <OperatorHub
+        request={operatorRequest}
+        {...(onOperatorHandled ? { onHandled: onOperatorHandled } : {})}
+        {...(onOperatorConfigured ? { onConfigured: onOperatorConfigured } : {})}
+      />
       <h4>
         <button type="button" aria-expanded={adminOpen} aria-controls="hub-admin-handoff" onClick={() => setAdminOpen(!adminOpen)}>
           Host administration

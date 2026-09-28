@@ -177,6 +177,13 @@ export function shellResult(): ShellResult {
     themes: ["system", "light", "dark"],
     text_scales: [100, 125, 150, 175, 200],
     version: "0.0.0-test",
+    build: {
+      version: "0.0.0-test",
+      revision: "3527e801aa0b9d6f2c5e1c9f0f4f8e7d6c5b4a39",
+      built_at: "2026-09-27T12:00:00Z",
+      modified: false,
+      channel: "Development preview, unsigned",
+    },
     privacy: {
       statement: "Nothing leaves this machine.",
       absent: ["No telemetry, crash reporting or update check."],

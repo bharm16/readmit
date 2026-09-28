@@ -15,6 +15,7 @@ import {
   RequestScope,
   savePreferences,
   saveSearchSettings,
+  type Build,
   type CaseSearchSettings,
   type ConnectionKind,
   type ConnectionOwnerKind,
@@ -81,14 +82,17 @@ export function GeneralView({
   themes,
   scales,
   version,
-  canUpdate,
+  build,
   onCheckUpdate,
 }: {
   preferences: PreferencesState;
   themes: Theme[];
   scales: number[];
   version: string;
-  canUpdate: boolean;
+  /** What the running application was built from, when it says. */
+  build?: Build | undefined;
+  /** Opens Storage's staged update; with no project open it asks which
+   * project the update's rollback copy is of. */
   onCheckUpdate: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -106,7 +110,7 @@ export function GeneralView({
             label="More general settings"
             items={[
               { label: "About", onSelect: () => setAbout(true) },
-              { label: "Check update", onSelect: onCheckUpdate, disabled: !canUpdate },
+              { label: "Check update", onSelect: onCheckUpdate },
             ]}
           />
         </span>
@@ -136,7 +140,10 @@ export function GeneralView({
         <ValueRows
           rows={[
             { label: "Application", value: "Readmit" },
-            { label: "Version", value: version || "—" },
+            { label: "Version", value: build?.version || version || "—" },
+            ...(build?.revision ? [{ label: "Build", value: `${build.revision.slice(0, 12)}${build.modified ? " · modified" : ""}` }] : []),
+            ...(build?.built_at ? [{ label: "Built", value: listDate(build.built_at) }] : []),
+            ...(build?.channel ? [{ label: "Release", value: build.channel }] : []),
           ]}
         />
       </Modal>
@@ -242,8 +249,9 @@ export function connectionStatus(row: ConnectionRow): string {
 export type ConnectionRoute =
   | { kind: "environment"; id?: string }
   | { kind: "observation"; id?: string }
-  | { kind: "team" }
-  | { kind: "runner" }
+  | { kind: "team"; operator?: boolean }
+  | { kind: "runner"; path?: string }
+  | { kind: "portal" }
   | { kind: "license" };
 
 const EDIT_ROUTES: Record<ConnectionOwnerKind, ((id?: string) => ConnectionRoute) | null> = {
@@ -259,6 +267,10 @@ const EDIT_ROUTES: Record<ConnectionOwnerKind, ((id?: string) => ConnectionRoute
 };
 
 function editRoute(row: ConnectionRow): ConnectionRoute | null {
+  // The operator-only hub and the customer portal each have their own setup.
+  if (row.ref === "hub:operator") return { kind: "team", operator: true };
+  if (row.ref === "portal") return { kind: "portal" };
+  if (row.owner.kind === "runner" && row.detail.config_path) return { kind: "runner", path: row.detail.config_path };
   return EDIT_ROUTES[row.owner.kind]?.(row.owner.object_id) ?? null;
 }
 
@@ -266,14 +278,23 @@ function editRoute(row: ConnectionRow): ConnectionRoute | null {
  * encryption controls. */
 export function SecurityView({
   root,
+  projectName,
   busy,
   operations,
+  returnTo,
+  onReturned,
   onOpen,
   onEncryption,
 }: {
   root: string | null;
+  /** The open project's name, which the privacy sheet edits. */
+  projectName: string;
   busy: boolean;
   operations: OperationDisclosure[];
+  /** The connection a setup started here returns to once it is saved. */
+  returnTo?: string | undefined;
+  /** The return was taken up; a later visit selects nothing. */
+  onReturned?: () => void;
   onOpen: (route: ConnectionRoute) => void;
   onEncryption: () => void;
 }) {
@@ -285,6 +306,12 @@ export function SecurityView({
   const [searches, setSearches] = useState<CaseSearchSettings[] | null>(null);
   const [projectReason, setProjectReason] = useState<string | null>(null);
   const searchReads = useRef(0);
+  // Back from a saved setup, that connection is the one selected.
+  useEffect(() => {
+    if (!returnTo) return;
+    setSelected(returnTo);
+    onReturned?.();
+  }, [returnTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refresh = useCallback(async () => {
     const answer = await listConnections(scope.current.enter(root ?? ""));
@@ -430,6 +457,7 @@ export function SecurityView({
         <PrivacySheet
           open={privacy}
           root={root}
+          projectName={projectName}
           cases={searches ?? []}
           onClose={() => setPrivacy(false)}
           onSaved={() => void refreshSearches()}
@@ -558,12 +586,14 @@ const STORED_AS: { value: IndexRetention; label: string }[] = [
 function PrivacySheet({
   open,
   root,
+  projectName,
   cases,
   onClose,
   onSaved,
 }: {
   open: boolean;
   root: string;
+  projectName: string;
   cases: CaseSearchSettings[];
   onClose: () => void;
   onSaved: () => void;
@@ -625,6 +655,7 @@ function PrivacySheet({
           return null;
         }}
       >
+        <ValueRows rows={[{ label: "Project", value: projectName }]} />
         {cases.length === 0 ? (
           <p>No cases</p>
         ) : (

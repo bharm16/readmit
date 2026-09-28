@@ -109,6 +109,7 @@ func (a *App) SaveRunnerConfig(request RunnerConfigRequest) RunnerDocumentResult
 			return RunnerDocumentResult{State: declined.state, Reason: declined.reason}
 		}
 		result.Output = request.Output
+		a.configureRunner(request.Output, config.Environment, config.Hub, false)
 		return result
 	})
 }
@@ -306,6 +307,7 @@ func (a *App) ReadRunnerConfig(configPath string) RunnerInspectResult {
 		if declined.reason != "" {
 			return RunnerInspectResult{State: declined.state, Reason: declined.reason}
 		}
+		a.configureRunner(configPath, config.Environment, config.Hub, false)
 		result := RunnerInspectResult{
 			State: Completed,
 			Config: &RunnerConfigView{
@@ -385,6 +387,7 @@ func (a *App) EnrollRunner(configPath string) RunnerEnrollmentResult {
 		if declined.reason != "" {
 			return RunnerEnrollmentResult{State: declined.state, Reason: declined.reason}
 		}
+		a.reachRunner(configPath, config.Environment, config.Hub)
 		if declined := a.runnerAdministrationGate(ctx, config.Project, "enrollment"); declined.reason != "" {
 			return RunnerEnrollmentResult{State: declined.state, Reason: declined.reason}
 		}
@@ -397,6 +400,7 @@ func (a *App) EnrollRunner(configPath string) RunnerEnrollmentResult {
 			}
 			return result
 		}
+		a.configureRunner(configPath, config.Environment, config.Hub, true)
 		result.State = Completed
 		result.ExpiresAt = lease.Expires.UTC().Format(time.RFC3339)
 		result.MaxSeconds = lease.MaxSeconds
@@ -507,6 +511,7 @@ func (a *App) ExecuteRunnerJob(request RunnerExecuteRequest) RunnerExecutionResu
 		if declined.reason != "" {
 			return RunnerExecutionResult{State: declined.state, Reason: declined.reason}
 		}
+		a.reachRunner(request.ConfigPath, config.Environment, config.Hub)
 		if declined := a.runnerAdministrationGate(ctx, config.Project, "execution"); declined.reason != "" {
 			return RunnerExecutionResult{State: declined.state, Reason: declined.reason}
 		}

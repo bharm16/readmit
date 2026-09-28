@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { TaskTabs } from "./TaskTabs";
 import "./runner.css";
 import {
@@ -129,7 +129,14 @@ function ResultLine(props: { result: { state: State; reason?: string | undefined
 
 type RunnerView = "status" | "configuration" | "grant" | "recovery" | "update";
 
-function RunnerSection() {
+function RunnerSection({
+  onConfigured,
+  requested,
+}: {
+  onConfigured?: ((chosen: boolean) => void) | undefined;
+  /** A configuration Security's Edit names, filled in for inspecting. */
+  requested?: { path: string } | null;
+}) {
   const [view, setView] = useViewState<RunnerView>("RunnerSection.view", "status");
   const [config, setConfig] = useViewState<RunnerConfigRequest>("RunnerSection.config", {
     hub: "",
@@ -161,6 +168,9 @@ function RunnerSection() {
   });
   const [grantResult, setGrantResult] = useViewState<RunnerDocumentResult | null>("RunnerSection.grantResult", null);
   const [configPath, setConfigPath] = useViewState("RunnerSection.configPath", "");
+  useEffect(() => {
+    if (requested) setConfigPath(requested.path);
+  }, [requested]); // eslint-disable-line react-hooks/exhaustive-deps
   const [inspection, setInspection] = useViewState<RunnerInspectResult | null>("RunnerSection.inspection", null);
   const [enrollment, setEnrollment] = useViewState<RunnerEnrollmentResult | null>("RunnerSection.enrollment", null);
   const [job, setJob] = useViewState("RunnerSection.job", { id: "", spec: "", output: "" });
@@ -208,7 +218,9 @@ function RunnerSection() {
         key: { command: keyArguments.command, arguments: parseArguments(keyArguments.arguments) },
         token: { command: tokenArguments.command, arguments: parseArguments(tokenArguments.arguments) },
       };
-      setDocument(await saveRunnerConfig(request));
+      const saved = await saveRunnerConfig(request);
+      setDocument(saved);
+      if (saved.state === "completed") onConfigured?.(true);
     });
   }
 
@@ -226,13 +238,16 @@ function RunnerSection() {
       // current authority; the last execution result stays on display.
       if (result.state === "completed") {
         setEnrollment(null);
+        onConfigured?.(true);
       }
     });
   }
 
   async function handleEnroll() {
     await lifecycle.run("working", async () => {
-      setEnrollment(await enrollRunner(configPath));
+      const enrolled = await enrollRunner(configPath);
+      setEnrollment(enrolled);
+      if (enrolled.state === "completed") onConfigured?.(true);
     });
   }
 
@@ -1369,8 +1384,35 @@ function RunnerCapacity() {
   );
 }
 
-export function RunnerPanel() {
+export function RunnerPanel({
+  request = 0,
+  onHandled,
+  onConfigured,
+  configPath,
+}: {
+  /** Each new value opens the Runner area, as Security's Add connection ›
+   * Runner does. */
+  request?: number;
+  /** The request was taken up; the window stops asking. */
+  onHandled?: () => void;
+  /** A runner configuration was saved, read or enrolled. */
+  onConfigured?: (chosen: boolean) => void;
+  /** The configuration a request edits, when it names one. */
+  configPath?: string | undefined;
+} = {}) {
   const [tab, setTab] = useViewState<"runner" | "schedules" | "ci">("RunnerPanel.tab", "runner");
+  const [requestedPath, setRequestedPath] = useState<{ path: string } | null>(null);
+  // A request is handled once: a remount, or StrictMode's second run, does
+  // not start the setup again.
+  const handled = useRef(0);
+  useEffect(() => {
+    if (request === 0) handled.current = 0;
+    if (request === 0 || request === handled.current) return;
+    handled.current = request;
+    onHandled?.();
+    setTab("runner");
+    if (configPath) setRequestedPath({ path: configPath });
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="runner-panel" aria-labelledby="runner-panel-title">
       <h3 id="runner-panel-title">Runners, schedules and CI</h3>
@@ -1387,7 +1429,7 @@ export function RunnerPanel() {
           { key: "ci", label: "CI handoff" },
         ]}
       >
-        {tab === "runner" ? <RunnerSection /> : null}
+        {tab === "runner" ? <RunnerSection onConfigured={onConfigured} requested={requestedPath} /> : null}
         {tab === "schedules" ? <SchedulesSection /> : null}
         {tab === "ci" ? <CISection /> : null}
       </TaskTabs>

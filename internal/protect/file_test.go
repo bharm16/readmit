@@ -409,3 +409,38 @@ func TestAmendKeepsTheGenerationUnlessTheLocatorChanges(t *testing.T) {
 		t.Fatal("an amendment of an unregistered control was accepted")
 	}
 }
+
+// A package is written under the key generation its control was chosen at: a
+// rotation recorded after the choice refuses it before any source or key is
+// read, and nothing is written. The generation the control is at now packs,
+// and no expected generation packs under whatever is current, as the command
+// line does.
+func TestPackRefusesAChangedGeneration(t *testing.T) {
+	root, _ := packed(t)
+	evidence := filepath.Join(root, "run-2026-09-18")
+	file := registered(t, "lab-evidence")
+	t.Setenv(storeSwitch, "emit")
+	ctx := context.Background()
+	at := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	if _, _, err := file.Rotate(ctx, "lab-evidence", at); err != nil {
+		t.Fatal(err)
+	}
+	before := held(t, file.Path)
+
+	stale := filepath.Join(root, "stale")
+	if _, _, err := file.PackExpecting(ctx, "lab-evidence", 1, []string{evidence}, stale, at); !errors.Is(err, ErrGenerationChanged) ||
+		err.Error() != "the control's key generation changed since it was chosen; nothing was written; choose it again" {
+		t.Fatalf("a package under a generation rotated since it was chosen answered %v", err)
+	}
+	absent(t, stale, "a changed generation")
+	unchanged(t, file, before, "a changed generation")
+
+	current, _, err := file.PackExpecting(ctx, "lab-evidence", 2, []string{evidence}, filepath.Join(root, "current"), at)
+	if err != nil || current.Generation != 2 {
+		t.Fatalf("a package under the generation chosen: %+v (%v)", current, err)
+	}
+	unchecked, _, err := file.PackExpecting(ctx, "lab-evidence", 0, []string{evidence}, filepath.Join(root, "unchecked"), at)
+	if err != nil || unchecked.Generation != 2 {
+		t.Fatalf("a package that checks no generation: %+v (%v)", unchecked, err)
+	}
+}

@@ -132,6 +132,9 @@ const practiceOperation = "practice"
 // was written and is reported as cancelled rather than as a verdict.
 func (a *App) RunPractice(request PracticeRequest) PracticeResult {
 	return runNamed[PracticeResult, *PracticeResult](a, profiles["RunPractice"], func(ctx context.Context) PracticeResult {
+		// It sends only on loopback, so its row is the practice run itself,
+		// named by the test it executes.
+		a.reach(reachingTarget{name: specNamed(request.Workspace, request.Spec, practiceOperation), kind: ConnectionRun})
 		return a.runPractice(ctx, request)
 	})
 }

@@ -271,6 +271,7 @@ func (a *App) sendReplay(ctx context.Context, request ReplaySendRequest) ReplayR
 	if declined.state != "" {
 		return ReplayResult{State: declined.state, Reason: declined.reason}
 	}
+	a.reachTarget(inputs.root, request.Replay.Target, "", ConnectionRun, inputs.target)
 	destination, declined := replayOutput.destination(inputs.root, request.Replay.Output)
 	if declined.state != "" {
 		return ReplayResult{State: declined.state, Reason: declined.reason}

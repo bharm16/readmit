@@ -392,6 +392,7 @@ func (a *App) CheckTarget(request TargetCheckRequest) TargetCheckResult {
 		if err != nil {
 			return TargetCheckResult{State: Failed, Reason: err.Error()}
 		}
+		a.reachTarget(request.Workspace, request.TargetFile, "", ConnectionEnvironment, target)
 		var policy *sendpolicy.Policy
 		if request.PolicyFile != "" {
 			polPath, pRef := resolveWorkspacePath(request.Workspace, request.PolicyFile)
@@ -435,6 +436,7 @@ func (a *App) ResetTarget(request TargetResetRequest) TargetResetResult {
 		if err != nil {
 			return TargetResetResult{State: Failed, Reason: err.Error()}
 		}
+		a.reachTarget(request.Workspace, request.TargetFile, "", ConnectionEnvironment, target)
 		planPath, pRef := resolveWorkspacePath(request.Workspace, request.PlanFile)
 		if planPath == "" {
 			return TargetResetResult{State: pRef.state, Reason: pRef.reason}

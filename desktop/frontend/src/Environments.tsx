@@ -51,13 +51,13 @@ export type EnvironmentPlace =
   | { kind: "list"; adding?: boolean; addingObservation?: boolean }
   | { kind: "environment"; id: string; editing?: boolean }
   | { kind: "credentials"; id: string }
-  | { kind: "observation"; id: string; environment?: string };
+  | { kind: "observation"; id: string; environment?: string; editing?: boolean };
 
 export function environmentPlace(objectId: string | undefined, view: string | undefined): EnvironmentPlace {
   if (!objectId) return view === "add" ? { kind: "list", adding: true } : view === "add-observation" ? { kind: "list", addingObservation: true } : { kind: "list" };
   if (objectId.startsWith("observation:")) {
     const [, id = "", environment] = objectId.split(":");
-    return environment ? { kind: "observation", id, environment } : { kind: "observation", id };
+    return { kind: "observation", id, ...(environment ? { environment } : {}), ...(view === "edit" ? { editing: true } : {}) };
   }
   if (view === "credentials") return { kind: "credentials", id: objectId };
   return view === "edit" ? { kind: "environment", id: objectId, editing: true } : { kind: "environment", id: objectId };
@@ -155,19 +155,23 @@ export type EnvironmentsProps = {
   go: (objectId: string, view?: string) => void;
   back: () => void;
   busy: boolean;
-  /** Where a save started from elsewhere (Settings → Security → Add
-   * connection) returns; without it the saved environment opens. */
-  onAdded?: (() => void) | undefined;
+  /** Where an add or edit started from elsewhere (Settings → Security)
+   * returns: with the saved connection's ref once saved, without one when
+   * closed unsaved. Without it the saved environment opens. */
+  onAdded?: ((saved?: string) => void) | undefined;
   /** The retained capture a new observation starts from, when a capture
    * started it. */
   capture?: CaptureObservationBinding | null | undefined;
   /** Where Add observation started from elsewhere returns when it is closed
    * unsaved. */
   onObservationClosed?: (() => void) | undefined;
+  /** Where Add observation started from elsewhere returns once saved;
+   * without it the saved observation opens. */
+  onObservationSaved?: ((id: string) => void) | undefined;
 };
 
 /** Environments supplies its page's title, way back, actions and body. */
-export function useEnvironments({ root, context, place, go, back, busy, onAdded, capture, onObservationClosed }: EnvironmentsProps) {
+export function useEnvironments({ root, context, place, go, back, busy, onAdded, capture, onObservationClosed, onObservationSaved }: EnvironmentsProps) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [listFailure, setListFailure] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -202,6 +206,8 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
     context,
     busy,
     onRemoved: back,
+    editing: place.kind === "observation" && place.editing === true,
+    onEdited: onAdded,
   });
 
   if (!root) return { title: "Environments", back: null, actions: null, body: null };
@@ -315,7 +321,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
           onSaved={async (saved) => {
             setAdding(false);
             await refresh();
-            if (addRequested && onAdded) onAdded();
+            if (addRequested && onAdded) onAdded(`environment:${saved.id}`);
             else go(saved.id);
           }}
         />
@@ -324,7 +330,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
           context={context}
           capture={capture}
           onClose={() => (onObservationClosed ? onObservationClosed() : back())}
-          onSaved={(saved) => go(`observation:${saved.id}`)}
+          onSaved={(saved) => (onObservationSaved ? onObservationSaved(saved.id) : go(`observation:${saved.id}`))}
         />
       </>
     ),
@@ -351,7 +357,7 @@ function useEnvironmentDetail({
   busy: boolean;
   place: EnvironmentPlace;
   /** Where an edit started from elsewhere returns once it is saved or closed. */
-  onEdited?: (() => void) | undefined;
+  onEdited?: ((saved?: string) => void) | undefined;
 }) {
   const [draft, setDraft] = useState<ItemDraft | null>(null);
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
@@ -578,7 +584,7 @@ function useEnvironmentDetail({
         }}
         onSaved={async () => {
           await saved();
-          if (editingFromElsewhere && onEdited) onEdited();
+          if (editingFromElsewhere && onEdited) onEdited(`environment:${ref.id}`);
         }}
       />
       <ReviewSheet

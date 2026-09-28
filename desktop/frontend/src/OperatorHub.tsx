@@ -1,4 +1,4 @@
-import { type FormEvent } from "react";
+import { useEffect, useRef, type FormEvent } from "react";
 import {
   chooseOperatorHubConfig,
   connectOperatorHub,
@@ -20,7 +20,19 @@ import { useViewState } from "./viewstate";
  * a store against this computer's license before anything is chosen or sent,
  * and shows the custody notice. The selection and connection last while the
  * window is open. */
-export function OperatorHub() {
+export function OperatorHub({
+  request = 0,
+  onHandled,
+  onConfigured,
+}: {
+  /** Each new value starts Choose configuration once, as Security's Edit of
+   * the operator-only hub does. */
+  request?: number;
+  /** The request was taken up; the window stops asking. */
+  onHandled?: () => void;
+  /** A choice of configuration ended: chosen, or not. */
+  onConfigured?: (chosen: boolean) => void;
+} = {}) {
   const [status, setStatus] = useViewState<HubResult | null>("OperatorHub.status", null);
   const [transfer, setTransfer] = useViewState<{ kind: "read" | "store"; result: HubTransferResult } | null>("OperatorHub.transfer", null);
   const [digest, setDigest] = useViewState("OperatorHub.digest", "");
@@ -50,7 +62,20 @@ export function OperatorHub() {
       } else if (result.state !== "cancelled") {
         setMessage(result.reason ?? "The operator-only hub configuration was not selected.");
       }
+      onConfigured?.(result.state === "completed");
     });
+
+  // A request is handled once: a remount, or StrictMode's second run, does
+  // not start the setup again.
+  const handled = useRef(0);
+  useEffect(() => {
+    if (request === 0) handled.current = 0;
+    if (request === 0 || request === handled.current) return;
+    handled.current = request;
+    onHandled?.();
+    setOpen(true);
+    choose();
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const connect = () =>
     act(connectOperatorHub, (result) => {

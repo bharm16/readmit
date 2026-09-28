@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { ComputerLicense } from "./ComputerLicense";
 import { ControlledDetails } from "./ControlledDetails";
 import { IconButton } from "./IconButton";
@@ -22,7 +22,19 @@ const NONE = "(none)";
  * supplied-folder setup and account portal configuration in their own subview,
  * and never issues an entitlement or contacts a service on its own. Runner
  * capacity lives with the runner, not here. */
-export function OperationAccess() {
+export function OperationAccess({
+  request = 0,
+  onHandled,
+  onConfigured,
+}: {
+  /** Each new value starts Configure account portal once, as Security's
+   * Edit of the customer portal does. */
+  request?: number;
+  /** The request was taken up; the window stops asking. */
+  onHandled?: () => void;
+  /** A choice of the portal's destinations ended: chosen, or not. */
+  onConfigured?: (chosen: boolean) => void;
+} = {}) {
   const [result, setResult] = useViewState<OperationResult | null>("OperationAccess.result", null);
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
@@ -51,6 +63,24 @@ export function OperationAccess() {
       apply(await action());
     });
   }
+
+  // The portal's destinations file, chosen deliberately; a completed choice
+  // returns to where it was asked for.
+  const configurePortal = () =>
+    perform(chooseCommercialDestinations, (value) => {
+      setCommercial(value);
+      onConfigured?.(value.state === "completed");
+    });
+  // A request is handled once: a remount, or StrictMode's second run, does
+  // not start the setup again.
+  const handled = useRef(0);
+  useEffect(() => {
+    if (request === 0) handled.current = 0;
+    if (request === 0 || request === handled.current) return;
+    handled.current = request;
+    onHandled?.();
+    void configurePortal();
+  }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function showOperationResult(value: OperationResult) {
     if (value.state === "completed") setResult(value);
@@ -180,7 +210,7 @@ export function OperationAccess() {
         </div>
       ) : null}
 
-      <button disabled={busy} onClick={() => void perform(chooseCommercialDestinations, setCommercial)}>Configure account portal…</button>
+      <button disabled={busy} onClick={() => void configurePortal()}>Configure account portal…</button>
     </ControlledDetails>
 
     <div className="commercial-access">

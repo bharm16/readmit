@@ -449,6 +449,15 @@ export interface BaselineResult {
   release_id?: string;
 }
 
+/** internal/desktop.Build */
+export interface Build {
+  version: string;
+  revision?: string;
+  built_at?: string;
+  modified: boolean;
+  channel: string;
+}
+
 /** internal/desktop.BuildIndexRequest */
 export interface BuildIndexRequest {
   workspace: string;
@@ -5606,6 +5615,7 @@ export interface ProtectionPackRequest {
   workspace: string;
   entry: string;
   control: string;
+  generation?: number;
   sources: string[];
   output?: string;
 }
@@ -8073,6 +8083,7 @@ export interface Shell {
   themes: Theme[];
   text_scales: number[];
   version: string;
+  build: Build;
   privacy: Privacy;
   support: Support;
   vocabulary: Vocabulary;

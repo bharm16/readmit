@@ -333,6 +333,15 @@ type App struct {
 	// so the connection inventory names it even once its configuration is
 	// removed; see reach.
 	reaching *reachingTarget
+	// reached, when set, is called each time an operation records what it
+	// reaches, after the record is made; a test reads the inventory there.
+	reached func()
+
+	// runnerMu guards the runner configuration this window last read, saved
+	// or enrolled with, which the connection inventory lists without reading
+	// the file again.
+	runnerMu     sync.Mutex
+	runnerConfig *configuredRunner
 
 	// sessionsMu guards when this window last connected or ended each hub
 	// session, which the connection inventory reports.

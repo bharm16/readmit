@@ -2842,6 +2842,12 @@ retention of.
 
 ### Appearance
 
+Settings › General's About names the build it runs (`Shell.build`): the
+version, the source revision and commit time the Go toolchain stamped into the
+executable and whether its working tree had changes, and the release channel,
+"Development preview, unsigned". A build without a version-control stamp shows
+no revision or time rather than an invented one.
+
 The window offers `system`, `light` and `dark`, and text sizes of 100%, 125%,
 150%, 175% and 200%. Until a person saves a choice in Settings › General the
 window follows the system theme at 100%. The shell keeps ten separate
@@ -2974,19 +2980,33 @@ and fixture resets, observation windows, the customer hub and the runner all
 genuinely reach configured destinations, a blanket no-network claim would be
 false, so Settings › Security lists the connections this computer actually has
 configured, by name, destination and state (`ListConnections`, #561): saved
-environments and observation sources, the selected team and operator hubs, and
-the customer portal once its destinations file is selected. The list is built
+environments and observation sources, the selected team and operator hubs, the
+runner configuration this window last read, saved or enrolled with, and the
+customer portal once its destinations file is selected. The list is built
 from saved configuration and the window's own state and contacts nothing — no
 name lookup, credential locator, hub status probe or runner configuration read
-— and it does not claim the operation slot. A connection reads Active while an
+— and it does not claim the operation slot. The runner row is named after the
+environment its configuration serves and lists its hub's host from what the
+window read when it was configured; it reads Checked with the time of its last
+successful enrollment. A connection reads Active while an
 operation reaches it (and stays listed while it does, even if another window
 removed its configuration), Connected only for a live hub session,
 Disconnected once this window ended one, Checked with its time after an
 explicit check or a trustworthy collection, Not checked when nothing has
 reached it, and Unavailable with the reason when its configuration cannot be
-read; a check is never shown as Connected. A running operation that belongs to
-no listed connection, and a declared program while it runs, are listed as their
-activity. A connection's details carry its destination, the data it may carry
+read; a check is never shown as Connected. Every operation that reaches
+outside records what it reaches as soon as it has resolved it, before it
+reaches it: a reviewed collection or reset, a connectivity check or fixture
+reset of a saved environment's target, a run of a test that follows a saved
+environment and a send to one make that object's own row Active, and the
+runner row is Active while an enrollment or a job execution of its
+configuration runs. An operation that acts on no saved object — a run, suite,
+replay, reexecution, reduction, capture, source access check or collection
+over workspace files — is listed as itself, named by the test, suite, target,
+source or case it carries, with the address it reaches. A practice run, a
+disclosure proof and a synthetic packet send only to receivers they start on
+loopback, and are listed by the test, review or scenario they carry. A
+declared program while it runs is listed as its activity. A connection's details carry its destination, the data it may carry
 and the authorization it requires from the shell's privacy table, with Edit
 opening the owner's setup and, for a connected hub, Disconnect. The list is
 read again when an operation starts or ends and on Refresh status. Help carries
@@ -3011,7 +3031,12 @@ silently changes key. Check control (`CheckProtectionControl`) reads the key
 once and records nothing; Record rotation, Export control (the reference only,
 never key bytes) and Retire control, which asks once, are in the control's
 menu. Encrypted packages are packed, inspected, opened and discarded under
-Encryption's menu until sharing (#560) owns them.
+Encryption's menu until sharing (#560) owns them. A package is written under
+the key generation its control had when it was chosen
+(`ProtectionPackRequest.generation`): a rotation recorded since is refused
+before any entry or key is read, with "the control's key generation changed
+since it was chosen; nothing was written; choose it again" The command line's
+`readmit protect pack` checks no generation.
 
 Some operations run a program the operator declared by its absolute path: the
 locator of a credential reference when one is tested, rotated or scanned for,

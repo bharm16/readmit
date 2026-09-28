@@ -321,6 +321,7 @@ func (a *App) CollectObservation(request ObservationCollectFacadeRequest) Observ
 				return ObservationCompletionResult{State: pRef.state, Reason: pRef.reason}
 			}
 		}
+		a.reachObservation(request.Workspace, request.SourceFile, sourcePath)
 		completion, err := operation.CollectObservation(ctx, operation.ObservationCollectRequest{
 			SourcePath: sourcePath, WindowPath: windowPath, OutputPath: outputPath, SnapshotPath: snapshotPath,
 			PolicyPath: policyPath, Produced: request.Produced, Authorize: request.Authorize,

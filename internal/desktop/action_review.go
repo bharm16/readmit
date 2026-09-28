@@ -806,6 +806,8 @@ func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, h
 // uncertainty is never read as completion or as a clean stop.
 func executeReplaySend(a *App, ctx context.Context, bound *boundAction, _ ReviewDecisions) ReviewedActionResult {
 	if bound.connected != nil {
+		a.reach(reachingTarget{ref: "environment:" + bound.origin.Destination.ID, name: bound.review.Destination.Name,
+			kind: ConnectionRun, destination: bound.review.Destination.Address})
 		return executeConnectedSend(a, ctx, bound)
 	}
 	sent := a.sendReplay(ctx, ReplaySendRequest{Replay: bound.replay, Expected: bound.review.Replay.Identity, Approved: true})
