@@ -6,6 +6,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/dataset"
+	"github.com/bharm16/readmit/internal/fhirobserve"
 	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/sendpolicy"
@@ -17,28 +18,28 @@ func validateTypedBindings(checks assertion.DatasetSetDocument, test Test, files
 	if len(checks.Bindings) != len(test.Datasets) {
 		return invalid
 	}
-	projections := map[string]dataset.Projection{}
+	projections := map[string][]dataset.Column{}
 	for _, b := range checks.Bindings {
 		i := slices.IndexFunc(test.Datasets, func(d Dataset) bool { return d.ID == b.Name })
 		if i < 0 {
 			return invalid
 		}
 		d := test.Datasets[i]
-		if d.Kind != "typed-rows" || d.Projection == nil || d.Namespace != b.Namespace || d.Phase != b.Phase || d.Source != b.Source {
+		if d.Namespace != b.Namespace || d.Phase != b.Phase || d.Source != b.Source {
 			return invalid
 		}
-		p, err := dataset.DecodeProjection(files["dependencies/"+d.Projection.SHA256])
+		columns, identity, err := typedColumns(d, files)
 		if err != nil {
 			return err
 		}
-		if p.Identity() != b.ProjectionIdentity {
+		if identity != b.ProjectionIdentity {
 			return invalid
 		}
-		projections[b.Name] = p
+		projections[b.Name] = columns
 	}
 	column := func(name, c string) bool {
 		p, ok := projections[name]
-		return ok && slices.ContainsFunc(p.Columns, func(v dataset.Column) bool { return v.Name == c })
+		return ok && slices.ContainsFunc(p, func(v dataset.Column) bool { return v.Name == c })
 	}
 	selection := func(s assertion.RowSelection) bool {
 		if _, ok := projections[s.Dataset]; !ok {
@@ -56,8 +57,8 @@ func validateTypedBindings(checks assertion.DatasetSetDocument, test Test, files
 		if !ok {
 			return false
 		}
-		i := slices.IndexFunc(p.Columns, func(column dataset.Column) bool { return column.Name == c })
-		return i >= 0 && dataset.Compatible(p.Columns[i], v)
+		i := slices.IndexFunc(p, func(column dataset.Column) bool { return column.Name == c })
+		return i >= 0 && dataset.Compatible(p[i], v)
 	}
 	for _, a := range checks.Assertions {
 		if !selection(a.Subject) || a.Column != "" && !column(a.Subject.Dataset, a.Column) || a.Other != nil && (!selection(*a.Other) || !column(a.Other.Dataset, a.OtherColumn)) || a.When != nil && (!selection(a.When.Subject) || !column(a.When.Subject.Dataset, a.When.Column)) {
@@ -91,6 +92,30 @@ func validateTypedBindings(checks assertion.DatasetSetDocument, test Test, files
 
 	}
 	return nil
+}
+
+// typedColumns decodes a typed dataset's evaluator columns and projection
+// identity under its own contract: a dataset/v1 projection or a FHIR observation.
+func typedColumns(d Dataset, files map[string][]byte) ([]dataset.Column, string, error) {
+	if d.Projection == nil {
+		return nil, "", invalid
+	}
+	raw := files["dependencies/"+d.Projection.SHA256]
+	switch d.Kind {
+	case "typed-rows":
+		p, err := dataset.DecodeProjection(raw)
+		if err != nil {
+			return nil, "", err
+		}
+		return p.Columns, p.Identity(), nil
+	case "fhir-resources":
+		o, err := fhirobserve.Decode(raw)
+		if err != nil {
+			return nil, "", invalid
+		}
+		return o.TypedColumns(), o.ProjectionIdentity(), nil
+	}
+	return nil, "", invalid
 }
 
 // CollectDataset is the IG06 engine handoff: choose a declared dataset by ID,

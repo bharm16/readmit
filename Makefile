@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := check
-.PHONY: check test test-focused test-boundary test-corpus test-tools verify mutate fuzz check-labels
+.PHONY: check test test-focused test-boundary test-corpus test-fhir-lab test-tools verify mutate fuzz check-labels
 
 PKGS ?=
 ARGS ?=
@@ -17,20 +17,26 @@ test-focused:
 	CGO_ENABLED=1 go test -race -short -tags readmit_nosync $(PKGS) $(ARGS)
 
 # The small resource boundary and the small stream keep race coverage; their
-# production-sized variants run once without instrumentation. No behavior is
-# omitted from the full gate, and each variant asserts the same contract.
+# production-sized variants run once without instrumentation. The FHIR lab
+# keeps one v2-to-FHIR defect cycle under race and runs its whole lifecycle
+# set once without instrumentation. No behavior is omitted from the full gate,
+# and each variant asserts the same contract.
 # Start the long packages first; Go de-duplicates them from ./... so each
 # still runs once, overlapping the short packages instead of trailing them.
 test:
 	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./tests ./internal/desktop ./...
 	$(MAKE) test-boundary
 	$(MAKE) test-corpus
+	$(MAKE) test-fhir-lab
 
 test-boundary:
 	go test ./internal/receiver -run '^TestObservationByteLimitPreservesPriorLedgerAndFinalCase$$/production-limit$$'
 
 test-corpus:
 	go test ./internal/importer -run '^TestScanHoldsOneParsingBatchWhateverTheStreamLength$$/production-stream$$'
+
+test-fhir-lab:
+	go test -tags readmit_nosync ./internal/connectedrun -run '^TestFHIRFlow'
 
 test-tools:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py' -v

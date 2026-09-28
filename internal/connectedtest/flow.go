@@ -32,6 +32,8 @@ type FlowTest struct {
 	Profiles    []Reference `json:"profiles"`
 	Phases      []FlowPhase `json:"phases"`
 	Limits      Limits      `json:"limits"`
+	// Servers exist only in readmit-connected-test/v5.
+	Servers []FHIRServer `json:"fhir_servers,omitzero"`
 }
 type PhaseDependency struct {
 	Phase    string `json:"phase"`
@@ -66,6 +68,9 @@ type FlowPhase struct {
 	Datasets         []Dataset         `json:"datasets"`
 	Checks           Reference         `json:"checks"`
 	Wire             *WireChecks       `json:"wire,omitzero"`
+	// Response and validation checks exist only in readmit-connected-test/v5.
+	Responses   []ResponseCheck   `json:"responses,omitzero"`
+	Validations []ValidationCheck `json:"validations,omitzero"`
 }
 type FlowDocument struct {
 	Schema     string            `json:"schema"`
@@ -105,15 +110,24 @@ var flowFamily = artifactdir.Family{Layout: artifactdir.Layout{Noun: "connected 
 }, MaxFiles: 20000, MaxFileBytes: MaxBytes, MaxBytes: 64 << 20}, Seal: artifactdir.DirectoryHash(FlowPlanSchema)}
 
 func (p *FlowPlan) Write(ctx context.Context, output string) error {
-	_, err := artifactdir.Write(ctx, output, flowFamily, artifactdir.Durable, p.Files())
+	f := flowFamily
+	f.Seal = artifactdir.DirectoryHash(p.document.Schema)
+	_, err := artifactdir.Write(ctx, output, f, artifactdir.Durable, p.Files())
 	return err
 }
 func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPlan, error) {
 	var d FlowTest
-	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil || d.Schema != FlowTestSchema || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.Environment.Project != d.Project || d.Environment.Classification != "nonproduction" || len(d.Phases) < 1 || len(d.Phases) > 32 || len(d.Steps) < 1 || len(d.Steps) > 256 || len(d.Steps) > d.Limits.MaxSteps || !slices.Contains([]string{"application-state", "engine-output"}, d.Boundary) {
+	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil || d.Schema != FlowTestSchema && d.Schema != FHIRFlowTestSchema || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.Environment.Project != d.Project || d.Environment.Classification != "nonproduction" || len(d.Phases) < 1 || len(d.Phases) > 32 || len(d.Steps) < 1 || len(d.Steps) > 256 || len(d.Steps) > d.Limits.MaxSteps || !slices.Contains([]string{"application-state", "engine-output"}, d.Boundary) {
 		return nil, invalid
 	}
-	p := &FlowPlan{document: FlowDocument{Schema: FlowPlanSchema, Test: d, Generation: g, Phases: map[string]string{}, Members: []Member{}}, phases: map[string]*Plan{}, files: map[string][]byte{}}
+	fhirFlow := d.Schema == FHIRFlowTestSchema
+	planSchema, childSchema := FlowPlanSchema, PhaseTestSchema
+	if fhirFlow {
+		planSchema, childSchema = FHIRFlowPlanSchema, PhaseTestSchemaV2
+	} else if d.Servers != nil {
+		return nil, invalid
+	}
+	p := &FlowPlan{document: FlowDocument{Schema: planSchema, Test: d, Generation: g, Phases: map[string]string{}, Members: []Member{}}, phases: map[string]*Plan{}, files: map[string][]byte{}}
 	canonical, err := encode(d)
 	if err != nil {
 		return nil, err
@@ -139,13 +153,24 @@ func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPla
 	assigned := map[string]string{}
 	checkNames := map[string]map[string]bool{}
 	for _, s := range d.Steps {
-		if !identifier.MatchString(s.ID) || steps[s.ID].ID != "" || s.V2 == nil || s.FHIR != nil {
+		if !identifier.MatchString(s.ID) || steps[s.ID].ID != "" || s.FHIR != nil || (s.V2 == nil) == (s.Interaction == nil) || !fhirFlow && s.Interaction != nil {
 			return nil, invalid
 		}
 		steps[s.ID] = s
 	}
 	for _, phase := range d.Phases {
-		if !identifier.MatchString(phase.ID) || p.phases[phase.ID] != nil || len(phase.Steps) < 1 || len(phase.Datasets) < 1 || len(phase.After) > 32 {
+		if !identifier.MatchString(phase.ID) || p.phases[phase.ID] != nil || len(phase.Steps) < 1 || len(phase.Datasets) < 1 || len(phase.After) > 32 || !fhirFlow && (phase.Responses != nil || phase.Validations != nil) {
+			return nil, invalid
+		}
+		// A phase sends either original v2 messages or reviewed FHIR requests.
+		for _, id := range phase.Steps {
+			if (steps[id].Interaction != nil) != (steps[phase.Steps[0]].Interaction != nil) || steps[id].Interaction != nil && phase.Wire != nil {
+				return nil, invalid
+			}
+		}
+		// A v5 wire check reads the phase's actual acknowledgements only; its
+		// downstream state is a typed FHIR or application observation.
+		if fhirFlow && phase.Wire != nil && (phase.Wire.Observed != "transport-acks" || phase.Wire.Before != nil || phase.Wire.After != nil) {
 			return nil, invalid
 		}
 		aliases := map[string]bool{}
@@ -179,7 +204,7 @@ func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPla
 			}
 			selected[id] = true
 		}
-		child := Test{Schema: PhaseTestSchema, Project: d.Project, ID: d.ID, Revision: d.Revision, Environment: d.Environment, Variables: d.Variables, Profiles: d.Profiles, Setup: Setup{Kind: "operator-declared", Isolation: "parent-owned", Instructions: "Setup is owned and verified by the containing connected lifecycle"}, Datasets: phase.Datasets, Checks: phase.Checks, OperatorVersion: OperatorVersionV2, Limits: d.Limits}
+		child := Test{Schema: childSchema, Project: d.Project, ID: d.ID, Revision: d.Revision, Environment: d.Environment, Variables: d.Variables, Profiles: d.Profiles, Setup: Setup{Kind: "operator-declared", Isolation: "parent-owned", Instructions: "Setup is owned and verified by the containing connected lifecycle"}, Datasets: phase.Datasets, Checks: phase.Checks, OperatorVersion: OperatorVersionV2, Limits: d.Limits, Servers: d.Servers, Responses: phase.Responses, Validations: phase.Validations}
 		for _, id := range phase.Steps {
 			s := steps[id]
 			s.After = nil
@@ -215,6 +240,12 @@ func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPla
 		for _, check := range set.Document().Assertions {
 			checkNames[phase.ID]["typed:"+check.ID] = true
 		}
+		for _, check := range phase.Responses {
+			checkNames[phase.ID]["response:"+check.ID] = true
+		}
+		for _, check := range phase.Validations {
+			checkNames[phase.ID]["validation:"+check.ID] = true
+		}
 		if phase.Wire != nil {
 			b, e := resolve(phase.Wire.Set, assertion.Schema)
 			if e != nil {
@@ -235,7 +266,7 @@ func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPla
 			}
 		}
 	}
-	if len(assigned) != len(steps) {
+	if len(assigned) != len(steps) || fhirFlow && (validateResponseBindings(d, supplied) != nil || validateReceivingWrites(d, p) != nil) {
 		return nil, invalid
 	}
 	observationBudget := 0
@@ -303,11 +334,8 @@ func OpenFlowPlan(path string) (*FlowPlan, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !sealed(FlowPlanSchema, files) {
-		return nil, invalid
-	}
 	var declared FlowDocument
-	if json.Unmarshal(files["flow.json"], &declared, json.RejectUnknownMembers(true)) != nil || declared.Schema != FlowPlanSchema {
+	if json.Unmarshal(files["flow.json"], &declared, json.RejectUnknownMembers(true)) != nil || declared.Schema != FlowPlanSchema && declared.Schema != FHIRFlowPlanSchema || !sealed(declared.Schema, files) {
 		return nil, invalid
 	}
 	supplied := map[string][]byte{}
@@ -336,7 +364,7 @@ func OpenFlowPlan(path string) (*FlowPlan, error) {
 		return nil, err
 	}
 	delete(files, "identity.sha256")
-	if artifactdir.Identity(FlowPlanSchema, rebuilt.Files()) != artifactdir.Identity(FlowPlanSchema, files) {
+	if rebuilt.document.Schema != declared.Schema || artifactdir.Identity(declared.Schema, rebuilt.Files()) != artifactdir.Identity(declared.Schema, files) {
 		return nil, invalid
 	}
 	return rebuilt, nil
@@ -392,6 +420,82 @@ func validateWireReferences(w WireChecks, set assertion.Set, steps []Step) error
 		s := c.Subject
 		if s.Field != nil && !field(*s.Field) || s.Pair != nil && (!field(s.Pair.Left) || !field(s.Pair.Right)) || s.Collection != nil && !collection(s.Collection.Scope) || s.Each != nil && !collection(s.Each.Scope) || s.Transition != nil && (!collection(s.Transition.From) || !collection(s.Transition.To)) || c.When != nil && !field(c.When.Field) {
 			return invalid
+		}
+	}
+	return nil
+}
+
+// validateResponseBindings requires each response variable to be bound by
+// exactly one step, and every step that uses one to depend on its binder.
+func validateResponseBindings(d FlowTest, supplied map[string][]byte) error {
+	phaseOf := map[string]string{}
+	for _, phase := range d.Phases {
+		for _, id := range phase.Steps {
+			phaseOf[id] = phase.ID
+		}
+	}
+	boundBy := map[string]string{}
+	scope := map[string]string{}
+	for _, s := range d.Steps {
+		if s.Interaction == nil {
+			continue
+		}
+		for _, b := range s.Interaction.Bind {
+			if boundBy[b.Variable] != "" {
+				return invalid
+			}
+			boundBy[b.Variable], scope[b.Variable] = s.ID, b.Scope
+		}
+	}
+	for _, v := range d.Variables {
+		if v.Kind == "response" && boundBy[v.ID] == "" {
+			return invalid
+		}
+	}
+	for _, s := range d.Steps {
+		var body []byte
+		if s.Interaction != nil && s.Interaction.Body != nil {
+			body = supplied[s.Interaction.Body.File]
+		}
+		for _, name := range ResponseVariables(s, d.Variables, body) {
+			if !slices.Contains(s.After, boundBy[name]) || scope[name] == "phase" && phaseOf[s.ID] != phaseOf[boundBy[name]] {
+				return invalid
+			}
+		}
+	}
+	return nil
+}
+
+// validateReceivingWrites refuses a reviewed update, patch or delete of a
+// resource type that a later v2 phase observes: the integration's own write to
+// that type is what the later phase tests, so the test may not make it first.
+// Creating prerequisites and cleaning up after the last such phase remain.
+func validateReceivingWrites(d FlowTest, p *FlowPlan) error {
+	observedFrom := map[string]int{}
+	for i, phase := range d.Phases {
+		if p.phases[phase.ID].document.Test.Steps[0].V2 == nil {
+			continue
+		}
+		for _, ds := range phase.Datasets {
+			if ds.Kind != "fhir-resources" {
+				continue
+			}
+			o, _, _, err := p.phases[phase.ID].ObservationURL(ds.ID)
+			if err != nil {
+				return err
+			}
+			observedFrom[o.Resource] = i
+		}
+	}
+	for i, phase := range d.Phases {
+		for _, s := range p.phases[phase.ID].document.Test.Steps {
+			if s.Interaction == nil || s.Interaction.Method == "GET" || s.Interaction.Method == "POST" {
+				continue
+			}
+			resource, _, _ := strings.Cut(s.Interaction.Path, "/")
+			if last, observed := observedFrom[resource]; observed && last > i {
+				return invalid
+			}
 		}
 	}
 	return nil

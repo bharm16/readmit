@@ -39,5 +39,5 @@ func ReanalyzeFlow(ctx context.Context, path string) (FlowAnalysis, error) {
 	if original.State == "cancelled" && current.Verdict == assertion.VerdictPass {
 		current.Verdict = assertion.VerdictUndecided
 	}
-	return FlowAnalysis{Schema: FlowAnalysisSchema, OriginalIdentity: artifactdir.Identity(FlowSchema, files), Original: FlowVerdict{Engine: original.Engine, Verdict: original.Verdict}, Reanalysis: FlowVerdict{Engine: engine.Version(), Verdict: current.Verdict}, Result: original}, nil
+	return FlowAnalysis{Schema: FlowAnalysisSchema, OriginalIdentity: artifactdir.Identity(original.Schema, files), Original: FlowVerdict{Engine: original.Engine, Verdict: original.Verdict}, Reanalysis: FlowVerdict{Engine: engine.Version(), Verdict: current.Verdict}, Result: original}, nil
 }

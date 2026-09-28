@@ -63,7 +63,7 @@ func runCommand() *cobra.Command {
 		if err != nil {
 			raw, err = (artifactdir.Document{MaxBytes: 4 << 20}).Read(filepath.Join(args[0], "started.json"))
 		}
-		if err == nil && json.Unmarshal(raw, &head) == nil && head.Schema == connectedrun.FlowSchema {
+		if err == nil && json.Unmarshal(raw, &head) == nil && (head.Schema == connectedrun.FlowSchema || head.Schema == connectedrun.FlowSchemaV4) {
 			if reanalysis {
 				analysis, err := connectedrun.ReanalyzeFlow(cmd.Context(), args[0])
 				if err != nil {
@@ -95,7 +95,7 @@ func runCommand() *cobra.Command {
 			return printConnectedFlow(cmd, result)
 		}
 		if reanalysis {
-			return usage("--reanalysis requires a v3 connected lifecycle result")
+			return usage("--reanalysis requires a v3 or v4 connected lifecycle result")
 		}
 		if pinned {
 			return printEngine(cmd, args[0], statusJSON)

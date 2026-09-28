@@ -17,6 +17,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/assertion"
 	"github.com/bharm16/readmit/internal/dataset"
+	"github.com/bharm16/readmit/internal/fhirobserve"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/localprofile"
@@ -43,7 +44,11 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil {
 		return nil, invalid
 	}
-	if d.Schema == PhaseTestSchema && !phase {
+	if (d.Schema == PhaseTestSchema || d.Schema == PhaseTestSchemaV2) && !phase {
+		return nil, invalid
+	}
+	fhirPhase := d.Schema == PhaseTestSchemaV2
+	if !fhirPhase && (d.Servers != nil || d.Responses != nil || d.Validations != nil) {
 		return nil, invalid
 	}
 	operatorVersion := OperatorVersion
@@ -107,6 +112,9 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 	}
 	if d.Schema == PhaseTestSchema {
 		planSchema = PhasePlanSchema
+	}
+	if fhirPhase {
+		planSchema = PhasePlanSchemaV2
 	}
 	p := &Plan{document: PlanDocument{Schema: planSchema, TestIdentity: Digest(canonical), Test: d, Environment: d.Environment, Generation: generation, Resolution: map[string]string{}}, files: map[string][]byte{"test.json": canonical}}
 	total := len(canonical)
@@ -239,14 +247,20 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 	if len(d.Variables) > 256 {
 		return nil, invalid
 	}
+	declared := map[string]bool{}
+	runtime := map[string]bool{}
 	for _, v := range d.Variables {
-		if !identifier.MatchString(v.ID) {
+		if !identifier.MatchString(v.ID) || declared[v.ID] {
 			return nil, invalid
 		}
-		if _, ok := p.document.Resolution[v.ID]; ok {
-			return nil, invalid
-		}
+		declared[v.ID] = true
 		switch v.Kind {
+		case "response":
+			// Bound only from an actual earlier response during execution.
+			if !fhirPhase || v.Value != "" || v.Namespace != "" || v.OffsetMS != 0 {
+				return nil, invalid
+			}
+			runtime[v.ID] = true
 		case "literal":
 			if !short(v.Value) || v.Namespace != "" || v.OffsetMS != 0 {
 				return nil, invalid
@@ -268,10 +282,30 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 			return nil, errors.New("unsupported generation operator")
 		}
 	}
+	if fhirPhase {
+		if err := compileServers(d, resolve); err != nil {
+			return nil, err
+		}
+	}
 	seen := map[string]bool{}
 	occurrences := map[string]bool{}
 	for _, s := range d.Steps {
-		if !identifier.MatchString(s.ID) || seen[s.ID] || s.Endpoint != env.Endpoint || (s.V2 == nil) == (s.FHIR == nil) {
+		if s.Interaction != nil {
+			if !fhirPhase || !identifier.MatchString(s.ID) || seen[s.ID] {
+				return nil, invalid
+			}
+			seen[s.ID] = true
+			if err := compileInteraction(p, d, s, runtime, resolve); err != nil {
+				return nil, err
+			}
+			total += len(p.files["inputs/"+s.ID+".fhir"])
+			if total > d.Limits.MaxBytes {
+				return nil, errors.New("compiled input byte limit")
+			}
+			p.document.Effects = append(p.document.Effects, Effect{Step: s.ID, Kind: "fhir-interaction", Endpoint: s.Endpoint})
+			continue
+		}
+		if !identifier.MatchString(s.ID) || seen[s.ID] || s.Endpoint != env.Endpoint || (s.V2 == nil) == (s.FHIR == nil) || fhirPhase && s.FHIR != nil {
 			return nil, invalid
 		}
 		seen[s.ID] = true
@@ -283,7 +317,7 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 		effect := "fhir-request"
 		if s.V2 != nil {
 			effect = "v2-send"
-			if !occurrence.MatchString(s.V2.Occurrence) || d.Schema != PhaseTestSchema && occurrences[s.V2.Occurrence] {
+			if !occurrence.MatchString(s.V2.Occurrence) || d.Schema != PhaseTestSchema && d.Schema != PhaseTestSchemaV2 && occurrences[s.V2.Occurrence] {
 				return nil, invalid
 			}
 			occurrences[s.V2.Occurrence] = true
@@ -376,15 +410,16 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 		if !identifier.MatchString(ds.ID) || datasets[ds.ID].ID != "" || !slices.Contains([]string{"v2-messages", "record-keys", "fhir-resources", "typed-rows"}, ds.Kind) || !slices.Contains([]string{"before", "after"}, ds.Phase) || !short(ds.Source) || !(intervalTest(d.Schema) && slices.Contains([]string{"full-horizon", "processing-barrier"}, c.Kind) || !intervalTest(d.Schema) && slices.Contains([]string{"bounded-horizon", "ack-responses"}, c.Kind)) || c.HorizonMS < 1 || intervalTest(d.Schema) && c.HorizonMS > 300000 || c.Barrier != nil || c.MaxRecords < 1 || c.MaxRecords > 1000000 || c.MaxBytes < 1 || c.MaxBytes > MaxBytes {
 			return nil, invalid
 		}
+		var definition observeinterval.Definition
 		if intervalTest(d.Schema) {
-			if c.Policy == nil || ds.Kind != "typed-rows" {
+			if c.Policy == nil || ds.Kind != "typed-rows" && !(fhirPhase && ds.Kind == "fhir-resources") {
 				return nil, invalid
 			}
 			raw, err := resolve(*c.Policy, observeinterval.Schema)
 			if err != nil {
 				return nil, err
 			}
-			definition, err := observeinterval.Decode(raw)
+			definition, err = observeinterval.Decode(raw)
 			if err != nil || definition.Source != ds.Source || definition.Namespace != ds.Namespace || definition.HorizonMS != c.HorizonMS || definition.MaxRecords != c.MaxRecords || definition.MaxBytes != c.MaxBytes || (definition.Barrier != nil) != (c.Kind == "processing-barrier") {
 				return nil, invalid
 			}
@@ -405,6 +440,17 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 			projection, err := dataset.DecodeProjection(raw)
 			if err != nil || projection.Limits.MaxRows > c.MaxRecords || projection.Limits.MaxBytes > c.MaxBytes || !intervalTest(d.Schema) && projection.Limits.TimeoutMS > c.HorizonMS {
 				return nil, invalid
+			}
+		} else if fhirPhase && ds.Kind == "fhir-resources" {
+			if ds.Projection == nil {
+				return nil, invalid
+			}
+			raw, err := resolve(*ds.Projection, fhirobserve.Schema)
+			if err != nil {
+				return nil, err
+			}
+			if _, err = compileObservation(d, ds, raw, definition, p.document.Resolution); err != nil {
+				return nil, err
 			}
 		} else if ds.Namespace != "" || ds.Projection != nil {
 			return nil, invalid
@@ -429,6 +475,9 @@ func compile(raw []byte, supplied map[string][]byte, generation Generation, phas
 			return nil, err
 		}
 		if err := validateTypedBindings(set.Document(), d, p.files); err != nil {
+			return nil, err
+		}
+		if err := validateFHIRChecks(d); err != nil {
 			return nil, err
 		}
 	} else {

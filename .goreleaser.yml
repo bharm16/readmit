@@ -73,6 +73,7 @@ archives:
       - docs/smart-backend.md
       - docs/fhir-rest.md
       - docs/fhir-validation.md
+      - docs/connected-fhir.md
       - docs/durable-runs.md
       - docs/customer-runner.md
       - docs/customer-ci.md

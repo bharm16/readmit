@@ -31,7 +31,8 @@ Preparation reads only its input bytes and validates the local declarations;
 `Preflight` reports `ready` for a supported local configuration, not verified
 registration or usable credentials. Resolving the key and establishing a grant
 require explicit execution authority. Environments/navigation do not call these
-actions. No existing no-auth laboratory or credential-reference mode changes or
+actions. A v5 connected lifecycle selects one client per role, bound to its
+plan ([connected FHIR lifecycle tests](connected-fhir.md)). No existing no-auth laboratory or credential-reference mode changes or
 silently falls back to another mode.
 
 ## Explicit discovery

@@ -61,8 +61,9 @@ full declared horizon, independently of expected row counts. A successful probe
 is not the after observation and is never substituted for one.
 
 Automated setup/cleanup, intermediate step barriers, continuous capture arming,
-enhanced-ACK execution, FHIR stimulus orchestration and safe step-level resume
-remain the broader IG04/IG05/IG06 work. Unsupported plans are refused during local
+enhanced-ACK execution and safe step-level resume remain the broader
+IG04/IG05/IG06 work; FHIR stimuli and observations run in v5 lifecycles
+([connected FHIR lifecycle tests](connected-fhir.md)). Unsupported plans are refused during local
 preparation. This is a real shared execution path consuming IG03's datasets, not
 a claim that every IG06 acceptance scenario is complete. Native and customer
 runner UI/configuration integration retain their owners and call the same Go

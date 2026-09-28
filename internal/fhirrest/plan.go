@@ -31,6 +31,17 @@ type Retry struct {
 	MaxAttempts int   `json:"max_attempts"`
 	MaxDelayMS  int64 `json:"max_delay_ms"`
 }
+
+// Valid reports whether a budget is within the executor's fixed bounds.
+func (b Budget) Valid() bool {
+	return b.Pages >= 1 && b.Pages <= 64 && b.Rows >= 1 && b.Rows <= 16384 && b.Bytes >= 1 && b.Bytes <= 128<<20 && b.TimeoutMS >= 1 && b.TimeoutMS <= 300000
+}
+
+// Valid reports whether a retry policy is within the executor's fixed bounds.
+func (r Retry) Valid() bool {
+	return r.MaxAttempts >= 1 && r.MaxAttempts <= 4 && r.MaxDelayMS >= 0 && r.MaxDelayMS <= 10000
+}
+
 type Prior struct {
 	URL    string `json:"url"`
 	ETag   string `json:"etag"`
@@ -67,7 +78,7 @@ func parsedRequest(base string, s networkaction.RuntimeHTTPSpecV2) (fhirrequest.
 }
 func Prepare(raw, policy []byte) (*Plan, error) {
 	var s Spec
-	if len(raw) > 32<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || s.Schema != PlanSchema || s.HTTP.Schema != networkaction.RuntimeHTTPSchemaV2 || s.HTTP.Page != nil || s.HTTP.Accept != "application/fhir+json" || s.Budget.Pages < 1 || s.Budget.Pages > 64 || s.Budget.Rows < 1 || s.Budget.Rows > 16384 || s.Budget.Bytes < 1 || s.Budget.Bytes > 128<<20 || s.Budget.TimeoutMS < 1 || s.Budget.TimeoutMS > 300000 || s.Retry.MaxAttempts < 1 || s.Retry.MaxAttempts > 4 || s.Retry.MaxDelayMS < 0 || s.Retry.MaxDelayMS > 10000 {
+	if len(raw) > 32<<20 || json.Unmarshal(raw, &s, json.RejectUnknownMembers(true)) != nil || s.Schema != PlanSchema || s.HTTP.Schema != networkaction.RuntimeHTTPSchemaV2 || s.HTTP.Page != nil || s.HTTP.Accept != "application/fhir+json" || !s.Budget.Valid() || !s.Retry.Valid() {
 		return nil, refused
 	}
 	request, e := parsedRequest(s.Base, s.HTTP)
@@ -323,4 +334,62 @@ func requiredCapabilityIdentity(c fhirr4.Capabilities, r fhirrequest.Request) st
 		}
 	}
 	return dataset.Digest(encode(values))
+}
+
+// Interaction is an exact request shape whose capability needs are checked
+// offline. Checking it never grants access or contacts the server.
+type Interaction struct {
+	Method, URL, ContentType string
+	Body                     []byte
+	Headers                  networkaction.HTTPHeadersV2
+}
+
+// Kind is the interaction class the shared request interpreter assigns, or
+// empty when the request is refused.
+func (i Interaction) Kind(base string) string {
+	r, e := i.parse(base)
+	if e != nil {
+		return ""
+	}
+	return r.Kind
+}
+func (i Interaction) parse(base string) (fhirrequest.Request, error) {
+	h := i.Headers
+	return fhirrequest.Parse(base, i.Method, i.URL, i.ContentType, i.Body, fhirrequest.Headers{IfMatch: h.IfMatch, IfNoneMatch: h.IfNoneMatch, IfModifiedSince: h.IfModifiedSince, IfNoneExist: h.IfNoneExist, Prefer: h.Prefer})
+}
+
+// Admits reports whether a CapabilityStatement advertises everything the
+// interaction needs, under the same rules execution's preflight applies, and
+// whether the request keeps Prepare's version guards: updates and patches
+// carry an authored If-Match and no unpinned conditional read is made.
+func Admits(base string, capability []byte, i Interaction) error {
+	r, e := i.parse(base)
+	if e != nil || (r.Kind == "update" || r.Kind == "patch") && i.Headers.IfMatch == "" || i.Headers.IfNoneMatch != "" || i.Headers.IfModifiedSince != "" {
+		return refused
+	}
+	for _, entry := range r.Entries {
+		if (entry.Kind == "update" || entry.Kind == "patch") && entry.VersionMatch == "" || entry.ConditionalRead {
+			return refused
+		}
+	}
+	_, e = capable(base, capability, r)
+	return e
+}
+
+// Unchanged reports whether current metadata still admits the interaction with
+// the same claims the reviewed baseline declared. Changed claims refuse effects.
+func Unchanged(base string, baseline, current []byte, i Interaction) error {
+	r, e := i.parse(base)
+	if e != nil {
+		return refused
+	}
+	was, e := capable(base, baseline, r)
+	if e != nil {
+		return refused
+	}
+	now, e := capable(base, current, r)
+	if e != nil || requiredCapabilityIdentity(now, r) != requiredCapabilityIdentity(was, r) {
+		return refused
+	}
+	return nil
 }

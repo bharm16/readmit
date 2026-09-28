@@ -8689,6 +8689,18 @@
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
     },
     {
+      "id": "tooling.make.test-fhir-lab",
+      "source": "make test-fhir-lab",
+      "kind": "tooling",
+      "capability": "Run the FHIR lab lifecycle tests once without race instrumentation",
+      "owner": "bharm16/readmit#583",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
       "id": "tooling.make.test-tools",
       "source": "make test-tools",
       "kind": "tooling",

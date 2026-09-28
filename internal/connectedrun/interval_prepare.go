@@ -117,20 +117,10 @@ func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, 
 		}
 		item.interval = &definition
 		if definition.Barrier != nil {
-			if d.Phase != "after" {
-				return nil, invalid
-			}
 			barriers++
-			chosen, ok := c.Barriers[d.ID]
-			if !ok {
-				return nil, invalid
+			if item.barrier, err = prepareBarrier(plan, d, definition, c.Barriers, anchor, policy); err != nil {
+				return nil, err
 			}
-			bd := connectedtest.Dataset{ID: d.ID + "-barrier", Source: definition.Barrier.Source, Namespace: "processing-barrier", Phase: "after", Kind: "typed-rows"}
-			prepared, err := prepareSource(plan, bd, definition.Barrier.Projection, chosen, anchor, policy)
-			if err != nil || prepared.source.Capture != nil {
-				return nil, invalid
-			}
-			item.barrier = &prepared
 		}
 		p.sources = append(p.sources, item)
 	}

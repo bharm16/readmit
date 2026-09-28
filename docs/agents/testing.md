@@ -212,6 +212,9 @@ It runs the full race suite with small resource fixtures and the actual 8 MiB
 observation boundary once without race instrumentation. The small boundary and
 production boundary assert the same retained-prefix and refused-ACK behavior.
 `make test-boundary` addresses the latter directly when that contract changes.
+The FHIR lab lifecycles re-verify the whole selected configuration at every
+effect, so the race suite keeps one v2-to-FHIR defect cycle and
+`make test-fhir-lab` runs the whole set once without instrumentation.
 The race command lists `./tests` and `./internal/desktop` before `./...` so the
 long packages start early; Go de-duplicates the package list.
 
