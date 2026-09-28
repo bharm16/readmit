@@ -81,6 +81,14 @@ type FieldRule struct {
 	MaxRepetitions int    `json:"max_repetitions"`
 	DataType       string `json:"datatype"`
 	MaxLength      int    `json:"max_length"`
+	// v5 only, as for ComponentRule.
+	Usage     string     `json:"usage,omitzero"`
+	Condition *Condition `json:"condition,omitzero"`
+	Length    *Length    `json:"length,omitzero"`
+	Table     string     `json:"table,omitzero"`
+	TableKind string     `json:"table_kind,omitzero"`
+	Policy    string     `json:"policy,omitzero"`
+	Codes     []string   `json:"codes,omitzero"`
 }
 type Occurrence struct {
 	ID    string

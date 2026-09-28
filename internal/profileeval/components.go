@@ -25,6 +25,13 @@ type ComponentRule struct {
 	Required   bool     `json:"required"`
 	MaxLength  int      `json:"max_length"`
 	Codes      []string `json:"codes"`
+	// Only a readmit-profile-pack/v5 component carries the members below;
+	// every earlier document that names one is refused.
+	Usage     string     `json:"usage,omitzero"`
+	Condition *Condition `json:"condition,omitzero"`
+	Length    *Length    `json:"length,omitzero"`
+	TableKind string     `json:"table_kind,omitzero"`
+	Policy    string     `json:"policy,omitzero"`
 }
 type DatatypeRule struct {
 	UsageKnown bool            `json:"usage_known"`
@@ -46,10 +53,10 @@ type PackV3 struct {
 }
 
 // components reports whether the pinned documents selected an operator that
-// reads composite metadata; evaluator v3 keeps v2's component semantics.
+// reads composite metadata; evaluators v3 and v4 keep v2's component reading.
 func (e *evaluator) components() bool { return e.report.Operator != OperatorVersion }
 
-func validateDatatypes(types []DatatypeRule) error {
+func validateDatatypes(types []DatatypeRule, v5 bool) error {
 	if len(types) > 256 {
 		return invalid
 	}
@@ -62,6 +69,10 @@ func validateDatatypes(types []DatatypeRule) error {
 		previous := 0
 		for _, c := range d.Components {
 			if c.Required && c.Prohibited || c.Position <= previous || c.Position > 64 || !token.MatchString(c.DataType) || c.MaxLength < 0 || c.MaxLength > MaxBytes || len(c.Codes) > 1024 || c.Table != "" && !token.MatchString(c.Table) {
+				return invalid
+			}
+			if validateUsage(c.Usage, c.Condition, c.Length, v5, c.Position, 64) != nil || !v5 && (c.TableKind != "" || c.Policy != "") ||
+				v5 && (c.Required || c.Prohibited || c.MaxLength != 0 || !d.UsageKnown || validateBinding(c.Table, c.TableKind, c.Policy, c.Codes) != nil) {
 				return invalid
 			}
 			previous = c.Position
@@ -81,20 +92,22 @@ func validateDatatypes(types []DatatypeRule) error {
 
 func (e *evaluator) evaluateDatatype(kind, selector, origin string, r hl7.Reading, depth int) {
 	var declaration *DatatypeRule
+	fromPack := false
 	for i := range e.pack.datatypes {
 		if e.pack.datatypes[i].Name == kind {
-			declaration = &e.pack.datatypes[i]
+			declaration, fromPack = &e.pack.datatypes[i], true
 			break
 		}
 	}
 	if origin != "profile" {
 		for i := range e.profile.datatypes {
 			if e.profile.datatypes[i].Name == kind {
-				declaration = &e.profile.datatypes[i]
+				declaration, fromPack = &e.profile.datatypes[i], false
 				break
 			}
 		}
 	}
+	v5 := fromPack && e.pack.Schema == PackSchemaV5
 	if declaration == nil {
 		outcome := datatype(kind, string(r.Decoded))
 		if outcome != "unsupported" && e.components() && !r.Literal && depth < 2 {
@@ -140,10 +153,30 @@ func (e *evaluator) evaluateDatatype(kind, selector, origin string, r hl7.Readin
 		e.add("component-cardinality", origin, "fail", selector, r)
 	}
 	declared := map[int]bool{}
+	unclassified, lengthUnavailable := false, false
 	for _, c := range declaration.Components {
 		declared[c.Position] = true
 		path := selector + "." + strconv.Itoa(c.Position)
 		value := e.read(path)
+		usage := usageOf(c.Usage, c.Required, c.Prohibited, fromPack)
+		// Unavailable usage is already one named finding; an unclassified
+		// declaration may hide a conditional requirement, so it cannot pass.
+		unclassified = unclassified || usage == "unclassified" && declaration.UsageKnown
+		if v5 {
+			e.usage(usage, c.Condition, "component", scopeOf(selector+".", true), path, origin, value)
+			if value.State != hl7.Present || usage == "W" || usage == "X" {
+				continue
+			}
+			if value.Reason != "" {
+				e.add(string(value.Reason), origin, "unsupported", path, value)
+				continue
+			}
+			e.length(c.Length, "component", path, origin, value)
+			lengthUnavailable = lengthUnavailable || c.Length.State == "unavailable"
+			e.binding(c.Table, c.TableKind, c.Policy, c.Codes, "component", path, origin, value)
+			e.evaluateDatatype(c.DataType, path, origin, value, depth+1)
+			continue
+		}
 		if c.Prohibited {
 			if value.State == hl7.Present || value.State == hl7.Null {
 				e.add("prohibited-component", origin, "fail", path, value)
@@ -179,6 +212,12 @@ func (e *evaluator) evaluateDatatype(kind, selector, origin string, r hl7.Readin
 			}
 		}
 		e.evaluateDatatype(c.DataType, path, origin, value, depth+1)
+	}
+	if unclassified {
+		e.add("component-usage-unclassified-"+kind, origin, "unsupported", selector, r)
+	}
+	if lengthUnavailable {
+		e.add("component-length-unavailable-"+kind, origin, "unsupported", selector, r)
 	}
 	for position := 1; position <= count && position <= max; position++ {
 		if !declared[position] {

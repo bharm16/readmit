@@ -5,20 +5,53 @@
   "rights_status": "pending; independent of technical qualification",
   "receipt_sha256": "b1ab013cc5131d001d6eb5f599a10d842d23c7838c27e749c76d7526b160c608",
   "revisions": [
-    "2026-09-28: receipt_sha256 names docs/profile-extraction-v3-receipt.json. The five ORDER_DETAIL rows are qualified at the tested choice level; component usage rows record what the pinned HL7apy archive can and cannot supply; a 2.8.2 component usage row records that conditional usage is not represented."
+    "2026-09-28: receipt_sha256 names docs/profile-extraction-v3-receipt.json. The five ORDER_DETAIL rows are qualified at the tested choice level; component usage rows record what the pinned HL7apy archive can and cannot supply; a 2.8.2 component usage row records that conditional usage is not represented.",
+    "2026-09-28: database_receipt_sha256 names docs/profile-extraction-v4-receipt.json and conditions_sha256 docs/profile-conditions.json. Component usage, base field usage, length and terminology rows now describe the v5 packs built from the pinned HL7 v2 database export and the reviewed conditions; counts are over the elements promised structures reach."
   ],
   "rows": [
     {
       "version": "2.3.1",
       "constraint": "composite component usage",
-      "status": "source-information-missing",
-      "affected_datatypes": 78,
-      "review_pointer": "pack-2.3.1.json#/datatypes/*/usage_known",
-      "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
-      "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
-      "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
-      "source_survey": "The pinned HL7apy archive's hl7apy/v2_3_1/datatypes.py declares all 404 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
+      "status": "not-defined-by-edition",
+      "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached_components": 215,
+        "usage": {
+          "O": 5,
+          "unclassified": 210
+        }
+      },
+      "source_survey": "The HL7 v2 database export records NA for this edition's components except a few it records O (CCD, CCP, AUI and table-specific CE variants), and the edition's chapters print no component usage; the pinned HL7apy archive declares every component (0, 1). There is no usage distinction to adopt.",
+      "missing": "No edition source defines component usage. v5 marks each NA component unclassified and evaluation reports each occurrence as unsupported, never optional.",
+      "authoritative_source_needed": "None exists for this edition; a site profile may declare component usage locally.",
+      "implementation_test_needed": "Covered: an unclassified component cannot pass (TestUnclassifiedUsageAndUnavailableLengthCannotPass, TestPinnedDatabasePacks).",
+      "release_claim_affected": "No base component usage claim for this edition."
+    },
+    {
+      "version": "2.3.1",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.3.1.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 737,
+        "usage": {
+          "C": 58,
+          "O": 622,
+          "R": 55,
+          "X": 2
+        },
+        "conditional": {
+          "always-undecided": 24,
+          "decided-from-message": 27,
+          "partly-undecided": 5,
+          "unsupported": 2
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.3.1",
@@ -34,13 +67,24 @@
     {
       "version": "2.3.1",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 13,
-      "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "hl7": 26,
+          "user": 52
+        },
+        "field_bindings": {
+          "external": 2,
+          "hl7": 70,
+          "user": 216
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.3.1",
@@ -112,14 +156,45 @@
     {
       "version": "2.4",
       "constraint": "composite component usage",
-      "status": "source-information-missing",
-      "affected_datatypes": 80,
-      "review_pointer": "pack-2.4.json#/datatypes/*/usage_known",
-      "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
-      "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
-      "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
-      "source_survey": "The pinned HL7apy archive's hl7apy/v2_4/datatypes.py declares all 415 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
+      "status": "not-defined-by-edition",
+      "review_pointer": "pack-2.4.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached_components": 255,
+        "usage": {
+          "O": 5,
+          "unclassified": 250
+        }
+      },
+      "source_survey": "The HL7 v2 database export records NA for this edition's components except a few it records O (CCD, CCP, AUI and table-specific CE variants), and the edition's chapters print no component usage; the pinned HL7apy archive declares every component (0, 1). There is no usage distinction to adopt.",
+      "missing": "No edition source defines component usage. v5 marks each NA component unclassified and evaluation reports each occurrence as unsupported, never optional.",
+      "authoritative_source_needed": "None exists for this edition; a site profile may declare component usage locally.",
+      "implementation_test_needed": "Covered: an unclassified component cannot pass (TestUnclassifiedUsageAndUnavailableLengthCannotPass, TestPinnedDatabasePacks).",
+      "release_claim_affected": "No base component usage claim for this edition."
+    },
+    {
+      "version": "2.4",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.4.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 850,
+        "usage": {
+          "C": 65,
+          "O": 723,
+          "R": 62
+        },
+        "conditional": {
+          "always-undecided": 25,
+          "decided-from-message": 33,
+          "partly-undecided": 5,
+          "unsupported": 2
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.4",
@@ -135,13 +210,23 @@
     {
       "version": "2.4",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 13,
-      "review_pointer": "pack-2.4.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.4.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "hl7": 34,
+          "user": 54
+        },
+        "field_bindings": {
+          "hl7": 81,
+          "user": 262
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.4",
@@ -213,14 +298,52 @@
     {
       "version": "2.5.1",
       "constraint": "composite component usage",
-      "status": "source-information-missing",
-      "affected_datatypes": 78,
-      "review_pointer": "pack-2.5.1.json#/datatypes/*/usage_known",
-      "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
-      "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
-      "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
-      "source_survey": "The pinned HL7apy archive's hl7apy/v2_5_1/datatypes.py declares all 435 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached": 289,
+        "usage": {
+          "C": 18,
+          "O": 236,
+          "R": 35
+        },
+        "conditional": {
+          "decided-from-message": 9,
+          "partly-undecided": 2,
+          "unsupported": 7
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+    },
+    {
+      "version": "2.5.1",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.5.1.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 950,
+        "usage": {
+          "C": 81,
+          "O": 803,
+          "R": 63,
+          "unclassified": 3
+        },
+        "conditional": {
+          "always-undecided": 25,
+          "decided-from-message": 44,
+          "partly-undecided": 8,
+          "unsupported": 4
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.5.1",
@@ -236,13 +359,23 @@
     {
       "version": "2.5.1",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 129,
-      "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "hl7": 55,
+          "user": 54
+        },
+        "field_bindings": {
+          "hl7": 94,
+          "user": 276
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.5.1",
@@ -314,14 +447,51 @@
     {
       "version": "2.5",
       "constraint": "composite component usage",
-      "status": "source-information-missing",
-      "affected_datatypes": 78,
-      "review_pointer": "pack-2.5.json#/datatypes/*/usage_known",
-      "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
-      "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
-      "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
-      "source_survey": "The pinned HL7apy archive's hl7apy/v2_5/datatypes.py declares all 435 of its composite components (0, 1). A uniform declaration makes no usage distinction to adopt, so it is not used as a supplement."
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.5.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached": 289,
+        "usage": {
+          "C": 18,
+          "O": 236,
+          "R": 35
+        },
+        "conditional": {
+          "decided-from-message": 9,
+          "partly-undecided": 2,
+          "unsupported": 7
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+    },
+    {
+      "version": "2.5",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.5.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 942,
+        "usage": {
+          "C": 81,
+          "O": 798,
+          "R": 63
+        },
+        "conditional": {
+          "always-undecided": 25,
+          "decided-from-message": 44,
+          "partly-undecided": 8,
+          "unsupported": 4
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.5",
@@ -337,13 +507,23 @@
     {
       "version": "2.5",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 129,
-      "review_pointer": "pack-2.5.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.5.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "hl7": 55,
+          "user": 54
+        },
+        "field_bindings": {
+          "hl7": 98,
+          "user": 271
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.5",
@@ -415,14 +595,54 @@
     {
       "version": "2.6",
       "constraint": "composite component usage",
-      "status": "source-information-missing",
-      "affected_datatypes": 78,
-      "review_pointer": "pack-2.6.json#/datatypes/*/usage_known",
-      "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
-      "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
-      "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
-      "source_survey": "The pinned HL7apy archive's hl7apy/v2_6/datatypes.py declares 52 composite components (1, 1) and 385 (0, 1). Its (min, max) form cannot represent conditional or backward-compatible usage, so (0, 1) is not evidence of optional usage; it is not adopted as a supplement."
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.6.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached": 301,
+        "usage": {
+          "C": 18,
+          "O": 245,
+          "R": 37,
+          "X": 1
+        },
+        "conditional": {
+          "always-undecided": 1,
+          "decided-from-message": 10,
+          "partly-undecided": 1,
+          "unsupported": 6
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+    },
+    {
+      "version": "2.6",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.6.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 1005,
+        "usage": {
+          "C": 86,
+          "O": 832,
+          "R": 66,
+          "X": 21
+        },
+        "conditional": {
+          "always-undecided": 27,
+          "decided-from-message": 46,
+          "partly-undecided": 8,
+          "unsupported": 5
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.6",
@@ -438,13 +658,25 @@
     {
       "version": "2.6",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 128,
-      "review_pointer": "pack-2.6.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.6.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "hl7": 57,
+          "imported": 1,
+          "user": 58
+        },
+        "field_bindings": {
+          "external": 42,
+          "hl7": 105,
+          "user": 287
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.6",
@@ -516,14 +748,55 @@
     {
       "version": "2.7.1",
       "constraint": "composite component usage",
-      "status": "source-information-missing",
-      "affected_datatypes": 72,
-      "review_pointer": "pack-2.7.1.json#/datatypes/*/usage_known",
-      "missing": "The selected nHapi constructors do not expose component usage. false is not permission to treat all components as optional.",
-      "authoritative_source_needed": "Version-matched component definitions and any conditional predicates, with provenance and separately reviewed redistribution basis.",
-      "implementation_test_needed": "Implement required/optional/conditional/prohibited semantics for the chosen published base profiles; independently test absent/null/empty and condition changes.",
-      "release_claim_affected": "Base-standard component usage validation remains unsupported.",
-      "source_survey": "The pinned HL7apy archive has no v2_7_1 directory. Its v2_7 metadata is a different version and is not borrowed."
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached": 283,
+        "usage": {
+          "C": 48,
+          "O": 190,
+          "R": 35,
+          "RE": 1,
+          "X": 9
+        },
+        "conditional": {
+          "always-undecided": 1,
+          "decided-from-message": 38,
+          "partly-undecided": 1,
+          "unsupported": 8
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+    },
+    {
+      "version": "2.7.1",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.7.1.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 1004,
+        "usage": {
+          "C": 77,
+          "O": 783,
+          "R": 69,
+          "X": 75
+        },
+        "conditional": {
+          "always-undecided": 25,
+          "decided-from-message": 43,
+          "partly-undecided": 5,
+          "unsupported": 4
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.7.1",
@@ -539,13 +812,27 @@
     {
       "version": "2.7.1",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 105,
-      "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "external": 6,
+          "hl7": 48,
+          "imported": 1,
+          "user": 46
+        },
+        "field_bindings": {
+          "external": 22,
+          "hl7": 100,
+          "unknown": 1,
+          "user": 283
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.7.1",
@@ -612,35 +899,102 @@
     {
       "version": "2.8.2",
       "constraint": "composite component usage",
-      "status": "conditional-usage-not-represented",
-      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/required",
-      "source_survey": "HL7apy's hl7apy/v2_8_2/datatypes.py gives each component a (min, max) pair: (1, 1) becomes required, (0, 0) withdrawn and (0, 1) not required. The pair cannot represent conditional or backward-compatible usage, so usage_known true establishes only the required and withdrawn declarations.",
-      "missing": "A (0, 1) component may be conditional in the standard; its predicate is neither extracted nor evaluated, and the evaluator currently treats it as optional.",
-      "authoritative_source_needed": "Version-matched component usage codes and conditional predicates for 2.8.2, with provenance and a separate exact-content rights review.",
-      "implementation_test_needed": "Distinguish optional from conditional components in the pack, evaluate declared predicates, and report an unknown predicate as unsupported; independently test each case.",
-      "release_claim_affected": "2.8.2 base component usage is qualified for required and withdrawn declarations only; optional versus conditional usage is unqualified."
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/usage",
+      "counts": {
+        "reached": 310,
+        "usage": {
+          "C": 50,
+          "O": 212,
+          "R": 34,
+          "RE": 1,
+          "X": 13
+        },
+        "conditional": {
+          "decided-from-message": 39,
+          "partly-undecided": 2,
+          "unsupported": 9
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+    },
+    {
+      "version": "2.8.2",
+      "constraint": "base field usage",
+      "status": "represented-with-reviewed-conditions",
+      "review_pointer": "pack-2.8.2.json#/messages/*/segments/*/fields/*/usage",
+      "counts": {
+        "reached": 1078,
+        "usage": {
+          "C": 85,
+          "O": 876,
+          "R": 74,
+          "X": 43
+        },
+        "conditional": {
+          "always-undecided": 29,
+          "decided-from-message": 41,
+          "partly-undecided": 11,
+          "unsupported": 4
+        }
+      },
+      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
+      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
     },
     {
       "version": "2.8.2",
       "constraint": "component maximum length and field maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 448,
-      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
+      "status": "represented-boundaries-unqualified",
+      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/length",
+      "counts": {
+        "component_length_states": {
+          "conformance-only": 134,
+          "normative": 54,
+          "not-assigned": 122
+        },
+        "field_length_states": {
+          "conformance-only": 89,
+          "normative": 128,
+          "not-assigned": 861
+        },
+        "with_conformance_length": 223
+      },
+      "source_survey": "Normative lengths from the pinned HL7 v2 database export; counting is characters, escape delimiters excluded (edition §2.7.1). Conformance lengths from the export agree with the edition tables. Composite types carry no normative length (§2.5.5.4).",
+      "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+      "authoritative_source_needed": "None beyond the pinned export and chapters for these facets; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover both counting rules, escapes and multibyte values; qualify boundary cases independently per promised structure.",
+      "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
     },
     {
       "version": "2.8.2",
       "constraint": "standard terminology beyond approved local sets",
-      "status": "values-not-extracted-or-qualified",
-      "component_table_bindings": 0,
-      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/table",
-      "missing": "Only table identifiers are retained; source-defined or external value sets are not extracted into these packs.",
-      "authoritative_source_needed": "Exact versioned table/value-set source, scope and binding strength; separate rights review for any additional copied values.",
-      "implementation_test_needed": "Pin approved terminology and test valid/invalid/unknown codes and version changes; keep site-local sets distinct.",
-      "release_claim_affected": "Local set validation does not establish full standard terminology support."
+      "status": "bindings-inventoried-values-not-extracted",
+      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/table_kind",
+      "counts": {
+        "component_bindings": {
+          "external": 6,
+          "hl7": 53,
+          "imported": 1,
+          "user": 48
+        },
+        "field_bindings": {
+          "external": 22,
+          "hl7": 112,
+          "user": 286
+        }
+      },
+      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
+      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
+      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
+      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
     },
     {
       "version": "2.8.2",
@@ -704,5 +1058,7 @@
       "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
       "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
     }
-  ]
+  ],
+  "database_receipt_sha256": "510b6cb3702134d4d4e28d509196d226e38479d5080066167e4557cbf62ec8dd",
+  "conditions_sha256": "af179bbefabb68c5e953818d4cd61056f1c46fb3df5df99f845cc24c497089be"
 }

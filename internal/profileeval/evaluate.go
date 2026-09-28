@@ -51,7 +51,10 @@ func Evaluate(ctx context.Context, profileBytes, packBytes []byte, inputs []Occu
 	if pack.Schema == PackSchemaV4 {
 		e.report.Operator = ChoiceOperatorVersion
 	}
-	if pack.Schema == PackSchema || pack.Schema == PackSchemaV3 || pack.Schema == PackSchemaV4 {
+	if pack.Schema == PackSchemaV5 {
+		e.report.Operator = UsageOperatorVersion
+	}
+	if pack.Schema == PackSchema || pack.Schema == PackSchemaV3 || pack.Schema == PackSchemaV4 || pack.Schema == PackSchemaV5 {
 		e.report.BaseSupport = "evaluated"
 	}
 	total := 0

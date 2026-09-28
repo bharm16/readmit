@@ -40,6 +40,7 @@ func (e *evaluator) evaluateBase() {
 		return
 	}
 	e.structure(m.Sequence, "profile")
+	v5 := e.pack.Schema == PackSchemaV5
 	for _, decl := range m.Segments {
 		occ := 0
 		for _, segment := range e.doc.Messages[0].Segments {
@@ -47,6 +48,7 @@ func (e *evaluator) evaluateBase() {
 				continue
 			}
 			occ++
+			unclassified, lengthUnavailable := false, false
 			for _, f := range decl.Fields {
 				if e.err != nil || e.overflow {
 					return
@@ -66,8 +68,14 @@ func (e *evaluator) evaluateBase() {
 				sel := fmt.Sprintf("%s[%d]-%d", decl.ID, occ, f.Position)
 				r := e.read(sel)
 				field := segment.Field(f.Position)
-				if override == nil && f.Required && r.State != hl7.Present {
-					e.add("required", "profile", "fail", sel, r)
+				if override == nil {
+					usage := usageOf(f.Usage, f.Required, false, true)
+					unclassified = unclassified || usage == "unclassified"
+					if v5 {
+						e.usage(usage, f.Condition, "field", scopeOf(fmt.Sprintf("%s[%d]-", decl.ID, occ), false), sel, "profile", r)
+					} else if f.Required && r.State != hl7.Present {
+						e.add("required", "profile", "fail", sel, r)
+					}
 				}
 				if (override == nil || override.Cardinality == nil) && f.MaxRepetitions != 0 && len(field.Repetitions) > f.MaxRepetitions {
 					e.add("field-cardinality", "profile", "fail", sel, r)
@@ -82,13 +90,32 @@ func (e *evaluator) evaluateBase() {
 						e.add(string(r.Reason), "profile", "unsupported", s, r)
 						continue
 					}
-					if f.MaxLength > 0 && len(r.Decoded) > f.MaxLength {
+					if v5 {
+						e.length(f.Length, "field", s, "profile", r)
+						lengthUnavailable = lengthUnavailable || f.Length.State == "unavailable"
+						if code := r; f.Table != "" {
+							// A coded composite carries its code in the first component.
+							if first := e.read(s + ".1"); first.Reason == "" && first.State == hl7.Present {
+								code = first
+							}
+							e.binding(f.Table, f.TableKind, f.Policy, f.Codes, "field", s, "profile", code)
+						}
+					} else if f.MaxLength > 0 && len(r.Decoded) > f.MaxLength {
 						e.add("field-length", "profile", "fail", s, r)
 					}
 					if override == nil || override.Type == "" {
 						e.evaluateDatatype(f.DataType, s, "profile", r, 0)
 					}
 				}
+			}
+			// One finding per segment occurrence: a field the source cannot
+			// classify may be conditional, absent or present.
+			whole := hl7.Reading{Value: hl7.Value{Span: segment.Span, State: hl7.Present}}
+			if unclassified {
+				e.add("base-field-usage-unclassified", "profile", "unsupported", fmt.Sprintf("%s[%d]", decl.ID, occ), whole)
+			}
+			if lengthUnavailable {
+				e.add("base-field-length-unavailable", "profile", "unsupported", fmt.Sprintf("%s[%d]", decl.ID, occ), whole)
 			}
 		}
 	}

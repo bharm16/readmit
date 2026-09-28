@@ -165,6 +165,89 @@ asserts that the 2.7.1 and 2.8.2 packs contain no choice. The source matrix
 names each fixture, its hash, selected structure, exact source pack and tested
 level. Fields inside each alternative keep their separate gaps.
 
+## Edition usage, conditions, lengths and tables
+
+A conditional requirement is not optional. `readmit-profile-pack/v5` replaces
+v3/v4's required boolean with the edition's usage code for every base field
+and component and selects evaluator operator v4:
+
+- `R` must be valued, `X` (withdrawn or not supported) must not be, `O` and
+  `RE` may be either, and `unclassified` records a source that defines no
+  usage. An unclassified element is reported once per occurrence as
+  unsupported, so it never passes.
+- `C` carries a typed condition and the usage its true and false branches
+  select (R, RE, O or X, from the edition's "required if", "required when,
+  and allowed only if" or `C(a/b)`). Operands are the same occurrence's
+  siblings, a sibling's value or component, another segment's field (decided
+  only when the message holds one such segment), MSH-9's type, trigger or
+  structure, repetition, and `unknown` for information the message does not
+  carry. An unreadable or unknown operand leaves the condition undecided; a
+  C element without a condition is unsupported. The evaluator reads an
+  absent parent's components never.
+- Lengths keep normative bounds, conformance lengths and truncation markers
+  apart. v2.3.1-2.6 count the encoded occurrence with its separators and
+  state no escape rule, so a value that fits only under one reading is
+  undecided; v2.7.1 and v2.8.2 count characters with escape delimiters
+  excluded. A conformance length never fails a message.
+- Every edition lets a site extend an HL7 table without redefining its
+  values, so an unfamiliar code in an HL7 table is no base violation.
+  User-defined values are suggestions. External and imported vocabularies
+  are unsupported until a pinned vocabulary is supplied.
+
+New evaluations of v2-v4 packs report each base declaration that is neither
+required nor prohibited as unclassified: the upstream sources collapse
+optional and conditional into "not required". Their operator identities and
+stored results are unchanged; a reanalysis is a new evaluation.
+
+### Sources
+
+Usage codes, lengths, conformance lengths, table numbers, table types and
+table values come from NIST's JSON export of the HL7-provided v2 database
+([usnistgov/igamt-hl7Tools-service](https://github.com/usnistgov/igamt-hl7Tools-service)
+`src/main/resources/hl7db`, commit `09374475cc9cb3038f1fd79448b458e945ca9b62`,
+the last whose export carries data type components). The export writes the
+edition's B as O by NIST's stated decision; both permit the element. Where it
+leaves a table type unset, the database's own hl7.eu table index decides and
+the receipt names each such table. v2.3.1 and v2.4 define no component usage
+and the database records none, so their components are unclassified. The
+v2.7.1 export omits the edition's conformance lengths (C.LEN); the edition's
+own attribute tables supply them, and the receipt counts each one. Where the
+export and a table both state one (v2.8.2), they agree.
+
+The database records a condition only as C. Each predicate is read from its
+own edition sentence in the frozen HL7 Europe chapters and encoded in
+[the conditions registry](profile-conditions.json), which stores the typed
+predicate and the field, character span and SHA-256 of each basis sentence,
+never the sentence. Every reachable C element must have an entry, or the
+build refuses. An entry is `condition`, `not-message-determinable` (every
+stated condition depends on context the message does not carry),
+`no-stated-condition` or `source-defect` (the edition contradicts itself or
+makes the element its own condition); the last two leave the element
+unsupported. A basis may cite the same edition's other text that a definition
+defers to: v2.3.1 and v2.4 Chapter 4 OBR-2 and OBR-3 refer to ORC, and the
+edition's Chapter 7 reprint states both the ORC pairing and the ORU rule.
+
+Each item was encoded by two independent review rounds from its full edition
+section; disagreements and cross-edition variants of one rule were
+adjudicated to a single reading. The reader repairs two source faults and
+records each: a table row split across two tables, and a definition styled
+into the next field's heading (v2.5 PV2-1).
+
+```
+python3 tools/profile_standard.py acquire --output FROZEN            # network job
+python3 tools/profile_standard.py review-items --sources FROZEN --packs V4_EXTRACTION --output ITEMS
+python3 tools/profile_standard.py build --sources FROZEN --packs V4_EXTRACTION --conditions docs/profile-conditions.json --output V5_EXTRACTION
+READMIT_PROFILE_V5_EXTRACTION=V5_EXTRACTION go test -short -tags readmit_nosync ./internal/profileeval -run TestPinnedDatabasePacks
+```
+
+[The source manifest](profile-standard-sources.json) names every frozen file,
+its final URL, retrieval time and hash. [The v4 receipt](profile-extraction-v4-receipt.json)
+names the packs and reports usage, length, condition and table-kind counts per
+edition, every table decided from the rendering, every usage fallback, every
+conformance length taken from an edition table, any conformance length the
+two disagree on, and every data type the upstream structure names differently
+from the database.
+
 ## Open completion gates for #577
 
 The exact extracted content and incorporated HL7 terms still need the owner's
