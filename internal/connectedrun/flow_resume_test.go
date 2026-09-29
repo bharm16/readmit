@@ -22,7 +22,7 @@ func interruptedFlow(t *testing.T) (*flowContractHarness, *connectedrun.Prepared
 	t.Helper()
 	// Resume/store tests do not qualify a tighter sampling threshold than an
 	// otherwise admitted HTTP read. Keep the finite parent gap allowance while
-	// preserving the two-second acquisition and the 120 ms business horizon.
+	// preserving the patient acquisition budget and the 120 ms business horizon.
 	h := newFlowContractHarnessForRecovery(t)
 	store := filepath.Join(h.root, "recovery-store")
 	if err := os.Mkdir(store, 0700); err != nil {

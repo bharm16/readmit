@@ -100,7 +100,15 @@ type ReplayPreview struct {
 	Sendable        bool                    `json:"sendable"`
 	Refusal         string                  `json:"refusal,omitzero"`
 	Revealed        bool                    `json:"revealed"`
+	// ScenarioTiming is replay.TimingRequired for a case the case generator
+	// wrote: the window offers no byte-only replay, so it never sends one.
+	ScenarioTiming string `json:"scenario_timing,omitzero"`
 }
+
+// timingRefusal is why the window cannot send a generated case: raw replay
+// does not apply its scenario timing, and the window offers no byte-only
+// replay.
+const timingRefusal = "raw replay does not apply this generated case's scenario timing, and the window offers no byte-only replay; a scheduled connected lifecycle sends it on its generation's delays"
 
 // ReplayMessage is one selected message as the command's preview lists it.
 type ReplayMessage struct {
@@ -204,6 +212,7 @@ func (a *App) previewReplay(ctx context.Context, request ReplayRequest, held boo
 		Target: targetView(plan.Configuration()), Messages: []ReplayMessage{},
 		Transformations: slices.Clone(inputs.options.Transformations), Changes: []ReplayChange{},
 		Destination: destination, DecisionFile: destination.Name + replay.DecisionSuffix, Revealed: request.Reveal,
+		ScenarioTiming: plan.ScenarioTiming(),
 	}
 	if preview.Transformations == nil {
 		preview.Transformations = []replay.Transformation{}
@@ -228,6 +237,8 @@ func (a *App) previewReplay(ctx context.Context, request ReplayRequest, held boo
 		preview.Admission = a.admissionPreview(ctx)
 	}
 	switch {
+	case preview.ScenarioTiming == replay.TimingRequired:
+		preview.Refusal = timingRefusal
 	case decision.Reason != sendpolicy.SendNotExplicit:
 		preview.Refusal = "the send policy refuses this destination (" + string(decision.Reason) + "); a send is refused before anything is sent"
 	case !preview.Admission.Admitted:

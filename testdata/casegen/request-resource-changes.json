@@ -1,0 +1,278 @@
+{
+ "schema": "readmit-case-generation/v1",
+ "generator_version": "readmit-case-generator-v1",
+ "scenario": {
+  "schema": "readmit-scenario/v2",
+  "scenario": {
+   "id": "resource-changes",
+   "version": "1"
+  },
+  "profile": "readmit-siu-lifecycle-v2",
+  "base_time": "2026-04-06T08:00:00Z",
+  "subjects": [
+   {
+    "id": "patient-a",
+    "kind": "patient",
+    "namespace": "SYNTH-MRN",
+    "identifier": "MRN-0002",
+    "initial_state": "active"
+   },
+   {
+    "id": "appointment-a",
+    "kind": "appointment",
+    "namespace": "SYNTH-SCHED",
+    "identifier": "APPT-0002",
+    "patient": "patient-a",
+    "initial_state": "none"
+   },
+   {
+    "id": "consult",
+    "kind": "resource",
+    "namespace": "SYNTH-SERVICE",
+    "identifier": "CONSULT",
+    "appointment": "appointment-a",
+    "initial_state": "booked"
+   },
+   {
+    "id": "room",
+    "kind": "resource",
+    "namespace": "SYNTH-FACILITY",
+    "identifier": "CLINIC-1",
+    "appointment": "appointment-a",
+    "initial_state": "booked"
+   },
+   {
+    "id": "doctor",
+    "kind": "resource",
+    "namespace": "SYNTH-STAFF",
+    "identifier": "DR-1",
+    "appointment": "appointment-a",
+    "initial_state": "none"
+   },
+   {
+    "id": "checkup",
+    "kind": "resource",
+    "namespace": "SYNTH-SERVICE",
+    "identifier": "CHECKUP",
+    "appointment": "appointment-a",
+    "initial_state": "none"
+   },
+   {
+    "id": "nurse",
+    "kind": "resource",
+    "namespace": "SYNTH-STAFF",
+    "identifier": "RN-1",
+    "appointment": "appointment-a",
+    "initial_state": "none"
+   }
+  ],
+  "steps": [
+   {
+    "id": "book",
+    "event": "S12",
+    "subject": "appointment-a",
+    "after": "0s",
+    "expect": "accepted"
+   },
+   {
+    "id": "add-doctor",
+    "event": "S18",
+    "subject": "doctor",
+    "after": "10m",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel-room",
+    "event": "S20",
+    "subject": "room",
+    "after": "20m",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel-consult",
+    "event": "S20",
+    "subject": "consult",
+    "after": "30m",
+    "expect": "accepted"
+   },
+   {
+    "id": "add-checkup",
+    "event": "S18",
+    "subject": "checkup",
+    "after": "31m",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel-room-again",
+    "event": "S20",
+    "subject": "room",
+    "after": "35m",
+    "expect": "refused"
+   },
+   {
+    "id": "cancel",
+    "event": "S15",
+    "subject": "appointment-a",
+    "after": "40m",
+    "expect": "accepted"
+   },
+   {
+    "id": "add-after-cancellation",
+    "event": "S18",
+    "subject": "nurse",
+    "after": "45m",
+    "expect": "refused"
+   }
+  ]
+ },
+ "profile": {
+  "schema": "readmit-local-profile/v1",
+  "id": "owned-casegen-siu",
+  "version": "1",
+  "sha256": "4c9bff8efd6a0373fdfe121d3cc32687aba24a9cb1bddbf9a25b0477790dd38b"
+ },
+ "pack": {
+  "schema": "readmit-profile-pack/v5",
+  "id": "owned-casegen-2-5-1",
+  "version": "1",
+  "sha256": "79f1cf62e1d7cd0a99cccae032cfbdfe55c06d733a3afa149be917c67f82f9c4"
+ },
+ "seed": 11,
+ "wire": {
+  "delimiters": "|^~\\&",
+  "precision": "second",
+  "offset": "+00:00",
+  "processing_id": "T",
+  "sending": {
+   "application": "READMIT",
+   "facility": "SYNTHETIC"
+  },
+  "receiving": {
+   "application": "RECEIVER",
+   "facility": "READMIT"
+  },
+  "resource_updates": "action-code"
+ },
+ "bindings": {
+  "patients": [
+   {
+    "subject": "patient-a",
+    "identifier_type": "MR",
+    "additional_identifiers": []
+   }
+  ],
+  "visits": [],
+  "appointments": [
+   {
+    "subject": "appointment-a",
+    "placer": null,
+    "start_after": "24h",
+    "duration_minutes": 30,
+    "reason": {
+     "code": "ROUTINE",
+     "text": "Routine visit",
+     "system": "SYNTH-REASON"
+    },
+    "contact": {
+     "id": "SCHED-1",
+     "family": "SCHEDULER",
+     "given": "SYNTHETIC",
+     "authority": "SYNTH-STAFF",
+     "id_type": "EI",
+     "name_type": "L"
+    },
+    "entered_by": {
+     "id": "CLERK-1",
+     "family": "CLERK",
+     "given": "SYNTHETIC",
+     "authority": "SYNTH-STAFF",
+     "id_type": "EI",
+     "name_type": "L"
+    },
+    "resources": []
+   }
+  ],
+  "resources": [
+   {
+    "subject": "consult",
+    "kind": "service",
+    "text": "Consultation",
+    "role": {
+     "code": "RES",
+     "text": "Resource",
+     "system": "SYNTH-ROLE"
+    }
+   },
+   {
+    "subject": "room",
+    "kind": "location",
+    "text": "Clinic room one",
+    "role": {
+     "code": "RES",
+     "text": "Resource",
+     "system": "SYNTH-ROLE"
+    }
+   },
+   {
+    "subject": "doctor",
+    "kind": "personnel",
+    "text": "SYNTHETIC",
+    "role": {
+     "code": "RES",
+     "text": "Resource",
+     "system": "SYNTH-ROLE"
+    }
+   },
+   {
+    "subject": "checkup",
+    "kind": "service",
+    "text": "Check-up",
+    "role": {
+     "code": "RES",
+     "text": "Resource",
+     "system": "SYNTH-ROLE"
+    }
+   },
+   {
+    "subject": "nurse",
+    "kind": "personnel",
+    "text": "NURSE",
+    "role": {
+     "code": "RES",
+     "text": "Resource",
+     "system": "SYNTH-ROLE"
+    }
+   }
+  ],
+  "orders": [],
+  "edits": []
+ },
+ "rows": [
+  {
+   "id": "plain",
+   "family": "ROE",
+   "given": "RICHARD",
+   "notes": [],
+   "charset": "UNICODE UTF-8"
+  }
+ ],
+ "variants": [
+  {
+   "id": "baseline",
+   "polarity": "positive",
+   "mutations": []
+  },
+  {
+   "id": "unmarked-cancellation",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "field",
+     "step": "cancel-room",
+     "selector": "AIL-2",
+     "state": "absent"
+    }
+   ]
+  }
+ ]
+}

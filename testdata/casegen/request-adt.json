@@ -1,0 +1,290 @@
+{
+ "schema": "readmit-case-generation/v1",
+ "generator_version": "readmit-case-generator-v1",
+ "scenario": {
+  "schema": "readmit-scenario/v1",
+  "scenario": {
+   "id": "adt-visit-lifecycle",
+   "version": "1"
+  },
+  "profile": "readmit-adt-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+   {
+    "id": "patient-a",
+    "kind": "patient",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-PATIENT-A",
+    "initial_state": "active"
+   },
+   {
+    "id": "patient-b",
+    "kind": "patient",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-PATIENT-B",
+    "initial_state": "active"
+   },
+   {
+    "id": "patient-c",
+    "kind": "patient",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-PATIENT-C",
+    "initial_state": "active"
+   },
+   {
+    "id": "visit-a",
+    "kind": "visit",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-VISIT-A",
+    "patient": "patient-a",
+    "initial_state": "none"
+   },
+   {
+    "id": "visit-b",
+    "kind": "visit",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-VISIT-B",
+    "patient": "patient-b",
+    "initial_state": "none"
+   }
+  ],
+  "steps": [
+   {
+    "id": "register",
+    "event": "A04",
+    "subject": "visit-a",
+    "after": "0s",
+    "expect": "accepted"
+   },
+   {
+    "id": "admit",
+    "event": "A01",
+    "subject": "visit-a",
+    "after": "30m",
+    "expect": "accepted"
+   },
+   {
+    "id": "transfer",
+    "event": "A02",
+    "subject": "visit-a",
+    "after": "2h",
+    "expect": "accepted"
+   },
+   {
+    "id": "update",
+    "event": "A08",
+    "subject": "visit-a",
+    "after": "3h",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel-a-discharge-that-never-happened",
+    "event": "A13",
+    "subject": "visit-a",
+    "after": "4h",
+    "expect": "refused"
+   },
+   {
+    "id": "discharge",
+    "event": "A03",
+    "subject": "visit-a",
+    "after": "26h",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel-an-admission-already-discharged",
+    "event": "A11",
+    "subject": "visit-a",
+    "after": "27h",
+    "expect": "refused"
+   },
+   {
+    "id": "cancel-the-discharge",
+    "event": "A13",
+    "subject": "visit-a",
+    "after": "28h",
+    "expect": "accepted"
+   },
+   {
+    "id": "admit-the-second-visit",
+    "event": "A01",
+    "subject": "visit-b",
+    "after": "29h",
+    "expect": "accepted"
+   },
+   {
+    "id": "merge-a-patient-into-itself",
+    "event": "A40",
+    "subject": "patient-b",
+    "into": "patient-b",
+    "after": "30h",
+    "expect": "refused"
+   },
+   {
+    "id": "merge-the-duplicate-identity",
+    "event": "A40",
+    "subject": "patient-b",
+    "into": "patient-a",
+    "after": "31h",
+    "expect": "accepted"
+   },
+   {
+    "id": "merge-an-identity-already-merged-away",
+    "event": "A40",
+    "subject": "patient-b",
+    "into": "patient-a",
+    "after": "32h",
+    "expect": "refused"
+   },
+   {
+    "id": "update-the-visit-of-a-merged-identity",
+    "event": "A08",
+    "subject": "visit-b",
+    "after": "33h",
+    "expect": "refused"
+   },
+   {
+    "id": "merge-into-an-identity-already-merged-away",
+    "event": "A40",
+    "subject": "patient-c",
+    "into": "patient-b",
+    "after": "34h",
+    "expect": "refused"
+   }
+  ]
+ },
+ "profile": {
+  "schema": "readmit-local-profile/v1",
+  "id": "owned-casegen-adt",
+  "version": "1",
+  "sha256": "2d4e64e55a653aa54e0e624f8fe411b6dd6485ad5fcc32baea4c6e297536e154"
+ },
+ "pack": {
+  "schema": "readmit-profile-pack/v5",
+  "id": "owned-casegen-2-5-1",
+  "version": "1",
+  "sha256": "79f1cf62e1d7cd0a99cccae032cfbdfe55c06d733a3afa149be917c67f82f9c4"
+ },
+ "seed": 0,
+ "wire": {
+  "delimiters": "|^~\\&",
+  "precision": "second",
+  "offset": "+00:00",
+  "processing_id": "T",
+  "sending": {
+   "application": "READMIT",
+   "facility": "SYNTHETIC"
+  },
+  "receiving": {
+   "application": "RECEIVER",
+   "facility": "READMIT"
+  },
+  "resource_updates": "action-code"
+ },
+ "bindings": {
+  "patients": [
+   {
+    "subject": "patient-a",
+    "identifier_type": "MR",
+    "additional_identifiers": [
+     {
+      "namespace": "SYNTH-EMPI",
+      "identifier": "EMPI-A",
+      "type": "PI"
+     }
+    ]
+   },
+   {
+    "subject": "patient-b",
+    "identifier_type": "MR",
+    "additional_identifiers": []
+   },
+   {
+    "subject": "patient-c",
+    "identifier_type": "MR",
+    "additional_identifiers": []
+   }
+  ],
+  "visits": [
+   {
+    "subject": "visit-a",
+    "class": "I",
+    "identifier_type": "VN",
+    "location": {
+     "point_of_care": "WARD-A",
+     "room": "101",
+     "bed": "1"
+    }
+   },
+   {
+    "subject": "visit-b",
+    "class": "O",
+    "identifier_type": "VN",
+    "location": {
+     "point_of_care": "CLINIC-B",
+     "room": "",
+     "bed": ""
+    }
+   }
+  ],
+  "appointments": [],
+  "resources": [],
+  "orders": [],
+  "edits": [
+   {
+    "step": "transfer",
+    "op": "relocate",
+    "location": {
+     "point_of_care": "WARD-B",
+     "room": "202",
+     "bed": "2"
+    }
+   },
+   {
+    "step": "update",
+    "op": "rename",
+    "family": "SYNTHETIC",
+    "given": "RENAMED"
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": "plain",
+   "family": "SYNTHETIC",
+   "given": "PATIENT",
+   "notes": [],
+   "charset": "UNICODE UTF-8"
+  }
+ ],
+ "variants": [
+  {
+   "id": "baseline",
+   "polarity": "positive",
+   "mutations": []
+  },
+  {
+   "id": "late-admission",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "delay",
+     "step": "admit",
+     "after": "3h"
+    }
+   ]
+  },
+  {
+   "id": "missing-visit-number",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "field",
+     "step": "admit",
+     "selector": "PV1-19",
+     "state": "empty"
+    }
+   ]
+  }
+ ]
+}

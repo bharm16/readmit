@@ -439,6 +439,11 @@ func (a *App) scenarioFromDocument(data []byte) (*ScenarioDraft, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The plan generator writes no resource workflow, so a draft of one could
+	// never be saved; its cases come from a case generation request.
+	if workflow.Schema == scenario.ResourceSchema {
+		return nil, errors.New("a resource workflow is not edited here; generate its cases from a case generation request")
+	}
 	template, err := json.Marshal(workflow, json.Deterministic(true))
 	if err != nil {
 		return nil, errors.New("the scenario cannot be read")

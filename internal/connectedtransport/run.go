@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json/v2"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -17,6 +18,11 @@ import (
 
 const ReceiptSchema = "readmit-connected-transport/v1"
 const ReceiptSchemaV2 = "readmit-connected-transport/v2"
+
+// ReceiptSchemaV3 is a scheduled phase's transport: its retained sequence
+// declares each occurrence's delay, and each intent records the delay and when
+// the send began after the phase's sending began.
+const ReceiptSchemaV3 = "readmit-connected-transport/v3"
 
 type Receipt struct {
 	Schema      string                    `json:"schema"`
@@ -67,6 +73,9 @@ func Execute(ctx context.Context, p *Prepared, authority Authority, instance, ou
 	if check(ctx) != nil {
 		return Receipt{}, refused
 	}
+	if !p.Holds(ctx) {
+		return Receipt{}, refused
+	}
 	// The replay plan checks physical source containment before output creation.
 	output, err = p.replay.ScopedDestination(output)
 	if err != nil {
@@ -75,6 +84,9 @@ func Execute(ctx context.Context, p *Prepared, authority Authority, instance, ou
 	schema := ReceiptSchema
 	if p.sequence {
 		schema = ReceiptSchemaV2
+	}
+	if p.schedule != nil {
+		schema = ReceiptSchemaV3
 	}
 	f := family
 	f.Seal = artifactdir.DirectoryHash(schema)
@@ -133,7 +145,7 @@ func Execute(ctx context.Context, p *Prepared, authority Authority, instance, ou
 	if check(ctx) != nil {
 		return Receipt{}, refused
 	}
-	observer := &intentObserver{writer: w, steps: p.plan.Document().Order, mappings: p.replay.Mappings()}
+	observer := &intentObserver{writer: w, steps: p.plan.Document().Order, mappings: p.replay.Mappings(), schedule: p.schedule, began: time.Now()}
 	run, err := replay.SendScoped(ctx, p.replay, filepath.Join(w.Path(), "run"), route, security, observer)
 	if err != nil {
 		return Receipt{}, refused
@@ -149,27 +161,67 @@ func Execute(ctx context.Context, p *Prepared, authority Authority, instance, ou
 	return Open(w.Path())
 }
 
+// intent is retained before an occurrence's write. A scheduled phase's intent
+// also records the delay the occurrence declared and how long after the
+// phase's sending began its send started.
 type intent struct {
-	Step       string `json:"step"`
-	Occurrence string `json:"occurrence"`
-	State      string `json:"state"`
+	Step            string `json:"step"`
+	Occurrence      string `json:"occurrence"`
+	State           string `json:"state"`
+	DeclaredDelayMS *int64 `json:"declared_delay_ms,omitzero"`
+	StartedAfterMS  *int64 `json:"started_after_ms,omitzero"`
 }
 type intentObserver struct {
 	writer   *artifactdir.Writer
 	steps    []string
 	mappings []replay.Mapping
+	schedule []time.Duration
+	began    time.Time
+}
+
+func (o *intentObserver) index(id string) int {
+	return slices.IndexFunc(o.mappings, func(m replay.Mapping) bool { return m.OutboundOccurrence == id })
+}
+
+// Await holds a scheduled occurrence until its delay after the phase's sending
+// began, on the monotonic clock. Replay records a wait the execution ends as
+// the occurrence not sent.
+func (o *intentObserver) Await(ctx context.Context, id string) error {
+	if o.schedule == nil {
+		return nil
+	}
+	i := o.index(id)
+	if i < 0 {
+		return refused
+	}
+	wait := time.Until(o.began.Add(o.schedule[i]))
+	if wait <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (o *intentObserver) BeforeSend(id string) error {
-	for i, m := range o.mappings {
-		if m.OutboundOccurrence == id {
-			if err := put(o.writer, "intents/"+id+".json", intent{Step: o.steps[i], Occurrence: id, State: "uncertain-until-settled"}); err != nil {
-				return err
-			}
-			return o.writer.Sync()
-		}
+	i := o.index(id)
+	if i < 0 {
+		return refused
 	}
-	return refused
+	v := intent{Step: o.steps[i], Occurrence: id, State: "uncertain-until-settled"}
+	if o.schedule != nil {
+		declared, started := o.schedule[i].Milliseconds(), time.Since(o.began).Milliseconds()
+		v.DeclaredDelayMS, v.StartedAfterMS = &declared, &started
+	}
+	if err := put(o.writer, "intents/"+id+".json", v); err != nil {
+		return err
+	}
+	return o.writer.Sync()
 }
 func (o *intentObserver) Sent(string, []byte) error   { return nil }
 func (o *intentObserver) Recorded(replay.Event) error { return nil }

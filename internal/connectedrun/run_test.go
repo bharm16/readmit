@@ -50,15 +50,16 @@ func write(t *testing.T, path string, value any) {
 // The target is a separately implemented ordinary CSV-exporting application.
 // It does not use readmit's fixture ledger, assertion engine or ACK generator.
 type target struct {
-	output        func(int, string)
-	notifications chan int
-	listener      net.Listener
-	file          string
-	mu            sync.Mutex
-	mode          string
-	rows          []string
-	received      atomic.Int32
-	done          sync.WaitGroup
+	connectTimeout string
+	output         func(int, string)
+	notifications  chan int
+	listener       net.Listener
+	file           string
+	mu             sync.Mutex
+	mode           string
+	rows           []string
+	received       atomic.Int32
+	done           sync.WaitGroup
 }
 
 func startTarget(t *testing.T, dir string) *target {
@@ -173,6 +174,9 @@ func prepared(t *testing.T, s *target, dir string, httpSource ...bool) *connecte
 		t.Fatal(err)
 	}
 	targetConfig := replay.Target{Schema: replay.TargetSchemaV3, Name: "Lab", Classification: replay.Nonproduction, TestEndpoint: true, Address: s.listener.Addr().String(), Transport: "plain", ApprovedTransport: true, ConnectTimeout: "1s", MessageTimeout: "1s", MaxACKBytes: 4096}
+	if s.connectTimeout != "" {
+		targetConfig.ConnectTimeout = s.connectTimeout
+	}
 	write(t, filepath.Join(dir, "target.json"), targetConfig)
 	rp, err := replay.Prepare(casePath, targetConfig, replay.Options{})
 	if err != nil {

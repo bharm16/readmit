@@ -97,7 +97,7 @@ func InspectFlow(ctx context.Context, path string) (FlowResult, error) {
 		}
 		verified, e := OpenEvidence(ctx, filepath.Join(path, "phases", phase.ID))
 		child := verified.Result
-		if e == nil && child.Plan == intent.Plan && child.Instance == r.Instance && !child.StartedAt.Before(intent.At) && artifactdir.MatchesSubtree(files, "phases/"+phase.ID, PhaseSchema, verified.Identity) {
+		if e == nil && child.Plan == intent.Plan && child.Instance == r.Instance && !child.StartedAt.Before(intent.At) && artifactdir.MatchesSubtree(files, "phases/"+phase.ID, phaseSchemaFor(plan), verified.Identity) {
 			evaluated, e := evaluateFlowPhase(ctx, plan, phase, child, filepath.Join(path, "phases", phase.ID))
 			if e == nil {
 				if raw, ok := files["phase-"+phase.ID+".json"]; ok && !bytes.Equal(raw, canonicalFlow(evaluated)) {
@@ -135,12 +135,17 @@ func interruptedPhase(plan *connectedtest.FlowPlan, phase connectedtest.FlowPhas
 		if !strings.HasPrefix(name, "transport/intents/") {
 			continue
 		}
+		// A scheduled phase's intent also records its delay and when its send
+		// began; either form is read strictly.
 		var intent struct {
-			Step       string `json:"step"`
-			Occurrence string `json:"occurrence"`
-			State      string `json:"state"`
+			Step            string `json:"step"`
+			Occurrence      string `json:"occurrence"`
+			State           string `json:"state"`
+			DeclaredDelayMS *int64 `json:"declared_delay_ms,omitzero"`
+			StartedAfterMS  *int64 `json:"started_after_ms,omitzero"`
 		}
-		if json.Unmarshal(raw, &intent, json.RejectUnknownMembers(true)) != nil || intent.State != "uncertain-until-settled" {
+		scheduled := plan.Schedule(phase.ID) != nil
+		if json.Unmarshal(raw, &intent, json.RejectUnknownMembers(true)) != nil || intent.State != "uncertain-until-settled" || scheduled != (intent.DeclaredDelayMS != nil) || scheduled != (intent.StartedAfterMS != nil) {
 			return r, invalid
 		}
 		found := false

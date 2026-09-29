@@ -1,0 +1,49 @@
+{
+ "schema": "readmit-scenario/v1",
+ "scenario": {
+  "id": "book-reschedule-cancel",
+  "version": "1"
+ },
+ "profile": "readmit-siu-lifecycle-v1",
+ "base_time": "2026-03-02T09:00:00Z",
+ "subjects": [
+  {
+   "id": "patient-a",
+   "kind": "patient",
+   "namespace": "SYNTH-MRN",
+   "identifier": "MRN-0001",
+   "initial_state": "active"
+  },
+  {
+   "id": "appointment-a",
+   "kind": "appointment",
+   "namespace": "SYNTH-SCHED",
+   "identifier": "APPT-0001",
+   "patient": "patient-a",
+   "initial_state": "none"
+  }
+ ],
+ "steps": [
+  {
+   "id": "book",
+   "event": "S12",
+   "subject": "appointment-a",
+   "after": "0s",
+   "expect": "accepted"
+  },
+  {
+   "id": "reschedule",
+   "event": "S13",
+   "subject": "appointment-a",
+   "after": "1h",
+   "expect": "accepted"
+  },
+  {
+   "id": "cancel",
+   "event": "S15",
+   "subject": "appointment-a",
+   "after": "2h",
+   "expect": "accepted"
+  }
+ ]
+}

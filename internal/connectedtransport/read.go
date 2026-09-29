@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/connectedtest"
@@ -23,6 +24,9 @@ import (
 type Evidence struct {
 	Receipt  Receipt
 	Identity string
+	// Schedule is a scheduled phase's declared delays in the plan's order,
+	// each verified against the intent of every occurrence that was sent.
+	Schedule []time.Duration
 }
 
 func Open(directory string) (Receipt, error) {
@@ -37,7 +41,7 @@ func OpenEvidence(directory string) (Evidence, error) {
 		return Evidence{}, refused
 	}
 	var r, start Receipt
-	if json.Unmarshal(files["receipt.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (r.Schema != ReceiptSchema && r.Schema != ReceiptSchemaV2) || r.ApplicationVerdict != "not-evaluated" || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(r.Schema, files) {
+	if json.Unmarshal(files["receipt.json"], &r, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (r.Schema != ReceiptSchema && r.Schema != ReceiptSchemaV2 && r.Schema != ReceiptSchemaV3) || r.ApplicationVerdict != "not-evaluated" || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(r.Schema, files) {
 		return Evidence{}, refused
 	}
 
@@ -77,7 +81,7 @@ func OpenEvidence(directory string) (Evidence, error) {
 		return Evidence{}, refused
 	}
 	expectedRunSchema := replay.Schema
-	if r.Schema == ReceiptSchemaV2 {
+	if r.Schema == ReceiptSchemaV2 || r.Schema == ReceiptSchemaV3 {
 		expectedRunSchema = replay.SequenceSchema
 	}
 	if run.Manifest.Schema != expectedRunSchema {
@@ -88,19 +92,20 @@ func OpenEvidence(directory string) (Evidence, error) {
 		return Evidence{}, refused
 	}
 	expectedNames := []string{"target.json", "policy.json"}
-	if r.Schema == ReceiptSchemaV2 {
+	var schedule []time.Duration
+	if r.Schema == ReceiptSchemaV2 || r.Schema == ReceiptSchemaV3 {
 		expectedNames = append(expectedNames, "sequence.json")
-		var sequence struct {
-			Schema      string   `json:"schema"`
-			Order       []string `json:"order"`
-			Occurrences []string `json:"occurrences"`
-		}
-		if json.Unmarshal(config["sequence.json"], &sequence, json.RejectUnknownMembers(true)) != nil || sequence.Schema != ReceiptSchemaV2 || !slices.Equal(sequence.Order, plan.Document().Order) || len(sequence.Occurrences) != len(run.Events) {
+		var sequence phaseSequence
+		scheduled := r.Schema == ReceiptSchemaV3
+		if json.Unmarshal(config["sequence.json"], &sequence, json.RejectUnknownMembers(true)) != nil || sequence.Schema != r.Schema || !slices.Equal(sequence.Order, plan.Document().Order) || len(sequence.Occurrences) != len(run.Events) || scheduled != (sequence.DelaysMS != nil) || scheduled && len(sequence.DelaysMS) != len(run.Events) {
 			return Evidence{}, refused
 		}
 		for i, event := range run.Events {
-			if sequence.Occurrences[i] != event.SourceOccurrence {
+			if sequence.Occurrences[i] != event.SourceOccurrence || scheduled && sequence.DelaysMS[i] < 0 {
 				return Evidence{}, refused
+			}
+			if scheduled {
+				schedule = append(schedule, time.Duration(sequence.DelaysMS[i])*time.Millisecond)
 			}
 		}
 	}
@@ -186,11 +191,15 @@ func OpenEvidence(directory string) (Evidence, error) {
 			return Evidence{}, refused
 		}
 		if e.Delivery != "not_sent" {
+			// A scheduled send records its delay and never started before it.
 			var in intent
-			if json.Unmarshal(files["intents/"+e.OutboundOccurrence+".json"], &in, json.RejectUnknownMembers(true)) != nil || in.Step != id || in.Occurrence != e.OutboundOccurrence || in.State != "uncertain-until-settled" {
+			if json.Unmarshal(files["intents/"+e.OutboundOccurrence+".json"], &in, json.RejectUnknownMembers(true)) != nil || in.Step != id || in.Occurrence != e.OutboundOccurrence || in.State != "uncertain-until-settled" || (schedule != nil) != (in.DeclaredDelayMS != nil) || (schedule != nil) != (in.StartedAfterMS != nil) {
+				return Evidence{}, refused
+			}
+			if schedule != nil && (*in.DeclaredDelayMS != schedule[i].Milliseconds() || *in.StartedAfterMS < *in.DeclaredDelayMS) {
 				return Evidence{}, refused
 			}
 		}
 	}
-	return Evidence{Receipt: r, Identity: strings.TrimSpace(string(files["identity.sha256"]))}, nil
+	return Evidence{Receipt: r, Identity: strings.TrimSpace(string(files["identity.sha256"])), Schedule: schedule}, nil
 }

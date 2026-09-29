@@ -116,6 +116,11 @@ func sendWithResolver(ctx context.Context, plan *Plan, output string, policy *se
 	if plan == nil || len(plan.messages) == 0 {
 		return nil, errors.New("replay requires a prepared plan")
 	}
+	// A generated case is sent raw only as the byte-only replay its caller
+	// chose; the refusal comes before anything is decided or opened.
+	if plan.ScenarioTiming() == TimingRequired {
+		return nil, ErrScenarioTiming
+	}
 	if policy != nil && record == nil {
 		return nil, errors.New("a selected send policy requires a decision recorder")
 	}

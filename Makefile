@@ -39,6 +39,20 @@ test-corpus:
 test-fhir-lab:
 	go test -tags readmit_nosync ./internal/connectedrun ./internal/report -run '^(TestFHIRFlow|TestConnectedRetainedProof|TestConnectedExtractMaps|TestConnectedLab)'
 
+# Pack-backed qualification of scenario case generation (docs/scenario-generation.md).
+# It needs the withheld HL7 packs (READMIT_PROFILE_EXTRACTION) and a receipt path
+# (RECEIPT), qualifies only a committed revision, fails when a pack is missing,
+# never rewrites the retained matrix and runs uncached.
+.PHONY: qualify-generation-packs
+qualify-generation-packs:
+	@test -n "$(READMIT_PROFILE_EXTRACTION)" || { echo "READMIT_PROFILE_EXTRACTION must name the pinned packs" >&2; exit 2; }
+	@test -n "$(RECEIPT)" || { echo "RECEIPT must name the new qualification receipt" >&2; exit 2; }
+	@test -z "$(READMIT_UPDATE_GENERATION_MATRIX)" || { echo "qualification never updates the retained matrix" >&2; exit 2; }
+	@git diff --quiet HEAD -- || { echo "qualify a committed revision: the working tree differs from HEAD" >&2; exit 2; }
+	READMIT_REQUIRE_PROFILE_EXTRACTION=1 READMIT_GENERATION_QUALIFICATION_RECEIPT="$(RECEIPT)" \
+	READMIT_QUALIFIED_REVISION=$$(git rev-parse HEAD) READMIT_QUALIFIED_TREE=$$(git rev-parse 'HEAD^{tree}') \
+	go test -count=1 -short -tags readmit_nosync ./internal/casegen -run '^TestPinnedGenerationMatrix$$' -v
+
 test-tools:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py' -v
 

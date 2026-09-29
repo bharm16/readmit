@@ -208,7 +208,7 @@ func openFlowFiles(ctx context.Context, path string, files map[string][]byte) (F
 		if err != nil || child.Plan != intent.Plan || child.Instance != r.Instance || child.StartedAt.Before(intent.At) || child.CompletedAt.After(r.CompletedAt) {
 			return FlowResult{}, invalid
 		}
-		if !artifactdir.MatchesSubtree(files, prefix, PhaseSchema, verified.Identity) {
+		if !artifactdir.MatchesSubtree(files, prefix, phaseSchemaFor(plan), verified.Identity) {
 			return FlowResult{}, invalid
 		}
 

@@ -1,0 +1,406 @@
+package desktop
+
+import (
+	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/bharm16/readmit/internal/casegen"
+	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/operation"
+	"github.com/bharm16/readmit/internal/profileeval"
+	"github.com/bharm16/readmit/internal/scenariogen"
+)
+
+// scenarioCasesOperation names a case generation while it holds the slot, so
+// the Scenarios panel's own cancel control stops it.
+const scenarioCasesOperation = "scenario-cases"
+
+// CaseGenerationSettings are what a saved scenario plan does not declare and
+// generating executable cases requires: how every message is written, the
+// business facts each subject keeps across steps and the edits steps make to
+// them, and the variants a variant flow adds beside the plan's own. The
+// profile and pack are chosen as Library objects, never typed as pins.
+type CaseGenerationSettings struct {
+	Wire        casegen.Wire      `json:"wire"`
+	Bindings    casegen.Bindings  `json:"bindings"`
+	Variants    []casegen.Variant `json:"variants"`
+	DerivedFrom string            `json:"derived_from,omitzero"`
+}
+
+// ScenarioCasesRequest generates the cases of one saved scenario, at the
+// revision named, under a saved local profile and the metadata pack it pins
+// (or the one named). IntentID is allocated once when the person submits and
+// reused for every retry of that submission.
+type ScenarioCasesRequest struct {
+	Context  RequestContext         `json:"context"`
+	Scenario ItemRef                `json:"scenario"`
+	Profile  ItemRef                `json:"profile"`
+	Pack     *ItemRef               `json:"pack,omitzero"`
+	Settings CaseGenerationSettings `json:"settings"`
+	IntentID string                 `json:"intent_id"`
+}
+
+// GeneratedCase is one registered case of a generation: its reference, the
+// row and variant it was generated for, its declared polarity, its phases in
+// arrival order and the profile evaluator's verdict on its messages.
+type GeneratedCase struct {
+	Case      ItemRef         `json:"case"`
+	Entry     string          `json:"entry"`
+	Identity  string          `json:"identity"`
+	Row       string          `json:"row"`
+	Variant   string          `json:"variant"`
+	Polarity  string          `json:"polarity"`
+	Messages  int             `json:"messages"`
+	Phases    []casegen.Phase `json:"phases"`
+	Evaluated bool            `json:"evaluated"`
+	Verdict   string          `json:"verdict,omitzero"`
+}
+
+// ScenarioCasesResult is a generation, or why there is none: each event the
+// profile and pack do not support, or each clause of the saved plan the
+// generator cannot carry. ContentIdentity is repeatable: the same saved plan,
+// settings, profile and pack generate the same cases, and a submission that
+// finds them already generated answers them Replayed. An execution of a case
+// is a separate instance with its own identity.
+type ScenarioCasesResult struct {
+	State            State             `json:"state"`
+	Reason           string            `json:"reason,omitzero"`
+	Context          RequestContext    `json:"context"`
+	Support          []casegen.Support `json:"support"`
+	Unconvertible    []casegen.Clause  `json:"unconvertible"`
+	Record           string            `json:"record,omitzero"`
+	ContentIdentity  string            `json:"content_identity,omitzero"`
+	Replayed         bool              `json:"replayed"`
+	HL7Version       string            `json:"hl7_version,omitzero"`
+	Family           string            `json:"family,omitzero"`
+	Seed             uint64            `json:"seed"`
+	BaseTime         string            `json:"base_time,omitzero"`
+	GeneratorVersion string            `json:"generator_version,omitzero"`
+	Cases            []GeneratedCase   `json:"cases"`
+}
+
+func (r *ScenarioCasesResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// GenerateScenarioCases generates the executable cases of a saved scenario
+// under a saved local profile and pack, writes them into the project with
+// their generation record and registers each one as generated from the
+// scenario's revision. The saved plan is converted whole, with the settings,
+// or refused clause by clause; an event the profile and pack do not support
+// refuses the generation event by event. Nothing is sent, no target is
+// provisioned and no expected outcome is approved. The entries are named from
+// the generation's content identity, so a repeated submission answers the
+// cases already generated.
+func (a *App) GenerateScenarioCases(request ScenarioCasesRequest) ScenarioCasesResult {
+	return runNamed[ScenarioCasesResult, *ScenarioCasesResult](a, profiles["GenerateScenarioCases"], func(ctx context.Context) ScenarioCasesResult {
+		result := ScenarioCasesResult{Context: request.Context, Support: []casegen.Support{}, Unconvertible: []casegen.Clause{}, Cases: []GeneratedCase{}}
+		if !catalog.ValidToken(request.IntentID) {
+			result.refuse(Failed, "cases are generated by one submission")
+			return result
+		}
+		if request.Scenario.Kind != ScenarioItem || request.Profile.Kind != ProfileItem || request.Pack != nil && request.Pack.Kind != ProfileItem {
+			result.refuse(Failed, "cases are generated from a saved scenario under a local profile")
+			return result
+		}
+		loaded, item, refused := a.catalogItem(ctx, request.Context, request.Scenario, false)
+		if loaded == nil {
+			result.refuse(refused.State, refused.Reason)
+			return result
+		}
+		record, held := itemAt(loaded.document.Items[loaded.document.Find(item.Ref.ID)], request.Scenario.Revision)
+		if !held {
+			result.refuse(Failed, "the scenario has no revision "+request.Scenario.Revision)
+			return result
+		}
+		paths, availability, reason := loaded.backing(record)
+		if availability != ItemAvailable {
+			result.refuse(Failed, reason)
+			return result
+		}
+		if !declares(paths[scenarioRole], scenariogen.Schema) {
+			result.refuse(Failed, "cases are generated from a scenario saved as a generator plan; save this scenario first")
+			return result
+		}
+		plan, err := boundedFile(paths[scenarioRole], scenariogen.MaxBytes)
+		if err != nil {
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		profile, pack, pins, reason := a.generationProfile(loaded, request)
+		if reason != "" {
+			result.refuse(Failed, reason)
+			return result
+		}
+		if ancestor := request.Settings.DerivedFrom; ancestor != "" && !heldGeneration(loaded.root, ancestor) {
+			result.refuse(Failed, "the generation these cases derive from is not in the project")
+			return result
+		}
+		generationRequest, err := casegen.FromPlan(plan, casegen.Settings{Profile: pins[0], Pack: pins[1], Wire: request.Settings.Wire, Bindings: request.Settings.Bindings,
+			Variants: request.Settings.Variants, DerivedFrom: request.Settings.DerivedFrom})
+		var unconvertible *casegen.UnconvertibleError
+		switch {
+		case errors.As(err, &unconvertible):
+			result.Unconvertible = unconvertible.Clauses
+			result.refuse(Failed, "the saved plan declares clauses these cases cannot carry; nothing was generated")
+			return result
+		case err != nil:
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		source := &casegen.Source{Item: record.ID, Revision: record.RevisionLabel()}
+		a.startCaseProgress()
+		defer a.endCaseProgress()
+		generation, err := casegen.Generate(ctx, generationRequest, profile, pack, casegen.Options{Source: source, Progress: a.reportCaseProgress})
+		var unsupported *casegen.UnsupportedError
+		switch {
+		case ctx.Err() != nil:
+			result.refuse(Cancelled, "no case was generated")
+			return result
+		case errors.As(err, &unsupported):
+			result.Support = unsupported.Support
+			result.refuse(Failed, "the local profile and pack do not support every event of this scenario; nothing was generated")
+			return result
+		case err != nil:
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		r := generation.Record
+		result.Support, result.ContentIdentity, result.HL7Version, result.Family = r.Support, r.ContentIdentity, r.Ancestry.HL7Version, r.Ancestry.Family
+		result.Seed, result.BaseTime, result.GeneratorVersion = r.Ancestry.Seed, r.Ancestry.BaseTime, r.GeneratorVersion
+		written, recordEntry, replayed, err := a.writeGeneration(ctx, loaded.root, generation)
+		switch {
+		case ctx.Err() != nil:
+			result.refuse(Cancelled, "the cases were not all written; anything an interrupted generation wrote is retained and a retry writes beside it")
+			return result
+		case errors.Is(err, fs.ErrPermission):
+			result.refuse(PermissionDenied, "this account cannot write generated cases into the project")
+			return result
+		case err != nil:
+			result.refuse(Failed, err.Error())
+			return result
+		}
+		result.Record, result.Replayed = recordEntry, replayed
+		return a.registeredGeneration(ctx, request, item.Name, source, written, result)
+	})
+}
+
+// generationProfile reads the chosen local profile and its pack, and pins
+// each by its exact bytes.
+func (a *App) generationProfile(loaded *loadedCatalog, request ScenarioCasesRequest) ([]byte, []byte, [2]casegen.Pin, string) {
+	var pins [2]casegen.Pin
+	profile, err := loaded.memberBytes(request.Profile, profileRole, profileeval.MaxBytes)
+	if err != nil {
+		return nil, nil, pins, "the profile cannot be read: " + err.Error()
+	}
+	declared, err := profileeval.DecodeProfile(profile)
+	if err != nil || !strings.HasPrefix(schemaOf(profile), "readmit-local-profile/") {
+		return nil, nil, pins, "cases are generated under a local profile; a metadata pack or a package is not one"
+	}
+	var pack []byte
+	if request.Pack != nil {
+		pack, err = loaded.packBytes(*request.Pack)
+	} else if ref, _ := loaded.pinnedPack(declared.Definition.Base.Pack); ref != nil {
+		pack, err = loaded.packBytes(*ref)
+	} else {
+		return nil, nil, pins, "the metadata pack this profile pins is not in the project"
+	}
+	if err != nil {
+		return nil, nil, pins, "the metadata pack cannot be read: " + err.Error()
+	}
+	decoded, err := profileeval.DecodePack(pack)
+	if err != nil {
+		return nil, nil, pins, "the metadata pack cannot be read: " + err.Error()
+	}
+	pins[0] = casegen.Pin{Schema: declared.Schema, ID: declared.Definition.Identity.ID, Version: declared.Definition.Identity.Version, SHA256: digestOf(profile)}
+	pins[1] = casegen.Pin{Schema: decoded.Schema, ID: decoded.Metadata.Identity.ID, Version: decoded.Metadata.Identity.Version, SHA256: digestOf(pack)}
+	return profile, pack, pins, ""
+}
+
+// heldGeneration reports whether the project holds a complete generation record
+// of the content identity named: the ancestor a derived generation names is
+// evidence the project keeps, never one it takes on trust.
+func heldGeneration(root, identity string) bool {
+	if len(identity) < 12 {
+		return false
+	}
+	names, err := filepath.Glob(filepath.Join(root, "generated-"+identity[:12]+"*-generation.json"))
+	if err != nil {
+		return false
+	}
+	for _, name := range names {
+		raw, err := boundedFile(name, casegen.MaxRecordBytes)
+		if err != nil {
+			continue
+		}
+		if record, err := casegen.ReadRecord(raw); err == nil && record.ContentIdentity == identity {
+			return true
+		}
+	}
+	return false
+}
+
+// heldCases is every generated case the project holds, by its content key:
+// each case a complete generation record names whose entry still verifies as
+// the case that record wrote. A later generation of the same content names
+// that case instead of writing it again, so an ancestor's baseline or an
+// identical revision's cases stay one case each.
+func heldCases(root string) map[string]casegen.Held {
+	held := map[string]casegen.Held{}
+	names, err := filepath.Glob(filepath.Join(root, "generated-*-generation.json"))
+	if err != nil {
+		return held
+	}
+	for _, name := range names {
+		raw, err := boundedFile(name, casegen.MaxRecordBytes)
+		if err != nil {
+			continue
+		}
+		record, err := casegen.ReadRecord(raw)
+		if err != nil {
+			continue
+		}
+		for i, c := range record.Cases {
+			key := record.CaseKey(i)
+			if _, known := held[key]; known {
+				continue
+			}
+			if facts, _, err := operation.VerifiedCase(root, c.Entry); err == nil && facts.Identity == c.Identity {
+				held[key] = casegen.Held{Entry: c.Entry, Identity: c.Identity}
+			}
+		}
+	}
+	return held
+}
+
+// maxGenerationAttempts bounds how many interrupted attempts one generation's
+// names step past.
+const maxGenerationAttempts = 16
+
+// writeGeneration writes the generation into the project root, beside any
+// attempt an interruption left incomplete, or finds it already written. Its
+// record and cases are named from its content identity.
+func (a *App) writeGeneration(ctx context.Context, root string, g *casegen.Generation) (casegen.Written, string, bool, error) {
+	base := "generated-" + g.Record.ContentIdentity[:12]
+	for attempt := 1; attempt <= maxGenerationAttempts; attempt++ {
+		prefix := base
+		if attempt > 1 {
+			prefix += "-" + strconv.Itoa(attempt)
+		}
+		recordEntry := prefix + "-generation.json"
+		entry := func(c casegen.Case) string { return prefix + "-" + c.Row + "-" + c.Variant }
+		if raw, err := boundedFile(filepath.Join(root, recordEntry), casegen.MaxRecordBytes); err == nil {
+			if existing, err := casegen.ReadRecord(raw); err == nil && existing.ContentIdentity == g.Record.ContentIdentity {
+				return casegen.Written{Record: raw, Cases: existing.Cases}, recordEntry, true, nil
+			}
+			continue
+		}
+		occupied := false
+		for _, c := range g.Record.Cases {
+			if _, err := os.Lstat(filepath.Join(root, entry(c))); err == nil {
+				occupied = true
+			}
+		}
+		if occupied {
+			continue
+		}
+		written, err := g.Write(ctx, root, casegen.Placement{Record: recordEntry, Entry: entry, Held: heldCases(root), Progress: a.reportCaseProgress})
+		return written, recordEntry, false, err
+	}
+	return casegen.Written{}, "", false, errors.New("too many interrupted attempts to generate these cases; remove them and retry")
+}
+
+// registeredGeneration registers each written case the project does not yet
+// hold, records the scenario revision it came from, and answers them by their
+// catalog references.
+func (a *App) registeredGeneration(ctx context.Context, request ScenarioCasesRequest, name string, source *casegen.Source, written casegen.Written, result ScenarioCasesResult) ScenarioCasesResult {
+	loaded, declined := a.loadCatalog(ctx, request.Context, false)
+	if loaded == nil {
+		result.refuse(declined.state, declined.reason)
+		return result
+	}
+	registered := map[string]bool{}
+	for _, c := range written.Cases {
+		if registered[c.Entry] || loaded.registered(c.Entry) {
+			continue
+		}
+		registered[c.Entry] = true
+		title := name + " · " + c.Row + " · " + c.Variant
+		if _, err := operation.RegisterCase(loaded.root, c.Entry, operation.CaseRegistration{Title: title, Tags: []string{SyntheticTag}}); err != nil {
+			result.refuse(Failed, "the cases were generated and one could not be registered: "+err.Error())
+			return result
+		}
+	}
+	loaded, declined = a.loadCatalog(ctx, request.Context, true)
+	if loaded == nil {
+		result.refuse(declined.state, declined.reason)
+		return result
+	}
+	revision, _ := strconv.Atoi(source.Revision)
+	for _, c := range written.Cases {
+		index := loaded.document.ByEntry(string(CaseItem), c.Entry)
+		if index < 0 {
+			result.refuse(Failed, "a generated case is not listed in the project")
+			return result
+		}
+		if revision > 0 {
+			if _, err := loaded.store.RecordOrigin(catalog.Origin{Item: loaded.document.Items[index].ID, Kind: catalog.OriginScenario, Source: source.Item, Revision: revision}, a.now()); err != nil {
+				result.refuse(Failed, "the cases were generated and registered, and where one came from could not be recorded: "+err.Error())
+				return result
+			}
+		}
+		ref := loaded.read(loaded.document.Items[index]).Ref
+		result.Cases = append(result.Cases, GeneratedCase{Case: ref, Entry: c.Entry, Identity: c.Identity, Row: c.Row, Variant: c.Variant, Polarity: c.Polarity,
+			Messages: len(c.Occurrences), Phases: c.Phases, Evaluated: c.Validation.Evaluated, Verdict: c.Validation.Verdict})
+	}
+	result.State = Completed
+	return result
+}
+
+// ScenarioCasesProgressResult is Empty when no case generation runs, and
+// Completed with the counts one has reached when one does.
+type ScenarioCasesProgressResult struct {
+	State    State             `json:"state"`
+	Reason   string            `json:"reason,omitzero"`
+	Progress *casegen.Progress `json:"progress,omitzero"`
+}
+
+func (r *ScenarioCasesProgressResult) refuse(state State, reason string) {
+	r.State, r.Reason = state, reason
+}
+
+// ScenarioCasesProgress reads how far the running case generation has come:
+// its stage and counts, never a value. It does not claim the operation slot,
+// so the panel reads it while the generation holds the slot.
+func (a *App) ScenarioCasesProgress() ScenarioCasesProgressResult {
+	a.caseMu.Lock()
+	defer a.caseMu.Unlock()
+	if a.caseProgress == nil {
+		return ScenarioCasesProgressResult{State: Empty}
+	}
+	reached := *a.caseProgress
+	return ScenarioCasesProgressResult{State: Completed, Progress: &reached}
+}
+
+func (a *App) startCaseProgress() {
+	a.caseMu.Lock()
+	defer a.caseMu.Unlock()
+	a.caseProgress = &casegen.Progress{Stage: casegen.Encoding}
+}
+
+func (a *App) reportCaseProgress(p casegen.Progress) {
+	a.caseMu.Lock()
+	defer a.caseMu.Unlock()
+	if a.caseProgress != nil {
+		*a.caseProgress = p
+	}
+}
+
+func (a *App) endCaseProgress() {
+	a.caseMu.Lock()
+	defer a.caseMu.Unlock()
+	a.caseProgress = nil
+}

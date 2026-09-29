@@ -19,8 +19,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/casegen"
 	"github.com/bharm16/readmit/internal/desktop"
+	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/testlicense"
@@ -86,6 +90,9 @@ func replayDryRun(result desktop.ReplayResult) string {
 			fmt.Fprintf(&text, " shift=%s", transformation.Shift)
 		}
 		text.WriteString("\n")
+	}
+	if preview.ScenarioTiming == replay.TimingRequired {
+		text.WriteString("Scenario timing: not applied by raw replay; a scheduled connected lifecycle sends this generated case on its generation's delays, and a raw send requires --ignore-scenario-timing\n")
 	}
 	for _, message := range preview.Messages {
 		fmt.Fprintf(&text, "  %s source=%s wire_bytes=%d\n", message.Outbound, message.Source, message.WireBytes)
@@ -295,5 +302,69 @@ func TestTheWindowRefusesTheReplaysReadmitReplayRefusesInItsWords(t *testing.T) 
 	}
 	if receiver.reached() != 0 {
 		t.Fatalf("a refused replay reached the target %d times", receiver.reached())
+	}
+}
+
+// A case the case generator wrote is previewed by the window as the command
+// previews it, saying raw replay applies no scenario timing, and a send of it
+// is refused by both in the command's words before anything is decided,
+// written or sent. Only the command's explicit --ignore-scenario-timing sends
+// its bytes, as a readmit-byte-only-run/v1, stated before the send; the window
+// offers no such choice, so it never makes it.
+func TestTheWindowRefusesAGeneratedCasesRawSendAsReadmitReplayDoes(t *testing.T) {
+	receiver := newReplayReceiver(t)
+	app := workspaceApp(t)
+	workspace, _ := replayWorkspace(t, app, receiver.address)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	provenance := bundle.Provenance{Mode: bundle.Generated, Generator: &bundle.GeneratorInputs{Seed: 1, BaseTime: base, GeneratorVersion: casegen.Version, ProfileVersion: "owned-casegen-siu+1"}}
+	inputs := []bundle.Input{}
+	for _, name := range []string{"listen-s12.hl7", "listen-s13.hl7"} {
+		inputs = append(inputs, bundle.Input{Data: []byte(fixture(t, name)), Options: hl7.Options{Format: hl7.Raw, Terminator: hl7.CR}})
+	}
+	if _, err := bundle.Write(filepath.Join(workspace, "generated"), inputs, provenance); err != nil {
+		t.Fatal(err)
+	}
+	opened := app.OpenCase(workspace, "generated")
+	if opened.State != desktop.Completed || opened.Case == nil {
+		t.Fatalf("the generated case: %+v", opened)
+	}
+	request := desktop.ReplayRequest{Workspace: workspace, Case: "generated", Identity: opened.Case.Identity, Target: "target.json", Policy: "policy.json",
+		Messages: []string{"s0001-e000001", "s0002-e000001"}, Output: "window-run"}
+
+	preview := app.PreviewReplay(request)
+	if preview.State != desktop.Completed || preview.Preview == nil || preview.Preview.Sendable ||
+		preview.Preview.ScenarioTiming != replay.TimingRequired || !strings.Contains(preview.Preview.Refusal, "offers no byte-only replay") {
+		t.Fatalf("the window's preview of a generated case: %+v", preview.Preview)
+	}
+	stdout, stderr, err := commandLine(t, append(replayFlags(workspace, request), "--decision", filepath.Join(t.TempDir(), "decision.json"))...)
+	if err != nil || stdout != replayDryRun(preview) {
+		t.Fatalf("the window's preview is not the command's dry run: %v %s\ncommand:\n%s\nwindow:\n%s", err, stderr, stdout, replayDryRun(preview))
+	}
+
+	window := app.SendReplay(desktop.ReplaySendRequest{Replay: request, Expected: preview.Preview.Identity, Approved: true})
+	if window.State != desktop.Failed || window.Run != nil || window.Reason != replay.ErrScenarioTiming.Error() {
+		t.Fatalf("the window's send of a generated case: %+v", window)
+	}
+	refused := filepath.Join(workspace, "command-refused")
+	_, stderr, err = commandLine(t, append([]string{"--operation-policy", testlicense.New(t)}, append(replayFlags(workspace, request), "--send", "--output", refused)...)...)
+	if err == nil || stderr != "readmit: "+window.Reason+"\n" {
+		t.Fatalf("the window refused with %q; the command %q", window.Reason, stderr)
+	}
+	for _, path := range []string{filepath.Join(workspace, request.Output), filepath.Join(workspace, request.Output) + replay.DecisionSuffix, refused, refused + replay.DecisionSuffix} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Errorf("a refused send retained %s", filepath.Base(path))
+		}
+	}
+	if receiver.reached() != 0 {
+		t.Fatalf("a refused send reached the target %d times", receiver.reached())
+	}
+
+	chosen := filepath.Join(workspace, "byte-only")
+	printed, stderr, err := commandLine(t, append([]string{"--operation-policy", testlicense.New(t)}, append(replayFlags(workspace, request), "--send", "--ignore-scenario-timing", "--output", chosen)...)...)
+	if err != nil || !strings.Contains(printed, "Schema: "+replay.ByteOnlySchema+"\n") || !strings.Contains(printed, "Scenario timing: not applied; byte-only replay was chosen, and this is not a scenario execution\n") {
+		t.Fatalf("the command's byte-only replay: %v %s\n%s", err, stderr, printed)
+	}
+	if run, err := replay.OpenByteOnly(chosen); err != nil || run.Manifest.ScenarioTiming != replay.TimingNotApplied || len(receiver.received()) != 2 {
+		t.Fatalf("the byte-only run: %v, %d received", err, len(receiver.received()))
 	}
 }

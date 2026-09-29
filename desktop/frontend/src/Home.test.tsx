@@ -430,10 +430,14 @@ test("each retained sheet draft resumes in its sheet with the draft and the unsa
     await user.click(await page().findByRole("button", { name: "Review" }));
     await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: object }));
     const sheet = within(await screen.findByRole("dialog", { name: title }));
-    for (const [label, value] of Object.entries(fields)) {
-      expect((sheet.getByLabelText(label) as HTMLInputElement).value).toBe(value);
-    }
-    expect(sheet.getByText("Unsaved")).toBeTruthy();
+    // The mounted project sheet restores its fields after opening; finding
+    // the dialog alone does not establish that its retained values arrived.
+    await waitFor(() => {
+      for (const [label, value] of Object.entries(fields)) {
+        expect((sheet.getByLabelText(label) as HTMLInputElement).value).toBe(value);
+      }
+      expect(sheet.getByText("Unsaved")).toBeTruthy();
+    });
     expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
     // Resuming restores the work; it saves, sends and runs nothing.
     expect(facade.callsTo("SaveItem")).toHaveLength(0);

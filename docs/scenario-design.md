@@ -239,7 +239,8 @@ correct against a scenario that never asked the question.
 ## Not in this release
 
 - Generating messages directly from a preview. Generation requires the separate
-  explicit input plan below.
+  explicit input plan below, or a pinned profile and pack for
+  [executable cases](scenario-generation.md).
 - A clinical conformance library or automatic external-target acceptance.
   The bounded fixture library is described below.
 - Expectations, assertions and any binding to a test spec. A scenario is not a
@@ -251,6 +252,37 @@ correct against a scenario that never asked the question.
   changes such as `A47` and unmerge are not decided.
 - Editing a scenario through readmit. It is an ordinary file, and changing it
   is changing that file.
+
+## Resource participation: readmit-scenario/v2
+
+`readmit-scenario/v2` is a separate, strict contract for one profile,
+`readmit-siu-lifecycle-v2`: the v1 scheduling lifecycle, whose events and
+states are unchanged, plus resource subjects and the two events that change a
+resource's participation in an appointment. A `readmit-scenario/v1` document
+and its profiles read exactly as before; a v1 document cannot name the v2
+profile, a v2 document cannot name a v1 one, and nothing converts one into the
+other.
+
+A `resource` subject names the `appointment` it participates in and no patient;
+only a resource names an appointment. A step on a resource reaches its
+appointment, and a resource is reached with its appointment. A resource starts
+`none` (not yet participating), or `booked` when it is booked with the
+appointment and sent in its `S12`.
+
+| Event | Acts on | Taken from | Leaves |
+| --- | --- | --- | --- |
+| `S18` addition of service/resource on appointment | resource | `none` | `booked` |
+| `S20` cancellation of service/resource on appointment | resource | `booked` | `cancelled` |
+
+Either event is refused while its appointment is not booked, whatever the
+resource's own state. A replacement is an `S20` of the old resource followed by
+an `S18` of the new one. Modification, discontinuation and deletion of a
+resource (S19, S21, S22) are not declared. The shell's scenario editor and the
+plan generator's templates offer v1 only;
+[`scenario-resource-changes.json`](../testdata/casegen/scenario-resource-changes.json)
+is an example v2 workflow, and [executable
+cases](scenario-generation.md#resource-changes) describes how its messages are
+written.
 
 ## Order and result templates: readmit-order-scenario/v1
 
@@ -422,6 +454,8 @@ is synthetic. Treat the plan, record and streams together as sensitive data.
 The public native smoke runs exercise the shipped plan and literal boundary
 bytes on all five release platforms. External-target behavior and independently
 reviewed expectations remain the owning team's acceptance work. The separate fixture library below pins reusable plans and independent expectations.
+[Executable cases](scenario-generation.md) are generated from the same scenario
+under a pinned local profile and pack, with the edition's own structures.
 
 
 ## Reusable library and independent expectations

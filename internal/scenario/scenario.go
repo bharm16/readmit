@@ -101,11 +101,14 @@ func (i *Identity) UnmarshalJSON(data []byte) error {
 // how a merge reaches the work booked under the identity that was merged away,
 // and it is required of every subject that is not itself a patient.
 type Subject struct {
-	ID           string `json:"id"`
-	Kind         Kind   `json:"kind"`
-	Namespace    string `json:"namespace"`
-	Identifier   string `json:"identifier"`
-	Patient      string `json:"patient,omitzero"`
+	ID         string `json:"id"`
+	Kind       Kind   `json:"kind"`
+	Namespace  string `json:"namespace"`
+	Identifier string `json:"identifier"`
+	Patient    string `json:"patient,omitzero"`
+	// Appointment is the appointment a resource participates in. Only a
+	// resource of a readmit-scenario/v2 workflow declares one.
+	Appointment  string `json:"appointment,omitzero"`
 	InitialState State  `json:"initial_state"`
 }
 
@@ -130,7 +133,7 @@ func (s *Subject) UnmarshalJSON(data []byte) error {
 	type subject Subject
 	var decoded subject
 	if err := json.Unmarshal(data, &decoded, json.RejectUnknownMembers(true)); err != nil {
-		return errors.New("a subject declares no member beyond id, kind, namespace, identifier, patient and initial_state")
+		return errors.New("a subject declares no member beyond id, kind, namespace, identifier, patient and initial_state, and a resource its appointment")
 	}
 	*s = Subject(decoded)
 	return nil
@@ -212,6 +215,12 @@ func validate(designed Scenario) error {
 	if designed.Schema != Schema {
 		return errors.New("a scenario must declare " + Schema)
 	}
+	return validateWith(designed, lookup)
+}
+
+// validateWith checks a workflow of either sequence contract against the
+// profiles that contract may name.
+func validateWith(designed Scenario, lookup func(ProfileName) (profile, error)) error {
 	if err := name(designed.Scenario.ID, "a scenario id"); err != nil {
 		return err
 	}
@@ -262,7 +271,15 @@ func declaredSubjects(designed Scenario, profile profile) (map[string]Subject, e
 		if subject.Kind == PatientSubject && subject.Patient != "" {
 			return nil, errors.New("a patient subject declares no patient of its own")
 		}
-		if subject.Kind != PatientSubject && subject.Patient == "" {
+		// A resource belongs to an appointment, never directly to a patient;
+		// every other subject but a patient belongs to a patient.
+		if subject.Kind == ResourceSubject {
+			if subject.Patient != "" || subject.Appointment == "" {
+				return nil, errors.New("a resource names the appointment it participates in, and no patient")
+			}
+		} else if subject.Appointment != "" {
+			return nil, errors.New("only a resource names an appointment")
+		} else if subject.Kind != PatientSubject && subject.Patient == "" {
 			return nil, errors.New("a " + string(subject.Kind) + " names the patient identity it belongs to")
 		}
 		subjects[subject.ID] = subject
@@ -270,6 +287,11 @@ func declaredSubjects(designed Scenario, profile profile) (map[string]Subject, e
 	// A link is resolved once every subject is known, so the order subjects
 	// are written in never decides whether a scenario reads.
 	for _, subject := range designed.Subjects {
+		if subject.Appointment != "" {
+			if linked, declared := subjects[subject.Appointment]; !declared || linked.Kind != AppointmentSubject {
+				return nil, errors.New("a resource names an appointment this scenario does not declare")
+			}
+		}
 		if subject.Patient == "" {
 			continue
 		}
@@ -318,6 +340,10 @@ func declaredSteps(designed Scenario, profile profile, subjects map[string]Subje
 			return errors.New("event " + string(step.Event) + " acts on a " + string(transition.kind) + ", not a " + string(subject.Kind))
 		}
 		referenced[step.Subject] = true
+		// A resource's message is written about its appointment.
+		if subject.Appointment != "" {
+			referenced[subject.Appointment] = true
+		}
 		if err := merged(step, transition, subjects); err != nil {
 			return err
 		}
@@ -329,6 +355,13 @@ func declaredSteps(designed Scenario, profile profile, subjects map[string]Subje
 			return err
 		}
 		previous = offset
+	}
+	// A resource of an appointment a step reaches is reached with it: it is
+	// sent in every message of that appointment.
+	for _, subject := range designed.Subjects {
+		if subject.Appointment != "" && referenced[subject.Appointment] {
+			referenced[subject.ID] = true
+		}
 	}
 	for _, subject := range designed.Subjects {
 		if !referenced[subject.ID] {

@@ -357,8 +357,14 @@ func DecodeDocument(data []byte) (Workflow, error) {
 			return Workflow{}, err
 		}
 		return Workflow{Scenario: designed}, nil
+	case ResourceSchema:
+		designed, err := DecodeResources(data)
+		if err != nil {
+			return Workflow{}, err
+		}
+		return Workflow{Scenario: designed}, nil
 	default:
-		return Workflow{}, errors.New("a scenario must declare " + Schema + " or " + OrderSchema)
+		return Workflow{}, errors.New("a scenario must declare " + Schema + ", " + ResourceSchema + " or " + OrderSchema)
 	}
 }
 
@@ -369,11 +375,14 @@ func (w Workflow) Identity() Identity { return w.Scenario.Scenario }
 // Preview walks the sequence through its profile's typed transition
 // operators, exactly as the contract the document declared previews it.
 func (w Workflow) Preview() (Timeline, error) {
-	if w.Schema == OrderSchema {
+	switch w.Schema {
+	case OrderSchema:
 		return PreviewOrders(OrderScenario{
 			Schema: w.Schema, Scenario: w.Scenario.Scenario, Profile: w.Profile, BaseTime: w.BaseTime,
 			Subjects: w.Subjects, Steps: w.Steps, Orders: w.Orders, Results: w.Results,
 		})
+	case ResourceSchema:
+		return PreviewResources(w.Scenario)
 	}
 	return Preview(w.Scenario)
 }

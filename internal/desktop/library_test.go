@@ -121,6 +121,24 @@ func unsupportedChecks(t *testing.T) string {
 	return strings.Replace(fixture(t, "assertion-set.json"), `"operator": "field_not_equals"`, `"operator": "field_resembles"`, 1)
 }
 
+// A readmit-scenario/v2 resource workflow is refused at import rather than
+// opened as a draft the scenario editor could never save.
+func TestAResourceWorkflowIsNotImportedAsAScenarioDraft(t *testing.T) {
+	app, context := namedProject(t)
+	before := entries(t, context.Project)
+	chosen, err := filepath.Abs(filepath.Join("..", "..", "testdata", "casegen", "scenario-resource-changes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported := app.ImportLibraryItem(desktop.LibraryImportRequest{Context: context, Kind: desktop.ScenarioItem, Path: chosen})
+	if imported.State != desktop.Failed || imported.Draft != nil || !strings.Contains(imported.Reason, "resource workflow") {
+		t.Fatalf("a resource workflow was imported: %+v", imported)
+	}
+	if now := entries(t, context.Project); !slices.Equal(now, before) {
+		t.Fatalf("a refused import wrote %v", now)
+	}
+}
+
 func TestAnUnsupportedClauseIsShownAndBlocksASave(t *testing.T) {
 	app, context := namedProject(t)
 	root := context.Project

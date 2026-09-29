@@ -1,0 +1,26 @@
+{
+ "schema": "readmit-local-profile/v1",
+ "profile": {
+  "id": "owned-casegen-adt",
+  "version": "1"
+ },
+ "base": {
+  "pack": {
+   "id": "owned-casegen-2-5-1",
+   "version": "1"
+  },
+  "hl7_version": "2.5.1",
+  "family": "ADT"
+ },
+ "segments": [
+  {
+   "id": "PID",
+   "fields": [
+    {
+     "position": 3,
+     "usage": "R"
+    }
+   ]
+  }
+ ]
+}

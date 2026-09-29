@@ -359,7 +359,7 @@ func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 		switch {
 		case declares(filepath.Join(path, "receipt.json"), connectedtransport.ReceiptSchema):
 			return RunItem, true
-		case declares(filepath.Join(path, "manifest.json"), replay.Schema):
+		case declares(filepath.Join(path, "manifest.json"), replay.Schema), declares(filepath.Join(path, "manifest.json"), replay.ByteOnlySchema):
 			return RunItem, true
 		case regular(filepath.Join(path, reproducer.ManifestName)):
 			return VariantItem, true

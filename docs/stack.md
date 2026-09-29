@@ -153,6 +153,11 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
   with explicit statuses. Typed transitions decide updates, cancellations and
   preliminary/final/corrected reports. The existing scenario reader remains
   unchanged; neither contract generates messages or proves external behavior.
+- Resource participation uses the separate `readmit-scenario/v2` contract in
+  that package, with one profile, `readmit-siu-lifecycle-v2`: the v1
+  scheduling lifecycle plus resource subjects that name their appointment and
+  exactly two events, S18 (addition) and S20 (cancellation of participation).
+  v1 documents and profiles are unchanged and never converted.
 
 ## Networking
 

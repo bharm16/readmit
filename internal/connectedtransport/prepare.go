@@ -2,9 +2,11 @@ package connectedtransport
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/v2"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/connectedtest"
@@ -32,6 +34,7 @@ type Credential struct {
 type Selection struct{ Case, Target, Policy, Credential string }
 type Prepared struct {
 	sequence   bool
+	schedule   []time.Duration
 	key        secret.Locator
 	plan       *connectedtest.Plan
 	replay     *replay.Plan
@@ -48,20 +51,36 @@ func (p *Prepared) Binding() Binding { return p.binding }
 // network dependency is accepted. A source case must contain the exact compiled
 // stimuli in order; transport does not quietly regenerate or transform them.
 func Prepare(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
-	return prepare(plan, s, false)
+	return prepare(plan, s, false, nil)
 }
 
 // PrepareSequence is selected only by the v4 and v5 lifecycles' phase plans,
 // never old standalone plans.
 func PrepareSequence(plan *connectedtest.Plan, s Selection) (*Prepared, error) {
-	return prepare(plan, s, true)
+	return prepare(plan, s, true, nil)
 }
-func prepare(plan *connectedtest.Plan, s Selection, sequence bool) (*Prepared, error) {
+
+// PrepareScheduled is PrepareSequence for a phase of a scheduled lifecycle:
+// schedule holds, in the plan's order, the delay each occurrence waits after
+// the phase's sending begins. It is retained with the configuration, so a
+// grant authorizes this schedule and no other.
+func PrepareScheduled(plan *connectedtest.Plan, s Selection, schedule []time.Duration) (*Prepared, error) {
+	if plan == nil || schedule == nil || len(schedule) != len(plan.Document().Order) {
+		return nil, refused
+	}
+	for _, d := range schedule {
+		if d < 0 || d%time.Millisecond != 0 {
+			return nil, refused
+		}
+	}
+	return prepare(plan, s, true, slices.Clone(schedule))
+}
+func prepare(plan *connectedtest.Plan, s Selection, sequence bool, schedule []time.Duration) (*Prepared, error) {
 	phase := plan != nil && (plan.Document().Schema == connectedtest.PhasePlanSchema || plan.Document().Schema == connectedtest.PhasePlanSchemaV2)
 	if plan == nil || sequence != phase {
 		return nil, refused
 	}
-	p := &Prepared{sequence: sequence, plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}
+	p := &Prepared{sequence: sequence, schedule: schedule, plan: plan, retained: map[string][]byte{}, selected: map[string]string{}}
 	read := func(name, path string) ([]byte, error) {
 		absolute, err := filepath.Abs(path)
 		if err != nil {
@@ -120,6 +139,12 @@ func prepare(plan *connectedtest.Plan, s Selection, sequence bool) (*Prepared, e
 	if err != nil || p.replay.Target().Identity() != env.TargetIdentity || p.replay.Count() != len(ids) {
 		return nil, refused
 	}
+	// A generated case is sent only on the schedule its generation declared,
+	// which a scheduled lifecycle names; its bytes alone cannot say which of
+	// the schedules sharing them applies. The replay plan read its provenance.
+	if schedule == nil && p.replay.ScenarioTiming() != "" {
+		return nil, refused
+	}
 	files := plan.Files()
 	for i, m := range p.replay.Mappings() {
 		wire, err := p.replay.Outbound(m.OutboundOccurrence)
@@ -158,11 +183,14 @@ func prepare(plan *connectedtest.Plan, s Selection, sequence bool) (*Prepared, e
 	}
 	// Bind exact configuration, CA/certificate and purpose-specific locator bytes.
 	if sequence {
-		p.retained["sequence.json"], _ = json.Marshal(struct {
-			Schema      string   `json:"schema"`
-			Order       []string `json:"order"`
-			Occurrences []string `json:"occurrences"`
-		}{ReceiptSchemaV2, d.Order, ids}, json.Deterministic(true))
+		retained := phaseSequence{Schema: ReceiptSchemaV2, Order: d.Order, Occurrences: ids}
+		if schedule != nil {
+			retained.Schema, retained.DelaysMS = ReceiptSchemaV3, []int64{}
+			for _, d := range schedule {
+				retained.DelaysMS = append(retained.DelaysMS, d.Milliseconds())
+			}
+		}
+		p.retained["sequence.json"], _ = json.Marshal(retained, json.Deterministic(true))
 	}
 	config := artifactdir.Identity("readmit-connected-configuration/v1", p.retained)
 	p.binding = Binding{Plan: plan.Identity(), Configuration: config, Policy: connectedtest.Digest(policyRaw), Credentials: connectedtest.Digest(p.retained["credential.json"]), Source: p.replay.SourceIdentity(), Project: env.Project, Environment: env.ID, Revision: env.Revision, Endpoint: env.Endpoint, Operation: sendpolicy.V2Stimulus}
@@ -173,6 +201,38 @@ func prepare(plan *connectedtest.Plan, s Selection, sequence bool) (*Prepared, e
 	}
 	return p, nil
 }
+
+// phaseSequence is a lifecycle phase's retained order. A scheduled phase
+// (v3) adds the delay, in whole milliseconds, each occurrence waits after the
+// phase's sending begins.
+type phaseSequence struct {
+	Schema      string   `json:"schema"`
+	Order       []string `json:"order"`
+	Occurrences []string `json:"occurrences"`
+	DelaysMS    []int64  `json:"delays_ms,omitzero"`
+}
+
+// Scheduled reports whether the phase sends on a declared schedule.
+func (p *Prepared) Scheduled() bool { return p.schedule != nil }
+
+// Holds reports whether the budget left in ctx holds the phase's schedule:
+// its longest delay and then one message and its acknowledgement. A phase that
+// does not hold is refused before anything is sent; a delay is never
+// shortened to fit. An unscheduled phase, or a context without a deadline,
+// always holds.
+func (p *Prepared) Holds(ctx context.Context) bool {
+	deadline, ok := ctx.Deadline()
+	if p.schedule == nil || !ok {
+		return true
+	}
+	window, _ := time.ParseDuration(p.replay.Configuration().MessageTimeout)
+	longest := time.Duration(0)
+	for _, d := range p.schedule {
+		longest = max(longest, d)
+	}
+	return time.Until(deadline) > longest+window
+}
+
 func frame(b []byte) []byte {
 	d, err := hl7.Parse(b, hl7.Options{})
 	if err == nil && d.Format == hl7.Raw {

@@ -1,0 +1,118 @@
+{
+ "schema": "readmit-casegen-target-expectations/v1",
+ "note": "Hand-authored from each scenario's declared facts and the independent target's own rules (HL7 action code/unique identifier mode for resources, or the snapshot convention a case declares) in internal/casegen/target_test.go, never from generated output. A ledger entry is status, slot start and each held resource with its filler status for an appointment, or report status and observation count for a filler order, a visit's state, location and patient name, a merged patient's survivor, or an order's state.",
+ "cases": [
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "baseline", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260305090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "cancel-before-reschedule", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AR"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "duplicate-booking", "phases": [
+   {"phase": "book", "acks": ["AA", "AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260305090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "missing-booking", "phases": [
+   {"phase": "reschedule", "acks": ["AR"], "ledger": {}},
+   {"phase": "cancel", "acks": ["AR"], "ledger": {}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "foreign-namespace", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AR"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "invalid-start", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AR"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "late-reschedule", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AR"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "missing-appointment-id", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AR"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "book-reschedule-cancel", "profile": "siu", "variant": "null-name", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260303090000+0000 CONSULT:Booked"}},
+   {"phase": "reschedule", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "booked 20260305090000+0000 CONSULT:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0001@SYNTH-SCHED": "cancelled 20260305090000+0000 CONSULT:Booked"}}]},
+  {"request": "adt", "profile": "adt", "variant": "baseline", "phases": [
+   {"phase": "register", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "preadmit WARD-A SYNTHETIC^PATIENT"}},
+   {"phase": "admit", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-A SYNTHETIC^PATIENT"}},
+   {"phase": "transfer", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^PATIENT"}},
+   {"phase": "update", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED"}},
+   {"phase": "cancel-a-discharge-that-never-happened", "acks": ["AR"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED"}},
+   {"phase": "discharge", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "discharged WARD-B SYNTHETIC^RENAMED"}},
+   {"phase": "cancel-an-admission-already-discharged", "acks": ["AR"], "ledger": {"SYNTH-VISIT-A@READMIT": "discharged WARD-B SYNTHETIC^RENAMED"}},
+   {"phase": "cancel-the-discharge", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED"}},
+   {"phase": "admit-the-second-visit", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED", "SYNTH-VISIT-B@READMIT": "admitted CLINIC-B SYNTHETIC^PATIENT"}},
+   {"phase": "merge-a-patient-into-itself", "acks": ["AR"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED", "SYNTH-VISIT-B@READMIT": "admitted CLINIC-B SYNTHETIC^PATIENT"}},
+   {"phase": "merge-the-duplicate-identity", "acks": ["AA"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED", "SYNTH-VISIT-B@READMIT": "admitted CLINIC-B SYNTHETIC^PATIENT", "SYNTH-PATIENT-B@READMIT": "merged SYNTH-PATIENT-A@READMIT"}},
+   {"phase": "merge-an-identity-already-merged-away", "acks": ["AR"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED", "SYNTH-VISIT-B@READMIT": "admitted CLINIC-B SYNTHETIC^PATIENT", "SYNTH-PATIENT-B@READMIT": "merged SYNTH-PATIENT-A@READMIT"}},
+   {"phase": "update-the-visit-of-a-merged-identity", "acks": ["AR"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED", "SYNTH-VISIT-B@READMIT": "admitted CLINIC-B SYNTHETIC^PATIENT", "SYNTH-PATIENT-B@READMIT": "merged SYNTH-PATIENT-A@READMIT"}},
+   {"phase": "merge-into-an-identity-already-merged-away", "acks": ["AR"], "ledger": {"SYNTH-VISIT-A@READMIT": "admitted WARD-B SYNTHETIC^RENAMED", "SYNTH-VISIT-B@READMIT": "admitted CLINIC-B SYNTHETIC^PATIENT", "SYNTH-PATIENT-B@READMIT": "merged SYNTH-PATIENT-A@READMIT"}}]},
+  {"request": "orm", "profile": "orm", "variant": "baseline", "phases": [
+   {"phase": "step-1", "acks": ["AR"], "ledger": {}},
+   {"phase": "step-2", "acks": ["AA"], "ledger": {"PLACER-001@SYNTH-PLACER": "ordered"}},
+   {"phase": "step-3", "acks": ["AA"], "ledger": {"PLACER-001@SYNTH-PLACER": "ordered"}},
+   {"phase": "step-4", "acks": ["AA"], "ledger": {"PLACER-001@SYNTH-PLACER": "cancelled"}},
+   {"phase": "step-5", "acks": ["AR"], "ledger": {"PLACER-001@SYNTH-PLACER": "cancelled"}},
+   {"phase": "step-6", "acks": ["AR"], "ledger": {"PLACER-001@SYNTH-PLACER": "cancelled"}}]},
+  {"request": "orm", "profile": "orm", "variant": "changed-placer", "phases": [
+   {"phase": "step-1", "acks": ["AR"], "ledger": {}},
+   {"phase": "step-2", "acks": ["AA"], "ledger": {"PLACER-001@SYNTH-PLACER": "ordered"}},
+   {"phase": "step-3", "acks": ["AR"], "ledger": {"PLACER-001@SYNTH-PLACER": "ordered"}},
+   {"phase": "step-4", "acks": ["AA"], "ledger": {"PLACER-001@SYNTH-PLACER": "cancelled"}},
+   {"phase": "step-5", "acks": ["AR"], "ledger": {"PLACER-001@SYNTH-PLACER": "cancelled"}},
+   {"phase": "step-6", "acks": ["AR"], "ledger": {"PLACER-001@SYNTH-PLACER": "cancelled"}}]},
+  {"request": "resource-changes", "profile": "siu", "variant": "baseline", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked"}},
+   {"phase": "add-doctor", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked,DR-1:Booked"}},
+   {"phase": "cancel-room", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Cancelled,CONSULT:Booked,DR-1:Booked"}},
+   {"phase": "cancel-consult", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "add-checkup", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "cancel-room-again", "acks": ["AR"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "cancelled 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "add-after-cancellation", "acks": ["AR"], "ledger": {"APPT-0002@SYNTH-SCHED": "cancelled 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}}]},
+  {"request": "resource-changes", "profile": "siu", "variant": "unmarked-cancellation", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked"}},
+   {"phase": "add-doctor", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked,DR-1:Booked"}},
+   {"phase": "cancel-room", "acks": ["AR"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked,DR-1:Booked"}},
+   {"phase": "cancel-consult", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "add-checkup", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Booked,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "cancel-room-again", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "cancelled 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "add-after-cancellation", "acks": ["AR"], "ledger": {"APPT-0002@SYNTH-SCHED": "cancelled 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}}]},
+  {"request": "resource-snapshot", "profile": "siu", "variant": "baseline", "resource_updates": "snapshot", "phases": [
+   {"phase": "book", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked"}},
+   {"phase": "add-doctor", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Booked,CONSULT:Booked,DR-1:Booked"}},
+   {"phase": "cancel-room", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Cancelled,CONSULT:Booked,DR-1:Booked"}},
+   {"phase": "cancel-consult", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "add-checkup", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "cancel-room-again", "acks": ["AR"], "ledger": {"APPT-0002@SYNTH-SCHED": "booked 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "cancel", "acks": ["AA"], "ledger": {"APPT-0002@SYNTH-SCHED": "cancelled 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}},
+   {"phase": "add-after-cancellation", "acks": ["AR"], "ledger": {"APPT-0002@SYNTH-SCHED": "cancelled 20260407080000+0000 CHECKUP:Booked,CLINIC-1:Cancelled,CONSULT:Cancelled,DR-1:Booked"}}]},
+  {"request": "oru", "profile": "oru", "variant": "baseline", "phases": [
+   {"phase": "step-1", "acks": ["AR"], "ledger": {}},
+   {"phase": "step-2", "acks": ["AA"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-3", "acks": ["AA"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-4", "acks": ["AA"], "ledger": {"FILLER-001": "F 2"}},
+   {"phase": "step-5", "acks": ["AR"], "ledger": {"FILLER-001": "F 2"}},
+   {"phase": "step-6", "acks": ["AA"], "ledger": {"FILLER-001": "C 2"}}]},
+  {"request": "oru", "profile": "oru", "variant": "unlinked-correction", "phases": [
+   {"phase": "step-1", "acks": ["AR"], "ledger": {}},
+   {"phase": "step-2", "acks": ["AA"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-3", "acks": ["AA"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-4", "acks": ["AA"], "ledger": {"FILLER-001": "F 2"}},
+   {"phase": "step-5", "acks": ["AR"], "ledger": {"FILLER-001": "F 2"}},
+   {"phase": "step-6", "acks": ["AR"], "ledger": {"FILLER-001": "F 2"}}]},
+  {"request": "oru", "profile": "oru", "variant": "correction-before-final", "phases": [
+   {"phase": "step-1", "acks": ["AR"], "ledger": {}},
+   {"phase": "step-2", "acks": ["AA"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-3", "acks": ["AA"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-6", "acks": ["AR"], "ledger": {"FILLER-001": "P 2"}},
+   {"phase": "step-4", "acks": ["AA"], "ledger": {"FILLER-001": "F 2"}},
+   {"phase": "step-5", "acks": ["AR"], "ledger": {"FILLER-001": "F 2"}}]}
+ ]
+}

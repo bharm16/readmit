@@ -100,6 +100,7 @@ var profiles = map[string]operationguard.Profile{
 	"PublishSupportSummary":    {Name: supportOperation, Interruptible: true},
 	"VerifyCIGate":             {Name: ciGateVerifyOperation, Interruptible: true},
 	"CheckScenarioLibrary":     {Name: scenarioCheckOperation, Interruptible: true},
+	"GenerateScenarioCases":    {Name: scenarioCasesOperation, Interruptible: true, Author: true},
 	"SuiteCoverage":            {Name: suiteCoverageOperation, Interruptible: true},
 
 	// The Findings view's analysis and comparison, which write into the

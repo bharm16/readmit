@@ -18,6 +18,17 @@ import (
 const (
 	Schema         = "readmit-run/v1"
 	SequenceSchema = "readmit-sequence-run/v1"
+	// ByteOnlySchema is a run whose caller explicitly chose to send a
+	// generated case's bytes without the scenario timing its generation
+	// declared: readmit-run/v1's members and rules, and a manifest stating
+	// that the timing was not applied. It is never a timing-faithful scenario
+	// execution, and only OpenByteOnly reads it.
+	ByteOnlySchema = "readmit-byte-only-run/v1"
+	// TimingRequired and TimingNotApplied are what a raw replay does with a
+	// generated case's scenario timing: a send is refused until its caller
+	// chooses byte-only replay, which then records the timing not applied.
+	TimingRequired   = "required"
+	TimingNotApplied = "not-applied"
 	// TargetSchema is the contract a run manifest's recorded transport is read
 	// back under. TargetSchemaV2 adds the credential reference below and
 	// TargetSchemaV3 adds the named environment; every version is read
@@ -147,6 +158,11 @@ type Transformation struct {
 type Options struct {
 	Occurrences     []string
 	Transformations []Transformation
+	// IgnoreScenarioTiming is the explicit choice of byte-only replay for a
+	// case the case generator wrote: its bytes are sent without the delays its
+	// generation declared, and the run records that. It is refused for any
+	// other case and for a connected send, which honors the schedule.
+	IgnoreScenarioTiming bool
 	// Durability is Durable unless the run is Scratch: written inside a
 	// throwaway workspace its owner removes before it answers. A Scratch run
 	// syncs neither its files nor its event log; its bytes and identity are
@@ -186,6 +202,7 @@ type Mapping struct {
 type Plan struct {
 	sequence       bool
 	scoped         bool
+	generated      bool
 	sourcePath     string
 	sourceInfo     os.FileInfo
 	sourceIdentity string
@@ -248,6 +265,9 @@ type Manifest struct {
 	Mappings             []Mapping        `json:"mappings"`
 	Transformations      []Transformation `json:"transformations"`
 	Changes              []Change         `json:"changes"`
+	// ScenarioTiming exists only in readmit-byte-only-run/v1, as
+	// TimingNotApplied.
+	ScenarioTiming string `json:"scenario_timing,omitzero"`
 }
 
 type Outcome string
@@ -335,6 +355,25 @@ func (r *Run) Interruption() Outcome {
 	return ""
 }
 
+// ScenarioTiming is what a raw replay of the plan does with its case's
+// scenario timing: empty for a case no generation scheduled; for a case the
+// case generator wrote, TimingRequired until its caller chooses byte-only
+// replay, and TimingNotApplied once it has. A generation's schedule is never
+// read from the case: several may share its bytes.
+func (p *Plan) ScenarioTiming() string {
+	switch {
+	case !p.generated:
+		return ""
+	case p.options.IgnoreScenarioTiming:
+		return TimingNotApplied
+	}
+	return TimingRequired
+}
+
+// ErrScenarioTiming refuses a raw send of a generated case whose caller did not
+// choose byte-only replay.
+var ErrScenarioTiming = errors.New("this generated case requires its generation schedule for scenario execution; use the connected execution path, or explicitly choose byte-only replay without scenario timing")
+
 // Configuration returns the actual sealed configuration, including references
 // (never secret values), for versioned durable execution records.
 func (p *Plan) Configuration() Target { return p.target }
@@ -357,9 +396,10 @@ func (p *Plan) Identity(policy *sendpolicy.Policy) (string, error) {
 		Transport       TargetRecord       `json:"transport"`
 		Policy          *sendpolicy.Policy `json:"policy"`
 		Transformations []Transformation   `json:"transformations"`
+		ScenarioTiming  string             `json:"scenario_timing,omitzero"`
 		Messages        []message          `json:"messages"`
 	}{Source: p.sourceIdentity, Target: p.target, Transport: p.Target(), Policy: policy,
-		Transformations: p.options.Transformations, Messages: []message{}}
+		Transformations: p.options.Transformations, ScenarioTiming: p.ScenarioTiming(), Messages: []message{}}
 	for _, mapping := range p.Mappings() {
 		wire, err := p.Outbound(mapping.OutboundOccurrence)
 		if err != nil {

@@ -23,6 +23,16 @@ type Observer interface {
 	Recorded(event Event) error
 }
 
+// Pacer is an optional Observer extension that holds each occurrence until its
+// declared time. Await runs once the run's one connection is open and before
+// the occurrence's intent or write, so BeforeSend and every check after it run
+// after the wait. A wait that the execution's cancellation or deadline ends
+// records the occurrence as not sent, like any cancellation before a write;
+// any other error halts execution.
+type Pacer interface {
+	Await(ctx context.Context, occurrence string) error
+}
+
 func execute(ctx context.Context, plan *Plan, output string, dial func(context.Context, *Plan) (net.Conn, *TransportError)) (*Run, error) {
 	return executeObserved(ctx, plan, output, nil, dial)
 }
@@ -67,6 +77,17 @@ func executeObserved(ctx context.Context, plan *Plan, output string, observer Ob
 					} else {
 						stop = context.AfterFunc(ctx, func() { _ = connection.Close() })
 						reader, _ = mllp.NewReader(connection, plan.target.MaxACKBytes)
+					}
+				}
+				// A paced occurrence waits on the open connection, whose dial
+				// the admission budgeted, and only then records its intent
+				// and passes the authority check before its write.
+				if pacer, ok := observer.(Pacer); ok && event.TransportError == nil {
+					if err := pacer.Await(ctx, event.OutboundOccurrence); err != nil {
+						if ctx.Err() == nil {
+							return nil, err
+						}
+						setFailure(event, "write", context.Canceled, ctx)
 					}
 				}
 				if event.TransportError == nil {

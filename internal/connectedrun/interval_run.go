@@ -61,9 +61,17 @@ func ExecuteWithClock(ctx context.Context, p *Prepared, instance, output string,
 	if _, err := authority.Check(ctx, p.transport.Binding()); err != nil {
 		return Result{}, err
 	}
+	// A phase whose declared delays the remaining budget cannot hold is
+	// refused before anything is armed or sent.
+	if !p.transport.Holds(ctx) {
+		return Result{}, invalid
+	}
 	schema := SchemaV2
 	if p.sequence {
 		schema = PhaseSchema
+	}
+	if p.transport.Scheduled() {
+		schema = ScheduledPhaseSchema
 	}
 	f := intervalFamily
 	f.Seal = artifactdir.DirectoryHash(schema)
@@ -327,3 +335,7 @@ func ExecuteWithClock(ctx context.Context, p *Prepared, instance, output string,
 }
 
 const PhaseSchema = "readmit-connected-phase/v1"
+
+// ScheduledPhaseSchema is a scheduled lifecycle's phase: its transport is
+// readmit-connected-transport/v3, holding each occurrence's declared delay.
+const ScheduledPhaseSchema = "readmit-connected-phase/v3"

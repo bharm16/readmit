@@ -22,7 +22,7 @@ import (
 
 // A successful acquisition may still violate a tighter observation gap. This
 // independently holds a coherent HTTP response after the actual stimulus while
-// staying within its two-second acquisition budget. The parent has thirty
+// staying within its ten-second acquisition budget. The parent has thirty
 // seconds: neither transport completion nor parent time remaining proves the
 // declared sampling coverage.
 func TestFlowResumeBudgetSeparatesAcquisitionFromCoverage(t *testing.T) {
@@ -41,7 +41,7 @@ func TestFlowResumeBudgetSeparatesAcquisitionFromCoverage(t *testing.T) {
 				for j := range d.Phases[i].Datasets {
 					ds := &d.Phases[i].Datasets[j]
 					projection, err := dataset.DecodeProjection(files[ds.Projection.File])
-					if err != nil || projection.Limits.TimeoutMS != 2000 {
+					if err != nil || projection.Limits.TimeoutMS != flowContractIOBudget.Milliseconds() {
 						t.Fatal("diagnostic acquisition budget changed", err)
 					}
 					definition, err := observeinterval.Decode(files[ds.Completion.Policy.File])
@@ -114,7 +114,8 @@ func TestFlowResumeBudgetSeparatesAcquisitionFromCoverage(t *testing.T) {
 			}
 			// The response is released 1.2 seconds after it was requested, timed
 			// from the request itself: the checks below must not push the release
-			// past the two-second acquisition budget on a slow runner.
+			// into the remaining acquisition budget on a slow runner. Authority,
+			// configuration and TLS work before the request also spend that budget.
 			releaseTimer := time.AfterFunc(time.Until(began.Add(1200*time.Millisecond)), unblock)
 			defer releaseTimer.Stop()
 			waitStimulusFinish(t, t.Context(), filepath.Join(output, "phases", "booking"))

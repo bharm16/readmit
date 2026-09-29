@@ -3,19 +3,28 @@ package connectedtest
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/assertion"
+	"github.com/bharm16/readmit/internal/casegen"
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/testisolation"
 )
 
 const FlowTestSchema = "readmit-connected-test/v4"
 const FlowPlanSchema = "readmit-execution-plan/v4"
+
+// A scheduled lifecycle is a v4 lifecycle that sends one case of one case
+// generation on the delays that generation declared.
+const ScheduledFlowTestSchema = "readmit-connected-test/v6"
+const ScheduledFlowPlanSchema = "readmit-execution-plan/v6"
 
 // FlowTest authors one test. Phase plans are derived from its selected original
 // steps, never supplied as manually executed intermediate artifacts.
@@ -34,6 +43,19 @@ type FlowTest struct {
 	Limits      Limits      `json:"limits"`
 	// Servers exist only in readmit-connected-test/v5.
 	Servers []FHIRServer `json:"fhir_servers,omitzero"`
+	// Schedule exists only in readmit-connected-test/v6.
+	Schedule *Schedule `json:"schedule,omitzero"`
+}
+
+// Schedule names the case generation record, by digest, and the case in it,
+// by row and variant, whose delays a scheduled lifecycle sends on. Its phases
+// are the case's phases and its steps the case's occurrences, in order; the
+// delays are read from the record, never from the case's bytes, which another
+// variant may share.
+type Schedule struct {
+	Generation Reference `json:"generation"`
+	Row        string    `json:"row"`
+	Variant    string    `json:"variant"`
 }
 type PhaseDependency struct {
 	Phase    string `json:"phase"`
@@ -77,7 +99,10 @@ type FlowDocument struct {
 	Test       FlowTest          `json:"test"`
 	Generation Generation        `json:"generation"`
 	Phases     map[string]string `json:"phase_plans"`
-	Members    []Member          `json:"members"`
+	// Delays exist only in readmit-execution-plan/v6: each step's delay, in
+	// whole milliseconds, after its phase's sending begins.
+	Delays  map[string]int64 `json:"delays_ms,omitzero"`
+	Members []Member         `json:"members"`
 }
 type FlowPlan struct {
 	document FlowDocument
@@ -94,6 +119,23 @@ func (p *FlowPlan) Document() FlowDocument {
 	return d
 }
 func (p *FlowPlan) Phase(id string) *Plan { return p.phases[id] }
+
+// Schedule is one phase's delays in its steps' order, or nil when the
+// lifecycle is not scheduled.
+func (p *FlowPlan) Schedule(phase string) []time.Duration {
+	if p.document.Delays == nil {
+		return nil
+	}
+	out := []time.Duration{}
+	for _, f := range p.document.Test.Phases {
+		if f.ID == phase {
+			for _, id := range f.Steps {
+				out = append(out, time.Duration(p.document.Delays[id])*time.Millisecond)
+			}
+		}
+	}
+	return out
+}
 func (p *FlowPlan) Files() map[string][]byte {
 	out := map[string][]byte{}
 	for n, b := range p.files {
@@ -117,14 +159,21 @@ func (p *FlowPlan) Write(ctx context.Context, output string) error {
 }
 func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPlan, error) {
 	var d FlowTest
-	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil || d.Schema != FlowTestSchema && d.Schema != FHIRFlowTestSchema || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.Environment.Project != d.Project || d.Environment.Classification != "nonproduction" || len(d.Phases) < 1 || len(d.Phases) > 32 || len(d.Steps) < 1 || len(d.Steps) > 256 || len(d.Steps) > d.Limits.MaxSteps || !slices.Contains([]string{"application-state", "engine-output"}, d.Boundary) {
+	if len(raw) > MaxBytes || json.Unmarshal(raw, &d, json.RejectUnknownMembers(true)) != nil || d.Schema != FlowTestSchema && d.Schema != FHIRFlowTestSchema && d.Schema != ScheduledFlowTestSchema || !identifier.MatchString(d.Project) || !identifier.MatchString(d.ID) || !short(d.Revision) || d.Environment.Project != d.Project || d.Environment.Classification != "nonproduction" || len(d.Phases) < 1 || len(d.Phases) > 32 || len(d.Steps) < 1 || len(d.Steps) > 256 || len(d.Steps) > d.Limits.MaxSteps || !slices.Contains([]string{"application-state", "engine-output"}, d.Boundary) {
 		return nil, invalid
 	}
 	fhirFlow := d.Schema == FHIRFlowTestSchema
+	scheduled := d.Schema == ScheduledFlowTestSchema
 	planSchema, childSchema := FlowPlanSchema, PhaseTestSchema
 	if fhirFlow {
 		planSchema, childSchema = FHIRFlowPlanSchema, PhaseTestSchemaV2
 	} else if d.Servers != nil {
+		return nil, invalid
+	}
+	if scheduled {
+		planSchema = ScheduledFlowPlanSchema
+	}
+	if scheduled != (d.Schedule != nil) {
 		return nil, invalid
 	}
 	p := &FlowPlan{document: FlowDocument{Schema: planSchema, Test: d, Generation: g, Phases: map[string]string{}, Members: []Member{}}, phases: map[string]*Plan{}, files: map[string][]byte{}}
@@ -269,6 +318,15 @@ func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPla
 	if len(assigned) != len(steps) || fhirFlow && (validateResponseBindings(d, supplied) != nil || validateReceivingWrites(d, p) != nil) {
 		return nil, invalid
 	}
+	if scheduled {
+		raw, e := resolve(d.Schedule.Generation, casegen.RecordSchema)
+		if e != nil {
+			return nil, e
+		}
+		if p.document.Delays, e = scheduleOf(d, raw, steps); e != nil {
+			return nil, e
+		}
+	}
 	observationBudget := 0
 	for _, phase := range d.Phases {
 		for _, ds := range phase.Datasets {
@@ -299,6 +357,56 @@ func CompileFlow(raw []byte, supplied map[string][]byte, g Generation) (*FlowPla
 	p.identity = Digest(planBytes)
 	return p, nil
 }
+
+// scheduleOf reads a scheduled lifecycle's delays from the case its schedule
+// names. Each phase must be that case's phase and each step that phase's
+// occurrence, sent unchanged: its case event and exactly its bytes, with no
+// synthetic assignment. A delay the lifecycle cannot hold — below a
+// millisecond, or past the deadline with its earlier phases' delays — is
+// refused here, before any execution, and never shortened.
+func scheduleOf(d FlowTest, raw []byte, steps map[string]Step) (map[string]int64, error) {
+	record, err := casegen.ReadRecord(raw)
+	if err != nil {
+		return nil, invalid
+	}
+	i := slices.IndexFunc(record.Cases, func(c casegen.Case) bool { return c.Row == d.Schedule.Row && c.Variant == d.Schedule.Variant })
+	if i < 0 {
+		return nil, errors.New("the scheduled generation holds no case " + d.Schedule.Row + "/" + d.Schedule.Variant)
+	}
+	c := record.Cases[i]
+	if len(c.Phases) != len(d.Phases) {
+		return nil, errors.New("a scheduled lifecycle's phases are its case's phases")
+	}
+	delays := map[string]int64{}
+	total := time.Duration(0)
+	for n, phase := range d.Phases {
+		if len(phase.Steps) != len(c.Phases[n].Occurrences) {
+			return nil, errors.New("scheduled phase " + phase.ID + " does not send its case phase's occurrences")
+		}
+		longest := time.Duration(0)
+		for k, id := range phase.Steps {
+			ordinal := c.Phases[n].Occurrences[k]
+			if ordinal < 1 || ordinal > len(c.Occurrences) {
+				return nil, invalid
+			}
+			o, s := c.Occurrences[ordinal-1], steps[id]
+			if s.V2 == nil || len(s.V2.Assignments) != 0 || s.V2.Occurrence != o.CaseEvent || s.V2.Input.SHA256 != o.SHA256 {
+				return nil, errors.New("scheduled step " + id + " is not occurrence " + strconv.Itoa(ordinal) + " of its case, unchanged")
+			}
+			delay, err := time.ParseDuration(o.Delay)
+			if err != nil || delay < 0 || delay%time.Millisecond != 0 {
+				return nil, errors.New("occurrence " + strconv.Itoa(ordinal) + " declares a delay this lifecycle cannot keep")
+			}
+			delays[id] = delay.Milliseconds()
+			longest = max(longest, delay)
+		}
+		if total += longest; total >= time.Duration(d.Limits.DeadlineMS)*time.Millisecond {
+			return nil, errors.New("the lifecycle's deadline cannot hold its phases' declared delays")
+		}
+	}
+	return delays, nil
+}
+
 func validateWireBindings(w WireChecks, definitions []Dataset, p *Plan) error {
 	known := map[string]Dataset{}
 	for _, d := range definitions {
@@ -335,11 +443,14 @@ func OpenFlowPlan(path string) (*FlowPlan, error) {
 		return nil, err
 	}
 	var declared FlowDocument
-	if json.Unmarshal(files["flow.json"], &declared, json.RejectUnknownMembers(true)) != nil || declared.Schema != FlowPlanSchema && declared.Schema != FHIRFlowPlanSchema || !sealed(declared.Schema, files) {
+	if json.Unmarshal(files["flow.json"], &declared, json.RejectUnknownMembers(true)) != nil || declared.Schema != FlowPlanSchema && declared.Schema != FHIRFlowPlanSchema && declared.Schema != ScheduledFlowPlanSchema || !sealed(declared.Schema, files) {
 		return nil, invalid
 	}
 	supplied := map[string][]byte{}
 	supplied[declared.Test.Isolation.File] = files["dependencies/"+declared.Test.Isolation.SHA256]
+	if s := declared.Test.Schedule; s != nil {
+		supplied[s.Generation.File] = files["dependencies/"+s.Generation.SHA256]
+	}
 	for _, phase := range declared.Test.Phases {
 		child, err := OpenPlan(filepath.Join(path, "phases", phase.ID))
 		if err != nil || child.Identity() != declared.Phases[phase.ID] || !artifactdir.MatchesSubtree(files, "phases/"+phase.ID, child.document.Schema, artifactdir.Identity(child.document.Schema, child.Files())) {

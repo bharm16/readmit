@@ -63,6 +63,7 @@ script, and no external host is contacted. All evidence is synthetic.
 | `collector-separate-endpoint` | The application stage arrives at a separately configured independent endpoint and nowhere else, still correlated to the sender's control ID, while the commit stage stays on the receiving connection. |
 | `collector-unsupported-mode` | An enhanced request a policy does not implement, and an MSH-15 value outside the four declared conditions, are each refused with AR naming the refusal. Neither produces a commit acceptance and neither is recorded as an application acceptance. |
 | `collector-application-timeout` | An application stage whose delivery deadline expires reaches no endpoint, is recorded with no code and no destination and an explicit reason, and is never recorded as AE or AR. The commit stage it followed survives. |
+| `scenario-case-generation` | `scenario generate-case` over the owned fixture requests (resource changes in action-code mode and under a declared snapshot convention included) equals every hand-authored golden message byte for byte, holds each variant's phases in the order `testdata/casegen/target-expectations.json` declares, and writes every MSH-10 as the documented digest recomputed here. |
 
 ## Invariants these checks defend
 

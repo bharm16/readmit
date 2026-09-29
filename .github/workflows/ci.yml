@@ -64,7 +64,8 @@ jobs:
     needs: proof
     if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Includes setup, the race suite and the separate full FHIR lab gate.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

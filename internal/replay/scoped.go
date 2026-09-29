@@ -52,6 +52,15 @@ type scopedObserver struct {
 	Observer
 }
 
+// Await forwards the connected owner's pacing; the route's authority check
+// still runs in BeforeSend, after the wait.
+func (o scopedObserver) Await(ctx context.Context, id string) error {
+	if pacer, ok := o.Observer.(Pacer); ok {
+		return pacer.Await(ctx, id)
+	}
+	return nil
+}
+
 func (o scopedObserver) BeforeSend(id string) error {
 	if err := o.Observer.BeforeSend(id); err != nil {
 		return err
