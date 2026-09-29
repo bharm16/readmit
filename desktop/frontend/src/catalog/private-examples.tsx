@@ -63,35 +63,11 @@ export const privateExamples: Example[] = [
     view: f.protectionPackageResult().package,
     limitations: f.protectionPackageResult().limitations ?? [],
   }),
-  p("ReplayPanel", "Decision", { decision: privateData.decision }),
-  p("ReplayPanel", "NotPreviewed", {
-    result: {
-      state: "failed",
-      reason: "Synthetic policy refusal",
-      decision: privateData.decision,
-    },
-  }),
-  p("ReplayPanel", "Sent", {
-    result: { state: "completed", run: privateData.replayRun },
-  }),
-  p("ReplayPanel", "RunView", { run: privateData.replayRun }),
   p("Review", "Preview", privateData.transformPreview),
   p("Review", "Inventory", {
     ...privateData.reviewInventory,
     busy: false,
     onWindow: noop,
-  }),
-  p("RunComparison", "Execution", {
-    title: "Baseline",
-    execution: f.runComparisonResult().comparison?.baseline,
-  }),
-  p("RunExplanation", "Refusal", {
-    result: { state: "failed", reason: "Synthetic run unavailable" },
-  }),
-  p("RunExplanation", "ExplanationView", privateData.explanation),
-  p("RunPanel", "RunEvidenceView", {
-    evidence: f.runEvidenceResult().evidence,
-    onOpenCase: noop,
   }),
   p("RunnerPanel", "Refusal", {
     result: { state: "failed", reason: "Synthetic runner unavailable" },

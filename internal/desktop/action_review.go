@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json/v2"
+	"os"
 	"os/user"
 	"path/filepath"
 	"slices"
@@ -79,6 +80,9 @@ type ReplayActionOptions struct {
 	Messages        []string                `json:"messages"`
 	Transformations []replay.Transformation `json:"transformations"`
 	Policy          string                  `json:"policy,omitzero"`
+	// Reveal shows the values a transformation changes in the review. It
+	// changes nothing that is sent (#555).
+	Reveal bool `json:"reveal,omitzero"`
 }
 
 // ScanActionOptions narrow a credential scan to one registered reference;
@@ -108,6 +112,9 @@ type PrepareActionRequest struct {
 	// DeriveReview names the inputs an export review of the one scoped case
 	// is derived with.
 	DeriveReview *DeriveReviewOptions `json:"derive_review,omitzero"`
+	// Run names the suite environment or original phase a run review is
+	// asked for (#555).
+	Run *RunActionOptions `json:"run,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -144,6 +151,7 @@ type ActionReview struct {
 	Storage       *StorageReview          `json:"storage,omitzero"`
 	Derive        *DeriveReviewView       `json:"derive,omitzero"`
 	Transport     *TransportReview        `json:"transport,omitzero"`
+	Run           *RunReview              `json:"run,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -231,6 +239,9 @@ type ReviewedActionResult struct {
 	Derived       *PrivacyReviewOutcome `json:"derived,omitzero"`
 	// Approved is the environment revision a transport approval published.
 	Approved *ItemRef `json:"approved,omitzero"`
+	// Run is the run a run, resume or send retained, as the project lists
+	// it, so the window opens it.
+	Run *ItemRef `json:"run,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -260,6 +271,8 @@ type boundAction struct {
 	derive          PrivacyReviewRequest
 	// transport is what a transport approval publishes.
 	transport *transportBinding
+	// run is what a reviewed run executes.
+	run *runBinding
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -553,6 +566,9 @@ func unmet(requirements []ReviewRequirement, bound *boundAction, decisions Revie
 	if slices.Contains(requirements, InventoryDeclarationRequirement) {
 		return declaredInventory(bound, decisions)
 	}
+	if bound.run != nil {
+		return setupMarked(bound, decisions)
+	}
 	return ""
 }
 
@@ -752,6 +768,10 @@ func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, h
 	if request.Replay != nil {
 		options = *request.Replay
 	}
+	// A send sends the messages chosen, never every message by default.
+	if len(options.Messages) == 0 {
+		return nil, refusal{Failed, "choose the messages to send; an empty selection sends nothing"}
+	}
 	loaded, items, records, declined := a.scoped(ctx, request.Context, []ItemRef{request.Items[0], *request.Destination})
 	if loaded == nil {
 		return nil, declined
@@ -774,18 +794,19 @@ func bindReplaySend(a *App, ctx context.Context, request PrepareActionRequest, h
 		}
 	}
 	replayRequest := ReplayRequest{Workspace: loaded.root, Case: entry, Identity: identity, Target: backingEntry(records[1]),
-		Policy: policy, Messages: slices.Clone(options.Messages), Transformations: slices.Clone(options.Transformations)}
+		Policy: policy, Messages: slices.Clone(options.Messages), Transformations: slices.Clone(options.Transformations), Reveal: options.Reveal}
 	previewed := a.previewReplay(ctx, replayRequest, held)
 	if previewed.Preview == nil {
 		return nil, refusal{previewed.State, previewed.Reason}
 	}
 	preview := previewed.Preview
-	replayRequest.Output = preview.Destination.Name
+	replayRequest.Output, replayRequest.Reveal = preview.Destination.Name, false
+	run := sendReview(loaded, items, entry, preview)
 	return &boundAction{action: ReplaySendAction, origin: request, replay: replayRequest,
 		binding: binding(string(ReplaySendAction), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, true, held),
 			preview.Identity, preview.SourceIdentity, preview.Destination.Name, preview.Target.Name, preview.Target.Classification, preview.Target.Address),
-		review: ActionReview{Items: items, Ready: preview.Sendable, Refusal: preview.Refusal, Replay: preview,
-			Destination: ReviewDestination{Name: preview.Target.Name, Classification: preview.Target.Classification, Address: preview.Target.Address, Output: preview.Destination.Name}}}, refusal{}
+		review: ActionReview{Items: items, Ready: preview.Sendable, Refusal: preview.Refusal, Replay: preview, Run: run,
+			Destination: ReviewDestination{Name: items[1].Name, Classification: preview.Target.Classification, Address: preview.Target.Address, Output: preview.Destination.Name}}}, refusal{}
 }
 
 // executeReplaySend sends the bound plan once. A delivery no acknowledgement
@@ -797,8 +818,14 @@ func executeReplaySend(a *App, ctx context.Context, bound *boundAction, _ Review
 			kind: ConnectionRun, destination: bound.review.Destination.Address})
 		return executeConnectedSend(a, ctx, bound)
 	}
+	output := filepath.Join(bound.replay.Workspace, bound.replay.Output)
+	a.setRunOutput(output)
+	defer a.setRunOutput("")
 	sent := a.sendReplay(ctx, ReplaySendRequest{Replay: bound.replay, Expected: bound.review.Replay.Identity, Approved: true})
 	result := ReviewedActionResult{State: sent.State, Reason: sent.Reason, Replay: sent.Run, Outcome: ActionCompleted}
+	if _, err := os.Lstat(output); err == nil {
+		result.Run = a.runItemOf(context.WithoutCancel(ctx), bound.origin.Context, bound.replay.Output)
+	}
 	switch {
 	case sent.Run != nil && sent.Run.Uncertain > 0:
 		result.Outcome = ActionUncertain

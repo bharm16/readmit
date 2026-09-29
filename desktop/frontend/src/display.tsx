@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult } from "./bindings";
+import type { CheckChange, RunCheckResult, RunDelivery, RunQueueIsolation, RunResult, BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -234,4 +234,70 @@ export const SUITE_CHANGE_AREAS: DisplayMap<"test" | "dataset" | "row" | "enviro
   requirement: "Requirement",
   exclusion: "Exclusion",
   setting: "Setting",
+};
+
+/** The one result a run is shown with, as run history ranks them. */
+export const RUN_RESULTS: DisplayMap<RunResult> = {
+  running: "Running",
+  interrupted: "Interrupted",
+  incomplete: "Incomplete",
+  blocked: "Blocked",
+  error: "Error",
+  failed: "Failed",
+  passed: "Passed",
+  accepted: "Accepted",
+  not_accepted: "Not accepted",
+};
+
+/** What is known about one message a run was to send. */
+export const RUN_DELIVERIES: DisplayMap<RunDelivery> = {
+  acknowledged: "Acknowledged",
+  uncertain: "Uncertain",
+  not_attempted: "Not attempted",
+};
+
+/** What a run decided about one check. */
+export const CHECK_RESULTS: DisplayMap<RunCheckResult> = {
+  passed: "Passed",
+  failed: "Failed",
+  not_evaluated: "Not evaluated",
+};
+
+/** How one check changed from the earlier run to the later. */
+export const CHECK_CHANGES: DisplayMap<CheckChange> = {
+  improved: "Improved",
+  regressed: "Regressed",
+  unchanged: "Unchanged",
+  observed_changed: "Different value",
+  changed_check: "Changed check",
+  added: "Added check",
+  removed: "Removed check",
+  not_compared: "Not compared",
+};
+
+/** Whether a suite test shares state with the others. */
+export const STATE_SHARING: DisplayMap<RunQueueIsolation> = { shared: "Shared", isolated: "Isolated" };
+
+/** The parts of a run's configuration a comparison compares on their own. */
+export const CONFIGURATION_PARTS: DisplayMap<"input" | "target" | "environment" | "rule"> = {
+  input: "Messages",
+  target: "Target",
+  environment: "Engine",
+  rule: "Profile",
+};
+
+/** What comparing one part of the configuration established. */
+export const CONFIGURATION_OUTCOMES: DisplayMap<"unchanged" | "changed" | "undecided" | "undeclared"> = {
+  unchanged: "Unchanged",
+  changed: "Changed",
+  undecided: "Unknown",
+  undeclared: "Not recorded",
+};
+
+/** What the results of several runs of one test show. */
+export const STABILITY_STATES: DisplayMap<"insufficient_history" | "unresolved" | "no_observed_flakiness" | "possible_flakiness"> = {
+  insufficient_history: "Not enough runs",
+  unresolved: "Unresolved",
+  no_observed_flakiness: "No check changed result",
+  possible_flakiness: "Some checks changed result",
 };

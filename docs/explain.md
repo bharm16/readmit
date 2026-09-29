@@ -242,14 +242,14 @@ again, so half of one explains nothing and is refused.
 
 ## In the application
 
-The desktop application's **Explain a retained run** panel is this
-explanation for a retained run of the open workspace. It re-decides a set
-against the run bundle a durable run, a result or a replay retained, through
-the same `internal/runexplain` operation, and says what the evidence decided in
-the words above. Values are hidden there until they are revealed on purpose,
-as `--show-values` does here, and what this command refuses the panel refuses
-in the same sentence. See
-[the desktop shell](desktop.md#explaining-a-retained-run).
+The desktop application's **Analyze with checks**, on a run's page, is this
+explanation for a run of the open project and a saved check group version. It
+re-decides the group against the run bundle the run retained, through the same
+`internal/runexplain` operation, and says what the evidence decided in the
+words above, as its own analysis beside the run's result. Values are hidden
+there until they are shown on purpose, as `--show-values` does here, and what
+this command refuses the window refuses in the same sentence. See
+[the desktop shell](desktop.md#analyze-with-checks).
 
 ## Not in this release
 

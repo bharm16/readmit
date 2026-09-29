@@ -85,6 +85,15 @@ type loadedCatalog struct {
 	// configNames are the names a person reads for the configurations the
 	// project offers now, by configuration identity, read once per load.
 	configNames map[string]string
+	// executing reports whether this window's execution is writing a run
+	// folder now (#555).
+	executing func(path string) bool
+	// names, savedTests and namedTargets are what run history reads once
+	// per load: object names, every saved test version and the named
+	// environments by the targets their revisions declare.
+	names        map[string]string
+	savedTests   []savedTestVersion
+	namedTargets map[string]namedTarget
 }
 
 // loadCatalog opens the project the request names and discovers what it
@@ -115,7 +124,8 @@ func (a *App) loadWindow(ctx context.Context, request RequestContext, record boo
 	if err != nil {
 		return nil, refusal{Failed, "a project must be an existing folder that is not a symbolic link"}
 	}
-	loaded := &loadedCatalog{ctx: ctx, root: opened.Root, project: opened, revisions: *revisions, store: store, identities: map[string]string{}, analyses: map[string]diagnose.Retained{}, uncatalogued: map[string]bool{}}
+	loaded := &loadedCatalog{ctx: ctx, root: opened.Root, project: opened, revisions: *revisions, store: store, identities: map[string]string{}, analyses: map[string]diagnose.Retained{}, uncatalogued: map[string]bool{},
+		executing: a.executing}
 	document, present, err := store.Read()
 	if errors.Is(err, catalog.ErrUnsupportedVersion) {
 		return nil, refusal{Failed, "the project's catalog was written by a version this release cannot read"}
@@ -865,7 +875,6 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	CaseItem:        readCase,
 	TestItem:        readTest,
 	SuiteItem:       readSuite,
-	RunItem:         readRun,
 	EnvironmentItem: readEnvironment,
 	ObservationItem: readObservation,
 	ReportItem:      readReport,

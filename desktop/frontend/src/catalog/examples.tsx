@@ -23,16 +23,13 @@ import { PrivacyPanel } from "../PrivacyPanel";
 import { ProtectionPanel } from "../ProtectionPanel";
 import { Reduction } from "../Reduction";
 import { Reexecution } from "../Reexecution";
-import { ReplayPanel } from "../ReplayPanel";
 import { Reproducer } from "../Reproducer";
 import { Review } from "../Review";
 import { RevisionComparison } from "../RevisionComparison";
 import {
   NormalizationPolicyEditor,
 } from "../RulesEditor";
-import { RunComparison } from "../RunComparison";
-import { RunExplanation } from "../RunExplanation";
-import { RunPanel } from "../RunPanel";
+import { SendReview } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
 import { SyntheticPackets } from "../SyntheticPackets";
 import { TaskTabs, TaskPanel } from "../TaskTabs";
@@ -181,17 +178,7 @@ export const examples: Example[] = [
       onCancel={noop}
     />
   )),
-  e("Reexecution", () => (
-    <Reexecution {...common} reviews={list} packets={list} specs={list} />
-  )),
-  e("ReplayPanel", () => (
-    <ReplayPanel
-      {...common}
-      caseName={f.CASE_ENTRY}
-      identity={f.CASE_IDENTITY}
-      rows={catalogRows}
-    />
-  )),
+  e("Reexecution", () => <Reexecution workspace={f.WORKSPACE_ROOT} onRun={noop} />),
   e("Reproducer", () => (
     <Reproducer
       {...resultProps}
@@ -229,9 +216,16 @@ export const examples: Example[] = [
   e("NormalizationPolicyEditor", () => (
     <NormalizationPolicyEditor {...common} entries={list} />
   )),
-  e("RunComparison", () => <RunComparison {...common} />),
-  e("RunExplanation", () => <RunExplanation {...common} />),
-  e("RunPanel", () => <RunPanel {...common} onWatch={async () => {}} />),
+  e("SendReview", () => (
+    <SendReview
+      request={{ kind: "test", test: { kind: "test", id: "catalog-test" } }}
+      context={() => ({ project: f.WORKSPACE_ROOT, generation: 1 })}
+      onClose={noop}
+      onStarted={noop}
+      onEditEnvironment={noop}
+      onActivate={noop}
+    />
+  )),
   e("RunnerPanel", () => <RunnerPanel />),
   e("SyntheticPackets", () => <SyntheticPackets onRefresh={noop} />),
   e("TaskTabs", () => (

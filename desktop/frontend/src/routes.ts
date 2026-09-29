@@ -25,7 +25,6 @@ export type ChildDestination =
   | "suite"
   | "edit-suite"
   | "suite-review"
-  | "run-test"
   | "compare-runs"
   | "share-report"
   | "export-report"
@@ -47,7 +46,6 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   suite: "tests",
   "edit-suite": "tests",
   "suite-review": "tests",
-  "run-test": "runs",
   "compare-runs": "runs",
   "share-report": "reports",
   "export-report": "reports",

@@ -332,6 +332,12 @@ import type {
   SuiteReviewersResult,
   SuiteExportRequest,
   SuiteExportResult,
+  RunRequest,
+  RunDetailResult,
+  RunAnalysisRequest,
+  RunAnalysisResult,
+  RunComparisonItemsRequest,
+  RunComparisonItemsResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -1960,4 +1966,28 @@ export function upgradeProfilePins(request: ProfilePinsRequest): Promise<Profile
 /** The check groups a test version links, decided against one of its runs. */
 export function testRunChecks(request: TestRunChecksRequest): Promise<TestRunChecksResult> {
   return retryingRead(() => facade().TestRunChecks(request), { state: "failed", context: request.context, checks: [] });
+}
+
+// Runs (#555): a run's own page, its stale lock, a check group decided
+// against it, and two runs compared.
+
+/** One run of the project, or one job of a suite run, as its page shows it. */
+export function openRun(request: RunRequest): Promise<RunDetailResult> {
+  return retryingRead(() => facade().OpenRun(request), { state: "failed", context: request.context });
+}
+
+/** Removes the lock a run left once it ended; evidence is never touched. */
+export function clearStaleRunLock(request: RunRequest): Promise<RunDetailResult> {
+  return guard(() => facade().ClearStaleRunLock(request), { state: "failed", context: request.context });
+}
+
+/** A saved check group decided against one run's evidence; nothing the run
+ * recorded changes. */
+export function analyzeRun(request: RunAnalysisRequest): Promise<RunAnalysisResult> {
+  return guard(() => facade().AnalyzeRun(request), { state: "failed", context: request.context, missing: [] });
+}
+
+/** Two runs compared, with up to fourteen more counted. */
+export function compareRunItems(request: RunComparisonItemsRequest): Promise<RunComparisonItemsResult> {
+  return guard(() => facade().CompareRunItems(request), { state: "failed", context: request.context });
 }

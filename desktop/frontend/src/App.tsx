@@ -6,10 +6,10 @@ import { GeneralView, SecurityView, usePreferences, type ConnectionRoute } from 
 import { useEncryption } from "./Encryption";
 import { HubPanel } from "./HubPanel";
 import { RunnerPanel } from "./RunnerPanel";
-import { RunComparison } from "./RunComparison";
-import { RunPanel } from "./RunPanel";
-import { RunExplanation } from "./RunExplanation";
-import { ReplayPanel } from "./ReplayPanel";
+import { useRunComparison } from "./RunComparison";
+import { SendReview, sendTitle, type SendRequest } from "./RunPanel";
+import { useRunPage } from "./RunExplanation";
+import { useRunActivity, useRuns, type RunsPlace } from "./Runs";
 import { PacketPanel } from "./PacketPanel";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
@@ -220,9 +220,8 @@ type Running =
  * one survives looking at another. */
 type CaseView = "messages" | "timeline" | "findings";
 /** What a person does to a case, each on its own page with a way back. */
-type CaseFlow = "replay" | "compare" | "reproduce" | "reduce";
+type CaseFlow = "compare" | "reproduce" | "reduce";
 const CASE_FLOW_TITLES: Record<CaseFlow, string> = {
-  replay: "Replay",
   compare: "Compare",
   reproduce: "Reproducer",
   reduce: "Reduce",
@@ -323,18 +322,21 @@ export default function App() {
   const [evidenceFocus, setEvidenceFocus] = useState<EvidenceRef[] | null>(null);
   // Where the evidence shown was opened from: this case's Findings, or a
   // comparison of similar findings, which Back returns to.
-  const [evidenceFrom, setEvidenceFrom] = useState<"findings" | "similar">("findings");
+  const [evidenceFrom, setEvidenceFrom] = useState<"findings" | "similar" | "run">("findings");
   const [revealed, setRevealed] = useState(false);
   const [filterSeed, setFilterSeed] = useState<FilterSeed | null>(null);
   const [searchSettings, setSearchSettings] = useState<SearchSettings | null | undefined>(undefined);
   const [reproducerResult, setReproducerResult] = useState<ReproducerView | null>(null);
-  const [runSpecPath, setRunSpecPath] = useState<string | undefined>(undefined);
-  const [runEnvironment, setRunEnvironment] = useState<string | undefined>(undefined);
-  // Counts each saved test's Run, which the run view preflights on arrival.
-  const [runArrival, setRunArrival] = useState(0);
-  // The saved suite version and environment Run handed the run view, which
-  // preflights it and asks its own Send.
-  const [suiteHandoff, setSuiteHandoff] = useState<{ workspace: string; handoff: SuiteRunHandoff } | null>(null);
+  // The reviewed send open now (#555): a test, a suite, chosen messages, the
+  // rest of an interrupted run or a reviewed test. Its Send is the only thing
+  // that sends.
+  const [sendRequest, setSendRequest] = useState<SendRequest | null>(null);
+  // A review whose license refusal sent the person to activate: it is
+  // prepared again, fresh, once they leave Settings.
+  // Counts the runs that ended, so Runs reads its list again.
+  const [runsEnded, setRunsEnded] = useState(0);
+  // What Create report hands Reports: a run, its case and its test version.
+  const [reportSeed, setReportSeed] = useState<{ case: string; spec: string; run: string; count: number } | null>(null);
   // What Schedule or Set up CI on a suite opens Runners with.
   const [runnerSeed, setRunnerSeed] = useState<{ tab: "schedules" | "ci"; suite: string; environment: string; count: number } | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
@@ -910,19 +912,11 @@ export default function App() {
     [guideResult, refreshGuide, root, run],
   );
 
-  // Run on a suite hands one exact saved version and the environment chosen
-  // to the run view, which preflights it at once and asks its own Send.
-  const handoff = useCallback(
-    (selection: SuiteRunHandoff) => {
-      setRunSpecPath(undefined);
-      setRunEnvironment(selection.environment);
-      if (root) setSuiteHandoff({ workspace: root, handoff: selection });
-      setRunArrival((count) => count + 1);
-      routeTo({ type: "go", to: { destination: "run-test" }, leaving: leaving() });
-      focusRegion("evidence");
-    },
-    [focusRegion, leaving, root, routeTo],
-  );
+  // Run on a suite opens the reviewed send of that exact saved version at the
+  // environment chosen; its Send is the only thing that sends.
+  const handoff = useCallback((selection: SuiteRunHandoff) => {
+    setSendRequest({ kind: "suite", suite: selection.target.suite, environment: selection.environment });
+  }, []);
 
   // The project overview re-reads the project from disk every time: what the
   // window shows is what the project records, never what an earlier action
@@ -1779,13 +1773,7 @@ export default function App() {
     },
     back,
     busy,
-    onRun: (entry) => {
-      setRunSpecPath(entry);
-      setRunEnvironment(undefined);
-      setSuiteHandoff(null);
-      setRunArrival((count) => count + 1);
-      open({ destination: "run-test" });
-    },
+    onRun: (test) => setSendRequest({ kind: "test", test }),
     onLibrary: () => open({ destination: "library" }),
   });
 
@@ -1839,6 +1827,74 @@ export default function App() {
       setRestoringSuite(null);
       if (reason) setResumeNotice(reason);
     },
+  });
+
+  // Runs (#555): the history, the run this window is sending, one run's page
+  // and two runs compared. A send is started only by a review's Send.
+  const runsScope = useRef(new RequestScope());
+  const runsContext = useCallback(() => runsScope.current.enter(root ?? ""), [root]);
+  const runActivity = useRunActivity(root, (ended) => {
+    setRunsEnded((count) => count + 1);
+    const here = currentRoute.current;
+    if (here.destination === "runs" && here.objectId === "active") routeTo({ type: "replace", to: { destination: "runs", objectId: ended.id } });
+  });
+  const runsPlace: RunsPlace =
+    place === "runs" && route.objectId
+      ? route.objectId === "active"
+        ? { kind: "active" }
+        : { kind: "run", id: route.objectId.split(":")[0]!, job: route.objectId.split(":")[1], view: route.view ?? "" }
+      : { kind: "list" };
+  const openRunPage = useCallback((id: string) => open({ destination: "runs", objectId: id }), [open]);
+  const runsList = useRuns({
+    root,
+    shown: place === "runs" && runsPlace.kind === "list",
+    busy,
+    generation: runsEnded,
+    onOpen: openRunPage,
+    onRun: setSendRequest,
+    onCompare: (ids) => open({ destination: "compare-runs", objectId: ids.join("..") }),
+    onSchedules: () => {
+      setRunnerSeed((held) => ({ tab: "schedules", suite: "", environment: "", count: (held?.count ?? 0) + 1 }));
+      open({ destination: "settings", view: "runners" });
+    },
+    activity: runActivity.activity,
+  });
+  const runPage = useRunPage({
+    root: place === "runs" ? root : null,
+    place: runsPlace,
+    activity: runActivity.activity,
+    busy,
+    go: (to) => {
+      if (to.kind !== "run") return;
+      const objectId = to.job ? `${to.id}:${to.job}` : to.id;
+      if (route.objectId === objectId) routeTo({ type: "view", view: to.view });
+      else open({ destination: "runs", objectId, view: to.view });
+    },
+    onStop: runActivity.stop,
+    onRun: setSendRequest,
+    onCreateReport: (source) => {
+      setReportSeed((held) => ({ case: source.case ?? "", spec: source.spec ?? "", run: source.run, count: (held?.count ?? 0) + 1 }));
+      open({ destination: "reports" });
+    },
+    onViewMessages: (caseRef, occurrences) => {
+      const entry = listedCases.current.find((item) => item.ref.id === caseRef.id)?.summary.case?.entry;
+      if (!root || !entry) return;
+      void verifyCase(root, entry, { skipAutoGrid: true }).then((opened) => {
+        if (!opened?.case) return;
+        setEvidenceFocus(occurrences.map((occurrence) => ({ occurrence, field: "" })));
+        setEvidenceFrom("run");
+        void loadMessages(root, { case: entry, identity: opened.case.identity }, NO_QUERY, null, 0, occurrences);
+      });
+    },
+    onOpenObservation: (observation) => open({ destination: "environments", objectId: `observation:${observation.id}` }),
+  });
+  const runComparison = useRunComparison({
+    root: place === "compare-runs" ? root : null,
+    runs: place === "compare-runs" ? (route.objectId ?? "").split("..").filter(Boolean) : [],
+    view: route.view ?? "",
+    onView: setView,
+    onRuns: (ids) => routeTo({ type: "replace", to: { destination: "compare-runs", objectId: ids.join("..") } }),
+    onOpen: openRunPage,
   });
 
   /** Create test: the case open now and its chosen messages (all of them
@@ -2240,7 +2296,6 @@ export default function App() {
   // on screen.
   const caseMenu: MenuItem[] = [
     { label: "Create test", onSelect: () => void createTest() },
-    { label: "Replay", onSelect: () => setCaseFlow("replay") },
     { label: "Compare with another case", onSelect: () => setCaseFlow("compare") },
     { label: "Build a reproducer", onSelect: () => setCaseFlow("reproduce") },
     { label: "Reduce", onSelect: () => setCaseFlow("reduce") },
@@ -2351,6 +2406,14 @@ export default function App() {
           // A capture keeps recording while the person is elsewhere; this
           // returns to it, and its Stop finishes it.
           <OperationIndicator label="Recording" onOpen={() => { go("cases"); setCapturing(true); }} onStop={capture.finish} />
+        ) : runActivity.running && runActivity.activity ? (
+          // A run keeps sending while the person is elsewhere; this returns
+          // to it, and its Stop asks the facade to stop exactly this send.
+          <OperationIndicator
+            label={`Running ${runActivity.activity.review?.name ?? sendTitle(runActivity.activity.request).toLowerCase()}`}
+            onOpen={() => open({ destination: "runs", objectId: "active" })}
+            onStop={runActivity.stop}
+          />
         ) : null}
       </>
     ),
@@ -2542,17 +2605,21 @@ export default function App() {
                   {evidenceFocus ? (
                     <div className="chips" role="group" aria-label="Applied filters">
                       <span className="chip">
-                        Finding evidence
+                        {evidenceFrom === "run" ? "Run evidence" : "Finding evidence"}
                         <IconButton
                           icon="close"
-                          label="Remove Finding evidence"
+                          label={evidenceFrom === "run" ? "Remove Run evidence" : "Remove Finding evidence"}
                           onClick={() => {
                             setEvidenceFocus(null);
                             if (root) void loadMessages(root, shownCase, messageQuery, messageSort, 0);
                           }}
                         />
                       </span>
-                      {evidenceFrom === "similar" ? (
+                      {evidenceFrom === "run" ? (
+                        <button type="button" className="quiet" onClick={() => go("runs")}>
+                          Back to run
+                        </button>
+                      ) : evidenceFrom === "similar" ? (
                         <button type="button" className="quiet" onClick={() => back()}>
                           Back to similar findings
                         </button>
@@ -2617,7 +2684,11 @@ export default function App() {
                     checked={checkedMessages}
                     onCheck={setCheckedMessages}
                     onCreateTest={() => void createTest()}
-                    onSendSelected={() => setCaseFlow("replay")}
+                    onSendSelected={() => {
+                      const caseRef = listedCases.current.find((item) => item.summary.case?.entry === verified?.name)?.ref;
+                      const chosen = (messages?.rows ?? []).filter((row) => checkedMessages.has(row.id) && row.kind === "message").map((row) => row.id);
+                      if (caseRef && chosen.length > 0) setSendRequest({ kind: "messages", case: { kind: "case", id: caseRef.id }, messages: chosen });
+                    }}
                     onCreateVariant={() => void seedVariant(chosenRows.map((row) => row.id))}
                     onLoadMore={() => {
                       if (root && messages) void loadMessages(root, shownCase, messageQuery, messageSort, messages.rows.length);
@@ -2795,20 +2866,7 @@ export default function App() {
                     />
                   </div>
                 ) : null}
-                {caseFlow === "replay" ? (
-                  <div className="view-panel case-flow">
-                    <ReplayPanel
-                      key={"replay-" + root + verified.identity}
-                      workspace={root}
-                      caseName={verified.name}
-                      identity={verified.identity}
-                      rows={messages?.case === verified.name && messages.identity === verified.identity ? chosenRows : []}
-                      entries={artifacts}
-                      busy={busy}
-                      onSent={() => void refreshListing()}
-                    />
-                  </div>
-                ) : null}
+
 
             </div>
             </ViewKey>
@@ -2938,50 +2996,48 @@ export default function App() {
         <Page
           id="runs"
           shown={place === "runs"}
-          title="Runs"
-          actions={
-            root ? (
-              <>
-                <button type="button" onClick={() => open({ destination: "compare-runs" })}>
-                  Compare
-                </button>
-                <button type="button" className="primary" onClick={() => open({ destination: "run-test" })}>
-                  Run test
-                </button>
-              </>
-            ) : null
-          }
+          title={runsPlace.kind === "list" ? runsList.title : runPage.title}
+          back={runsPlace.kind === "list" ? undefined : <BackLink label="Runs" onBack={back} />}
+          actions={root ? (runsPlace.kind === "list" ? runsList.actions : runPage.actions) : null}
         >
-          {root ? <RunExplanation key={"explain-" + root} workspace={root} entries={artifacts} busy={busy} /> : noProject("runs")}
-        </Page>
-
-        <Page id="run-test" shown={place === "run-test"} title="Run test" back={<BackLink label="Runs" onBack={back} />}>
-          {root ? (
+          {!root ? (
+            noProject("runs")
+          ) : runsPlace.kind === "list" ? (
             <>
-              <RunPanel
-                workspace={root}
-                entries={artifacts}
-                onWatch={watch}
-                onRefresh={() => void refreshListing()}
-                onOpenCase={(name: string) => {
-                  if (root) void verifyCase(root, name);
-                }}
-                onConfigureEnvironment={() => go("environments")}
-                onOpenLicense={() => activateFrom()}
-                {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
-                preflightOnArrival={runArrival}
-                {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
-                suiteItem={suiteHandoff && suiteHandoff.workspace === root ? suiteHandoff.handoff : null}
-              />
+              <div className="toolbar list-toolbar">{runsList.toolbar}</div>
+              {runsList.body}
             </>
           ) : (
-            noProject("runs")
+            runPage.body
           )}
         </Page>
 
-        <Page id="compare-runs" shown={place === "compare-runs"} title="Compare runs" back={<BackLink label="Runs" onBack={back} />}>
-          {root ? <RunComparison key={"runs-" + root} workspace={root} busy={busy} entries={artifacts} /> : noProject("runs")}
+        <Page id="compare-runs" shown={place === "compare-runs"} title={runComparison.title} back={<BackLink label="Runs" onBack={back} />} actions={root ? runComparison.actions : null}>
+          {root ? runComparison.body : noProject("runs")}
         </Page>
+
+        {root ? (
+          <SendReview
+            request={sendRequest}
+            context={runsContext}
+            onClose={() => setSendRequest(null)}
+            onBeforeSend={watch}
+            onStarted={(started) => {
+              setSendRequest(null);
+              runActivity.start(started);
+              open({ destination: "runs", objectId: "active" });
+            }}
+            onEditEnvironment={(environment) => {
+              setSendRequest(null);
+              open({ destination: "environments", objectId: environment.id });
+            }}
+            onActivate={() => {
+              const requested = sendRequest;
+              setSendRequest(null);
+              activateFrom(() => setSendRequest(requested));
+            }}
+          />
+        ) : null}
 
         <Page
           id="environments"
@@ -3013,11 +3069,11 @@ export default function App() {
             ) : null
           }
         >
-          {root ? <PacketPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} /> : noProject("reports")}
+          {root ? <PacketPanel workspace={root} entries={artifacts} onRefresh={() => void refreshListing()} seed={reportSeed} /> : noProject("reports")}
         </Page>
 
         <Page id="share-report" shown={place === "share-report"} title="Share report" back={<BackLink label="Reports" onBack={back} />}>
-          {root ? <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} /> : noProject("reports")}
+          {root ? <PrivacyPanel workspace={root} entries={artifacts} drafts={drafts} onRefresh={() => void refreshListing()} onRun={setSendRequest} /> : noProject("reports")}
         </Page>
 
         <Page id="export-report" shown={place === "export-report"} title="Transform and export" back={<BackLink label="Reports" onBack={back} />}>

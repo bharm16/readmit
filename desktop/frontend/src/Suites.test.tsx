@@ -576,15 +576,15 @@ test("baseline, team release and environment approvals keep their own scopes and
 
 test("Run hands one exact suite version and environment to the run review", async () => {
   const user = userEvent.setup();
-  const { facade } = await openSmoke(user, { PreflightRun: () => ({ state: "failed", reason: "synthetic preflight refusal" }) });
+  const { facade } = await openSmoke(user, { PrepareAction: (request) => ({ state: "failed", context: request.context, reason: "synthetic review refusal" }) });
   await user.click(page().getByRole("button", { name: "Run" }));
   const sheet = await screen.findByRole("dialog", { name: "Run suite" });
   await user.selectOptions(within(sheet).getByLabelText("Environment"), "staging");
   await user.click(within(sheet).getByRole("button", { name: "Continue" }));
-  await waitFor(() => expect(facade.callsTo("PreflightRun").length).toBeGreaterThan(0));
-  expect(facade.callsTo("PreflightRun").at(-1)!.args[0]).toMatchObject({ spec: "", suite: { suite: { kind: "suite", id: SMOKE.ref.id, revision: "4" } }, environment: "staging" });
-  expect((screen.getByLabelText("Saved test or suite") as HTMLSelectElement).selectedOptions[0]!.textContent).toBe(`${SMOKE.name} · v4 (suite)`);
-  expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
+  await waitFor(() => expect(facade.callsTo("PrepareAction").some((call) => (call.args[0] as PrepareActionRequest).action === "run.suite")).toBe(true));
+  expect(facade.callsTo("PrepareAction").at(-1)!.args[0]).toMatchObject({ action: "run.suite", items: [{ kind: "suite", id: SMOKE.ref.id, revision: "4" }], run: { environment: "staging" } });
+  expect(await screen.findByText("synthetic review refusal")).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
 test("import fills one draft, and export and run configuration write only where the person chooses", async () => {
@@ -616,7 +616,7 @@ test("import fills one draft, and export and run configuration write only where 
   const request = facade.oneCall("SaveItem")[0] as SaveItemRequest;
   expect(request.item).toBeUndefined();
   expect(request.draft).toEqual({ name: "Imported smoke", suite: suiteDraft({ id: "imported-smoke" }) });
-  expect(facade.callsTo("PreflightRun")).toHaveLength(0);
+  expect(facade.callsTo("PrepareAction").filter((call) => (call.args[0] as PrepareActionRequest).action.startsWith("run."))).toHaveLength(0);
 });
 
 test("Schedule and Set up CI open with this suite selected", async () => {

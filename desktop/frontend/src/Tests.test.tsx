@@ -398,7 +398,7 @@ test("Suggest checks previews proposals undecided and Apply selected adds only a
     last_opened_at: null,
     availability: "available",
     capabilities: [],
-    summary: { run: { started_at: null, completed_at: null, outcome: "pass", uncertain: 0, delivery_uncertain: false, boundary: "ack-contract", source_case: CASE.ref } },
+    summary: { run: { started_at: null, completed_at: null, outcome: "pass", uncertain: 0, delivery_uncertain: false, boundary: "ack-contract", source_case: CASE.ref, active: false } },
   };
   const { facade } = await openTests(
     user,
@@ -518,10 +518,10 @@ test("Run on an edited test offers Save changes or Keep editing and opens run re
   await user.click(page().getByRole("button", { name: "Cancel" }));
   await user.click(within(await screen.findByRole("dialog", { name: "Save changes?" })).getByRole("button", { name: "Discard" }));
   await user.click(await page().findByRole("button", { name: "Run" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Run test" })).toBeTruthy();
-  // The run page sends only through a durable start after its own Send.
-  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
-  expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
+  expect(await screen.findByRole("dialog", { name: "Run test" })).toBeTruthy();
+  // The review is prepared for the version shown and sends only on its own Send.
+  await waitFor(() => expect(facade.callsTo("PrepareAction")).toHaveLength(1));
+  expect(facade.oneCall("PrepareAction")[0]).toMatchObject({ action: "run.test", items: [{ kind: "test", id: RESCHEDULE.ref.id }] });
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
@@ -657,9 +657,8 @@ test("Run from the command palette opens the saved test's run review and sends n
   // The test's own actions come first, named for the test.
   expect(palette.getAllByRole("option")[0]?.textContent).toBe("RunReschedule keeps one appointment");
   await user.keyboard("{Enter}");
-  expect(await page().findByRole("heading", { level: 1, name: "Run test" })).toBeTruthy();
-  expect(page().getByRole("button", { name: "Preview run" })).toBeTruthy();
-  expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
+  expect(await screen.findByRole("dialog", { name: "Run test" })).toBeTruthy();
+  await waitFor(() => expect(facade.callsTo("PrepareAction")).toHaveLength(1));
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 

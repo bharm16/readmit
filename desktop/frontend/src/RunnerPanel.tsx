@@ -784,7 +784,8 @@ function SchedulesSection({ seed = null }: { seed?: RunnerSeed | null } = {}) {
   useEffect(() => {
     if (!seed || seed.count === scheduled.current) return;
     scheduled.current = seed.count;
-    if (!entries.some((entry) => entry.spec === seed.suite)) editRows([...entries, { ...emptyScheduleEntry(), spec: seed.suite }]);
+    // Schedules opened from Runs names no suite; one opened from a suite adds it.
+    if (seed.suite && !entries.some((entry) => entry.spec === seed.suite)) editRows([...entries, { ...emptyScheduleEntry(), spec: seed.suite }]);
   }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
 
 

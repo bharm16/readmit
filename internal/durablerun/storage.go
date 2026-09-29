@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/durablelog"
@@ -189,6 +190,14 @@ func Open(path string) (Summary, error) {
 func Recover(path string) (Recovery, error) {
 	recovery, _, err := readJob(path)
 	return recovery, err
+}
+
+// RetainedInputs is the same read as Recover, answering the verified inputs
+// the job retained and when its plan was written: what a job that never
+// finalized a result was asked to execute.
+func RetainedInputs(path string) (testrunner.PinnedInputs, time.Time, error) {
+	_, doc, err := readJob(path)
+	return doc.Inputs, doc.CreatedAt, err
 }
 
 func readJob(path string) (Recovery, planDocument, error) {

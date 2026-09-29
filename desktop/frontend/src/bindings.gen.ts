@@ -41,6 +41,10 @@ export type ActionID =
   | "secret.scan"
   | "item.remove"
   | "export.derive-review"
+  | "run.test"
+  | "run.suite"
+  | "run.resume"
+  | "run.reviewed-test"
   | "storage.restore-backup"
   | "storage.delete-backup"
   | "storage.archive-copy"
@@ -73,6 +77,7 @@ export interface ActionReview {
   storage?: StorageReview;
   derive?: DeriveReviewView;
   transport?: TransportReview;
+  run?: RunReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -1013,6 +1018,17 @@ export interface CatalogResult {
 
 /** internal/desktop.CatalogSort */
 export type CatalogSort = "name" | "updated" | "created";
+
+/** internal/desktop.CheckChange */
+export type CheckChange =
+  | "improved"
+  | "regressed"
+  | "unchanged"
+  | "observed_changed"
+  | "changed_check"
+  | "added"
+  | "removed"
+  | "not_compared";
 
 /** internal/desktop.CheckGroupDraft */
 export interface CheckGroupDraft {
@@ -4332,6 +4348,20 @@ export interface MessageFieldsResult {
   complete: boolean;
 }
 
+/** internal/replay.Outcome */
+export type MessageOutcome =
+  | "application_accepted"
+  | "application_error"
+  | "application_rejected"
+  | "timeout"
+  | "connection_refused"
+  | "disconnect"
+  | "tls_error"
+  | "protocol_error"
+  | "cancelled"
+  | "network_error"
+  | "not_attempted";
+
 /** internal/desktop.MessageRow */
 export interface MessageRow {
   id: string;
@@ -5285,6 +5315,7 @@ export interface PrepareActionRequest {
   scan?: ScanActionOptions;
   storage?: StorageActionOptions;
   derive_review?: DeriveReviewOptions;
+  run?: RunActionOptions;
 }
 
 /** internal/desktop.PreparedCandidate */
@@ -6486,6 +6517,7 @@ export interface ReplayActionOptions {
   messages: string[];
   transformations: ReplayTransformation[];
   policy?: string;
+  reveal?: boolean;
 }
 
 /** internal/desktop.ReplayChange */
@@ -6911,6 +6943,7 @@ export interface ResetReview {
 
 /** internal/desktop.ResetReviewAction */
 export interface ResetReviewAction {
+  environment_name?: string;
   id: string;
   name: string;
   type: ResetOperator;
@@ -7063,7 +7096,7 @@ export interface ReviewRequest {
 }
 
 /** internal/desktop.ReviewRequirement */
-export type ReviewRequirement = "rationale" | "confirmations" | "inventory-declaration";
+export type ReviewRequirement = "rationale" | "confirmations" | "inventory-declaration" | "setup";
 
 /** internal/desktop.ReviewResult */
 export interface ReviewResult {
@@ -7098,6 +7131,7 @@ export interface ReviewedActionResult {
   storage?: StorageOutcome;
   derived?: PrivacyReviewOutcome;
   approved?: ItemRef;
+  run?: ItemRef;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -7143,10 +7177,37 @@ export interface RuleDocumentSaveRequest {
   output: string;
 }
 
+/** internal/desktop.RunActionOptions */
+export interface RunActionOptions {
+  environment?: string;
+  phase?: string;
+}
+
 /** internal/desktop.RunAdmission */
 export interface RunAdmission {
   admitted: boolean;
   reason?: string;
+}
+
+/** internal/desktop.RunAnalysisRequest */
+export interface RunAnalysisRequest {
+  context: RequestContext;
+  run: ItemRef;
+  job?: string;
+  checks: ItemRef;
+  reveal: boolean;
+}
+
+/** internal/desktop.RunAnalysisResult */
+export interface RunAnalysisResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  group?: string;
+  version?: string;
+  missing: string[];
+  observation?: ItemRef;
+  explanation?: RunExplanation;
 }
 
 /** internal/desktop.RunAssertionEvidence */
@@ -7160,6 +7221,31 @@ export interface RunAssertionEvidence {
   observed?: string;
   evidence?: string;
 }
+
+/** internal/desktop.RunCheck */
+export interface RunCheck {
+  check: TestExpectation;
+  result: RunCheckResult;
+  observed?: TestRunnerValue;
+  expected_records?: number;
+  observed_records?: number;
+  hidden: boolean;
+  unavailable?: string;
+  messages: string[];
+}
+
+/** internal/desktop.RunCheckComparison */
+export interface RunCheckComparison {
+  check: TestExpectation;
+  earlier: string;
+  later: string;
+  earlier_observed?: number;
+  later_observed?: number;
+  change: CheckChange;
+}
+
+/** internal/desktop.RunCheckResult */
+export type RunCheckResult = "passed" | "failed" | "not_evaluated";
 
 /** internal/runcompare.AssertionComparison */
 export interface RunCompareAssertionComparison {
@@ -7206,6 +7292,20 @@ export interface RunCompareStability {
   reason: string;
 }
 
+/** internal/desktop.RunComparisonItemsRequest */
+export interface RunComparisonItemsRequest {
+  context: RequestContext;
+  runs: ItemRef[];
+}
+
+/** internal/desktop.RunComparisonItemsResult */
+export interface RunComparisonItemsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  comparison?: RunComparisonView;
+}
+
 /** internal/desktop.RunComparisonRequest */
 export interface RunComparisonRequest {
   workspace: string;
@@ -7222,11 +7322,90 @@ export interface RunComparisonResult {
   comparison?: RunCompareComparison;
 }
 
+/** internal/desktop.RunComparisonSide */
+export interface RunComparisonSide {
+  run: ItemRef;
+  name: string;
+  version?: string;
+  environment_name?: string;
+  started_at: string | null;
+  result?: RunResult;
+}
+
+/** internal/desktop.RunComparisonView */
+export interface RunComparisonView {
+  earlier: RunComparisonSide;
+  later: RunComparisonSide;
+  repeats: RunComparisonSide[];
+  checks: RunCheckComparison[];
+  configuration: RunConfigurationPart[];
+  specification: string;
+  stability: RunStability;
+}
+
+/** internal/desktop.RunConfigurationPart */
+export interface RunConfigurationPart {
+  part: string;
+  outcome: string;
+  parts: string[];
+  reason?: string;
+}
+
+/** internal/desktop.RunDelivery */
+export type RunDelivery = "acknowledged" | "uncertain" | "not_attempted";
+
 /** internal/desktop.RunDestination */
 export interface RunDestination {
   name: string;
   generated: boolean;
   fresh: boolean;
+  reason?: string;
+}
+
+/** internal/desktop.RunDetail */
+export interface RunDetail {
+  item: CatalogItem;
+  job?: string;
+  name: string;
+  result?: RunResult;
+  delivery_uncertain: boolean;
+  checks: RunCheck[];
+  messages: RunMessage[];
+  jobs: RunJob[];
+  details: RunDetails;
+  recovery?: RunRecovery;
+  report?: RunReportSource;
+  revealed: boolean;
+}
+
+/** internal/desktop.RunDetailResult */
+export interface RunDetailResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  run?: RunDetail;
+}
+
+/** internal/desktop.RunDetails */
+export interface RunDetails {
+  address?: string;
+  transport?: string;
+  classification?: string;
+  boundary?: string;
+  initial_records?: number;
+  final_records?: number;
+  engine?: RunEnginePin;
+  lifecycle_state?: string;
+  stop_reason?: string;
+  status?: string;
+  error_class?: string;
+  journal_incomplete: boolean;
+  recovered: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+  site?: string;
+  source_case?: ItemRef;
+  gaps: string[];
   reason?: string;
 }
 
@@ -7341,6 +7520,29 @@ export interface RunExplanationResult {
   explanation?: RunExplanation;
 }
 
+/** internal/desktop.RunJob */
+export interface RunJob {
+  id: string;
+  test: string;
+  result?: RunResult;
+  delivery_uncertain: boolean;
+  admission?: RunQueueAdmission;
+  reason?: string;
+  state_sharing?: RunQueueIsolation;
+}
+
+/** internal/desktop.RunKind */
+export type RunKind = "test" | "suite" | "send";
+
+/** internal/desktop.RunMessage */
+export interface RunMessage {
+  source: string;
+  message?: TestMessage;
+  delivery: RunDelivery;
+  ack_code?: string;
+  outcome?: MessageOutcome;
+}
+
 /** internal/desktop.RunMessageEvidence */
 export interface RunMessageEvidence {
   source: string;
@@ -7396,6 +7598,8 @@ export interface RunProgress {
   uncertain: number;
   not_attempted: number;
   lease?: string;
+  jobs?: number;
+  jobs_done?: number;
 }
 
 /** internal/desktop.RunProgressResult */
@@ -7405,8 +7609,108 @@ export interface RunProgressResult {
   progress?: RunProgress;
 }
 
+/** internal/runqueue.Admission */
+export type RunQueueAdmission = "executed" | "start_failed" | "refused" | "skipped";
+
 /** internal/runqueue.Isolation */
 export type RunQueueIsolation = "shared" | "isolated";
+
+/** internal/desktop.RunRecovery */
+export interface RunRecovery {
+  stop_reason?: string;
+  terminal: boolean;
+  can_resume: boolean;
+  resume_refusal?: string;
+  lease?: string;
+  can_clear_lock: boolean;
+}
+
+/** internal/desktop.RunRefusal */
+export type RunRefusal = "environment" | "license";
+
+/** internal/desktop.RunReportSource */
+export interface RunReportSource {
+  run: string;
+  case?: string;
+  case_item?: ItemRef;
+  spec?: string;
+  test?: ItemRef;
+}
+
+/** internal/desktop.RunRequest */
+export interface RunRequest {
+  context: RequestContext;
+  run: ItemRef;
+  job?: string;
+  reveal: boolean;
+}
+
+/** internal/desktop.RunResult */
+export type RunResult =
+  | "running"
+  | "interrupted"
+  | "incomplete"
+  | "blocked"
+  | "error"
+  | "failed"
+  | "passed"
+  | "accepted"
+  | "not_accepted";
+
+/** internal/desktop.RunResumeReview */
+export interface RunResumeReview {
+  from: ItemRef;
+  repeated: number;
+}
+
+/** internal/desktop.RunReview */
+export interface RunReview {
+  kind: RunKind;
+  name: string;
+  version?: string;
+  test?: ItemRef;
+  environment?: ItemRef;
+  environment_name?: string;
+  site?: string;
+  address?: string;
+  messages: TestMessage[];
+  message_count: number | null;
+  setup: RunSetupStep[];
+  resets: ResetReviewAction[];
+  jobs: RunReviewJob[];
+  targets: RunReviewTarget[];
+  environments: SuiteEnvironmentRef[];
+  resume?: RunResumeReview;
+  reviewed?: RunReviewedTest;
+  refusal?: RunRefusal;
+}
+
+/** internal/desktop.RunReviewJob */
+export interface RunReviewJob {
+  id: string;
+  test: string;
+  version?: string;
+  dataset?: string;
+  rows: number;
+  target?: string;
+  state_sharing: RunQueueIsolation;
+  depends_on: string[];
+}
+
+/** internal/desktop.RunReviewTarget */
+export interface RunReviewTarget {
+  environment: ItemRef;
+  name: string;
+  address: string;
+  classification: string;
+}
+
+/** internal/desktop.RunReviewedTest */
+export interface RunReviewedTest {
+  review: string;
+  packet: string;
+  phase: string;
+}
 
 /** internal/desktop.RunSelected */
 export interface RunSelected {
@@ -7414,11 +7718,30 @@ export interface RunSelected {
   outbound: string;
 }
 
+/** internal/desktop.RunSetupStep */
+export interface RunSetupStep {
+  id: string;
+  name: string;
+  instructions: string;
+}
+
 /** internal/desktop.RunSpecChoiceResult */
 export interface RunSpecChoiceResult {
   state: State;
   reason?: string;
   entry?: string;
+}
+
+/** internal/desktop.RunStability */
+export interface RunStability {
+  state: string;
+  runs: number;
+  passes: number;
+  failures: number;
+  errors: number;
+  incomplete: number;
+  flaky: string[];
+  reason?: string;
 }
 
 /** internal/durablerun.State */
@@ -7445,6 +7768,14 @@ export interface RunSummary {
   source_case?: ItemRef;
   suite?: ItemRef;
   jobs?: number;
+  kind?: RunKind;
+  test?: ItemRef;
+  version?: string;
+  environment?: ItemRef;
+  environment_name?: string;
+  result?: RunResult;
+  active: boolean;
+  entry?: string;
 }
 
 /** internal/desktop.RunTargetView */
@@ -8794,6 +9125,12 @@ export interface SuiteEnvironment {
   bindings: SuiteBinding[];
 }
 
+/** internal/desktop.SuiteEnvironmentRef */
+export interface SuiteEnvironmentRef {
+  id: string;
+  name: string;
+}
+
 /** internal/desktop.SuiteExclusion */
 export interface SuiteExclusion {
   test: string;
@@ -10010,6 +10347,7 @@ export interface Facade {
   ActivateOperations(): Promise<OperationResult>;
   AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   AnalyzeCase(request: AnalyzeRequest): Promise<FindingsResult>;
+  AnalyzeRun(request: RunAnalysisRequest): Promise<RunAnalysisResult>;
   ApplyLibraryDocument(request: LibraryDocumentRequest): Promise<ItemDraftResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
   ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
@@ -10055,6 +10393,7 @@ export interface Facade {
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
   ClassifyDroppedSources(paths: string[]): Promise<DroppedSourcesResult>;
   CleanDurableRun(workspace: string, entry: string): Promise<CleanRunResult>;
+  ClearStaleRunLock(request: RunRequest): Promise<RunDetailResult>;
   ClearViews(workspace: string): Promise<ViewsResult>;
   CollectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult>;
   CollectionProgress(): Promise<CollectionProgressResult>;
@@ -10062,6 +10401,7 @@ export interface Facade {
   Compare(request: CompareRequest): Promise<CompareResult>;
   CompareProfileVersions(request: ProfileVersionsRequest): Promise<ProfileComparisonResult>;
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
+  CompareRunItems(request: RunComparisonItemsRequest): Promise<RunComparisonItemsResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
   CompareSuiteVersions(request: SuiteCompareRequest): Promise<SuiteComparison>;
   CompleteHubAuth(code: string, state: string): Promise<HubResult>;
@@ -10190,6 +10530,7 @@ export interface Facade {
   OpenProtectedPackage(request: ProtectionOpenRequest): Promise<ProtectionPackageResult>;
   OpenRetainedCapture(request: CaptureSessionRequest): Promise<RetainedCaptureResult>;
   OpenReview(request: ReviewRequest): Promise<ReviewResult>;
+  OpenRun(request: RunRequest): Promise<RunDetailResult>;
   OpenRunEvidence(request: RunEvidenceRequest): Promise<RunEvidenceResult>;
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;

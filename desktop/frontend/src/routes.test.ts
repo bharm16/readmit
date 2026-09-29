@@ -56,7 +56,7 @@ test("a view is the place's own or its first", () => {
 });
 
 test("a child reached from another destination goes back to its own landing", () => {
-  const state = apply(start, { type: "go", to: { destination: "run-test", objectId: "suite-a" } });
+  const state = apply(start, { type: "go", to: { destination: "compare-runs", objectId: "suite-a" } });
   expect(routeReducer(state, { type: "back" }).current).toEqual({ destination: "runs", projectId: "p1" });
 });
 
@@ -74,7 +74,7 @@ test("switching project keeps nothing of the last one", () => {
 
 test("a child destination sits under its sidebar destination", () => {
   expect(sidebarOf("library")).toBe("tests");
-  expect(sidebarOf("run-test")).toBe("runs");
+  expect(sidebarOf("compare-runs")).toBe("runs");
   expect(sidebarOf("benchmarks")).toBe("tools");
   expect(sidebarOf("environments")).toBe("environments");
 });

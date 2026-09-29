@@ -46,6 +46,7 @@ type CollectReview struct {
 // carries and what it does. A check of an empty observation names the
 // observation, at the revision whose collections it reads.
 type ResetReviewAction struct {
+	EnvironmentName string                `json:"environment_name,omitzero"`
 	ID              string                `json:"id"`
 	Name            string                `json:"name"`
 	Type            fixturereset.Operator `json:"type"`
@@ -240,6 +241,10 @@ var resetOutput = outputRule{prefix: "reset-outcome",
 }
 
 func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
+	return bindResetAt(a, ctx, request, held, "")
+}
+
+func bindResetAt(a *App, ctx context.Context, request PrepareActionRequest, held bool, output string) (*boundAction, refusal) {
 	if len(request.Items) != 1 || request.Items[0].Kind != EnvironmentItem {
 		return nil, refusal{Failed, "a reset is reviewed for one environment"}
 	}
@@ -288,7 +293,7 @@ func bindReset(a *App, ctx context.Context, request PrepareActionRequest, held b
 			return nil, refusal{Failed, err.Error()}
 		}
 	}
-	destination, refused := resetOutput.destination(loaded.root, "")
+	destination, refused := resetOutput.destination(loaded.root, output)
 	if refused.state != "" {
 		return nil, refused
 	}
