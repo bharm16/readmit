@@ -13,6 +13,8 @@ package desktop
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -34,6 +36,9 @@ const maxPastedLicense = 1 << 20
 // its term decided from the local clock, and whether new work is admitted
 // through it now. It carries no signature, key, path or contract name.
 type InstalledLicenseView struct {
+	// DocumentID is the identifier the vendor issued the license under, the
+	// name its exported copy carries.
+	DocumentID   string `json:"document_id"`
 	Organization string `json:"organization"`
 	Plan         string `json:"plan"`
 	Sequence     int    `json:"sequence"`
@@ -58,6 +63,10 @@ type InstalledLicenseView struct {
 	// CurrentFormat is false for a license in the earlier format, which lists
 	// licensed computers and admits no new work here.
 	CurrentFormat bool `json:"current_format"`
+	// ClockRollback reports that this computer's clock was found set back
+	// behind the latest time recorded here: new work is refused until the
+	// clock is correct and the change is resolved explicitly.
+	ClockRollback bool `json:"clock_rollback"`
 }
 
 // InstalledLicenseResult reports this computer's license: empty when none is
@@ -75,40 +84,65 @@ func (r *InstalledLicenseResult) refuse(state State, reason string) {
 }
 
 // LicenseReviewRequest is a received license to check before activating it:
-// its pasted contents, or nothing to choose the file natively. ChooseKeys asks
-// for the vendor's verification keys file even when this computer already
-// holds one, for a renewal signed after the vendor changed keys.
+// its pasted contents, the file ChooseLicenseFile chose, or neither to choose
+// the file natively now. ChooseKeys asks for the vendor's verification keys
+// file even when this computer already holds one, for a renewal signed after
+// the vendor changed keys.
 type LicenseReviewRequest struct {
-	Contents   string `json:"contents,omitzero"`
-	ChooseKeys bool   `json:"choose_keys"`
+	Contents    string `json:"contents,omitzero"`
+	Entitlement string `json:"entitlement,omitzero"`
+	ChooseKeys  bool   `json:"choose_keys"`
 }
 
 // LicenseReviewResult is one received license, verified here: what it
 // declares, and whether activating it renews this computer's license in place.
 // The chosen file and keys file are carried so activation continues from
-// exactly what was checked.
+// exactly what was checked, and Digest names the exact bytes verified, which
+// activation refuses to depart from. ChooseKeys reports a refusal an updated
+// verification keys file from the vendor can address.
 type LicenseReviewResult struct {
 	State       State                `json:"state"`
 	Reason      string               `json:"reason,omitzero"`
 	Entitlement string               `json:"entitlement,omitzero"`
 	Trust       string               `json:"trust,omitzero"`
+	Digest      string               `json:"digest,omitzero"`
 	Document    *LicenseDocumentView `json:"document,omitzero"`
 	Renewal     bool                 `json:"renewal"`
+	ChooseKeys  bool                 `json:"choose_keys"`
 }
 
 func (r *LicenseReviewResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // LicenseActivateRequest activates a reviewed license on this computer: the
-// file or pasted contents, the keys file if one was chosen, and who and which
-// computer it is for (and, optionally, the runner pool tests from this
-// computer count against), chosen from what the license itself assigns.
+// file or pasted contents, the keys file if one was chosen, the digest its
+// review reported, and who and which computer it is for (and, optionally, the
+// runner pool tests from this computer count against), chosen from what the
+// license itself assigns.
 type LicenseActivateRequest struct {
 	Entitlement string `json:"entitlement,omitzero"`
 	Contents    string `json:"contents,omitzero"`
 	Trust       string `json:"trust,omitzero"`
+	Digest      string `json:"digest"`
 	Author      string `json:"author,omitzero"`
 	Device      string `json:"device,omitzero"`
 	Authority   string `json:"authority,omitzero"`
+}
+
+// LicenseFileResult is one received license file chosen natively and not yet
+// read: its full location, and its name as the person sees it.
+type LicenseFileResult struct {
+	State  State  `json:"state"`
+	Reason string `json:"reason,omitzero"`
+	Path   string `json:"path,omitzero"`
+	Name   string `json:"name,omitzero"`
+}
+
+func (r *LicenseFileResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
+
+// licenseDigest names the exact bytes of a received license.
+func licenseDigest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // NewWithInstalledLicense is the shell as it runs: NewWithOperationSelection
@@ -154,13 +188,14 @@ func (a *App) installedLicense(outcome string) InstalledLicenseResult {
 		return InstalledLicenseResult{State: Failed, Reason: licenseReason(err)}
 	}
 	view := &InstalledLicenseView{
-		Organization: installed.Organization, Plan: installed.Plan, Sequence: installed.Sequence,
+		DocumentID: installed.ID, Organization: installed.Organization, Plan: installed.Plan, Sequence: installed.Sequence,
 		AuthorSeats: installed.Seats, RunnerSlots: installed.RunnerInstances,
 		Author: installed.Author, Device: installed.Device, RunnerPool: installed.Authority,
 		Starts: licenseTime(installed.NotBefore), Expires: licenseTime(installed.Expires), GraceEnds: licenseTime(installed.GraceEnds),
 		Term: string(installed.State), Activated: licenseTime(installed.Imported),
 		Deactivated:   !installed.Released.IsZero() || installed.OperationReleased,
 		CurrentFormat: installed.OperationCapable,
+		ClockRollback: installed.ClockRollback,
 	}
 	if !installed.Released.IsZero() {
 		view.DeactivatedAt = licenseTime(installed.Released)
@@ -169,9 +204,25 @@ func (a *App) installedLicense(outcome string) InstalledLicenseResult {
 		view.DaysLeft = int((left + 24*time.Hour - 1) / (24 * time.Hour))
 		view.RenewSoon = left <= renewalWarning
 	}
-	view.NewWork = installed.OperationCapable && installed.Activated && !view.Deactivated &&
+	view.NewWork = installed.OperationCapable && installed.Activated && !view.Deactivated && !view.ClockRollback &&
 		(view.Term == "active" || view.Term == "grace")
 	return InstalledLicenseResult{State: Completed, Outcome: outcome, License: view}
+}
+
+// ChooseLicenseFile asks for the received license file through the native
+// file dialog. It reads and verifies nothing: ReviewLicense does, when the
+// person continues with it.
+func (a *App) ChooseLicenseFile() LicenseFileResult {
+	return run(a, true, false, func(ctx context.Context) LicenseFileResult {
+		files, declined := a.chooseFiles(ctx, "Choose your license file", "License files", "*.json")
+		if len(files) == 0 {
+			return LicenseFileResult{State: declined.state, Reason: declined.reason}
+		}
+		if !filepath.IsAbs(files[0]) {
+			return LicenseFileResult{State: Failed, Reason: "choose the file by its full location"}
+		}
+		return LicenseFileResult{State: Completed, Path: files[0], Name: filepath.Base(files[0])}
+	})
 }
 
 // ReviewLicense verifies a received license before it is activated: the file
@@ -191,11 +242,14 @@ func (a *App) ReviewLicense(request LicenseReviewRequest) LicenseReviewResult {
 			}
 			data = []byte(request.Contents)
 		} else {
-			files, declined := a.chooseFiles(ctx, "Choose your license file", "License files", "*.json")
-			if len(files) == 0 {
-				return LicenseReviewResult{State: declined.state, Reason: declined.reason}
+			entitlementPath = request.Entitlement
+			if entitlementPath == "" {
+				files, declined := a.chooseFiles(ctx, "Choose your license file", "License files", "*.json")
+				if len(files) == 0 {
+					return LicenseReviewResult{State: declined.state, Reason: declined.reason}
+				}
+				entitlementPath = files[0]
 			}
-			entitlementPath = files[0]
 			var reason string
 			if data, reason = readReceived(entitlementPath, "the license file cannot be read; choose it again"); reason != "" {
 				return LicenseReviewResult{State: Failed, Reason: reason}
@@ -207,10 +261,12 @@ func (a *App) ReviewLicense(request LicenseReviewRequest) LicenseReviewResult {
 		}
 		received, err := operationguard.VerifyDocuments(data, trustData, time.Now().UTC().Truncate(time.Second))
 		if err != nil {
-			return LicenseReviewResult{State: Failed, Reason: licenseReason(err), Trust: trustPath}
+			// Only a license signed with a key these keys do not hold can be
+			// verified by an updated keys file; every other refusal stands.
+			return LicenseReviewResult{State: Failed, Reason: licenseReason(err), Trust: trustPath, ChooseKeys: errors.Is(err, operationguard.ErrUnknownKey)}
 		}
 		return LicenseReviewResult{
-			State: Completed, Entitlement: entitlementPath, Trust: trustPath,
+			State: Completed, Entitlement: entitlementPath, Trust: trustPath, Digest: licenseDigest(data),
 			Document: licenseDocumentView(received), Renewal: operationguard.RenewsInstalledLicense(a.licenseRoot, data),
 		}
 	})
@@ -275,6 +331,15 @@ func (a *App) ActivateLicense(request LicenseActivateRequest) InstalledLicenseRe
 		default:
 			return InstalledLicenseResult{State: Failed, Reason: "choose your license file or paste its contents first"}
 		}
+		// Activation installs exactly what was reviewed: a file changed since,
+		// or contents other than those checked, are reviewed again first.
+		switch request.Digest {
+		case "":
+			return InstalledLicenseResult{State: Failed, Reason: "review this license before activating it"}
+		case licenseDigest(data):
+		default:
+			return InstalledLicenseResult{State: Failed, Reason: "this license changed after it was reviewed; review it again"}
+		}
 		var trustData []byte
 		if request.Trust != "" {
 			if trustData, reason = readReceived(request.Trust, "the verification keys file cannot be read; choose it again"); reason != "" {
@@ -305,6 +370,22 @@ func (a *App) ActivateLicense(request LicenseActivateRequest) InstalledLicenseRe
 			}
 		}
 		return a.installedLicense(outcome)
+	})
+}
+
+// ResolveLicenseClock resolves a clock rollback latched in this computer's
+// license once the clock is correct again, exactly as `readmit license
+// operation resolve` does for its operation policy. It sets no clock and
+// bypasses no term: a clock still behind the latest recorded time is refused.
+func (a *App) ResolveLicenseClock() InstalledLicenseResult {
+	return run(a, false, false, func(context.Context) InstalledLicenseResult {
+		if a.licenseRoot == "" {
+			return InstalledLicenseResult{State: Failed, Reason: noLicenseLocation}
+		}
+		if err := operationguard.Resolve(operationguard.InstalledPolicyIn(a.licenseRoot)); err != nil {
+			return InstalledLicenseResult{State: Failed, Reason: licenseReason(err)}
+		}
+		return a.installedLicense("resolved")
 	})
 }
 
@@ -383,6 +464,7 @@ func licenseReason(err error) string {
 		{operationguard.ErrDeviceNotNamed, "this license does not name this computer; a license moved to another computer is activated there"},
 		{operationguard.ErrAuthorityNotNamed, "this license does not include that runner pool"},
 		{operationguard.ErrBusy, "another change to this computer's license is in progress or was interrupted; try again"},
+		{operationguard.ErrRollback, "this computer's clock is still earlier than the latest time recorded here; correct the clock first"},
 		{operationguard.ErrUnavailable, "this computer's license could not be activated for new work: its activation state is missing or cannot be read"},
 	} {
 		if errors.Is(err, reason.err) {

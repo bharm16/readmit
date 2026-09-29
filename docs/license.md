@@ -27,7 +27,7 @@ Most people never name a store. A license is handled the way any software
 purchase is: one license per computer, activated once, and used by the
 application and the command line alike
 ([D9](product-decisions.md#d9--one-license-per-computer-handled-as-any-software-purchase)).
-Activate it in the application's license pane from the file received at
+Activate it in the application's Settings › License from the file received at
 purchase, or its pasted contents, or on the command line with `license import`
 and no `--output`:
 

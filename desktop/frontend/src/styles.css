@@ -803,6 +803,25 @@ button.link:hover:not(:disabled) {
   text-decoration: underline;
 }
 
+/* A link that leaves the window, drawn as the button it sits beside. */
+a.button {
+  align-items: center;
+  background: var(--control);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  color: var(--control-text);
+  display: inline-flex;
+  line-height: var(--line-body);
+  min-height: var(--button);
+  padding: 0 var(--button-inset);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.button:hover {
+  background: color-mix(in srgb, var(--control) 94%, CanvasText);
+}
+
 /* A destructive action reads as one by its words; the rule and text take the
    danger role where the platform has one. */
 button.danger,

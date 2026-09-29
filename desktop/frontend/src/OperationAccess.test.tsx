@@ -1,380 +1,295 @@
-// The License page's own journeys, driven as a person drives them: real user
-// events over the real component, with only the typed facade boundary
-// stubbed. The fixtures carry identifiers, dates and counts a signed
+// Settings › License › Administrator setup, driven as an administrator drives
+// it: real user events over the real page, with only the typed facade
+// boundary stubbed. The fixtures carry identifiers, dates and counts a signed
 // document could declare — never a signature value, a credential, a machine
 // path from a real machine, or a network address beyond the operator-supplied
-// portal destination the journey is about.
-import { expect, test } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+// portal destination the task is about. Each task is its own sheet, and its
+// final action is the only thing that changes anything.
+import { expect, test, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { OperationAccess } from "./OperationAccess";
+import { AdministratorSetup } from "./OperationAccess";
+import { licenseDay } from "./ComputerLicense";
+import type { LicenseVerifyResult, OperationResult } from "./bindings";
 import { installFacade, type FacadeHandlers } from "./testkit/wails";
 
 const ENTITLEMENT_PATH = "/private/received/entitlement.json";
+const LATER_PATH = "/private/received/entitlement-2.json";
 const TRUST_PATH = "/private/received/trust.json";
 const ACTIVATION_FOLDER = "/private/readmit/activation";
+const DESTINATIONS = "/private/readmit/commercial-destinations.json";
 const PORTAL = "https://sandbox-portal.example.test/checkouts";
 
-function receivedLicense() {
+function verified(extra: Partial<LicenseVerifyResult> = {}): LicenseVerifyResult {
   return {
-    state: "completed" as const,
+    state: "completed",
     entitlement: ENTITLEMENT_PATH,
     trust: TRUST_PATH,
+    digest: "c0ffee",
     document: {
-      version: "readmit-entitlement/v2",
-      id: "ENT-0002",
-      organization: "example-hospital",
-      plan: "example-plan",
-      sequence: 1,
-      issued: "2026-09-18T00:00:00Z",
-      not_before: "2026-09-18T00:00:00Z",
-      expires: "2026-10-18T00:00:00Z",
-      grace_days: 14,
-      grace_ends: "2026-11-01T00:00:00Z",
-      state: "active",
-      seats: 2,
-      devices_per_seat: 2,
+      version: "readmit-entitlement/v2", id: "ENT-0002", organization: "example-hospital", plan: "example-plan", sequence: 1,
+      issued: "2026-09-18T00:00:00Z", not_before: "2026-09-18T00:00:00Z", expires: "2026-10-18T00:00:00Z",
+      grace_days: 14, grace_ends: "2026-11-01T00:00:00Z", state: "active", seats: 2, devices_per_seat: 2,
       assignments: [{ author: "alice", devices: ["desk", "laptop"] }, { author: "bob", devices: ["laptop"] }],
-      runner_instances: 3,
-      authorities: [{ id: "ci-pool", instances: 1 }, { id: "local-runner", instances: 2 }],
-      capabilities: ["author", "execute", "hub"],
-      key_id: "vendor-2026a",
-      key_status: "active",
-      operation_capable: true,
+      runner_instances: 3, authorities: [{ id: "ci-pool", instances: 1 }],
+      capabilities: ["author", "execute"], key_id: "vendor-2026a", key_status: "active", operation_capable: true,
     },
-  };
-}
-
-function activeStatus() {
-  return {
-    state: "completed" as const,
-    selected: true,
-    term: "active",
-    expires: "2026-10-18T00:00:00Z",
-    grace_ends: "2026-11-01T00:00:00Z",
-    author_seats: 2,
-    runner_instances: 3,
-    clock: {
-      schema: "readmit-operation-clock/v1",
-      organization: "example-hospital",
-      sequence: 1,
-      high_water: "2026-09-20T12:00:00Z",
-      rollback: false,
-      released: false,
-    },
-  };
-}
-
-function quiet(extra: FacadeHandlers = {}): FacadeHandlers {
-  return {
-    OperationStatus: () => ({ state: "failed", reason: "operation activation is missing or invalid; select and activate an operation policy", selected: false, author_seats: 0, runner_instances: 0 }),
-    CommercialStatus: () => ({ state: "empty", reason: "the account portal destination is not configured; an administrator can choose the operator-supplied destinations file in Administrator setup" }),
-    LicenseStatus: () => ({ state: "empty", reason: "no license is activated on this computer" }),
     ...extra,
   };
 }
 
-/** The administrator's supplied-folder workflow stays reachable behind its
- * named subview: a person opens it, and the journeys below drive it open the
- * same way before they use it. */
-async function openAdministratorSetup(user: ReturnType<typeof userEvent.setup>) {
-  const summary = screen.getByText("Administrator setup");
-  await user.click(summary);
-  return within(summary.closest("details") as HTMLElement);
+function selected(extra: Partial<OperationResult> = {}): OperationResult {
+  return {
+    state: "completed", selected: true, folder: ACTIVATION_FOLDER, author: "alice", device: "laptop", runner_pool: "ci-pool",
+    term: "active", expires: "2026-10-18T00:00:00Z", grace_ends: "2026-11-01T00:00:00Z", author_seats: 2, runner_instances: 3,
+    clock: { schema: "readmit-operation-clock/v1", organization: "example-hospital", sequence: 1, high_water: "2026-09-20T12:00:00Z", rollback: false, released: false },
+    ...extra,
+  };
 }
 
-test("the free paths stay free and unactivated licensed work is refused by name", async () => {
-  const user = userEvent.setup();
-  const handlers = quiet();
-  const facade = installFacade(handlers);
-  render(<OperationAccess />);
-  expect(await screen.findByText(/Try the guided synthetic sample without a license/)).toBeTruthy();
-  // Nothing is activated: the reason says so inside Administrator setup, but
-  // the pane made only the two quiet reads it owns. The reason arrives with
-  // the status read's answer, after the pane's own text has drawn.
-  const admin = await openAdministratorSetup(user);
-  expect(await admin.findByText(/operation activation is missing or invalid/)).toBeTruthy();
-  expect(facade.callsTo("OperationStatus").length).toBe(1);
-  expect(facade.callsTo("CommercialStatus").length).toBe(1);
-  // The account prerequisite is visible and offers no navigation.
-  expect(await screen.findByText(/the account portal destination is not configured/)).toBeTruthy();
-  expect(screen.queryByRole("link", { name: "Manage account" })).toBeNull();
-  await user.click(admin.getByRole("button", { name: "Refresh activation" }));
-  expect(facade.callsTo("OperationStatus").length).toBe(2);
-});
+const UNSELECTED: OperationResult = { state: "empty", reason: "operation activation is missing or invalid; select and activate an operation policy", selected: false, author_seats: 0, runner_instances: 0 };
 
-test("unreadable remembered operation and commercial selections stay visible until chosen again", async () => {
+function quiet(extra: FacadeHandlers = {}): FacadeHandlers {
+  return {
+    OperationStatus: () => UNSELECTED,
+    CommercialStatus: () => ({ state: "empty", reason: "the commercial portal destination is not configured; choose the operator-supplied destinations file" }),
+    ...extra,
+  };
+}
+
+const section = (name: string) => within(screen.getByRole("region", { name }));
+
+function valueOf(label: string, scope: ReturnType<typeof within>): string | null {
+  const term = scope.queryAllByRole("term").find((element: HTMLElement) => element.textContent === label);
+  return term?.nextElementSibling?.textContent ?? null;
+}
+
+async function task(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(section("Activation folder").getByRole("button", { name: "More activation actions" }));
+  await user.click(within(screen.getByRole("menu", { name: "More activation actions" })).getByRole("menuitem", { name }));
+}
+
+test("a supplied activation folder is chosen and shown, and only Activate activates and selects it", async () => {
   const user = userEvent.setup();
-  const operationRefusal = "the remembered operation selection cannot be read; choose an activation folder again";
-  const commercialRefusal = "the remembered commercial selection cannot be read; choose a destinations file again";
-  let recovered = false;
+  let activated = false;
   const facade = installFacade(quiet({
-    OperationStatus: () => recovered ? activeStatus() : { state: "failed", selected: false, author_seats: 0, runner_instances: 0, reason: operationRefusal },
-    CommercialStatus: () => ({ state: "failed", reason: commercialRefusal }),
-    ChooseOperationPolicy: () => { recovered = true; return { state: "completed", selected: true, author_seats: 0, runner_instances: 0 }; },
-    ChooseCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: PORTAL }),
+    OperationStatus: () => activated ? selected() : UNSELECTED,
+    ReviewActivationFolder: () => ({ state: "failed", reason: "operation activation is missing or invalid; select and activate an operation policy", selected: false, folder: ACTIVATION_FOLDER, author: "alice", device: "laptop", author_seats: 0, runner_instances: 0 }),
+    ActivateActivationFolder: () => { activated = true; return selected(); },
   }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-
-  expect(await admin.findByText(operationRefusal)).toBeTruthy();
-  expect(await screen.findByText(commercialRefusal)).toBeTruthy();
-  expect(screen.queryByRole("link", { name: "Manage account" })).toBeNull();
-  await user.click(admin.getByRole("button", { name: "Choose activation folder…" }));
-  expect(await admin.findByText(/License: active/)).toBeTruthy();
-  expect(admin.queryByText(operationRefusal)).toBeNull();
-  await user.click(admin.getByRole("button", { name: "Configure account portal…" }));
-  expect(await screen.findByRole("link", { name: "Manage account" })).toBeTruthy();
-  expect(screen.queryByText(commercialRefusal)).toBeNull();
-  expect(facade.callsTo("OperationStatus")).toHaveLength(2);
-  expect(facade.callsTo("CommercialStatus")).toHaveLength(1);
+  render(<AdministratorSetup />);
+  const folder = section("Activation folder");
+  expect(await folder.findByText("No activation folder")).toBeTruthy();
+  // The page reads only its own scope: the folder's activation and the
+  // configured portal, never this computer's license.
+  expect(facade.callsTo("LicenseStatus")).toHaveLength(0);
+  await user.click(folder.getByRole("button", { name: "Choose folder" }));
+  const sheet = within(screen.getByRole("dialog", { name: "Activation folder" }));
+  expect((sheet.getByRole("button", { name: "Activate" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(sheet.getByRole("button", { name: "Choose folder" }));
+  expect(await sheet.findByText("activation")).toBeTruthy();
+  expect(valueOf("Status", sheet)).toBe("Not activated");
+  expect(valueOf("Licensed user", sheet)).toBe("alice");
+  expect(valueOf("Device", sheet)).toBe("laptop");
+  // Choosing the folder activated and selected nothing.
+  expect(facade.callsTo("ActivateActivationFolder")).toHaveLength(0);
+  expect(section("Activation folder").getByText("No activation folder")).toBeTruthy();
+  await user.click(sheet.getByRole("button", { name: "Activate" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Activation folder" })).toBeNull());
+  expect(facade.oneCall("ActivateActivationFolder")).toEqual([{ folder: ACTIVATION_FOLDER }]);
+  expect(valueOf("Status", folder)).toBe("Active");
+  expect(valueOf("Organization", folder)).toBe("example-hospital");
+  expect(valueOf("Runner pool", folder)).toBe("ci-pool");
+  expect(valueOf("Expires", folder)).toBe(licenseDay("2026-10-18T00:00:00Z"));
+  const reads = facade.callsTo("OperationStatus").length;
+  await user.click(folder.getByRole("button", { name: "Refresh activation" }));
+  await waitFor(() => expect(facade.callsTo("OperationStatus")).toHaveLength(reads + 1));
+  expect(facade.callsTo("LicenseStatus")).toHaveLength(0);
 });
 
-test("a received license is verified, configured, created and activated without hand-authored JSON", async () => {
+test("a received license creates an activation folder in three steps and activates nothing", async () => {
   const user = userEvent.setup();
-  const created: unknown[] = [];
-  const handlers = quiet({
-    VerifyLicenseDocument: () => receivedLicense(),
-    ChooseLicenseFolder: () => ({ state: "completed" as const, folder: ACTIVATION_FOLDER }),
-    CreateLicenseActivation: async (request) => {
-      created.push(request);
-      return { state: "completed" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "the local activation is created; activate it to admit licensed work" };
-    },
-    ActivateOperations: () => activeStatus(),
-  });
-  const facade = installFacade(handlers);
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-
-  await user.click(admin.getByRole("button", { name: "Verify license…" }));
-  // The document's own declarations are shown, including the term state and
-  // the offline-irrelevant facts the verifier decided from the local clock.
-  expect(await admin.findByText("example-hospital")).toBeTruthy();
-  expect(admin.getByText(/state active/)).toBeTruthy();
-
-  // The role selections come from what the document assigns, not free text.
-  await user.selectOptions(admin.getByLabelText("Author"), "alice");
-  await user.selectOptions(admin.getByLabelText("Device"), "laptop");
-  await user.selectOptions(admin.getByLabelText("Runner authority"), "ci-pool");
-  // The build-one flow's folder choice sits in the received-license block,
-  // apart from the window's supplied-folder selection of the same name.
-  const verified = within(admin.getByText("Received license").closest("div") as HTMLElement);
-  await user.click(verified.getByRole("button", { name: "Choose activation folder…" }));
-  expect(await admin.findByText(new RegExp(ACTIVATION_FOLDER))).toBeTruthy();
-  await user.click(admin.getByRole("button", { name: "Create activation folder" }));
-  expect(created).toEqual([{
-    entitlement: ENTITLEMENT_PATH, trust: TRUST_PATH,
-    author: "alice", device: "laptop", authority: "ci-pool", folder: ACTIVATION_FOLDER,
+  const facade = installFacade(quiet({
+    VerifyLicenseDocument: () => verified(),
+    ChooseLicenseFolder: () => ({ state: "completed", folder: ACTIVATION_FOLDER }),
+    CreateLicenseActivation: () => ({ state: "completed", selected: true, author_seats: 0, runner_instances: 0, reason: "the local activation is created; activate it to admit licensed work" }),
+  }));
+  render(<AdministratorSetup />);
+  await section("Activation folder").findByText("No activation folder");
+  await task(user, "Create activation folder");
+  const sheet = within(screen.getByRole("dialog", { name: "Create activation folder" }));
+  expect(sheet.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["License", "Assignment", "Folder"]);
+  await user.click(sheet.getByRole("button", { name: "Choose files" }));
+  expect(valueOf("Plan", sheet)).toBe("example-plan");
+  await user.click(sheet.getByRole("button", { name: "Next" }));
+  await user.selectOptions(sheet.getByLabelText("Licensed user"), "alice");
+  // A user without a device is not an assignment.
+  expect(sheet.getByRole("alert").textContent).toBe("Choose a device for the licensed user.");
+  expect((sheet.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.selectOptions(sheet.getByLabelText("Device"), "desk");
+  await user.selectOptions(sheet.getByLabelText("Runner pool"), "ci-pool");
+  await user.click(sheet.getByRole("button", { name: "Next" }));
+  expect((sheet.getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(sheet.getByRole("button", { name: "Choose folder" }));
+  expect(await sheet.findByText(ACTIVATION_FOLDER)).toBeTruthy();
+  expect(valueOf("Device", sheet)).toBe("desk");
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Create activation folder" })).toBeNull());
+  expect(facade.oneCall("CreateLicenseActivation")).toEqual([{
+    entitlement: ENTITLEMENT_PATH, trust: TRUST_PATH, author: "alice", device: "desk", authority: "ci-pool", folder: ACTIVATION_FOLDER,
   }]);
-  expect(await admin.findByText(/the local activation is created; activate it/)).toBeTruthy();
-
-  // Activation is the separate explicit action; after it the pane reports the
-  // licensed term, and expiry/grace/renewal all run through the same status.
-  await user.click(admin.getByRole("button", { name: "Activate" }));
-  expect(await admin.findByText(/License: active\./)).toBeTruthy();
-
-  facade.reply({ OperationStatus: () => ({ ...activeStatus(), term: "grace" }) });
-  await user.click(admin.getByRole("button", { name: "Refresh activation" }));
-  expect(await admin.findByText(/License: grace\./)).toBeTruthy();
-
-  facade.reply({ RenewLicenseDocument: () => activeStatus() });
-  await user.click(admin.getByRole("button", { name: "Renew activation…" }));
-  expect(await admin.findByText(/A renewal or an approved extension installs here/)).toBeTruthy();
-
-  facade.reply({ ReleaseOperations: () => ({ ...activeStatus(), clock: { ...activeStatus().clock!, released: true } }) });
-  await user.click(admin.getByRole("button", { name: "Release activation" }));
-  expect(await admin.findByText(/This activation is released\./)).toBeTruthy();
+  // Creation is configuration only: activation stays its own action, taken
+  // on the created folder the window now selects.
+  expect(facade.callsTo("ActivateOperations")).toHaveLength(0);
+  facade.reply({ OperationStatus: () => selected({ state: "failed", reason: "operation activation is missing or invalid; select and activate an operation policy", clock: undefined as never, term: undefined as never }), ActivateOperations: () => selected() });
+  await user.click(section("Activation folder").getByRole("button", { name: "Refresh activation" }));
+  await waitFor(() => expect(valueOf("Status", section("Activation folder"))).toBe("Not activated"));
+  await task(user, "Activation folder");
+  const folder = within(screen.getByRole("dialog", { name: "Activation folder" }));
+  expect(valueOf("Licensed user", folder)).toBe("alice");
+  await user.click(folder.getByRole("button", { name: "Activate" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Activation folder" })).toBeNull());
+  expect(facade.callsTo("ActivateOperations")).toHaveLength(1);
+  expect(facade.callsTo("ActivateActivationFolder")).toHaveLength(0);
 });
 
-test("an unusable received license is refused truthfully and configures nothing", async () => {
+test("a license that cannot configure activation, or cannot be verified, goes no further", async () => {
   const user = userEvent.setup();
+  let answer: LicenseVerifyResult = { state: "failed", reason: "entitlement signature verification failed" };
+  installFacade(quiet({ VerifyLicenseDocument: () => answer }));
+  render(<AdministratorSetup />);
+  await section("Activation folder").findByText("No activation folder");
+  await task(user, "Create activation folder");
+  const sheet = within(screen.getByRole("dialog", { name: "Create activation folder" }));
+  await user.click(sheet.getByRole("button", { name: "Choose files" }));
+  expect(await sheet.findByText("entitlement signature verification failed")).toBeTruthy();
+  expect((sheet.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+  const earlier = verified();
+  answer = { ...earlier, document: { ...earlier.document!, version: "readmit-entitlement/v1", operation_capable: false } };
+  await user.click(sheet.getByRole("button", { name: "Choose files" }));
+  expect(await sheet.findByText("This license cannot create an activation folder.")).toBeTruthy();
+  expect((sheet.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("a later issue is verified before Install renewal installs exactly those bytes, and a refusal keeps the activation", async () => {
+  const user = userEvent.setup();
+  let refuse = true;
   const facade = installFacade(quiet({
-    VerifyLicenseDocument: () => ({ state: "failed" as const, reason: "entitlement signature does not match its claims" }),
-    ChooseLicenseFolder: () => ({ state: "completed" as const, folder: ACTIVATION_FOLDER }),
+    OperationStatus: () => selected(),
+    ReviewActivationRenewal: () => verified({ entitlement: LATER_PATH, trust: "", digest: "d2", document: { ...verified().document!, sequence: 2, expires: "2027-10-18T00:00:00Z" } }),
+    RenewLicenseDocument: () => refuse
+      ? { state: "failed", reason: "entitlement renewal is not newer", selected: true, author_seats: 0, runner_instances: 0 }
+      : selected({ expires: "2027-10-18T00:00:00Z" }),
   }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  await user.click(admin.getByRole("button", { name: "Verify license…" }));
-  expect(await admin.findByText("entitlement signature does not match its claims")).toBeTruthy();
-  // A failed verification offers no configuration: there is no document to
-  // select a role from and no create action to press.
-  expect(admin.queryByLabelText("Author")).toBeNull();
-  expect(admin.queryByRole("button", { name: "Create activation folder" })).toBeNull();
-  expect(facade.callsTo("ChooseLicenseFolder").length).toBe(0);
-  // Payment never being proof of an entitlement is stated, and a cancelled or
-  // pending checkout changes nothing here.
-  expect(screen.getByText(/Completing a payment does not activate anything here/)).toBeTruthy();
-  expect(screen.getByText(/a cancelled payment, or a pending issuance leaves everything here unchanged/)).toBeTruthy();
-  expect(screen.getByText(/nothing is deleted, and existing work stays readable, verifiable and exportable/)).toBeTruthy();
+  render(<AdministratorSetup />);
+  await waitFor(() => expect(valueOf("Status", section("Activation folder"))).toBe("Active"));
+  await task(user, "Renew activation");
+  const sheet = within(screen.getByRole("dialog", { name: "Renew activation" }));
+  expect(valueOf("Folder", sheet)).toBe("activation");
+  expect((sheet.getByRole("button", { name: "Install renewal" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(sheet.getByRole("button", { name: "Choose file" }));
+  expect(await sheet.findByText("entitlement-2.json")).toBeTruthy();
+  expect(valueOf("Issue", sheet)).toBe("2");
+  expect(facade.callsTo("RenewLicenseDocument")).toHaveLength(0);
+  await user.click(sheet.getByRole("button", { name: "Install renewal" }));
+  expect(await sheet.findByRole("alert")).toHaveProperty("textContent", "entitlement renewal is not newer");
+  expect(valueOf("Expires", section("Activation folder"))).toBe(licenseDay("2026-10-18T00:00:00Z"));
+  refuse = false;
+  await user.click(sheet.getByRole("button", { name: "Install renewal" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Renew activation" })).toBeNull());
+  expect(facade.callsTo("RenewLicenseDocument").map((call) => call.args[0])).toEqual([
+    { entitlement: LATER_PATH, digest: "d2" },
+    { entitlement: LATER_PATH, digest: "d2" },
+  ]);
 });
 
-test("a v1 document verifies, is reported as such, and cannot configure operation admission", async () => {
+test("release names the folder and device, clock recovery appears only for a detected rollback, and export writes the selected activation", async () => {
   const user = userEvent.setup();
-  installFacade(quiet({
-    VerifyLicenseDocument: () => ({
-      state: "completed" as const,
-      entitlement: ENTITLEMENT_PATH,
-      trust: TRUST_PATH,
-      document: {
-        version: "readmit-entitlement/v1",
-        id: "ENT-0001", organization: "example-hospital", plan: "example-plan", sequence: 1,
-        issued: "2026-09-18T00:00:00Z", not_before: "2026-09-18T00:00:00Z", expires: "2027-09-18T00:00:00Z",
-        grace_days: 0, grace_ends: "2027-09-18T00:00:00Z", state: "active",
-        seats: 1, devices: ["workstation-a"], runner_instances: 1,
-        capabilities: ["replay"], key_id: "vendor-2026a", key_status: "active", operation_capable: false,
-      },
-    }),
-  }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  await user.click(admin.getByRole("button", { name: "Verify license…" }));
-  expect(await admin.findByText(/earlier format that lists licensed computers and cannot activate new work here/)).toBeTruthy();
-  expect(admin.queryByLabelText("Author")).toBeNull();
-});
-
-test("the clock correction journey resolves a latched rollback explicitly", async () => {
-  const user = userEvent.setup();
-  const resolved: boolean[] = [];
-  installFacade(quiet({
-    OperationStatus: () => ({
-      state: "completed" as const, selected: true, term: "active",
-      expires: "2026-10-18T00:00:00Z", grace_ends: "2026-11-01T00:00:00Z",
-      author_seats: 2, runner_instances: 3,
-      clock: { schema: "readmit-operation-clock/v1", organization: "example-hospital", sequence: 1, high_water: "2026-09-20T12:00:00Z", rollback: true, released: false },
-    }),
-    ResolveOperationClock: async () => { resolved.push(true); return activeStatus(); },
-  }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  expect(await admin.findByText(/Clock correction requires explicit resolution/)).toBeTruthy();
-  const resolve = admin.getByRole("button", { name: "Resolve clock change" });
-  expect(resolve.getAttribute("disabled")).toBeNull();
-  await user.click(resolve);
-  expect(resolved).toEqual([true]);
-  expect(await admin.findByText(/No unresolved clock rollback/)).toBeTruthy();
-});
-
-test("activation folder choice, export and clock recovery retain status on refusal or cancellation", async () => {
-  const user = userEvent.setup();
-  const status = { ...activeStatus(), clock: { ...activeStatus().clock!, rollback: true } };
+  let rollback = false;
   const facade = installFacade(quiet({
-    OperationStatus: () => status,
-    VerifyLicenseDocument: () => receivedLicense(),
-    ChooseLicenseFolder: () => ({ state: "failed" as const, reason: "choose an existing folder that is not a symbolic link" }),
-    ExportLicenseDocument: () => ({ state: "failed" as const, reason: "the destination folder already holds a file with this name" }),
-    ResolveOperationClock: () => ({ state: "failed" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "local UTC time is still behind the recorded high-water" }),
-    RenewLicenseDocument: () => ({ state: "failed" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "the later issue does not assign this device" }),
+    OperationStatus: () => selected({ clock: { ...selected().clock!, rollback } }),
+    ResolveOperationClock: () => { rollback = false; return selected(); },
+    ReleaseOperations: () => selected({ clock: { ...selected().clock!, released: true } }),
+    ExportLicenseDocument: () => ({ state: "failed", reason: "the destination folder already holds a file with this name; choose a different folder" }),
   }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  expect(await admin.findByText(/Clock correction requires explicit resolution/)).toBeTruthy();
+  const view = render(<AdministratorSetup />);
+  await waitFor(() => expect(valueOf("Status", section("Activation folder"))).toBe("Active"));
+  await user.click(section("Activation folder").getByRole("button", { name: "More activation actions" }));
+  const items = within(screen.getByRole("menu", { name: "More activation actions" })).getAllByRole("menuitem").map((item) => item.textContent);
+  expect(items).toEqual(["Activation folder", "Create activation folder", "Renew activation", "Export activation license", "Release activation", "Details"]);
+  await user.keyboard("{Escape}");
 
-  await user.click(admin.getByRole("button", { name: "Verify license…" }));
-  await admin.findByText("example-hospital");
-  const verified = within(admin.getByText("Received license").closest("div") as HTMLElement);
-  const choose = verified.getByRole("button", { name: "Choose activation folder…" });
-  choose.focus();
-  await user.keyboard("{Enter}");
-  expect(await admin.findByText("choose an existing folder that is not a symbolic link")).toBeTruthy();
-  expect(admin.queryByText(/Activation folder:/)).toBeNull();
+  await task(user, "Export activation license");
+  expect(await section("Activation folder").findByRole("alert")).toHaveProperty("textContent", "the destination folder already holds a file with this name; choose a different folder");
+  expect(facade.callsTo("ExportLicenseDocument")).toHaveLength(1);
+  expect(facade.callsTo("ExportInstalledLicense")).toHaveLength(0);
 
-  facade.reply({ ChooseLicenseFolder: () => ({ state: "cancelled", reason: "no folder was chosen" }) });
-  await user.click(choose);
-  expect(await admin.findByText("no folder was chosen")).toBeTruthy();
-  expect(admin.queryByText(/Activation folder:/)).toBeNull();
+  // A detected rollback offers recovery, which resolves only when asked.
+  view.unmount();
+  rollback = true;
+  render(<AdministratorSetup />);
+  await waitFor(() => expect(valueOf("Status", section("Activation folder"))).toBe("Clock changed"));
+  await task(user, "Clock recovery");
+  const clock = within(screen.getByRole("dialog", { name: "Clock recovery" }));
+  expect(clock.getByText("Resumes new licensed work admitted through this folder.")).toBeTruthy();
+  expect(facade.callsTo("ResolveOperationClock")).toHaveLength(0);
+  await user.click(clock.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(valueOf("Status", section("Activation folder"))).toBe("Active"));
 
-  const exportButton = admin.getByRole("button", { name: "Export license…" });
-  exportButton.focus();
-  await user.keyboard("{Enter}");
-  expect(await admin.findByText("the destination folder already holds a file with this name")).toBeTruthy();
-  facade.reply({ ExportLicenseDocument: () => ({ state: "cancelled", reason: "no folder was chosen" }) });
-  await user.click(exportButton);
-  expect(await admin.findByText("no folder was chosen")).toBeTruthy();
-  facade.reply({ ExportLicenseDocument: () => ({ state: "completed", document: "ENT-0002", path: "/private/export/ENT-0002.json" }) });
-  await user.click(exportButton);
-  expect(await admin.findByText(/Document ENT-0002 written to \/private\/export\/ENT-0002.json, byte for byte/)).toBeTruthy();
-
-  const resolve = admin.getByRole("button", { name: "Resolve clock change" });
-  resolve.focus();
-  await user.keyboard("{Enter}");
-  expect(await admin.findByText(/local UTC time is still behind the recorded high-water/)).toBeTruthy();
-  expect(admin.getByText(/Clock correction requires explicit resolution/)).toBeTruthy();
-  await user.click(admin.getByRole("button", { name: "Renew activation…" }));
-  expect(await admin.findByText("the later issue does not assign this device")).toBeTruthy();
-  expect(admin.getByText(/Clock correction requires explicit resolution/)).toBeTruthy();
-  expect((admin.getByRole("button", { name: "Release activation" }) as HTMLButtonElement).disabled).toBe(false);
-  expect(facade.callsTo("ChooseLicenseFolder")).toHaveLength(2);
-  expect(facade.callsTo("ExportLicenseDocument")).toHaveLength(3);
-  expect(facade.callsTo("ResolveOperationClock")).toHaveLength(1);
+  await task(user, "Release activation");
+  const release = within(screen.getByRole("dialog", { name: "Release activation?" }));
+  expect(valueOf("Folder", release)).toBe("activation");
+  expect(valueOf("Device", release)).toBe("laptop");
+  expect(release.getByText("Stops new licensed work admitted through this folder.")).toBeTruthy();
+  expect(facade.callsTo("ReleaseOperations")).toHaveLength(0);
+  await user.click(release.getByRole("button", { name: "Release" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Release activation?" })).toBeNull());
+  expect(facade.callsTo("ReleaseOperations")).toHaveLength(1);
+  expect(facade.callsTo("DeactivateLicense")).toHaveLength(0);
 });
 
-test("a supplied activation folder can be chosen from the keyboard and cancellation leaves the old selection", async () => {
+test("the account portal is read from the operator's file, shown as its destination, and kept only by Save", async () => {
   const user = userEvent.setup();
+  const configured = vi.fn();
+  const handled = vi.fn();
+  let saved = false;
   const facade = installFacade(quiet({
-    OperationStatus: () => activeStatus(),
-    ChooseOperationPolicy: () => ({ state: "cancelled" as const, selected: true, author_seats: 0, runner_instances: 0, reason: "no folder was chosen" }),
+    CommercialStatus: () => saved ? { state: "completed", environment: "sandbox", portal: PORTAL, config_path: DESTINATIONS } : { state: "empty", reason: "the commercial portal destination is not configured; choose the operator-supplied destinations file" },
+    ReviewCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: PORTAL, config_path: DESTINATIONS }),
+    SaveCommercialDestinations: () => { saved = true; return { state: "completed", environment: "sandbox", portal: PORTAL, config_path: DESTINATIONS }; },
   }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  await admin.findByText(/License: active/);
-  // No received license is open here, so the one folder choice is the
-  // window-level supplied-folder selection.
-  const choice = admin.getByRole("button", { name: "Choose activation folder…" });
-  choice.focus();
-  await user.keyboard("{Enter}");
-  expect(await admin.findByText("no folder was chosen")).toBeTruthy();
-  expect(admin.getByText(/License: active/)).toBeTruthy();
-  facade.reply({
-    ChooseOperationPolicy: () => ({ state: "completed", selected: true, author_seats: 0, runner_instances: 0 }),
-    OperationStatus: () => ({ ...activeStatus(), term: "grace" }),
-  });
-  await user.click(choice);
-  expect(await admin.findByText(/License: grace/)).toBeTruthy();
-  expect(facade.callsTo("OperationStatus")).toHaveLength(2);
-  expect(facade.callsTo("ChooseOperationPolicy")).toHaveLength(2);
+  // Security's Edit of the customer portal asks for this sheet once.
+  const view = render(<AdministratorSetup portalRequest={1} onPortalHandled={handled} onPortalConfigured={configured} />);
+  const sheet = within(await screen.findByRole("dialog", { name: "Account portal" }));
+  expect(handled).toHaveBeenCalledTimes(1);
+  expect((sheet.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(sheet.getByRole("button", { name: "Choose file" }));
+  expect(valueOf("Destination", sheet)).toBe(PORTAL);
+  expect(valueOf("Environment", sheet)).toBe("Sandbox");
+  // Reading the file kept nothing and opened nothing.
+  expect(facade.callsTo("SaveCommercialDestinations")).toHaveLength(0);
+  expect(sheet.queryByRole("link")).toBeNull();
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Account portal" })).toBeNull());
+  expect(facade.oneCall("SaveCommercialDestinations")).toEqual([{ path: DESTINATIONS, portal: PORTAL }]);
+  expect(configured).toHaveBeenCalledWith(true);
+  expect(valueOf("Destination", section("Account portal"))).toBe(PORTAL);
+  view.rerender(<AdministratorSetup portalRequest={1} onPortalHandled={handled} onPortalConfigured={configured} />);
+  expect(screen.queryByRole("dialog", { name: "Account portal" })).toBeNull();
+
+  // Closing without saving keeps what was saved.
+  await user.click(section("Account portal").getByRole("button", { name: "Edit" }));
+  const again = within(screen.getByRole("dialog", { name: "Account portal" }));
+  expect(valueOf("Destination", again)).toBe(PORTAL);
+  await user.click(again.getByRole("button", { name: "Cancel" }));
+  expect(configured).toHaveBeenLastCalledWith(false);
+  expect(facade.callsTo("SaveCommercialDestinations")).toHaveLength(1);
 });
 
-test("the configured portal destination is shown exactly and navigation is deliberate", async () => {
-  const user = userEvent.setup();
-  const facade = installFacade(quiet({
-    ChooseCommercialDestinations: () => ({ state: "completed" as const, environment: "sandbox", portal: PORTAL, config_path: "/private/readmit/commercial-destinations.json" }),
-  }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  // Before configuration there is no destination and no link to click.
-  expect(screen.queryByRole("link", { name: "Manage account" })).toBeNull();
-  await user.click(admin.getByRole("button", { name: "Configure account portal…" }));
-  const portal = await screen.findByRole("link", { name: "Manage account" });
-  // The destination is shown before navigation and the link carries exactly
-  // the operator-supplied URL: no case, workspace or evidence data is added.
-  expect(portal.getAttribute("href")).toBe(PORTAL);
-  expect(screen.getByText(/Environment: sandbox\./)).toBeTruthy();
-  const commercial = screen.getByText(/Purchases, invoices, renewals and cancellations/).closest("div");
-  expect(commercial).toBeTruthy();
-  const links = within(commercial as HTMLElement).queryAllByRole("link");
-  expect(links.length).toBe(1);
-  expect(links[0]?.getAttribute("href")).toBe(PORTAL);
-  // The account section contacted nothing: only the local reads and the
-  // one deliberate selection call were made.
-  expect(facade.callsTo("ChooseCommercialDestinations").length).toBe(1);
-  expect(facade.callsTo("CommercialStatus").length).toBe(1);
-  // The boundary sentence is stated where the destination is.
-  expect(screen.getByText(/This application makes no request to it/)).toBeTruthy();
-  expect(screen.getByText(/a revoked document is learned only when files arrive|Offline limit:/, { exact: false })).toBeTruthy();
-});
-
-// A document with no grace period is answered without the member, as the
-// facade omits a zero; the term still says the grace is zero days rather than
-// leaving the number out.
-test("a received license with no grace period says zero days", async () => {
-  const user = userEvent.setup();
-  const license = receivedLicense();
-  const { grace_days: _omitted, ...document } = license.document;
-  installFacade(quiet({ VerifyLicenseDocument: () => ({ ...license, document: { ...document, grace_ends: document.expires } }) }));
-  render(<OperationAccess />);
-  const admin = await openAdministratorSetup(user);
-  await user.click(admin.getByRole("button", { name: "Verify license…" }));
-  expect(
-    await admin.findByText("2026-09-18T00:00:00Z to 2026-10-18T00:00:00Z; grace 0 days (ends 2026-10-18T00:00:00Z); state active"),
-  ).toBeTruthy();
+test("an unreadable remembered selection stays visible until the folder is chosen again", async () => {
+  const refusal = "the remembered operation selection cannot be read; choose an activation folder again";
+  installFacade(quiet({ OperationStatus: () => ({ state: "failed", selected: false, author_seats: 0, runner_instances: 0, reason: refusal }) }));
+  render(<AdministratorSetup />);
+  expect(await section("Activation folder").findByRole("alert")).toHaveProperty("textContent", refusal);
+  expect(section("Activation folder").getByText("No activation folder")).toBeTruthy();
 });

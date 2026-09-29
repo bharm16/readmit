@@ -86,6 +86,7 @@ type LicenseVerifyResult struct {
 	Reason      string               `json:"reason,omitzero"`
 	Entitlement string               `json:"entitlement,omitzero"`
 	Trust       string               `json:"trust,omitzero"`
+	Digest      string               `json:"digest,omitzero"`
 	Document    *LicenseDocumentView `json:"document,omitzero"`
 }
 
@@ -338,33 +339,72 @@ func (r refusal) operation() OperationResult {
 	return OperationResult{State: r.state, Reason: r.reason}
 }
 
-// RenewLicenseDocument installs one later issue of the installed entitlement,
-// chosen through a native file dialog, through the operation guard's
-// activation-folder renewal: verified against the same trust store, it refuses
-// a transfer — a reissue that no longer assigns this device to this author, or
-// no longer names the configured runner authority — and never rewrites the
-// retained clock state.
-func (a *App) RenewLicenseDocument() OperationResult {
-	return run(a, true, false, func(ctx context.Context) OperationResult {
+// ActivationRenewalRequest installs the later issue ReviewActivationRenewal
+// verified: its file, and the digest of the exact bytes that were verified.
+type ActivationRenewalRequest struct {
+	Entitlement string `json:"entitlement"`
+	Digest      string `json:"digest"`
+}
+
+// ReviewActivationRenewal chooses a later issue of the selected activation's
+// entitlement through a native file dialog and verifies it against that
+// activation's own trust document. It installs nothing: RenewLicenseDocument
+// does, for exactly the bytes verified here.
+func (a *App) ReviewActivationRenewal() LicenseVerifyResult {
+	return run(a, true, false, func(ctx context.Context) LicenseVerifyResult {
+		_, path := a.selectedOperation()
+		if path == "" {
+			return LicenseVerifyResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
+		}
+		policy, err := readSelectedPolicy(path)
+		if err != nil {
+			return LicenseVerifyResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
+		}
+		files, declined := a.chooseFiles(ctx, "Choose the later-issue entitlement document", "JSON documents", "*.json")
+		if len(files) == 0 {
+			return LicenseVerifyResult{State: declined.state, Reason: declined.reason}
+		}
+		if !filepath.IsAbs(files[0]) {
+			return LicenseVerifyResult{State: Failed, Reason: "select an absolute path for the received document"}
+		}
+		data, trustData, err := operationguard.ReadDocuments(files[0], policy.Trust)
+		if err != nil {
+			return LicenseVerifyResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
+		}
+		received, err := operationguard.VerifyDocuments(data, trustData, time.Now().UTC().Truncate(time.Second))
+		if err != nil {
+			return LicenseVerifyResult{State: Failed, Reason: err.Error()}
+		}
+		return LicenseVerifyResult{State: Completed, Entitlement: files[0], Digest: licenseDigest(data), Document: licenseDocumentView(received)}
+	})
+}
+
+// RenewLicenseDocument installs the later issue of the installed entitlement
+// that ReviewActivationRenewal verified, through the operation guard's
+// activation-folder renewal: verified again against the same trust store, it
+// refuses a transfer — a reissue that no longer assigns this device to this
+// author, or no longer names the configured runner authority — and a file
+// changed since it was verified, and never rewrites the retained clock state.
+func (a *App) RenewLicenseDocument(request ActivationRenewalRequest) OperationResult {
+	return run(a, false, false, func(context.Context) OperationResult {
 		_, path := a.selectedOperation()
 		if path == "" {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
 		}
-		if a.installedSelected(path) {
-			return a.renewSelectedInstalled(ctx, path)
+		if !filepath.IsAbs(request.Entitlement) {
+			return OperationResult{State: Failed, Reason: "select an absolute path for the received document"}
 		}
-		policy, err := readSelectedPolicy(path)
+		data, err := operationguard.ReadDocument(request.Entitlement)
 		if err != nil {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
 		}
-		files, declined := a.chooseFiles(ctx, "Choose the later-issue entitlement document", "JSON documents", "*.json")
-		if len(files) == 0 {
-			return declined.operation()
+		if request.Digest == "" || request.Digest != licenseDigest(data) {
+			return OperationResult{State: Failed, Reason: "the later issue changed after it was verified; verify it again"}
 		}
-		if !filepath.IsAbs(files[0]) {
-			return OperationResult{State: Failed, Reason: "select an absolute path for the received document"}
+		if a.installedSelected(path) {
+			return a.renewSelectedInstalled(path, data)
 		}
-		data, err := operationguard.ReadDocument(files[0])
+		policy, err := readSelectedPolicy(path)
 		if err != nil {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
 		}
@@ -388,15 +428,7 @@ func (a *App) installedSelected(path string) bool {
 // renewSelectedInstalled renews this computer's license in place when it is
 // the selected activation, through the same renewal `readmit license renew`
 // performs, so its store and its operation policy keep naming one document.
-func (a *App) renewSelectedInstalled(ctx context.Context, path string) OperationResult {
-	files, declined := a.chooseFiles(ctx, "Choose the later-issue entitlement document", "JSON documents", "*.json")
-	if len(files) == 0 {
-		return declined.operation()
-	}
-	data, reason := readReceived(files[0], operationguard.ErrUnavailable.Error())
-	if reason != "" {
-		return OperationResult{State: Failed, Reason: reason}
-	}
+func (a *App) renewSelectedInstalled(path string, data []byte) OperationResult {
 	if err := operationguard.RenewInstalledLicense(a.licenseRoot, data, nil); err != nil {
 		return OperationResult{State: Failed, Reason: err.Error()}
 	}
@@ -503,36 +535,89 @@ func (a *App) runnerStatus(settle func(path string, at time.Time) (operationguar
 	return status
 }
 
+// CommercialSaveRequest names the destinations file ReviewCommercialDestinations
+// read, to be retained as this window's account portal.
+type CommercialSaveRequest struct {
+	Path string `json:"path"`
+	// Portal is the destination the person was shown; a file that declares
+	// another one by now is read again rather than kept.
+	Portal string `json:"portal"`
+}
+
 // ChooseCommercialDestinations selects the operator-supplied destinations file
-// through a native dialog and retains the selection locally. Selecting a file
-// makes no request and contacts no service.
+// through a native dialog and retains the selection locally, in one step.
+// Selecting a file makes no request and contacts no service.
 func (a *App) ChooseCommercialDestinations() CommercialStatusResult {
 	return run(a, true, false, func(ctx context.Context) CommercialStatusResult {
-		files, declined := a.chooseFiles(ctx, "Choose the commercial destinations file", "JSON documents", "*.json")
-		if len(files) == 0 {
-			return declined.commercial()
+		read := a.chooseCommercialDestinations(ctx)
+		if read.State != Completed {
+			return read
 		}
-		path := files[0]
-		if !filepath.IsAbs(path) {
-			return CommercialStatusResult{State: Failed, Reason: "select an absolute path for the destinations file"}
-		}
-		data, err := readOperationFile(path)
-		if err != nil {
-			return CommercialStatusResult{State: Failed, Reason: commercialUndecodable}
-		}
-		destinations, err := decodeCommercialDestinations(data)
-		if err != nil {
-			return CommercialStatusResult{State: Failed, Reason: commercialUndecodable}
-		}
-		a.commercialMu.Lock()
-		defer a.commercialMu.Unlock()
-		if a.selections != nil && a.selections.commercial.Remember(path) != nil {
-			return CommercialStatusResult{State: Failed, Reason: "cannot retain the commercial destinations selection"}
-		}
-		a.commercialConfigPath = path
-		a.commercialRestoreRefusal = ""
-		return CommercialStatusResult{State: Completed, Environment: destinations.Environment, Portal: destinations.Portal, ConfigPath: path}
+		return a.retainCommercialDestinations(read.ConfigPath)
 	})
+}
+
+// ReviewCommercialDestinations chooses the operator-supplied destinations file
+// through a native dialog and reports the destination it declares without
+// retaining it: SaveCommercialDestinations does, when the person saves.
+func (a *App) ReviewCommercialDestinations() CommercialStatusResult {
+	return run(a, true, false, func(ctx context.Context) CommercialStatusResult {
+		return a.chooseCommercialDestinations(ctx)
+	})
+}
+
+// SaveCommercialDestinations retains a reviewed destinations file as this
+// window's account portal, reading and checking it again as it does. Saving
+// makes no request and contacts no service.
+func (a *App) SaveCommercialDestinations(request CommercialSaveRequest) CommercialStatusResult {
+	return run(a, false, false, func(context.Context) CommercialStatusResult {
+		if read := readCommercialDestinations(request.Path); read.State == Completed && read.Portal != request.Portal {
+			return CommercialStatusResult{State: Failed, Reason: "the destinations file changed after it was read; choose it again"}
+		}
+		return a.retainCommercialDestinations(request.Path)
+	})
+}
+
+// chooseCommercialDestinations asks for a destinations file and reads it.
+func (a *App) chooseCommercialDestinations(ctx context.Context) CommercialStatusResult {
+	files, declined := a.chooseFiles(ctx, "Choose the commercial destinations file", "JSON documents", "*.json")
+	if len(files) == 0 {
+		return declined.commercial()
+	}
+	return readCommercialDestinations(files[0])
+}
+
+// readCommercialDestinations reads and strictly decodes one destinations file.
+func readCommercialDestinations(path string) CommercialStatusResult {
+	if !filepath.IsAbs(path) {
+		return CommercialStatusResult{State: Failed, Reason: "select an absolute path for the destinations file"}
+	}
+	data, err := readOperationFile(path)
+	if err != nil {
+		return CommercialStatusResult{State: Failed, Reason: commercialUndecodable}
+	}
+	destinations, err := decodeCommercialDestinations(data)
+	if err != nil {
+		return CommercialStatusResult{State: Failed, Reason: commercialUndecodable}
+	}
+	return CommercialStatusResult{State: Completed, Environment: destinations.Environment, Portal: destinations.Portal, ConfigPath: path}
+}
+
+// retainCommercialDestinations reads a destinations file again and remembers
+// it as the selection.
+func (a *App) retainCommercialDestinations(path string) CommercialStatusResult {
+	read := readCommercialDestinations(path)
+	if read.State != Completed {
+		return read
+	}
+	a.commercialMu.Lock()
+	defer a.commercialMu.Unlock()
+	if a.selections != nil && a.selections.commercial.Remember(path) != nil {
+		return CommercialStatusResult{State: Failed, Reason: "cannot retain the commercial destinations selection"}
+	}
+	a.commercialConfigPath = path
+	a.commercialRestoreRefusal = ""
+	return read
 }
 
 // CommercialStatus reports the retained commercial destination. Until one is

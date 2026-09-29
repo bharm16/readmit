@@ -628,7 +628,7 @@ test("Add connection › Runner returns to the runner once its configuration is 
   expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
 });
 
-test("Customer portal Edit chooses the destinations file and returns to the portal", async () => {
+test("Customer portal Edit opens Account portal in Administrator setup, and Save returns to the portal", async () => {
   const user = userEvent.setup();
   const PORTAL = connection({
     ref: "portal",
@@ -643,12 +643,16 @@ test("Customer portal Edit chooses the destinations file and returns to the port
   });
   const { facade } = await renderApp({
     ListConnections: (context) => ({ state: "completed", context, rows: [PORTAL, QA] }),
-    ChooseCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: "https://portal.example.test", config_path: "/etc/readmit/destinations.json" }),
+    ReviewCommercialDestinations: () => ({ state: "completed", environment: "sandbox", portal: "https://portal.example.test", config_path: "/etc/readmit/destinations.json" }),
+    SaveCommercialDestinations: (request) => ({ state: "completed", environment: "sandbox", portal: "https://portal.example.test", config_path: request.path }),
   });
   const table = await openSecurity(user);
   await user.click(await within(table).findByText("Customer portal"));
   await user.click(within(await screen.findByRole("dialog", { name: "Customer portal" })).getByRole("button", { name: "Edit" }));
-  await waitFor(() => expect(facade.callsTo("ChooseCommercialDestinations").length).toBeGreaterThan(0));
+  const sheet = within(await screen.findByRole("dialog", { name: "Account portal" }));
+  await user.click(sheet.getByRole("button", { name: "Choose file" }));
+  await user.click(sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.oneCall("SaveCommercialDestinations")).toEqual([{ path: "/etc/readmit/destinations.json", portal: "https://portal.example.test" }]));
   const detail = await screen.findByRole("dialog", { name: "Customer portal" });
   expect(within(detail).getByText("/etc/readmit/destinations.json")).toBeTruthy();
   expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();

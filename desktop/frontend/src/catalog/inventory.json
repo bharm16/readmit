@@ -39,7 +39,25 @@
     "name": "ComputerLicense",
     "source": "desktop/frontend/src/ComputerLicense.tsx",
     "exported": true,
-    "line": 63
+    "line": 59
+  },
+  {
+    "name": "LicenseFlow",
+    "source": "desktop/frontend/src/ComputerLicense.tsx",
+    "exported": false,
+    "line": 238
+  },
+  {
+    "name": "DeactivateSheet",
+    "source": "desktop/frontend/src/ComputerLicense.tsx",
+    "exported": false,
+    "line": 489
+  },
+  {
+    "name": "ResolveClockSheet",
+    "source": "desktop/frontend/src/ComputerLicense.tsx",
+    "exported": false,
+    "line": 512
   },
   {
     "name": "HelpTopics",
@@ -114,10 +132,34 @@
     "line": 25
   },
   {
-    "name": "OperationAccess",
+    "name": "AdministratorSetup",
     "source": "desktop/frontend/src/OperationAccess.tsx",
     "exported": true,
-    "line": 24
+    "line": 52
+  },
+  {
+    "name": "FolderSheet",
+    "source": "desktop/frontend/src/OperationAccess.tsx",
+    "exported": false,
+    "line": 269
+  },
+  {
+    "name": "CreateSheet",
+    "source": "desktop/frontend/src/OperationAccess.tsx",
+    "exported": false,
+    "line": 331
+  },
+  {
+    "name": "RenewSheet",
+    "source": "desktop/frontend/src/OperationAccess.tsx",
+    "exported": false,
+    "line": 485
+  },
+  {
+    "name": "PortalSheet",
+    "source": "desktop/frontend/src/OperationAccess.tsx",
+    "exported": false,
+    "line": 548
   },
   {
     "name": "OperatorHub",
