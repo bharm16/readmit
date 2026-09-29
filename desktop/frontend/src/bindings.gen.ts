@@ -48,6 +48,9 @@ export type ActionID =
   | "storage.move-project"
   | "storage.restore-copy"
   | "storage.prepare-update"
+  | "suite.approve-baseline"
+  | "suite.request-review"
+  | "suite.approve-release"
   | "environment.approve-transport";
 
 /** internal/desktop.ActionReview */
@@ -63,7 +66,7 @@ export interface ActionReview {
   refusal?: string;
   replay?: ReplayPreview;
   export?: ExportReviewView;
-  promotion?: SuitePromotionReview;
+  suite_approval?: SuiteApprovalReview;
   collect?: CollectReview;
   reset?: EnvironmentResetReview;
   scan?: ScanReview;
@@ -406,50 +409,6 @@ export interface BackupResult {
 export interface BackupSummary {
   complete: boolean;
   evidence: number;
-}
-
-/** internal/baseline.Change */
-export interface BaselineChange {
-  part: string;
-  kind: string;
-  before?: string;
-  after?: string;
-}
-
-/** internal/baseline.Comparison */
-export interface BaselineComparison {
-  schema: string;
-  identity: string;
-  revision: number;
-  parent: string;
-  values_shown: boolean;
-  changes: BaselineChange[];
-}
-
-/** internal/desktop.BaselineRequest */
-export interface BaselineRequest {
-  release: boolean;
-  release_id: string;
-  profiles: string[];
-  workspace: string;
-  spec: string;
-  previous: string;
-  show_values: boolean;
-  review: string;
-  approver: string;
-  rationale: string;
-  output: string;
-}
-
-/** internal/desktop.BaselineResult */
-export interface BaselineResult {
-  state: State;
-  reason?: string;
-  comparison?: BaselineComparison;
-  previous_approver?: string;
-  previous_rationale?: string;
-  output?: string;
-  release_id?: string;
 }
 
 /** internal/desktop.Build */
@@ -2168,17 +2127,6 @@ export interface ExecutionView {
   assertions: RunCompareAssertionState[];
 }
 
-/** internal/expectation.Comparison */
-export interface ExpectationComparison {
-  schema: string;
-  identity: string;
-  id: string;
-  revision: number;
-  parent: string;
-  baseline: BaselineComparison;
-  profiles: BaselineChange[];
-}
-
 /** internal/desktop.ExplainedAssertion */
 export interface ExplainedAssertion {
   id: string;
@@ -2904,17 +2852,6 @@ export interface HubProjectInfo {
   warning?: string;
 }
 
-/** internal/desktop.HubReleaseReviewRequest */
-export interface HubReleaseReviewRequest {
-  project: string;
-  workspace: string;
-  entry: string;
-  kind: string;
-  id: string;
-  recipient: string;
-  text: string;
-}
-
 /** internal/desktop.HubResult */
 export interface HubResult {
   state: State;
@@ -3570,6 +3507,7 @@ export interface ItemDraft {
   coverage?: CoverageDraft;
   mapping?: MappingRecipe;
   source?: CaptureSourceDraft;
+  suite?: SuiteDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -3581,6 +3519,7 @@ export interface ItemDraftResult {
   draft?: ItemDraft;
   new: boolean;
   test?: TestContext;
+  suite?: SuiteContext;
   problems?: FieldProblem[];
 }
 
@@ -3617,7 +3556,8 @@ export type ItemKind =
   | "link-review"
   | "attachment"
   | "mapping"
-  | "source";
+  | "source"
+  | "suite-approval";
 
 /** internal/desktop.ItemRef */
 export interface ItemRef {
@@ -5102,7 +5042,7 @@ export interface PrepareActionRequest {
   items: ItemRef[];
   destination?: ItemRef;
   replay?: ReplayActionOptions;
-  promotion?: PromotionActionOptions;
+  suite_approval?: SuiteApprovalOptions;
   scan?: ScanActionOptions;
   storage?: StorageActionOptions;
   derive_review?: DeriveReviewOptions;
@@ -5639,19 +5579,6 @@ export interface ProjectSummary {
 export interface ProjectVersionName {
   version: string;
   name: string;
-}
-
-/** internal/desktop.PromotionActionOptions */
-export interface PromotionActionOptions {
-  environment: string;
-  revision: string;
-}
-
-/** internal/desktop.PromotionApproval */
-export interface PromotionApproval {
-  identity: string;
-  reviewed: string;
-  output: string;
 }
 
 /** internal/protect.RetentionState */
@@ -6924,7 +6851,7 @@ export interface ReviewedActionResult {
   refreshed?: ActionReview;
   replay?: ReplayRun;
   export?: PrivacyExportOutcome;
-  approval?: PromotionApproval;
+  suite_approval?: SuiteApproval;
   collected?: CollectionRow;
   reset?: EnvironmentReset;
   scan?: ScanOutcome;
@@ -7208,6 +7135,7 @@ export interface RunPreflight {
 export interface RunPreflightRequest {
   workspace: string;
   spec: string;
+  suite?: SuiteRunTarget;
   environment?: string;
   output?: string;
 }
@@ -7239,21 +7167,6 @@ export interface RunProgressResult {
 
 /** internal/runqueue.Isolation */
 export type RunQueueIsolation = "shared" | "isolated";
-
-/** internal/runqueue.Job */
-export interface RunQueueJob {
-  id: string;
-  spec: string;
-  isolation: RunQueueIsolation;
-  after?: string[];
-}
-
-/** internal/runqueue.Plan */
-export interface RunQueuePlan {
-  schema: string;
-  parallelism: number;
-  jobs: RunQueueJob[];
-}
 
 /** internal/desktop.RunSelected */
 export interface RunSelected {
@@ -8438,169 +8351,215 @@ export interface StorageScopeResult {
   indexes: number;
 }
 
-/** internal/suite.Binding */
-export interface SuiteBinding {
+/** internal/desktop.SuiteApproval */
+export interface SuiteApproval {
+  scope: SuiteApprovalScope;
+  revision?: string;
+  actor: string;
+  at: string | null;
+  environment?: string;
+  target_revision?: string;
+  reviewer?: string;
+  reason?: string;
+  current: boolean;
+  stale?: string;
+}
+
+/** internal/desktop.SuiteApprovalOptions */
+export interface SuiteApprovalOptions {
+  environment?: string;
+  revision?: string;
+  reviewer?: string;
+  from?: string;
+}
+
+/** internal/desktop.SuiteApprovalReview */
+export interface SuiteApprovalReview {
+  scope: SuiteApprovalScope;
+  suite: string;
+  version: string;
+  actor: string;
+  reviewer?: string;
+  request?: string;
+  tests: SuiteApprovalTest[];
+  environment?: string;
+  site?: string;
+  targets: SuiteApprovalTarget[];
+  target_revision?: string;
+  comparison?: SuiteComparison;
+}
+
+/** internal/desktop.SuiteApprovalScope */
+export type SuiteApprovalScope = "baseline" | "review-request" | "release" | "environment";
+
+/** internal/desktop.SuiteApprovalTarget */
+export interface SuiteApprovalTarget {
   parameter: string;
   target: string;
+  version?: string;
   observation?: string;
 }
 
-/** internal/desktop.SuiteCoverageAssessRequest */
-export interface SuiteCoverageAssessRequest {
-  workspace: string;
-  prepared: string;
-  requirements: string;
-  previous: string[];
-  at: string;
+/** internal/desktop.SuiteApprovalTest */
+export interface SuiteApprovalTest {
+  name: string;
+  version: string;
+  release?: string;
 }
 
-/** internal/suite.CoverageReport */
-export interface SuiteCoverageReport {
-  suite: string;
-  environment: string;
-  at: string;
+/** internal/desktop.SuiteAssessment */
+export interface SuiteAssessment {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  run?: ItemRef;
+  environment?: string;
+  at?: string;
   denominator: number;
   passed: number;
-  percent: number;
-  requirements: SuiteRequirementCoverage[];
+  requirements: SuiteRequirementResult[];
   jobs: SuiteJobCoverage[];
-  scope: string;
 }
 
-/** internal/desktop.SuiteCoverageResult */
-export interface SuiteCoverageResult {
+/** internal/desktop.SuiteBinding */
+export interface SuiteBinding {
+  parameter: string;
+  target: ItemRef;
+  target_source?: string;
+  observation?: ItemRef;
+  observation_source?: string;
+}
+
+/** internal/desktop.SuiteChange */
+export interface SuiteChange {
+  area: string;
+  subject: string;
+  earlier?: string;
+  later?: string;
+}
+
+/** internal/desktop.SuiteCheckChange */
+export interface SuiteCheckChange {
+  earlier?: TestExpectation;
+  later?: TestExpectation;
+}
+
+/** internal/desktop.SuiteCompareRequest */
+export interface SuiteCompareRequest {
+  context: RequestContext;
+  suite: ItemRef;
+  from?: string;
+  to: string;
+}
+
+/** internal/desktop.SuiteComparison */
+export interface SuiteComparison {
   state: State;
   reason?: string;
+  context: RequestContext;
+  from?: string;
+  to: string;
+  first: boolean;
+  changes: SuiteChange[];
+  tests: SuiteTestChange[];
+}
+
+/** internal/desktop.SuiteContext */
+export interface SuiteContext {
+  original: boolean;
+  read_only: boolean;
+  tests: SuiteTestVersion[];
   document?: string;
-  output?: string;
-  report?: SuiteCoverageReport;
+  runnable: boolean;
 }
 
-/** internal/desktop.SuiteCoverageSaveRequest */
-export interface SuiteCoverageSaveRequest {
-  workspace: string;
-  prepared: string;
-  requirements: SuiteRequirement[];
-  exclusions: SuiteExclusionDeclaration[];
-  output: string;
+/** internal/desktop.SuiteCoverageRequest */
+export interface SuiteCoverageRequest {
+  context: RequestContext;
+  suite: ItemRef;
+  run?: ItemRef;
+  previous: ItemRef[];
 }
 
-/** internal/suite.CoverageSpecification */
-export interface SuiteCoverageSpecification {
-  job: string;
-  sha256: string;
-}
-
-/** internal/suite.Document */
-export interface SuiteDocument {
-  schema: string;
+/** internal/desktop.SuiteDataRow */
+export interface SuiteDataRow {
   id: string;
-  owner: string;
+  case: ItemRef;
+  source?: string;
+  expected?: Record<string, TestRunnerValue>;
+}
+
+/** internal/desktop.SuiteDataset */
+export interface SuiteDataset {
+  id: string;
+  name: string;
+  rows: SuiteDataRow[];
+}
+
+/** internal/desktop.SuiteDraft */
+export interface SuiteDraft {
+  id?: string;
+  owner?: string;
   tags: string[];
-  parallelism: number;
+  concurrency: number;
+  tests: SuiteTestDraft[];
+  datasets: SuiteDataset[];
   environments: SuiteEnvironment[];
-  tables: SuiteTable[];
-  tests: SuiteTest[];
+  requirements: SuiteRequirement[];
+  exclusions: SuiteExclusion[];
 }
 
-/** internal/desktop.SuiteDocumentResult */
-export interface SuiteDocumentResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  sha256?: string;
-  suite?: SuiteDocument;
-}
-
-/** internal/suite.Environment */
+/** internal/desktop.SuiteEnvironment */
 export interface SuiteEnvironment {
   id: string;
+  name: string;
   site: string;
   bindings: SuiteBinding[];
 }
 
-/** internal/suite.Exclusion */
-export interface SuiteExclusionDeclaration {
-  job: string;
+/** internal/desktop.SuiteExclusion */
+export interface SuiteExclusion {
+  test: string;
   state: string;
   reason: string;
-  expires: string;
+  until: string;
 }
 
-/** internal/suite.ExpandedJob */
-export interface SuiteExpandedJob {
-  id: string;
-  test: string;
-  row: string;
-  spec: string;
-  case: string;
-  target: string;
-  boundary: string;
-  observation?: string;
-  isolation: string;
-  after: string[];
-  sequence: string[];
-  release?: string;
+/** internal/desktop.SuiteExportRequest */
+export interface SuiteExportRequest {
+  context: RequestContext;
+  suite: ItemRef;
+  environment?: string;
 }
 
-/** internal/suite.Expansion */
-export interface SuiteExpansion {
-  suite: SuiteExpansionSuite;
-  environment: SuiteEnvironment;
-  engine: string;
-  releases: SuiteReleasePin[];
-  jobs: SuiteExpandedJob[];
-  order: string;
-  sharing: string;
-}
-
-/** internal/suite.ExpansionSuite */
-export interface SuiteExpansionSuite {
-  id: string;
-  owner: string;
-  tags: string[];
-  parallelism: number;
-}
-
-/** internal/suite.ImpactReport */
-export interface SuiteImpactReport {
-  schema: string;
-  from: string;
-  to: string;
-  comparison: ExpectationComparison;
-  tests: SuiteReleaseImpact[];
-}
-
-/** internal/desktop.SuiteImpactRequest */
-export interface SuiteImpactRequest {
-  workspace: string;
-  suite: string;
-  releases: string;
-  from: string;
-  to: string;
-  show_values: boolean;
-}
-
-/** internal/desktop.SuiteImpactResult */
-export interface SuiteImpactResult {
+/** internal/desktop.SuiteExportResult */
+export interface SuiteExportResult {
   state: State;
   reason?: string;
-  impact?: SuiteImpactReport;
+  context: RequestContext;
+  output?: string;
 }
 
-/** internal/suite.JobCoverage */
+/** internal/desktop.SuiteHistoryResult */
+export interface SuiteHistoryResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  versions: SuiteVersion[];
+  runs: SuiteRunRow[];
+  results: SuiteTestResult[];
+}
+
+/** internal/desktop.SuiteJobCoverage */
 export interface SuiteJobCoverage {
-  id: string;
+  test: string;
+  row: string;
   execution: string;
-  reason: string;
-  expiry: string;
-  exclusion: string;
-  exclusion_reason: string;
-  expires: string;
+  reason?: string;
+  exclusion?: string;
   expired: boolean;
+  stability: string;
   eligible: boolean;
-  stability: RunCompareStability;
 }
 
 /** internal/desktop.SuiteJobView */
@@ -8626,128 +8585,29 @@ export interface SuitePreflight {
   targets: RunTargetView[];
 }
 
-/** internal/desktop.SuitePrepareRequest */
-export interface SuitePrepareRequest {
-  workspace: string;
-  entry: string;
-  environment: string;
-  releases: string;
-  output: string;
-}
-
-/** internal/desktop.SuitePreparedResult */
-export interface SuitePreparedResult {
-  state: State;
-  reason?: string;
-  directory?: string;
-  queue?: RunQueuePlan;
-}
-
-/** internal/desktop.SuitePreviewRequest */
-export interface SuitePreviewRequest {
-  workspace: string;
-  document: string;
-  entry: string;
-  environment: string;
-  releases: string;
-}
-
-/** internal/desktop.SuitePreviewResult */
-export interface SuitePreviewResult {
-  state: State;
-  reason?: string;
-  expansion?: SuiteExpansion;
-}
-
-/** internal/desktop.SuitePromotionApproveRequest */
-export interface SuitePromotionApproveRequest {
-  workspace: string;
-  entry: string;
-  environment: string;
-  releases: string;
-  revision: string;
-  reviewed: string;
-  approver: string;
-  rationale: string;
-  output: string;
-}
-
-/** internal/desktop.SuitePromotionRequest */
-export interface SuitePromotionRequest {
-  workspace: string;
-  entry: string;
-  environment: string;
-  releases: string;
-  revision: string;
-}
-
-/** internal/desktop.SuitePromotionResult */
-export interface SuitePromotionResult {
-  state: State;
-  reason?: string;
-  review?: SuitePromotionReview;
-  identity?: string;
-  output?: string;
-}
-
-/** internal/suite.PromotionReview */
-export interface SuitePromotionReview {
-  schema: string;
-  identity: string;
-  suite_sha256: string;
-  releases_sha256: string;
-  environment: string;
-  revision_assumption: string;
-  jobs: SuiteCoverageSpecification[];
-}
-
-/** internal/suite.ReleaseImpact */
-export interface SuiteReleaseImpact {
-  test: string;
-  rows: number;
-  pinned: string;
-  state: string;
-}
-
-/** internal/suite.ReleasePin */
-export interface SuiteReleasePin {
-  test: string;
-  identity: string;
-}
-
-/** internal/suite.ReleaseReference */
-export interface SuiteReleaseReference {
-  test: string;
-  release: string;
-  identity: string;
-}
-
-/** internal/suite.ReleaseReferences */
-export interface SuiteReleaseReferences {
-  schema: string;
-  tests: SuiteReleaseReference[];
-}
-
-/** internal/desktop.SuiteReleasesResult */
-export interface SuiteReleasesResult {
-  state: State;
-  reason?: string;
-  document?: string;
-  output?: string;
-  references?: SuiteReleaseReferences;
-}
-
-/** internal/suite.Requirement */
+/** internal/desktop.SuiteRequirement */
 export interface SuiteRequirement {
   id: string;
-  jobs: string[];
+  name: string;
+  tests: string[];
 }
 
-/** internal/suite.RequirementCoverage */
-export interface SuiteRequirementCoverage {
+/** internal/desktop.SuiteRequirementResult */
+export interface SuiteRequirementResult {
   id: string;
-  jobs: string[];
   state: string;
+}
+
+/** internal/desktop.SuiteResult */
+export type SuiteResult = "passed" | "failed" | "error" | "skipped" | "uncertain" | "unknown";
+
+/** internal/desktop.SuiteReviewersResult */
+export interface SuiteReviewersResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  signed_in?: string;
+  reviewers: string[];
 }
 
 /** internal/desktop.SuiteRole */
@@ -8758,13 +8618,6 @@ export type SuiteRole =
   | "suite-releases"
   | "suite-coverage"
   | "suite-promotion";
-
-/** internal/suite.Row */
-export interface SuiteRow {
-  id: string;
-  case: string;
-  expected?: Record<string, TestRunnerValue>;
-}
 
 /** internal/desktop.suiteRunJob */
 export interface SuiteRunJob {
@@ -8790,6 +8643,7 @@ export interface SuiteRunReport {
 export interface SuiteRunRequest {
   workspace: string;
   suite: string;
+  item?: SuiteRunTarget;
   environment: string;
   references?: string;
   output: string;
@@ -8804,32 +8658,98 @@ export interface SuiteRunResult {
   report?: SuiteRunReport;
 }
 
+/** internal/desktop.SuiteRunRow */
+export interface SuiteRunRow {
+  run: ItemRef;
+  revision?: string;
+  environment?: string;
+  started_at: string | null;
+  outcome?: string;
+}
+
+/** internal/desktop.SuiteRunTarget */
+export interface SuiteRunTarget {
+  context: RequestContext;
+  suite: ItemRef;
+}
+
 /** internal/desktop.SuiteSummary */
 export interface SuiteSummary {
   tests: number;
+  entry?: string;
+  runnable: boolean;
   environments: string[];
   latest_run: ItemRef | null;
   latest_run_at?: string;
   latest_outcome?: string;
 }
 
-/** internal/suite.Table */
-export interface SuiteTable {
-  id: string;
-  rows: SuiteRow[];
+/** internal/desktop.SuiteTestChange */
+export interface SuiteTestChange {
+  test: ItemRef;
+  name: string;
+  from?: string;
+  to?: string;
+  checks: SuiteCheckChange[];
+  messages: TestMessage[];
+  changes: TestChange[];
 }
 
-/** internal/suite.Test */
-export interface SuiteTest {
+/** internal/desktop.SuiteTestDraft */
+export interface SuiteTestDraft {
   id: string;
-  spec: string;
-  owner: string;
-  tags: string[];
+  test: ItemRef;
+  source?: string;
+  dataset: string;
   parameter: string;
-  table: string;
+  after: string[];
   isolation: RunQueueIsolation;
   sequence: string[];
-  after?: string[];
+  owner?: string;
+  tags: string[];
+}
+
+/** internal/desktop.SuiteTestResult */
+export interface SuiteTestResult {
+  test: string;
+  result: SuiteResult;
+  run: ItemRef;
+}
+
+/** internal/desktop.SuiteTestVersion */
+export interface SuiteTestVersion {
+  ref: ItemRef;
+  name: string;
+  version?: string;
+  checks: TestExpectation[];
+  messages: TestMessage[];
+  sequence: string[];
+  ledger: boolean;
+  reason?: string;
+}
+
+/** internal/desktop.SuiteTestsRequest */
+export interface SuiteTestsRequest {
+  context: RequestContext;
+  tests: ItemRef[];
+}
+
+/** internal/desktop.SuiteTestsResult */
+export interface SuiteTestsResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  tests: SuiteTestVersion[];
+}
+
+/** internal/desktop.SuiteVersion */
+export interface SuiteVersion {
+  revision?: string;
+  original: boolean;
+  published_at: string | null;
+  author?: string;
+  current: boolean;
+  approvals: SuiteApproval[];
 }
 
 /** internal/desktop.Support */
@@ -9813,12 +9733,9 @@ export interface Facade {
   AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   AnalyzeCase(request: AnalyzeRequest): Promise<FindingsResult>;
   ApplyLibraryDocument(request: LibraryDocumentRequest): Promise<ItemDraftResult>;
-  ApproveBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
-  ApproveSuitePromotion(request: SuitePromotionApproveRequest): Promise<SuitePromotionResult>;
   ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
   AssemblePacket(request: PacketRequest): Promise<PacketResult>;
-  AssessSuiteCoverage(request: SuiteCoverageAssessRequest): Promise<SuiteCoverageResult>;
   AuthorTest(request: TestRequest): Promise<TestResult>;
   BackupLocation(): Promise<ProjectLocationResult>;
   BackupProject(request: StorageBackupRequest): Promise<StorageBackupResult>;
@@ -9867,6 +9784,7 @@ export interface Facade {
   CompareProfileVersions(request: ProfileVersionsRequest): Promise<ProfileComparisonResult>;
   CompareReproducers(request: ReproducerComparisonRequest): Promise<ReproducerComparisonResult>;
   CompareRuns(request: RunComparisonRequest): Promise<RunComparisonResult>;
+  CompareSuiteVersions(request: SuiteCompareRequest): Promise<SuiteComparison>;
   CompleteHubAuth(code: string, state: string): Promise<HubResult>;
   ConnectHub(): Promise<HubResult>;
   ConnectOperatorHub(): Promise<HubResult>;
@@ -9898,7 +9816,6 @@ export interface Facade {
   EvaluateSendPolicy(request: SendPolicyEvalRequest): Promise<SendPolicyEvalResult>;
   ExecuteReviewedAction(request: ExecuteActionRequest): Promise<ReviewedActionResult>;
   ExecuteRunnerJob(request: RunnerExecuteRequest): Promise<RunnerExecutionResult>;
-  ExpectationImpact(request: SuiteImpactRequest): Promise<SuiteImpactResult>;
   ExplainHubCustody(): Promise<HubResult>;
   ExplainObservation(request: ObservationExplainRequest): Promise<ObservationCompletionResult>;
   ExplainRun(request: RunExplanationRequest): Promise<RunExplanationResult>;
@@ -9909,6 +9826,8 @@ export interface Facade {
   ExportLicenseDocument(): Promise<LicenseExportResult>;
   ExportPacketReview(request: PacketExportRequest): Promise<PacketExportResult>;
   ExportProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionExportResult>;
+  ExportSuiteItem(request: SuiteExportRequest): Promise<SuiteExportResult>;
+  ExportSuiteRunConfiguration(request: SuiteExportRequest): Promise<SuiteExportResult>;
   ExportTest(request: CanonicalTestRequest): Promise<CanonicalTestResult>;
   ExportTestItem(request: ItemRequest): Promise<ExportTestResult>;
   Filters(): Promise<FiltersResult>;
@@ -9925,6 +9844,7 @@ export interface Facade {
   ImportAnalysisSettings(request: RequestContext): Promise<ItemDraftResult>;
   ImportCase(request: ImportCaseRequest): Promise<ImportCaseResult>;
   ImportLibraryItem(request: LibraryImportRequest): Promise<ItemDraftResult>;
+  ImportSuiteItem(request: RequestContext): Promise<ItemDraftResult>;
   ImportTest(workspace: string, entry: string): Promise<CanonicalTestResult>;
   ImportTestDraft(request: RequestContext): Promise<ItemDraftResult>;
   InspectBackup(id: string): Promise<BackupResult>;
@@ -9968,7 +9888,6 @@ export interface Facade {
   ObservationFields(request: ObservationFieldsRequest): Promise<ObservationFieldsResult>;
   ObservationHistory(request: ItemRequest): Promise<ObservationHistoryResult>;
   ObservationSupport(): Promise<ObservationSupportResult>;
-  OpenBaseline(request: BaselineRequest): Promise<BaselineResult>;
   OpenCase(workspace: string, name: string): Promise<CaseResult>;
   OpenCaseFindings(request: FindingsRequest): Promise<FindingsResult>;
   OpenCorrelationReview(request: CorrelationReviewRequest): Promise<CorrelationReviewResult>;
@@ -9995,20 +9914,17 @@ export interface Facade {
   OpenSchedulePolicy(path: string): Promise<SchedulePreviewResult>;
   OpenSequence(request: SequenceRequest): Promise<SequenceResult>;
   OpenSimilarFindings(request: ItemRequest): Promise<SimilarResult>;
-  OpenSuite(workspace: string, entry: string): Promise<SuiteDocumentResult>;
   OpenSyntheticPacket(path: string): Promise<SyntheticPacketResult>;
   OpenTransformPlan(workspace: string, entry: string): Promise<TransformPlanResult>;
   OpenWorkspace(path: string): Promise<WorkspaceResult>;
   OperationStatus(): Promise<OperationResult>;
   PackProtectedPackage(request: ProtectionPackRequest): Promise<ProtectionPackageResult>;
   PostHubLifecycle(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
-  PostHubReleaseReview(request: HubReleaseReviewRequest): Promise<HubReviewsResult>;
   PostHubReview(request: HubReviewCommandRequest): Promise<HubReviewsResult>;
   PostHubSupportReview(request: HubSupportReviewRequest): Promise<HubReviewsResult>;
   PreflightRun(request: RunPreflightRequest): Promise<RunPreflightResult>;
   PrepareAction(request: PrepareActionRequest): Promise<ActionReviewResult>;
   PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
-  PrepareSuite(request: SuitePrepareRequest): Promise<SuitePreparedResult>;
   PrepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult>;
   PreviewFindingReview(request: DraftRequest): Promise<FindingReviewPreview>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
@@ -10021,7 +9937,6 @@ export interface Facade {
   PreviewRunnerConfig(request: RunnerConfigRequest): Promise<RunnerDocumentResult>;
   PreviewScenarioDraft(request: DraftRequest): Promise<ScenarioPlanPreviewResult>;
   PreviewSchedulePolicy(request: SchedulePolicyRequest): Promise<SchedulePreviewResult>;
-  PreviewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult>;
   PreviewSupportSummary(request: SupportRequest): Promise<SupportPreviewResult>;
   PreviewTransformation(request: TransformRequest): Promise<TransformResult>;
   ProbeImport(request: ImportProbeRequest): Promise<ImportProbeResult>;
@@ -10070,10 +9985,8 @@ export interface Facade {
   RevealBackup(id: string): Promise<RevealResult>;
   RevealIncomplete(folder: string): Promise<RevealResult>;
   RevealItem(request: ItemRequest): Promise<RevealResult>;
-  ReviewBaseline(request: BaselineRequest): Promise<BaselineResult>;
   ReviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult>;
   ReviewResetAction(request: ResetActionRequest): Promise<ResetActionResult>;
-  ReviewSuitePromotion(request: SuitePromotionRequest): Promise<SuitePromotionResult>;
   RotateProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
   RotateSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretsResult>;
   RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
@@ -10105,9 +10018,6 @@ export interface Facade {
   SaveSecretReference(request: SecretSaveRequest): Promise<SecretsResult>;
   SaveSendPolicy(request: SendPolicySaveRequest): Promise<SendPolicyResult>;
   SaveSharingPolicy(request: SupportPolicyRequest): Promise<SupportPolicyResult>;
-  SaveSuite(request: RuleDocumentSaveRequest): Promise<SuiteDocumentResult>;
-  SaveSuiteCoverage(request: SuiteCoverageSaveRequest): Promise<SuiteCoverageResult>;
-  SaveSuiteReleases(request: RuleDocumentSaveRequest): Promise<SuiteReleasesResult>;
   SaveTarget(request: TargetSaveRequest): Promise<TargetResult>;
   SaveTest(request: TestRequest): Promise<TestResult>;
   SaveTransformPlan(request: TransformPlanRequest): Promise<TransformPlanResult>;
@@ -10135,6 +10045,10 @@ export interface Facade {
   StartSuiteRun(request: SuiteRunRequest): Promise<SuiteRunResult>;
   StoreOperatorHubArtifact(): Promise<HubTransferResult>;
   SuggestExpectations(request: TestRequest): Promise<TestResult>;
+  SuiteCoverage(request: SuiteCoverageRequest): Promise<SuiteAssessment>;
+  SuiteHistory(request: ItemRequest): Promise<SuiteHistoryResult>;
+  SuiteReviewers(request: RequestContext): Promise<SuiteReviewersResult>;
+  SuiteTests(request: SuiteTestsRequest): Promise<SuiteTestsResult>;
   TestHistory(request: ItemRequest): Promise<TestHistoryResult>;
   TestRunChecks(request: TestRunChecksRequest): Promise<TestRunChecksResult>;
   TestSecretReference(workspace: string, secretsFile: string, name: string): Promise<SecretTestResult>;
@@ -10146,7 +10060,6 @@ export interface Facade {
   ValidateObservationPair(request: ObservationValidateRequest): Promise<ObservationValidateResult>;
   ValidateObservationSource(workspace: string, sourceFile: string): Promise<ObservationSourceResult>;
   ValidateObservationWindow(workspace: string, windowFile: string): Promise<ObservationWindowResult>;
-  ValidateSuite(canonical: string): Promise<SuiteDocumentResult>;
   ValidateTest(document: string): Promise<CanonicalTestResult>;
   VerifyCIGate(directory: string, identity: string): Promise<CIGateVerifyResult>;
   VerifyLicenseDocument(): Promise<LicenseVerifyResult>;

@@ -20,7 +20,6 @@ export const artifacts: Artifact[] = [
   { name: "reschedule-test.json", kind: "spec" },
   { name: "baseline-run", kind: "job" },
   { name: "fixed-run", kind: "result" },
-  ...f.suiteArtifacts(),
 ];
 
 export const unhandledMethods = new Set<string>();

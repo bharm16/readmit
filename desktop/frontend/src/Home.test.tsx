@@ -214,14 +214,21 @@ test("resuming a draft opens its project on the editor it belongs to, and sends 
   const { facade } = await renderApp({
     EditorDrafts: () => ({
       state: "completed",
-      drafts: [editorDraft("d1", "suite-editor", {}, { workspace: WORKSPACE_ROOT, case: "" })],
+      drafts: [
+        editorDraft(
+          "d1",
+          "suite-editor",
+          { schema: "readmit-suite-editor/v1", name: "Scheduling regression", suite: { tags: [], concurrency: 1, tests: [], datasets: [], environments: [], requirements: [], exclusions: [] } },
+          { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-suite-editor/v1" },
+        ),
+      ],
     }),
     OpenWorkspace: () => folderWithCase(),
   });
   await user.click(await page().findByRole("button", { name: "Review" }));
   await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Suite" }));
-  expect(await page().findByRole("heading", { level: 1, name: "Tests" })).toBeTruthy();
-  expect(page().getByRole("tab", { name: "Suites" }).getAttribute("aria-selected")).toBe("true");
+  expect(await page().findByRole("heading", { level: 1, name: "New suite" })).toBeTruthy();
+  expect(page().getByRole("tab", { name: "Tests" }).getAttribute("aria-selected")).toBe("true");
   expect(facade.callsTo("OpenWorkspace")[0]?.args).toEqual([WORKSPACE_ROOT]);
   expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
 });
@@ -436,33 +443,21 @@ test("each retained sheet draft resumes in its sheet with the draft and the unsa
 }, 15_000);
 
 test("a suite editor draft resumes on that editor's page; an earlier library editor's draft is offered only for Discard", async () => {
-  const suite = { schema: "readmit-suite/v1", id: "scheduling-regression", owner: "Integration desk", tags: [], parallelism: 1, environments: [], tables: [], tests: [] };
+  const suite = { tags: [], concurrency: 1, tests: [], datasets: [], environments: [], requirements: [], exclusions: [] };
   const scenario = '{"schema":"readmit-scenario/v1","name":"restored-reschedule-scenario"}';
-  const editors = [
-    {
-      draft: editorDraft(
-        "d3",
-        "suite-editor",
-        { schema: "readmit-suite-draft/v1", entry: "", document: JSON.stringify(suite), expected: {} },
-        { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-suite-draft/v1" },
-      ),
-      object: "Suite",
-      heading: "Tests",
-      tab: "Suites",
-      shown: "scheduling-regression",
-    },
-  ];
-  for (const { draft, object, heading, tab, shown, view } of editors as { draft: EditorDraft; object: string; heading: string; tab: string; shown: string; view?: string }[]) {
+  {
     cleanup();
     const user = userEvent.setup();
+    const draft = editorDraft("d3", "suite-editor", { schema: "readmit-suite-editor/v1", name: "Scheduling regression", suite }, { workspace: WORKSPACE_ROOT, case: "", content_schema: "readmit-suite-editor/v1" });
     const { facade } = await renderApp({ ...openingProject(), EditorDrafts: () => ({ state: "completed", drafts: [draft] }) });
     await user.click(await page().findByRole("button", { name: "Review" }));
-    await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: object }));
-    expect(await page().findByRole("heading", { level: 1, name: heading })).toBeTruthy();
-    expect(page().getByRole("tab", { name: tab }).getAttribute("aria-selected")).toBe("true");
-    if (view) await user.click(within(page().getByRole("navigation", { name: "Scenario authoring tabs" })).getByRole("button", { name: view }));
-    // The editor holds the draft itself, as it was left.
-    expect(await page().findByDisplayValue(shown)).toBeTruthy();
+    await user.click(within(screen.getByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Suite" }));
+    expect(await page().findByRole("heading", { level: 1, name: "New suite" })).toBeTruthy();
+    expect(page().getByRole("tab", { name: "Tests" }).getAttribute("aria-selected")).toBe("true");
+    // The editor holds the draft itself, as it was left, marked unsaved.
+    expect(page().getByText("Scheduling regression")).toBeTruthy();
+    expect(page().getByText("Unsaved")).toBeTruthy();
+    expect(facade.callsTo("SaveItem")).toHaveLength(0);
     expect(facade.callsTo("StartDurableRun")).toHaveLength(0);
   }
   // The Library's editors now open saved objects; an earlier scenario draft has no editor to return to.

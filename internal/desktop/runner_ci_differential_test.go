@@ -108,13 +108,10 @@ func TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI(t *testing.T)
 			if opened := app.OpenWorkspace(dir); opened.State != desktop.Completed {
 				t.Fatalf("open: %+v", opened)
 			}
-			// The window authors the suite through its structured editor seam
-			// and saves one canonical entry into the workspace.
+			// One canonical suite entry of the workspace, as a suite's version
+			// is exported.
 			canonical := `{"schema":"readmit-suite/v1","id":"nightly","owner":"interop","tags":["siu"],"parallelism":2,"environments":[{"id":"east","site":"hospital-a","bindings":[{"parameter":"interface","target":"east.json"}]}],"tables":[{"id":"patients","rows":[{"id":"one","case":"case-one"}]}],"tests":[{"id":"booking","spec":"booking.json","owner":"scheduling","tags":["smoke"],"parameter":"interface","table":"patients","isolation":"shared","sequence":["s0001-e000001"]}]}`
-			saved := app.SaveSuite(desktop.RuleDocumentSaveRequest{Workspace: dir, Document: canonical, Output: "suite.json"})
-			if saved.State != desktop.Completed {
-				t.Fatalf("save suite: %+v", saved)
-			}
+			writeDocument(t, dir, "suite.json", canonical)
 			// The window generates the CI handoff for the documented POSIX
 			// integration: the exact command, six provisioned variables.
 			operationPolicy := testlicense.New(t)
@@ -127,28 +124,21 @@ func TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI(t *testing.T)
 			if handoff.State != desktop.Completed {
 				t.Fatalf("handoff: %+v", handoff)
 			}
-			// The handoff must be coverable by a coverage declaration; the
-			// window authors one through the retained prepared inputs (#258),
+			// The handoff must be coverable by a coverage declaration, authored
+			// through the retained prepared inputs as a suite's coverage is,
 			// and the differential covers the gate the CI command enforces.
-			prepared := app.PrepareSuite(desktop.SuitePrepareRequest{Workspace: dir, Entry: "suite.json", Environment: "east", Output: "prepared"})
-			if prepared.State != desktop.Completed {
-				t.Fatalf("prepare: %+v", prepared)
+			if _, err := suite.Prepare(suite.Request{Path: filepath.Join(dir, "suite.json"), Environment: "east", Output: filepath.Join(dir, "prepared")}); err != nil {
+				t.Fatalf("prepare: %v", err)
 			}
 			bin := cliExecutable(t)
 			coverage := filepath.Join(dir, "coverage.json")
 			// The coverage declaration names one requirement over the whole
 			// expanded suite, authored from the retained prepared directory.
-			if declared := app.SaveSuiteCoverage(desktop.SuiteCoverageSaveRequest{
-				Workspace:    dir,
-				Prepared:     "prepared",
-				Requirements: []suite.Requirement{{ID: "regression", Jobs: []string{"booking-one"}}},
-				Output:       "coverage.json",
-			}); declared.State != desktop.Completed {
-				t.Fatalf("coverage: %+v", declared)
+			declared, err := suite.BuildCoverage(filepath.Join(dir, "prepared"), []suite.Requirement{{ID: "regression", Jobs: []string{"booking-one"}}}, nil)
+			if err != nil {
+				t.Fatalf("coverage: %v", err)
 			}
-			if _, err := os.Stat(coverage); err != nil {
-				t.Fatal(err)
-			}
+			writeDocument(t, dir, "coverage.json", string(declared))
 
 			runScript := func(runDir string) int {
 				t.Helper()

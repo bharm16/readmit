@@ -7,10 +7,7 @@
 // person's decision, made against the history they had loaded, is refused as
 // a conflict rather than silently ordered, and is recorded once they load the
 // current history and renew it. Both windows then read one history, each entry
-// under the identity the hub authenticated. A released test version is put to
-// the team the same way: the request names the released bytes, the hub
-// refuses the requester's own approval and that of a reviewer the request did
-// not name, and chains the requested reviewer's approval to it.
+// under the identity the hub authenticated.
 //
 // Publishing is refused before anything is sent until a license is activated,
 // and by the hub for a role that may not write; a stored copy that no longer
@@ -26,7 +23,7 @@ import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 import { byContent, enter, Journey, press, region } from "../testkit/journey";
 import type { Hub } from "../testkit/hub.js";
-import { activateLicense, releaseSavedTest, savedAckTest } from "./steps";
+import { activateLicense } from "./steps";
 
 let journey: Journey;
 
@@ -147,95 +144,6 @@ test(
     const seen = await reviewer.call("ListHubReviews", PROJECT);
     expect(seen.head).toBe(2);
     expect(seen.events?.map((event) => event.actor)).toEqual(["reviewer", "analyst"]);
-  },
-);
-
-/** The suites panel of the open workspace. */
-function suites() {
-  return within(region("Suites"));
-}
-
-test(
-  "a released test version is put to the team on the real hub: the request names its exact bytes, only the requested reviewer approves it",
-  async (context) => {
-    // A real hub needs a PostgreSQL installation to create its cluster from.
-    if (!Journey.hubAvailable) context.skip();
-    const user = userEvent.setup();
-    const hub = await journey.startHub(PROJECT, [
-      { subject: "analyst", role: "analyst" },
-      { subject: "reviewer", role: "reviewer" },
-      { subject: "auditor", role: "reviewer" },
-    ]);
-    await savedAckTest(user, journey, "fixed");
-    await openHub(user, hub);
-    await signIn(user, hub, "analyst");
-
-    // The saved test is released as an immutable version, reviewed locally.
-    await releaseSavedTest(user, {
-      id: "reschedule-accepted",
-      approver: "analyst",
-      rationale: "Reschedule acknowledgement expectation for release.",
-      output: "reschedule-release-1.json",
-    });
-
-    // The team review is requested through the hub session, naming the exact
-    // released bytes rather than a typed value.
-    await press(user, suites().getByRole("tab", { name: "Releases" }));
-    const releases = suites();
-    await releases.findAllByRole("option", { name: "reschedule-release-1.json" });
-    await user.selectOptions(releases.getByLabelText("Later release"), "reschedule-release-1.json");
-    await enter(user, releases.getByLabelText("Project"), PROJECT);
-    await enter(user, releases.getByLabelText("Reviewer"), "reviewer");
-    await enter(user, releases.getAllByLabelText("Command ID").at(-1)!, "release-review-1");
-    await enter(user, releases.getByLabelText("Rationale"), "Please review the released expectation.");
-    await press(user, releases.getByRole("button", { name: "Request review" }));
-    const releasedFile = "investigations/scheduling-investigation/reschedule-release-1.json";
-    const release = journey.digest(releasedFile);
-    expect((await releases.findByText(byContent(/^Recorded: review-request by analyst@/))).textContent).toBe(
-      `Recorded: review-request by analyst@https://idp.journey.test · release ${release.slice(0, 12)}…`,
-    );
-
-    // The analyst's own approval is refused by the hub: the role grants no
-    // approval, whatever the window offers.
-    await enter(user, releases.getAllByLabelText("Command ID").at(-1)!, "release-self-approval");
-    await press(user, releases.getByRole("button", { name: "Approve release" }));
-    expect(await releases.findByText("hub access refused; insufficient permissions or role revoked")).toBeTruthy();
-
-    // A reviewer the request did not name is refused, though their role
-    // grants approval; the requested reviewer approves the same released
-    // bytes, handed over to their own machine, from their own window.
-    const approve = async (subject: string, id: string) => {
-      const colleague = await colleagueSignedIn(hub, subject);
-      journey.writeFile(`colleagues/${subject}/received/reschedule-release-1.json`, journey.readFile(releasedFile));
-      return colleague.call("PostHubReleaseReview", {
-        project: PROJECT,
-        workspace: journey.path(`colleagues/${subject}/received`),
-        entry: "reschedule-release-1.json",
-        kind: "approval",
-        id,
-        recipient: "",
-        text: "Approved for the next suite.",
-      });
-    };
-    expect(await approve("auditor", "release-approval-unrequested")).toMatchObject({
-      state: "permission_denied",
-      reason: "hub access refused; insufficient permissions or role revoked",
-    });
-    expect(await approve("reviewer", "release-approval-1")).toMatchObject({
-      state: "completed",
-      events: [{ kind: "approval", actor: "reviewer", parent: "release-review-1", release }],
-    });
-
-    // The person's window reads the request and the one approval the hub
-    // chained to it, each under the identity the hub authenticated.
-    await press(user, hubPanel().getByRole("button", { name: "View artifacts" }));
-    const team = within(await screen.findByRole("region", { name: "Team collaboration" }));
-    await press(user, team.getByRole("button", { name: "Review history" }));
-    expect(await team.findByRole("heading", { name: "Review history (head 2)" })).toBeTruthy();
-    expect(team.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
-      `review-request by analyst@https://idp.journey.test · evidence ${release.slice(0, 12)}… · release ${release.slice(0, 12)}… — Please review the released expectation.`,
-      `approval by reviewer@https://idp.journey.test · evidence ${release.slice(0, 12)}… · release ${release.slice(0, 12)}… — Approved for the next suite.`,
-    ]);
   },
 );
 

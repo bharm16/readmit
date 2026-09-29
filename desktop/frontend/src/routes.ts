@@ -22,7 +22,9 @@ export type Destination =
 /** Destinations reached from inside another, each with its way back. */
 export type ChildDestination =
   | "library"
-  | "baselines"
+  | "suite"
+  | "edit-suite"
+  | "suite-review"
   | "run-test"
   | "compare-runs"
   | "share-report"
@@ -41,7 +43,9 @@ export type ChildDestination =
 
 export const CHILD_OF: Record<ChildDestination, Destination> = {
   library: "tests",
-  baselines: "tests",
+  suite: "tests",
+  "edit-suite": "tests",
+  "suite-review": "tests",
   "run-test": "runs",
   "compare-runs": "runs",
   "share-report": "reports",

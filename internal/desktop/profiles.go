@@ -64,7 +64,7 @@ var profiles = map[string]operationguard.Profile{
 	"ListHubNotifications":     {Name: hubRequestOperation},
 	"SearchHubNotifications":   {Name: hubRequestOperation},
 	"PostHubReview":            {Name: hubRequestOperation, Author: true},
-	"PostHubReleaseReview":     {Name: hubRequestOperation, Author: true},
+	"SuiteReviewers":           {Name: hubRequestOperation},
 	"PostHubSupportReview":     {Name: hubRequestOperation, Author: true},
 	"ListHubLifecycle":         {Name: hubRequestOperation},
 	"PostHubLifecycle":         {Name: hubRequestOperation, Author: true},
@@ -100,7 +100,7 @@ var profiles = map[string]operationguard.Profile{
 	"PublishSupportSummary":    {Name: supportOperation, Interruptible: true},
 	"VerifyCIGate":             {Name: ciGateVerifyOperation, Interruptible: true},
 	"CheckScenarioLibrary":     {Name: scenarioCheckOperation, Interruptible: true},
-	"AssessSuiteCoverage":      {Name: suiteCoverageOperation, Interruptible: true},
+	"SuiteCoverage":            {Name: suiteCoverageOperation, Interruptible: true},
 
 	// The Findings view's analysis and comparison, which write into the
 	// project only when an analysis is made or a comparison saved.

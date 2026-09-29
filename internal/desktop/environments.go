@@ -17,7 +17,6 @@ import (
 	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/sendpolicy"
-	"github.com/bharm16/readmit/internal/suite"
 	"github.com/bharm16/readmit/internal/testrunner"
 )
 
@@ -324,8 +323,9 @@ func (a *App) RemoveItem(request ItemRequest) RemoveItemResult {
 }
 
 // referrers are the project's objects that use one environment or
-// observation: a test or a suite binding any file of any revision it was
-// saved as, or the entry it was discovered at, and, for an observation, an
+// observation: a test or an original suite file binding any file of any
+// revision it was saved as, or the entry it was discovered at, a saved suite
+// binding it by name, and, for an observation, an
 // environment whose current links name it or whose reset checks it is
 // empty.
 func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
@@ -371,9 +371,16 @@ func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
 				uses = names(spec.Target, spec.Observation.Path)
 			}
 		case string(SuiteItem):
-			if data, err := boundedFile(paths[primaryRole(SuiteItem)], suite.MaxBytes); err == nil {
-				if document, err := suite.Decode(data); err == nil {
-					for _, environment := range document.Environments {
+			// A saved suite binds a named environment and observation by its
+			// identity; an original suite file binds their files.
+			if version, err := c.suiteVersion(other, ""); err == nil {
+				for _, environment := range version.draft.Environments {
+					for _, binding := range environment.Bindings {
+						uses = uses || binding.Target.ID == item.ID || binding.Observation != nil && binding.Observation.ID == item.ID
+					}
+				}
+				if version.original() {
+					for _, environment := range version.document.Environments {
 						for _, binding := range environment.Bindings {
 							uses = uses || names(binding.Target, binding.Observation)
 						}

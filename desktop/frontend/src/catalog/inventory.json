@@ -12,12 +12,6 @@
     "line": 3327
   },
   {
-    "name": "Baseline",
-    "source": "desktop/frontend/src/Baseline.tsx",
-    "exported": true,
-    "line": 11
-  },
-  {
     "name": "CommandPalette",
     "source": "desktop/frontend/src/CommandPalette.tsx",
     "exported": true,
@@ -454,36 +448,6 @@
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": true,
     "line": 1371
-  },
-  {
-    "name": "SuitePanel",
-    "source": "desktop/frontend/src/SuitePanel.tsx",
-    "exported": true,
-    "line": 164
-  },
-  {
-    "name": "ReleaseRead",
-    "source": "desktop/frontend/src/SuitePanel.tsx",
-    "exported": false,
-    "line": 1543
-  },
-  {
-    "name": "SuiteEditor",
-    "source": "desktop/frontend/src/SuitePanel.tsx",
-    "exported": false,
-    "line": 1576
-  },
-  {
-    "name": "ExpansionView",
-    "source": "desktop/frontend/src/SuitePanel.tsx",
-    "exported": false,
-    "line": 1958
-  },
-  {
-    "name": "CoverageView",
-    "source": "desktop/frontend/src/SuitePanel.tsx",
-    "exported": false,
-    "line": 2022
   },
   {
     "name": "SyntheticPackets",

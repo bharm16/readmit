@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
-	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/hubclient"
 	"github.com/bharm16/readmit/internal/hubprotocol"
 	"github.com/bharm16/readmit/internal/operation"
@@ -237,77 +236,6 @@ func (a *App) PostHubReview(request HubReviewCommandRequest) HubReviewsResult {
 			ID:     request.ID, Expected: request.Expected, Kind: request.Kind,
 			Evidence: request.Evidence, Parent: request.Parent, Recipient: request.Recipient,
 			Text: request.Text, Release: request.Release,
-		})
-		if err != nil {
-			return mapReviewError(request.Project, err)
-		}
-		return reviewWriteResult(request.Project, event, replay)
-	})
-}
-
-// HubReleaseReviewRequest drives the expectation-release review journey from
-// the suite panel's release surface: one workspace entry holding a released
-// expectation, posted either as a review request or as the approval of the
-// outstanding request that names the same release content. The command id is
-// the only typed field; the release digest is derived from the entry's exact
-// bytes, so the decision is content-bound by construction.
-type HubReleaseReviewRequest struct {
-	Project   string `json:"project"`
-	Workspace string `json:"workspace"`
-	Entry     string `json:"entry"`
-	Kind      string `json:"kind"`
-	ID        string `json:"id"`
-	Recipient string `json:"recipient"`
-	Text      string `json:"text"`
-}
-
-// PostHubReleaseReview posts the released expectation named by one workspace
-// entry as a hub review-request, or approves the outstanding review-request
-// naming the same release content. The entry's exact bytes are verified as a
-// released expectation before anything is sent, the upload and the command
-// name the digest of those bytes, and identity comes from the authenticated
-// session — the panel's local approver label never substitutes for it. The
-// hub stays the authority: it re-reads the release and enforces the request
-// and approval chain, so a stale head or changed grant fails there.
-func (a *App) PostHubReleaseReview(request HubReleaseReviewRequest) HubReviewsResult {
-	return runNamed[HubReviewsResult, *HubReviewsResult](a, profiles["PostHubReleaseReview"], func(ctx context.Context) HubReviewsResult {
-		if request.Kind != "review-request" && request.Kind != "approval" {
-			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: hubclient.ErrReleaseReviewKind.Error()}
-		}
-		if strings.TrimSpace(request.ID) == "" {
-			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: "name the review command id the hub records"}
-		}
-		if strings.TrimSpace(request.Text) == "" {
-			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: "the review command carries the rationale the team reads"}
-		}
-		if request.Kind == "review-request" && strings.TrimSpace(request.Recipient) == "" {
-			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: "a review request names the subject it asks to review"}
-		}
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return HubReviewsResult{State: declined.state, Project: request.Project, Reason: declined.reason}
-		}
-		data, declined := workspaceDocument(root, request.Entry, expectation.MaxBytes, "the released expectation")
-		if data == nil {
-			return HubReviewsResult{State: declined.state, Project: request.Project, Reason: declined.reason}
-		}
-		if _, err := expectation.Decode(data); err != nil {
-			return HubReviewsResult{State: Failed, Project: request.Project,
-				Reason: "the entry is not a released expectation the hub can verify: " + err.Error()}
-		}
-		sum := sha256.Sum256(data)
-		client, errRes := a.requireHubSession()
-		if errRes != nil {
-			return *errRes
-		}
-		event, replay, err := client.PostReleaseReview(ctx, hubclient.ReleaseReview{
-			Project: request.Project, ID: request.ID, Kind: request.Kind,
-			Release: hex.EncodeToString(sum[:]), Path: filepath.Join(root, request.Entry),
-			Recipient: request.Recipient, Text: request.Text,
 		})
 		if err != nil {
 			return mapReviewError(request.Project, err)

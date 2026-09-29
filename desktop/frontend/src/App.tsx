@@ -6,14 +6,13 @@ import { useEncryption } from "./Encryption";
 import { HubPanel } from "./HubPanel";
 import { RunnerPanel } from "./RunnerPanel";
 import { RunComparison } from "./RunComparison";
-import { Baseline } from "./Baseline";
 import { RunPanel } from "./RunPanel";
 import { RunExplanation } from "./RunExplanation";
 import { ReplayPanel } from "./ReplayPanel";
 import { PacketPanel } from "./PacketPanel";
 import { PrivacyPanel } from "./PrivacyPanel";
 import { ProtectionPanel } from "./ProtectionPanel";
-import { SuitePanel, type SuiteRunHandoff } from "./SuitePanel";
+import { SUITE_EDITOR_DRAFT, SUITE_VIEWS, useSuites, type SuiteRunHandoff, type SuitesPlace, type SuiteView } from "./Suites";
 import { environmentPlace, useEnvironments } from "./Environments";
 import { Reduction, type ReductionForm } from "./Reduction";
 import { onRetentionResult, savedId } from "./drafting";
@@ -332,11 +331,11 @@ export default function App() {
   const [runEnvironment, setRunEnvironment] = useState<string | undefined>(undefined);
   // Counts each saved test's Run, which the run view preflights on arrival.
   const [runArrival, setRunArrival] = useState(0);
-  // The suite handoff the run view was last seeded from, with the folder it
-  // names: shown beside the run view so the person sees which prepared
-  // result and release pins they came from, and that the run view applies
-  // neither.
+  // The saved suite version and environment Run handed the run view, which
+  // preflights it and asks its own Send.
   const [suiteHandoff, setSuiteHandoff] = useState<{ workspace: string; handoff: SuiteRunHandoff } | null>(null);
+  // What Schedule or Set up CI on a suite opens Runners with.
+  const [runnerSeed, setRunnerSeed] = useState<{ tab: "schedules" | "ci"; suite: string; environment: string; count: number } | null>(null);
   const [comparisonResult, setComparisonResult] = useState<CompareResult | null>(null);
   const [revisionResult, setRevisionResult] = useState<ReproducerComparisonResult | null>(null);
   // The build the reproducer panel last handed to the revision comparison.
@@ -487,6 +486,7 @@ export default function App() {
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   // A retained test editor draft the Tests editor reopens.
   const [restoringTest, setRestoringTest] = useState<EditorDraft | null>(null);
+  const [restoringSuite, setRestoringSuite] = useState<EditorDraft | null>(null);
   const [searching, setSearching] = useState(false);
   const regionElements = useRef<Partial<Record<RegionId, HTMLElement | null>>>({});
   const searchField = useRef<HTMLInputElement | null>(null);
@@ -909,17 +909,14 @@ export default function App() {
     [guideResult, refreshGuide, root, run],
   );
 
-  // A suite the suite panel prepared for execution is handed to the durable-run
-  // panel by seeding its selection with the suite entry and the environment
-  // it was prepared against, so the execution center's own preflight and
-  // explicit send decision take over without a path being copied by hand. The
-  // prepared folder and release pins are only named beside it: the run
-  // preflight takes neither.
+  // Run on a suite hands one exact saved version and the environment chosen
+  // to the run view, which preflights it at once and asks its own Send.
   const handoff = useCallback(
     (selection: SuiteRunHandoff) => {
-      setRunSpecPath(selection.entry);
+      setRunSpecPath(undefined);
       setRunEnvironment(selection.environment);
       if (root) setSuiteHandoff({ workspace: root, handoff: selection });
+      setRunArrival((count) => count + 1);
       routeTo({ type: "go", to: { destination: "run-test" }, leaving: leaving() });
       focusRegion("evidence");
     },
@@ -975,6 +972,11 @@ export default function App() {
       if (draft.kind === "test-draft" && draft.content_schema === TEST_EDITOR_DRAFT) {
         setResumeNotice(null);
         setRestoringTest(draft);
+        return;
+      }
+      if (draft.kind === "suite-editor" && draft.content_schema === SUITE_EDITOR_DRAFT) {
+        setResumeNotice(null);
+        setRestoringSuite(draft);
         return;
       }
       const place = DRAFT_PLACES[draft.kind];
@@ -1755,7 +1757,7 @@ export default function App() {
       setRestoringTest(null);
       if (reason) setResumeNotice(reason);
     },
-    shown: sidebarOf(place) === "tests" && place !== "library" && place !== "baselines",
+    shown: place === "tests" || place === "new-test" || place === "edit-test",
     place: testsPlace,
     go: (to) => {
       switch (to.kind) {
@@ -1784,6 +1786,58 @@ export default function App() {
       open({ destination: "run-test" });
     },
     onLibrary: () => open({ destination: "library" }),
+  });
+
+  // Suites: the Suites tab of Tests, a saved suite, its editor and the review
+  // of two versions, each its own place with Back to where it was opened.
+  const suiteView = (view: string | undefined): SuiteView => (SUITE_VIEWS.some((entry) => entry.key === view) ? (view as SuiteView) : "tests");
+  const suitesPlace: SuitesPlace =
+    place === "suite" && route.objectId
+      ? { kind: "suite", id: route.objectId, view: suiteView(route.view) }
+      : place === "edit-suite"
+        ? { kind: "edit", id: route.objectId ?? "", view: suiteView(route.view) }
+        : place === "suite-review" && route.objectId
+          ? { kind: "review", id: route.objectId, from: (route.view ?? "").split("..")[0] ?? "", to: (route.view ?? "").split("..")[1] ?? "" }
+          : { kind: "list" };
+  const suites = useSuites({
+    root,
+    shown: (place === "tests" && testsView === "suites") || place === "suite" || place === "edit-suite" || place === "suite-review",
+    place: suitesPlace,
+    go: (to) => {
+      switch (to.kind) {
+        case "list":
+          open({ destination: "tests", view: "suites" });
+          return;
+        case "edit":
+          if (place === "edit-suite" && (route.objectId ?? "") === to.id) routeTo({ type: "view", view: to.view });
+          else open({ destination: "edit-suite", ...(to.id ? { objectId: to.id } : {}), view: to.view });
+          return;
+        case "review":
+          open({ destination: "suite-review", objectId: to.id, view: `${to.from}..${to.to}` });
+          return;
+        case "suite":
+          if (place === "edit-suite") routeTo({ type: "replace", to: { destination: "suite", objectId: to.id, view: to.view } });
+          else if (place === "suite" && route.objectId === to.id) routeTo({ type: "view", view: to.view });
+          else open({ destination: "suite", objectId: to.id, view: to.view });
+      }
+    },
+    back,
+    busy,
+    onRun: handoff,
+    onLibrary: () => open({ destination: "library" }),
+    onSchedule: (entry) => {
+      setRunnerSeed((held) => ({ tab: "schedules", suite: entry, environment: "", count: (held?.count ?? 0) + 1 }));
+      open({ destination: "settings", view: "runners" });
+    },
+    onSetUpCI: (entry, environment) => {
+      setRunnerSeed((held) => ({ tab: "ci", suite: entry, environment, count: (held?.count ?? 0) + 1 }));
+      open({ destination: "settings", view: "runners" });
+    },
+    restoreDraft: restoringSuite,
+    onRestored: (reason) => {
+      setRestoringSuite(null);
+      if (reason) setResumeNotice(reason);
+    },
   });
 
   /** Create test: the case open now and its chosen messages (all of them
@@ -2752,24 +2806,21 @@ export default function App() {
         <Page
           id="tests"
           shown={place === "tests"}
-          title={tests.title}
+          title={testsPlace.kind === "list" && testsView === "suites" ? suites.title : tests.title}
           details={"details" in tests ? tests.details : undefined}
           back={tests.back}
           actions={
-            root ? (
+            !root ? null : testsPlace.kind === "list" && testsView === "suites" ? (
+              <>
+                {suites.actions}
+                <Menu label="Suite page actions" items={[{ label: "Import suite", onSelect: () => void suites.importSuite() }]} />
+              </>
+            ) : (
               <>
                 {tests.actions}
-                {testsPlace.kind === "list" ? (
-                  <Menu
-                    label="Test page actions"
-                    items={[
-                      { label: "Import test", onSelect: () => void tests.importTest() },
-                      { label: "Baselines", onSelect: () => open({ destination: "baselines" }) },
-                    ]}
-                  />
-                ) : null}
+                {testsPlace.kind === "list" ? <Menu label="Test page actions" items={[{ label: "Import test", onSelect: () => void tests.importTest() }]} /> : null}
               </>
-            ) : null
+            )
           }
         >
           {!root ? (
@@ -2783,15 +2834,8 @@ export default function App() {
                 {testsPlace.kind === "list" ? tests.body : null}
               </TaskPanel>
               <TaskPanel tabs="tests-views" tab="suites" className="task-panel view-panel" shown={testsView === "suites"}>
-                <SuitePanel
-                  key={"suite-" + root}
-                  workspace={root}
-                  busy={busy}
-                  entries={artifacts}
-                  drafts={drafts}
-                  onExecute={handoff}
-                  onSaved={() => void refreshListing()}
-                />
+                <div className="toolbar list-toolbar">{suites.toolbar}</div>
+                {suitesPlace.kind === "list" ? suites.body : null}
               </TaskPanel>
             </TaskTabs>
           )}
@@ -2856,8 +2900,23 @@ export default function App() {
           )}
         </Page>
 
-        <Page id="baselines" shown={place === "baselines"} title="Baselines" back={<BackLink label="Tests" onBack={back} />}>
-          {root ? <Baseline key={root} workspace={root} busy={busy} onSaved={() => void refreshListing()} /> : noProject("baselines")}
+        <Page
+          id="suite"
+          shown={place === "suite"}
+          title={suites.title}
+          details={"details" in suites ? suites.details : undefined}
+          back={suites.back}
+          actions={root ? suites.actions : null}
+        >
+          {root && place === "suite" ? suites.body : null}
+        </Page>
+
+        <Page id="edit-suite" shown={place === "edit-suite"} title={suites.title} back={suites.back} actions={root ? suites.actions : null}>
+          {root && place === "edit-suite" ? suites.body : null}
+        </Page>
+
+        <Page id="suite-review" shown={place === "suite-review"} title={suites.title} back={suites.back} actions={root ? suites.actions : null}>
+          {root && place === "suite-review" ? suites.body : null}
         </Page>
 
         <Page
@@ -2883,7 +2942,6 @@ export default function App() {
         <Page id="run-test" shown={place === "run-test"} title="Run test" back={<BackLink label="Runs" onBack={back} />}>
           {root ? (
             <>
-              {suiteHandoff && suiteHandoff.workspace === root ? <SuiteHandoffNotice handoff={suiteHandoff.handoff} /> : null}
               <RunPanel
                 workspace={root}
                 entries={artifacts}
@@ -2897,6 +2955,7 @@ export default function App() {
                 {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
                 preflightOnArrival={runArrival}
                 {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
+                suiteItem={suiteHandoff && suiteHandoff.workspace === root ? suiteHandoff.handoff : null}
               />
             </>
           ) : (
@@ -3176,7 +3235,7 @@ export default function App() {
               />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="runners" className="task-panel view-panel" shown={settingsView === "runners"}>
-              <RunnerPanel request={setupRequests.runner} configPath={runnerPath} onHandled={setupHandled("runner")} onConfigured={configured("runner", "runner:config")} />
+              <RunnerPanel request={setupRequests.runner} configPath={runnerPath} onHandled={setupHandled("runner")} onConfigured={configured("runner", "runner:config")} seed={runnerSeed} />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="security" className="task-panel view-panel" shown={settingsView === "security"}>
               {place === "settings" && settingsView === "security" ? (
@@ -3747,26 +3806,6 @@ export default function App() {
   );
 }
 
-/** What Go to runs handed over from the suite panel, beside the run view it
- * seeded. The run view selects the suite entry and environment and preflights
- * them itself; its preflight takes no release pins and does not read the
- * prepared folder, so the notice names them only as what the person saw and
- * says so, rather than implying they apply to the run. */
-function SuiteHandoffNotice({ handoff }: { handoff: SuiteRunHandoff }) {
-  return (
-    <p className="hint" role="note" aria-label="Suite handoff">
-      Handed over from Suites: {handoff.entry} prepared against environment {handoff.environment} into prepared folder{" "}
-      {handoff.prepared}
-      {handoff.releases ? ` with release pins ${handoff.releases}` : " with no release pins"}. The run view selected{" "}
-      {handoff.entry} and environment {handoff.environment} and preflights them again.{" "}
-      {handoff.releases
-        ? "It does not apply these release pins or read the prepared folder."
-        : "It does not read the prepared folder."}
-    </p>
-  );
-}
-
-
 /** The recent projects the switcher offers besides the open one, at most
  * five, by the names their projects record. */
 function recentProjects(projects: CatalogItem[], open: string): { key: string; name: string }[] {
@@ -3784,7 +3823,6 @@ function caseEntry(item: CatalogItem): string | undefined {
 
 /** Where each kind of retained draft is continued. */
 const DRAFT_PLACES: Record<string, { route?: Route; case?: CaseFlow; import?: true; observe?: true }> = {
-  "suite-editor": { route: { destination: "tests", view: "suites" } },
   "redact-policy": { route: { destination: "share-report" } },
   "redact-inventory": { route: { destination: "share-report" } },
   "reproducer-plan": { case: "reproduce" },
@@ -3804,6 +3842,7 @@ function resumable(draft: EditorDraft): boolean {
   // A test draft reopens only in the editor that wrote it; an earlier
   // release's test drafts are offered for Discard.
   if (draft.kind === "test-draft") return draft.content_schema === TEST_EDITOR_DRAFT;
+  if (draft.kind === "suite-editor") return draft.content_schema === SUITE_EDITOR_DRAFT;
   return draft.kind in DRAFT_PLACES;
 }
 

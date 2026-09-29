@@ -20,15 +20,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bharm16/readmit/internal/baseline"
 	"github.com/bharm16/readmit/internal/bundle"
 	"github.com/bharm16/readmit/internal/correlate"
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hl7"
-	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/reduce"
-	"github.com/bharm16/readmit/internal/suite"
 	"github.com/bharm16/readmit/internal/testauthor"
 	"github.com/bharm16/readmit/internal/testrunner"
 	"github.com/bharm16/readmit/internal/transform"
@@ -283,199 +281,10 @@ func TestAReductionRefusesALinkToItsCorrelationRules(t *testing.T) {
 	})
 }
 
-// Every suite document, release references document, prepared suite and
-// coverage document the suite panels read; every specification, baseline,
-// release and profile a baseline or a release is reviewed, approved or opened
-// from; and the saved test and assertion set a person imports into an editor.
-func TestSuiteBaselineAndImportReadersRefuseALinkToAnEntryOfTheirKind(t *testing.T) {
-	app, root := releaseWorkspace(t)
-	raw := []byte(read(t, filepath.Join(root, "booking.json")))
-	first, err := expectation.Read(filepath.Join(root, "release-1.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	changed := []byte(replaceOnce(t, string(raw), `"AA"`, `"AE"`))
-	commitment, err := expectation.Review("booking", changed, []profileversion.Version{}, &first, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := expectation.Approve("booking", changed, []profileversion.Version{}, &first, commitment.Identity, "reviewer", "changed")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = expectation.Save(filepath.Join(root, "release-2.json"), second); err != nil {
-		t.Fatal(err)
-	}
-	for _, output := range []string{"earlier", "prepared"} {
-		if prepared := app.PrepareSuite(desktop.SuitePrepareRequest{Workspace: root, Entry: "suite.json", Environment: "east", Output: output}); prepared.State != desktop.Completed {
-			t.Fatalf("a prepared suite: %+v", prepared)
-		}
-	}
-	if authored := app.SaveSuiteCoverage(desktop.SuiteCoverageSaveRequest{Workspace: root, Prepared: "prepared",
-		Requirements: []suite.Requirement{{ID: "accept-booking", Jobs: []string{"booking-one"}}}, Output: "coverage.json"}); authored.State != desktop.Completed {
-		t.Fatalf("a coverage document: %+v", authored)
-	}
-	promotion := func(entry, releases string) desktop.SuitePromotionRequest {
-		return desktop.SuitePromotionRequest{Workspace: root, Entry: entry, Environment: "east", Releases: releases, Revision: "fixture-build-7"}
-	}
-	reviewed := app.ReviewSuitePromotion(promotion("suite.json", "releases.json"))
-	if reviewed.State != desktop.Completed || reviewed.Review == nil {
-		t.Fatalf("a promotion review: %+v", reviewed)
-	}
-	approve := func(entry, releases, output string) refused {
-		review := promotion(entry, releases)
-		result := app.ApproveSuitePromotion(desktop.SuitePromotionApproveRequest{Workspace: root, Entry: review.Entry, Environment: review.Environment,
-			Releases: review.Releases, Revision: review.Revision, Reviewed: reviewed.Review.Identity(), Approver: "Local reviewer", Rationale: "reviewed", Output: output})
-		return refused{result.State, result.Reason}
-	}
-	writeDocument(t, root, "profile.json", fixture(t, "local-profile.json"))
-	// A baseline and a release each reviewed, and approved once, so that
-	// approving again and reviewing against the previous one are real.
-	baseline := func(request desktop.BaselineRequest) desktop.BaselineRequest {
-		request.Workspace, request.Approver, request.Rationale = root, "reviewer", "fixture"
-		if request.Release {
-			request.ReleaseID = "booking"
-		}
-		if review := app.ReviewBaseline(request); review.State == desktop.Completed {
-			request.Review = review.Comparison.Identity
-		}
-		return request
-	}
-	for _, request := range []desktop.BaselineRequest{
-		{Spec: "booking.json", Output: "baseline.json"},
-		{Spec: "booking.json", Release: true, Profiles: []string{"profile.json"}, Output: "release-3.json"},
-	} {
-		if approved := app.ApproveBaseline(baseline(request)); approved.State != desktop.Completed {
-			t.Fatalf("an approved baseline: %+v", approved)
-		}
-	}
-	reviewBaseline := func(request desktop.BaselineRequest) refused {
-		result := app.ReviewBaseline(baseline(request))
-		return refused{result.State, result.Reason}
-	}
-	approveBaseline := func(request desktop.BaselineRequest, entry string, set func(*desktop.BaselineRequest, string)) refused {
-		request = baseline(request)
-		set(&request, entry)
-		result := app.ApproveBaseline(request)
-		return refused{result.State, result.Reason}
-	}
-	spec := func(r *desktop.BaselineRequest, entry string) { r.Spec = entry }
-	previous := func(r *desktop.BaselineRequest, entry string) { r.Previous = entry }
-	profiles := func(r *desktop.BaselineRequest, entry string) { r.Profiles = []string{entry} }
-	impact := func(set func(*desktop.SuiteImpactRequest)) refused {
-		request := desktop.SuiteImpactRequest{Workspace: root, Suite: "suite.json", Releases: "releases.json", From: "release-1.json", To: "release-2.json"}
-		set(&request)
-		result := app.ExpectationImpact(request)
-		return refused{result.State, result.Reason}
-	}
-	coverage := func(prepared, requirements string, previous []string) refused {
-		result := app.AssessSuiteCoverage(desktop.SuiteCoverageAssessRequest{Workspace: root, Prepared: prepared, Requirements: requirements, Previous: previous, At: "2026-09-19T00:00:00Z"})
-		return refused{result.State, result.Reason}
-	}
-	suiteInput := []string{"suite input must be a bounded regular file"}
-	baselineInput := []string{"baseline input must be a readable regular file, not a symlink"}
-	prepared := []string{"the prepared suite must be one directory entry of the open workspace"}
+// The saved test a person imports into an editor.
+func TestImportReadersRefuseALinkToAnEntryOfTheirKind(t *testing.T) {
+	app, root := suiteApp(t)
 	refusesLinksToEntriesItAccepts(t, root, []ownReader{
-		{"OpenSuite", "suite.json", notOneRegularFile("the suite document"), func(entry string) refused {
-			result := app.OpenSuite(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"PreviewSuite(Entry)", "suite.json", notOneRegularFile("the suite document"), func(entry string) refused {
-			result := app.PreviewSuite(desktop.SuitePreviewRequest{Workspace: root, Entry: entry, Environment: "east"})
-			return refused{result.State, result.Reason}
-		}},
-		{"PreviewSuite(Releases)", "releases.json", notOneRegularFile("the suite release references"), func(entry string) refused {
-			result := app.PreviewSuite(desktop.SuitePreviewRequest{Workspace: root, Entry: "suite.json", Environment: "east", Releases: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"PrepareSuite(Entry)", "suite.json", suiteInput, func(entry string) refused {
-			result := app.PrepareSuite(desktop.SuitePrepareRequest{Workspace: root, Entry: entry, Environment: "east", Output: "prepared-entry"})
-			return refused{result.State, result.Reason}
-		}},
-		{"PrepareSuite(Releases)", "releases.json", suiteInput, func(entry string) refused {
-			result := app.PrepareSuite(desktop.SuitePrepareRequest{Workspace: root, Entry: "suite.json", Environment: "east", Releases: entry, Output: "prepared-releases"})
-			return refused{result.State, result.Reason}
-		}},
-		{"ReviewSuitePromotion(Entry)", "suite.json", suiteInput, func(entry string) refused {
-			result := app.ReviewSuitePromotion(promotion(entry, "releases.json"))
-			return refused{result.State, result.Reason}
-		}},
-		{"ReviewSuitePromotion(Releases)", "releases.json", suiteInput, func(entry string) refused {
-			result := app.ReviewSuitePromotion(promotion("suite.json", entry))
-			return refused{result.State, result.Reason}
-		}},
-		{"ApproveSuitePromotion(Entry)", "suite.json", suiteInput, func(entry string) refused {
-			return approve(entry, "releases.json", "promotion-entry.json")
-		}},
-		{"ApproveSuitePromotion(Releases)", "releases.json", suiteInput, func(entry string) refused {
-			return approve("suite.json", entry, "promotion-releases.json")
-		}},
-		{"SaveSuiteCoverage(Prepared)", "prepared", prepared, func(entry string) refused {
-			result := app.SaveSuiteCoverage(desktop.SuiteCoverageSaveRequest{Workspace: root, Prepared: entry,
-				Requirements: []suite.Requirement{{ID: "accept-booking", Jobs: []string{"booking-one"}}}, Output: "coverage-again.json"})
-			return refused{result.State, result.Reason}
-		}},
-		{"AssessSuiteCoverage(Prepared)", "prepared", prepared, func(entry string) refused { return coverage(entry, "coverage.json", nil) }},
-		{"AssessSuiteCoverage(Previous)", "earlier", prepared, func(entry string) refused {
-			return coverage("prepared", "coverage.json", []string{entry})
-		}},
-		{"AssessSuiteCoverage(Requirements)", "coverage.json", notOneRegularFile("the suite coverage document"), func(entry string) refused {
-			return coverage("prepared", entry, nil)
-		}},
-		{"ExpectationImpact(Suite)", "suite.json", suiteInput, func(entry string) refused {
-			return impact(func(r *desktop.SuiteImpactRequest) { r.Suite = entry })
-		}},
-		{"ExpectationImpact(Releases)", "releases.json", suiteInput, func(entry string) refused {
-			return impact(func(r *desktop.SuiteImpactRequest) { r.Releases = entry })
-		}},
-		{"ExpectationImpact(From)", "release-1.json", baselineInput, func(entry string) refused {
-			return impact(func(r *desktop.SuiteImpactRequest) { r.From = entry })
-		}},
-		{"ExpectationImpact(To)", "release-2.json", baselineInput, func(entry string) refused {
-			return impact(func(r *desktop.SuiteImpactRequest) { r.To = entry })
-		}},
-		{"ReviewBaseline(Spec)", "booking.json", baselineInput, func(entry string) refused {
-			return reviewBaseline(desktop.BaselineRequest{Spec: entry})
-		}},
-		{"ReviewBaseline(Previous)", "baseline.json", baselineInput, func(entry string) refused {
-			return reviewBaseline(desktop.BaselineRequest{Spec: "booking.json", Previous: entry})
-		}},
-		{"ApproveBaseline(Spec)", "booking.json", baselineInput, func(entry string) refused {
-			return approveBaseline(desktop.BaselineRequest{Spec: "booking.json", Output: "baseline-spec.json"}, entry, spec)
-		}},
-		{"ApproveBaseline(Previous)", "baseline.json", baselineInput, func(entry string) refused {
-			return approveBaseline(desktop.BaselineRequest{Spec: "booking.json", Previous: "baseline.json", Output: "baseline-previous.json"}, entry, previous)
-		}},
-		{"OpenBaseline(Previous)", "baseline.json", baselineInput, func(entry string) refused {
-			result := app.OpenBaseline(desktop.BaselineRequest{Workspace: root, Previous: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"ReviewBaseline(Spec) of a release", "booking.json", baselineInput, func(entry string) refused {
-			return reviewBaseline(desktop.BaselineRequest{Release: true, Spec: entry})
-		}},
-		{"ReviewBaseline(Previous) of a release", "release-3.json", baselineInput, func(entry string) refused {
-			return reviewBaseline(desktop.BaselineRequest{Release: true, Spec: "booking.json", Previous: entry})
-		}},
-		{"ReviewBaseline(Profiles) of a release", "profile.json", baselineInput, func(entry string) refused {
-			return reviewBaseline(desktop.BaselineRequest{Release: true, Spec: "booking.json", Profiles: []string{entry}})
-		}},
-		{"ApproveBaseline(Spec) of a release", "booking.json", baselineInput, func(entry string) refused {
-			return approveBaseline(desktop.BaselineRequest{Release: true, Spec: "booking.json", Output: "release-spec.json"}, entry, spec)
-		}},
-		{"ApproveBaseline(Previous) of a release", "release-3.json", baselineInput, func(entry string) refused {
-			return approveBaseline(desktop.BaselineRequest{Release: true, Spec: "booking.json", Previous: "release-3.json", Profiles: []string{"profile.json"}, Output: "release-previous.json"}, entry, previous)
-		}},
-		{"ApproveBaseline(Profiles) of a release", "profile.json", baselineInput, func(entry string) refused {
-			return approveBaseline(desktop.BaselineRequest{Release: true, Spec: "booking.json", Profiles: []string{"profile.json"}, Output: "release-profiles.json"}, entry, profiles)
-		}},
-		{"OpenBaseline(Previous) of a release", "release-3.json", baselineInput, func(entry string) refused {
-			result := app.OpenBaseline(desktop.BaselineRequest{Workspace: root, Release: true, Previous: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"PostHubReleaseReview(Entry)", "release-1.json", notOneRegularFile("the released expectation"), func(entry string) refused {
-			return postedWithoutAHub(app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{Project: "cardio-study", Workspace: root, Entry: entry,
-				Kind: "approval", ID: "release-approval", Text: "reviewed"}))
-		}},
 		{"ImportTest", "booking.json", []string{"cannot read a bounded regular test spec"}, func(entry string) refused {
 			result := app.ImportTest(root, entry)
 			return refused{result.State, result.Reason}
@@ -721,12 +530,19 @@ func TestAuthoringAndComparisonReadersRefuseALinkToAnEntryOfTheirKind(t *testing
 			t.Fatal(err)
 		}
 	}
-	baseline := desktop.BaselineRequest{Workspace: root, Spec: spec, Approver: "reviewer", Rationale: "fixture", Output: "approval.json"}
-	if reviewed := app.ReviewBaseline(baseline); reviewed.State == desktop.Completed {
-		baseline.Review = reviewed.Comparison.Identity
+	// The approval a comparison is read beside, as `readmit baseline approve`
+	// writes it.
+	candidate := []byte(read(t, filepath.Join(root, spec)))
+	reviewed, err := baseline.Review(candidate, nil, false)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if approved := app.ApproveBaseline(baseline); approved.State != desktop.Completed {
-		t.Fatalf("an approval: %+v", approved)
+	approved, err := baseline.Approve(candidate, nil, reviewed.Identity, "reviewer", "fixture")
+	if err == nil {
+		err = baseline.Save(filepath.Join(root, "approval.json"), approved)
+	}
+	if err != nil {
+		t.Fatalf("an approval: %v", err)
 	}
 	opened := app.OpenCase(root, guide.CaseName)
 	if opened.State != desktop.Completed || opened.Case == nil {

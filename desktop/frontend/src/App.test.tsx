@@ -22,7 +22,6 @@ import {
   dialogDismissed,
   folderDenied,
   folderWithCase,
-  suiteDocumentResult,
   messagesResult,
   messageRow,
   guideResult,
@@ -37,11 +36,6 @@ import {
   runEvidenceResult,
   runPreflightResult,
   runProgressResult,
-  suiteArtifacts,
-  suitePreparedResult,
-  SUITE_ENTRY,
-  SUITE_PREPARED,
-  SUITE_RELEASES,
 } from "./testkit/fixtures";
 import { renderApp } from "./testkit/app";
 import { windowWidth } from "./testkit/window";
@@ -311,39 +305,6 @@ test("an inspector that never answered is reported and leaves the prior result a
   await user.click((await findMessageRow(GRID_OCCURRENCE)));
   expect(await screen.findByText("the application did not answer")).toBeTruthy();
   expect(facade.callsTo("InspectOccurrence").length).toBeGreaterThanOrEqual(1);
-});
-
-test("a saved suite is at once an entry the run panel offers, and a refused save reads nothing again", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
-  await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await goToView(user, "Tests", "Suites");
-  const suites = within(screen.getByRole("region", { name: "Suites" }));
-  await user.click(suites.getByRole("button", { name: "New suite" }));
-  await user.type(suites.getByLabelText("Version file"), "nightly.json");
-
-  // Refused: nothing was written, so the folder is not read again.
-  facade.reply({ SaveSuite: () => ({ state: "failed" as const, reason: "the suite is not valid" }) });
-  const before = facade.callsTo("OpenWorkspace").length;
-  await user.click(suites.getByRole("button", { name: "Save version" }));
-  expect(await suites.findByText(/the suite is not valid/)).toBeTruthy();
-  expect(facade.callsTo("OpenWorkspace")).toHaveLength(before);
-
-  // Saved: the folder is read again, and the run panel offers the new entry.
-  facade.reply({
-    SaveSuite: () => ({ ...suiteDocumentResult(), output: "nightly.json" }),
-    OpenWorkspace: () =>
-      folderChosen(WORKSPACE_ROOT, [
-        { name: CASE_ENTRY, kind: "case", schema: "readmit-case/v3", provenance: "generated" },
-        { name: "nightly.json", kind: "suite" },
-      ]),
-  });
-  await user.click(suites.getByRole("button", { name: "Save version" }));
-  await goToView(user, "Runs", "Run test");
-  const runPanel = within(screen.getByRole("region", { name: "Runs" }));
-  expect(await runPanel.findByRole("option", { name: "nightly.json (suite)" })).toBeTruthy();
-  expect(facade.callsTo("OpenWorkspace").map((call) => call.args)).toContainEqual([WORKSPACE_ROOT]);
 });
 
 test("the guided sample runs the saved spec against the practice receiver and reads the folder back", async () => {
@@ -740,35 +701,6 @@ test("searching workspace with content hit badges match and navigates to inspect
   await user.click(screen.getByText("MRN-1001"));
   await waitFor(() => expect(facade.callsTo("OpenCase")).toHaveLength(1));
   await waitFor(() => expect(facade.callsTo("InspectOccurrence")).toHaveLength(1));
-});
-
-test("the suite handoff names the prepared folder and release pins beside the run view, which applies neither", async () => {
-  const user = userEvent.setup();
-  const { facade } = await renderApp({ PrepareSuite: () => suitePreparedResult() });
-  facade.reply({ SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, suiteArtifacts()) });
-  await openFolder(user);
-  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
-  await goToView(user, "Tests", "Suites");
-  const suites = within(screen.getByRole("region", { name: "Suites" }));
-  await user.click(suites.getByRole("tab", { name: "Prepare" }));
-  await user.selectOptions(suites.getByLabelText("Suite entry"), SUITE_ENTRY);
-  await user.type(suites.getByLabelText("Environment"), "east");
-  await user.selectOptions(suites.getByLabelText("Release pins (optional)"), SUITE_RELEASES);
-  await user.type(suites.getByLabelText("Output folder"), SUITE_PREPARED);
-  await user.click(suites.getByRole("button", { name: "Prepare suite" }));
-  await user.click(await suites.findByRole("button", { name: "Go to runs" }));
-
-  const notice = screen.getByRole("note", { name: "Suite handoff" });
-  expect(notice.textContent).toBe(
-    `Handed over from Suites: ${SUITE_ENTRY} prepared against environment east into prepared folder ${SUITE_PREPARED} ` +
-      `with release pins ${SUITE_RELEASES}. The run view selected ${SUITE_ENTRY} and environment east and preflights them ` +
-      "again. It does not apply these release pins or read the prepared folder.",
-  );
-  expect((screen.getByLabelText("Saved test or suite") as HTMLSelectElement).value).toBe(SUITE_ENTRY);
-  expect((screen.getByLabelText("Suite environment") as HTMLSelectElement).value).toBe("east");
-  // Nothing was preflighted or sent by the handoff itself.
-  expect(facade.callsTo("PreflightRun")).toHaveLength(0);
-  expect(facade.callsTo("StartSuiteRun")).toHaveLength(0);
 });
 
 /** The window's own width, which a real layout gives it and jsdom does not. */

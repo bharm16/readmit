@@ -301,15 +301,16 @@ var familyKinds = map[string]ItemKind{
 
 // entryKind names the kind of object one entry declares. The project's own
 // documents, the catalog's area, the files the application saved for an
-// object and what a case's deletion could not remove are not objects of their
-// own.
+// object, what a case's deletion could not remove and a suite compiled for
+// the run reading it are not objects of their own.
 func entryKind(root string, entry fs.DirEntry) (ItemKind, bool) {
 	name := entry.Name()
 	switch {
 	case name == catalog.Folder, name == project.DocumentName, name == project.RevisionsDocumentName, name == project.QuotaDocumentName,
 		name == project.RecoveryRecordName:
 		return "", false
-	case strings.Contains(name, ".recovery-"), strings.HasSuffix(name, ".incomplete"), strings.HasPrefix(name, lifecycle.CaseRemainderPrefix):
+	case strings.Contains(name, ".recovery-"), strings.HasSuffix(name, ".incomplete"), strings.HasPrefix(name, lifecycle.CaseRemainderPrefix),
+		strings.HasPrefix(name, compiledSuitePrefix):
 		return "", false
 	}
 	artifact := describe(root, entry)
@@ -690,7 +691,7 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 		actions = append(actions, SaveAction)
 	}
 	if kind == SuiteItem {
-		actions = append(actions, ApprovePromotionAction)
+		actions = append(actions, ApproveSuiteBaselineAction, RequestSuiteReviewAction, ApproveSuiteReleaseAction, ApprovePromotionAction)
 	}
 	if kind == EnvironmentItem || kind == ObservationItem {
 		actions = append(actions, RemoveAction)
@@ -884,6 +885,7 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	LinkReviewItem:       readLinkReview,
 	MappingItem:          readMappingItem,
 	SourceItem:           readSourceItem,
+	SuiteApprovalItem:    readSuiteApprovalItem,
 }
 
 // privateState is one private local-state folder of the project: its entry

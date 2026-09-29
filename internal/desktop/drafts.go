@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
@@ -438,8 +439,8 @@ func validateEditorDraft(draft EditorDraft) error {
 	if draft.ContentSchema == NoteDraftSchema {
 		return validateNoteDraft(draft.Content)
 	}
-	if draft.ContentSchema == SuiteDraftSchema {
-		return validateSuiteDraft([]byte(draft.Content))
+	if draft.ContentSchema == SuiteEditorDraftSchema {
+		return validateSuiteEditorDraft(draft.Content)
 	}
 	if draft.ContentSchema == TestEditorDraftSchema {
 		return validateTestEditorDraft(draft)
@@ -497,6 +498,39 @@ func validateTestEditorDraft(retained EditorDraft) error {
 	held.Name, held.Test, held.TestLinks, held.TestDocument = "", nil, nil, ""
 	if !reflect.DeepEqual(held, ItemDraft{}) {
 		return errors.New("a test editor draft holds only a test's name, draft, document and links")
+	}
+	return nil
+}
+
+// SuiteEditorDraftSchema is the contract of the suite editor's retained
+// work: the suite it edits, if any, the name and the whole suite draft as
+// the editor holds it, each member of which may still be unanswered.
+const SuiteEditorDraftSchema = "readmit-suite-editor/v1"
+
+// SuiteEditorDraft is the suite editor's retained work. Item names the saved
+// suite and version an edit began from, and is absent for a new suite. It
+// holds nothing of a run, an approval or an export.
+type SuiteEditorDraft struct {
+	Schema string     `json:"schema"`
+	Item   *ItemRef   `json:"item,omitzero"`
+	Name   string     `json:"name"`
+	Suite  SuiteDraft `json:"suite"`
+}
+
+// validateSuiteEditorDraft holds retained suite editor work to its
+// contract: it declares its schema, names a suite of the project when it
+// edits one, and carries a suite draft, whose validity is decided only when
+// it is saved.
+func validateSuiteEditorDraft(content jsontext.Value) error {
+	var draft SuiteEditorDraft
+	if err := json.Unmarshal(content, &draft, json.RejectUnknownMembers(true)); err != nil || draft.Schema != SuiteEditorDraftSchema {
+		return errors.New("invalid suite editor draft content")
+	}
+	if item := draft.Item; item != nil && (item.Kind != SuiteItem || !catalog.ValidID(item.ID) || len(item.Revision) > 16) {
+		return errors.New("a suite editor draft names the suite it edits by its identity")
+	}
+	if len(draft.Name) > 800 || !utf8.ValidString(draft.Name) {
+		return errors.New("a suite editor draft's name is bounded text")
 	}
 	return nil
 }

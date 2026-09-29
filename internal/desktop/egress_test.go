@@ -310,7 +310,7 @@ var destinationActivities = map[string]string{
 	"DiagnoseHub":        "hub", "ConnectHub": "hub", "StartHubAuth": "hub", "CompleteHubAuth": "hub", "HubStatus": "hub",
 	"ListHubProjectArtifacts": "hub", "DownloadHubArtifact": "hub", "UploadHubArtifact": "hub",
 	"ListHubReviews": "hub", "SearchHubReviews": "hub", "ListHubNotifications": "hub", "SearchHubNotifications": "hub",
-	"PostHubReview": "hub", "PostHubReleaseReview": "hub", "PostHubSupportReview": "hub",
+	"PostHubReview": "hub", "PostHubSupportReview": "hub", "SuiteReviewers": "hub",
 	"ListHubLifecycle": "hub", "PostHubLifecycle": "hub", "DownloadHubExport": "hub", "ReconcileHubOfflineDraft": "hub",
 	"ConnectOperatorHub": "hub", "ReadOperatorHubArtifact": "hub", "StoreOperatorHubArtifact": "hub",
 }

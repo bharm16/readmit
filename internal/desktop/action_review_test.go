@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/suite"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
 
@@ -205,64 +204,6 @@ func TestAReviewDoesNotSurviveARestartOrAWithdrawal(t *testing.T) {
 		Content: []byte(`{"schema":"readmit-note-draft/v1","name":"","subject":"","title":"","body":"` + live.Token + `"}`)})
 	if retained.State != desktop.Failed || !strings.Contains(retained.Reason, "review") {
 		t.Fatalf("a draft retained a review: %+v", retained)
-	}
-}
-
-// Approve records a durable decision about one exact version and sends
-// nothing. The decision stays evidence of that version: a changed revision is
-// a different review, and the recorded approval still names the original.
-func TestAnApprovalIsDurableAndStaysTiedToItsExactVersion(t *testing.T) {
-	app, root := releaseWorkspace(t)
-	writeProject(t, root, "")
-	opened := app.OpenNamedProject(root)
-	if opened.State != desktop.Completed {
-		t.Fatalf("%+v", opened)
-	}
-	context := opened.Context
-	suites := listed(t, app, root, desktop.SuiteItem)
-	nightly := suites["nightly"]
-	if !slices.Contains(nightly.Capabilities, desktop.ApprovePromotionAction) {
-		t.Fatalf("the suite: %+v", nightly)
-	}
-	request := desktop.PrepareActionRequest{Context: context, Action: desktop.ApprovePromotionAction, Items: []desktop.ItemRef{nightly.Ref},
-		Promotion: &desktop.PromotionActionOptions{Environment: "east", Revision: "fixture-build-7"}}
-	review := prepared(t, app, request)
-	if review.Consent != desktop.ApproveConsent || review.Promotion == nil || !slices.Equal(review.Requirements, []desktop.ReviewRequirement{desktop.RationaleRequirement}) {
-		t.Fatalf("the approval review: %+v", review)
-	}
-	// A changed revision assumption file between review and Approve: the
-	// release pins the approval would record are no longer what it showed.
-	changedReview := prepared(t, app, request)
-	pins := read(t, filepath.Join(root, "releases.json"))
-	writeDocument(t, root, "releases.json", `{"schema":"readmit-suite-releases/v1","tests":[]}`)
-	if stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: changedReview.Token, IntentID: "approve-changed",
-		Decisions: desktop.ReviewDecisions{Rationale: "changed"}}); stale.Outcome != desktop.ActionStale || stale.Approval != nil {
-		t.Fatalf("a changed release pin set was approved: %+v", stale)
-	}
-	writeDocument(t, root, "releases.json", pins)
-	// Approving needs its rationale; without one nothing is recorded and the
-	// review stays usable.
-	if missing := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: review.Token, IntentID: "approve-1"}); missing.Outcome != desktop.ActionRefused {
-		t.Fatalf("an approval without a rationale: %+v", missing)
-	}
-	approved := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: review.Token, IntentID: "approve-2",
-		Decisions: desktop.ReviewDecisions{Rationale: "Reviewed the east mapping"}})
-	if approved.Outcome != desktop.ActionCompleted || approved.Approval == nil || approved.Approval.Reviewed != review.Promotion.Identity() {
-		t.Fatalf("approve: %+v", approved)
-	}
-	record, err := suite.DecodePromotion([]byte(read(t, filepath.Join(root, approved.Approval.Output))))
-	if err != nil || record.Identity() != approved.Approval.Identity || record.Reviewed != review.Promotion.Identity() || record.Rationale != "Reviewed the east mapping" {
-		t.Fatalf("the durable record: %+v %v", record, err)
-	}
-	// A later revision assumption is a different version: its review names a
-	// different identity, and the recorded approval is still exactly the old.
-	later := request
-	later.Promotion = &desktop.PromotionActionOptions{Environment: "east", Revision: "fixture-build-8"}
-	if next := prepared(t, app, later); next.Promotion.Identity() == record.Reviewed {
-		t.Fatal("a changed version reviewed as the approved one")
-	}
-	if kept, _ := suite.DecodePromotion([]byte(read(t, filepath.Join(root, approved.Approval.Output)))); kept.Identity() != record.Identity() {
-		t.Fatal("the durable approval changed")
 	}
 }
 
@@ -512,7 +453,7 @@ func refusesEveryChangedBinding(t *testing.T, app *desktop.App, request desktop.
 		lane.change()
 		click := "click-" + strings.ReplaceAll(lane.name, " ", "-")
 		stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: request.Context, Token: review.Token, IntentID: click, Decisions: decisions})
-		if stale.Outcome != desktop.ActionStale || stale.Export != nil || stale.Approval != nil {
+		if stale.Outcome != desktop.ActionStale || stale.Export != nil || stale.SuiteApproval != nil {
 			t.Fatalf("%s changed: %+v", lane.name, stale)
 		}
 		if lane.refreshed && (stale.Refreshed == nil || stale.Refreshed.Token == "" || stale.Refreshed.Token == review.Token) {
@@ -576,45 +517,4 @@ func TestAReviewedExportRefusesEveryChangedBinding(t *testing.T) {
 	if exported.Export == nil || !repeated.Replayed || repeated.Export == nil || repeated.Export.Packet != exported.Export.Packet {
 		t.Fatalf("a repeated export click: %+v %+v", exported, repeated)
 	}
-}
-
-// An approval binds the suite, the environment it is approved for, the
-// release pins, the operation policy and the record it writes: each changed
-// after the review was shown records nothing.
-func TestAReviewedApprovalRefusesEveryChangedBinding(t *testing.T) {
-	app, root := releaseWorkspace(t)
-	writeProject(t, root, "")
-	opened := app.OpenNamedProject(root)
-	if opened.State != desktop.Completed {
-		t.Fatalf("%+v", opened)
-	}
-	nightly := listed(t, app, root, desktop.SuiteItem)["nightly"]
-	request := desktop.PrepareActionRequest{Context: opened.Context, Action: desktop.ApprovePromotionAction, Items: []desktop.ItemRef{nightly.Ref},
-		Promotion: &desktop.PromotionActionOptions{Environment: "east", Revision: "fixture-build-7"}}
-	suiteDocument, target := read(t, filepath.Join(root, "suite.json")), read(t, filepath.Join(root, "east.json"))
-	destination := prepared(t, app, request).Destination.Output
-	lanes := []bindingLane{
-		{name: "suite", refreshed: true, change: func() {
-			writeDocument(t, root, "suite.json", strings.Replace(suiteDocument, `"owner":"interop"`, `"owner":"interfaces"`, 1))
-		}, undo: func() { writeDocument(t, root, "suite.json", suiteDocument) }},
-		{name: "environment", refreshed: true, change: func() {
-			writeDocument(t, root, "east.json", strings.Replace(target, `"127.0.0.1:1"`, `"127.0.0.1:2"`, 1))
-		}, undo: func() { writeDocument(t, root, "east.json", target) }},
-		{name: "destination", refreshed: true, change: func() { writeDocument(t, root, destination, "{}") },
-			undo: func() { os.Remove(filepath.Join(root, destination)) }},
-		{name: "license", refreshed: true, change: func() {
-			if selected := app.SelectOperationPolicy(authorOnlyPolicy(t)); selected.State != desktop.Completed {
-				t.Fatal(selected)
-			}
-		}, undo: func() {
-			if selected := app.SelectOperationPolicy(testlicense.New(t)); selected.State != desktop.Completed {
-				t.Fatal(selected)
-			}
-		}},
-	}
-	refusesEveryChangedBinding(t, app, request, desktop.ReviewDecisions{Rationale: "Reviewed the east mapping"}, lanes, func() bool {
-		return slices.ContainsFunc(entries(t, root), func(entry string) bool {
-			return strings.HasPrefix(entry, "promotion-approval-") && entry != destination
-		})
-	})
 }

@@ -1,7 +1,7 @@
 // One reviewed action: the review the facade prepared, bound to exactly what
 // it names, and the one final button that runs it. A stale review is prepared
 // again rather than run.
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   cancelOperation,
   executeReviewedAction,
@@ -35,6 +35,10 @@ export function ReviewSheet({
   blocked,
   onRunning,
   whileRunning,
+  fields,
+  rationale,
+  prepareKey,
+  canPrepare = true,
 }: {
   open: boolean;
   title: string;
@@ -59,6 +63,15 @@ export function ReviewSheet({
   onRunning?: (running: boolean) => void;
   /** What the running action has done so far, shown beside Stop. */
   whileRunning?: ReactNode;
+  /** The fields the review is asked for, shown above it. */
+  fields?: ReactNode;
+  /** The reason the final click records, where the action asks for one. */
+  rationale?: string;
+  /** Changes whenever what the review is asked for changes: the review is
+   * prepared again for it, and the one shown before cannot be acted on. */
+  prepareKey?: string;
+  /** Whether the fields name enough to review. */
+  canPrepare?: boolean;
 }) {
   const [review, setReview] = useState<ActionReview | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -66,15 +79,19 @@ export function ReviewSheet({
   const [result, setResult] = useState<ReviewedActionResult | null>(null);
   // The intent of the final click while it runs: the operation Stop names.
   const [running, setRunning] = useState<string | null>(null);
+  // The fields the review on screen was prepared for.
+  const scoped = useRef(prepareKey);
   const prepare = useCallback(async () => {
     setReview(null);
     setFailure(null);
+    if (!canPrepare) return;
     const answer = await prepareAction({ context: context(), action, items, ...(destination ? { destination } : {}), ...options });
     if (answer.state === "completed" && answer.review) setReview(answer.review);
     else setFailure(answer.reason ?? "This could not be reviewed.");
-  }, [action, context, destination, items, options]);
+  }, [action, canPrepare, context, destination, items, options]);
   useEffect(() => {
     if (open) {
+      scoped.current = prepareKey;
       setConfirmed([]);
       setResult(null);
       void prepare();
@@ -82,6 +99,16 @@ export function ReviewSheet({
     // Prepared once each time the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+  // A changed field withdraws the review at once and prepares a new one once
+  // the typing stops.
+  useEffect(() => {
+    if (!open || prepareKey === scoped.current) return;
+    scoped.current = prepareKey;
+    setReview(null);
+    const timer = window.setTimeout(() => void prepare(), 300);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareKey, open]);
 
   if (result && open) {
     return (
@@ -130,7 +157,7 @@ export function ReviewSheet({
         const intent = newIntentId();
         setRunning(intent);
         onRunning?.(true);
-        const answer = await executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed } }).finally(() => {
+        const answer = await executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed, ...(rationale !== undefined ? { rationale } : {}) } }).finally(() => {
           setRunning(null);
           onRunning?.(false);
         });
@@ -147,8 +174,9 @@ export function ReviewSheet({
         return null;
       }}
     >
+      {fields}
       {failure ? <p role="alert">{failure}</p> : null}
-      {review ? render(review, confirmed, setConfirmed) : failure ? null : <p aria-live="polite">Preparing…</p>}
+      {review ? render(review, confirmed, setConfirmed) : failure || !canPrepare ? null : <p aria-live="polite">Preparing…</p>}
       {consequence ? <p className="consequence">{consequence}</p> : null}
     </FormDialog>
   );

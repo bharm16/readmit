@@ -3,10 +3,8 @@ package desktop_test
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -19,9 +17,7 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/hubprotocol"
-	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/sharing"
 	"github.com/bharm16/readmit/internal/testlicense"
 )
@@ -600,160 +596,6 @@ func TestDesktopHubSupportSharingJourney(t *testing.T) {
 // from the suite panel's release surface: the released expectation is verified
 // locally, uploaded, requested for review and approved by the exact content —
 // with the refusals the journey promises before anything is sent.
-func TestDesktopHubReleaseReviewJourney(t *testing.T) {
-	// The release the journey posts, exactly as the expectation panel writes it.
-	spec := []byte(`{"schema":"readmit-test/v1","name":"synthetic","input":{"case":"case","messages":["s0001-e000001"]},"target":"target.json","setup":{"initial_state":"operator-declared","reset_instructions":"Reset fixture"},"observation":{"boundary":"ack-contract"},"assertions":[{"id":"ack","operator":"ack_field_equals","message":"s0001-e000001","selector":"MSA-1","expected":{"field":{"state":"present","text":"AA"}}}]}`)
-	review, err := expectation.Review("booking", spec, []profileversion.Version{}, nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	release, err := expectation.Approve("booking", spec, []profileversion.Version{}, nil, review.Identity, "Local approver label", "synthetic rationale")
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := release.Encode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(raw)
-	releaseDigest := hex.EncodeToString(sum[:])
-
-	workspace := t.TempDir()
-	releaseEntry := filepath.Join(workspace, "booking-release.json")
-	if err := os.WriteFile(releaseEntry, raw, 0600); err != nil {
-		t.Fatal(err)
-	}
-	otherEntry := filepath.Join(workspace, "not-a-release.json")
-	if err := os.WriteFile(otherEntry, []byte(`{"schema":"something-else/v1"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	var reviewHead int
-	var uploaded map[string][]byte = map[string][]byte{}
-	var requested hubprotocol.ReviewCommand
-	approveRefusal := "no review request names this exact release content"
-
-	hubMux := http.NewServeMux()
-	hubMux.HandleFunc("/health/live", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	hubMux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	hubMux.HandleFunc("/v1/projects/cardio-study/artifacts/", func(w http.ResponseWriter, r *http.Request) {
-		digest := filepath.Base(r.URL.Path)
-		body, _ := io.ReadAll(io.LimitReader(r.Body, 4<<20))
-		uploaded[digest] = body
-		w.WriteHeader(http.StatusCreated)
-	})
-	hubMux.HandleFunc("/v2/projects/cardio-study/history", func(w http.ResponseWriter, r *http.Request) {
-		events := []hubprotocol.ReviewEvent{}
-		if requested.ID != "" {
-			events = append(events, hubprotocol.ReviewEvent{
-				Schema: hubprotocol.ReviewEventV1, Project: "cardio-study", Sequence: 1,
-				Issuer: "https://idp.hospital.org", Actor: "author@hospital.org", At: "2026-09-21T12:00:00Z",
-				Command: requested,
-			})
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.MarshalWrite(w, hubprotocol.ReviewHistory{Schema: hubprotocol.ReviewHistoryV2, Head: reviewHead, Events: events})
-	})
-	hubMux.HandleFunc("/v2/projects/cardio-study/reviews", func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(io.LimitReader(r.Body, 8192))
-		cmd, err := hubprotocol.DecodeReviewCommand(body)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if cmd.Expected != reviewHead {
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
-		if cmd.Kind == "review-request" {
-			if cmd.Release != releaseDigest || cmd.Evidence != releaseDigest {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if uploaded[releaseDigest] == nil {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-			requested = cmd
-		}
-		if cmd.Kind == "approval" {
-			if cmd.Parent != requested.ID || cmd.Release != requested.Release || cmd.Evidence != requested.Evidence {
-				w.WriteHeader(http.StatusForbidden)
-				return
-			}
-		}
-		reviewHead++
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.MarshalWrite(w, hubprotocol.ReviewEvent{
-			Schema: hubprotocol.ReviewEventV1, Project: "cardio-study", Sequence: reviewHead,
-			Issuer: "https://idp.hospital.org", Actor: "author@hospital.org", At: time.Now().UTC().Format(time.RFC3339Nano),
-			Command: cmd,
-		})
-	})
-
-	app := newAuthenticatedHubApp(t, hubMux, "author@hospital.org",
-		[]string{"evidence.read", "evidence.write", "approval"}).app
-
-	// Refusals before anything is sent: an unknown kind, an entry that is not a
-	// released expectation, and an approval with no outstanding request.
-	unknown := app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{
-		Project: "cardio-study", Workspace: workspace, Entry: "booking-release.json",
-		Kind: "grant-everything", ID: "rel-0", Text: "unsupported kind",
-	})
-	if unknown.State != desktop.Failed || !strings.Contains(unknown.Reason, "review-request or approval") {
-		t.Fatalf("unknown journey kind should be refused locally: %+v", unknown)
-	}
-	notRelease := app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{
-		Project: "cardio-study", Workspace: workspace, Entry: "not-a-release.json",
-		Kind: "review-request", ID: "rel-1", Recipient: "reviewer@hospital.org", Text: "not a release",
-	})
-	if notRelease.State != desktop.Failed || !strings.Contains(notRelease.Reason, "not a released expectation") {
-		t.Fatalf("a non-release entry should be refused before the hub: %+v", notRelease)
-	}
-	unrequested := app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{
-		Project: "cardio-study", Workspace: workspace, Entry: "booking-release.json",
-		Kind: "approval", ID: "rel-2", Text: "approving without a request",
-	})
-	if unrequested.State != desktop.Failed || !strings.Contains(unrequested.Reason, approveRefusal) {
-		t.Fatalf("approval without a matching request should be refused: %+v", unrequested)
-	}
-	unaddressed := app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{
-		Project: "cardio-study", Workspace: workspace, Entry: "booking-release.json",
-		Kind: "review-request", ID: "rel-3", Text: "nobody asked to review",
-	})
-	if unaddressed.State != desktop.Failed || !strings.Contains(unaddressed.Reason, "names the subject") {
-		t.Fatalf("a review request without a recipient should be refused: %+v", unaddressed)
-	}
-
-	request := app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{
-		Project: "cardio-study", Workspace: workspace, Entry: "booking-release.json",
-		Kind: "review-request", ID: "rel-request-1", Recipient: "reviewer@hospital.org",
-		Text: "Review the exact released expectations",
-	})
-	if request.State != desktop.Completed || len(request.Events) != 1 {
-		t.Fatalf("PostHubReleaseReview request: %+v", request)
-	}
-	if request.Events[0].Actor != "author@hospital.org" || request.Events[0].CommandID != "rel-request-1" {
-		t.Fatalf("request event should carry the session actor: %+v", request.Events[0])
-	}
-	if string(uploaded[releaseDigest]) != string(raw) {
-		t.Fatalf("the hub must hold the exact reviewed bytes")
-	}
-
-	approval := app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{
-		Project: "cardio-study", Workspace: workspace, Entry: "booking-release.json",
-		Kind: "approval", ID: "rel-approval-1",
-		Text: "Approved against the reviewed impact",
-	})
-	if approval.State != desktop.Completed || len(approval.Events) != 1 {
-		t.Fatalf("PostHubReleaseReview approval: %+v", approval)
-	}
-	if approval.Events[0].Parent != "rel-request-1" {
-		t.Fatalf("approval should chain to the content-matched request: %+v", approval.Events[0])
-	}
-}
-
 // TestDesktopHubCollaborationRefusesWithoutSession pins the refusal the docs
 // promise: no collaboration decision is recorded without an authenticated hub
 // session, whatever the window's buttons offered.

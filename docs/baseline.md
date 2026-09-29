@@ -43,24 +43,16 @@ Files are created with mode 0600; Windows inherits directory access controls.
 
 ## Desktop
 
-The inspector's Regression baseline panel uses the same Go engine. Name the
-candidate specification and optional previous baseline as entries in the open
-workspace, then select **Review baseline changes**. Reveal values explicitly to
-see exact before/after expectations. Enter a local approver, rationale and new
-filename, then select **Approve this exact baseline revision**. Changing the
-candidate, previous selection or privacy option clears the review. The engine
-also re-reads both files on approval and refuses a stale commitment.
-
-**Inspect retained baseline** reads the historical specification and approval
-without needing the original candidate file, and shows the approved review
-identity, approver, rationale and retained expectations as `readmit baseline
-show` prints them. A missing revision or one of a version this release cannot
-read is refused with the reason the command gives. **Cancel review** discards the
-pending decision and writes nothing. State is held only in the mounted panel;
-it is never stored in browser storage or the restored working session. Backend
-operations are bounded, hold the shared operation slot, and finish once admitted;
-an admitted exclusive write is not interruptible. Errors leave prior revisions
-unchanged and can be retried with a new destination after investigation.
+The desktop application records a baseline for one saved suite version:
+**Approve baseline** in the suite's Versions releases every test version the
+version pins, through the same Go engine, as described in
+[suite versions and approvals](suites.md#suite-versions-and-approvals). The
+review shows each test version, the release it becomes and the exact check
+changes since the version last baselined, and names the local reviewer it
+records; a rationale is required. The review is bound to what it shows: a
+changed test, suite or release history refuses the final click and shows the
+review again. The releases are kept exactly in the suite's approval history,
+where `readmit expectation show` and `readmit baseline show` read them.
 
 ## Contract and limits
 
