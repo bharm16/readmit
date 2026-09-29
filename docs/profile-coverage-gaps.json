@@ -1,1064 +1,1245 @@
 {
-  "schema": "readmit-profile-coverage-gaps/v1",
-  "status": "open; agreed scope preserved",
-  "basis_commit": "1e1f499061566015ad28f17c4bc9b5180c50e6ba",
-  "rights_status": "pending; independent of technical qualification",
-  "receipt_sha256": "b1ab013cc5131d001d6eb5f599a10d842d23c7838c27e749c76d7526b160c608",
-  "revisions": [
-    "2026-09-28: receipt_sha256 names docs/profile-extraction-v3-receipt.json. The five ORDER_DETAIL rows are qualified at the tested choice level; component usage rows record what the pinned HL7apy archive can and cannot supply; a 2.8.2 component usage row records that conditional usage is not represented.",
-    "2026-09-28: database_receipt_sha256 names docs/profile-extraction-v4-receipt.json and conditions_sha256 docs/profile-conditions.json. Component usage, base field usage, length and terminology rows now describe the v5 packs built from the pinned HL7 v2 database export and the reviewed conditions; counts are over the elements promised structures reach."
-  ],
-  "rows": [
-    {
-      "version": "2.3.1",
-      "constraint": "composite component usage",
-      "status": "not-defined-by-edition",
-      "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached_components": 215,
-        "usage": {
-          "O": 5,
-          "unclassified": 210
-        }
-      },
-      "source_survey": "The HL7 v2 database export records NA for this edition's components except a few it records O (CCD, CCP, AUI and table-specific CE variants), and the edition's chapters print no component usage; the pinned HL7apy archive declares every component (0, 1). There is no usage distinction to adopt.",
-      "missing": "No edition source defines component usage. v5 marks each NA component unclassified and evaluation reports each occurrence as unsupported, never optional.",
-      "authoritative_source_needed": "None exists for this edition; a site profile may declare component usage locally.",
-      "implementation_test_needed": "Covered: an unclassified component cannot pass (TestUnclassifiedUsageAndUnavailableLengthCannotPass, TestPinnedDatabasePacks).",
-      "release_claim_affected": "No base component usage claim for this edition."
-    },
-    {
-      "version": "2.3.1",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.3.1.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 737,
-        "usage": {
-          "C": 58,
-          "O": 622,
-          "R": 55,
-          "X": 2
-        },
-        "conditional": {
-          "always-undecided": 24,
-          "decided-from-message": 27,
-          "partly-undecided": 5,
-          "unsupported": 2
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.3.1",
-      "constraint": "component maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 389,
-      "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
-    },
-    {
-      "version": "2.3.1",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "hl7": 26,
-          "user": 52
-        },
-        "field_bindings": {
-          "external": 2,
-          "hl7": 70,
-          "user": 216
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.3.1",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 50,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.3.1",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.3.1",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORM",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.3.1",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.3.1",
-      "family": "ORM",
-      "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "qualified-version-matched-choice",
-      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_3_1/groups.py (lines 315 and 334) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
-      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
-      "tests": "TestPinnedOrderDetailChoice/2.3.1: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
-      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
-      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
-    },
-    {
-      "version": "2.4",
-      "constraint": "composite component usage",
-      "status": "not-defined-by-edition",
-      "review_pointer": "pack-2.4.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached_components": 255,
-        "usage": {
-          "O": 5,
-          "unclassified": 250
-        }
-      },
-      "source_survey": "The HL7 v2 database export records NA for this edition's components except a few it records O (CCD, CCP, AUI and table-specific CE variants), and the edition's chapters print no component usage; the pinned HL7apy archive declares every component (0, 1). There is no usage distinction to adopt.",
-      "missing": "No edition source defines component usage. v5 marks each NA component unclassified and evaluation reports each occurrence as unsupported, never optional.",
-      "authoritative_source_needed": "None exists for this edition; a site profile may declare component usage locally.",
-      "implementation_test_needed": "Covered: an unclassified component cannot pass (TestUnclassifiedUsageAndUnavailableLengthCannotPass, TestPinnedDatabasePacks).",
-      "release_claim_affected": "No base component usage claim for this edition."
-    },
-    {
-      "version": "2.4",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.4.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 850,
-        "usage": {
-          "C": 65,
-          "O": 723,
-          "R": 62
-        },
-        "conditional": {
-          "always-undecided": 25,
-          "decided-from-message": 33,
-          "partly-undecided": 5,
-          "unsupported": 2
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.4",
-      "constraint": "component maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 409,
-      "review_pointer": "pack-2.4.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
-    },
-    {
-      "version": "2.4",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.4.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "hl7": 34,
-          "user": 54
-        },
-        "field_bindings": {
-          "hl7": 81,
-          "user": 262
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.4",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 24,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.4",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.4",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORM",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.4",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.4",
-      "family": "ORM",
-      "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "qualified-version-matched-choice",
-      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_4/groups.py (lines 629 and 649) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
-      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
-      "tests": "TestPinnedOrderDetailChoice/2.4: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
-      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
-      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
-    },
-    {
-      "version": "2.5.1",
-      "constraint": "composite component usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached": 289,
-        "usage": {
-          "C": 18,
-          "O": 236,
-          "R": 35
-        },
-        "conditional": {
-          "decided-from-message": 9,
-          "partly-undecided": 2,
-          "unsupported": 7
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.5.1",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.5.1.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 950,
-        "usage": {
-          "C": 81,
-          "O": 803,
-          "R": 63,
-          "unclassified": 3
-        },
-        "conditional": {
-          "always-undecided": 25,
-          "decided-from-message": 44,
-          "partly-undecided": 8,
-          "unsupported": 4
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.5.1",
-      "constraint": "component maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 431,
-      "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
-    },
-    {
-      "version": "2.5.1",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "hl7": 55,
-          "user": 54
-        },
-        "field_bindings": {
-          "hl7": 94,
-          "user": 276
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.5.1",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 25,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5.1",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5.1",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORM",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5.1",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 2,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5.1",
-      "family": "ORM",
-      "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "qualified-version-matched-choice",
-      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_5_1/groups.py (lines 1130 and 1146) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
-      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
-      "tests": "TestPinnedOrderDetailChoice/2.5.1: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
-      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
-      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
-    },
-    {
-      "version": "2.5",
-      "constraint": "composite component usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.5.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached": 289,
-        "usage": {
-          "C": 18,
-          "O": 236,
-          "R": 35
-        },
-        "conditional": {
-          "decided-from-message": 9,
-          "partly-undecided": 2,
-          "unsupported": 7
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.5",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.5.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 942,
-        "usage": {
-          "C": 81,
-          "O": 798,
-          "R": 63
-        },
-        "conditional": {
-          "always-undecided": 25,
-          "decided-from-message": 44,
-          "partly-undecided": 8,
-          "unsupported": 4
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.5",
-      "constraint": "component maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 431,
-      "review_pointer": "pack-2.5.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
-    },
-    {
-      "version": "2.5",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.5.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "hl7": 55,
-          "user": 54
-        },
-        "field_bindings": {
-          "hl7": 98,
-          "user": 271
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.5",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 25,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORM",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 2,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.5",
-      "family": "ORM",
-      "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "qualified-version-matched-choice",
-      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_5/groups.py (lines 1132 and 1148) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
-      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
-      "tests": "TestPinnedOrderDetailChoice/2.5: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
-      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
-      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
-    },
-    {
-      "version": "2.6",
-      "constraint": "composite component usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.6.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached": 301,
-        "usage": {
-          "C": 18,
-          "O": 245,
-          "R": 37,
-          "X": 1
-        },
-        "conditional": {
-          "always-undecided": 1,
-          "decided-from-message": 10,
-          "partly-undecided": 1,
-          "unsupported": 6
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.6",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.6.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 1005,
-        "usage": {
-          "C": 86,
-          "O": 832,
-          "R": 66,
-          "X": 21
-        },
-        "conditional": {
-          "always-undecided": 27,
-          "decided-from-message": 46,
-          "partly-undecided": 8,
-          "unsupported": 5
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.6",
-      "constraint": "component maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 444,
-      "review_pointer": "pack-2.6.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
-    },
-    {
-      "version": "2.6",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.6.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "hl7": 57,
-          "imported": 1,
-          "user": 58
-        },
-        "field_bindings": {
-          "external": 42,
-          "hl7": 105,
-          "user": 287
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.6",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 25,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.6",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.6",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORM",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.6",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 2,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.6",
-      "family": "ORM",
-      "constraint": "ORM_O01 ORDER_DETAIL alternatives",
-      "status": "qualified-version-matched-choice",
-      "evidence": "nHapi's generated ORM_O01_ORDER_DETAIL constructor uses the three-argument add, which AbstractGroup.Add inserts with choiceElement false; no generated group of this version declares a choice element. That is an upstream model limitation, not an extraction omission. The same pinned HL7apy archive's hl7apy/v2_6/groups.py (lines 1439 and 1459) declares those six segments as one choice group, in nHapi's order, with identical remaining members.",
-      "implementation": "readmit-profile-extractor/v3 replaces the flattened members with one choice node in readmit-profile-pack/v4 and refuses any disagreement; evaluator v3 matches exactly one alternative per repetition. Earlier pack versions refuse a choice node.",
-      "tests": "TestPinnedOrderDetailChoice/2.6: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without upstream content.",
-      "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
-      "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
-    },
-    {
-      "version": "2.7.1",
-      "constraint": "composite component usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached": 283,
-        "usage": {
-          "C": 48,
-          "O": 190,
-          "R": 35,
-          "RE": 1,
-          "X": 9
-        },
-        "conditional": {
-          "always-undecided": 1,
-          "decided-from-message": 38,
-          "partly-undecided": 1,
-          "unsupported": 8
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.7.1",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.7.1.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 1004,
-        "usage": {
-          "C": 77,
-          "O": 783,
-          "R": 69,
-          "X": 75
-        },
-        "conditional": {
-          "always-undecided": 25,
-          "decided-from-message": 43,
-          "partly-undecided": 5,
-          "unsupported": 4
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.7.1",
-      "constraint": "component maximum length",
-      "status": "extraction-information-unavailable",
-      "zero_length_components": 469,
-      "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/max_length",
-      "missing": "Zero records unavailable extracted length information; it does not establish that the standard permits unlimited length.",
-      "authoritative_source_needed": "Version-matched length, conformance-length and units/encoding rules for the declared profile scope.",
-      "implementation_test_needed": "Qualify boundary length and encoding cases independently; distinguish unavailable rules from intentional unlimited or variable constraints.",
-      "release_claim_affected": "No complete base component-length claim."
-    },
-    {
-      "version": "2.7.1",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "external": 6,
-          "hl7": 48,
-          "imported": 1,
-          "user": 46
-        },
-        "field_bindings": {
-          "external": 22,
-          "hl7": 100,
-          "unknown": 1,
-          "user": 283
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.7.1",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 24,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.7.1",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 1,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.7.1",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 0,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORM",
-      "existing_qualification": "schema-absent",
-      "status": "withdrawn-in-standard-and-absent-from-selected-source",
-      "missing": "No native ORM_O01 declaration exists in these selected libraries; the standard withdrawal is separately evidenced.",
-      "authoritative_source_needed": "Standard section above plus explicit scope for any requested legacy-compatibility mode; do not infer a replacement message.",
-      "implementation_test_needed": "Keep the cell in the seven-version matrix with withdrawn/native-unsupported status; test refusal and any separately declared compatibility mode. Modern order-family support would require an explicit scope/contract.",
-      "release_claim_affected": "A fictional local ORM contract is not native ORM conformance for this standard version.",
-      "standard_evidence": {
-        "url": "https://hl7.eu/HL7v2x/v271/std271/ch04.html",
-        "section": "4.3.1",
-        "checked": "2026-09-27",
-        "finding": "The version-specific chapter says ORM was withdrawn as of v2.7."
-      }
-    },
-    {
-      "version": "2.7.1",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 2,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.8.2",
-      "constraint": "composite component usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/usage",
-      "counts": {
-        "reached": 310,
-        "usage": {
-          "C": 50,
-          "O": 212,
-          "R": 34,
-          "RE": 1,
-          "X": 13
-        },
-        "conditional": {
-          "decided-from-message": 39,
-          "partly-undecided": 2,
-          "unsupported": 9
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision); each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.8.2",
-      "constraint": "base field usage",
-      "status": "represented-with-reviewed-conditions",
-      "review_pointer": "pack-2.8.2.json#/messages/*/segments/*/fields/*/usage",
-      "counts": {
-        "reached": 1078,
-        "usage": {
-          "C": 85,
-          "O": 876,
-          "R": 74,
-          "X": 43
-        },
-        "conditional": {
-          "always-undecided": 29,
-          "decided-from-message": 41,
-          "partly-undecided": 11,
-          "unsupported": 4
-        }
-      },
-      "source_survey": "Usage codes from the pinned HL7 v2 database export (B written as O by NIST's stated decision), with the edition table where the export carries none; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
-      "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
-      "authoritative_source_needed": "Independent review of the encoded conditions against the edition text; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover true/false/unknown predicates, parent context and prohibition (internal/profileeval/usage_test.go); broaden independently qualified message fixtures per promised structure.",
-      "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
-    },
-    {
-      "version": "2.8.2",
-      "constraint": "component maximum length and field maximum length",
-      "status": "represented-boundaries-unqualified",
-      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/length",
-      "counts": {
-        "component_length_states": {
-          "conformance-only": 134,
-          "normative": 54,
-          "not-assigned": 122
-        },
-        "field_length_states": {
-          "conformance-only": 89,
-          "normative": 128,
-          "not-assigned": 861
-        },
-        "with_conformance_length": 223
-      },
-      "source_survey": "Normative lengths from the pinned HL7 v2 database export; counting is characters, escape delimiters excluded (edition §2.7.1). Conformance lengths from the export agree with the edition tables. Composite types carry no normative length (§2.5.5.4).",
-      "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
-      "authoritative_source_needed": "None beyond the pinned export and chapters for these facets; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover both counting rules, escapes and multibyte values; qualify boundary cases independently per promised structure.",
-      "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
-    },
-    {
-      "version": "2.8.2",
-      "constraint": "standard terminology beyond approved local sets",
-      "status": "bindings-inventoried-values-not-extracted",
-      "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/table_kind",
-      "counts": {
-        "component_bindings": {
-          "external": 6,
-          "hl7": 53,
-          "imported": 1,
-          "user": 48
-        },
-        "field_bindings": {
-          "external": 22,
-          "hl7": 112,
-          "user": 286
-        }
-      },
-      "source_survey": "Table numbers and types from the pinned HL7 v2 database export; an unset type is decided from the database's hl7.eu table index and named in the receipt. External vocabularies are bound only where the edition binds them.",
-      "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External and imported vocabularies are unsupported until a pinned version is supplied.",
-      "authoritative_source_needed": "Pinned external vocabularies (for example the THO package) for any claim beyond the binding; exact-content rights review (#627).",
-      "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
-      "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
-    },
-    {
-      "version": "2.8.2",
-      "family": "ADT",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ADT_A01",
-      "source_structure_count": 24,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ADT",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.8.2",
-      "family": "SIU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "SIU_S12",
-      "source_structure_count": 15,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/SIU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
-    },
-    {
-      "version": "2.8.2",
-      "family": "ORM",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORM_O01",
-      "source_structure_count": 0,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORM",
-      "existing_qualification": "schema-absent",
-      "status": "withdrawn-in-standard-and-absent-from-selected-source",
-      "missing": "No native ORM_O01 declaration exists in these selected libraries; the standard withdrawal is separately evidenced.",
-      "authoritative_source_needed": "Standard section above plus explicit scope for any requested legacy-compatibility mode; do not infer a replacement message.",
-      "implementation_test_needed": "Keep the cell in the seven-version matrix with withdrawn/native-unsupported status; test refusal and any separately declared compatibility mode. Modern order-family support would require an explicit scope/contract.",
-      "release_claim_affected": "A fictional local ORM contract is not native ORM conformance for this standard version.",
-      "standard_evidence": {
-        "url": "https://hl7.eu/HL7v2x/v282/std282/ch04.html",
-        "section": "4.4.1",
-        "checked": "2026-09-27",
-        "finding": "The version-specific chapter says ORM was withdrawn as of v2.7."
-      }
-    },
-    {
-      "version": "2.8.2",
-      "family": "ORU",
-      "constraint": "published upstream structure/field/workflow qualification",
-      "selected_structure": "ORU_R01",
-      "source_structure_count": 2,
-      "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORU",
-      "existing_qualification": "tested-minimum-order-cardinality-only",
-      "status": "finite-grouping-proof-only",
-      "missing": "Selected grouping fixtures and owned interface fixtures do not qualify every promised upstream field, alternative, datatype, terminology or workflow constraint.",
-      "authoritative_source_needed": "Version-specific interface/base definitions for each published claim; exact sources mapped in profile-source-map.json.",
-      "implementation_test_needed": "Track and independently qualify each promised message/constraint; broaden fixtures where the release claim extends beyond current finite grouping/local contracts.",
-      "release_claim_affected": "Full upstream structure/workflow claims remain unqualified; no claim follows from 235 successfully normalized structures."
+ "schema": "readmit-profile-coverage-gaps/v2",
+ "status": "technical coverage delivered at the stated levels; distribution blocked on #627",
+ "basis_commit": "3fb4960189ee2e3dae7702c51d50638d24b680f6",
+ "rights_status": "pending; independent of technical qualification",
+ "receipt_sha256": "ecc274c2cb9d0c4ca4d8953f8d649aa93fd87ce65e591b8234bbf4c348a27f91",
+ "conditions_sha256": "706c86e4fd4a685d20791e0e38e417d839953855541aa310868c3e18ee4623f0",
+ "revisions": [
+  "2026-09-28: receipt_sha256 names docs/profile-extraction-v3-receipt.json. The five ORDER_DETAIL rows are qualified at the tested choice level; component usage rows record what the pinned HL7apy archive can and cannot supply; a 2.8.2 component usage row records that conditional usage is not represented.",
+  "2026-09-28: database_receipt_sha256 names docs/profile-extraction-v4-receipt.json and conditions_sha256 docs/profile-conditions.json. Component usage, base field usage, length and terminology rows now describe the v5 packs built from the pinned HL7 v2 database export and the reviewed conditions; counts are over the elements promised structures reach.",
+  "2026-09-28: every row now describes the packs built from HL7's own schemas and chapters (docs/profile-extraction-v5-receipt.json, ADR-0026); nHapi, HL7apy, NIST's export and hl7.eu are no longer sources. Counts are over the distinct fields (first family in ADT, ORM, ORU, SIU order) and components the promised structures reach. A per-edition row lists the recorded agreement between HL7's schema and chapter. The contract is v2: database_receipt_sha256 and zero_length_components are gone, receipt_sha256 names docs/profile-extraction-v5-receipt.json."
+ ],
+ "rows": [
+  {
+   "version": "2.3.1",
+   "constraint": "composite component usage",
+   "status": "not-defined-by-edition",
+   "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 467,
+    "usage": {
+     "unclassified": 467
     }
-  ],
-  "database_receipt_sha256": "510b6cb3702134d4d4e28d509196d226e38479d5080066167e4557cbf62ec8dd",
-  "conditions_sha256": "af179bbefabb68c5e953818d4cd61056f1c46fb3df5df99f845cc24c497089be"
+   },
+   "source_survey": "HL7's chapters for this edition print no component attribute tables, so no component usage exists to read; HL7's schemas list each component without usage.",
+   "missing": "No HL7 source defines component usage for this edition. Each component is unclassified and evaluation reports each occurrence as unsupported, never optional.",
+   "authoritative_source_needed": "None exists for this edition; a site profile may declare component usage locally.",
+   "implementation_test_needed": "Covered: an unclassified component cannot pass (TestUnclassifiedUsageAndUnavailableLengthCannotPass, TestPinnedStandardPacks).",
+   "release_claim_affected": "No base component usage claim for this edition."
+  },
+  {
+   "version": "2.3.1",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.3.1.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 737,
+    "usage": {
+     "B": 27,
+     "C": 58,
+     "O": 599,
+     "R": 53
+    },
+    "conditional": {
+     "always-undecided": 25,
+     "decided-from-message": 27,
+     "partly-undecided": 5,
+     "unsupported": 1
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans. Recorded: printed \"(B) R\" read as B: DG1.2, PR1.2.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.3.1 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.3.1",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "not-assigned": 467
+    },
+    "field_length_states": {
+     "normative": 737
+    },
+    "with_conformance_length": 0
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is the encoded occurrence with its separators. The edition states no conformance lengths.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.3.1",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.3.1.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {},
+    "field_bindings": {
+     "hl7": 71,
+     "user": 217
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption. HL7's text leaves these kinds undefined or contradictory, so they are unknown: 0126.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.3.1",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "repetition_schema_differences": 3,
+    "tables_printed_several": 5,
+    "chapter_only_elements": 19,
+    "structures_without_schema": 4,
+    "event_repairs": 1,
+    "adaptations": 1
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.3.1",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.3.1",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 17,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.3.1/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.3.1",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.3.1/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.3.1",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORM",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.3.1/ORM qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.3.1",
+   "family": "ORM",
+   "constraint": "ORM_O01 ORDER_DETAIL alternatives",
+   "status": "qualified-version-matched-choice",
+   "evidence": "HL7's own ORM_O01.xsd for this edition declares the order detail's OBR, RQD, RQ1, RXO, ODS and ODT as one xsd:choice; the pack's choice node is read from it directly.",
+   "implementation": "readmit-profile-pack/v5 carries the choice node; evaluator v4 matches exactly one alternative per repetition. Packs before v4 refuse a choice node.",
+   "tests": "TestPinnedOrderDetailChoice/2.3.1: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without HL7 content.",
+   "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+   "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
+  },
+  {
+   "version": "2.3.1",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.3.1/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.3.1/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.4",
+   "constraint": "composite component usage",
+   "status": "not-defined-by-edition",
+   "review_pointer": "pack-2.4.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 639,
+    "usage": {
+     "unclassified": 639
+    }
+   },
+   "source_survey": "HL7's chapters for this edition print no component attribute tables, so no component usage exists to read; HL7's schemas list each component without usage.",
+   "missing": "No HL7 source defines component usage for this edition. Each component is unclassified and evaluation reports each occurrence as unsupported, never optional.",
+   "authoritative_source_needed": "None exists for this edition; a site profile may declare component usage locally.",
+   "implementation_test_needed": "Covered: an unclassified component cannot pass (TestUnclassifiedUsageAndUnavailableLengthCannotPass, TestPinnedStandardPacks).",
+   "release_claim_affected": "No base component usage claim for this edition."
+  },
+  {
+   "version": "2.4",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.4.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 850,
+    "usage": {
+     "B": 41,
+     "C": 65,
+     "O": 684,
+     "R": 60
+    },
+    "conditional": {
+     "always-undecided": 26,
+     "decided-from-message": 33,
+     "partly-undecided": 5,
+     "unsupported": 1
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans. Recorded: printed \"(B) R\" read as B: DG1.2, PR1.2.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.4 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.4",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.4.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "not-assigned": 639
+    },
+    "field_length_states": {
+     "normative": 850
+    },
+    "with_conformance_length": 0
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is the encoded occurrence with its separators. The edition states no conformance lengths.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.4",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.4.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {},
+    "field_bindings": {
+     "hl7": 80,
+     "user": 263
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.4",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "repetition_schema_differences": 8,
+    "tables_printed_several": 8,
+    "structures_without_schema": 1,
+    "adaptations": 1
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.4",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.4",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 24,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.4/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.4",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.4/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.4",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORM",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.4/ORM qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.4",
+   "family": "ORM",
+   "constraint": "ORM_O01 ORDER_DETAIL alternatives",
+   "status": "qualified-version-matched-choice",
+   "evidence": "HL7's own ORM_O01.xsd for this edition declares the order detail's OBR, RQD, RQ1, RXO, ODS and ODT as one xsd:choice; the pack's choice node is read from it directly.",
+   "implementation": "readmit-profile-pack/v5 carries the choice node; evaluator v4 matches exactly one alternative per repetition. Packs before v4 refuse a choice node.",
+   "tests": "TestPinnedOrderDetailChoice/2.4: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without HL7 content.",
+   "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+   "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
+  },
+  {
+   "version": "2.4",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.4/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.4/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5",
+   "constraint": "composite component usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.5.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 289,
+    "usage": {
+     "B": 10,
+     "C": 18,
+     "O": 226,
+     "R": 35
+    },
+    "conditional": {
+     "decided-from-message": 13,
+     "partly-undecided": 2,
+     "unsupported": 3
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own Chapter 2A component tables as HL7 publishes them; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans in HL7's chapter text.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own component tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks against the built packs, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.5",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.5.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 942,
+    "usage": {
+     "B": 50,
+     "C": 81,
+     "O": 750,
+     "R": 61
+    },
+    "conditional": {
+     "always-undecided": 26,
+     "decided-from-message": 42,
+     "partly-undecided": 11,
+     "unsupported": 2
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans. Recorded: printed \"(B) R\" read as B: DG1.2, PR1.2.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.5 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.5",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.5.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "normative": 289
+    },
+    "field_length_states": {
+     "normative": 942
+    },
+    "with_conformance_length": 0
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is the encoded occurrence with its separators. The edition states no conformance lengths.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.5",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.5.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {
+     "hl7": 55,
+     "user": 54
+    },
+    "field_bindings": {
+     "hl7": 98,
+     "user": 271
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.5",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "repetition_schema_differences": 19,
+    "tables_printed_several": 1,
+    "structures_without_schema": 3
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.5",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.5",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 25,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORM",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5/ORM qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5",
+   "family": "ORM",
+   "constraint": "ORM_O01 ORDER_DETAIL alternatives",
+   "status": "qualified-version-matched-choice",
+   "evidence": "HL7's own ORM_O01.xsd for this edition declares the order detail's OBR, RQD, RQ1, RXO, ODS and ODT as one xsd:choice; the pack's choice node is read from it directly.",
+   "implementation": "readmit-profile-pack/v5 carries the choice node; evaluator v4 matches exactly one alternative per repetition. Packs before v4 refuse a choice node.",
+   "tests": "TestPinnedOrderDetailChoice/2.5: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without HL7 content.",
+   "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+   "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
+  },
+  {
+   "version": "2.5",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 2,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5.1",
+   "constraint": "composite component usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 289,
+    "usage": {
+     "B": 10,
+     "C": 18,
+     "O": 226,
+     "R": 35
+    },
+    "conditional": {
+     "decided-from-message": 13,
+     "partly-undecided": 2,
+     "unsupported": 3
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own Chapter 2A component tables as HL7 publishes them; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans in HL7's chapter text.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own component tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks against the built packs, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.5.1",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.5.1.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 950,
+    "usage": {
+     "B": 50,
+     "C": 81,
+     "O": 755,
+     "R": 61,
+     "unclassified": 3
+    },
+    "conditional": {
+     "always-undecided": 26,
+     "decided-from-message": 42,
+     "partly-undecided": 11,
+     "unsupported": 2
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans. Recorded: printed \"(B) R\" read as B: DG1.2, PR1.2; usage not printed, unclassified: OBX.20, OBX.21, OBX.22.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.5.1 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.5.1",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "normative": 289
+    },
+    "field_length_states": {
+     "normative": 947,
+     "not-assigned": 3
+    },
+    "with_conformance_length": 0
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is the encoded occurrence with its separators. The edition states no conformance lengths.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.5.1",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.5.1.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {
+     "hl7": 55,
+     "user": 54
+    },
+    "field_bindings": {
+     "hl7": 94,
+     "user": 276
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.5.1",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "tables_printed_several": 1,
+    "structures_without_schema": 3
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.5.1",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.5.1",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 25,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5.1/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5.1",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5.1/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5.1",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORM",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5.1/ORM qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.5.1",
+   "family": "ORM",
+   "constraint": "ORM_O01 ORDER_DETAIL alternatives",
+   "status": "qualified-version-matched-choice",
+   "evidence": "HL7's own ORM_O01.xsd for this edition declares the order detail's OBR, RQD, RQ1, RXO, ODS and ODT as one xsd:choice; the pack's choice node is read from it directly.",
+   "implementation": "readmit-profile-pack/v5 carries the choice node; evaluator v4 matches exactly one alternative per repetition. Packs before v4 refuse a choice node.",
+   "tests": "TestPinnedOrderDetailChoice/2.5.1: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without HL7 content.",
+   "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+   "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
+  },
+  {
+   "version": "2.5.1",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 2,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.5.1/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.5.1/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.6",
+   "constraint": "composite component usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.6.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 301,
+    "usage": {
+     "B": 8,
+     "C": 18,
+     "O": 237,
+     "R": 37,
+     "W": 1
+    },
+    "conditional": {
+     "always-undecided": 1,
+     "decided-from-message": 14,
+     "partly-undecided": 1,
+     "unsupported": 2
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own Chapter 2A component tables as HL7 publishes them; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans in HL7's chapter text.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own component tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks against the built packs, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.6",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.6.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 1005,
+    "usage": {
+     "B": 46,
+     "C": 86,
+     "O": 786,
+     "R": 66,
+     "W": 21
+    },
+    "conditional": {
+     "always-undecided": 28,
+     "decided-from-message": 45,
+     "partly-undecided": 10,
+     "unsupported": 3
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.6 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.6",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.6.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "normative": 300,
+     "not-assigned": 1
+    },
+    "field_length_states": {
+     "normative": 984,
+     "not-assigned": 21
+    },
+    "with_conformance_length": 0
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is the encoded occurrence with its separators. The edition states no conformance lengths.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.6",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.6.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {
+     "external": 1,
+     "hl7": 53,
+     "imported": 1,
+     "unknown": 3,
+     "user": 58
+    },
+    "field_bindings": {
+     "external": 41,
+     "hl7": 103,
+     "unknown": 4,
+     "user": 283
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption. HL7's text leaves these kinds undefined or contradictory, so they are unknown: 0292, 0340, 0399.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.6",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "chapter_only_elements": 22,
+    "structures_without_schema": 1
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.6",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.6",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 25,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.6/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.6",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.6/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.6",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORM",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.6/ORM qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.6",
+   "family": "ORM",
+   "constraint": "ORM_O01 ORDER_DETAIL alternatives",
+   "status": "qualified-version-matched-choice",
+   "evidence": "HL7's own ORM_O01.xsd for this edition declares the order detail's OBR, RQD, RQ1, RXO, ODS and ODT as one xsd:choice; the pack's choice node is read from it directly.",
+   "implementation": "readmit-profile-pack/v5 carries the choice node; evaluator v4 matches exactly one alternative per repetition. Packs before v4 refuse a choice node.",
+   "tests": "TestPinnedOrderDetailChoice/2.6: each of the six alternatives alone passes; two alternatives in one detail and notes without an alternative fail. TestAChoiceGroupAcceptsExactlyOneDeclaredAlternative covers the operator without HL7 content.",
+   "remaining": "Field, component and terminology constraints inside each alternative segment remain governed by the other rows of this version.",
+   "release_claim_affected": "Order-detail alternatives are qualified at the tested choice level only; this is not full ORM structural validation."
+  },
+  {
+   "version": "2.6",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 2,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.6/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.6/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.7.1",
+   "constraint": "composite component usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 280,
+    "usage": {
+     "B": 1,
+     "C": 48,
+     "O": 187,
+     "R": 34,
+     "RE": 1,
+     "W": 9
+    },
+    "conditional": {
+     "always-undecided": 1,
+     "decided-from-message": 43,
+     "partly-undecided": 1,
+     "unsupported": 3
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own Chapter 2A component tables as HL7 publishes them; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans in HL7's chapter text.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own component tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks against the built packs, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.7.1",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.7.1.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 1004,
+    "usage": {
+     "B": 36,
+     "C": 79,
+     "O": 756,
+     "R": 67,
+     "W": 65,
+     "unclassified": 1
+    },
+    "conditional": {
+     "always-undecided": 25,
+     "decided-from-message": 43,
+     "partly-undecided": 8,
+     "unsupported": 3
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans. Recorded: usage not printed, unclassified: ACC.12; chapter usage differs from the schema's required flag: OBX.2 C/min 1, OBX.4 C/min 1.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.7.1 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.7.1",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "conformance-only": 129,
+     "normative": 49,
+     "not-assigned": 102
+    },
+    "field_length_states": {
+     "conformance-only": 86,
+     "normative": 117,
+     "not-assigned": 801
+    },
+    "with_conformance_length": 215
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is characters, escape delimiters excluded. Conformance lengths from the edition's attribute tables, which its schemas omit.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.7.1",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.7.1.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {
+     "external": 4,
+     "hl7": 47,
+     "imported": 1,
+     "unknown": 3,
+     "user": 45
+    },
+    "field_bindings": {
+     "external": 19,
+     "hl7": 101,
+     "unknown": 4,
+     "user": 278
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption. HL7's text leaves these kinds undefined or contradictory, so they are unknown: 0153, 0292, 0340, 0399.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.7.1",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "usage_schema_differences": 2,
+    "chapter_only_elements": 74,
+    "structures_without_schema": 2
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.7.1",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.7.1",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 24,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.7.1/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.7.1",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.7.1/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.7.1",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 0,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORM",
+   "existing_qualification": "schema-absent",
+   "status": "withdrawn-in-standard-and-absent-from-hl7-schemas",
+   "missing": "HL7's schemas for this edition define no ORM_O01; the edition's own chapter states the withdrawal.",
+   "authoritative_source_needed": "Standard section below plus explicit scope for any requested legacy-compatibility mode; do not infer a replacement message.",
+   "implementation_test_needed": "Keep the cell in the seven-version matrix with withdrawn/native-unsupported status; test refusal and any separately declared compatibility mode. Modern order-family support would require an explicit scope/contract.",
+   "release_claim_affected": "A fictional local ORM contract is not native ORM conformance for this standard version.",
+   "standard_evidence": {
+    "file": "V271_FinalStandard_Word_and_PDF.zip",
+    "member": "V271_CH04_Orders.pdf",
+    "section": "4.4.1",
+    "checked": "2026-09-28",
+    "finding": "The edition's Chapter 4 says ORM was retained for backwards compatibility only as of v2.4 and withdrawn as of v2.7."
+   }
+  },
+  {
+   "version": "2.7.1",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 2,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.7.1/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.7.1/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.8.2",
+   "constraint": "composite component usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/usage",
+   "counts": {
+    "reached": 310,
+    "usage": {
+     "B": 2,
+     "C": 50,
+     "O": 210,
+     "R": 34,
+     "RE": 1,
+     "W": 13
+    },
+    "conditional": {
+     "decided-from-message": 44,
+     "partly-undecided": 2,
+     "unsupported": 4
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own Chapter 2A component tables as HL7 publishes them; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans in HL7's chapter text.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C component whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own component tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks against the built packs, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Component usage is evaluated from the edition's code; a conditional component passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.8.2",
+   "constraint": "base field usage",
+   "status": "represented-with-reviewed-conditions",
+   "review_pointer": "pack-2.8.2.json#/messages/*/segments/*/fields/*/usage",
+   "counts": {
+    "reached": 1100,
+    "usage": {
+     "B": 37,
+     "C": 85,
+     "O": 839,
+     "R": 74,
+     "W": 65
+    },
+    "conditional": {
+     "always-undecided": 28,
+     "decided-from-message": 44,
+     "partly-undecided": 9,
+     "unsupported": 4
+    }
+   },
+   "source_survey": "Usage (OPT) from the edition's own segment attribute tables as HL7 publishes them, the defining chapter per family for OBR and OBX; each C predicate encoded from its own edition sentence in docs/profile-conditions.json with located, hashed basis spans.",
+   "missing": "Predicates are a reviewed reading of edition prose, since no machine-readable HL7 source states them. A C field whose edition states no condition or contradicts itself is unsupported; a condition that depends on information the message does not carry is undecided. Neither passes.",
+   "authoritative_source_needed": "Met: the edition's own segment attribute tables and definitions. Rights review (#627) is separate.",
+   "implementation_test_needed": "Covered: owned predicate fixtures (internal/profileeval/usage_test.go), TestPinnedStandardPacks/2.8.2 printed usage against the built pack, and the independent re-review on 2026-09-28 of all 717 encodings (477 distinct texts) against HL7's chapter text, which confirmed 439, raised 38 and led to 25 adjudicated changes across 65 elements.",
+   "release_claim_affected": "Field usage is evaluated from the edition's code; a conditional field passes only when its predicate is decided from the message. No full conformance claim until independently qualified and #627 is approved."
+  },
+  {
+   "version": "2.8.2",
+   "constraint": "component maximum length and field maximum length",
+   "status": "represented-boundaries-unqualified",
+   "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/length",
+   "counts": {
+    "component_length_states": {
+     "conformance-only": 134,
+     "normative": 53,
+     "not-assigned": 123
+    },
+    "field_length_states": {
+     "conformance-only": 89,
+     "normative": 135,
+     "not-assigned": 876
+    },
+    "with_conformance_length": 223
+   },
+   "source_survey": "Normative lengths from HL7's schemas for the edition; counting is characters, escape delimiters excluded. Conformance lengths from the schemas.",
+   "missing": "not-assigned records that neither source states a length, not that the standard permits unlimited length. A conformance length never fails a message.",
+   "authoritative_source_needed": "None beyond the edition's pinned schemas and chapters for these facets; exact-content rights review (#627).",
+   "implementation_test_needed": "Covered at the stated level: owned fixtures for both counting rules, escapes and multibyte values. Boundary lengths of individual promised fields are not claimed.",
+   "release_claim_affected": "Base length is evaluated where a normative length is stated; boundary behaviour is unqualified beyond owned fixtures."
+  },
+  {
+   "version": "2.8.2",
+   "constraint": "standard terminology beyond approved local sets",
+   "status": "bindings-inventoried-values-not-extracted",
+   "review_pointer": "pack-2.8.2.json#/datatypes/*/components/*/table_kind",
+   "counts": {
+    "component_bindings": {
+     "external": 2,
+     "hl7": 52,
+     "imported": 1,
+     "unknown": 5,
+     "user": 48
+    },
+    "field_bindings": {
+     "external": 19,
+     "hl7": 116,
+     "unknown": 5,
+     "user": 286
+    }
+   },
+   "source_survey": "Table numbers from the edition's attribute tables (the schema's where the chapter prints none); each table's kind from the edition's Appendix A index, else the table's own caption. HL7's text leaves these kinds undefined or contradictory, so they are unknown: 0153, 0292, 0340, 0399, 0549, 0913.",
+   "missing": "HL7 table values are not copied: every edition lets a site extend an HL7 table, so an unfamiliar code is no base violation. User-defined values are suggestions. External, imported and unknown-kind vocabularies are unsupported until a pinned version is supplied.",
+   "authoritative_source_needed": "Pinned external vocabularies (for example the HL7 Terminology package) for any claim beyond the binding; exact-content rights review (#627).",
+   "implementation_test_needed": "Owned fixtures cover each table kind (TestFieldTableBindings); qualify any pinned vocabulary with valid, invalid and version-change cases.",
+   "release_claim_affected": "Local set validation and the binding inventory do not establish full standard terminology support."
+  },
+  {
+   "version": "2.8.2",
+   "constraint": "agreement between HL7 schema and chapter",
+   "status": "chapter-prevails-differences-recorded",
+   "counts": {
+    "table_schema_differences": 2,
+    "datatype_differences": 1,
+    "chapter_only_elements": 78,
+    "structures_without_schema": 2,
+    "event_repairs": 1
+   },
+   "review_pointer": "docs/profile-extraction-v5-receipt.json#/report/2.8.2",
+   "missing": "Each listed difference is between two HL7 publications of the same edition. The normative chapter decides the columns it prints; the receipt lists every difference, repair and adaptation.",
+   "authoritative_source_needed": "HL7 errata for the listed differences, where HL7 has published any.",
+   "implementation_test_needed": "Covered by the builder's owned fixtures (tools/test_profile_standard.py); any new HL7 file is a new dataset whose differences the receipt lists again.",
+   "release_claim_affected": "None beyond the rows above; a recorded difference is not a gap in coverage."
+  },
+  {
+   "version": "2.8.2",
+   "family": "ADT",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ADT_A01",
+   "source_structure_count": 24,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ADT",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.8.2/ADT qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.8.2",
+   "family": "SIU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "SIU_S12",
+   "source_structure_count": 1,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/SIU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.8.2/SIU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  },
+  {
+   "version": "2.8.2",
+   "family": "ORM",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORM_O01",
+   "source_structure_count": 0,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORM",
+   "existing_qualification": "schema-absent",
+   "status": "withdrawn-in-standard-and-absent-from-hl7-schemas",
+   "missing": "HL7's schemas for this edition define no ORM_O01; the edition's own chapter states the withdrawal.",
+   "authoritative_source_needed": "Standard section below plus explicit scope for any requested legacy-compatibility mode; do not infer a replacement message.",
+   "implementation_test_needed": "Keep the cell in the seven-version matrix with withdrawn/native-unsupported status; test refusal and any separately declared compatibility mode. Modern order-family support would require an explicit scope/contract.",
+   "release_claim_affected": "A fictional local ORM contract is not native ORM conformance for this standard version.",
+   "standard_evidence": {
+    "file": "HL7 Messaging Version 2.8.2.zip",
+    "member": "V282_CH04_Orders.pdf",
+    "section": "4.4.1",
+    "checked": "2026-09-28",
+    "finding": "The edition's Chapter 4 says ORM was retained for backwards compatibility only as of v2.4 and withdrawn as of v2.7."
+   }
+  },
+  {
+   "version": "2.8.2",
+   "family": "ORU",
+   "constraint": "published upstream structure/field/workflow qualification",
+   "selected_structure": "ORU_R01",
+   "source_structure_count": 2,
+   "selected_grouping_test": "TestPinnedUpstreamGroupingMatrix/2.8.2/ORU",
+   "existing_qualification": "tested-minimum-order-cardinality-only",
+   "status": "finite-grouping-proof-only",
+   "missing": "Not claimed: any field, alternative, datatype, terminology or workflow constraint beyond the selected grouping path, which the other rows of this version describe.",
+   "authoritative_source_needed": "Met: HL7's schema for this structure, mapped in profile-source-map.json.",
+   "implementation_test_needed": "None at this level: TestPinnedUpstreamGroupingMatrix/2.8.2/ORU qualifies it with independent positive and negative fixtures. A claim beyond it needs its own fixtures first.",
+   "release_claim_affected": "Full structure/workflow claims remain unqualified; no claim follows from HL7's schemas having been read."
+  }
+ ]
 }
