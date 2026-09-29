@@ -35,7 +35,7 @@
       "screen": "Evaluate a case\u2026 in a saved profile's More profile actions",
       "action": "evaluate pinned interface constraints and inspect traceable findings",
       "backend": {"package": "internal/profileeval", "name": "EvaluateBundle"},
-      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-case/v1"],
+      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-profile-pack/v5", "readmit-case/v1"],
       "outputs": ["readmit-profile-evaluation/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Library.test.tsx", "name": "Evaluate a case shows the profile's result for that case as the command line evaluates it"},
@@ -51,7 +51,7 @@
       "screen": "the existing Profiles, Findings and test review flows",
       "action": "evaluate pinned interface constraints and inspect traceable findings",
       "backend": {"package": "internal/profileeval", "name": "EvaluateBundle"},
-      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-case/v1"],
+      "inputs": ["readmit-local-profile/v1", "readmit-local-profile/v2", "readmit-local-profile/v3", "readmit-profile-pack/v1", "readmit-profile-pack/v2", "readmit-profile-pack/v3", "readmit-profile-pack/v4", "readmit-profile-pack/v5", "readmit-case/v1"],
       "outputs": ["readmit-profile-evaluation/v1"],
       "prerequisites": [],
       "implemented": false
@@ -71,52 +71,28 @@
       "implemented": false
     },
     {
-      "id": "tooling.tools.profile-extract",
-      "source": "tools/profile_extract.py",
+      "id": "tooling.tools.profile-hl7",
+      "source": "tools/profile_hl7.py",
       "kind": "tooling",
-      "capability": "Normalize exact pinned nHapi and HL7apy metadata offline for rights review",
+      "capability": "Read HL7's own v2 schemas and chapters once into a dataset and build v5 profile packs from it",
       "owner": "bharm16/readmit#577",
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {"kind": "developer-tooling", "reason": "offline pinned metadata extraction; never approves source rights or publishes a pack"}
-    },
-    {
-      "id": "tooling.tools.profile-hl7db",
-      "source": "tools/profile_hl7db.py",
-      "kind": "tooling",
-      "capability": "Build v5 profile packs from the pinned HL7 v2 database export and reviewed conditions",
-      "owner": "bharm16/readmit#577",
-      "inputs": [],
-      "outputs": [],
-      "prerequisites": [],
-      "implemented": false,
-      "disposition": {"kind": "developer-tooling", "reason": "offline pack building from pinned sources; never approves source rights or publishes a pack"}
+      "disposition": {"kind": "developer-tooling", "reason": "offline reading of pinned HL7 files and pack building; never approves source rights or publishes a pack"}
     },
     {
       "id": "tooling.tools.profile-standard",
       "source": "tools/profile_standard.py",
       "kind": "tooling",
-      "capability": "Freeze HL7 v2 sources, export conditional elements for review and build v5 packs offline",
+      "capability": "Extract HL7 v2 datasets, export conditional elements for review and build v5 packs offline",
       "owner": "bharm16/readmit#577",
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {"kind": "developer-tooling", "reason": "development-time source acquisition and pack building; never runs in the shipped engine or approves rights"}
-    },
-    {
-      "id": "tooling.tools.profile-standard-extract",
-      "source": "tools/profile_standard_extract.py",
-      "kind": "tooling",
-      "capability": "Read each conditional element's definition from frozen HL7 v2 chapters for review",
-      "owner": "bharm16/readmit#577",
-      "inputs": [],
-      "outputs": [],
-      "prerequisites": [],
-      "implemented": false,
-      "disposition": {"kind": "developer-tooling", "reason": "offline reading of frozen standard text; copies no prose into the repository"}
+      "disposition": {"kind": "developer-tooling", "reason": "development-time dataset extraction and pack building; never runs in the shipped engine or approves rights"}
     },
     {
       "id": "cli.connected.transport.review",

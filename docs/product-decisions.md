@@ -36,6 +36,13 @@ Select these build-time metadata inputs:
 | 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.7.1 | nHapi `2495edd1e23a85ab9146cb03947c17d45120cf1f`, also the existing label source |
 | 2.8.2 | HL7apy `v1.3.5`, commit `9550b6eca2c580e9615d756b294dbe5ea471667c` |
 
+On 2026-09-28 the owner directed the packs to come from a real HL7 dataset
+instead of these assembled sources: HL7's own published schemas and normative
+chapters for each version, downloaded with the owner's HL7 account
+([ADR-0026](adr/0026-profile-packs-are-built-from-hl7s-own-files.md),
+[profile evaluation](profile-evaluation.md#build-the-packs-from-hl7s-own-files)).
+nHapi remains the source of the existing v2.5.1 field labels only.
+
 Normalize extracted metadata into one versioned strict-JSON Readmit pack
 contract. No .NET or Python runtime is added to customer installations. Keep
 source revisions, extraction steps, content digests, applicable notices and

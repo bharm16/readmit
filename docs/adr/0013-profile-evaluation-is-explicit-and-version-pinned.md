@@ -77,3 +77,12 @@ so an unfamiliar code in one is no base violation; user-defined values are
 suggestions; an external or imported vocabulary is unsupported until pinned.
 The sources, database files and v5 packs stay outside distribution pending
 #627.
+
+## 2026-09-28: structures and usage from HL7's own files
+
+The v5 packs are rebuilt from HL7's own schemas and chapters (ADR-0026):
+structures and choices from the schemas, usage and every other printed column
+from the normative chapters. NIST's export, nHapi and HL7apy are no longer
+read. The pack contract and evaluator v4 are unchanged; the new packs are new
+identities, and the reviewed conditions keep their encodings with basis spans
+in HL7's chapter text.

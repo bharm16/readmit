@@ -1,6 +1,7 @@
 ---
 status: accepted
 date: 2026-09-18
+amended: 2026-09-28
 ---
 
 # Profile packs are offline metadata with explicit support levels
@@ -39,3 +40,8 @@ Existing strict-JSON artifacts keep their member sets. New pack versions use
 new contract names and compatible readers as ADR-0003 requires. No external
 terminology catalogue is bundled without its own rights review. This ADR
 authorizes the architecture; the pack implementation remains tracked work.
+
+## 2026-09-28: HL7's own files
+
+The metadata sources are now HL7's published schemas and chapters, not nHapi
+and HL7apy; see ADR-0026. The architecture above is unchanged.

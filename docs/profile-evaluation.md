@@ -81,8 +81,9 @@ Partial captures still cannot prove that an unobserved transition never ran.
 profile, pack, wire message and expected outcome for all 28 version/family
 cells. These independently authored fictional interfaces test ordered groups,
 composite constraints, namespaces, dates, lifecycle transitions and capture
-gaps at an explicitly finite level. They do not qualify the 235 upstream
-message structures or establish universal clinical workflow semantics.
+gaps at an explicitly finite level. They do not qualify the 188 ADT, SIU,
+ORM and ORU message structures HL7's schemas define across the seven versions,
+or establish universal clinical workflow semantics.
 
 ## Version-matched choice groups
 
@@ -94,67 +95,96 @@ selects evaluator operator v3, which keeps v2's component semantics. A v1–v3
 pack or any local profile that names `choice` is refused; none gains the
 operator by being re-read.
 
-nHapi's generated constructors never declare a choice element: the
-three-argument `add` they call inserts every member with `choiceElement`
-false. So the adopted 2.3.1–2.6 ORM_O01 ORDER_DETAIL groups list OBR, RQD,
-RQ1, RXO, ODS and ODT as six required segments. That is an upstream model
-limitation, not an extraction omission. The same pinned HL7apy archive
-declares those six segments as one choice group for each of those versions,
-in nHapi's order and with the same remaining members. Extractor v3 reads
-only the operator, member order and cardinalities from that version's
-`groups.py` and replaces the flattened members with one choice node. Any
-disagreement in member identity, order or cardinality refuses extraction.
-HL7apy has no 2.7.1 metadata, and neither 2.7.1 nor 2.8.2 has an ORM_O01
-source, so nothing is borrowed for them.
+HL7's own message schemas declare these choices. For 2.3.1–2.6 each ORM_O01
+order detail opens with one choice of OBR, RQD, RQ1, RXO, ODS or ODT, and the
+pack takes that choice node straight from the version's `ORM_O01.xsd`. The
+2.7.1 and 2.8.2 schemas define no ORM_O01, so nothing is borrowed for them.
 
-## Reproduce the upstream extraction
+## Build the packs from HL7's own files
 
-The development-only normalizer reads these adopted archives offline:
+Every base fact in a pack comes from two files HL7 International publishes to
+its registered users for each edition, downloaded with the owner's HL7
+account and pinned by size and SHA-256 in
+[the source manifest](profile-standard-sources.json):
 
-- nHapi commit `2495edd1e23a85ab9146cb03947c17d45120cf1f`, archive SHA-256
-  `165a28565b88ba1a9a26f9be893639490af074a529774f8a8da77f0905330882`.
-- HL7apy 1.3.5 commit `9550b6eca2c580e9615d756b294dbe5ea471667c`, archive SHA-256
-  `8b496e4e94221b8472a9df81be73d98b8726c1d6b386637a6f08264fc83ddb63`.
+- **HL7 Version 2.x Messaging Schemas.** HL7's XML schemas, generated from
+  HL7's own v2 database. They give every message structure with its groups and
+  choices, each segment's fields and cardinality, each composite's components,
+  and lengths.
+- **HL7 Messaging Standard.** The edition's normative chapters as HL7
+  publishes them (PDF). Their attribute tables decide usage (OPT), repetition
+  (RP/#) and table (TBL#): HL7 states that the schemas are not normative, so
+  where the two disagree the chapter prevails and the receipt lists the
+  difference. A chapter row also fills what the schema lacks: elements it
+  omits and 2.7.1's conformance lengths. Data types and lengths otherwise come
+  from the schema; data type differences are listed, and printed lengths are
+  not compared because a wrapped PDF cell can join a length to the next line.
+  The chapters also give Table 0354 (each structure's trigger events), each
+  table's kind (Appendix A and the tables' own captions) and the definition
+  text every reviewed condition cites.
+
+nHapi, HL7apy, NIST's export of the HL7 database and the hl7.eu rendering are no
+longer sources ([ADR-0026](adr/0026-profile-packs-are-built-from-hl7s-own-files.md)).
+
+`extract` reads each edition's two files once into a JSON dataset: every
+message structure, segment, field, composite and printed attribute table with
+its definition text, the table kinds and Table 0354. Every later step reads the
+datasets, never the PDFs or schemas. PDF text comes from poppler's
+`pdftotext -layout`, whose version the dataset records
+([stack](stack.md)); another version is a new dataset.
 
 ```
-python3 tools/profile_extract.py --nhapi NHAPI_ARCHIVE --hl7apy HL7APY_ARCHIVE --output NEW_REVIEW_DIRECTORY
-READMIT_PROFILE_EXTRACTION=NEW_REVIEW_DIRECTORY go test -short -tags readmit_nosync ./internal/profileeval -run TestPinned
+python3 tools/profile_standard.py extract --sources HL7_FILES --output DATASETS
+python3 tools/profile_standard.py review-items --datasets DATASETS --output ITEMS
+python3 tools/profile_standard.py build --datasets DATASETS --conditions docs/profile-conditions.json --output PACKS
+READMIT_PROFILE_EXTRACTION=PACKS go test -short -tags readmit_nosync ./internal/profileeval -run TestPinned
 ```
 
-The extractor checks both archive hashes, reads C# declarations and a restricted
-literal Python syntax without importing/executing upstream code, and produces
-seven v4 packs plus exact notices and an extraction receipt. It refuses unknown
-syntax instead of silently dropping it. It extracts structural and component metadata:
-no upstream prose or external code-table values. nHapi component usage is
-explicitly unavailable; table references without approved finite values remain
-unsupported. TSComponentOne is adapted to the DTM lexical operator.
-HL7apy's extracted fields supply no maximum lengths; zero records that absence.
-The 2.3.1–2.6 ORDER_DETAIL choices come from HL7apy as described above; the
-receipt's `supplements` record each source file, hash, declaration lines and
-notice basis. Neither .NET nor Python is added to the shipped Go runtime.
+`extract` refuses a file whose hash differs from the manifest; `build` refuses a
+dataset read from any other file and any reached conditional element without a
+reviewed encoding. Neither .NET nor Python is added to the shipped Go runtime.
+Datasets and packs hold HL7 content and stay outside source control and release
+archives until #627 approves redistribution. [The v5 receipt](profile-extraction-v5-receipt.json)
+binds the manifest, the conditions registry, HL7's notice, each dataset and
+each pack by hash, and reports per edition:
 
-[The v3 extraction receipt](profile-extraction-v3-receipt.json) names 235
-normalized message structures and exact output hashes. The outputs were read
-back through the Go reader. They remain outside source control and distribution.
-[The 28-cell matrix](profile-evaluation-matrix.json) distinguishes independently
-tested local constraints from unqualified upstream structure/workflow support.
-The local matrix tests do not certify any complete base-standard cell. The
-[exact-content rights packet](profile-redistribution-review.md) records the
-pending owner decision. The earlier v1 and
-[v2](profile-extraction-v2-receipt.json) receipts remain available; the packs
-they name are superseded by new identities (pack version 3), never rewritten.
+- The only reviewed repairs: 2.3.1's Table 0354 prints ADT_A30's event A36 as
+  "136"; 2.8.2's Table 0354 omits SIU_S12's S27, which its own Chapter 10
+  message definition includes.
+- One adaptation: 2.3.1 and 2.4 type TS.1 as ST in their schemas, while their
+  Chapter 2 gives it the date/time form; it is evaluated as DTM.
+- Each difference between chapter and schema (usage, repetition, table, data
+  type), each element only the chapter prints (2.3.1's ORC-1 to ORC-19, which its
+  schema omits, and every withdrawn element from 2.6 on), each usage the chapter
+  leaves unprinted (2.5.1's reserved OBX-20 to OBX-22, 2.7.1's ACC-12), each
+  "(B) R" printing (a field kept for backward compatibility that an earlier
+  version required; it is B) and each table whose kind HL7's own text leaves
+  undefined or contradictory.
+- Each trigger-event alias. A message without MSH-9.3 is evaluated against the
+  structure Table 0354 names for its event (ADT^A04 against ADT_A01); a
+  structure Table 0354 names without a schema (2.3.1's ADT_A37, 2.5's ORU_R31
+  and ORU_R32) remains `base-message-structure-unavailable`.
+
+A withdrawn element prints no data type; its rule carries the placeholder `WD`
+and usage W, so a valued one fails as prohibited.
+
+The earlier nHapi/HL7apy extractions (pack versions 1–3) and the NIST-based v5
+packs (pack version 4) are superseded by the new identities `hl7-v2-<version>`
+version 1. They were never distributed; their receipts
+(`docs/profile-extraction-receipt.json` and `-v2` to `-v4`) remain as records
+of those identities and are no longer shipped.
 
 ## Published source grouping level
 
 `TestPinnedUpstreamGroupingMatrix` runs independently authored minimum-group
-positive/negative fixtures against the exact extracted packs. It qualifies
-only the selected ADT_A01, SIU_S12, ORM_O01 and ORU_R01 order/cardinality paths,
+positive/negative fixtures against the exact built packs. It qualifies only
+the selected ADT_A01, SIU_S12, ORM_O01 and ORU_R01 order/cardinality paths,
 not every message in each family or the complete field vocabulary. The entire
 report stays nonpassing where required fields, usage or terminology are absent.
 
-ORM_O01 is absent from the adopted 2.7.1/2.8.2 sources. The version-specific
-standard chapters also state that ORM was withdrawn as of v2.7; the separate
-source and applicability evidence is recorded in the
+HL7's 2.7.1 and 2.8.2 schemas define no ORM_O01, and the version-specific
+chapters state that ORM was withdrawn as of v2.7; the separate source and
+applicability evidence is recorded in the
 [coverage-gap matrix](profile-coverage-gaps.json). Those cells explicitly
 produce `base-message-structure-unavailable`; no newer order message substitutes
 for it. The minimum ORM grouping fixtures use ORC without the optional detail
@@ -162,7 +192,7 @@ group. `TestPinnedOrderDetailChoice` qualifies the 2.3.1–2.6 order detail at
 its choice level: each of the six alternatives alone passes, while two
 alternatives in one detail or notes without an alternative fail. It also
 asserts that the 2.7.1 and 2.8.2 packs contain no choice. The source matrix
-names each fixture, its hash, selected structure, exact source pack and tested
+names each fixture, its hash, selected structure, exact pack and tested
 level. Fields inside each alternative keep their separate gaps.
 
 ## Edition usage, conditions, lengths and tables
@@ -171,10 +201,12 @@ A conditional requirement is not optional. `readmit-profile-pack/v5` replaces
 v3/v4's required boolean with the edition's usage code for every base field
 and component and selects evaluator operator v4:
 
-- `R` must be valued, `X` (withdrawn or not supported) must not be, `O` and
-  `RE` may be either, and `unclassified` records a source that defines no
-  usage. An unclassified element is reported once per occurrence as
-  unsupported, so it never passes.
+- `R` must be valued; `X` (not supported) and `W` (withdrawn) must not be;
+  `O`, `RE` and `B` (kept for backward compatibility) may be either; and
+  `unclassified` records a source that defines no usage. An unclassified
+  element is reported once per occurrence as unsupported, so it never passes.
+  2.3.1 and 2.4 define no component usage, so their components are
+  unclassified.
 - `C` carries a typed condition and the usage its true and false branches
   select (R, RE, O or X, from the edition's "required if", "required when,
   and allowed only if" or `C(a/b)`). Operands are the same occurrence's
@@ -191,89 +223,83 @@ and component and selects evaluator operator v4:
   excluded. A conformance length never fails a message.
 - Every edition lets a site extend an HL7 table without redefining its
   values, so an unfamiliar code in an HL7 table is no base violation.
-  User-defined values are suggestions. External and imported vocabularies
-  are unsupported until a pinned vocabulary is supplied.
+  User-defined values are suggestions. External and imported vocabularies,
+  and tables whose kind HL7's text leaves undefined, are unsupported until a
+  pinned vocabulary is supplied.
 
 New evaluations of v2-v4 packs report each base declaration that is neither
 required nor prohibited as unclassified: the upstream sources collapse
 optional and conditional into "not required". Their operator identities and
 stored results are unchanged; a reanalysis is a new evaluation.
 
-### Sources
+Where a segment is printed in several chapters, the family decides which table
+applies: Chapter 7's OBR reprint for results (ORU), where OBR-5 and OBR-6 are
+X, and Chapter 4's OBR for everything else, where they are B; Chapter 7's OBX
+for every family, never Chapter 9's document-management OBX.
 
-Usage codes, lengths, conformance lengths, table numbers, table types and
-table values come from NIST's JSON export of the HL7-provided v2 database
-([usnistgov/igamt-hl7Tools-service](https://github.com/usnistgov/igamt-hl7Tools-service)
-`src/main/resources/hl7db`, commit `09374475cc9cb3038f1fd79448b458e945ca9b62`,
-the last whose export carries data type components). The export writes the
-edition's B as O by NIST's stated decision; both permit the element. Where it
-leaves a table type unset, the database's own hl7.eu table index decides and
-the receipt names each such table. v2.3.1 and v2.4 define no component usage
-and the database records none, so their components are unclassified. The
-v2.7.1 export omits the edition's conformance lengths (C.LEN); the edition's
-own attribute tables supply them, and the receipt counts each one. Where the
-export and a table both state one (v2.8.2), they agree.
+### Conditions
 
-The database records a condition only as C. Each predicate is read from its
-own edition sentence in the frozen HL7 Europe chapters and encoded in
+HL7's database records a condition only as C. Each predicate is read from its
+own edition sentence and encoded in
 [the conditions registry](profile-conditions.json), which stores the typed
-predicate and the field, character span and SHA-256 of each basis sentence,
-never the sentence. Every reachable C element must have an entry, or the
-build refuses. An entry is `condition`, `not-message-determinable` (every
-stated condition depends on context the message does not carry),
-`no-stated-condition` or `source-defect` (the edition contradicts itself or
-makes the element its own condition); the last two leave the element
-unsupported. A basis may cite the same edition's other text that a definition
-defers to: v2.3.1 and v2.4 Chapter 4 OBR-2 and OBR-3 refer to ORC, and the
-edition's Chapter 7 reprint states both the ORC pairing and the ORU rule.
+predicate and the field, character span and SHA-256 of each basis sentence in
+the dataset's definition text, never the sentence. Every reachable C element
+must have an entry, or the build refuses. An entry is `condition`,
+`not-message-determinable` (every stated condition depends on context the
+message does not carry), `no-stated-condition` or `source-defect` (the edition
+contradicts itself or makes the element its own condition); the last two leave
+the element unsupported. A basis may cite the same edition's other text that a
+definition defers to: v2.3.1 and v2.4 Chapter 4 OBR-2 and OBR-3 refer to ORC,
+and the edition's Chapter 7 reprint states both the ORC pairing and the ORU
+rule.
 
 Each item was encoded by two independent review rounds from its full edition
 section; disagreements and cross-edition variants of one rule were
-adjudicated to a single reading. The reader repairs two source faults and
-records each: a table row split across two tables, and a definition styled
-into the next field's heading (v2.5 PV2-1).
+adjudicated to a single reading. Those encodings were first cited against the
+hl7.eu rendering. Moving to HL7's own chapters kept every encoding: all 717
+elements the HL7 files reach are exactly the elements the registry already
+covered, and every cited sentence was located again in HL7's chapter text,
+verified against the old hash first. The reader returns two source faults to
+their field and records each: a definition styled into the next field's
+heading (v2.5 PV2-1), and a field table that runs straight into its
+definitions without a break (v2.7.1 Chapter 7 OBR).
 
-```
-python3 tools/profile_standard.py acquire --output FROZEN            # network job
-python3 tools/profile_standard.py review-items --sources FROZEN --packs V4_EXTRACTION --output ITEMS
-python3 tools/profile_standard.py build --sources FROZEN --packs V4_EXTRACTION --conditions docs/profile-conditions.json --output V5_EXTRACTION
-READMIT_PROFILE_V5_EXTRACTION=V5_EXTRACTION go test -short -tags readmit_nosync ./internal/profileeval -run TestPinnedDatabasePacks
-```
+On 2026-09-28 every encoding was then reviewed again, independently, against
+HL7's own chapter text: 717 elements in 477 distinct texts, each judged only
+from the edition's text supplied to the reviewer. 439 were confirmed and 38
+raised. After adjudication, 25 changes touched 65 elements. RXO-14 and the
+Chapter 4 OBR-22 became `not-message-determinable`. The pairing rules of HD
+(and of EI, whose components 2-4 the edition defines as HD's), SPM-13's
+"G only" rule and TQ2-7's printed Conditional Rule now forbid the element
+otherwise. OSP-2 and OSP-3 cite the component table's "start, stop or both"
+rule, and XTN-4 takes the reading its siblings and examples share. Where a
+message cannot show whether a filler order number exists yet, or whether
+another TQ1 follows, the condition is undecided rather than failing. TXA-22's
+paragraph constrains OBR-32, so TXA-22 states no condition of its own.
 
-[The source manifest](profile-standard-sources.json) names every frozen file,
-its final URL, retrieval time and hash. [The v4 receipt](profile-extraction-v4-receipt.json)
-names the packs and reports usage, length, condition and table-kind counts per
-edition, every table decided from the rendering, every usage fallback, every
-conformance length taken from an edition table, any conformance length the
-two disagree on, and every data type the upstream structure names differently
-from the database.
+Three raised points were not adopted. X for OBX-5 in a dynamic specification
+would fail the null the text asks for. CWE-3's three outcomes cannot be one
+then/else, so it keeps its required-or-optional reading. 2.5's XTN-12 states
+no condition.
 
 ## Open completion gates for #577
 
 The exact extracted content and incorporated HL7 terms still need the owner's
-redistribution review under D1/ADR-0009. The normalizer always records `pending`;
-software does not approve rights. No new upstream pack is shipped.
+redistribution review under D1/ADR-0009, now tracked in #627. The builder
+always records `pending`; software does not approve rights. No pack is shipped.
 
 Rights approval, technical coverage and distribution are separate completion
-checks. The [source map](profile-source-map.json) identifies the actual files and
-notices behind the withheld outputs. The [gap matrix](profile-coverage-gaps.json)
-names the remaining version/constraint work, source needs, tests and affected
-claims. The [bounded distribution proposal](profile-redistribution-review.md)
-does not approve the proposed package or waive technical gaps.
+checks. The [source map](profile-source-map.json) identifies the actual HL7
+files behind the withheld outputs. The [gap matrix](profile-coverage-gaps.json)
+names what each edition's HL7 files do and do not define, the tests and the
+affected claims. The [bounded distribution proposal](profile-redistribution-review.md)
+does not approve the proposed package or waive technical gaps. Coverage
+outside the explicitly published grouping and owned semantic levels remains
+unqualified; the complete owned 28-cell fixture matrix establishes only its
+stated local constraints and transitions. Source absence and unsupported
+results do not acquire support by selecting a nearby version or another
+message family.
 
-Composite metadata is now evaluated explicitly within the two wire levels.
-The pinned HL7apy archive cannot fill nHapi's component usage gap: it declares
-every 2.3.1–2.5.1 component (0, 1), its 2.6 (min, max) pairs cannot express
-conditional usage, and it has no 2.7.1 metadata. The same limit leaves 2.8.2's
-optional versus conditional components unqualified. The gap matrix records each
-survey. Upstream component usage absent from nHapi, terminology requirements beyond
-approved local sets, coverage outside the explicitly published source grouping and owned semantic
-levels remains unqualified. The source absence/unsupported results do not
-acquire support by selecting a nearby version or another message family.
-The complete owned 28-cell fixture matrix establishes only its stated local
-constraints and transitions. Required missing rules remain unsupported. These gaps keep
-#577 open; this work is not a scope reduction or certification claim.
-
-References: [pinned nHapi source and license](https://github.com/nHapiNET/nHapi/tree/2495edd1e23a85ab9146cb03947c17d45120cf1f),
-[pinned HL7apy](https://github.com/crs4/hl7apy/tree/9550b6eca2c580e9615d756b294dbe5ea471667c),
+References: [HL7 Version 2 Product Suite](https://www.hl7.org/implement/standards/product_brief.cfm?product_id=185),
+[HL7 Version 2.x Messaging Schemas](https://www.hl7.org/implement/standards/product_brief.cfm?product_id=213)
 and [HL7 v2.5.1 datatype definitions](https://hl7.eu/HL7v2x/v251/std251/ch02a.html).

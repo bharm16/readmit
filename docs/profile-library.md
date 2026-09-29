@@ -236,11 +236,11 @@ bundleable.
 
 Nothing below is delivered by this page, and none of it is work software does.
 
-- **Extracting the seven version packs.** D1 pins nHapi
-  `2495edd1e23a85ab9146cb03947c17d45120cf1f` for 2.3.1, 2.4, 2.5, 2.5.1, 2.6
-  and 2.7.1, and HL7apy `v1.3.5` at commit
-  `9550b6eca2c580e9615d756b294dbe5ea471667c` for 2.8.2. Selecting a source is
-  not a right to redistribute it.
+- **Extracting the seven version packs.** They are built from HL7's own
+  published schemas and chapters for each version, pinned in
+  [the source manifest](profile-standard-sources.json)
+  ([ADR-0026](adr/0026-profile-packs-are-built-from-hl7s-own-files.md)).
+  Downloading a source is not a right to redistribute it.
 - **A rights review of each exact extraction**, its applicable notices, the
   covered source form and the applicable HL7 incorporation terms, recorded so
   that `rights_review.status` can honestly read `approved`. HL7 specification

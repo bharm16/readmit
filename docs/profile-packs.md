@@ -199,12 +199,11 @@ committed, and nothing reads the dictionary through the pack.
 
 ## Provenance and the rights-review gate
 
-Selecting a source is not a right to redistribute it. D1 selects nHapi at
-revision `2495edd1e23a85ab9146cb03947c17d45120cf1f` for 2.3.1 through 2.7.1
-and HL7apy `v1.3.5` at commit `9550b6eca2c580e9615d756b294dbe5ea471667c` for
-2.8.2 as build-time inputs; each actual extraction still needs its own review of the
-exact content, the applicable notices and the covered source before it is
-bundled. The `provenance` member is where that review is written down, and the
+Selecting a source is not a right to redistribute it. The version packs are
+built from HL7's own published schemas and chapters
+([ADR-0026](adr/0026-profile-packs-are-built-from-hl7s-own-files.md)); each
+actual extraction still needs its own review of the exact content, the
+applicable notices and the covered source before it is bundled. The `provenance` member is where that review is written down, and the
 reader requires every part of it to be present and well formed:
 
 | Member | Contract |

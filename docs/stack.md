@@ -66,11 +66,13 @@ Three Go modules. `github.com/bharm16/readmit` holds the engine and produces the
 - Semantic support starts with one named profile: HL7 v2.5.1 SIU fixture profile, version 1. That is a readmit-supported profile, not a claim of v2.5.1 conformance.
 - Existing Go HL7 libraries (for example `kardianos/hl7`) are not used as the message model. Their lossless and malformed-input behaviour has not been verified against readmit's requirements.
 - Dictionary provenance and redistribution rights must be confirmed before bundling externally sourced definitions.
-- Selected expansion: pinned nHapi metadata for 2.3.1 through 2.7.1 and HL7apy
-  1.3.5 metadata for 2.8.2, normalized at build time with no added customer
-  runtime. The same HL7apy pin supplies only the version-matched ORM order-detail
-  choice groups nHapi's 2.3.1–2.6 constructors flatten
-  ([profile evaluation](profile-evaluation.md)). Exact versions, source commits and separate support levels are in
+- Selected expansion: packs for 2.3.1 through 2.8.2 built from HL7's own
+  published schemas and normative chapters for each version, read once at
+  development time with poppler's `pdftotext` (26.07.0 produced the recorded
+  datasets) and no added customer runtime
+  ([profile evaluation](profile-evaluation.md#build-the-packs-from-hl7s-own-files),
+  [ADR-0026](adr/0026-profile-packs-are-built-from-hl7s-own-files.md)). Separate
+  support levels are in
   [D1](product-decisions.md#d1--profile-metadata-and-supported-meaning); #45 owns
   library delivery after the separate shared pack contract.
 - That contract is `readmit-profile-pack/v1`, read by `internal/profilepack`: pack
