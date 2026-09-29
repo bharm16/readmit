@@ -112,16 +112,16 @@ func TestFlowResumeBudgetSeparatesAcquisitionFromCoverage(t *testing.T) {
 			case <-time.After(15 * time.Second):
 				t.Fatal("controlled after-stimulus HTTP response was never requested")
 			}
+			// The response is released 1.2 seconds after it was requested, timed
+			// from the request itself: the checks below must not push the release
+			// past the two-second acquisition budget on a slow runner.
+			releaseTimer := time.AfterFunc(time.Until(began.Add(1200*time.Millisecond)), unblock)
+			defer releaseTimer.Stop()
 			waitStimulusFinish(t, t.Context(), filepath.Join(output, "phases", "booking"))
 			run, err := replay.Open(filepath.Join(output, "phases", "booking", "transport", "run"))
 			if err != nil || len(run.Events) != 1 || run.Events[0].Delivery != "acknowledged" {
 				t.Fatal("the held observation must follow an actually acknowledged send", err)
 			}
-			if remaining := time.Until(began.Add(1200 * time.Millisecond)); remaining > 0 {
-				timer := time.NewTimer(remaining)
-				<-timer.C
-			}
-			unblock()
 			var got answer
 			select {
 			case got = <-done:
