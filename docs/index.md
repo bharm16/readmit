@@ -240,8 +240,9 @@ trusting a case nobody looked at since.
 
 Customer-hosted deployment: [artifact hub installation and recovery](../hub/README.md).
 
-[Compare retained executions](desktop.md#comparing-retained-executions) in the
-desktop: behavior, drift, approval binding, retained failures and flakiness limits.
+[Compare runs](desktop.md#compare-runs) in the desktop: checks aligned by
+identity and definition, configuration compared apart, and retained results
+counted across added runs.
 
 - [Reusable regression suites](suites.md): templates, data tables, environment bindings, setup order, durable execution, approved environment promotion and declared requirement coverage.
 

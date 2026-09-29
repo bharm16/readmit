@@ -448,6 +448,15 @@ body {
 .operation-label {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A label that returns to its work is a button; it still ends in an ellipsis. */
+button.operation-label {
+  display: block;
 }
 
 .app.compact .operation {

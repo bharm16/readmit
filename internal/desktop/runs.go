@@ -244,7 +244,7 @@ func (a *App) setRunOutput(output string) {
 func (a *App) executing(path string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.running && (a.operation == runOperation || a.operation == reexecutionOperation) && a.runOutput == path
+	return a.running && (a.operation == runOperation || a.operation == reexecutionOperation || a.operation == replayOperation) && a.runOutput == path
 }
 
 // OpenDurableRun is read-only recovery and never acquires send authority.
@@ -993,6 +993,10 @@ type RunProgress struct {
 	Uncertain    int                 `json:"uncertain"`
 	NotAttempted int                 `json:"not_attempted"`
 	Lease        string              `json:"lease,omitzero"`
+	// Jobs and JobsDone are a suite run's queued jobs and how many of them
+	// have ended (#555).
+	Jobs     int `json:"jobs,omitzero"`
+	JobsDone int `json:"jobs_done,omitzero"`
 }
 
 // DurableRunProgress reads one workspace run entry read-only. It is the same
@@ -1007,6 +1011,14 @@ func (a *App) DurableRunProgress(workspace, entry string) RunProgressResult {
 	path, err := runEvidencePath(root, entry)
 	if err != nil {
 		return RunProgressResult{State: Failed, Reason: "a run is named by one workspace entry, or one job inside a suite execution's runs"}
+	}
+	if regular(filepath.Join(path, "queue.json")) {
+		progress, err := suiteProgress(path)
+		if err != nil {
+			return RunProgressResult{State: Failed, Reason: "the suite run could not be read"}
+		}
+		progress.Executing = a.executing(path)
+		return RunProgressResult{State: Completed, Progress: &progress}
 	}
 	if a.executing(path) {
 		progress := RunProgress{Executing: true, Phase: "executing"}
@@ -1337,7 +1349,7 @@ func declaredEntryKind(root, name string) Kind {
 // the packet panels propose packet names, so a generated name says what
 // created it.
 func destinationFor(root, requested, prefix string) (RunDestination, refusal) {
-	return outputRule{prefix: prefix,
+	return outputRule{prefix: prefix, holdsOrigin: prefix == "job" || prefix == "reexecution",
 		invalid:      "the run folder must be one new entry of the open workspace",
 		exhausted:    "the workspace holds more generated run folders than this release proposes",
 		taken:        "the run folder already exists; execution requires a fresh destination",
@@ -1354,6 +1366,7 @@ func destinationFor(root, requested, prefix string) (RunDestination, refusal) {
 // proposed name this account cannot probe instead of refusing the workspace,
 // as the run and packet flows always have.
 type outputRule struct {
+	holdsOrigin               bool
 	prefix, beside            string
 	invalid, exhausted, taken string
 	reportTaken, skipUnprobed bool
@@ -1371,6 +1384,13 @@ func (rule outputRule) destination(root, requested string) (RunDestination, refu
 		return []string{name, name + rule.beside}
 	}
 	free := func(name string) (bool, error) {
+		if rule.holdsOrigin {
+			if _, err := os.Lstat(runOriginPath(root, name)); err == nil {
+				return false, nil
+			} else if !os.IsNotExist(err) {
+				return false, err
+			}
+		}
 		for _, entry := range entries(name) {
 			if _, err := os.Lstat(filepath.Join(root, entry)); err == nil {
 				return false, nil

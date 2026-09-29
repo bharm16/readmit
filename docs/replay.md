@@ -364,13 +364,14 @@ See [run bundle format](run-bundle.md) for the verified read API and mapping.
 
 ## In the desktop application
 
-The application's **Replay selected messages** panel is this command over the
-open case, through the same preparation and the same send: its preview is the
-dry run above, a send needs the person's explicit approval of that exact
-preview, retains the run and `RUN.decision.json` exactly as `--send` without
-`--decision` does, and is refused if anything the preview showed has changed.
-A preview's decision is shown there and not retained. The panel offers no
-byte-only replay: a generated case's preview says why it cannot be sent there,
-a send of one is refused, and a byte-only replay run elsewhere is listed as the
-run it is. See
-[replaying selected case messages](desktop.md#replaying-selected-case-messages).
+The application's **Send selected** in a case's Messages is this command over
+the chosen messages, through the same preparation and the same send: its
+**Send messages** review is the dry run above, prepared for a named
+environment, and its Send retains the run and `RUN.decision.json` exactly as
+`--send` without `--decision` does, and is refused if anything the review
+showed has changed. An empty choice is refused. See
+[the reviewed send](desktop.md#the-reviewed-send).
+
+The reviewed send offers no byte-only replay: scenario-generated cases that
+require lifecycle semantics retain their refusal. A byte-only replay retained
+by another entry point is listed with its actual transport-only scope.

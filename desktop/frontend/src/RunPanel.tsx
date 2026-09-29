@@ -1,441 +1,496 @@
-import { useEffect, useRef, useState } from "react";
+// The one reviewed send (view 22). Running a test, a suite, the remaining
+// messages of an interrupted run, a reviewed test or selected messages is
+// prepared by the facade from the saved objects and shown here as what it
+// will send, where, and what must be done first; the final Send is the only
+// thing that sends. Changing the environment or what is sent prepares the
+// review again, and nothing opens a connection before Send.
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  cleanDurableRun,
-  chooseRunSpec,
-  durableRunProgress,
-  openRunEvidence,
-  preflightRun,
-  resumeDurableRun,
-  startDurableRun,
-  startSuiteRun,
-  type Artifact,
-  type DurableRunResult,
-  type CleanRunResult,
-  type ResumeRunResult,
-  type RunEvidenceResult,
-  type RunPreflightRequest,
-  type RunPreflightResult,
-  type RunProgressResult,
-  type SuiteRunReport,
+  executeReviewedAction,
+  listWholeCatalog,
+  newIntentId,
+  prepareAction,
+  withdrawReview,
+  type ActionReview,
+  type CatalogItem,
+  type ItemRef,
+  type PrepareActionRequest,
+  type ReplayTransformation,
+  type RequestContext,
+  type ReviewedActionResult,
+  type RunReview,
 } from "./bindings";
-import { EnvironmentBanner } from "./EnvironmentBanner";
-import type { SuiteRunHandoff } from "./Suites";
-import { useLifecycle } from "./lifecycle";
-import { Reveal } from "./layout";
-import { useViewState } from "./viewstate";
+import { HIDDEN_VALUE, STATE_SHARING, term } from "./display";
+import { FormDialog, Reveal, ValueRows } from "./layout";
+import { messageLabel } from "./TestEditor";
+import "./runs.css";
 
-// The backend owns entry validation. This narrower check keeps a malformed
-// output name out of the viewer's session before the backend can refuse it.
-function watchableEntry(name: string) {
-  return name !== "" && name !== "." && name !== ".." && !/[\\/\0]/.test(name);
+/** What a send is asked for: a saved test or suite version, the messages
+ * chosen in a case, the rest of an interrupted run, or a test rebound to an
+ * approved review. */
+export type SendRequest =
+  | { kind: "test"; test: ItemRef; environment?: ItemRef | undefined }
+  | { kind: "suite"; suite: ItemRef; environment?: string | undefined }
+  | { kind: "messages"; case: ItemRef; messages: string[]; environment?: ItemRef | undefined }
+  | { kind: "resume"; run: ItemRef }
+  | { kind: "reviewed"; review: ItemRef; packet: ItemRef; test: ItemRef; phase: "failure" | "pass" };
+
+const TITLES: Record<SendRequest["kind"], string> = {
+  test: "Run test",
+  suite: "Run suite",
+  messages: "Send messages",
+  resume: "Resume remaining",
+  reviewed: "Run reviewed test",
+};
+
+export function sendTitle(request: SendRequest): string {
+  return TITLES[request.kind];
 }
 
-/** The durable-run panels: selection, preflight, one execution, live progress,
- * run history and linked assertion evidence.
- *
- * A run always names a fresh output. Recovery only reads that output. The
- * preflight fixes the identity of the exact input a send would execute, and a
- * changed input invalidates it: execution is refused until the preflight is
- * repeated, so nothing is ever sent as though nothing had changed. onWatch
- * names the folder this viewer is watching before anything is sent to it, so
- * an interruption is recovered against the right folder — read-only, and
- * never as a resend.
- *
- * initialSpec optionally seeds the selection after a save returns identity to
- * the run workflow without sending. Saving and sending stay separate actions. */
-export function RunPanel({
-  workspace,
-  entries,
-  onWatch,
-  onRefresh,
-  onOpenCase,
-  initialSpec,
-  initialEnvironment,
-  onConfigureEnvironment,
-  onOpenLicense,
-  preflightOnArrival,
-  suiteItem = null,
+/** What one send started: the review it was sent from, the click that sent
+ * it, and the call that answers when the run ends. */
+export type StartedSend = { request: SendRequest; review: ActionReview; intent: string; execution: Promise<ReviewedActionResult> };
+
+type Chosen = { environment?: ItemRef | undefined; suiteEnvironment?: string | undefined; transformations: ReplayTransformation[]; reveal: boolean };
+
+function preparing(request: SendRequest, chosen: Chosen): Omit<PrepareActionRequest, "context"> {
+  switch (request.kind) {
+    case "test": {
+      const environment = chosen.environment ?? request.environment;
+      return { action: "run.test", items: [request.test], ...(environment ? { destination: { kind: "environment", id: environment.id } } : {}) };
+    }
+    case "suite": {
+      const environment = chosen.suiteEnvironment ?? request.environment;
+      return { action: "run.suite", items: [request.suite], ...(environment ? { run: { environment } } : {}) };
+    }
+    case "messages": {
+      const environment = chosen.environment ?? request.environment;
+      return {
+        action: "replay.send",
+        items: [request.case],
+        ...(environment ? { destination: { kind: "environment", id: environment.id } } : {}),
+        replay: { messages: request.messages, transformations: chosen.transformations, ...(chosen.reveal ? { reveal: true } : {}) },
+      };
+    }
+    case "resume":
+      return { action: "run.resume", items: [request.run] };
+    case "reviewed":
+      return { action: "run.reviewed-test", items: [request.review, request.packet, request.test], run: { phase: request.phase } };
+  }
+}
+
+/** How many messages, as a person counts them. */
+export function messages(count: number): string {
+  return count === 1 ? "1 message" : `${count} messages`;
+}
+
+/** The one line a review states at its Send: what leaves, where, and once. */
+export function consequence(review: RunReview): string {
+  const where = review.environment_name || "the environment";
+  if (review.resets.length > 0) {
+    const targets = [...new Set(review.resets.map((reset) => reset.environment_name || where))].join(", ");
+    const sent = review.kind === "suite" || review.message_count == null ? "the selected suite" : messages(review.message_count);
+    return `Resets ${targets}, then sends ${sent} once.`;
+  }
+  if (review.kind === "suite" || review.message_count === null || review.message_count === undefined) {
+    return `Sends the selected suite to ${where} once.`;
+  }
+  return `Sends ${messages(review.message_count)} to ${where} once.`;
+}
+
+/** The versioned name a review shows. */
+function versioned(name: string, version?: string): string {
+  return version ? `${name} · v${version}` : name;
+}
+
+export function SendReview({
+  request,
+  context,
+  onClose,
+  onStarted,
+  onBeforeSend,
+  onEditEnvironment,
+  onActivate,
 }: {
-  workspace: string | null;
-  entries: Artifact[];
-  onWatch: (folder: string) => Promise<void>;
-  onRefresh: () => void;
-  onOpenCase: (name: string) => void;
-  initialSpec?: string;
-  /** The environment a prepared suite was handed over with; the run view
-   * still preflights it and asks its own send decision. */
-  initialEnvironment?: string;
-  /** Where the repair actions lead: a preflight refusal is about the
-   * environment's targets or the operation admission, so its next action
-   * opens the real configuration screen instead of restating the reason. */
-  onConfigureEnvironment?: () => void;
-  onOpenLicense?: () => void;
-  /** Changes each time a saved test's Run arrives here: its preflight is
-   * read at once, locally, so the review is the first thing shown and Send
-   * stays the only action that sends. */
-  preflightOnArrival?: number;
-  /** One saved suite version Run handed over, with the environment chosen:
-   * it is preflighted on arrival like a saved test, and sent only by Send. */
-  suiteItem?: SuiteRunHandoff | null;
+  request: SendRequest | null;
+  context: () => RequestContext;
+  onClose: () => void;
+  onStarted: (started: StartedSend) => void;
+  /** Awaited before Send reaches the facade: the window names the run's
+   * folder in its session first, so an interruption is recovered against it. */
+  onBeforeSend?: (output: string) => Promise<void>;
+  onEditEnvironment: (environment: ItemRef) => void;
+  onActivate: () => void;
 }) {
-  // The handed-over suite version is its own selection, never a file.
-  const item = suiteItem ? `suite:${suiteItem.target.suite.id}@${suiteItem.target.suite.revision ?? ""}` : "";
-  const specs = entries.filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name);
-  const suites = entries.filter((artifact) => artifact.kind === "suite").map((artifact) => artifact.name);
-  const runs = entries.filter((artifact) => artifact.kind === "job" || artifact.kind === "result").map((artifact) => artifact.name);
-
-  const [selected, setSelected] = useViewState("RunPanel.selected", "");
-  const itemSelected = item !== "" && selected === item;
-  const [environment, setEnvironment] = useViewState("RunPanel.environment", "");
-  const [output, setOutput] = useViewState("RunPanel.output", "");
-  const [resumeOutput, setResumeOutput] = useViewState("RunPanel.resumeOutput", "");
-  const [resumedTo, setResumedTo] = useViewState("RunPanel.resumedTo", "");
-  const [preflight, setPreflight] = useViewState<RunPreflightResult | null>("RunPanel.preflight", null);
-  const lifecycle = useLifecycle<"executing" | "preflighting" | "browsing" | "cleaning">({
-    names: { executing: "durable-run" },
-  });
-  const operation = lifecycle.running;
-  const busy = operation !== null;
-  const [result, setResult] = useViewState<DurableRunResult | null>("RunPanel.result", null);
-  const [report, setReport] = useViewState<SuiteRunReport | null>("RunPanel.report", null);
-  const [progress, setProgress] = useViewState<RunProgressResult | null>("RunPanel.progress", null);
-  const [evidence, setEvidence] = useState<RunEvidenceResult | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const [history, setHistory] = useViewState("RunPanel.history", "");
-  const [resumeResult, setResumeResult] = useViewState<ResumeRunResult | null>("RunPanel.resumeResult", null);
-  const [cleanResult, setCleanResult] = useViewState<CleanRunResult | null>("RunPanel.cleanResult", null);
-  const poll = useRef<number | null>(null);
-
+  const open = request !== null;
+  const [chosen, setChosen] = useState<Chosen>({ transformations: [], reveal: false });
+  const [review, setReview] = useState<ActionReview | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState<string[]>([]);
+  const [changing, setChanging] = useState(false);
+  const [expanded, setExpanded] = useState<"messages" | "jobs" | null>(null);
+  const [editingChanges, setEditingChanges] = useState(false);
+  const held = useRef<string | null>(null);
+  const turn = useRef(0);
+  // The project's named environments, which a test or a send can be changed
+  // to, read as the review opens.
+  const [environments, setEnvironments] = useState<CatalogItem[]>([]);
   useEffect(() => {
-    if (initialSpec) {
-      setSelected(initialSpec);
-    }
+    if (!request || request.kind === "suite" || request.kind === "resume" || request.kind === "reviewed") return;
+    void listWholeCatalog({ context: context(), kind: "environment", filter: {} }).then((answer) => setEnvironments((answer.page?.items ?? []).filter((item) => item.availability === "available")));
+    // Read once each time the review opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSpec]);
+  }, [open]);
 
+  // A review this sheet no longer shows can no longer be sent.
+  const release = useCallback(() => {
+    if (held.current) void withdrawReview(held.current);
+    held.current = null;
+  }, []);
+
+  const key = request ? JSON.stringify([request, chosen]) : "";
   useEffect(() => {
-    if (preflightOnArrival && suiteItem) {
-      setSelected(item);
-      setEnvironment(suiteItem.environment);
-      invalidate();
-      void ask(item, suiteItem.environment);
-    } else if (preflightOnArrival && initialSpec) {
-      invalidate();
-      void ask(initialSpec);
+    if (!request) return;
+    const mine = ++turn.current;
+    release();
+    setReview(null);
+    setFailure(null);
+    setConfirmed([]);
+    const needsEnvironment = (request.kind === "messages" && !(chosen.environment ?? request.environment));
+    if (needsEnvironment) {
+      setChanging(true);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preflightOnArrival]);
-
-  useEffect(() => {
-    if (initialEnvironment) {
-      setEnvironment(initialEnvironment);
-    }
-  }, [initialEnvironment]);
-
-  useEffect(() => () => { if (poll.current !== null) window.clearInterval(poll.current); }, []);
-
-  const plan = preflight?.preflight;
-  const isSuite = plan?.kind === "suite";
-  const changed = plan !== undefined && plan !== null && ((itemSelected ? false : plan.spec !== selected) || plan.destination.name !== output || (isSuite && plan.suite?.environment !== environment));
-
-  function invalidate() {
-    setPreflight(null);
-    setResult(null);
-    setReport(null);
-    setEvidence(null);
-    setProgress(null);
-    setRevealed(false);
-  }
-
-  async function ask(spec: string = selected, chosen: string = environment) {
-    if (busy) return;
-    await lifecycle.run("preflighting", async () => {
-      const handed = suiteItem && spec === item ? suiteItem : null;
-      const request: RunPreflightRequest = handed ? { workspace: workspace ?? "", spec: "", suite: handed.target } : { workspace: workspace ?? "", spec };
-      if (chosen) request.environment = chosen;
-      if (output) request.output = output;
-      const answer = await preflightRun(request);
-      setPreflight(answer);
-      setOutput(answer.preflight?.destination.name ?? output);
-    });
-  }
-
-  async function execute(identity: string, destination: string) {
-    // Awaited before the send, so a crash during it finds the session already
-    // naming the folder that holds the evidence.
-    await onWatch(destination);
-    await lifecycle.run("executing", async () => {
-      setResult(null);
-      setReport(null);
-      setEvidence(null);
-      setProgress({ state: "completed", progress: { executing: true, phase: "executing", acknowledged: 0, uncertain: 0, not_attempted: 0 } });
-      if (poll.current === null) {
-        poll.current = window.setInterval(() => {
-          void durableRunProgress(workspace ?? "", destination).then((read) => setProgress(read));
-        }, 800);
+    void prepareAction({ context: context(), ...preparing(request, chosen) }).then((answer) => {
+      if (mine !== turn.current) {
+        if (answer.review?.token) void withdrawReview(answer.review.token);
+        return;
       }
-      try {
-        const answer = isSuite
-          ? null
-          : await startDurableRun({ workspace: workspace ?? "", spec: selected, output: destination, expected_identity: identity });
-        let suiteOutcome: Awaited<ReturnType<typeof startSuiteRun>> | null = null;
-        if (isSuite) {
-          suiteOutcome = await startSuiteRun(
-            itemSelected && suiteItem
-              ? { workspace: workspace ?? "", suite: "", item: suiteItem.target, environment, output: destination, expected_identity: identity }
-              : { workspace: workspace ?? "", suite: selected, environment, output: destination, expected_identity: identity },
-          );
-        }
-        if (answer) setResult(answer);
-        if (suiteOutcome) {
-          // The queue's own report is what each job established; the summary
-          // line beside it is the first job that recorded a run, never a blend.
-          if (suiteOutcome.report) setReport(suiteOutcome.report);
-          const firstRun = suiteOutcome.report?.jobs.find((job) => job.run)?.run;
-          const outcome: DurableRunResult = { state: suiteOutcome.state };
-          if (suiteOutcome.reason) outcome.reason = suiteOutcome.reason;
-          if (firstRun) outcome.run = firstRun;
-          setResult(outcome);
-        }
-        onRefresh();
-        const read = await openRunEvidence({ workspace: workspace ?? "", entry: destination, reveal: false });
-        setEvidence(read);
-      } finally {
-        // The progress poll lives exactly as long as the run it reads.
-        if (poll.current !== null) {
-          window.clearInterval(poll.current);
-          poll.current = null;
-        }
-      }
-    });
-    const read = await durableRunProgress(workspace ?? "", destination).catch(() => null);
-    if (read) setProgress(read);
-  }
-
-  async function browse() {
-    if (!workspace) return;
-    await lifecycle.run("browsing", async () => {
-      const choice = await chooseRunSpec(workspace);
-      if (choice.state === "completed" && choice.entry) {
-        setSelected(choice.entry);
-        invalidate();
-      }
-    });
-  }
-
-  async function openHistory(reveal: boolean) {
-    if (!history) return;
-    await lifecycle.run("preflighting", async () => {
-      setRevealed(reveal);
-      const read = await openRunEvidence({ workspace: workspace ?? "", entry: history, reveal });
-      setEvidence(read);
-      const live = await durableRunProgress(workspace ?? "", history);
-      setProgress(live);
-    });
-  }
-
-  async function resumeHistory() {
-    if (!workspace || !history || !selected || !resumeOutput || busy) return;
-    const destination = resumeOutput;
-    await lifecycle.run("executing", async () => {
-      setResumeResult(null);
-      setCleanResult(null);
-      // Record the new folder before the backend may send. If it refuses
-      // before creating that folder, restore the retained view we opened.
-      if (watchableEntry(destination)) await onWatch(destination);
-      const answer = await resumeDurableRun({ workspace, job: history, spec: selected, output: destination });
-      setResumeResult(answer);
-      onRefresh();
-      if (answer.resume) {
-        setResumedTo(destination);
-        setResumeOutput("");
-        setProgress(await durableRunProgress(workspace, destination));
+      if (answer.state === "completed" && answer.review) {
+        held.current = answer.review.token ?? null;
+        setReview(answer.review);
       } else {
-        await onWatch(history);
+        setFailure(answer.reason ?? "This could not be prepared.");
       }
     });
-  }
+    // Prepared again whenever what it is asked for changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
-  async function cleanHistory() {
-    if (!workspace || !history || busy) return;
-    await lifecycle.run("cleaning", async () => {
-      setCleanResult(null);
-      const answer = await cleanDurableRun(workspace, history);
-      setCleanResult(answer);
-      if (answer.state === "completed") {
-        onRefresh();
-        setProgress(await durableRunProgress(workspace, history));
-      }
-    });
-  }
+  useEffect(() => {
+    if (!open) {
+      turn.current++;
+      release();
+      setChosen({ transformations: [], reveal: false });
+      setReview(null);
+      setFailure(null);
+      setChanging(false);
+      setExpanded(null);
+      setEditingChanges(false);
+    }
+  }, [open, release]);
 
-  const canExecute = plan !== null && plan !== undefined && !changed && plan.admission.admitted && plan.destination.fresh && (!isSuite || environment !== "");
+  if (!request) return null;
+  const run = review?.run ?? null;
+  const setup = run?.setup ?? [];
+  const unmarked = setup.some((step) => !confirmed.includes(step.id));
+  const refusal = review && !review.ready ? review.refusal : null;
+  const suite = request.kind === "suite";
 
-  return <section aria-labelledby="durable-runs-title">
-    <h3 id="durable-runs-title">Runs</h3>
-    {/* The environment is the one the preflight read from the selected test:
-        until one is read there is no environment to classify, so none is
-        claimed, and a production or unclassified one reads as its refusal. */}
-    {plan ? (
-      <EnvironmentBanner
-        name={plan.target.name}
-        classification={plan.target.classification}
-      />
-    ) : (
-      <p className="environment-unselected">
-        <strong>Environment:</strong> select a saved test to see the environment it sends to.
-      </p>
-    )}
-    <p>Send a saved test or suite once to its configured test target. Evidence stays in a new customer-local folder and can contain patient data.</p>
-    <div className="actions">
-      <label htmlFor="run-spec">Saved test or suite</label>
-      <select
-        id="run-spec"
-        value={selected}
-        disabled={busy}
-        onChange={(e) => { setSelected(e.target.value); setEnvironment(""); invalidate(); }}
-      >
-        <option value="">Select a saved test or suite…</option>
-        {suiteItem ? <option value={item}>{suiteItem.name}{suiteItem.version ? ` · v${suiteItem.version}` : ""} (suite)</option> : null}
-        {specs.map((name) => <option key={name} value={name}>{name} (test)</option>)}
-        {suites.map((name) => <option key={name} value={name}>{name} (suite)</option>)}
-      </select>
-      <button disabled={busy || !workspace} onClick={() => void browse()}>Browse files…</button>
-      {suites.includes(selected) || itemSelected ? <>
-        <label htmlFor="run-environment">Suite environment</label>
-        <select id="run-environment" value={environment} disabled={busy}
-          onChange={(e) => { setEnvironment(e.target.value); invalidate(); }}>
-          <option value="">Select an environment…</option>
-          {/* Before a preflight lists the suite's environments, the one a
-            * prepared suite was handed over with is offered as chosen. */}
-          {itemSelected && suiteItem
-            ? suiteItem.environments.map((env) => <option key={env.id} value={env.id}>{env.name}</option>)
-            : (plan?.suite?.environments ?? (environment ? [environment] : [])).map((id) => <option key={id} value={id}>{id}</option>)}
+  const environmentRow = (): { label: ReactNode; value: ReactNode } | null => {
+    if (request.kind === "resume" || request.kind === "reviewed") {
+      return run ? { label: "Environment", value: [run.environment_name, run.address].filter(Boolean).join(" · ") } : null;
+    }
+    if (suite) {
+      const choices = run?.environments ?? [];
+      const current = chosen.suiteEnvironment ?? request.environment ?? "";
+      const shown = [run?.environment_name, run?.site].filter(Boolean).join(" · ");
+      return {
+        label: "Environment",
+        value:
+          changing || (!current && choices.length > 1) ? (
+            <select
+              aria-label="Environment"
+              value={current}
+              autoFocus
+              onChange={(event) => {
+                setChanging(false);
+                setChosen({ ...chosen, suiteEnvironment: event.target.value });
+              }}
+            >
+              {current ? null : <option value="">Choose…</option>}
+              {choices.map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="review-value">
+              <span>{shown || "—"}</span>
+              {choices.length > 1 ? (
+                <button type="button" className="quiet" onClick={() => setChanging(true)}>
+                  Change
+                </button>
+              ) : null}
+            </span>
+          ),
+      };
+    }
+    const current = chosen.environment ?? request.environment ?? run?.environment;
+    return {
+      label: "Environment",
+      value: changing ? (
+        <select
+          aria-label="Environment"
+          value={current?.id ?? ""}
+          autoFocus
+          onChange={(event) => {
+            const picked = environments.find((item) => item.ref.id === event.target.value);
+            if (!picked) return;
+            setChanging(false);
+            setChosen({ ...chosen, environment: { kind: "environment", id: picked.ref.id } });
+          }}
+        >
+          {current ? null : <option value="">Choose…</option>}
+          {environments.map((item) => (
+            <option key={item.ref.id} value={item.ref.id}>
+              {item.name}
+            </option>
+          ))}
         </select>
-      </> : null}
-    </div>
-    <div className="actions">
-      <label htmlFor="run-output">Run folder</label>
-      <input id="run-output" value={output} disabled={busy} placeholder="generated at preflight"
-        onChange={(e) => { setOutput(e.target.value); invalidate(); }} />
-      <p className="hint">Each run writes to a fresh folder; an existing output is never reused.</p>
-      <button disabled={busy || !selected} onClick={() => void ask()}>
-        {operation === "preflighting" ? "Checking…" : "Preview run"}
-      </button>
-      {canExecute ? <button disabled={busy} onClick={() => void execute(plan!.identity, plan!.destination.name)}>{isSuite ? "Send suite" : "Send test"}</button> : null}
-      <button disabled={operation !== "executing"} onClick={lifecycle.cancel}>Cancel run</button>
-    </div>
-    <div role="status" aria-live="polite">
-      {operation === "executing" ? <p>Running. Cancellation stops future sends; a delivery already in flight may remain uncertain.</p> : null}
-      {preflight?.reason ? (
-        <>
-          <p>{preflight.reason}</p>
-          <p className="recovery-actions">
-            {onConfigureEnvironment ? (
-              <button type="button" disabled={busy} onClick={onConfigureEnvironment}>
-                Environments
+      ) : (
+        <span className="review-value">
+          <span>{run ? [run.environment_name, run.address].filter(Boolean).join(" · ") : "—"}</span>
+          {environments.length > 0 ? (
+            <button type="button" className="quiet" onClick={() => setChanging(true)}>
+              Change
+            </button>
+          ) : null}
+        </span>
+      ),
+    };
+  };
+
+  const messageRow = (): { label: ReactNode; value: ReactNode } | null => {
+    if (!run || run.kind === "suite" || run.messages.length === 0) return null;
+    const labels = run.messages.map((message) => messageLabel(message, message.id));
+    return {
+      label: "Messages",
+      value: (
+        <span className="review-value">
+          <span>{[...new Set(labels)].join(", ")}</span>
+          <button type="button" className="quiet" aria-expanded={expanded === "messages"} onClick={() => setExpanded(expanded === "messages" ? null : "messages")}>
+            {expanded === "messages" ? "Hide" : "Show all"}
+          </button>
+        </span>
+      ),
+    };
+  };
+
+  const rows: { label: ReactNode; value: ReactNode }[] = [];
+  if (run) {
+    const object = run.kind === "suite" ? "Suite" : run.kind === "send" ? "Case" : "Test";
+    rows.push({ label: object, value: versioned(run.name, run.version) });
+    if (run.reviewed) {
+      rows.push({ label: "Review", value: run.reviewed.review });
+      rows.push({ label: "Original run", value: `${run.reviewed.packet} · ${run.reviewed.phase === "failure" ? "Failure" : "Pass"}` });
+    }
+  }
+  const environment = environmentRow();
+  if (environment) rows.push(environment);
+  const sent = messageRow();
+  if (sent) rows.push(sent);
+  if (run?.kind === "suite") {
+    rows.push({ label: "Tests", value: String(run.jobs.length) });
+    if (run.targets.length > 0) rows.push({ label: "Targets", value: run.targets.map((target) => `${target.name} · ${target.address}`).join(", ") });
+  }
+  if (run && run.resets.length > 0) rows.push({ label: "Reset", value: run.resets.map((reset) => reset.name || term(RESET_NAMES, reset.type).text).join(", ") });
+  if (request.kind === "messages" && review?.replay) {
+    const changes = chosen.transformations;
+    rows.push({
+      label: "Changes",
+      value: (
+        <span className="review-value">
+          <span>{changes.length === 0 ? "None" : changes.map((change) => (change.name === "rebase-control-ids" ? "New control IDs" : `Times shifted ${change.shift ?? ""}`)).join(", ")}</span>
+          <button type="button" className="quiet" aria-expanded={editingChanges} onClick={() => setEditingChanges(!editingChanges)}>
+            Edit
+          </button>
+        </span>
+      ),
+    });
+  }
+
+  return (
+    <FormDialog
+      open={open}
+      title={sendTitle(request)}
+      size={suite ? "wide" : "normal"}
+      submitLabel="Send"
+      submitDisabled={!review || !review.ready || !review.token || unmarked}
+      onClose={onClose}
+      status={
+        refusal ? (
+          <span className="review-refusal">
+            <span role="alert">{refusal}</span>
+            {run?.refusal === "environment" && (run.environment ?? run.targets[0]?.environment) ? (
+              <button type="button" onClick={() => onEditEnvironment((run.environment ?? run.targets[0]!.environment)!)}>
+                Edit environment
+              </button>
+            ) : run?.refusal === "license" ? (
+              <button type="button" onClick={onActivate}>
+                Activate
               </button>
             ) : null}
-            {onOpenLicense ? (
-              <button type="button" disabled={busy} onClick={onOpenLicense}>
-                License
-              </button>
-            ) : null}
-          </p>
-        </>
+          </span>
+        ) : null
+      }
+      onSubmit={async () => {
+        if (!review?.token) return { reason: "This review is not ready." };
+        if (onBeforeSend && review.destination.output) await onBeforeSend(review.destination.output);
+        const intent = newIntentId();
+        const execution = executeReviewedAction({ context: context(), token: review.token, intent_id: intent, decisions: { confirmed } });
+        // The review is spent by this click; the run page answers for it now.
+        held.current = null;
+        onStarted({ request, review, intent, execution });
+        return null;
+      }}
+    >
+      {failure ? <p role="alert">{failure}</p> : null}
+      {!review && !failure && !changing ? (
+        <div className="skeleton" aria-busy="true" aria-label="Preparing">
+          <span />
+          <span />
+          <span />
+        </div>
       ) : null}
-      {plan ? <div className="preflight">
-        <h4>Preflight — {plan.name} ({plan.kind})</h4>
-        <p>Input: <strong>{plan.spec}</strong> · identity {plan.identity.slice(0, 12)}… · contract {plan.schema}</p>
-        <p>Selected: {plan.selected.length > 0 ? plan.selected.map((m) => m.source).join(", ") : `${plan.suite?.jobs.length ?? 0} suite job(s)`}</p>
-        {isSuite && plan.suite ? <>
-          <p>Environment {plan.suite.environment || "(not selected)"}{plan.suite.site ? ` · site ${plan.suite.site}` : ""} · parallelism {plan.suite.parallelism}</p>
-          {plan.suite.jobs.map((job) => <p key={job.id}>Job {job.id}: {job.spec} · {job.rows} row(s) · {job.isolation}{job.after.length ? ` · after ${job.after.join(", ")}` : ""}</p>)}
-          {plan.suite.targets.map((target, i) => <p key={i}>Bound target: {target.name || "(unnamed)"} · {target.classification} · {target.address}</p>)}
-        </> : <>
-          <p>Target: {plan.target.name || "(unnamed)"} · {plan.target.classification} · {plan.target.transport} · {plan.target.address}{plan.target.credential ? " · credential reference declared" : ""}</p>
-          <p>Configuration: connect {plan.target.connect_timeout} · message {plan.target.message_timeout} · max ACK {plan.target.max_ack_bytes} bytes · test endpoint {plan.target.test_endpoint ? "yes" : "no"}</p>
-          <p>Observation: {plan.boundary}{plan.observation ? ` · ${plan.observation}` : ""} · initial state {plan.initial_state}{plan.reset ? ` · reset: ${plan.reset}` : ""}</p>
-        </>}
-        <p>Engine: {plan.engine.engine} · spec {plan.engine.spec} · profile {plan.engine.profile} · deadline {plan.deadline}</p>
-        <p>Destination: {plan.destination.name}{plan.destination.generated ? " (generated)" : ""} · {plan.destination.fresh ? "fresh" : plan.destination.reason}</p>
-        <p>Admission: {plan.admission.admitted ? "admitted" : `refused — ${plan.admission.reason}`}</p>
-        {changed ? <p>The selection changed after this preflight; preflight it again before executing.</p> : null}
-        <p>This is local validation. No message was sent, nothing was reset, and no result exists yet.</p>
-      </div> : null}
-      {progress?.progress ? <p>Progress: {progress.progress.executing ? "executing" : progress.progress.phase} · acknowledged {progress.progress.acknowledged} · uncertain {progress.progress.uncertain} · not attempted {progress.progress.not_attempted}{progress.progress.lease ? ` · lease ${progress.progress.lease}` : ""}</p> : null}
-      {result?.reason ? <p>{result.reason}</p> : null}
-      {result && !result.run ? <p>Operation: {result.state}</p> : null}
-      {result?.run ? <>
-        <p>Run: <strong>{result.run.state}</strong> · Stop reason: {result.run.stop_reason}</p>
-        <p>Recorded messages: {result.run.recorded} / {result.run.planned}</p>
-        <p>Delivery uncertain: {result.run.delivery_uncertain ? "yes — inspect the receiver before any new execution" : "no"}</p>
-      </> : null}
-      {report ? <table><caption>Suite queue report — each job's own admission and run</caption>
-        <thead><tr><th>Job</th><th>Admission</th><th>Isolation</th><th>Run</th><th>Reason</th></tr></thead>
-        <tbody>{report.jobs.map((job) => <tr key={job.id}>
-          <th>{job.id}</th>
-          <td>{job.admission}</td>
-          <td>{job.isolation}</td>
-          <td>{job.run ? `${job.run.state} (${job.run.recorded}/${job.run.planned})` : "none"}</td>
-          <td>{job.reason || "—"}</td>
-        </tr>)}</tbody>
-      </table> : null}
-    </div>
-    <div className="run-history">
-      <h4>Run history</h4>
-      <label className="visually-hidden" htmlFor="run-history">Select run</label>
-      <select id="run-history" value={history} disabled={busy} onChange={(e) => { setHistory(e.target.value); setEvidence(null); setProgress(null); setResumeResult(null); setCleanResult(null); }}>
-        <option value="">Select a retained run…</option>
-        {runs.map((name) => <option key={name} value={name}>{name}</option>)}
-      </select>
-      <button disabled={busy || !history} onClick={() => void openHistory(false)}>Open evidence</button>
-      <p className="hint">Opening is read-only and cannot resume or send.</p>
-      {evidence?.evidence?.durable && evidence.evidence.entry === history ? <div className="actions">
-        <label htmlFor="run-resume-output">Resume folder</label>
-        <input id="run-resume-output" value={resumeOutput} disabled={busy} onChange={(e) => setResumeOutput(e.target.value)} />
-        <button disabled={busy || !specs.includes(selected) || !resumeOutput} onClick={() => void resumeHistory()}>Resume send</button>
-        {evidence.evidence.terminal ? <button disabled={busy} onClick={() => void cleanHistory()}>Clear stale lease</button> : null}
-        <p>Resume requires the unchanged saved test selected above. It writes a new folder and refuses any previously attempted send. Cleanup retains all evidence.</p>
-      </div> : null}
-      {resumeResult?.reason ? <p role="alert">{resumeResult.reason}</p> : null}
-      {resumeResult?.resume ? <p>Resumed {resumeResult.resume.repeated} never-attempted occurrence(s) into {resumedTo}. Run: {resumeResult.resume.run.state}.</p> : null}
-      {cleanResult?.reason ? <p role="alert">Cleanup refused: {cleanResult.reason}</p> : null}
-      {cleanResult?.cleanup ? <p>Cleanup removed {cleanResult.cleanup.removed.length ? cleanResult.cleanup.removed.join(", ") : "nothing"}; retained {cleanResult.cleanup.retained.length} evidence entries.</p> : null}
-      {evidence?.evidence ? <>
-        <Reveal revealed={revealed} disabled={busy} onToggle={(next) => void openHistory(next)} />
-      </> : null}
-      {evidence?.evidence ? <RunEvidenceView evidence={evidence.evidence} onOpenCase={onOpenCase} /> : null}
-      {progress && history ? <p>{progress.state === "empty" ? progress.reason : null}</p> : null}
-    </div>
-  </section>;
+      {rows.length > 0 ? <ValueRows rows={rows} label="Review" /> : request.kind === "messages" && changing ? <ValueRows rows={[environment!]} label="Review" /> : null}
+      {run && expanded === "messages" ? (
+        <ol className="review-list" aria-label="Messages in send order">
+          {run.messages.map((message, index) => (
+            <li key={`${message.id}-${index}`}>{messageLabel(message, message.id)}</li>
+          ))}
+        </ol>
+      ) : null}
+      {run?.kind === "suite" && run.jobs.length > 0 ? <JobTable run={run} expanded={expanded === "jobs"} onToggle={() => setExpanded(expanded === "jobs" ? null : "jobs")} /> : null}
+      {editingChanges ? (
+        <Transformations
+          chosen={chosen.transformations}
+          onChange={(transformations) => setChosen({ ...chosen, transformations })}
+        />
+      ) : null}
+      {request.kind === "messages" && review?.replay && review.replay.changes.length > 0 ? (
+        <div className="review-changes">
+          <div className="review-changes-header">
+            <h3>Changed content</h3>
+            <Reveal revealed={chosen.reveal ?? false} onToggle={(reveal) => setChosen({ ...chosen, reveal })} />
+          </div>
+          <table className="data-table plain" aria-label="Changed content">
+            <thead>
+              <tr>
+                <th scope="col">Field</th>
+                <th scope="col">Before</th>
+                <th scope="col">After</th>
+              </tr>
+            </thead>
+            <tbody>
+              {review.replay.changes.map((change, index) => (
+                <tr key={index}>
+                  <td>{change.selector}</td>
+                  <td>{chosen.reveal ? change.old ?? "—" : HIDDEN_VALUE}</td>
+                  <td>{chosen.reveal ? change.new ?? "—" : HIDDEN_VALUE}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {setup.map((step) => (
+        <fieldset key={step.id} className="setup-step">
+          <legend>{step.name}</legend>
+          <p className="setup-instructions">{step.instructions}</p>
+          <label>
+            <input
+              type="checkbox"
+              checked={confirmed.includes(step.id)}
+              onChange={(event) => setConfirmed(event.target.checked ? [...confirmed, step.id] : confirmed.filter((id) => id !== step.id))}
+            />
+            Mark complete
+          </label>
+        </fieldset>
+      ))}
+      {run ? <p className="consequence">{consequence(run)}</p> : null}
+    </FormDialog>
+  );
 }
 
-function RunEvidenceView({ evidence, onOpenCase }: { evidence: NonNullable<RunEvidenceResult["evidence"]>; onOpenCase: (name: string) => void }) {
-  return <div className="run-evidence">
-    <p>Run: {evidence.run_state || "not a durable run"}{evidence.stop_reason ? ` · stopped ${evidence.stop_reason}` : ""}{evidence.recovered ? " · completion was not recorded" : ""}{evidence.journal_incomplete ? " · journal has an incomplete trailing record" : ""}. Recovery never resumes, resets or resends.</p>
-    <p>Verdict: {evidence.status || "none retained"}{evidence.error_class ? ` · error ${evidence.error_class}` : ""}{evidence.identity ? ` · result ${evidence.identity.slice(0, 12)}…` : ""} · spec {evidence.spec_name || "unknown"} ({evidence.spec_identity ? evidence.spec_identity.slice(0, 12) + "…" : "unknown"})</p>
-    <p>Boundary: {evidence.boundary || "unknown"} · deliveries: {evidence.acknowledged} acknowledged, {evidence.uncertain} uncertain, {evidence.not_attempted} not attempted · responses readable {evidence.readable}/{evidence.planned}{evidence.initial_records !== undefined || evidence.final_records !== undefined ? ` · ledger records ${evidence.initial_records ?? 0} → ${evidence.final_records ?? 0}` : ""}</p>
-    {evidence.pin ? <p>Engine pin: {evidence.pin.engine} · spec {evidence.pin.spec} · profile {evidence.pin.profile}</p> : <p>No readable engine pin was retained.</p>}
-    <p>Timings: started {evidence.started_at || "unknown"} · completed {evidence.completed_at || "unknown"} · elapsed {evidence.elapsed || "unknown"}</p>
-    {evidence.source_case ? <p>Source case: <button className="link" onClick={() => onOpenCase(evidence.source_case || "")}>{evidence.source_case}</button> · identity {evidence.source_identity?.slice(0, 12)}…</p> : null}
-    {evidence.gaps.length > 0 ? <ul>{evidence.gaps.map((gap) => <li key={gap}>{gap}</li>)}</ul> : null}
-    {evidence.messages.length > 0 ? <table><caption>Selected messages and their retained responses</caption>
-      <thead><tr><th>Source occurrence</th><th>Outbound</th><th>Readable response</th><th>Retained payload</th></tr></thead>
-      <tbody>{evidence.messages.map((message) => <tr key={message.source}><th>{message.source}</th><td>{message.outbound}</td><td>{message.readable ? "yes" : "no"}</td><td>{message.response || "—"}</td></tr>)}</tbody>
-    </table> : null}
-    <table><caption>Assertion evidence{evidence.revealed ? " (values revealed)" : " (values hidden until revealed)"}</caption>
-      <thead><tr><th>Assertion</th><th>Operator</th><th>Position</th><th>Outcome</th><th>Expected</th><th>Observed</th><th>Evidence</th></tr></thead>
-      <tbody>{evidence.assertions.map((assertion) => <tr key={assertion.id}>
-        <th>{assertion.id}</th>
-        <td>{assertion.operator}</td>
-        <td>{[assertion.message, assertion.selector].filter(Boolean).join(" ") || "—"}</td>
-        <td>{assertion.status}</td>
-        <td>{assertion.expected || (evidence.revealed ? "—" : "hidden")}</td>
-        <td>{assertion.observed || (evidence.revealed ? "—" : "hidden")}</td>
-        <td>{assertion.evidence || "unobserved"}</td>
-      </tr>)}</tbody>
-    </table>
-    {evidence.assertions.length === 0 ? <p>No assertion inventory was retained. This is not a passing test.</p> : null}
-  </div>;
+const RESET_NAMES = {
+  operator_confirms: "Manual step",
+  observation_empty: "Receiver snapshot empty",
+  collection_empty: "Observation empty",
+  endpoint_quiet: "Endpoint quiet",
+} as const;
+
+/** A suite review's tests: what each runs, where, and in what order. */
+function JobTable({ run, expanded, onToggle }: { run: RunReview; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div className="review-jobs">
+      <button type="button" className="quiet" aria-expanded={expanded} onClick={onToggle}>
+        {expanded ? "Hide tests" : "Show tests"}
+      </button>
+      {expanded ? (
+        <table className="data-table plain" aria-label="Suite tests">
+          <thead>
+            <tr>
+              <th scope="col">Test</th>
+              <th scope="col">Dataset</th>
+              <th scope="col">Target</th>
+              <th scope="col">State sharing</th>
+              <th scope="col">Depends on</th>
+            </tr>
+          </thead>
+          <tbody>
+            {run.jobs.map((job) => (
+              <tr key={job.id}>
+                <td>{versioned(job.test, job.version)}</td>
+                <td>{job.dataset ? `${job.dataset} · ${job.rows === 1 ? "1 row" : `${job.rows} rows`}` : "—"}</td>
+                <td>{job.target || "—"}</td>
+                <td>{term(STATE_SHARING, job.state_sharing).text}</td>
+                <td>{job.depends_on.join(", ") || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </div>
+  );
+}
+
+/** The supported changes a send can make to what it sends. */
+function Transformations({ chosen, onChange }: { chosen: ReplayTransformation[]; onChange: (next: ReplayTransformation[]) => void }) {
+  const rebase = chosen.some((change) => change.name === "rebase-control-ids");
+  const shift = chosen.find((change) => change.name === "shift-timestamps");
+  const [draft, setDraft] = useState(shift?.shift ?? "");
+  const compose = (nextRebase: boolean, nextShift: string | null) => {
+    const next: ReplayTransformation[] = [];
+    if (nextRebase) next.push({ name: "rebase-control-ids" });
+    if (nextShift !== null && nextShift.trim() !== "") next.push({ name: "shift-timestamps", shift: nextShift.trim() });
+    onChange(next);
+  };
+  return (
+    <fieldset className="review-transformations">
+      <legend>Changes</legend>
+      <label>
+        <input type="checkbox" checked={rebase} onChange={(event) => compose(event.target.checked, shift ? (shift.shift ?? "") : null)} />
+        New control IDs
+      </label>
+      <label htmlFor="send-shift">Shift times by</label>
+      <input
+        id="send-shift"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => compose(rebase, draft)}
+      />
+    </fieldset>
+  );
 }

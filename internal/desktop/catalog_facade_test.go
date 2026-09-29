@@ -120,7 +120,8 @@ func listed(t *testing.T, app *desktop.App, root string, kind desktop.ItemKind) 
 			t.Fatalf("listing %s answered a %s", kind, item.Ref.Kind)
 		}
 		key := item.Name
-		if key == "" {
+		// A run is named by the test it ran (#555); it is found by its entry.
+		if key == "" || kind == desktop.RunItem {
 			key = "@" + entries[item.Ref.ID]
 		}
 		items[key] = item
@@ -525,7 +526,7 @@ func TestAnObjectOfALaterWindowIsChangedAndReviewedWhereItIs(t *testing.T) {
 	}
 	incident := listed(t, app, root, desktop.CaseItem)["@a-incident"]
 	review := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ReplaySendAction, Items: []desktop.ItemRef{incident.Ref},
-		Destination: &desktop.ItemRef{Kind: desktop.EnvironmentItem, ID: later.Ref.ID}})
+		Destination: &desktop.ItemRef{Kind: desktop.EnvironmentItem, ID: later.Ref.ID}, Replay: &desktop.ReplayActionOptions{Messages: []string{"s0001-e000001"}}})
 	if review.State != desktop.Completed || review.Review == nil || len(review.Review.Items) != 2 || review.Review.Items[1].Ref.ID != later.Ref.ID {
 		t.Fatalf("a review of an object of a later window: %+v", review)
 	}

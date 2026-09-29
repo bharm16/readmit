@@ -116,6 +116,7 @@ var facadeNames = names{
 		"internal/project.Status":                      "CaseStatus",
 		"internal/redact.LiteralBinding":               "RedactSpecBinding",
 		"internal/replay.Classification":               "TargetClassification",
+		"internal/replay.Outcome":                      "MessageOutcome",
 		"internal/replay.Target":                       "Target",
 		"internal/runcompare.Execution":                "ExecutionView",
 		"internal/sendpolicy.Policy":                   "SendPolicy",

@@ -500,7 +500,7 @@ func (a *App) claim(operation string) (func(), bool) {
 func (a *App) claimBeside(name string) (context.Context, func(), bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if !a.running || a.operation != captureOperation || a.beside {
+	if !a.running || !background(a.operation) || a.beside {
 		return nil, nil, false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -518,7 +518,11 @@ func (a *App) claimBeside(name string) (context.Context, func(), bool) {
 func (a *App) busyReason() string {
 	a.mu.Lock()
 	capturing := a.running && a.operation == captureOperation
+	sending := a.running && background(a.operation) && !capturing
 	a.mu.Unlock()
+	if sending {
+		return runBusyReason
+	}
 	if !capturing {
 		return busyRefusal.reason
 	}
@@ -533,6 +537,20 @@ func (a *App) busyReason() string {
 	}
 	return "the capture " + strconv.Quote(name) + " is recording; " + captureBusyRule
 }
+
+// background reports an operation the window keeps reading beside: a capture
+// records (#552), and a run, a send or a reviewed test sends (#555), in the
+// background.
+func background(operation string) bool {
+	switch operation {
+	case captureOperation, runOperation, replayOperation, reexecutionOperation:
+		return true
+	}
+	return false
+}
+
+// runBusyReason is what waits for a run that is sending.
+const runBusyReason = "a run is sending; only reads run while it sends, and this waits until it is finished or stopped"
 
 // captureBusyRule is what waits for a capture, and until when.
 const (

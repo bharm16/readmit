@@ -1,0 +1,179 @@
+/* Runs (Runs.tsx, RunPanel.tsx, RunExplanation.tsx, RunComparison.tsx): the
+ * reviewed send's values and setup steps, a run's one-line summary, a check's
+ * detail, recovery and diagnostics. Geometry and colour come from the shared
+ * tokens. */
+
+.review-value {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.review-value > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.review-list {
+  margin: 0;
+  padding-left: var(--s6);
+}
+
+.review-list > li {
+  line-height: var(--line-body);
+}
+
+.review-refusal {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.review-jobs,
+.review-changes,
+.review-transformations {
+  display: grid;
+  gap: var(--s2);
+}
+
+.review-changes-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.review-changes-header > h3 {
+  font-size: var(--text-body);
+  margin: 0;
+}
+
+.setup-step {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: var(--s3);
+}
+
+.setup-step > legend {
+  font-weight: 600;
+  padding: 0 var(--s1);
+}
+
+.setup-instructions {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.skeleton {
+  display: grid;
+  gap: var(--s3);
+}
+
+.skeleton > span {
+  background: var(--hover);
+  border-radius: var(--radius-control);
+  display: block;
+  height: var(--line-body);
+}
+
+.skeleton > span:nth-child(2) {
+  width: 70%;
+}
+
+.skeleton > span:nth-child(3) {
+  width: 45%;
+}
+
+.date-range {
+  align-items: center;
+  border: 0;
+  display: grid;
+  gap: var(--s2);
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+  padding: 0;
+}
+
+.date-range > legend {
+  font-weight: 600;
+  margin-bottom: var(--s2);
+}
+
+.checks.picker {
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.run-line {
+  color: var(--muted);
+  margin: 0 0 var(--s3);
+  overflow-wrap: anywhere;
+}
+
+.check-detail,
+.run-analysis,
+.run-recovery {
+  display: grid;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+.check-detail > h2,
+.run-analysis > h2,
+.run-recovery > h2 {
+  font-size: var(--text-section);
+  line-height: var(--line-section);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.check-detail > button,
+.run-recovery > button {
+  justify-self: start;
+}
+
+.fact-list {
+  margin: var(--s3) 0 0;
+  padding-left: var(--s6);
+}
+
+.diagnostics {
+  margin-top: var(--s4);
+}
+
+.diagnostics > summary {
+  cursor: default;
+  font-weight: 600;
+}
+
+.diagnostics > button {
+  margin-top: var(--s2);
+}
+
+.run-analysis > button {
+  justify-self: start;
+}
+
+.run-result {
+  display: inline-grid;
+  line-height: var(--line-support);
+  min-width: 0;
+}
+
+.run-result > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-result-note {
+  color: var(--muted);
+  font-size: var(--text-support);
+}

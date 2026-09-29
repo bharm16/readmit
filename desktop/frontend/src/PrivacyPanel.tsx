@@ -26,6 +26,7 @@ import {
   type SupportRequest,
 } from "./bindings";
 import { Reexecution } from "./Reexecution";
+import type { SendRequest } from "./RunPanel";
 import { PrivacyDocuments } from "./PrivacyDocuments";
 import { useLifecycle } from "./lifecycle";
 import { TaskPanel, TaskTabs } from "./TaskTabs";
@@ -68,11 +69,14 @@ export function PrivacyPanel({
   entries,
   drafts,
   onRefresh,
+  onRun = () => undefined,
 }: {
   workspace: string | null;
   entries: Artifact[];
   drafts?: EditorDraft[] | null;
   onRefresh: () => void;
+  /** Opens the reviewed send of a reviewed test. */
+  onRun?: (request: SendRequest) => void;
 }) {
   const cases = entries.filter((artifact) => artifact.kind === "case").map((artifact) => artifact.name);
   const specs = entries.filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name);
@@ -457,7 +461,7 @@ export function PrivacyPanel({
     </TaskPanel>
 
     <TaskPanel tabs="privacy" tab="reexecute" shown={task === "reexecute"} className="privacy-task">
-      <Reexecution workspace={workspace} reviews={reviews} packets={sealedPackets} specs={specs} onRefresh={onRefresh} />
+      <Reexecution workspace={workspace} onRun={onRun} />
     </TaskPanel>
 
     <TaskPanel tabs="privacy" tab="support" shown={task === "support"} className="privacy-task">

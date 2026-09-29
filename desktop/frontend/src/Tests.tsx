@@ -114,8 +114,8 @@ export type TestsProps = {
   go: (place: TestsPlace) => void;
   back: () => void;
   busy: boolean;
-  /** Hands the saved version's spec to the run review. */
-  onRun: (entry: string) => void;
+  /** Hands the saved test version to the run review. */
+  onRun: (test: ItemRef) => void;
   onLibrary: () => void;
   /** A check group Use in test adds to the next edit that opens. */
   addCheckGroup?: ItemRef | null;
@@ -275,7 +275,8 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       setStart(null);
       back();
     },
-    ...(editingItem && summaryOf(editingItem).entry ? { onRun: () => onRun(summaryOf(editingItem).entry!) } : {}),
+    // Run after a save reviews the version the save published: the current one.
+    ...(editingItem && summaryOf(editingItem).entry ? { onRun: () => onRun({ kind: "test", id: editingItem.ref.id }) } : {}),
   });
   editDirty.current = editor.dirty;
 
@@ -591,7 +592,7 @@ function useTestDetail({
   busy: boolean;
   go: (place: TestsPlace) => void;
   refresh: () => Promise<void>;
-  onRun: (entry: string) => void;
+  onRun: (test: ItemRef) => void;
   onImported: (answer: ItemDraftResult) => void;
 }) {
   const [opened, setOpened] = useState<ItemDraftResult | null>(null);
@@ -636,6 +637,8 @@ function useTestDetail({
   // never run.
   const runnable = !!summary.entry && (!test?.boundary || term(TEST_BOUNDARIES, test.boundary).supported);
   const version = history?.versions.find((entry) => entry.current)?.revision ?? ref.revision;
+  // Run reviews exactly the version shown.
+  const runRef: ItemRef = { kind: "test", id: ref.id, ...(summary.current_version ? { revision: summary.current_version } : {}) };
 
   const setup = (
     <ValueRows
@@ -692,7 +695,7 @@ function useTestDetail({
           title="No runs yet"
           action={
             runnable ? (
-              <button type="button" disabled={busy} onClick={() => onRun(summary.entry!)}>
+              <button type="button" disabled={busy} onClick={() => onRun(runRef)}>
                 Run
               </button>
             ) : undefined
@@ -856,7 +859,7 @@ function useTestDetail({
     palette: {
       object: item.name,
       items: [
-        { label: "Run", onSelect: () => onRun(summary.entry!), disabled: busy || !runnable },
+        { label: "Run", onSelect: () => onRun(runRef), disabled: busy || !runnable },
         { label: "Edit", onSelect: () => go({ kind: "edit", id: ref.id }), disabled: busy || !opened?.draft?.test || !!opened?.test?.read_only },
         ...menu,
       ],
@@ -870,7 +873,7 @@ function useTestDetail({
         <button type="button" disabled={busy || !opened?.draft?.test || opened?.test?.read_only} onClick={() => go({ kind: "edit", id: ref.id })}>
           Edit
         </button>
-        <button type="button" className="primary" disabled={busy || !runnable} onClick={() => onRun(summary.entry!)}>
+        <button type="button" className="primary" disabled={busy || !runnable} onClick={() => onRun(runRef)}>
           Run
         </button>
       </>

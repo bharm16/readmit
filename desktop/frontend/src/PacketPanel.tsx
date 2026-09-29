@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   assemblePacket,
   choosePacketExportPath,
@@ -41,10 +41,14 @@ export function PacketPanel({
   workspace,
   entries,
   onRefresh,
+  seed = null,
 }: {
   workspace: string | null;
   entries: Artifact[];
   onRefresh: () => void;
+  /** What Create report on a run hands a new report: the run, its case and
+   * the exact version of the test it executed. */
+  seed?: { case: string; spec: string; run: string; count: number } | null;
 }) {
   const cases = entries.filter((artifact) => artifact.kind === "case").map((artifact) => artifact.name);
   const specs = entries.filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name);
@@ -58,6 +62,15 @@ export function PacketPanel({
   const [baselineName, setBaselineName] = useViewState("PacketPanel.baselineName", "");
   const [baselineCaseName, setBaselineCaseName] = useViewState("PacketPanel.baselineCaseName", "");
   const [output, setOutput] = useViewState("PacketPanel.output", "");
+  // Create report on a run chooses its case, test version and run here once.
+  const seeded = useRef(0);
+  useEffect(() => {
+    if (!seed || seed.count === seeded.current) return;
+    seeded.current = seed.count;
+    if (seed.case) setCaseName(seed.case);
+    if (seed.spec) setSpecName(seed.spec);
+    setCurrentName(seed.run);
+  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   const [preview, setPreview] = useState<PacketPreviewResult | null>(null);
   const [previewFor, setPreviewFor] = useState<PacketRequest | null>(null);
   const [assembled, setAssembled] = useViewState<PacketResult | null>("PacketPanel.assembled", null);

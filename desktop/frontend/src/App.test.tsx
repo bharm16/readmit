@@ -31,16 +31,14 @@ import {
   sequenceEvent,
   sequenceResult,
   sessionStored,
-  durableRunResult,
   folderChosen,
-  runEvidenceResult,
-  runPreflightResult,
-  runProgressResult,
+  catalogOfListing,
 } from "./testkit/fixtures";
+import { facadeStub } from "./testkit/wails";
 import { renderApp } from "./testkit/app";
 import { windowWidth } from "./testkit/window";
 import { findCaseRow, goTo, goToView, page, readCaseIdentity, sidebar } from "./testkit/navigation";
-import type { CommercialStatusResult, HubResult, RequestContext } from "./bindings";
+import type { CatalogItem, CommercialStatusResult, HubResult, RequestContext } from "./bindings";
 
 /** Opens a folder the way a person does from anywhere: the projects page's
  * Open… button, which is the SelectWorkspace dialog. */
@@ -577,31 +575,54 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
 
 test("the run folder a send writes is retained in the session as the folder itself, before the send", async () => {
   // The session is read after the window is gone, so it names the run's own
-  // folder — an absolute path the facade accepts — not the workspace entry the
-  // run panel chose it by.
+  // folder — an absolute path the facade accepts — not the project entry the
+  // review named it by.
   const user = userEvent.setup();
+  const saved: CatalogItem = {
+    ref: { kind: "test", id: "t-reschedule", revision: "2" },
+    name: "Reschedule keeps one appointment",
+    created_at: null,
+    updated_at: null,
+    last_opened_at: null,
+    availability: "available",
+    capabilities: [],
+    summary: { test: { source_case: null, latest_run: null, assertions: 1, current_version: "2" } },
+  };
   const { facade } = await renderApp({
-    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, [{ name: "reschedule-test.json", kind: "spec" }]),
-    PreflightRun: () => runPreflightResult(),
-    DurableRunProgress: () => runProgressResult(),
-    OpenRunEvidence: () => runEvidenceResult(),
+    SelectWorkspace: () => folderWithCase(),
+    ListCatalog: (query) =>
+      query.kind === "test" ? { state: "completed", context: query.context, page: { items: [saved], total: 1, snapshot: "s", recorded: true, incomplete: [] } } : catalogOfListing(query, facadeStub()),
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: {
+        token: "run-token", action: "run.test", consent: "send", items: [saved], destination: { name: "Scheduling QA", output: "job-001" }, requirements: [], ready: true,
+        run: { kind: "test", name: saved.name, version: "2", environment_name: "Scheduling QA", address: "peer-under-test:2575", messages: [], message_count: 1, setup: [], resets: [], jobs: [], targets: [], environments: [] },
+      },
+    }),
+    DurableRunProgress: () => ({ state: "empty", reason: "no run is retained at that entry yet" }),
   });
   await openFolder(user);
-  await goToView(user, "Runs", "Run test");
-  await user.selectOptions(await screen.findByLabelText("Saved test or suite"), "reschedule-test.json");
-  await user.click(screen.getByRole("button", { name: "Preview run" }));
-  await screen.findByText(/Destination: job-001 \(generated\) · fresh/);
-  const sending = facade.park("StartDurableRun");
-  await user.click(screen.getByRole("button", { name: "Send test" }));
-  await waitFor(() => expect(facade.callsTo("StartDurableRun")).toHaveLength(1));
+  await goTo(user, "Runs");
+  await user.click(await page().findByRole("button", { name: "Run test" }));
+  const picker = await screen.findByRole("dialog", { name: "Run test" });
+  await user.click(await within(picker).findByRole("radio", { name: "Reschedule keeps one appointment · v2" }));
+  await user.click(within(picker).getByRole("button", { name: "Continue" }));
+  const send = await screen.findByRole("button", { name: "Send" });
+  await waitFor(() => expect((send as HTMLButtonElement).disabled).toBe(false));
+  const sending = facade.park("ExecuteReviewedAction");
+  await user.click(send);
+  await waitFor(() => expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(1));
   const watched = facade.callsTo("RecordView").map((call) => (call.args[0] as { run: string }).run);
   expect(watched).toContain(`${WORKSPACE_ROOT}/job-001`);
   expect(watched).not.toContain("job-001");
   // Recorded before the send, not after it.
   const recordedAt = facade.calls.findIndex((call) => call.method === "RecordView" && (call.args[0] as { run: string }).run !== "");
-  expect(recordedAt).toBeLessThan(facade.calls.findIndex((call) => call.method === "StartDurableRun"));
-  sending.resolve(durableRunResult("passed"));
-  await screen.findByText(/Stop reason: passed/);
+  expect(recordedAt).toBeLessThan(facade.calls.findIndex((call) => call.method === "ExecuteReviewedAction"));
+  facade.reply({ OpenRun: (request) => ({ state: "failed", context: request.context, reason: "synthetic run unavailable" }) });
+  sending.resolve({ state: "completed", context: facade.oneCall("ExecuteReviewedAction")[0]!.context, outcome: "completed", replayed: false, run: { kind: "run", id: "r-new" } });
+  await waitFor(() => expect(facade.callsTo("OpenRun").length).toBeGreaterThan(0));
+  expect(facade.callsTo("OpenRun")[0]!.args[0]).toMatchObject({ run: { kind: "run", id: "r-new" } });
 });
 
 test("an editor draft another panel offers back can be discarded by hand", async () => {
@@ -724,13 +745,13 @@ test("a page not on screen is not mounted, and going back to it shows what was t
   await renderApp({ SelectWorkspace: () => folderWithCase() });
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
-  await goToView(user, "Runs", "Run test");
-  await user.type(page().getByLabelText("Run folder"), "tuesday-run");
+  await goTo(user, "Reports");
+  await user.type(page().getByLabelText("Packet folder"), "tuesday-packet");
   await goTo(user, "Cases");
-  // The run page's form is gone from the window, not hidden in it.
-  expect(document.getElementById("run-output")).toBeNull();
-  await goToView(user, "Runs", "Run test");
-  expect((page().getByLabelText("Run folder") as HTMLInputElement).value).toBe("tuesday-run");
+  // The reports page's form is gone from the window, not hidden in it.
+  expect(document.getElementById("packet-output")).toBeNull();
+  await goTo(user, "Reports");
+  expect((page().getByLabelText("Packet folder") as HTMLInputElement).value).toBe("tuesday-packet");
 });
 
 test("opening another project starts every page afresh: nothing typed, selected or revealed for the last one stays", async () => {
@@ -738,13 +759,13 @@ test("opening another project starts every page afresh: nothing typed, selected 
   const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
   await openFolder(user);
   await sidebar().findByRole("button", { name: /^Project: / });
-  await goToView(user, "Runs", "Run test");
-  await user.type(page().getByLabelText("Run folder"), "tuesday-run");
+  await goTo(user, "Reports");
+  await user.type(page().getByLabelText("Packet folder"), "tuesday-packet");
   facade.reply({ SelectWorkspace: () => folderChosen("/work/other-project", [{ name: "project.json", kind: "project", schema: "readmit-project/v2" }]) });
   await openFolder(user);
   await waitFor(() => expect(facade.callsTo("SelectWorkspace")).toHaveLength(2));
-  await goToView(user, "Runs", "Run test");
-  expect((page().getByLabelText("Run folder") as HTMLInputElement).value).toBe("");
+  await goTo(user, "Reports");
+  expect((page().getByLabelText("Packet folder") as HTMLInputElement).value).toBe("");
 });
 
 test("in a compact window a long case title opens the case's details from the keyboard", async () => {

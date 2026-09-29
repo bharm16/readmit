@@ -1,14 +1,16 @@
 import { findCaseRow } from "./testkit/navigation";
 // Context-sensitive recovery at the entry surfaces: a refused workspace open
 // and a refused case verification each offer the action that actually repairs
-// them, a preflight refusal on the run panel opens the configuration the
+// them, a run review's refusal opens the configuration the
 // refusal is about, and no supported journey dead-ends in a CLI instruction.
 import { expect, test } from "vitest";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp } from "./testkit/app";
-import { goToView, page, sidebar } from "./testkit/navigation";
-import { CASE_ENTRY, folderChosen, folderWithCase, refused, WORKSPACE_ROOT } from "./testkit/fixtures";
-import type { Artifact } from "./bindings";
+import { goTo, page, sidebar } from "./testkit/navigation";
+import { CASE_ENTRY, catalogOfListing, folderChosen, folderWithCase, refused, WORKSPACE_ROOT } from "./testkit/fixtures";
+import { facadeStub } from "./testkit/wails";
+import type { Artifact, CatalogItem, RunRefusal } from "./bindings";
 
 const SAVED_SPEC = "saved-spec.json";
 
@@ -47,24 +49,54 @@ test("a refused case verification offers the way back to the folder listing", as
   expect(facade.callsTo("OpenCase").length).toBe(1);
 });
 
-test("a run preflight refusal opens the configuration the refusal is about", async () => {
+test("a run review refusal opens the configuration the refusal is about", async () => {
   const user = userEvent.setup();
+  const saved: CatalogItem = {
+    ref: { kind: "test", id: "t-reschedule", revision: "2" },
+    name: "Reschedule keeps one appointment",
+    created_at: null,
+    updated_at: null,
+    last_opened_at: null,
+    availability: "available",
+    capabilities: [],
+    summary: { test: { source_case: null, latest_run: null, assertions: 1, current_version: "2" } },
+  };
+  let refusal: RunRefusal = "environment";
   await renderApp({
     SelectWorkspace: () => folderWithSpec(),
-    PreflightRun: () => refused("the send policy refuses this destination"),
+    ListCatalog: (query) =>
+      query.kind === "test" ? { state: "completed", context: query.context, page: { items: [saved], total: 1, snapshot: "s", recorded: true, incomplete: [] } } : catalogOfListing(query, facadeStub()),
+    PrepareAction: (request) => ({
+      state: "completed",
+      context: request.context,
+      review: {
+        action: "run.test", consent: "send", items: [saved], destination: {}, requirements: [], ready: false,
+        refusal: refusal === "environment" ? "the send policy refuses this destination" : "the operation term has expired",
+        run: {
+          kind: "test", name: saved.name, version: "2", environment: { kind: "environment", id: "env-qa" }, environment_name: "Scheduling QA", messages: [], message_count: 1,
+          setup: [], resets: [], jobs: [], targets: [], environments: [], refusal,
+        },
+      },
+    }),
   });
   await user.click(page().getByRole("button", { name: "Open" }));
   await sidebar().findByRole("button", { name: /^Project: / });
-  await goToView(user, "Runs", "Run test");
-  await user.selectOptions(page().getByLabelText("Saved test or suite"), SAVED_SPEC);
-  await user.click(page().getByRole("button", { name: "Preview run" }));
-  expect(await page().findByText(/the send policy refuses this destination/i)).toBeTruthy();
+  const review = async () => {
+    await goTo(user, "Runs");
+    await user.click(await page().findByRole("button", { name: "Run test" }));
+    const picker = await screen.findByRole("dialog", { name: "Run test" });
+    await user.click(await within(picker).findByRole("radio", { name: "Reschedule keeps one appointment · v2" }));
+    await user.click(within(picker).getByRole("button", { name: "Continue" }));
+    return screen.findByRole("alert");
+  };
+  expect((await review()).textContent).toBe("the send policy refuses this destination");
   // Each refusal's next action is the real configuration screen.
-  await user.click(page().getByRole("button", { name: "Environments" }));
-  expect(page().getByRole("heading", { level: 1, name: "Environments" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Edit environment" }));
+  expect(sidebar().getByRole("button", { name: "Environments" }).getAttribute("aria-current")).toBe("page");
   expect(document.activeElement?.classList.contains("region-evidence")).toBe(true);
-  await goToView(user, "Runs", "Run test");
-  await user.click(page().getByRole("button", { name: "License" }));
+  refusal = "license";
+  expect((await review()).textContent).toBe("the operation term has expired");
+  await user.click(screen.getByRole("button", { name: "Activate" }));
   expect(page().getByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
   expect(page().getByRole("button", { name: "License" }).getAttribute("aria-current")).toBe("page");
 });

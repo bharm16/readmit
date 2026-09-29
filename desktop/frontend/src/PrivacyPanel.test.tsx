@@ -518,7 +518,7 @@ test("each privacy task is its own tab: one task's controls are on screen at a t
   await user.keyboard("{ArrowRight}");
   expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Disclosure policy", selected: true }));
   await user.keyboard("{ArrowLeft}{ArrowLeft}");
-  expect(screen.getByRole("group", { name: "Rerun" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Run reviewed test" })).toBeTruthy();
   expectTabPattern(list);
 
   await openTask(user, "Export packet");

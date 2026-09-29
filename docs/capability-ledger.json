@@ -556,7 +556,7 @@
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-run/v1", "readmit-result/v1", "readmit-job/v1", "readmit-engine/v1"],
       "outputs": ["readmit-drift/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a comparison selects actual retained executions of the workspace"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "two finished runs of a test are compared earlier to later, a changed check is never a regression, and added runs are counted"},
       "parity_test": {"package": "internal/desktop", "name": "TestExecutionComparisonRetainsFailureAndSeparatesDrift"},
       "implemented": true
     },
@@ -1878,7 +1878,7 @@
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
       "outputs": ["readmit-run-cleanup/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "cleanup is offered after completion, refuses a changed live run, then removes only its stale lease"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "an interrupted run's recovery lists each message's delivery, offers Resume remaining as its own review, and clears a stale lock only on purpose"},
       "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
       "implemented": true
     },
@@ -1894,7 +1894,7 @@
       "inputs": ["readmit-run-queue/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1", "readmit-run-lease/v1"],
       "outputs": ["readmit-run-queue-report/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a suite is selected, its environment is chosen from what it declares, and it executes through the queue"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a suite is reviewed in the wide sheet with each test's dataset, target, state sharing and dependencies, an unknown count is never invented, and Send runs it once"},
       "parity_test": {"package": "internal/desktop", "name": "TestASuiteIsPreflightedAndExecutedThroughTheExistingQueue"},
       "implemented": true
     },
@@ -1910,7 +1910,7 @@
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
       "outputs": ["readmit-run-resume/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "resume repeats a retained never-attempted run only after explicit keyboard action into a fresh folder"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "an interrupted run's recovery lists each message's delivery, offers Resume remaining as its own review, and clears a stale lock only on purpose"},
       "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
       "implemented": true
     },
@@ -1926,7 +1926,7 @@
       "inputs": ["readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
       "outputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "send once: the folder is named in the session before the send, the pinned identity is executed, and the retained evidence opens read-only"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
       "parity_test": {"package": "tests", "name": "TestDesktopAndCommandLineRunOneEngineAndRefuseVersionsItDoesNotRead"},
       "implemented": true
     },
@@ -1942,7 +1942,7 @@
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
       "outputs": ["readmit-run-recovery/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "run history opens retained evidence read-only and reveals values only on purpose"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a run's page shows its failed check first with what it expected and observed, an unavailable observation never as zero, and text only on Show values"},
       "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
       "implemented": true
     },
@@ -2398,7 +2398,7 @@
       "inputs": ["readmit-suite/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-suite-promotion/v1"],
       "outputs": ["readmit-test/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-job/v1", "readmit-result/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a suite is selected, its environment is chosen from what it declares, and it executes through the queue"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a suite is reviewed in the wide sheet with each test's dataset, target, state sharing and dependencies, an unknown count is never invented, and Send runs it once"},
       "parity_test": {"package": "internal/desktop", "name": "TestASuiteIsPreflightedAndExecutedThroughTheExistingQueue"},
       "implemented": true
     },
@@ -2510,7 +2510,7 @@
       "inputs": ["readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
       "outputs": ["readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute-if-send"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "send once: the folder is named in the session before the send, the pinned identity is executed, and the retained evidence opens read-only"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
       "parity_test": {"package": "internal/desktop", "name": "TestCanonicalExportExecutesWithDesktopCLIParity"},
       "implemented": true
     },
@@ -3319,15 +3319,12 @@
       "kind": "desktop",
       "capability": "compareRuns application operation",
       "owner": "bharm16/readmit#253",
-      "screen": "the compare retained executions panel",
-      "action": "align retained results assertion by assertion with drift separated",
       "backend": {"package": "internal/runcompare", "name": "Compare"},
       "inputs": ["readmit-result/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-baseline/v1"],
       "outputs": ["readmit-drift/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a comparison selects actual retained executions of the workspace"},
-      "parity_test": {"package": "internal/desktop", "name": "TestExecutionComparisonRetainsFailureAndSeparatesDrift"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Compare runs compares two chosen runs through desktop.App.CompareRunItems", "successor": "desktop.App.CompareRunItems"}
     },
     {
       "id": "desktop.SetProjectQuota",
@@ -3351,15 +3348,12 @@
       "kind": "desktop",
       "capability": "startDurableRun application operation",
       "owner": "bharm16/readmit#257",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "execute once into a new retained run directory",
       "backend": {"package": "internal/durablerun", "name": "Prepared.StartPinned"},
       "inputs": ["readmit-catalog/v1", "readmit-test-links/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
       "outputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "send once: the folder is named in the session before the send, the pinned identity is executed, and the retained evidence opens read-only"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run test sends a saved test version once through run.test with desktop.App.ExecuteReviewedAction", "successor": "desktop.App.ExecuteReviewedAction"}
     },
     {
       "id": "desktop.ResumeDurableRun",
@@ -3367,15 +3361,12 @@
       "kind": "desktop",
       "capability": "resume only never-attempted work from a completed retained run into a fresh folder",
       "owner": "bharm16/readmit#305",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "resume an unchanged saved test explicitly after opening the retained run",
       "backend": {"package": "internal/durablerun", "name": "Resume"},
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-catalog/v1", "readmit-test-links/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1"],
       "outputs": ["readmit-run-resume/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "resume repeats a retained never-attempted run only after explicit keyboard action into a fresh folder"},
-      "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Resume remaining sends the never-attempted rest through run.resume with desktop.App.ExecuteReviewedAction", "successor": "desktop.App.ExecuteReviewedAction"}
     },
     {
       "id": "desktop.CleanDurableRun",
@@ -3383,15 +3374,12 @@
       "kind": "desktop",
       "capability": "remove only a stale lease after completed retained work",
       "owner": "bharm16/readmit#305",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "remove a stale lease while retaining all evidence",
       "backend": {"package": "internal/durablerun", "name": "Clean"},
       "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
       "outputs": ["readmit-run-cleanup/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "cleanup is offered after completion, refuses a changed live run, then removes only its stale lease"},
-      "parity_test": {"package": "internal/desktop", "name": "TestResumeAndCleanDurableRunsAgreeWithCommandLine"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Clear stale lock in a run's Diagnostics removes a stale lease through desktop.App.ClearStaleRunLock", "successor": "desktop.App.ClearStaleRunLock"}
     },
     {
       "id": "desktop.OpenDurableRun",
@@ -3404,7 +3392,7 @@
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: the durable-run panel reopens retained run evidence read-only through desktop.App.OpenRunEvidence and reads its progress through desktop.App.DurableRunProgress", "successor": "desktop.App.OpenRunEvidence"}
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: a run's page reads its retained evidence through desktop.App.OpenRun and the running run's progress through desktop.App.DurableRunProgress", "successor": "desktop.App.OpenRun"}
     },
     {
       "id": "desktop.RecordView",
@@ -5869,15 +5857,12 @@
       "kind": "desktop",
       "capability": "chooseRunSpec application operation",
       "owner": "bharm16/readmit#305",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "select a saved test or suite through the host's native file dialog",
       "backend": {"package": "internal/desktop", "name": "App.chooseFiles"},
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "the native file dialog can still select a saved test, kept inside the workspace"},
-      "parity_test": {"package": "internal/desktop", "name": "TestChooseRunSpecRefusesOutsideOpenWorkspaceOnEveryPlatform"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run test chooses a saved test or suite by name and reviews it through desktop.App.PrepareAction", "successor": "desktop.App.PrepareAction"}
     },
     {
       "id": "desktop.StartCapture",
@@ -5996,14 +5981,14 @@
       "source": "desktop.App.DurableRunProgress",
       "kind": "desktop",
       "capability": "durableRunProgress application operation",
-      "owner": "bharm16/readmit#257",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "read one run folder's live recovery counts without claiming the operation slot",
+      "owner": "bharm16/readmit#555",
+      "screen": "the page of a run this window is sending",
+      "action": "read how far the running run's journal has got",
       "backend": {"package": "internal/durablerun", "name": "Recover"},
-      "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
+      "inputs": ["readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-run-queue/v1"],
       "outputs": ["readmit-run-recovery/v1"],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "run history opens retained evidence read-only and reveals values only on purpose"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
       "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
       "implemented": true
     },
@@ -6254,15 +6239,12 @@
       "kind": "desktop",
       "capability": "openRunEvidence application operation",
       "owner": "bharm16/readmit#257",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "reopen one retained execution read-only with linked assertion evidence under deliberate reveal",
       "backend": {"package": "internal/runresult", "name": "Open"},
       "inputs": ["readmit-result/v1", "readmit-run/v1", "readmit-test/v1", "readmit-observation/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-run-lease/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "run history opens retained evidence read-only and reveals values only on purpose"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: a run's page reads its retained evidence through desktop.App.OpenRun", "successor": "desktop.App.OpenRun"}
     },
     {
       "id": "desktop.ExplainRun",
@@ -6270,15 +6252,12 @@
       "kind": "desktop",
       "capability": "explainRun application operation",
       "owner": "bharm16/readmit#303",
-      "screen": "the run-explanation panel beside the durable-run panels of the evidence region",
-      "action": "explain what a run's evidence decided assertion by assertion",
       "backend": {"package": "internal/runexplain", "name": "Explain"},
       "inputs": ["readmit-run/v1", "readmit-assertion-set/v1", "readmit-observation-completion/v1", "readmit-observation-source/v2"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/run-explanation.journey.tsx", "name": "a retained run is explained assertion by assertion as the command line re-decides it, passing, failing, unobserved, of another version, stale and unsupported, and nothing is sent"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowReDecidesARetainedRunAsReadmitExplainDoes"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Analyze with checks decides a saved check group against a run through desktop.App.AnalyzeRun", "successor": "desktop.App.AnalyzeRun"}
     },
     {
       "id": "desktop.ChooseExplanationInput",
@@ -6286,15 +6265,12 @@
       "kind": "desktop",
       "capability": "chooseExplanationInput application operation",
       "owner": "bharm16/readmit#303",
-      "screen": "the run-explanation panel beside the durable-run panels of the evidence region",
-      "action": "choose the retained run, assertion set and observation documents an explanation reads through the host's dialogs",
       "backend": {"package": "internal/desktop", "name": "App.ChooseExplanationInput"},
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/journeys/run-explanation.journey.tsx", "name": "a retained run is explained assertion by assertion as the command line re-decides it, passing, failing, unobserved, of another version, stale and unsupported, and nothing is sent"},
-      "parity_test": {"package": "internal/desktop", "name": "TestChooseExplanationInputKinds"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Analyze with checks chooses a saved check group by name and resolves the run's observations itself through desktop.App.AnalyzeRun", "successor": "desktop.App.AnalyzeRun"}
     },
     {
       "id": "desktop.PreviewReplay",
@@ -6302,15 +6278,12 @@
       "kind": "desktop",
       "capability": "previewReplay application operation",
       "owner": "bharm16/readmit#304",
-      "screen": "the replay screen beside the verified case",
-      "action": "preview selected case messages, their transformations and the send decision against a target without sending",
       "backend": {"package": "internal/replay", "name": "PrepareSend"},
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-send-policy/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/ReplayPanel.test.tsx", "name": "a preview names every message, change and refusal, and a changed input withdraws it and its approval"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowPreviewsAndSendsAReplayExactlyAsReadmitReplayDoes"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Send messages reviews the chosen messages through replay.send with desktop.App.PrepareAction", "successor": "desktop.App.PrepareAction"}
     },
     {
       "id": "desktop.SendReplay",
@@ -6318,15 +6291,12 @@
       "kind": "desktop",
       "capability": "sendReplay application operation",
       "owner": "bharm16/readmit#304",
-      "screen": "the replay screen beside the verified case",
-      "action": "send the messages an approved replay preview showed once and retain the run and its send decision",
       "backend": {"package": "internal/replay", "name": "Send"},
       "inputs": ["readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-send-policy/v1"],
       "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/ReplayPanel.test.tsx", "name": "a send happens only after explicit approval, is cancelled from the keyboard and is never offered again after an uncertain delivery"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowPreviewsAndSendsAReplayExactlyAsReadmitReplayDoes"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Send messages sends the chosen messages once through replay.send with desktop.App.ExecuteReviewedAction", "successor": "desktop.App.ExecuteReviewedAction"}
     },
     {
       "id": "desktop.PreflightRun",
@@ -6334,15 +6304,12 @@
       "kind": "desktop",
       "capability": "preflightRun application operation",
       "owner": "bharm16/readmit#257",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "validate a saved test or suite locally and show exactly what one execution would do",
       "backend": {"package": "internal/durablerun", "name": "Prepare"},
       "inputs": ["readmit-catalog/v1", "readmit-test-links/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1", "readmit-suite/v1", "readmit-suite-definition/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a saved test is selected from the workspace, preflighted locally, and the preflight names what would run"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheRunJourneyFromPreflightToLinkedAssertionEvidence"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run test and Run suite are reviewed through run.test and run.suite with desktop.App.PrepareAction", "successor": "desktop.App.PrepareAction"}
     },
     {
       "id": "desktop.RunDiagnosis",
@@ -6405,15 +6372,12 @@
       "kind": "desktop",
       "capability": "startSuiteRun application operation",
       "owner": "bharm16/readmit#257",
-      "screen": "the durable-run panels of the evidence region",
-      "action": "execute one suite environment through the existing durable queue into a fresh destination",
       "backend": {"package": "internal/suite", "name": "Run"},
       "inputs": ["readmit-suite/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1", "readmit-run-lease/v1", "readmit-catalog/v1", "readmit-suite-definition/v1"],
       "outputs": ["readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-test/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a suite is selected, its environment is chosen from what it declares, and it executes through the queue"},
-      "parity_test": {"package": "internal/desktop", "name": "TestASuiteIsPreflightedAndExecutedThroughTheExistingQueue"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run suite sends a saved suite version once through run.suite with desktop.App.ExecuteReviewedAction", "successor": "desktop.App.ExecuteReviewedAction"}
     },
     {
       "id": "desktop.PreviewPacket",
@@ -6677,15 +6641,12 @@
       "kind": "desktop",
       "capability": "Preview one reexecution of an approved review: the recorded target, the derived messages a send would deliver and the assessment binding, sending nothing",
       "owner": "bharm16/readmit#310",
-      "screen": "the privacy panel of the privacy region",
-      "action": "reexecute reviewed transformed evidence against an explicitly selected authorized target",
       "backend": {"package": "internal/redact", "name": "PrepareReexecution"},
       "inputs": ["readmit-export-review/v1", "readmit-redact-local/v1", "readmit-retained-packet/v1", "readmit-result/v1", "readmit-test/v1", "readmit-case/v3", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Reexecution.test.tsx", "name": "a preview names the target and the messages a send would deliver, and sends nothing"},
-      "parity_test": {"package": "tests", "name": "TestTheWindowReexecutesReviewedEvidenceExactlyAsReadmitRedactReexecuteDoes"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run reviewed test is reviewed through run.reviewed-test with desktop.App.PrepareAction", "successor": "desktop.App.PrepareAction"}
     },
     {
       "id": "desktop.ReexecuteReviewedEvidence",
@@ -6693,15 +6654,12 @@
       "kind": "desktop",
       "capability": "Send one previewed reexecution of an approved review to its authorized target under an explicit authorization, retaining its job",
       "owner": "bharm16/readmit#310",
-      "screen": "the privacy panel of the privacy region",
-      "action": "reexecute reviewed transformed evidence against an explicitly selected authorized target",
       "backend": {"package": "internal/redact", "name": "Reexecution.ExecutePinned"},
       "inputs": ["readmit-export-review/v1", "readmit-redact-local/v1", "readmit-retained-packet/v1", "readmit-result/v1", "readmit-test/v1", "readmit-case/v3", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3"],
       "outputs": ["readmit-reexecution-assessment/v1", "readmit-job/v1", "readmit-result/v1", "hl7"],
       "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/Reexecution.test.tsx", "name": "the send happens only under the explicit authorization, pinned to the reviewed preview, and spends both"},
-      "parity_test": {"package": "tests", "name": "TestTheWindowReexecutesReviewedEvidenceExactlyAsReadmitRedactReexecuteDoes"},
-      "implemented": true
+      "implemented": false,
+      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run reviewed test sends once through run.reviewed-test with desktop.App.ExecuteReviewedAction", "successor": "desktop.App.ExecuteReviewedAction"}
     },
     {
       "id": "desktop.SaveSharingPolicy",
@@ -6936,7 +6894,7 @@
       "screen": "the Projects, Cases, Tests, Runs, Environments and Reports catalogs",
       "action": "list named objects with their state, summary and permitted actions, page after page across the folder listing bound",
       "backend": {"package": "internal/desktop", "name": "App.ListCatalog"},
-      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-desktop-projects/v1", "readmit-desktop-opened/v1", "readmit-desktop-recent/v1", "readmit-case/v1", "readmit-test/v1", "readmit-suite/v1", "readmit-run/v1", "readmit-byte-only-run/v1", "readmit-result/v1", "readmit-target/v3", "readmit-test-links/v1", "readmit-test-release/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-job/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-origins/v1", "readmit-library-metadata/v1"],
+      "inputs": ["readmit-project/v1", "readmit-project/v2", "readmit-revisions/v1", "readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-desktop-projects/v1", "readmit-desktop-opened/v1", "readmit-desktop-recent/v1", "readmit-case/v1", "readmit-test/v1", "readmit-suite/v1", "readmit-run/v1", "readmit-byte-only-run/v1", "readmit-result/v1", "readmit-target/v3", "readmit-test-links/v1", "readmit-test-release/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-job/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-origins/v1", "readmit-library-metadata/v1", "readmit-run-origin/v1"],
       "outputs": ["readmit-desktop-projects/v1"],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Home.test.tsx", "name": "projects this viewer opened are listed newest first; a row opens its project and a missing one offers Locate"},
@@ -7846,16 +7804,16 @@
       "id": "desktop.PrepareAction",
       "source": "desktop.App.PrepareAction",
       "kind": "desktop",
-      "capability": "prepare the backend-bound review of a send, an export, an approval, a collection, a reset, a credential scan, an export review's derivation or a transport approval",
+      "capability": "prepare the backend-bound review of a run of a test or suite, a resume, a reviewed test, a send of chosen messages, an export, an approval, a collection, a reset, a credential scan, an export review's derivation or a transport approval",
       "owner": "bharm16/readmit#555",
-      "screen": "the review sheets: Reset, Collect and Scan configured files, and Run review, Export preview and Version review",
+      "screen": "the review sheets: Run test, Run suite, Resume remaining, Run reviewed test, Send messages, Reset, Collect and Scan configured files, Export preview and Version review",
       "action": "review an action before its final click",
       "backend": {"package": "internal/desktop", "name": "App.PrepareAction"},
-      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-observation-completion/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2"],
+      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-observation-completion/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1", "readmit-run-origin/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "Reset reviews the exact saved actions, needs each manual step confirmed and reports what ran"},
-      "parity_test": {"package": "internal/desktop", "name": "TestAReviewedResetRequiresEachManualConfirmationAndReportsPerActionOutcomes"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
+      "parity_test": {"package": "internal/desktop", "name": "TestARunIsReviewedFromTheSavedTestAndSentOnceByItsSend"},
       "implemented": true
     },
     {
@@ -7864,14 +7822,14 @@
       "kind": "desktop",
       "capability": "execute one prepared review once, re-checking every binding first",
       "owner": "bharm16/readmit#555",
-      "screen": "the final action of a review sheet: Reset, Collect, Scan, Send, Export or Approve",
-      "action": "send, export, approve or derive exactly what was reviewed, with the declaration a derivation requires",
+      "screen": "the final action of a review sheet: Send, Reset, Collect, Scan, Export or Approve",
+      "action": "run, resume, send, export, approve or derive exactly what was reviewed, with the setup marked complete or the declaration a derivation requires",
       "backend": {"package": "internal/desktop", "name": "App.ExecuteReviewedAction"},
-      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2"],
-      "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "readmit-derived-export/v1", "readmit-suite-promotion/v1", "readmit-observation-completion/v1", "readmit-observation-evidence/v1", "readmit-reset-outcome/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-case/v3", "readmit-catalog/v1", "readmit-target/v3", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-command/v1"],
+      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1"],
+      "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "readmit-derived-export/v1", "readmit-suite-promotion/v1", "readmit-observation-completion/v1", "readmit-observation-evidence/v1", "readmit-reset-outcome/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-case/v3", "readmit-catalog/v1", "readmit-target/v3", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-command/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-reexecution-assessment/v1", "hl7", "readmit-run-origin/v1"],
       "prerequisites": ["execute-if-send", "author-if-approve", "execute-if-reach", "author-if-reach", "author-if-derive"],
-      "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "Reset reviews the exact saved actions, needs each manual step confirmed and reports what ran"},
-      "parity_test": {"package": "internal/desktop", "name": "TestAReviewedResetRequiresEachManualConfirmationAndReportsPerActionOutcomes"},
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
+      "parity_test": {"package": "internal/desktop", "name": "TestARunIsReviewedFromTheSavedTestAndSentOnceByItsSend"},
       "implemented": true
     },
     {
@@ -7886,7 +7844,9 @@
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "implemented": true,
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a Send whose review went stale sends nothing and Review again prepares a fresh review; Cancel withdraws a review"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAReviewDoesNotSurviveARestartOrAWithdrawal"}
     },
     {
       "id": "desktop.BackupLocation",
@@ -8070,13 +8030,79 @@
       "kind": "desktop",
       "capability": "stop the reviewed action running as one operation, and nothing else",
       "owner": "bharm16/readmit#555",
-      "screen": "the Stop control of an active send",
+      "screen": "the Stop of a running run's page and of its operation indicator",
       "action": "stop one running operation by its identity",
       "backend": {"package": "internal/desktop", "name": "App.CancelOperation"},
       "inputs": [],
       "outputs": [],
       "prerequisites": [],
-      "implemented": false
+      "implemented": true,
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
+      "parity_test": {"package": "internal/desktop", "name": "TestStopTargetsTheReviewedSendByItsOperation"}
+    },
+    {
+      "id": "desktop.OpenRun",
+      "source": "desktop.App.OpenRun",
+      "kind": "desktop",
+      "owner": "bharm16/readmit#555",
+      "capability": "open one run of a project, or one job of a suite run, with its one result, checks, messages, details and recovery",
+      "screen": "a run's page: Checks, Messages and Details",
+      "action": "open a run, show its values on purpose",
+      "backend": {"package": "internal/runresult", "name": "Open"},
+      "inputs": ["readmit-catalog/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-test/v1", "readmit-observation/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-suite/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-run-origin/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a run's page shows its failed check first with what it expected and observed, an unavailable observation never as zero, and text only on Show values"},
+      "parity_test": {"package": "internal/desktop", "name": "TestARunPageShowsAFailedDownstreamCheckBesideAcknowledgedMessages"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.ClearStaleRunLock",
+      "source": "desktop.App.ClearStaleRunLock",
+      "kind": "desktop",
+      "owner": "bharm16/readmit#555",
+      "capability": "remove the lock a run left once its journal recorded how it ended, keeping all evidence",
+      "screen": "a run's Details › Diagnostics",
+      "action": "clear a stale lock after confirming the run and its lock",
+      "backend": {"package": "internal/durablerun", "name": "Clean"},
+      "inputs": ["readmit-catalog/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1"],
+      "outputs": ["readmit-run-cleanup/v1"],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "an interrupted run's recovery lists each message's delivery, offers Resume remaining as its own review, and clears a stale lock only on purpose"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAnInterruptedRunIsRecoveredReadOnlyAndResumedOnlyByItsReview"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.AnalyzeRun",
+      "source": "desktop.App.AnalyzeRun",
+      "kind": "desktop",
+      "owner": "bharm16/readmit#555",
+      "capability": "decide a saved check group version against one run's retained evidence as a separate local analysis",
+      "screen": "Analyze with checks on a run's page",
+      "action": "choose a check group by name and read its analysis beside the run's own result",
+      "backend": {"package": "internal/runexplain", "name": "Explain"},
+      "inputs": ["readmit-catalog/v1", "readmit-assertion-set/v1", "readmit-run/v1", "readmit-result/v1", "readmit-job/v1", "readmit-test/v1", "readmit-test-links/v1", "readmit-observation-completion/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-run-origin/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Analyze with checks decides a saved check group against the run as its own analysis, leaving the run's result as it was"},
+      "parity_test": {"package": "internal/desktop", "name": "TestAnalyzeRunDecidesACheckGroupWithoutChangingTheRun"},
+      "implemented": true
+    },
+    {
+      "id": "desktop.CompareRunItems",
+      "source": "desktop.App.CompareRunItems",
+      "kind": "desktop",
+      "owner": "bharm16/readmit#555",
+      "capability": "compare two runs of a test earlier to later, aligning checks by identity and definition, comparing configuration apart and counting added runs",
+      "screen": "Compare runs",
+      "action": "compare two chosen runs, change the selection, add up to fourteen runs",
+      "backend": {"package": "internal/runcompare", "name": "CompareOpened"},
+      "inputs": ["readmit-catalog/v1", "readmit-result/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-run/v1", "readmit-test/v1", "readmit-run-origin/v1"],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "two finished runs of a test are compared earlier to later, a changed check is never a regression, and added runs are counted"},
+      "parity_test": {"package": "internal/desktop", "name": "TestComparingTwoRunsAlignsTheirChecksAndComparesConfigurationApart"},
+      "implemented": true
     },
     {
       "id": "desktop.ForgetProject",

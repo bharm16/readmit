@@ -328,6 +328,22 @@ type RunSummary struct {
 	SourceCase        *ItemRef `json:"source_case,omitzero"`
 	Suite             *ItemRef `json:"suite,omitzero"`
 	Jobs              int      `json:"jobs,omitzero"`
+	// Kind is what the run executed. Test is the saved test and the
+	// version of it a test run executed, when the project holds that
+	// version, and Version the version of the test or suite that ran; the
+	// run's name is the name it ran under, never a later one. Environment is
+	// the named environment, at the revision whose target the run reached,
+	// and EnvironmentName what it is called. Result is the one result the run
+	// is shown with (RunResult); Active is true while this window executes
+	// it. Entry is the project entry the run is retained in.
+	Kind            RunKind   `json:"kind,omitzero"`
+	Test            *ItemRef  `json:"test,omitzero"`
+	Version         string    `json:"version,omitzero"`
+	Environment     *ItemRef  `json:"environment,omitzero"`
+	EnvironmentName string    `json:"environment_name,omitzero"`
+	Result          RunResult `json:"result,omitzero"`
+	Active          bool      `json:"active"`
+	Entry           string    `json:"entry,omitzero"`
 }
 
 // EnvironmentSummary is an environment's declared classification, address

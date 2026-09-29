@@ -1255,7 +1255,10 @@ its evidence; Back returns to Similar findings.
 
 ### Reviewed actions
 
-`PrepareAction` prepares the review of a send (`replay.send`), an export
+`PrepareAction` prepares the review of a run of a saved test version
+(`run.test`) or suite version (`run.suite`), the never-attempted rest of an
+interrupted run (`run.resume`), a test rebound to an approved export review
+(`run.reviewed-test`), a send of chosen messages (`replay.send`), an export
 (`export.derived-packet`), a suite version's approvals (`suite.approve-baseline`,
 `suite.request-review`, `suite.approve-release` and `suite.approve-promotion`),
 an observation's collection (`observation.collect`), an environment's reset
@@ -1309,6 +1312,10 @@ inventory edited after the review was shown is a stale review; it is never
 taken from generic consent, and an export needs none. Enabling a schedule is
 not a reviewed action: no review this facade prepares authorizes one. A send whose
 deliveries no acknowledgement settled is `uncertain`, never completed.
+A run's review lists the manual setup its test names as a `setup`
+requirement: the final click marks every step complete by its identity, and
+nothing else, or nothing is sent. A run, a resume or a send answers the run
+the project now lists (`run`), which the window opens; see [runs](#runs).
 `WithdrawReview` ends a review. The click's `IntentID` is the operation the
 action runs as, so `CancelOperation` with it stops that action — and only
 that one — while the call has not returned.
@@ -3296,8 +3303,8 @@ is unavailable rather than answered busy.
   [the guided sample](guided-sample.md) is the built-in fixture bound on a
   loopback port inside this application; a saved test or suite whose target
   configuration names a recorded nonproduction environment is executed once by
-  the [durable test runs](#durable-test-runs-preflight-execution-and-linked-evidence)
-  panel, and a production classification still refuses every send.
+  its [reviewed send](#the-reviewed-send), and a production classification
+  still refuses every send.
 - Importing evidence and changing evidence. No edit the shell makes reaches a
   case, a run, a result, a review or a report: a reproducer is new evidence
   written beside the original, never a rewrite of it, and a comparison writes
@@ -3478,202 +3485,157 @@ native save dialog. No reference is rewritten and no send is initiated. See
 refusal and recovery behavior and execution parity.
 
 
-## Durable test runs: preflight, execution and linked evidence
+## Runs
 
-The **Durable test runs** panel is the connected execution centre: what the
-authoring panels saved, it selects, validates, executes once and reopens as
-evidence. Selection reads the workspace's own listing — every `spec` entry a
-saved test declared and every `suite` entry a suite document — or the host's
-native file dialog through `ChooseRunSpec`, which stays inside the open
-workspace. The folder the dialog's answer names is compared with the workspace
-as the filesystem resolves both, not as they are spelled, so a workspace reached
-through a symbolic link, as `/tmp` and `/var` reach `/private` on macOS, is
-accepted however the dialog spells it. The chosen entry itself must be a regular
-file, never a symbolic link, exactly as the listing offers entries. A file
-outside the workspace, a file in one of its folders, a link inside it wherever
-the link points, and a path that leaves through `..` are refused. Preflight,
-execution, a suite run and the run-history reads apply the same rule to the
-entry they are handed, so naming an entry directly reaches nothing the dialog
-refuses; see [workspaces and artifacts](#workspaces-and-artifacts).
-The file chooser adds no arbitrary path to the workspace. Initial execution
-can generate a fresh output name at preflight; explicit resume requires a new
-workspace entry name, which the facade validates before the shared operation.
+**Runs** is the project's run history (#555), read through the catalog
+(`ListCatalog` with kind `run`). Each row is one retained run as its own
+readers establish it: the test or suite and the exact version it executed, the
+named environment whose target it reached, when it started, how long it took and
+one result. The name is the one the run retained, never a later name of the
+test. A run of a saved test is matched to the version it executed by the
+retained spec, which differs from that version in nothing but the target of the
+named environment it follows; a run the project holds no version for is still
+listed, by its retained name, without a version. The result is decided once in
+Go (`RunResult`) in this order, so a lifecycle problem is never hidden behind a
+verdict: **Running** while this window writes the run; **Interrupted** when the
+journal never recorded how the run ended; **Incomplete** when it stopped before
+a decided result, or when a delivery no acknowledgement settled stands beside a
+passing one; **Blocked** when admission refused work a suite was asked to do;
+**Error**, **Failed** and **Passed** from the verdict; and **Accepted** or **Not
+accepted** for a send of messages, which has no checks. **Delivery uncertain**
+stays beside the result whenever it is true. Rows are ordered running first,
+then by start, latest first, an unknown start last. In a narrow window Duration
+goes first and Started shortens to the time or the day; the result never goes.
 
-**Validate and preflight** is local validation with no network connection, no
-send and no result verdict. It reads the exact plan a send would execute and
-reports: the selected input and the identity execution pins itself to (for a
-test, its prepared inputs: the spec, its case and selection, the target
-configuration and its credential registration; for a suite, the exact bytes of
-the suite document), the target configuration and the environment it records
-(never a credential value — a target names a reference), the effective
-timeouts and limits, the observation boundary and reset requirement, the
-engine/spec/profile pin, the deadline an execution is bounded by, the
-generated destination, and the operation guard's own admission decision — the
-same decision a send would get. A selection that changes withdraws the
-preflight, and **Send and execute once** executes only under the identity the
-preflight fixed: a test rewritten, or its target configuration edited, after
-the preflight is refused by the send rather than executed as though nothing had
-changed, and a suite is compiled only from the bytes the preflight identified.
-A start that names no preflight identity is refused before admission is asked.
+**Filter** narrows by result, environment, test or suite and a start date range
+in this computer's time zone. **Compare** is offered for exactly two finished,
+readable runs of a test. **Schedules** opens Settings › Runners › Schedules.
+**Run test** opens a picker of the project's saved tests and runnable suites
+and then the reviewed send. A run folder is never named, typed or chosen here:
+every output is the application's own.
 
-Execution is the existing durable path (a suite runs through the existing
-durable queue with its declared isolation; this panel adds no parallelism).
-The window stays responsive: the send runs in the engine, the panel polls a
-read-only progress read of the journal being written, and **Cancel run** names
-its own operation, so it can never stop another panel's work and another
-panel's cancel can never stop a run. A duplicate click finds the button
-withdrawn and the facade's single operation slot refuses the second start.
-After the run, the workspace listing is refreshed so completed and partial
-outputs appear in run history at once, and the retained evidence opens
-read-only beside the summary.
+While a run sends, the window keeps reading: catalog and run reads run beside
+it as they do beside a capture, and only another send, collection or write waits
+for it, answered with that reason.
 
-**Run history** offers the workspace's retained `job` and `result` entries.
-Opening one reads it through the same readers the command line verifies one
-with — never filename inference — and shows the durable state and stop reason
-alongside the result's own verdict and error class, which stay three separate
-facts; message, acknowledgement and observation counts; the journal's
-acknowledged/uncertain/not-attempted deliveries; the run's timings; the
-retained engine pin; the source case and identity; and one row per assertion
-with its operator, the position it addresses and the retained payload its
-decision was read from. Expected and observed values are hidden until
-**Reveal expected and observed values** is pressed — a deliberate local
-action, the same boundary the baseline panel uses — and the source case is a
-link that opens the case in the inspector, not a value. An incomplete journal
-and a delivery-uncertain run stay exactly what the journal says: merely opening
-the view never resumes, resets or resends anything. After opening a durable
-job, **Resume never-attempted work** explicitly names the unchanged saved
-test and a fresh output folder; the backend refuses incomplete completion,
-any attempted send or a changed plan. **Remove stale lease** calls the same
-cleanup as `readmit run clean`, refusing a live lease or an unknown entry and
-retaining every evidence file. See
-[durable local runs](durable-runs.md) for the retained contracts.
+### The reviewed send
 
-## Explaining a retained run
+Running a saved test (`run.test`), a saved suite version (`run.suite`), the
+never-attempted rest of an interrupted run (`run.resume`), a test rebound to an
+approved export review (`run.reviewed-test`) and chosen messages of a case
+(`replay.send`) are each one reviewed action (see [reviewed
+actions](#reviewed-actions)), shown in one sheet: **Run test**, **Run suite**,
+**Resume remaining**, **Run reviewed test** or **Send messages**. The review is
+prepared from the saved objects: the test or suite at the exact version chosen,
+the named environment's current revision and the address it reaches, the
+messages in the order they are sent (**Show all** lists them), the manual setup
+the test names, and the executable reset actions that run before any message
+when the test follows its environment's reset. A suite review is the wide sheet
+and lists its environment and site, every target it reaches and each test's
+dataset, target, state sharing and the tests it waits for; its message count is
+not known ahead and is never invented. Changing the environment, or for
+selected messages the changes made to them (**Edit**: new control IDs, shifted
+times, with the changed fields shown and their values only on **Show values**),
+prepares the review again. A send of messages sends the messages chosen; an
+empty choice is refused, never read as every message.
 
-**Explain a retained run**, beside the durable-run panels, is
-[`readmit explain`](explain.md) in the window: it re-decides one
-`readmit-assertion-set/v1` document against the evidence one run retained and
-shows, assertion by assertion, what the evidence decided. `App.ExplainRun`
-assembles it through `runexplain.Explain`, the operation the command renders:
-the run bundle is opened through the verifying replay reader, the set through
-the assertion reader and any observation through its own two readers, and the
-set is evaluated again. It needs no license admission, opens nothing beyond
-the entries it names and the capture an observation source among them
-declares, sends nothing and writes nothing, and nothing it shows is kept.
+Each manual step is shown with its own instructions and **Mark complete**; Send
+is disabled until every step is marked, and the marks belong to this review
+only. Reset instructions are read by a person and never executed: only a reset
+plan's own actions run, before any message, and a reset that does not confirm
+the environment sends nothing. The one line above Send states what it does:
+`Sends 2 messages to Scheduling QA once.`, `Resets Scheduling QA, then sends 2
+messages once.`, or for a suite `Sends the selected suite to Scheduling QA
+once.`
 
-The retained run and the set are chosen through the host's dialogs
-(`App.ChooseExplanationInput`) or typed as entries; the run field offers the
-workspace's retained `job` and `result` entries. Each input is one entry of
-the open workspace under the rule `ChooseRunSpec` keeps: the dialog's folder
-is compared with the workspace as the filesystem resolves both, and the entry
-is never a symbolic link. A run entry is a durable run, whose run bundle is
-`result/run` inside it, a result, whose bundle is `run/`, a run bundle itself,
-such as a `readmit replay` output, or one job of a suite execution's runs
-(`suite-output/runs/job`), which the dialog chooses inside the workspace's own
-`runs` folder. The panel names the bundle it resolved, which is the path the
-command is given for the same explanation. A durable run that never finalized
-its result, and a result without its run, are refused as having retained no
-run bundle; the run history still opens them. A set that asks about observed
-records is explained with the completion record and the observation source
-that observation read, which **Observed records** discloses and which are
-supplied together.
+A production or unclassified environment, or a transport that is not
+approved, is refused with the facade's reason and **Edit environment**; an
+inactive license is refused with its reason and **Activate**, which opens
+Settings › License and prepares the review again, fresh, once the person
+leaves Settings. Nothing opens a connection before Send. The review binds the
+project, the reviewer, the test's exact spec and its prepared input identity,
+the environment's target, policy, reset and links, the admission, the setup
+steps and the fresh output; Send reads all of it again, and a change is a stale
+review that sends nothing. The window names the run's folder in its session
+before Send reaches the facade, so an interruption is recovered against it.
+The click's intent is the run's operation: the same click again answers the
+same run, and **Cancel** withdraws the review (`WithdrawReview`).
 
-What the panel shows is the command's reading in the command's words, from the
-same code: the verdict, or `none` with the execution error's class and the
-assertion it was asking about; the counts; the set's name, contract and
-identity, which is the SHA-256 of its bytes; the run's contract, state,
-identity, input case identity, target configuration identity and timings; each
-message with its outcome, delivery, acknowledgement and whether each payload
-is evidence an assertion may read; each observation with what it settled on
-and what binds it to this run; and one row per assertion with its operator,
-outcome, what it reads, its condition, what was expected, what was observed
-and the retained payload or capture each value was read from, named within the
-workspace. `passed`, `failed`, `undecided`, `skipped` and *not evaluated* are
-each drawn as that word, and none of the last three is ever a pass. Expected
-and observed values and observed record keys are hidden until **Reveal
-expected and observed values** is pressed, and **Hide values** reads the run
-again with them hidden.
+### A run's page
 
-A refusal is the sentence the command prints after `readmit: ` for the same
-evidence — a set or a run of a contract version this release does not read, a
-set past its bound, records the set asks about with no observation supplied,
-an observation it never asks about, half an observation, a source whose
-records cannot be derived again, a stale observation, a capture that no longer
-holds what was observed, an observation recorded beside another run — and it
-decides nothing: no verdict and no table stand beside it. Changing any input
-withdraws the explanation on screen. While the set is re-decided every other
-control is disabled and the keyboard lands on **Cancel explanation**, which
-names the panel's own operation, `run-explanation`, and drops the answer; the
-explanation retained nothing, so explaining again decides what it would have.
-While another operation holds the slot, an explanation reports `busy`.
+Send opens the run's own page at once. While it runs it shows the environment
+and address, what the journal reads so far (`DurableRunProgress`: messages
+acknowledged, uncertain; for a suite, tests finished) and **Stop**, which stops
+exactly this send (`CancelOperation` with the click's intent) and cannot retract
+what was sent. Leaving the page keeps a compact indicator in the sidebar with
+the run's name and Stop. A Send that did not start — a stale or refused review
+— says **Nothing was sent** with the reason and **Review again**.
 
-## Replaying selected case messages
+A finished run (`OpenRun`) shows its result, environment, start and duration,
+**Create report**, and **Run again** and **Analyze with checks** under More.
+Run again is a fresh review of the version and environment the run used, never
+an immediate repeat. Create report opens Reports with the run, its case and the
+exact version of the test it executed chosen.
 
-**Replay selected messages**, beside the open case, is
-[`readmit replay`](replay.md) in the window. It previews which messages of the
-verified case would be sent to one target configuration and how the named
-transformations change them, and sends them once only after the person
-approves that exact preview. Both halves go through
-`operation.PrepareReplay`, the preparation the command itself runs, and a send
-goes through `replay.ExecuteWithPolicy`, so the window holds no send decision
-of its own.
+**Checks** lists failed and not-evaluated checks first, then the rest in the
+order the test declares them, each with what it expected, what the run observed
+and the result. A count of zero is 0. A value the run did not observe is
+**Unavailable**, and selecting the check says why; it is never read as zero or
+as a pass. Field text and record lists are **Hidden** until **Show values**,
+which reads the run again with them. Selecting a check names the messages it is
+supported by, which open in the case. An acknowledgement that accepted a message
+is its own check and never passes a check of the appointment records.
+**Messages** lists each message the run was to send, what is known of its
+delivery — Acknowledged, Uncertain or Not attempted — and the acknowledgement
+code the receiver answered with. **Details** names the test and version, the
+environment, the address, when the run started and completed, the boundary it
+was observed at, how many records were observed before and after, the engine,
+and anything the run could not establish. A suite run shows its **Tests**, each
+with its result; a test opens that job's own page.
 
-Messages are chosen from the case index's window of the grid, `Replay` or `Do
-not replay` for each message occurrence; acknowledgements and unparsed
-occurrences are never offered. With none chosen every message of the case is
-replayed, and a replay always sends in source order whatever order the choices
-were made in. The target configuration and the optional send policy are named
-as entries of the open workspace, typed or picked from the target
-configurations and send policies the listing offers, so a document saved in the
-environment panel a moment ago can be named before the listing is read again.
-The two transformations are
-`rebase-control-ids` and `shift-timestamps` with its explicit shift, exactly as
-the command names them.
+### Interrupted runs
 
-**Preview replay** (`App.PreviewReplay`) is the command's dry run: the target
-and the environment it records, the send decision the policy reaches without a
-send being requested — including the one name lookup a policy decision needs
-for a named host — the message count, the transformations, every message with
-the bytes it would put on the wire, every field a transformation changes by
-position and decoded state, the fresh run folder and the decision file a send
-would write beside it, and the operation guard's own admission. The values a
-transformation changes are hidden until **Reveal changed values** is pressed.
-The preview opens no connection and writes nothing: the command retains a
-preview's decision only because `--decision` names a file, and the window shows
-the same decision without retaining it. A case, target or policy the command
-refuses is refused in the command's words beside the decision it reached, and
-shows no plan. Whether the preview may be sent is the backend's answer: a
-destination the policy refuses, a window without runner authority and a run
-folder already taken are each shown as the reason no send is offered.
+For a run whose journal recorded it, Details › **Recovery** shows how it ended
+and how many messages were acknowledged, uncertain and never attempted.
+**Resume remaining** is offered only when the retained run attempted nothing,
+the project still holds the test version it executed and that version still
+prepares exactly the retained plan against the same target — the existing
+resume contract — and it opens a fresh **Resume remaining** review of exactly
+that rest, sent into a new run. Otherwise recovery stays read-only with the
+reason. Nothing is retried on opening, on start-up or on Stop, and an
+acknowledged or uncertain message is never sent again. **Diagnostics** shows
+the journal's own states and its lock; **Clear stale lock** confirms the run and
+its lock and removes only a lock an ended run left (`ClearStaleRunLock`, as
+`readmit run clean`), keeping every piece of evidence, and refuses a run whose
+journal has not recorded its end.
 
-The send needs the person's explicit approval of that preview — a checkbox
-naming the message count and the destination, then **Send once** — and
-`App.SendReplay` refuses without it before anything is admitted. The send is
-admitted as execution exactly as `readmit replay --send` is, reads and prepares
-every input again, and is refused if anything the preview identified changed:
-the case, the target configuration and its CA, the send policy, the selection,
-the transformations or any byte a message would put on the wire. The policy is
-decided again at the point of the send and the decision is retained as
-`RUN.decision.json` beside the run folder before any connection opens,
-including a denial, exactly as the command's default retains it; a production
-environment is refused and its refusal retained in the same place. The run is
-`readmit-run/v1`, unchanged, and holds the values that were sent. The panel
-shows the run's identity and every message's outcome, delivery, bytes,
-acknowledgement and transport error, as the command's summary prints them.
+### Analyze with checks
 
-Changing any input withdraws the preview and its approval, and a send spends
-the approval whatever it established: the run folder it named is no longer
-fresh, so a new send is always a new preview, a new approval and a new folder.
-While a replay works the keyboard lands on its cancel. **Cancel preview** names
-`replay-preview` and drops the late answer; **Cancel send** names `replay` and
-stops at the message in flight, which is recorded as cancelled with its
-delivery uncertain, while every later message is recorded as not attempted; a
-send cancelled while its policy decision waits on a name lookup sends nothing
-and keeps the decision it had reached beside the run folder. An
-uncertain delivery is never sent again — not when its acknowledgement arrives
-late, not by reopening the window and not by any control here — and nothing
-about a replay is retained in the working session or the draft store, so a
-restart has nothing to resume.
+**Analyze with checks** chooses a saved check group version by name and decides
+it against the run's retained evidence (`AnalyzeRun`, the operation `readmit
+explain` renders). The answer is its own section, **Analysis · group · version**,
+beside the run's result, which it never changes, and nothing is kept. A group
+that asks about the appointment records before or after the run reads them from
+the collections of the observation the run's test links — the latest closed
+before the run started and the first closed after it ended. A collection that
+does not exist is listed as missing with **Open observation**, and nothing else
+is supplied in its place.
+
+### Compare runs
+
+**Compare runs** (`CompareRunItems`, over `internal/runcompare`) compares two
+finished runs of a test. **Earlier** and **Later** are set by when each run
+started, whichever was chosen first, and each opens its run. **Checks** aligns
+each check by its identity and definition with what each run observed and
+decided: Improved, Regressed, Unchanged, Different value, or — when the
+definition changed — **Changed check**, never a regression; a check in one run
+only is Added or Removed. **Configuration** compares the messages, the target,
+the engine and the profile each on its own and names what differs, never a
+value, and infers no cause. **Change selection** chooses two runs by name, and
+**Add runs** up to fourteen more runs of the same test, whose results
+**Stability** counts across every compared run without inferring a probability.
+Runs that cannot be compared show the comparison's own refusal and Change
+selection.
 
 ## Investigation packets and portable reports
 
@@ -3894,79 +3856,6 @@ identity. The panel states the exclusions: no evidence payload, no recursive
 collection, no upload — a team transfer is the customer hub's separate
 authenticated workflow, and a local typed approver label is not authenticated
 team approval.
-
-## Comparing retained executions
-
-The inspector's **Compare retained executions** panel reads a baseline result
-and a current result, with up to fourteen additional retained executions. The
-baseline and the current run are selected from the workspace's actual retained
-executions — the same run history the durable-run panels register — rather
-than typed from memory; the additional repeats remain a typed list for the
-longer histories. Each must be a verified
-`readmit-result/v1` directory or a durable run containing one; cancelled and
-interrupted durable runs can instead report the missing result explicitly.
-A guided practice folder wraps its result in `result/`: copy that complete
-result directory into its own workspace entry before comparing it. Copies retain
-the same identity and cannot count as independent repeated runs.
-
-Select **Compare executions**. The behavior table aligns assertions by ID,
-compares the entire definition before comparing verdicts and observed values,
-and reports added/removed assertions as excluded on the opposite side.
-An unavailable specification leaves that side's inventory unknown instead of
-labelling its assertions excluded. Unevaluated assertions and changed definitions
-are `not_compared`, never equal
-or passing by omission. Expected and observed patient values remain hidden;
-the table reports the change and retained evidence position. No normalization
-or ignore policy suppresses differences.
-
-Input, target configuration, evaluator environment and profile/rule drift are
-shown separately through the existing [drift](drift.md) engine. Specification
-changes are a separate statement, including changed expectations and setup.
-Neither a behavior change nor a single changed configuration proves causality.
-The actual target software revision remains **unknown**. A regular result has
-no engine/profile pin, so those causes are undeclared; durable runs retain pins.
-
-Optionally select a [baseline approval](baseline.md) file. Matching means its
-complete canonical specification equals the baseline execution's retained spec,
-including paths and configuration declarations. Different or unavailable specs
-are visibly different or unknown, never inferred approvals. It is not a target
-snapshot, organizational authentication, permission to send, or proof the test
-is correct. No environment difference is implicitly approved here.
-
-Every execution retains its status, error class, assertion inventory, selected
-message count, readable responses, unobserved responses and unevaluated count.
-ACK-only tests explicitly leave downstream state unobserved. Missing ledger
-observations are visible. Source occurrences excluded by the original selection
-remain **unknown**: the original case is not reopened, since today's copy cannot
-establish what was excluded then. A torn journal remains interrupted or delivery
-uncertain even beside a finalized result; the panel shows both records.
-
-Flakiness is assessed only across distinct retained result identities. A single
-identity is insufficient history. Differing or undeclared configuration, changed
-specifications, different recorded fixture modes, execution errors or unfinished
-journals leave stability unresolved. With unchanged input, target, engine,
-resolved rule and complete specification, an unchanged assertion switching between pass and failure is
-`possible_flakiness`, even if another persistent failure keeps every overall run
-failing; no such switch is `no_observed_flakiness`, not proof of future
-stability. Target revision and external state remain unknown in either case.
-Every selected repeated result and its failures remain visible, including when
-the latest run passed. This reads history already on disk and stores no new one.
-
-The panel uses `App.CompareRuns`, backed by `internal/runcompare`, the existing
-verified result/job readers and `runexplain.DescribeRun`'s payload readability
-rules. It never parses command output or sends messages. Cancellation drops the
-view between bounded artifact reads; it cannot interrupt an individual verified
-reader. **Compare executions** again recovers by re-reading evidence. Inputs are
-disabled while the operation runs, editing a selection clears stale results,
-and nothing is persisted in browser storage or a restored desktop session.
-Invalid evidence, workspace escapes, duplicate repeats and histories over the
-sixteen-execution bound fail without exposing paths or values in diagnostics.
-
-Raw replay bundles without test results, assertion-set re-evaluation, suite
-aggregation, export renderings and automatic baseline selection are unsupported
-by this panel. `readmit explain` and the
-[run-explanation panel](#explaining-a-retained-run) handle the separate
-assertion-set contract. This adds no member to any retained evidence or approval contract.
 
 ## Explaining sequence uncertainty
 

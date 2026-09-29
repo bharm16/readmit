@@ -23,37 +23,30 @@ readmit run clean job-001 --json
 readmit run queue nightly.queue.json --send --runs runs --json
 ```
 
-The desktop's **Durable test runs** panels call the same Go engine. A saved
-test or suite is selected from what the open workspace holds (the host's native
-file dialog remains the advanced selection), the panel validates it locally and
-shows an explicit **preflight** — the exact selected input, the target and the
-environment it records, the effective configuration, the observation and reset
-requirements, the pinned engine versions, the deadline, a generated fresh
-output folder and the operation guard's own admission decision — with no
-network connection and no verdict. A changed selection invalidates the
-preflight: execution is bound to the identity the preflight fixed — a test's
-prepared inputs (the spec, its case and selection, the target configuration and
-its credential registration), or a suite document's exact bytes, checked on the
-bytes the suite then compiles — and refuses an input that no longer has it, as
-it refuses a start that names no preflight identity. **Send and execute once**
+The desktop's **Run test** and **Run suite** reviews call the same Go engine
+(see [the reviewed send](desktop.md#the-reviewed-send)). A saved test or suite
+version is chosen by name, reviewed locally — the exact version, the named
+environment and its address, the messages, the manual setup and any reset, a
+generated fresh output and the operation guard's own admission decision — with
+no network connection and no verdict, and its Send is bound to what the review
+showed: a test's prepared inputs (the spec, its case and selection, the target
+configuration and its credential registration), or a suite version's compiled
+bytes, refused as stale when they no longer match. **Send**
 then runs the existing durable path above (a suite through the existing durable
-queue, with its declared isolation and no added parallelism); **Cancel run** stops future
-sends by naming its own operation, so one panel's cancel can never stop
-another's, and bytes already written can still have affected the receiver.
-While a run executes, the panel polls a read-only progress read of the journal
-the run is writing — the recovery vocabulary, never delivered-message counts —
-and the workspace listing is refreshed so completed and partial outputs appear
-in run history immediately. Retained runs and results reopen read-only through
-the same readers the command line verifies one with, per-assertion detail
-included, with expected and observed values revealed only by a deliberate
-local action. A retained durable job then offers two separate actions:
-**Resume never-attempted work** names the unchanged saved test and a fresh
-folder, and **Remove stale lease** cleans only a lease after recorded
-completion. They call the same shared operations as `run resume` and
-`run clean`; opening the view authorizes neither. Closing a view does not
-trigger a resend. Killing the desktop
-process stops its local execution; use recovery after restarting. The CLI can
-run separately from the desktop.
+queue, with its declared isolation and no added parallelism) and opens the
+run's page; **Stop** there, or in the sidebar while the person works elsewhere,
+stops exactly that send, and bytes already written can still have affected the
+receiver. While a run executes, the page reads the journal the run is writing —
+the recovery vocabulary, never delivered-message counts. A run reopens
+read-only through the same readers the command line verifies one with, each
+check included, with text shown only by a deliberate local action. A retained
+durable job offers two separate actions in its recovery: **Resume remaining**
+reviews only the never-attempted rest of the same saved test version, sent into
+a fresh output by its own Send, and **Clear stale lock** removes only a lock
+after recorded completion. They call the same shared operations as `run resume`
+and `run clean`; opening a run authorizes neither. Killing the desktop process
+stops its local execution; use recovery after restarting. The CLI can run
+separately from the desktop.
 
 The desktop also remembers which output folder a viewer was watching, in its own
 local working session. Reopening the window reads that folder through this same
@@ -312,7 +305,7 @@ state is kept between queues.
 
 ## Engine and contract versions
 
-The desktop's **Durable test runs** panel and `readmit run` are two ways into
+The desktop's run reviews and `readmit run` are two ways into
 one evaluator, and the enrolled [customer runner](customer-runner.md) is the third: the same
 `internal/durablerun` and `internal/testrunner` packages, compiled from one
 module, decide what a run sends and what its assertions mean. The runner consumes this contract, not a second one. A run is not asked to trust any of that. Every job retains
@@ -421,3 +414,11 @@ this contract does not claim recovery from every power-loss/filesystem failure
 on Windows. Disk failure may prevent the terminal record from being persisted;
 recover the last valid prefix and retain uncertainty. These guarantees concern
 local evidence, never exactly-once delivery or receiver-side transactionality.
+
+Reviewed desktop runs retain the selected publication in a bounded, strict
+`readmit-run-origin/v1` document beside the project catalog, before any send.
+The record binds the retained input and preserves the test or suite version
+and displayed names across later edits. Older runs with ambiguous equal
+publications keep their historical publication unavailable. Suite reviews
+include inherited environment resets; a suite job has read-only recovery
+and scoped stale-lock cleanup, while a new suite execution needs a new review.

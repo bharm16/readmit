@@ -297,37 +297,7 @@
     "name": "Reexecution",
     "source": "desktop/frontend/src/Reexecution.tsx",
     "exported": true,
-    "line": 24
-  },
-  {
-    "name": "ReplayPanel",
-    "source": "desktop/frontend/src/ReplayPanel.tsx",
-    "exported": true,
-    "line": 25
-  },
-  {
-    "name": "Decision",
-    "source": "desktop/frontend/src/ReplayPanel.tsx",
-    "exported": false,
-    "line": 383
-  },
-  {
-    "name": "NotPreviewed",
-    "source": "desktop/frontend/src/ReplayPanel.tsx",
-    "exported": false,
-    "line": 409
-  },
-  {
-    "name": "Sent",
-    "source": "desktop/frontend/src/ReplayPanel.tsx",
-    "exported": false,
-    "line": 419
-  },
-  {
-    "name": "RunView",
-    "source": "desktop/frontend/src/ReplayPanel.tsx",
-    "exported": false,
-    "line": 436
+    "line": 12
   },
   {
     "name": "Reproducer",
@@ -384,46 +354,10 @@
     "line": 1045
   },
   {
-    "name": "RunComparison",
-    "source": "desktop/frontend/src/RunComparison.tsx",
-    "exported": true,
-    "line": 8
-  },
-  {
-    "name": "Execution",
-    "source": "desktop/frontend/src/RunComparison.tsx",
-    "exported": false,
-    "line": 70
-  },
-  {
-    "name": "RunExplanation",
-    "source": "desktop/frontend/src/RunExplanation.tsx",
-    "exported": true,
-    "line": 22
-  },
-  {
-    "name": "Refusal",
-    "source": "desktop/frontend/src/RunExplanation.tsx",
-    "exported": false,
-    "line": 155
-  },
-  {
-    "name": "ExplanationView",
-    "source": "desktop/frontend/src/RunExplanation.tsx",
-    "exported": false,
-    "line": 167
-  },
-  {
-    "name": "RunPanel",
+    "name": "SendReview",
     "source": "desktop/frontend/src/RunPanel.tsx",
     "exported": true,
-    "line": 43
-  },
-  {
-    "name": "RunEvidenceView",
-    "source": "desktop/frontend/src/RunPanel.tsx",
-    "exported": false,
-    "line": 382
+    "line": 102
   },
   {
     "name": "Field",
