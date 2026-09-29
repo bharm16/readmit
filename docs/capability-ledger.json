@@ -8686,6 +8686,18 @@
       "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
     },
     {
+      "id": "tooling.tools.ci_tests",
+      "source": "tools/ci_tests.py",
+      "kind": "tooling",
+      "capability": "Discover and run one complete CI test shard with race tests, fuzz seeds, examples and full connected lab coverage",
+      "owner": "bharm16/readmit#645",
+      "inputs": [],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": false,
+      "disposition": {"kind": "developer-tooling", "reason": "repository build, test and release tooling that developers and CI run against readmit (docs/agents/testing.md); it is not shipped to customers and no customer workflow depends on it"}
+    },
+    {
       "id": "tooling.tools.ci_timing",
       "source": "tools/ci_timing.py",
       "kind": "tooling",

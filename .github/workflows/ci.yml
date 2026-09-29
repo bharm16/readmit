@@ -61,6 +61,10 @@ jobs:
         run: python3 tools/proven_tree.py check
 
   go-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     needs: proof
     if: ${{ !cancelled() && needs.proof.outputs.proven != 'true' }}
     runs-on: ubuntu-24.04
@@ -71,8 +75,12 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-go
         with:
+          # Every shard discovers/compiles the entire same test inventory.
+          # Share its immutable compiler cache, with only shard 1 writing it.
           cache-scope: tests
+          cache-save: ${{ matrix.shard == 1 }}
       - name: Vet
+        if: matrix.shard == 1
         run: go vet ./...
       # The connected lab observes a real PostgreSQL database; its tests fail
       # rather than skip in CI when no installation is named.
@@ -83,10 +91,10 @@ jobs:
             sudo apt-get install -y postgresql-16
           fi
           /usr/lib/postgresql/16/bin/initdb --version
-      - name: Race tests and the production-size resource boundary
+      - name: Complete test suite shard
         env:
           READMIT_POSTGRES_BIN: /usr/lib/postgresql/16/bin
-        run: make test
+        run: python3 tools/ci_tests.py --shard ${{ matrix.shard }} --shards 5
 
   tooling:
     needs: proof

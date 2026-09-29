@@ -245,9 +245,9 @@ class CachePolicy(unittest.TestCase):
         restoring = [step for step in steps if "uses: actions/cache/restore@" in step]
         self.assertEqual((len(saving), len(restoring)), (1, 1), steps)
         self.assertTrue(saving[0].startswith(
-            "if: github.ref == 'refs/heads/main'\n"), saving[0])
+            "if: github.ref == 'refs/heads/main' && inputs.cache-save == 'true'\n"), saving[0])
         self.assertTrue(restoring[0].startswith(
-            "if: github.ref != 'refs/heads/main'\n"), restoring[0])
+            "if: github.ref != 'refs/heads/main' || inputs.cache-save != 'true'\n"), restoring[0])
         self.assertIn("CACHE_EPOCH: stable-1", SETUP_GO.read_text())
         self.assertIn('echo "key=$PREFIX$CACHE_EPOCH" >> "$GITHUB_OUTPUT"', SETUP_GO.read_text())
         self.assertNotIn("github.sha", SETUP_GO.read_text())
