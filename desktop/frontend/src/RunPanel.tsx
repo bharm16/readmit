@@ -19,6 +19,7 @@ import {
   type SuiteRunReport,
 } from "./bindings";
 import { EnvironmentBanner } from "./EnvironmentBanner";
+import type { SuiteRunHandoff } from "./Suites";
 import { useLifecycle } from "./lifecycle";
 import { Reveal } from "./layout";
 import { useViewState } from "./viewstate";
@@ -53,6 +54,7 @@ export function RunPanel({
   onConfigureEnvironment,
   onOpenLicense,
   preflightOnArrival,
+  suiteItem = null,
 }: {
   workspace: string | null;
   entries: Artifact[];
@@ -72,12 +74,18 @@ export function RunPanel({
    * read at once, locally, so the review is the first thing shown and Send
    * stays the only action that sends. */
   preflightOnArrival?: number;
+  /** One saved suite version Run handed over, with the environment chosen:
+   * it is preflighted on arrival like a saved test, and sent only by Send. */
+  suiteItem?: SuiteRunHandoff | null;
 }) {
+  // The handed-over suite version is its own selection, never a file.
+  const item = suiteItem ? `suite:${suiteItem.target.suite.id}@${suiteItem.target.suite.revision ?? ""}` : "";
   const specs = entries.filter((artifact) => artifact.kind === "spec").map((artifact) => artifact.name);
   const suites = entries.filter((artifact) => artifact.kind === "suite").map((artifact) => artifact.name);
   const runs = entries.filter((artifact) => artifact.kind === "job" || artifact.kind === "result").map((artifact) => artifact.name);
 
   const [selected, setSelected] = useViewState("RunPanel.selected", "");
+  const itemSelected = item !== "" && selected === item;
   const [environment, setEnvironment] = useViewState("RunPanel.environment", "");
   const [output, setOutput] = useViewState("RunPanel.output", "");
   const [resumeOutput, setResumeOutput] = useViewState("RunPanel.resumeOutput", "");
@@ -106,7 +114,12 @@ export function RunPanel({
   }, [initialSpec]);
 
   useEffect(() => {
-    if (preflightOnArrival && initialSpec) {
+    if (preflightOnArrival && suiteItem) {
+      setSelected(item);
+      setEnvironment(suiteItem.environment);
+      invalidate();
+      void ask(item, suiteItem.environment);
+    } else if (preflightOnArrival && initialSpec) {
       invalidate();
       void ask(initialSpec);
     }
@@ -123,7 +136,7 @@ export function RunPanel({
 
   const plan = preflight?.preflight;
   const isSuite = plan?.kind === "suite";
-  const changed = plan !== undefined && plan !== null && (plan.spec !== selected || plan.destination.name !== output || (isSuite && plan.suite?.environment !== environment));
+  const changed = plan !== undefined && plan !== null && ((itemSelected ? false : plan.spec !== selected) || plan.destination.name !== output || (isSuite && plan.suite?.environment !== environment));
 
   function invalidate() {
     setPreflight(null);
@@ -134,11 +147,12 @@ export function RunPanel({
     setRevealed(false);
   }
 
-  async function ask(spec: string = selected) {
+  async function ask(spec: string = selected, chosen: string = environment) {
     if (busy) return;
     await lifecycle.run("preflighting", async () => {
-      const request: RunPreflightRequest = { workspace: workspace ?? "", spec };
-      if (environment) request.environment = environment;
+      const handed = suiteItem && spec === item ? suiteItem : null;
+      const request: RunPreflightRequest = handed ? { workspace: workspace ?? "", spec: "", suite: handed.target } : { workspace: workspace ?? "", spec };
+      if (chosen) request.environment = chosen;
       if (output) request.output = output;
       const answer = await preflightRun(request);
       setPreflight(answer);
@@ -166,7 +180,11 @@ export function RunPanel({
           : await startDurableRun({ workspace: workspace ?? "", spec: selected, output: destination, expected_identity: identity });
         let suiteOutcome: Awaited<ReturnType<typeof startSuiteRun>> | null = null;
         if (isSuite) {
-          suiteOutcome = await startSuiteRun({ workspace: workspace ?? "", suite: selected, environment, output: destination, expected_identity: identity });
+          suiteOutcome = await startSuiteRun(
+            itemSelected && suiteItem
+              ? { workspace: workspace ?? "", suite: "", item: suiteItem.target, environment, output: destination, expected_identity: identity }
+              : { workspace: workspace ?? "", suite: selected, environment, output: destination, expected_identity: identity },
+          );
         }
         if (answer) setResult(answer);
         if (suiteOutcome) {
@@ -278,18 +296,21 @@ export function RunPanel({
         onChange={(e) => { setSelected(e.target.value); setEnvironment(""); invalidate(); }}
       >
         <option value="">Select a saved test or suite…</option>
+        {suiteItem ? <option value={item}>{suiteItem.name}{suiteItem.version ? ` · v${suiteItem.version}` : ""} (suite)</option> : null}
         {specs.map((name) => <option key={name} value={name}>{name} (test)</option>)}
         {suites.map((name) => <option key={name} value={name}>{name} (suite)</option>)}
       </select>
       <button disabled={busy || !workspace} onClick={() => void browse()}>Browse files…</button>
-      {suites.includes(selected) ? <>
+      {suites.includes(selected) || itemSelected ? <>
         <label htmlFor="run-environment">Suite environment</label>
         <select id="run-environment" value={environment} disabled={busy}
           onChange={(e) => { setEnvironment(e.target.value); invalidate(); }}>
           <option value="">Select an environment…</option>
           {/* Before a preflight lists the suite's environments, the one a
             * prepared suite was handed over with is offered as chosen. */}
-          {(plan?.suite?.environments ?? (environment ? [environment] : [])).map((id) => <option key={id} value={id}>{id}</option>)}
+          {itemSelected && suiteItem
+            ? suiteItem.environments.map((env) => <option key={env.id} value={env.id}>{env.name}</option>)
+            : (plan?.suite?.environments ?? (environment ? [environment] : [])).map((id) => <option key={id} value={id}>{id}</option>)}
         </select>
       </> : null}
     </div>

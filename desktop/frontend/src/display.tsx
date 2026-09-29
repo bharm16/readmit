@@ -5,7 +5,7 @@
 // a type error rather than a title-cased code on screen. Only stable concepts
 // are mapped: payload text, filenames and exact protocol values are shown as
 // they are, never humanized.
-import type { BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus } from "./bindings";
+import type { BundleMode, CorrelationDecisionAction, CorrelationReviewStatus, SequenceAnalysisDeclaredCoverage, SequenceAnalysisRetryBasis, SearchField, Theme, DiagnosisClassification, DiagnosisSeverity, FindingScope, FindingVerdict, SimilarMemberState, FieldState, ResetOperator, ResetReason, SendPolicyReason, TargetClassification, TestBoundary, TestChange, TestExpectationOperator, TestRunnerStatus, SuiteApprovalScope, SuiteResult } from "./bindings";
 
 /** A caption for every member of one closed vocabulary. */
 export type DisplayMap<K extends string> = Record<K, string>;
@@ -183,3 +183,55 @@ export function DisplayTerm<K extends string>({ map, code }: { map: DisplayMap<K
     </details>
   );
 }
+
+/** A suite test's outcome in one run, the worst of its rows. */
+export const SUITE_RESULTS: DisplayMap<SuiteResult> = {
+  passed: "Passed",
+  failed: "Failed",
+  error: "Error",
+  skipped: "Skipped",
+  uncertain: "Uncertain",
+  unknown: "Unknown",
+};
+
+/** What one approval of a suite version is. */
+export const SUITE_APPROVALS: DisplayMap<SuiteApprovalScope> = {
+  baseline: "Baseline",
+  "review-request": "Review requested",
+  release: "Released",
+  environment: "Approved for environment",
+};
+
+/** How a suite run ended, as the catalog words its outcome. */
+export const SUITE_RUN_OUTCOMES: DisplayMap<"executed" | "stopped" | "incomplete"> = {
+  executed: "Completed",
+  stopped: "Stopped",
+  incomplete: "Interrupted",
+};
+
+/** A declared exclusion's state. Each keeps its own assessment effect. */
+export const EXCLUSION_STATES: DisplayMap<"skipped" | "unsupported" | "quarantined" | "disabled"> = {
+  skipped: "Skipped",
+  unsupported: "Unsupported",
+  quarantined: "Quarantined",
+  disabled: "Disabled",
+};
+
+/** A declared requirement's assessment. */
+export const REQUIREMENT_STATES: DisplayMap<"passed" | "uncovered" | "not_passed"> = {
+  passed: "Passed",
+  uncovered: "Uncovered",
+  not_passed: "Not passed",
+};
+
+/** Where a change between two suite versions is. */
+export const SUITE_CHANGE_AREAS: DisplayMap<"test" | "dataset" | "row" | "environment" | "binding" | "requirement" | "exclusion" | "setting"> = {
+  test: "Test",
+  dataset: "Dataset",
+  row: "Row",
+  environment: "Environment",
+  binding: "Binding",
+  requirement: "Requirement",
+  exclusion: "Exclusion",
+  setting: "Setting",
+};

@@ -267,10 +267,13 @@ func (a *App) OpenDurableRun(path string) DurableRunResult {
 // Output names the new entry the run writes into; empty asks for the next free
 // generated name, so a person never copies an internal path by hand.
 type RunPreflightRequest struct {
-	Workspace   string `json:"workspace"`
-	Spec        string `json:"spec"`
-	Environment string `json:"environment,omitzero"`
-	Output      string `json:"output,omitzero"`
+	Workspace string `json:"workspace"`
+	Spec      string `json:"spec"`
+	// Suite names one saved suite version instead of Spec: it is compiled
+	// against the current version of each named environment it binds.
+	Suite       *SuiteRunTarget `json:"suite,omitzero"`
+	Environment string          `json:"environment,omitzero"`
+	Output      string          `json:"output,omitzero"`
 }
 
 // RunPreflightResult carries one state. Preflight is present whenever the
@@ -402,6 +405,9 @@ type SuiteJobView struct {
 // requires before it starts.
 func (a *App) PreflightRun(request RunPreflightRequest) RunPreflightResult {
 	return run(a, false, false, func(ctx context.Context) RunPreflightResult {
+		if request.Suite != nil {
+			return a.preflightSuiteItem(ctx, request)
+		}
 		root, declined := resolveFolder(request.Workspace)
 		if root == "" {
 			return RunPreflightResult{State: declined.state, Reason: declined.reason}
@@ -624,6 +630,27 @@ func (a *App) preflightSuite(ctx context.Context, root string, request RunPrefli
 	if err != nil {
 		return RunPreflightResult{State: Failed, Reason: "the suite document could not be read"}
 	}
+	return a.preflightSuiteDocument(ctx, root, request, raw)
+}
+
+// preflightSuiteItem preflights one saved suite version exactly as its
+// entry would be: the version compiled against the current revision of
+// each environment it binds, whose identity the run is then pinned to.
+func (a *App) preflightSuiteItem(ctx context.Context, request RunPreflightRequest) RunPreflightResult {
+	loaded, version, data, declined := a.suiteForRun(ctx, *request.Suite)
+	if loaded == nil {
+		return RunPreflightResult{State: declined.state, Reason: declined.reason}
+	}
+	result := a.preflightSuiteDocument(ctx, loaded.root, request, data)
+	if result.Preflight != nil {
+		result.Preflight.Spec, result.Preflight.Name = version.entry, loaded.suiteName(version.item)
+	}
+	return result
+}
+
+// preflightSuiteDocument preflights the suite document raw, whose references
+// resolve from root.
+func (a *App) preflightSuiteDocument(ctx context.Context, root string, request RunPreflightRequest, raw []byte) RunPreflightResult {
 	document, err := suite.Decode(raw)
 	if err != nil {
 		return RunPreflightResult{State: Failed, Reason: "that entry does not declare a suite this release reads"}
@@ -779,12 +806,14 @@ func (a *App) authorPreview(ctx context.Context) bool {
 // that make it an approved suite, the fresh output entry, and the suite
 // identity the preflight fixed, which is required.
 type SuiteRunRequest struct {
-	Workspace   string `json:"workspace"`
-	Suite       string `json:"suite"`
-	Environment string `json:"environment"`
-	References  string `json:"references,omitzero"`
-	Output      string `json:"output"`
-	Expected    string `json:"expected_identity"`
+	Workspace string `json:"workspace"`
+	Suite     string `json:"suite"`
+	// Item names one saved suite version instead of Suite.
+	Item        *SuiteRunTarget `json:"item,omitzero"`
+	Environment string          `json:"environment"`
+	References  string          `json:"references,omitzero"`
+	Output      string          `json:"output"`
+	Expected    string          `json:"expected_identity"`
 }
 
 // SuiteRunResult carries one state. Report is the queue's own report — what
@@ -837,13 +866,33 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		return SuiteRunResult{}, true
 	}
 	return runNamedChecked[SuiteRunResult, *SuiteRunResult](a, profiles["StartSuiteRun"], preflighted, func(ctx context.Context) SuiteRunResult {
-		root, declined := resolveFolder(request.Workspace)
-		if root == "" {
-			return SuiteRunResult{State: declined.state, Reason: declined.reason}
-		}
-		suitePath, err := artifactpath.File(root, request.Suite)
-		if err != nil {
-			return SuiteRunResult{State: Failed, Reason: "the suite must be one regular entry of the open workspace"}
+		root, suitePath := "", ""
+		if request.Item != nil {
+			// A saved suite version runs compiled against the current revision
+			// of each environment it binds, exactly as it was preflighted.
+			loaded, _, data, declined := a.suiteForRun(ctx, *request.Item)
+			if loaded == nil {
+				return SuiteRunResult{State: declined.state, Reason: declined.reason}
+			}
+			if suite.Identity(data) != request.Expected {
+				return SuiteRunResult{State: Failed, Reason: "the selected suite changed after the preflight; preflight it again before executing"}
+			}
+			path, remove, err := placeCompiled(loaded.root, data)
+			if err != nil {
+				return SuiteRunResult{State: Failed, Reason: err.Error() + "; nothing was sent"}
+			}
+			defer remove()
+			root, suitePath = loaded.root, path
+		} else {
+			resolved, declined := resolveFolder(request.Workspace)
+			if resolved == "" {
+				return SuiteRunResult{State: declined.state, Reason: declined.reason}
+			}
+			path, err := artifactpath.File(resolved, request.Suite)
+			if err != nil {
+				return SuiteRunResult{State: Failed, Reason: "the suite must be one regular entry of the open workspace"}
+			}
+			root, suitePath = resolved, path
 		}
 		output, err := runEntryPath(root, request.Output)
 		if err != nil {
@@ -1413,4 +1462,11 @@ func targetView(target replay.Target) RunTargetView {
 func enginePin(specContract string) RunEnginePin {
 	pin := engine.Current(specContract)
 	return RunEnginePin{Engine: pin.Engine, Spec: pin.Spec, Profile: pin.Profile}
+}
+
+// SuiteRunTarget is one saved suite version a run is handed: the project the
+// window has open and the suite at its exact revision.
+type SuiteRunTarget struct {
+	Context RequestContext `json:"context"`
+	Suite   ItemRef        `json:"suite"`
 }

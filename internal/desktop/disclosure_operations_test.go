@@ -33,11 +33,9 @@ import (
 	"time"
 
 	"github.com/bharm16/readmit/internal/desktop"
-	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/mllp"
 	"github.com/bharm16/readmit/internal/operationguard"
-	"github.com/bharm16/readmit/internal/profileversion"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"github.com/bharm16/readmit/internal/sharing"
 )
@@ -728,20 +726,6 @@ func TestDisclosureStatusReportsEveryHubOperationActiveWhileItReachesTheHub(t *t
 		t.Fatal(err)
 	}
 	writeDocument(t, workspace, "sharing-policy.json", string(policy))
-	spec := []byte(`{"schema":"readmit-test/v1","name":"synthetic","input":{"case":"case","messages":["s0001-e000001"]},"target":"target.json","setup":{"initial_state":"operator-declared","reset_instructions":"Reset fixture"},"observation":{"boundary":"ack-contract"},"assertions":[{"id":"ack","operator":"ack_field_equals","message":"s0001-e000001","selector":"MSA-1","expected":{"field":{"state":"present","text":"AA"}}}]}`)
-	review, err := expectation.Review("booking", spec, []profileversion.Version{}, nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	release, err := expectation.Approve("booking", spec, []profileversion.Version{}, nil, review.Identity, "Local approver label", "synthetic rationale")
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := release.Encode()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeDocument(t, workspace, "booking-release.json", string(raw))
 	digest := strings.Repeat("a", 64)
 	project := "cardio-study"
 	lifecycle := desktop.HubLifecycleCommandRequest{Project: project, ID: "revision-1", Kind: "revision", Resource: "evidence",
@@ -764,10 +748,7 @@ func TestDisclosureStatusReportsEveryHubOperationActiveWhileItReachesTheHub(t *t
 		{"PostHubReview", func() {
 			app.PostHubReview(desktop.HubReviewCommandRequest{Project: project, ID: "comment-1", Kind: "comment", Evidence: digest, Text: "synthetic comment"})
 		}},
-		{"PostHubReleaseReview", func() {
-			app.PostHubReleaseReview(desktop.HubReleaseReviewRequest{Project: project, Workspace: workspace, Entry: "booking-release.json",
-				Kind: "review-request", ID: "release-1", Recipient: "reviewer@hospital.org", Text: "synthetic release"})
-		}},
+		{"SuiteReviewers", func() { app.SuiteReviewers(desktop.RequestContext{Project: workspace}) }},
 		{"PostHubSupportReview", func() {
 			app.PostHubSupportReview(desktop.HubSupportReviewRequest{Project: project, Workspace: workspace, Entry: "sharing-policy.json",
 				Kind: "support-policy", ID: "policy-1"})

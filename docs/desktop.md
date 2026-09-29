@@ -1256,8 +1256,9 @@ its evidence; Back returns to Similar findings.
 ### Reviewed actions
 
 `PrepareAction` prepares the review of a send (`replay.send`), an export
-(`export.derived-packet`), a version approval (`suite.approve-promotion`), an
-observation's collection (`observation.collect`), an environment's reset
+(`export.derived-packet`), a suite version's approvals (`suite.approve-baseline`,
+`suite.request-review`, `suite.approve-release` and `suite.approve-promotion`),
+an observation's collection (`observation.collect`), an environment's reset
 (`environment.reset`), a credential scan (`secret.scan`) or the derivation of
 an export review (`export.derive-review`).
 An export is scoped to one export review, a Report of the project: the
@@ -1268,11 +1269,18 @@ catalog offers `export.derived-packet` on an export review itself; the window
 never infers it, and offers it only on a review ready for approval; a case
 offers `export.derive-review`. The private local states and the release pins
 are each read from a bounded listing of the project, and a project holding
-more than it reads is refused with that reason. A version approval is scoped to one suite with the
-environment and revision it is recorded for, and is reviewed with the one set
-of the project's release pins the suite's own preparation accepts; none, or
-more than one, is a review that is not ready and names each set by its tests
-and their release versions. A derivation is
+more than it reads is refused with that reason. A suite approval is scoped to
+exactly one saved suite version; an original suite file is refused. Its review
+shows the version, the test versions it binds and their releases, the actor it
+records and the exact changes since the version last approved the same way,
+or the version alone as the first. A baseline records the local reviewer; a
+review request and a release record the signed-in hub subject, a request the
+reviewer it asks and a release the outstanding request addressed to that
+subject which it answers; an environment approval records the local reviewer,
+the environment, its site and bindings at their current revisions and the
+operator's target revision, and is reviewed with the release pins of the
+version's latest baseline — without one it is a review that is not ready. A
+derivation is
 scoped to one case, with its original specification, disclosure policy and
 original-artifact inventory, and shows that inventory — its artifacts, how
 many known residual values it holds, and its digest.
@@ -2593,7 +2601,7 @@ project…*, *New project…* and *Project settings*.
 | --- | --- |
 | Projects | The projects this viewer opened, New project, Open, the demo and drafts to restore. |
 | Cases | The open project's cases, with their notes and attachments; an open case's Messages, Timeline and Findings, with Compare, Reproduce, Create test, Reduce and Replay as its actions; Import and Capture. |
-| Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios; *Baselines* is in its More menu. |
+| Tests | Tests and Suites. **Library** opens Checks, Profiles and Scenarios. |
 | Runs | Run details; **Run test** and **Compare** open those flows. |
 | Environments | Targets, credential references, send policies and reset plans. |
 | Reports | Packets; **Share** opens the disclosure review, and *Transform and export* and *Notes* are in its More menu. |
@@ -3380,81 +3388,83 @@ is unavailable rather than answered busy.
 
 ## Regression baselines
 
-The inspector's Regression baseline panel reviews saved specifications, shows
-exact expected-value changes after explicit reveal, and records an approver and
-rationale in one new immutable local revision. Historical revisions remain
-inspectable without their original spec file. The same `internal/baseline`
-engine backs the CLI; passing runs never automatically approve themselves.
-See [baseline review](baseline.md) for privacy, cancellation and identity limits.
-
-**Inspect retained baseline**, and **Inspect retained test version** once
-**Release a test version with profile pins** is selected, read one retained
-entry with the reader and inspection `readmit baseline show` and
-`readmit expectation show` use. The window shows the revision and its parent,
-the approved review identity or, for a release, the stable test identity and
-the full release identity a suite's release references pin, in full and
-selectable, the local approver and rationale, and every retained expectation
-and profile pin, values hidden until revealed. A revision that was never
-approved, a document of a version this release cannot read and a changed
-commitment are refused with the reason the command line gives for the same
-file, and no earlier view stays beside the refusal. Inspection writes nothing.
+A regression baseline is recorded for one saved suite version: **Approve
+baseline** in a suite's Versions releases every test version the version pins
+as a `readmit-test-release/v1`, through the same review and approval the
+`internal/baseline` and `internal/expectation` engines give `readmit baseline`
+and `readmit expectation release`, under the local reviewer's name and the
+rationale given. Each release continues its test's own release history, and a
+test version its latest release already holds is kept as that release. The
+review shows each test version and the release it becomes, and the exact check
+changes since the version the suite last baselined; passing runs never approve
+themselves. The release bytes are kept in the suite's approval history, where
+`readmit expectation show` and `readmit baseline show` read them exactly. See
+[baseline review](baseline.md) and [released expectations](expectations.md).
 
 ## Suite management
 
-The inspector's **Suites and releases** panel manages
-[regression suites](suites.md) through structured controls over the one
-canonical `readmit-suite/v1` contract: suite identity and organization
-metadata, environments with parameter bindings, data tables with typed
-expected-value overrides, and tests with templates, tables, fixture isolation,
-dependencies and exact send order. The facade operations call the same
-`internal/suite` readers and writers `readmit suite` uses, so a suite the
-command line wrote opens with no clause dropped and no member invented, and a
-version this release cannot read is refused rather than migrated. Versioning a
-suite is saving a new entry: canonical bytes, SHA-256 identity, no in-place
-rewrite. Pasting canonical JSON remains the expert import path: the suite
-reader reads the pasted text before it reaches the editor, a text it refuses
-is refused with its reason while the editor keeps what it held, and nothing is
-saved until a new version is. Every save displays the canonical text it wrote.
+**Suites** lists the project's [regression suites](suites.md) as named objects:
+each with its number of tests, the environments it binds and the latest run of
+its current version. A suite opens on its Tests, Data, Coverage and Versions,
+read-only, and **Edit** edits the whole suite — its tests at exact saved
+versions, their datasets, parameters, dependencies, state sharing and send
+order, the typed expected-value overrides of each row, the environments with
+one binding of each parameter to a named environment and, for a test that
+reads appointment records, a named observation, and the requirements and
+exclusions coverage is assessed by — with one Save
+(`SaveItem`, `OpenItemDraft`, `ValidateDraft` and `SuiteTests`). A Save
+validates the whole suite and answers every problem at its member — a
+dependency cycle at each test in it, an unsupported isolation or a send order
+the test does not declare, a partial row, a check no test over the dataset
+declares or a value not of its type, an unbound parameter or a missing
+observation, an exclusion not until an exact UTC time — and nothing is
+filtered out. It then publishes one version: its `readmit-suite-definition/v1`
+definition and, once it has a test and an environment, the `readmit-suite/v1`
+document it compiles to, previewed against each environment exactly as
+preparation would expand it. A `readmit-suite/v1` file the project already
+held opens as it is, read-only, as the suite's original version with no
+number; its first Save publishes version 1 and never rewrites the file.
 
-**Preview the exact expansion** expands the suite against one declared
-environment exactly as preparation would, without writing anything: every
-`TEST-ROW` job in declared order, its effective case and target after bindings
-resolve, the ledger observation binding, dependencies, isolation and send
-order, the release pins in force when a sidecar is selected, the engine stamp,
-and the serialization rule the queue holds — shared jobs hold the selected
-environment and its endpoint for their whole run and are never silently
-parallelized; the selected input order is never changed. A preview the engine
-refuses is shown as its refusal, never as an empty expansion.
+A suite version follows each named environment it binds: it is compiled
+against the environment's current revision whenever it is run, exported as a
+run configuration or approved for an environment, and a run records the exact
+version it executed. **Run** hands one exact version and environment to the run
+review (`PreflightRun` and `StartSuiteRun` with the suite version), which
+compiles it into a private file of the project, removed afterwards, pinned to
+the identity its preflight showed. **Versions** (`SuiteHistory`) lists each
+version with its author and approvals, the retained runs of each and each
+test's result in the latest run of the current version, and compares two
+versions (`CompareSuiteVersions`) by the names of what changed and the exact
+check changes of each test whose pinned version moved; the first version is
+shown alone. **Coverage** (`SuiteCoverage`) assesses one version's requirements
+and exclusions over a retained run of it with the reader `readmit suite
+coverage` uses, and never runs anything.
 
-The panel also connects the workflow the CLI owns: the **release sidecar**
-editor authors `readmit-suite-releases/v1` with exact release identities, and
-each reference's **Read identity** reads its release entry with the release
-reader and fills the full identity that release declares, so a reference is
-pinned without the terminal;
-**expectation impact** reports what one released template's successor changes
-for a saved suite without moving a pin; **prepare** compiles a saved suite into
-a new private workspace directory exactly as `readmit suite prepare` writes it,
-states that nothing was sent, and hands the suite entry itself to the
-durable-run panels — seeding their selection, so their own preflight and
-explicit send decision take over with no path copied by hand; **coverage** authors the `readmit-suite-coverage/v1` document — the
-suite digest and every specification pin computed from the retained bytes, with
-requirements and exclusions as the only declarations — and assesses a prepared
-suite with the same strict reader `readmit suite coverage` uses, showing the
-explicit denominator, uncovered requirements, exclusion reasons and expiry
-(expired stays visible and never enables a send), blocked, skipped and unknown
-executions, and retained stability evidence; and **promotion** reviews and
-approves one exact suite against one environment and the operator-declared
-target revision, showing the exact suite, releases and per-job pins, refusing a
-stale review after any input changed, and stating that approval grants no send
-authority and never verifies the target's actual software.
+A version's approvals keep their own scopes and actors
+(`suite.approve-baseline`, `suite.request-review`, `suite.approve-release` and
+`suite.approve-promotion`, below): a local baseline, a team review request and
+release through the signed-in customer hub (`SuiteReviewers` names the
+reviewers the hub project's history knows), and an environment approval for
+one environment and target revision that records a local approval and never
+deploys or authorizes a send. Each is one revision of the suite's approval
+history, a `readmit-suite-approval/v1` record bound to the exact version, and a
+stale approval stays in history and is never renewed. An original version is
+refused: Save the suite to approve it.
+
+**Import suite** (`ImportSuiteItem`) reads a chosen `readmit-suite/v1` file into
+a new draft, each reference resolved to the project's test, case, environment
+or observation holding exactly what it names and any other kept as declared.
+**Export suite** (`ExportSuiteItem`) writes one version's suite document to a
+new file, and **Export run configuration** (`ExportSuiteRunConfiguration`)
+prepares one version for one environment into a new folder exactly as `readmit
+suite prepare` does, with the release pins of its latest baseline; both write
+only where the person chooses, and nothing is sent.
 
 A suite being edited is retained as unstored work in the editor draft store
-under the `readmit-suite-draft/v1` content contract, and storing it discards
-the draft. Suite artifacts — suites, prepared directories, sidecars, released
-test versions, coverage documents and promotion approvals — are listed as the
-`suite` kind, so the pickers resolve references from what the workspace
-declares. See [regression suites](suites.md) and
-[released expectations](expectations.md) for the contracts' own limits.
+under the `readmit-suite-editor/v1` content contract (`{"schema", "item",
+"name", "suite"}`), and storing it discards the draft. See
+[regression suites](suites.md) and [released expectations](expectations.md) for
+the contracts' own limits.
 
 ## Canonical test import and export
 
@@ -4417,15 +4427,16 @@ download. The facade refuses a kind outside the hub's closed set before any
 network call; the hub remains the authority for command shape, roles and
 permission.
 
-The expectation-review journey starts at the suite panel's release surface, where
-#258's impact comparison names the successor release entry. `PostHubReleaseReview`
-verifies the entry's exact bytes as a released expectation before anything is
-sent, then posts the hub's review-request (uploading those bytes and naming the
-subject asked to review) or the approval of the outstanding request naming the
-same digest — the digest is derived from the reviewed bytes, never typed, and a
-changed grant or stale head requires a renewed action. Identity is the signed-in
-session's: the promotion tab's local approver label records a local decision and
-never substitutes for the team's authenticated approval.
+A suite version's team review runs through the same commands, from its
+Versions (`suite.request-review` and `suite.approve-release`, reviewed actions
+of their own). A request uploads the exact bytes of each release the version's
+latest baseline recorded and posts the hub's review-request for its digest,
+naming the reviewer asked; an approval answers, for each release, the
+outstanding request naming the same digest that was addressed to the signed-in
+subject by someone else. The digests are derived from the recorded bytes,
+never typed, and a changed grant or stale head requires a renewed action.
+Identity is the signed-in session's: a baseline's local reviewer records a
+local decision and never substitutes for the team's authenticated approval.
 
 The sharing journey with #260's screens runs from the hub panel directly above
 them. `PostHubSupportReview` carries the three v2 support kinds: announcing the

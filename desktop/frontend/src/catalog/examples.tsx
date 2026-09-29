@@ -3,7 +3,6 @@ import * as f from "../testkit/fixtures";
 import { artifacts, catalogRows } from "./fixtures";
 import { VocabularyContext } from "../vocabulary";
 import { IndicatorsContext, Outcome } from "../lifecycle";
-import { Baseline } from "../Baseline";
 import { Comparison } from "../Comparison";
 import { ComputerLicense } from "../ComputerLicense";
 import { HelpTopics } from "../ContextHelp";
@@ -35,7 +34,6 @@ import { RunComparison } from "../RunComparison";
 import { RunExplanation } from "../RunExplanation";
 import { RunPanel } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
-import { SuitePanel } from "../SuitePanel";
 import { SyntheticPackets } from "../SyntheticPackets";
 import { TaskTabs, TaskPanel } from "../TaskTabs";
 import { TeamCollaboration, OfflineRevisionDraft } from "../TeamCollaboration";
@@ -116,7 +114,6 @@ const e = (
   ...(openButtons ? { openButtons } : {}),
 });
 export const examples: Example[] = [
-  e("Baseline", () => <Baseline {...common} />),
   e("Comparison", () => (
     <Comparison
       {...resultProps}
@@ -236,7 +233,6 @@ export const examples: Example[] = [
   e("RunExplanation", () => <RunExplanation {...common} />),
   e("RunPanel", () => <RunPanel {...common} onWatch={async () => {}} />),
   e("RunnerPanel", () => <RunnerPanel />),
-  e("SuitePanel", () => <SuitePanel {...common} />),
   e("SyntheticPackets", () => <SyntheticPackets onRefresh={noop} />),
   e("TaskTabs", () => (
     <TaskTabs

@@ -49,7 +49,6 @@ const STARTS = [
   "DownloadHubArtifact",
   "DownloadHubExport",
   "PostHubReview",
-  "PostHubReleaseReview",
   "PostHubSupportReview",
   "PostHubLifecycle",
   "ReconcileHubOfflineDraft",

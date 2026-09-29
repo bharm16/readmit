@@ -751,7 +751,10 @@ function emptyScheduleEntry(): ScheduleEntryInput {
   };
 }
 
-function SchedulesSection() {
+/** A suite Schedule or Set up CI opened this area for. */
+export type RunnerSeed = { tab: "schedules" | "ci"; suite: string; environment: string; count: number };
+
+function SchedulesSection({ seed = null }: { seed?: RunnerSeed | null } = {}) {
   const [output, setOutput] = useViewState("SchedulesSection.output", "");
   const [anchor, setAnchor] = useViewState("SchedulesSection.anchor", "");
   const [entries, setEntries] = useViewState<ScheduleEntryInput[]>("SchedulesSection.entries", []);
@@ -774,6 +777,16 @@ function SchedulesSection() {
     setPreview(null);
     setSaved(null);
   }
+
+  // A suite's Schedule adds one row that runs its exact version, unless one
+  // already does.
+  const scheduled = useRef(0);
+  useEffect(() => {
+    if (!seed || seed.count === scheduled.current) return;
+    scheduled.current = seed.count;
+    if (!entries.some((entry) => entry.spec === seed.suite)) editRows([...entries, { ...emptyScheduleEntry(), spec: seed.suite }]);
+  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   function load(result: SchedulePreviewResult) {
     setEntries((result.entries ?? []).map((view) => ({ ...view.entry })));
@@ -1035,7 +1048,7 @@ function GateVerification(props: { result: CIGateVerifyResult }) {
 
 type CITask = "generate" | "inspect" | "verify";
 
-function CISection() {
+function CISection({ seed = null }: { seed?: RunnerSeed | null } = {}) {
   const [task, setTask] = useViewState<CITask>("CISection.task", "generate");
   const [request, setRequest] = useViewState<CIHandoffRequest>("CISection.request", {
     integration: "posix",
@@ -1047,6 +1060,13 @@ function CISection() {
     coverage_file: "",
     output: "",
   });
+  // Set up CI from a suite names its exact version and environment.
+  const seeded = useRef(0);
+  useEffect(() => {
+    if (!seed || seed.count === seeded.current) return;
+    seeded.current = seed.count;
+    setRequest((held) => ({ ...held, suite_file: seed.suite, environment: seed.environment }));
+  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   const [gated, setGated] = useViewState("CISection.gated", false);
   const [gate, setGate] = useViewState<CIGateStep>("CISection.gate", emptyGateStep);
   const [handoff, setHandoff] = useViewState<CIHandoffResult | null>("CISection.handoff", null);
@@ -1389,6 +1409,7 @@ export function RunnerPanel({
   onHandled,
   onConfigured,
   configPath,
+  seed = null,
 }: {
   /** Each new value opens the Runner area, as Security's Add connection ›
    * Runner does. */
@@ -1399,6 +1420,9 @@ export function RunnerPanel({
   onConfigured?: (chosen: boolean) => void;
   /** The configuration a request edits, when it names one. */
   configPath?: string | undefined;
+  /** Schedule or Set up CI on a suite: each new count opens that area with
+   * the suite's exact version, and for CI its environment, chosen. */
+  seed?: RunnerSeed | null;
 } = {}) {
   const [tab, setTab] = useViewState<"runner" | "schedules" | "ci">("RunnerPanel.tab", "runner");
   const [requestedPath, setRequestedPath] = useState<{ path: string } | null>(null);
@@ -1413,6 +1437,12 @@ export function RunnerPanel({
     setTab("runner");
     if (configPath) setRequestedPath({ path: configPath });
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
+  const seeded = useRef(0);
+  useEffect(() => {
+    if (!seed || seed.count === seeded.current) return;
+    seeded.current = seed.count;
+    setTab(seed.tab);
+  }, [seed]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="runner-panel" aria-labelledby="runner-panel-title">
       <h3 id="runner-panel-title">Runners, schedules and CI</h3>
@@ -1430,8 +1460,8 @@ export function RunnerPanel({
         ]}
       >
         {tab === "runner" ? <RunnerSection onConfigured={onConfigured} requested={requestedPath} /> : null}
-        {tab === "schedules" ? <SchedulesSection /> : null}
-        {tab === "ci" ? <CISection /> : null}
+        {tab === "schedules" ? <SchedulesSection seed={seed?.tab === "schedules" ? seed : null} /> : null}
+        {tab === "ci" ? <CISection seed={seed?.tab === "ci" ? seed : null} /> : null}
       </TaskTabs>
     </section>
   );

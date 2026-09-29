@@ -1164,6 +1164,7 @@ export function CheckSheet({
   check,
   sentMessages,
   inspectedField,
+  valueOnly = false,
   onClose,
   onApply,
 }: {
@@ -1174,6 +1175,9 @@ export function CheckSheet({
   /** The field inspected in the case, offered first when it is a supported
    * acknowledgement position; never its value. */
   inspectedField?: string | undefined;
+  /** Only the expected value changes, as a suite data row overrides it: the
+   * check's message and field stay the test's own. */
+  valueOnly?: boolean;
   onClose: () => void;
   onApply: (check: TestExpectation) => void;
 }) {
@@ -1188,7 +1192,7 @@ export function CheckSheet({
   const [records, setRecords] = useState<ObservationRecord[]>(check?.records ?? []);
   const [noRecords, setNoRecords] = useState(check?.operator === "ledger_equals" && (check.records?.length ?? 0) === 0);
 
-  const title = `${check ? "Edit" : "Add"} ${OPERATORS[operator].toLowerCase()} check`;
+  const title = valueOnly ? "Expected value" : `${check ? "Edit" : "Add"} ${OPERATORS[operator].toLowerCase()} check`;
   const submit = (): SubmitFailure | null => {
     const id = check?.id ?? "";
     switch (operator) {
@@ -1235,6 +1239,7 @@ export function CheckSheet({
     <FormDialog open={open} title={title} submitLabel="Apply" onClose={onClose} onSubmit={submit}>
       {operator === "ack_field_equals" ? (
         <>
+          {valueOnly ? null : <>
           <label htmlFor="check-message">Message</label>
           <select id="check-message" value={message} onChange={(event) => setMessage(event.target.value)}>
             {sentMessages.map((entry, index) => (
@@ -1251,6 +1256,7 @@ export function CheckSheet({
               </option>
             ))}
           </select>
+          </>}
           <fieldset>
             <legend>Expected state</legend>
             {STATES.map((choice) => (

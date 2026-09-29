@@ -9,18 +9,14 @@ import (
 	"os/user"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
-	"github.com/bharm16/readmit/internal/expectation"
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
-	"github.com/bharm16/readmit/internal/suite"
 )
 
 // A person reviews content and a destination; the backend binds and checks
@@ -85,14 +81,6 @@ type ReplayActionOptions struct {
 	Policy          string                  `json:"policy,omitzero"`
 }
 
-// PromotionActionOptions name the suite environment and the revision
-// assumption a promotion approval is recorded for. The release pins are the
-// project's own: the one set of released tests that accepts the suite.
-type PromotionActionOptions struct {
-	Environment string `json:"environment"`
-	Revision    string `json:"revision"`
-}
-
 // ScanActionOptions narrow a credential scan to one registered reference;
 // empty scans for every one.
 type ScanActionOptions struct {
@@ -101,21 +89,22 @@ type ScanActionOptions struct {
 
 // PrepareActionRequest asks for the review of one action: the objects it is
 // scoped to, the destination it goes to, and its typed options. A send is
-// scoped to one case and goes to one environment; a promotion approval is
-// scoped to one suite; an export is scoped to one export review, a report of
+// scoped to one case and goes to one environment; a suite approval is
+// scoped to one saved suite version; an export is scoped to one export review, a report of
 // the project, whose private local state the project resolves. A
 // collection is scoped to one observation and, when its source is reached
 // under an environment's send policy, goes to that environment; a reset is
 // scoped to one environment; a credential scan to the project.
 type PrepareActionRequest struct {
-	Context     RequestContext          `json:"context"`
-	Action      ActionID                `json:"action"`
-	Items       []ItemRef               `json:"items"`
-	Destination *ItemRef                `json:"destination,omitzero"`
-	Replay      *ReplayActionOptions    `json:"replay,omitzero"`
-	Promotion   *PromotionActionOptions `json:"promotion,omitzero"`
-	Scan        *ScanActionOptions      `json:"scan,omitzero"`
-	Storage     *StorageActionOptions   `json:"storage,omitzero"`
+	Context     RequestContext       `json:"context"`
+	Action      ActionID             `json:"action"`
+	Items       []ItemRef            `json:"items"`
+	Destination *ItemRef             `json:"destination,omitzero"`
+	Replay      *ReplayActionOptions `json:"replay,omitzero"`
+	// SuiteApproval names what a suite approval review is asked for.
+	SuiteApproval *SuiteApprovalOptions `json:"suite_approval,omitzero"`
+	Scan          *ScanActionOptions    `json:"scan,omitzero"`
+	Storage       *StorageActionOptions `json:"storage,omitzero"`
 	// DeriveReview names the inputs an export review of the one scoped case
 	// is derived with.
 	DeriveReview *DeriveReviewOptions `json:"derive_review,omitzero"`
@@ -137,24 +126,24 @@ type ReviewDestination struct {
 // internal: a window passes it back unchanged and never shows it. A review
 // that cannot proceed carries no token and says why.
 type ActionReview struct {
-	Token        string                  `json:"token,omitzero"`
-	Action       ActionID                `json:"action"`
-	Consent      Consent                 `json:"consent"`
-	Items        []CatalogItem           `json:"items"`
-	Destination  ReviewDestination       `json:"destination"`
-	ExpiresAt    string                  `json:"expires_at,omitzero"`
-	Requirements []ReviewRequirement     `json:"requirements"`
-	Ready        bool                    `json:"ready"`
-	Refusal      string                  `json:"refusal,omitzero"`
-	Replay       *ReplayPreview          `json:"replay,omitzero"`
-	Export       *ExportReviewView       `json:"export,omitzero"`
-	Promotion    *suite.PromotionReview  `json:"promotion,omitzero"`
-	Collect      *CollectReview          `json:"collect,omitzero"`
-	Reset        *EnvironmentResetReview `json:"reset,omitzero"`
-	Scan         *ScanReview             `json:"scan,omitzero"`
-	Storage      *StorageReview          `json:"storage,omitzero"`
-	Derive       *DeriveReviewView       `json:"derive,omitzero"`
-	Transport    *TransportReview        `json:"transport,omitzero"`
+	Token         string                  `json:"token,omitzero"`
+	Action        ActionID                `json:"action"`
+	Consent       Consent                 `json:"consent"`
+	Items         []CatalogItem           `json:"items"`
+	Destination   ReviewDestination       `json:"destination"`
+	ExpiresAt     string                  `json:"expires_at,omitzero"`
+	Requirements  []ReviewRequirement     `json:"requirements"`
+	Ready         bool                    `json:"ready"`
+	Refusal       string                  `json:"refusal,omitzero"`
+	Replay        *ReplayPreview          `json:"replay,omitzero"`
+	Export        *ExportReviewView       `json:"export,omitzero"`
+	SuiteApproval *SuiteApprovalReview    `json:"suite_approval,omitzero"`
+	Collect       *CollectReview          `json:"collect,omitzero"`
+	Reset         *EnvironmentResetReview `json:"reset,omitzero"`
+	Scan          *ScanReview             `json:"scan,omitzero"`
+	Storage       *StorageReview          `json:"storage,omitzero"`
+	Derive        *DeriveReviewView       `json:"derive,omitzero"`
+	Transport     *TransportReview        `json:"transport,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -219,15 +208,6 @@ const (
 	ActionCancelled ReviewedOutcome = "cancelled"
 )
 
-// PromotionApproval is one durable approval: the identity of the record and
-// the project entry it was written to. It stays evidence of exactly the
-// version it approved.
-type PromotionApproval struct {
-	Identity string `json:"identity"`
-	Reviewed string `json:"reviewed"`
-	Output   string `json:"output"`
-}
-
 // ReviewedActionResult answers one final action. Operation names the
 // operation it ran as — the click's intent, which CancelOperation stops while
 // it runs. Replayed is true when the
@@ -242,12 +222,13 @@ type ReviewedActionResult struct {
 	Refreshed *ActionReview         `json:"refreshed,omitzero"`
 	Replay    *ReplayRun            `json:"replay,omitzero"`
 	Export    *PrivacyExportOutcome `json:"export,omitzero"`
-	Approval  *PromotionApproval    `json:"approval,omitzero"`
-	Collected *CollectionRow        `json:"collected,omitzero"`
-	Reset     *EnvironmentReset     `json:"reset,omitzero"`
-	Scan      *ScanOutcome          `json:"scan,omitzero"`
-	Storage   *StorageOutcome       `json:"storage,omitzero"`
-	Derived   *PrivacyReviewOutcome `json:"derived,omitzero"`
+	// SuiteApproval is the approval a suite approval action recorded.
+	SuiteApproval *SuiteApproval        `json:"suite_approval,omitzero"`
+	Collected     *CollectionRow        `json:"collected,omitzero"`
+	Reset         *EnvironmentReset     `json:"reset,omitzero"`
+	Scan          *ScanOutcome          `json:"scan,omitzero"`
+	Storage       *StorageOutcome       `json:"storage,omitzero"`
+	Derived       *PrivacyReviewOutcome `json:"derived,omitzero"`
 	// Approved is the environment revision a transport approval published.
 	Approved *ItemRef `json:"approved,omitzero"`
 }
@@ -271,7 +252,7 @@ type boundAction struct {
 	review          ActionReview
 	replay          ReplayRequest
 	export          PrivacyExportRequest
-	suite           SuitePromotionApproveRequest
+	suiteApproval   *suiteApprovalBinding
 	collect         *collectBinding
 	reset           *resetBinding
 	scan            *scanBinding
@@ -309,7 +290,13 @@ var actionPolicies = map[ActionID]actionPolicy{
 	ExportPacketAction: {consent: ExportConsent, review: slot{}, perform: slot{profile: "ExportDerivedPacket"},
 		bind: bindExport, execute: executeExport},
 	ApprovePromotionAction: {consent: ApproveConsent, requirements: []ReviewRequirement{RationaleRequirement},
-		review: slot{}, perform: slot{writes: true}, bind: bindPromotion, execute: executePromotion},
+		review: slot{}, perform: slot{writes: true}, bind: bindPromotion, execute: executeSuiteApproval},
+	ApproveSuiteBaselineAction: {consent: ApproveConsent, requirements: []ReviewRequirement{RationaleRequirement},
+		review: slot{}, perform: slot{writes: true}, bind: bindSuiteBaseline, execute: executeSuiteApproval},
+	RequestSuiteReviewAction: {consent: ApproveConsent, requirements: []ReviewRequirement{RationaleRequirement},
+		review: slot{}, perform: slot{profile: "PostHubReview"}, bind: bindSuiteReviewRequest, execute: executeSuiteApproval},
+	ApproveSuiteReleaseAction: {consent: ApproveConsent, requirements: []ReviewRequirement{RationaleRequirement},
+		review: slot{profile: "ListHubReviews"}, perform: slot{profile: "PostHubReview"}, bind: bindSuiteRelease, execute: executeSuiteApproval},
 	CollectObservationAction: {consent: CollectConsent, review: slot{}, perform: slot{profile: "CollectObservation"},
 		bind: bindCollect, execute: executeCollect},
 	ResetEnvironmentAction: {consent: ResetConsent, review: slot{}, perform: slot{profile: "ResetTarget"},
@@ -871,121 +858,6 @@ func executeExport(a *App, ctx context.Context, bound *boundAction, _ ReviewDeci
 	case exported.State != Completed:
 		result.Outcome = ActionRefused
 	}
-	return result
-}
-
-// promotionOutput is where a promotion approval is written: a new entry of
-// the project the application names.
-var promotionOutput = outputRule{prefix: "promotion-approval",
-	invalid:   "a promotion approval is written to one new entry of the project",
-	exhausted: "the project holds more promotion approvals than this release numbers",
-	taken:     "that entry already exists; an approval is written as a new entry",
-}
-
-func bindPromotion(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
-	if len(request.Items) != 1 || request.Items[0].Kind != SuiteItem || request.Promotion == nil {
-		return nil, refusal{Failed, "a promotion approval is reviewed for one suite"}
-	}
-	options := *request.Promotion
-	loaded, items, records, declined := a.scoped(ctx, request.Context, request.Items)
-	if loaded == nil {
-		return nil, declined
-	}
-	entry := backingEntry(records[0])
-	releases, review, declined := suiteReleases(loaded.root, entry, options)
-	if releases == "" {
-		return &boundAction{action: ApprovePromotionAction, origin: request,
-			binding: binding(string(ApprovePromotionAction), loaded.root, loaded.document.Project.ID, a.reviewer(), declined.reason),
-			review:  ActionReview{Items: items, Refusal: declined.reason}}, noRefusal
-	}
-	destination, refused := promotionOutput.destination(loaded.root, "")
-	if refused.state != "" {
-		return nil, refused
-	}
-	return &boundAction{action: ApprovePromotionAction, origin: request,
-		suite: SuitePromotionApproveRequest{Workspace: loaded.root, Entry: entry, Environment: options.Environment, Releases: releases,
-			Revision: options.Revision, Reviewed: review.Identity(), Output: destination.Name},
-		binding: binding(string(ApprovePromotionAction), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, false, held),
-			review.Identity(), releases, destination.Name),
-		review: ActionReview{Items: items, Ready: destination.Fresh, Refusal: destination.Reason, Promotion: &review,
-			Destination: ReviewDestination{Output: destination.Name}}}, noRefusal
-}
-
-// suiteReleases resolves the released tests a promotion of the suite at entry
-// is reviewed with: the one set of release pins of the project the suite's own
-// preparation accepts for the environment. None, or more than one, is a
-// review that is not ready, and says which.
-func suiteReleases(root, entry string, options PromotionActionOptions) (string, suite.PromotionReview, refusal) {
-	names, err := projectEntries(root, maxReleaseSets, func(name string) bool {
-		path := filepath.Join(root, name)
-		return regular(path) && declares(path, suite.ReleasesSchema)
-	})
-	if err != nil {
-		return "", suite.PromotionReview{}, refusal{Failed, "the project's released tests cannot be read: " + err.Error()}
-	}
-	type accepted struct {
-		entry  string
-		review suite.PromotionReview
-		tests  []string
-	}
-	var found []accepted
-	for _, name := range names {
-		path := filepath.Join(root, name)
-		review, err := suite.ReviewPromotion(filepath.Join(root, entry), options.Environment, path, options.Revision)
-		if err != nil {
-			continue
-		}
-		found = append(found, accepted{entry: name, review: review, tests: releasedTests(root, path)})
-	}
-	switch len(found) {
-	case 0:
-		return "", suite.PromotionReview{}, refusal{Failed, "this suite has no released tests to approve for this environment"}
-	case 1:
-		return found[0].entry, found[0].review, refusal{}
-	}
-	sets := []string{}
-	for _, set := range found {
-		sets = append(sets, strings.Join(set.tests, ", "))
-	}
-	return "", suite.PromotionReview{}, refusal{Failed, "more than one set of released tests accepts this suite (" + strings.Join(sets, "; ") + "); approve one version at a time"}
-}
-
-// maxReleaseSets bounds the sets of release pins one approval review reads,
-// each through a preparation of the suite.
-const maxReleaseSets = 16
-
-// releasedTests names each test a set of release pins releases, by the test
-// and the version of its release: never by a file or a digest.
-func releasedTests(root, path string) []string {
-	tests := []string{}
-	data, err := boundedFile(path, suite.MaxBytes)
-	if err != nil {
-		return tests
-	}
-	references, err := suite.DecodeReleases(data)
-	if err != nil {
-		return tests
-	}
-	for _, reference := range references.Tests {
-		named := reference.Test
-		if release, err := expectation.Read(artifactpath.JoinReference(root, reference.Release)); err == nil {
-			named += " version " + strconv.Itoa(release.Baseline.Revision)
-		}
-		tests = append(tests, named)
-	}
-	return tests
-}
-
-func executePromotion(a *App, _ context.Context, bound *boundAction, decisions ReviewDecisions) ReviewedActionResult {
-	approval := bound.suite
-	approval.Approver, approval.Rationale = a.reviewerName(), strings.TrimSpace(decisions.Rationale)
-	recorded := approveSuitePromotion(approval)
-	result := ReviewedActionResult{State: recorded.State, Reason: recorded.Reason, Outcome: ActionCompleted}
-	if recorded.State != Completed {
-		result.Outcome = ActionRefused
-		return result
-	}
-	result.Approval = &PromotionApproval{Identity: recorded.Identity, Reviewed: approval.Reviewed, Output: recorded.Output}
 	return result
 }
 

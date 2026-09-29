@@ -17,8 +17,6 @@ import type {
   AttachmentRemoveRequest,
   AttachmentsResult,
   BackupResult,
-  BaselineRequest,
-  BaselineResult,
   BuildIndexRequest,
   BuildIndexResult,
   CIGateVerifyResult,
@@ -74,7 +72,6 @@ import type {
   HubLifecycleCommandRequest,
   HubLifecycleResult,
   HubOfflineDraftRequest,
-  HubReleaseReviewRequest,
   HubResult,
   HubReviewCommandRequest,
   HubReviewQueryRequest,
@@ -211,20 +208,6 @@ import type {
   SessionResult,
   ShellResult,
   State,
-  SuiteCoverageAssessRequest,
-  SuiteCoverageResult,
-  SuiteCoverageSaveRequest,
-  SuiteDocumentResult,
-  SuiteImpactRequest,
-  SuiteImpactResult,
-  SuitePrepareRequest,
-  SuitePreparedResult,
-  SuitePreviewRequest,
-  SuitePreviewResult,
-  SuitePromotionApproveRequest,
-  SuitePromotionRequest,
-  SuitePromotionResult,
-  SuiteReleasesResult,
   SuiteRunRequest,
   SuiteRunResult,
   SupportPolicyRequest,
@@ -335,6 +318,16 @@ import type {
   ImportInspectRequest,
   ImportProbeRequest,
   ImportProbeResult,
+  SuiteTestsRequest,
+  SuiteTestsResult,
+  SuiteHistoryResult,
+  SuiteCompareRequest,
+  SuiteComparison,
+  SuiteCoverageRequest,
+  SuiteAssessment,
+  SuiteReviewersResult,
+  SuiteExportRequest,
+  SuiteExportResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -953,71 +946,51 @@ export function discardProtectedPackage(request: ProtectionDiscardRequest): Prom
   return guard(() => facade().DiscardProtectedPackage(request), { state: "failed" });
 }
 
-export function reviewBaseline(request: BaselineRequest): Promise<BaselineResult> {
-  return guard(() => facade().ReviewBaseline(request), { state: "failed" });
-}
-export function approveBaseline(request: BaselineRequest): Promise<BaselineResult> {
-  return guard(() => facade().ApproveBaseline(request), { state: "failed" });
-}
-
-export function openBaseline(request: BaselineRequest): Promise<BaselineResult> {
-  return guard(() => facade().OpenBaseline(request), { state: "failed" });
-}
-
 // ---------------------------------------------------------------------------
-// Suite management
+// Suites (#554): saved suite versions, their history, comparisons, coverage
+// and the exports of one version. Saving and approving go through SaveItem
+// and the reviewed actions.
 // ---------------------------------------------------------------------------
 
-export function openSuite(workspace: string, entry: string): Promise<SuiteDocumentResult> {
-  return guard(() => facade().OpenSuite(workspace, entry), { state: "failed" });
+/** Saved test versions as a suite uses them. */
+export function suiteTests(request: SuiteTestsRequest): Promise<SuiteTestsResult> {
+  return retryingRead(() => facade().SuiteTests(request), { state: "failed", context: request.context, tests: [] });
 }
 
-export function validateSuite(canonical: string): Promise<SuiteDocumentResult> {
-  return guard(() => facade().ValidateSuite(canonical), { state: "failed" });
+/** A suite's versions with their approvals, its runs and each test's latest result. */
+export function suiteHistory(request: ItemRequest): Promise<SuiteHistoryResult> {
+  return retryingRead(() => facade().SuiteHistory(request), { state: "failed", context: request.context, versions: [], runs: [], results: [] });
 }
 
-export function saveSuite(request: RuleDocumentSaveRequest): Promise<SuiteDocumentResult> {
-  return guard(() => facade().SaveSuite(request), { state: "failed" });
+/** What changed between two versions of a suite. */
+export function compareSuiteVersions(request: SuiteCompareRequest): Promise<SuiteComparison> {
+  return retryingRead(() => facade().CompareSuiteVersions(request), { state: "failed", context: request.context, to: request.to, first: false, changes: [], tests: [] });
 }
 
-export function previewSuite(request: SuitePreviewRequest): Promise<SuitePreviewResult> {
-  return guard(() => facade().PreviewSuite(request), { state: "failed" });
+/** One suite version's declared coverage over a retained run of it. */
+export function suiteCoverage(request: SuiteCoverageRequest): Promise<SuiteAssessment> {
+  return retryingRead(() => facade().SuiteCoverage(request), { state: "failed", context: request.context, denominator: 0, passed: 0, requirements: [], jobs: [] });
 }
 
-export function prepareSuite(request: SuitePrepareRequest): Promise<SuitePreparedResult> {
-  return guard(() => facade().PrepareSuite(request), { state: "failed" });
+/** The team reviewers a review request can ask. */
+export function suiteReviewers(context: RequestContext): Promise<SuiteReviewersResult> {
+  return guard(() => facade().SuiteReviewers(context), { state: "failed", context, reviewers: [] });
 }
 
-export function saveSuiteCoverage(
-  request: SuiteCoverageSaveRequest,
-): Promise<SuiteCoverageResult> {
-  return guard(() => facade().SaveSuiteCoverage(request), { state: "failed" });
+/** Reads a suite file the person chooses into a new draft; nothing is saved. */
+export function importSuiteItem(context: RequestContext): Promise<ItemDraftResult> {
+  return guard(() => facade().ImportSuiteItem(context), { state: "failed", context, new: true });
 }
 
-export function assessSuiteCoverage(
-  request: SuiteCoverageAssessRequest,
-): Promise<SuiteCoverageResult> {
-  return guard(() => facade().AssessSuiteCoverage(request), { state: "failed" });
+/** Writes one suite version's suite document to a new file the person names. */
+export function exportSuiteItem(request: SuiteExportRequest): Promise<SuiteExportResult> {
+  return guard(() => facade().ExportSuiteItem(request), { state: "failed", context: request.context });
 }
 
-export function reviewSuitePromotion(
-  request: SuitePromotionRequest,
-): Promise<SuitePromotionResult> {
-  return guard(() => facade().ReviewSuitePromotion(request), { state: "failed" });
-}
-
-export function approveSuitePromotion(
-  request: SuitePromotionApproveRequest,
-): Promise<SuitePromotionResult> {
-  return guard(() => facade().ApproveSuitePromotion(request), { state: "failed" });
-}
-
-export function saveSuiteReleases(request: RuleDocumentSaveRequest): Promise<SuiteReleasesResult> {
-  return guard(() => facade().SaveSuiteReleases(request), { state: "failed" });
-}
-
-export function expectationImpact(request: SuiteImpactRequest): Promise<SuiteImpactResult> {
-  return guard(() => facade().ExpectationImpact(request), { state: "failed" });
+/** Compiles one suite version against one environment into a new folder the
+ * person names. Nothing is sent. */
+export function exportSuiteRunConfiguration(request: SuiteExportRequest): Promise<SuiteExportResult> {
+  return guard(() => facade().ExportSuiteRunConfiguration(request), { state: "failed", context: request.context });
 }
 
 export function compareRuns(request: RunComparisonRequest): Promise<RunComparisonResult> {
@@ -1156,9 +1129,6 @@ export function postHubReview(request: HubReviewCommandRequest): Promise<HubRevi
   return guard(() => facade().PostHubReview(request), { state: "failed" });
 }
 
-export function postHubReleaseReview(request: HubReleaseReviewRequest): Promise<HubReviewsResult> {
-  return guard(() => facade().PostHubReleaseReview(request), { state: "failed" });
-}
 
 export function postHubSupportReview(request: HubSupportReviewRequest): Promise<HubReviewsResult> {
   return guard(() => facade().PostHubSupportReview(request), { state: "failed" });

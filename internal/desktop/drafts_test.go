@@ -265,29 +265,30 @@ func TestANoteDraftMayBeUnfinishedButNotUnacceptable(t *testing.T) {
 	}
 }
 
-// A suite draft keeps the expected-override text a person edited exactly as
-// typed, invalid JSON included, so an interruption returns the edit; it stays
-// held to its own contract and its bound.
-func TestASuiteDraftRetainsEditedExpectedOverridesAsTyped(t *testing.T) {
+// A suite editor draft keeps the whole suite as the editor held it, a partial
+// row and an unanswered override included, so an interruption returns the
+// edit; it stays held to its own contract.
+func TestASuiteEditorDraftRetainsAPartialSuiteWhole(t *testing.T) {
 	store := draftsStore(t)
 	app := draftsApp(t, store)
-	edited := `{"schema":"readmit-suite-draft/v1","entry":"suite.json","document":"{}","expected":{"patients/one":"{\"PID-3\": "}}`
-	result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteDraftSchema, edited))
+	edited := `{"schema":"readmit-suite-editor/v1","item":{"kind":"suite","id":"0123456789abcdef01234567","revision":"2"},"name":"Scheduling smoke",` +
+		`"suite":{"tags":[],"concurrency":1,"tests":[],"datasets":[{"id":"cases","name":"Cases","rows":[{"id":"one","case":{"kind":"case","id":""},` +
+		`"expected":{"accepted":{"field":{"state":"present","text":"AE"}}}}]}],"environments":[],"requirements":[],"exclusions":[]}}`
+	result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteEditorDraftSchema, edited))
 	if result.State != desktop.Completed || len(result.Drafts) != 1 {
 		t.Fatalf("an edited suite draft was not retained: %+v", result)
 	}
-	var held struct {
-		Expected map[string]string `json:"expected"`
-	}
-	if err := json.Unmarshal(result.Drafts[0].Content, &held); err != nil || held.Expected["patients/one"] != `{"PID-3": ` {
-		t.Fatalf("the edited text did not come back as typed: %+v %v", held, err)
+	var held desktop.SuiteEditorDraft
+	if err := json.Unmarshal(result.Drafts[0].Content, &held); err != nil || held.Name != "Scheduling smoke" || len(held.Suite.Datasets) != 1 ||
+		len(held.Suite.Datasets[0].Rows) != 1 || held.Suite.Datasets[0].Rows[0].Expected["accepted"].Field == nil {
+		t.Fatalf("the partial suite did not come back whole: %+v %v", held, err)
 	}
 	for name, draft := range map[string]string{
-		"unknown member":    `{"schema":"readmit-suite-draft/v1","document":"","pins":[]}`,
-		"oversized edits":   `{"schema":"readmit-suite-draft/v1","document":"","expected":{"t/r":"` + strings.Repeat("x", 1<<20) + `"}}`,
-		"non-text override": `{"schema":"readmit-suite-draft/v1","document":"","expected":{"t/r":{}}}`,
+		"unknown member":     `{"schema":"readmit-suite-editor/v1","name":"","suite":{},"pins":[]}`,
+		"another object":     `{"schema":"readmit-suite-editor/v1","item":{"kind":"test","id":"0123456789abcdef01234567"},"name":"","suite":{}}`,
+		"the earlier schema": `{"schema":"readmit-suite-draft/v1","name":"","suite":{}}`,
 	} {
-		if result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteDraftSchema, draft)); result.State != desktop.Failed {
+		if result := app.SaveEditorDraft(editorDraft("suite-editor", desktop.SuiteEditorDraftSchema, draft)); result.State != desktop.Failed {
 			t.Fatalf("the store retained a suite draft with %s: %+v", name, result)
 		}
 	}

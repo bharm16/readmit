@@ -1,0 +1,100 @@
+/* Suites (Suites.tsx, SuiteSheets.tsx): a section's actions above its table,
+ * a subsection's heading with its one action, the editor's name row and one
+ * Save footer, and a dataset row's typed overrides. Geometry and colour come
+ * from the shared tokens. */
+
+.section-toolbar {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+  justify-content: space-between;
+  min-height: var(--toolbar);
+}
+
+.section-heading {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+  justify-content: space-between;
+  margin-top: var(--s4);
+}
+
+.section-heading > h2 {
+  margin: 0;
+}
+
+.suite-editor {
+  max-width: none;
+}
+
+.editor-header {
+  align-items: center;
+  display: flex;
+  gap: var(--s2);
+  justify-content: space-between;
+}
+
+.editor-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flow-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.coverage-line {
+  margin: 0;
+}
+
+.object-subtitle {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.version-test > h3 {
+  margin: var(--s4) 0 var(--s2);
+  overflow-wrap: anywhere;
+}
+
+.dataset-row {
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+}
+
+.dataset-row > .row-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.override {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.override-check {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.override-value {
+  flex: 1 1 8rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.override > .field-error {
+  flex-basis: 100%;
+}
+
+.check > .supporting {
+  color: var(--muted);
+}

@@ -137,13 +137,15 @@ changed row expectations and retains approval records; see
 [released expectations](expectations.md). Ordinary suites make no approval claim.
 
 This release executes v1 ACK and fixture-ledger specs through the established
-loopback-only durable run path. The desktop **Suites and releases** panel
-authors, previews, prepares, assesses and promotes suites through the same
-contracts and the same engine as these commands; it adds no second suite
-language and sends nothing, handing prepared suites to the durable-run panels
-for their preflight and explicit send decision. This release adds no remote authorization policy,
-new adapter, team approval, execution filtering, selection rule or scheduling
-daemon. Coverage assessment is described below.
+loopback-only durable run path. In the desktop application a suite is a named
+object of the project (see [Suite versions and approvals](#suite-versions-and-approvals)):
+each Save compiles it to one of these documents, and it is previewed, run,
+exported, prepared as a run configuration, assessed and approved through the
+same contracts and the same engine as these commands. It adds no second suite
+language and sends nothing outside the run review's explicit send decision.
+This release adds no remote authorization policy, new adapter, execution
+filtering, selection rule or scheduling daemon. Coverage assessment is
+described below.
 These absent capabilities remain separate deliveries. A site label is not an environment approval. Profile support remains
 what the underlying spec and evaluator declare; these suites certify no broader
 HL7 or external-system behavior.
@@ -317,3 +319,59 @@ Unknown/duplicate/null/missing members and malformed commitments are refused.
 All older suite, target, release, result and evidence contract members remain
 unchanged. External-target acceptance and authenticated team promotion remain
 separate owner/integration work.
+
+## Suite versions and approvals
+
+In the desktop application a suite is one named object of its project. Each
+Save publishes one immutable version through the project catalog with two
+members: `readmit-suite-definition/v1`, the whole suite as its editor held it
+(`{"schema": "readmit-suite-definition/v1", "draft": …}`, the tests by their
+saved test and exact version, datasets and environments by name, bindings by
+named environment and observation, and the requirements and exclusions
+coverage is assessed by), and the `readmit-suite/v1` document compiled from it,
+whose references are project entries relative to the project root: each test
+version's spec, each row's case, and each binding's current environment target
+and observation ledger. A version with no test or no environment is saved
+without a compiled document and cannot run, be approved, exported or assessed
+until one is added. A test version that is itself a test release is refused as
+a suite template; the suite names the saved version of the test.
+
+Tests and suites follow the named environment at run time, and runs record the
+exact version. A version is compiled against the current revision of each
+environment it binds whenever it is previewed, run, exported as a run
+configuration or approved for an environment, and a run is matched to the
+version it executed by its retained `suite.json` with binding targets and
+observations set aside. A `readmit-suite/v1` file already in the project is the
+same named suite, read as it is: its original version has no number, opens
+read-only and is never rewritten, and its first Save publishes version 1 beside
+it.
+
+Approvals are an append-only history of the suite, one
+`readmit-suite-approval/v1` record per approval, each bound to one exact version
+(its compiled document's SHA-256, its test versions and the exact bytes of their
+releases) and never retargeted:
+
+- **Baseline** (local reviewer): releases every test version the version pins
+  as a `readmit-test-release/v1` through the same review and approval as
+  `readmit expectation release`, each continuing its test's own release
+  history; a version already released unchanged keeps its release. It stays
+  current for its version.
+- **Review request** and **release** (team, through the signed-in customer
+  hub): the author asks one reviewer to review the exact bytes of each release
+  of the latest baseline, and only that reviewer approves them, answering the
+  request; the hub enforces the request and approval chain. A request is stale
+  once a later baseline released other test versions.
+- **Environment** (local reviewer): approves the version and its release pins
+  for one of its environments under an operator-entered target revision,
+  through `readmit suite approve-promotion`'s review and approval, and records
+  the promotion. It never deploys and never authorizes a send, and it is stale
+  once an environment it bound moves to a newer revision or the release pins
+  change.
+
+Export writes one version's suite document to a new file, and Export run
+configuration prepares one version for one environment into a new folder
+exactly as `readmit suite prepare` does, with the release pins of its latest
+baseline when it has one. Import reads a `readmit-suite/v1` file into a new
+draft, resolving each reference to the project's test, case, environment or
+observation that holds exactly what it names and keeping any other as
+declared, for the person to resolve before Save.

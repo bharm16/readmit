@@ -77,7 +77,7 @@ var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, 
 	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem,
 	AnalysisSettingsItem, FindingReviewItem,
 	LinkRulesItem, CoverageItem, LinkReviewItem,
-	MappingItem, SourceItem}
+	MappingItem, SourceItem, SuiteApprovalItem}
 
 // Availability is whether an object's backing can be read now. Readability
 // grants nothing: whether an action is permitted is Capabilities.
@@ -291,7 +291,13 @@ type TestSummary struct {
 // version no execution ran has none; an execution of an earlier version is
 // not one of this version's.
 type SuiteSummary struct {
-	Tests         int      `json:"tests"`
+	Tests int `json:"tests"`
+	// Entry is the project entry of the current version's suite document,
+	// which a schedule or CI setup names.
+	Entry string `json:"entry,omitzero"`
+	// Runnable says the current version can run: it has a test and an
+	// environment. Entry is empty for one that cannot.
+	Runnable      bool     `json:"runnable"`
 	Environments  []string `json:"environments"`
 	LatestRun     *ItemRef `json:"latest_run"`
 	LatestRunAt   *string  `json:"latest_run_at,omitzero"`

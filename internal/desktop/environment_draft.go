@@ -529,13 +529,14 @@ type ItemDraftResult struct {
 	Draft    *ItemDraft     `json:"draft,omitzero"`
 	New      bool           `json:"new"`
 	Test     *TestContext   `json:"test,omitzero"`
+	Suite    *SuiteContext  `json:"suite,omitzero"`
 	Problems []FieldProblem `json:"problems,omitzero"`
 }
 
 func (r *ItemDraftResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // draftKinds are the kinds whose editor starts from OpenItemDraft.
-var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem}
+var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem}
 
 // OpenItemDraft answers the draft an editor starts from. A reference with no
 // identity is a new object: a new environment starts unclassified with its
@@ -547,10 +548,11 @@ var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsIt
 // its seed allocated once and its base time the current time to the whole
 // second. New link rules declare no rule yet, and new coverage no window. A
 // new capture source starts as a loopback MLLP listener; a mapping preset is
-// only ever saved from an import's mapping, so it has no new draft. An
-// existing object answers the members its current revision
-// declares, exactly as saved; a test, check group, profile or scenario also
-// the earlier revision its reference names, read-only. A check group holding checks this release does not
+// only ever saved from an import's mapping, so it has no new draft, and a
+// new suite holds nothing yet and runs one job at a time. An existing object
+// answers the members its current revision declares, exactly as saved; a
+// test, check group, profile, scenario or suite also the earlier revision its
+// reference names, read-only, and a suite the original file it was, read-only. A check group holding checks this release does not
 // evaluate answers them as unsupported, never dropped. A copy is this draft
 // saved under no identity. It is a read: nothing is connected, collected,
 // generated or written.
@@ -560,8 +562,11 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 		if request.Ref.Kind == TestItem {
 			return a.openTestDraft(ctx, request)
 		}
+		if request.Ref.Kind == SuiteItem {
+			return a.openSuiteDraft(ctx, request)
+		}
 		if !slices.Contains(draftKinds, request.Ref.Kind) {
-			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping and capture source drafts")
+			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping, capture source and suite drafts")
 			return result
 		}
 		if request.Ref.ID == "" && request.Ref.Kind == FindingReviewItem {

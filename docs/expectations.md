@@ -6,12 +6,11 @@ Commands that create or run work use the [explicit license setup](license-v2.md#
 `readmit expectation` releases an authored test as an immutable local revision
 with explicit profile pins. It reuses [baseline review](baseline.md): the same
 complete specification comparison, operator/selector/occurrence changes, local
-approver and rationale. A passing run never creates an approval. The desktop
-Regression baseline panel offers **Release a test version with profile pins**
-for the same workflow, including historical inspection and cancel-before-write.
-Inspecting a retained release shows its full release identity as
-`readmit expectation show` prints it, and the Suites and releases panel's
-**Read identity** fills a release reference from the release entry itself.
+approver and rationale. A passing run never creates an approval. In the
+desktop application a suite version's **Approve baseline** releases every test
+version it pins through the same workflow, each continuing its test's release
+history, and its team review and environment approval bind those exact
+releases; see [suite versions and approvals](suites.md#suite-versions-and-approvals).
 
 ```sh
 readmit expectation review candidate.json --id booking \

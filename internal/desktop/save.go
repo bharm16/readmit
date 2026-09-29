@@ -31,10 +31,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets and capture sources whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources and suites whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -93,6 +93,8 @@ type ItemDraft struct {
 	// members are published together.
 	Mapping *importer.Recipe    `json:"mapping,omitzero"`
 	Source  *CaptureSourceDraft `json:"source,omitzero"`
+	// Suite is a whole suite, published as one version.
+	Suite *SuiteDraft `json:"suite,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -154,7 +156,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem || request.Kind == SuiteItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -535,6 +537,15 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.Source = members, source
 		}
+	case SuiteItem:
+		if draft.Suite == nil {
+			return nil, nil, append(problems, FieldProblem{Field: "suite", Problem: "a suite is its tests, data, environments and coverage"})
+		}
+		members, suiteDraft, found := validateSuiteItem(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized = members, suiteDraft
+		}
 	default:
 		return nil, nil, append(problems, FieldProblem{Field: "kind", Problem: savedKindsRule})
 	}
@@ -611,6 +622,11 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return err
 		case SourceItem:
 			return verifyCaptureSource(files)
+		case SuiteItem:
+			return verifySuite(files)
+		case SuiteApprovalItem:
+			_, err := readSuiteApproval(files[primaryRole(SuiteApprovalItem)])
+			return err
 		}
 		return errors.New("this release does not save this kind of object")
 	}
