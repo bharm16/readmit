@@ -30,7 +30,7 @@ command below. It reads local copies through the same hub readers and computes
 offline backup verification and schedule input identity through the same hub
 functions. The operator still runs each step on this customer-controlled host;
 the desktop never opens the host database or starts a command. See the
-[desktop handoff guide](../docs/desktop.md#hub-host-administration-handoffs).
+[desktop handoff guide](../docs/desktop.md#host-tasks).
 
 The separate module pins its toolchain and dependencies in `go.mod`/`go.sum`.
 From `hub/`, with Go 1.27.1:
@@ -184,9 +184,12 @@ sudo systemctl start readmit-hub
 The destination must be a new directory outside artifact storage. Backup copies
 and verifies exactly the catalogue's objects, preserving their bytes, addresses,
 sizes and timestamps. `manifest.json` is written last and synchronized: without
-it the backup is incomplete. Its strict `readmit-hub-backup/v5` contract declares
-metadata version 6, the ordered object list, project-to-object links, authenticated
-review/lifecycle events and sticky team-mode state, bounded to a 128 MiB manifest.
+it the backup is incomplete. Its strict `readmit-hub-backup/v6` contract declares
+metadata version 7, the ordered object list, project-to-object links with who
+linked each and when (`issuer`, `actor` and `linked_at`, all empty for a link
+that recorded none), authenticated review/lifecycle events and sticky team-mode
+state, bounded to a 256 MiB manifest. Existing v5 documents retain metadata
+version 6 and the 128 MiB bound; their links restore with no recorded origin.
 Existing v4 documents retain metadata version 5, v1 review events and the 128 MiB bound.
 Existing v3 documents retain metadata version 4 and their 64 MiB bound.
 Existing v2 documents retain metadata version 3 and their 32 MiB bound. Existing `readmit-hub-backup/v1` documents retain their
@@ -390,7 +393,8 @@ A command is a complete strict JSON document; every field below is required:
 }
 ```
 
-The four kinds are `comment`, `assignment`, `review-request`, and `approval`.
+The four kinds are `comment`, `assignment`, `review-request`, and `approval`;
+a request for changes is its own command version, described below.
 Evidence always names an existing verified project artifact, including a retained
 case representation. The hub does not reinterpret an uploaded blob as a complete
 case bundle. Comments optionally name a prior comment/event ID as `parent`, on
@@ -453,6 +457,47 @@ is not a cryptographic audit signature. Access policy is still restored separate
 and current policy controls who can read restored histories. Synthetic isolated
 PostgreSQL tests do not establish a live customer IdP or deployment acceptance.
 The API is available now; the desktop customer-hub panel exposes collaboration through authenticated facade methods.
+
+### Requests for changes
+
+A reviewer who does not approve asks for changes with
+`readmit-hub-review-command/v3`, whose one kind is `change-request`: the same
+members as v1, naming the review request in `parent`, an empty `recipient`,
+the request's exact evidence and release digests, and the reason in `text`. It
+is made by the reviewer the request asked, from the same issuer, needs the
+`approval` action and is recorded as `readmit-hub-review-event/v3`. A request is
+answered once: an approval or a request for changes, never both and never twice.
+Only the v2 routes carry it; once a project records one, its v1 history and
+notification reads answer 409, as they do for support commands, and its audit
+export reads as `readmit-hub-audit/v2`. Backup v6 retains these events; older
+backup versions refuse them.
+
+### Project files and members
+
+Metadata migration 7 records, for every project-to-object link made from then
+on, the authenticated issuer and subject that made it and when
+(`linked_issuer`, `linked_actor`, `linked_at` on the link). Links made before
+the migration record none, and nothing fills them in from storage time or the
+project's logs; an issuer wider than 2,048 bytes is linked with no origin.
+Artifact bytes and addresses are unchanged. Three metadata-only v2 reads answer
+from it and from the access policy:
+
+- `GET /v2/projects/P/files` (`evidence.read`) answers strict
+  `readmit-hub-project-files/v1`: `schema`, `project` and `files`, each with
+  `sha256`, `size`, `issuer`, `actor` and `linked_at` (all three empty for a
+  link that recorded none). It never serves an artifact's bytes.
+- `GET /v2/projects/P/members` (`admin`) answers strict
+  `readmit-hub-project-members/v1`: `schema`, `project`, the policy's `issuer`
+  and `members`, each with `subject`, `role` and `status` (`active`, or
+  `removed` by the project's log; a removed subject the policy no longer grants
+  has an empty role).
+- `GET /v2/projects/P/reviewers` (`evidence.write`) answers the same contract
+  with only the active members who may approve: the recipients a review request
+  may name.
+
+None of them changes a grant. Adding a member or changing a role remains an
+edit of the operator's private policy file, which the desktop can prepare from
+a local copy for the operator to install.
 
 ## Offline revisions and lifecycle administration
 
@@ -625,8 +670,8 @@ and server logs under customer controls. A failed download records refusal; it
 never retries, forwards or partially substitutes another artifact.
 
 Metadata version 6 makes older binaries refuse the new event meanings. New
-backups use `readmit-hub-backup/v5`, retaining the lifecycle and review records
-with compatible readers for v1–v4. Frozen older backup versions reject v2 review
+backups use `readmit-hub-backup/v6`, retaining the lifecycle and review records
+and each project link's origin, with compatible readers for v1–v5. Frozen older backup versions reject v2 review
 events. Restore validates complete event ordering, exact policy generations,
 reviewer/request bindings and artifact bytes before committing metadata. Backup
 custody is an operator responsibility; no backup hash authenticates an IdP.
@@ -775,3 +820,7 @@ clock/admission records in the separately owned private `/var/lib/readmit-hub/li
 directory (create it with mode 0700 for the service account); they must not be
 inside sealed artifacts. `schedule-init` also requires the configured local named
 author. Migration, checks, backup, verification and restoration remain free.
+
+The metadata directory response is bounded at 512 MiB, covering the existing
+65,536-file bound including the widest permitted link issuer and actor fields
+and JSON escaping. Metadata reads transfer no artifact payload.

@@ -557,7 +557,7 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
   await openFolder(user);
   // Each panel, opened, draws the facade's answer, not the busy refusal.
   await goToView(user, "Settings", "Team");
-  expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
+  expect(await screen.findByText("No team configured")).toBeTruthy();
   await goToView(user, "Settings", "License");
   expect(await screen.findByRole("link", { name: "Manage account" })).toBeTruthy();
   await goToView(user, "Settings", "Security");

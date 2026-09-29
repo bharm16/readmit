@@ -41,6 +41,9 @@ export type ActionID =
   | "secret.scan"
   | "item.remove"
   | "export.derive-review"
+  | "team.upload"
+  | "team.revision"
+  | "team.resolve"
   | "run.test"
   | "run.suite"
   | "run.resume"
@@ -78,6 +81,7 @@ export interface ActionReview {
   derive?: DeriveReviewView;
   transport?: TransportReview;
   run?: RunReview;
+  team?: TeamActionReview;
 }
 
 /** internal/desktop.ActionReviewResult */
@@ -1403,6 +1407,7 @@ export type Consent =
   | "reset"
   | "scan"
   | "derive"
+  | "upload"
   | "restore"
   | "delete"
   | "copy"
@@ -2934,6 +2939,60 @@ export interface HexRow {
   text: string;
 }
 
+/** internal/desktop.HubActivity */
+export interface HubActivity {
+  key: string;
+  actor: string;
+  action: HubActivityKind;
+  object?: string;
+  at: string;
+  text?: string;
+  to_me?: boolean;
+}
+
+/** internal/desktop.HubActivityKind */
+export type HubActivityKind =
+  | "comment"
+  | "assignment"
+  | "review-request"
+  | "approval"
+  | "change-request"
+  | "support-policy"
+  | "support-request"
+  | "support-approval"
+  | "revision"
+  | "resolve"
+  | "remove-user"
+  | "retention"
+  | "retire"
+  | "audit-export";
+
+/** desktop/hubadmin.MembershipRequest */
+export interface HubAdminMembershipRequest {
+  operation: string;
+  policy_copy: string;
+  policy_path: string;
+  project: string;
+  subject: string;
+  role: string;
+}
+
+/** desktop/hubadmin.MembershipResult */
+export interface HubAdminMembershipResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  subject?: string;
+  before?: string;
+  after?: string;
+  command?: string;
+  prerequisites?: string[];
+  touches?: string[];
+  does_not_touch?: string[];
+  policy?: string;
+  policy_name?: string;
+}
+
 /** desktop/hubadmin.Request */
 export interface HubAdminRequest {
   operation: string;
@@ -2994,6 +3053,7 @@ export interface HubAuthUrlResult {
   reason?: string;
   auth_url?: string;
   port?: number;
+  opened?: boolean;
 }
 
 /** internal/desktop.HubCheckItem */
@@ -3002,6 +3062,35 @@ export interface HubCheckItem {
   passed: boolean;
   message: string;
   detail?: string;
+}
+
+/** internal/desktop.HubConfigChoice */
+export interface HubConfigChoice {
+  state: State;
+  reason?: string;
+  config?: string;
+  hub_url?: string;
+  projects?: string[];
+  name?: string;
+}
+
+/** internal/desktop.HubConflictRequest */
+export interface HubConflictRequest {
+  project: string;
+  resource: string;
+}
+
+/** internal/desktop.HubConflictResult */
+export interface HubConflictResult {
+  scope?: string;
+  state: State;
+  reason?: string;
+  tips: HubRevision[];
+  base?: HubRevision;
+  yours?: string;
+  current?: string;
+  text: boolean;
+  hunks: MergeHunk[];
 }
 
 /** internal/desktop.HubDiagnosisResult */
@@ -3018,6 +3107,22 @@ export interface HubDownloadRequest {
   digest: string;
   destination_path: string;
 }
+
+/** internal/desktop.HubFileRequest */
+export interface HubFileRequest {
+  project: string;
+  digest: string;
+  name?: string;
+}
+
+/** internal/desktop.HubFileType */
+export type HubFileType =
+  | "revision"
+  | "test-release"
+  | "evidence"
+  | "sharing-policy"
+  | "support-summary"
+  | "file";
 
 /** internal/desktop.HubLifecycleCommandRequest */
 export interface HubLifecycleCommandRequest {
@@ -3054,6 +3159,7 @@ export interface HubLifecycleEventView {
 
 /** internal/desktop.HubLifecycleResult */
 export interface HubLifecycleResult {
+  resolved?: boolean;
   state: State;
   reason?: string;
   project?: string;
@@ -3064,6 +3170,21 @@ export interface HubLifecycleResult {
   audit?: HubAuditExportView;
   replay?: boolean;
   warning?: string;
+}
+
+/** internal/desktop.HubMember */
+export interface HubMember {
+  subject: string;
+  role?: string;
+  removed?: boolean;
+}
+
+/** internal/desktop.HubMembersResult */
+export interface HubMembersResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  members: HubMember[];
 }
 
 /** internal/desktop.HubOfflineDraftRequest */
@@ -3088,20 +3209,67 @@ export interface HubProjectInfo {
   warning?: string;
 }
 
+/** internal/desktop.HubResource */
+export interface HubResource {
+  resource: string;
+  revisions: HubRevision[];
+  tips: string[];
+}
+
 /** internal/desktop.HubResult */
 export interface HubResult {
   state: State;
   reason?: string;
   connected: boolean;
   authenticated: boolean;
+  session_scope?: string;
   subject?: string;
   issuer?: string;
   audience?: string;
   expires_at?: string;
   config_path?: string;
   hub_url?: string;
+  team?: string;
   projects?: HubProjectInfo[];
   custody_warning?: string;
+}
+
+/** internal/desktop.HubRetentionApply */
+export interface HubRetentionApply {
+  request: HubRetentionRequest;
+  until: string;
+  digests: string[];
+  reason: string;
+  intent_id: string;
+}
+
+/** internal/desktop.HubRetentionRequest */
+export interface HubRetentionRequest {
+  project: string;
+  count: number;
+  unit: string;
+  scope: RetentionScope;
+  type?: HubFileType;
+  digests?: string[];
+}
+
+/** internal/desktop.HubRetentionResult */
+export interface HubRetentionResult {
+  state: State;
+  reason?: string;
+  until?: string;
+  rows: HubRetentionRow[];
+}
+
+/** internal/desktop.HubRetentionRow */
+export interface HubRetentionRow {
+  digest: string;
+  name?: string;
+  type: HubFileType;
+  current?: string;
+  proposed?: string;
+  change: RetentionChange;
+  reason?: string;
 }
 
 /** internal/desktop.HubReviewCommandRequest */
@@ -3115,6 +3283,14 @@ export interface HubReviewCommandRequest {
   recipient: string;
   text: string;
   release: string;
+}
+
+/** internal/desktop.HubReviewComment */
+export interface HubReviewComment {
+  actor: string;
+  at: string;
+  kind: HubActivityKind;
+  text: string;
 }
 
 /** internal/desktop.HubReviewEventView */
@@ -3134,6 +3310,28 @@ export interface HubReviewEventView {
   command_id: string;
 }
 
+/** internal/desktop.HubReviewItem */
+export interface HubReviewItem {
+  id: string;
+  support?: boolean;
+  item?: string;
+  version?: string;
+  suite?: ItemRef;
+  requested_by: string;
+  recipient: string;
+  requested: string;
+  updated: string;
+  status: HubReviewStatus;
+  reason?: string;
+  evidence: string;
+  release: string;
+  to_me?: boolean;
+  discussion: HubReviewComment[];
+  requests: HubReviewRequest[];
+  policy_version?: number;
+  policy_current?: boolean;
+}
+
 /** internal/desktop.HubReviewQueryRequest */
 export interface HubReviewQueryRequest {
   project: string;
@@ -3142,8 +3340,19 @@ export interface HubReviewQueryRequest {
   evidence: string;
 }
 
+/** internal/desktop.HubReviewRequest */
+export interface HubReviewRequest {
+  id: string;
+  evidence: string;
+  release: string;
+}
+
+/** internal/desktop.HubReviewStatus */
+export type HubReviewStatus = "requested" | "approved" | "changes-requested" | "stale";
+
 /** internal/desktop.HubReviewsResult */
 export interface HubReviewsResult {
+  resolved?: boolean;
   state: State;
   reason?: string;
   project?: string;
@@ -3151,6 +3360,23 @@ export interface HubReviewsResult {
   events?: HubReviewEventView[];
   replay?: boolean;
   warning?: string;
+}
+
+/** internal/desktop.HubRevision */
+export interface HubRevision {
+  id: string;
+  artifact: string;
+  actor: string;
+  at: string;
+  reason: string;
+  parents: string[];
+  resolved?: boolean;
+}
+
+/** internal/desktop.HubSetupExport */
+export interface HubSetupExport {
+  name: string;
+  content: string;
 }
 
 /** internal/desktop.HubSupportReviewRequest */
@@ -3161,6 +3387,54 @@ export interface HubSupportReviewRequest {
   kind: string;
   id: string;
   recipient: string;
+}
+
+/** internal/desktop.HubSupportSummaryResult */
+export interface HubSupportSummaryResult {
+  state: State;
+  reason?: string;
+  source_kind?: string;
+  outcome?: string;
+}
+
+/** internal/desktop.HubTeamFile */
+export interface HubTeamFile {
+  digest: string;
+  size: number;
+  name?: string;
+  type: HubFileType;
+  added_by?: string;
+  added_at?: string;
+  keep_until?: string;
+  retired?: boolean;
+  resource?: string;
+}
+
+/** internal/desktop.HubTeamReadRequest */
+export interface HubTeamReadRequest {
+  project: string;
+  workspace?: string;
+}
+
+/** internal/desktop.HubTeamRequest */
+export interface HubTeamRequest {
+  name: string;
+  config: string;
+}
+
+/** internal/desktop.HubTeamResult */
+export interface HubTeamResult {
+  state: State;
+  reason?: string;
+  project?: string;
+  me?: string;
+  capabilities: string[];
+  review_head: number;
+  lifecycle_head: number;
+  activity: HubActivity[];
+  reviews: HubReviewItem[];
+  files: HubTeamFile[];
+  resources: HubResource[];
 }
 
 /** internal/desktop.HubTransferResult */
@@ -4317,6 +4591,18 @@ export interface Match {
 /** internal/desktop.MatchKind */
 export type MatchKind = "artifact" | "registered_case" | "content";
 
+/** internal/desktop.MergeChoice */
+export type MergeChoice = "base" | "yours" | "current";
+
+/** internal/desktop.MergeHunk */
+export interface MergeHunk {
+  conflict?: boolean;
+  lines?: string[];
+  base?: string[];
+  yours?: string[];
+  current?: string[];
+}
+
 /** internal/desktop.MessageFacets */
 export interface MessageFacets {
   types: GridMessageType[];
@@ -5316,6 +5602,7 @@ export interface PrepareActionRequest {
   storage?: StorageActionOptions;
   derive_review?: DeriveReviewOptions;
   run?: RunActionOptions;
+  team?: TeamActionOptions;
 }
 
 /** internal/desktop.PreparedCandidate */
@@ -6988,6 +7275,9 @@ export interface RetainedCaptureResult {
   case?: CaseEvidence;
 }
 
+/** internal/desktop.RetentionChange */
+export type RetentionChange = "extends" | "unchanged" | "retired" | "applied" | "failed";
+
 /** internal/desktop.RetentionHold */
 export interface RetentionHold {
   kind: RetentionKind;
@@ -7001,6 +7291,9 @@ export interface RetentionHold {
 
 /** internal/desktop.RetentionKind */
 export type RetentionKind = "transfer-package" | "search-index";
+
+/** internal/desktop.RetentionScope */
+export type RetentionScope = "all" | "type" | "selected";
 
 /** internal/desktop.RetirementPreview */
 export interface RetirementPreview {
@@ -7132,6 +7425,7 @@ export interface ReviewedActionResult {
   derived?: PrivacyReviewOutcome;
   approved?: ItemRef;
   run?: ItemRef;
+  team?: TeamActionOutcome;
 }
 
 /** internal/desktop.ReviewedOutcome */
@@ -9629,6 +9923,46 @@ export interface TargetSaveRequest {
   target: Target;
 }
 
+/** internal/desktop.TeamActionOptions */
+export interface TeamActionOptions {
+  project?: string;
+  source?: string;
+  resource?: string;
+  base?: string;
+  resolution?: TeamResolution;
+}
+
+/** internal/desktop.TeamActionOutcome */
+export interface TeamActionOutcome {
+  digest: string;
+  revision?: string;
+  project: string;
+  resource?: string;
+  command_id?: string;
+  uploaded?: boolean;
+}
+
+/** internal/desktop.TeamActionReview */
+export interface TeamActionReview {
+  pending_operation?: string;
+  conflict_scope?: string;
+  team?: string;
+  project: string;
+  name?: string;
+  size: number;
+  resource?: string;
+  base?: HubRevision;
+  tips?: HubRevision[];
+  conflicts?: number;
+}
+
+/** internal/desktop.TeamResolution */
+export interface TeamResolution {
+  scope: string;
+  whole?: string;
+  choices?: MergeChoice[];
+}
+
 /** internal/testauthor.Answer */
 export interface TestAnswer {
   stage: string;
@@ -10348,6 +10682,7 @@ export interface Facade {
   AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
   AnalyzeCase(request: AnalyzeRequest): Promise<FindingsResult>;
   AnalyzeRun(request: RunAnalysisRequest): Promise<RunAnalysisResult>;
+  ApplyHubRetention(request: HubRetentionApply): Promise<HubRetentionResult>;
   ApplyLibraryDocument(request: LibraryDocumentRequest): Promise<ItemDraftResult>;
   ApproveExpectations(request: TestRequest): Promise<TestResult>;
   ArchiveOrDeleteProject(request: ProjectArchiveRequest): Promise<BackupResult>;
@@ -10378,6 +10713,8 @@ export interface Facade {
   ChooseEnvironmentFile(kind: string): Promise<PathChoiceResult>;
   ChooseExplanationInput(workspace: string, kind: string): Promise<ExplanationChoiceResult>;
   ChooseHubConfig(): Promise<HubResult>;
+  ChooseHubLocalCopy(kind: string): Promise<PathChoiceResult>;
+  ChooseHubTeamConfig(): Promise<HubConfigChoice>;
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
   ChooseInspectionPath(kind: string, source: string): Promise<InspectionPathResult>;
   ChooseLibraryFile(kind: string): Promise<PathChoiceResult>;
@@ -10427,6 +10764,8 @@ export interface Facade {
   DisconnectOperatorHub(): Promise<HubResult>;
   DownloadHubArtifact(request: HubDownloadRequest): Promise<HubTransferResult>;
   DownloadHubExport(request: HubDownloadRequest): Promise<HubTransferResult>;
+  DownloadHubFile(request: HubFileRequest): Promise<HubTransferResult>;
+  DownloadHubSummary(request: HubFileRequest): Promise<HubTransferResult>;
   DurableRunProgress(workspace: string, entry: string): Promise<RunProgressResult>;
   EditReproducer(request: ReproducerRequest): Promise<ReproducerResult>;
   EditorDrafts(): Promise<EditorDraftsResult>;
@@ -10440,6 +10779,7 @@ export interface Facade {
   ExplainRun(request: RunExplanationRequest): Promise<RunExplanationResult>;
   ExportAnalysisSettings(request: ItemRequest): Promise<ExportSettingsResult>;
   ExportDerivedPacket(request: PrivacyExportRequest): Promise<PrivacyExportResult>;
+  ExportHubSetup(request: HubSetupExport): Promise<HubTransferResult>;
   ExportInstalledLicense(): Promise<LicenseExportResult>;
   ExportLibraryItem(request: LibraryExportRequest): Promise<LibraryExportResult>;
   ExportLicenseDocument(): Promise<LicenseExportResult>;
@@ -10491,8 +10831,10 @@ export interface Facade {
   ListCredentials(request: ItemRequest): Promise<CredentialsResult>;
   ListFileMessages(request: FileMessagesRequest): Promise<FileMessagesResult>;
   ListHubLifecycle(project: string): Promise<HubLifecycleResult>;
+  ListHubMembers(project: string): Promise<HubMembersResult>;
   ListHubNotifications(project: string): Promise<HubReviewsResult>;
   ListHubProjectArtifacts(project: string): Promise<HubArtifactsResult>;
+  ListHubReviewers(project: string): Promise<HubMembersResult>;
   ListHubReviews(project: string): Promise<HubReviewsResult>;
   ListNotes(request: NotesRequest): Promise<NotesResult>;
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
@@ -10517,6 +10859,7 @@ export interface Facade {
   OpenDurableRun(path: string): Promise<DurableRunResult>;
   OpenFindingDecisions(workspace: string, entry: string): Promise<FindingDecisionsResult>;
   OpenGrid(workspace: string, name: string, indexName: string, offset: number, limit: number): Promise<GridResult>;
+  OpenHubConflict(request: HubConflictRequest): Promise<HubConflictResult>;
   OpenItem(request: ItemRequest): Promise<ItemResult>;
   OpenItemDraft(request: ItemRequest): Promise<ItemDraftResult>;
   OpenNamedProject(path: string): Promise<ProjectOpenResult>;
@@ -10548,6 +10891,7 @@ export interface Facade {
   PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
   PrepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult>;
   PreviewFindingReview(request: DraftRequest): Promise<FindingReviewPreview>;
+  PreviewHubRetention(request: HubRetentionRequest): Promise<HubRetentionResult>;
   PreviewImport(request: ImportRequest): Promise<ImportPreviewResult>;
   PreviewPacket(request: PacketRequest): Promise<PacketPreviewResult>;
   PreviewProjectMigration(path: string): Promise<MigrationPreviewResult>;
@@ -10566,6 +10910,8 @@ export interface Facade {
   ProjectLocation(): Promise<ProjectLocationResult>;
   PublishSupportSummary(request: SupportPublishRequest): Promise<SupportPublishResult>;
   ReadFileBytes(request: FileBytesRequest): Promise<FileBytesResult>;
+  ReadHubSupportSummary(request: HubFileRequest): Promise<HubSupportSummaryResult>;
+  ReadHubTeam(request: HubTeamReadRequest): Promise<HubTeamResult>;
   ReadMessages(request: MessagesRequest): Promise<MessagesResult>;
   ReadOperatorHubArtifact(digest: string): Promise<HubTransferResult>;
   ReadPreferences(): Promise<PreferencesResult>;
@@ -10580,6 +10926,7 @@ export interface Facade {
   ReadSharingPolicy(workspace: string, entry: string): Promise<SupportPolicyResult>;
   ReadTarget(workspace: string, targetFile: string): Promise<TargetResult>;
   ReconcileHubOfflineDraft(request: HubLifecycleCommandRequest): Promise<HubLifecycleResult>;
+  ReconcileTeamTransfer(operation: string): Promise<ReviewedActionResult>;
   RecordCredentialRotation(request: CredentialRequest): Promise<CredentialsResult>;
   RecordView(view: View): Promise<SessionResult>;
   RecoverProjectDocument(request: ProjectRecoverRequest): Promise<ProjectRecoverResult>;
@@ -10626,6 +10973,7 @@ export interface Facade {
   SaveFindingDecisions(request: RuleDocumentSaveRequest): Promise<FindingDecisionsResult>;
   SaveHubAudit(project: string): Promise<HubTransferResult>;
   SaveHubOfflineDraft(request: HubOfflineDraftRequest): Promise<EditorDraftsResult>;
+  SaveHubTeam(request: HubTeamRequest): Promise<HubResult>;
   SaveItem(request: SaveItemRequest): Promise<SaveItemResult>;
   SaveNormalizationPolicy(request: RuleDocumentSaveRequest): Promise<NormalizationPolicyResult>;
   SaveNoteItem(request: NoteSaveRequest): Promise<NotesResult>;
@@ -10699,5 +11047,6 @@ export interface Facade {
 /** The methods Wails binds for desktop/hubadmin.Admin. */
 export interface HubAdminFacade {
   CancelPreview(): Promise<HubAdminResult>;
+  PrepareMembership(request: HubAdminMembershipRequest): Promise<HubAdminMembershipResult>;
   Preview(request: HubAdminRequest): Promise<HubAdminResult>;
 }

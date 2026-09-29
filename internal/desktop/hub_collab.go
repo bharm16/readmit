@@ -59,13 +59,14 @@ type HubReviewEventView struct {
 
 // HubReviewsResult carries collaboration history or notifications.
 type HubReviewsResult struct {
-	State   State                `json:"state"`
-	Reason  string               `json:"reason,omitzero"`
-	Project string               `json:"project,omitzero"`
-	Head    int                  `json:"head,omitzero"`
-	Events  []HubReviewEventView `json:"events,omitzero"`
-	Replay  bool                 `json:"replay,omitzero"`
-	Warning string               `json:"warning,omitzero"`
+	Resolved bool                 `json:"resolved,omitzero"`
+	State    State                `json:"state"`
+	Reason   string               `json:"reason,omitzero"`
+	Project  string               `json:"project,omitzero"`
+	Head     int                  `json:"head,omitzero"`
+	Events   []HubReviewEventView `json:"events,omitzero"`
+	Replay   bool                 `json:"replay,omitzero"`
+	Warning  string               `json:"warning,omitzero"`
 }
 
 func (r *HubReviewsResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -113,16 +114,17 @@ type HubLifecycleEventView struct {
 
 // HubLifecycleResult carries lifecycle history, tips, or a write outcome.
 type HubLifecycleResult struct {
-	State   State                   `json:"state"`
-	Reason  string                  `json:"reason,omitzero"`
-	Project string                  `json:"project,omitzero"`
-	Head    int                     `json:"head,omitzero"`
-	Events  []HubLifecycleEventView `json:"events,omitzero"`
-	Tips    map[string][]string     `json:"tips,omitzero"`
-	Event   *HubLifecycleEventView  `json:"event,omitzero"`
-	Audit   *HubAuditExportView     `json:"audit,omitzero"`
-	Replay  bool                    `json:"replay,omitzero"`
-	Warning string                  `json:"warning,omitzero"`
+	Resolved bool                    `json:"resolved,omitzero"`
+	State    State                   `json:"state"`
+	Reason   string                  `json:"reason,omitzero"`
+	Project  string                  `json:"project,omitzero"`
+	Head     int                     `json:"head,omitzero"`
+	Events   []HubLifecycleEventView `json:"events,omitzero"`
+	Tips     map[string][]string     `json:"tips,omitzero"`
+	Event    *HubLifecycleEventView  `json:"event,omitzero"`
+	Audit    *HubAuditExportView     `json:"audit,omitzero"`
+	Replay   bool                    `json:"replay,omitzero"`
+	Warning  string                  `json:"warning,omitzero"`
 }
 
 func (r *HubLifecycleResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -223,8 +225,8 @@ func (a *App) PostHubReview(request HubReviewCommandRequest) HubReviewsResult {
 		schema, supported := hubprotocol.CommandSchema(request.Kind)
 		if !supported {
 			return HubReviewsResult{
-				State: Failed, Project: request.Project,
-				Reason: "unsupported review kind; the hub accepts comment, assignment, review-request, approval, support-policy, support-request and support-approval",
+				State: Failed, Project: request.Project, Resolved: true,
+				Reason: "unsupported review kind; the hub accepts comment, assignment, review-request, approval, change-request, support-policy, support-request and support-approval",
 			}
 		}
 		client, errRes := a.requireHubSession()
@@ -606,9 +608,10 @@ func mapReviewEvent(e hubprotocol.ReviewEvent) HubReviewEventView {
 func mapReviewError(project string, err error) HubReviewsResult {
 	switch {
 	case errors.Is(err, hubclient.ErrAccessDenied), errors.Is(err, hubclient.ErrExpired):
-		return HubReviewsResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice}
+		return HubReviewsResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice, Resolved: true}
 	default:
-		return HubReviewsResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice}
+		return HubReviewsResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice,
+			Resolved: errors.Is(err, hubclient.ErrConflict) || errors.Is(err, hubclient.ErrCommandRefused)}
 	}
 }
 
@@ -625,9 +628,10 @@ func mapLifecycleEvent(e hubprotocol.LifecycleEvent) HubLifecycleEventView {
 func mapLifecycleError(project string, err error) HubLifecycleResult {
 	switch {
 	case errors.Is(err, hubclient.ErrAccessDenied), errors.Is(err, hubclient.ErrExpired):
-		return HubLifecycleResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice}
+		return HubLifecycleResult{State: PermissionDenied, Project: project, Reason: err.Error(), Warning: custodyNotice, Resolved: true}
 	default:
-		return HubLifecycleResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice}
+		return HubLifecycleResult{State: Failed, Project: project, Reason: err.Error(), Warning: custodyNotice,
+			Resolved: errors.Is(err, hubclient.ErrConflict) || errors.Is(err, hubclient.ErrCommandRefused)}
 	}
 }
 

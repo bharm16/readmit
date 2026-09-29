@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -98,7 +99,7 @@ func TestPostgresReviewedSupportIdentityPolicyAndRecovery(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !strings.Contains(string(manifest), "readmit-hub-backup/v5") {
+	if !strings.Contains(string(manifest), "readmit-hub-backup/v6") {
 		t.Fatal("missing new backup boundary")
 	}
 	s.Close()
@@ -108,8 +109,9 @@ func TestPostgresReviewedSupportIdentityPolicyAndRecovery(t *testing.T) {
 		t.Fatal(e)
 	}
 	h = s.TeamHandler(a)
-	old := strings.Replace(string(manifest), "readmit-hub-backup/v5", "readmit-hub-backup/v4", 1)
-	old = strings.Replace(old, `"metadata_version":6`, `"metadata_version":5`, 1)
+	old := strings.Replace(string(manifest), "readmit-hub-backup/v6", "readmit-hub-backup/v4", 1)
+	old = strings.Replace(old, `"metadata_version":7`, `"metadata_version":5`, 1)
+	old = regexp.MustCompile(`,"issuer":"[^"]*","actor":"[^"]*","linked_at":"[^"]*"`).ReplaceAllString(old, "")
 	if e = os.WriteFile(manifestPath, []byte(old), 0600); e != nil {
 		t.Fatal(e)
 	}

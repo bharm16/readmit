@@ -52,6 +52,7 @@ type dialog struct {
 var (
 	_ desktop.FileChooser        = (*dialog)(nil)
 	_ desktop.DestinationChooser = (*dialog)(nil)
+	_ desktop.BrowserOpener      = (*dialog)(nil)
 )
 
 func (d *dialog) start(ctx context.Context) {
@@ -129,6 +130,19 @@ func (d *dialog) ChooseNamedDestination(title, name string) (string, error) {
 		return "", errors.New("the application window is not ready")
 	}
 	return runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{Title: title, DefaultFilename: name, CanCreateDirectories: true})
+}
+
+// OpenBrowser opens a sign-in page the application started in the person's
+// own browser, where the customer's identity provider continues it.
+func (d *dialog) OpenBrowser(url string) error {
+	d.mu.Lock()
+	ctx := d.ctx
+	d.mu.Unlock()
+	if ctx == nil {
+		return errors.New("the application window is not ready")
+	}
+	runtime.BrowserOpenURL(ctx, url)
+	return nil
 }
 
 // reportsVersion reports whether this invocation asks for the build identity

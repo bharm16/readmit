@@ -37,7 +37,7 @@ func humanReviewer(route string) identityRule {
 // reviewAdmission is the review route family's one declaration of how a
 // request maps into action vocabulary. History and notifications read; a
 // review writes; and the command kinds escalate — a support policy needs
-// admin, an approval needs approval, and a comment rides the commenter's
+// admin, an approval or a request for changes needs approval, and a comment rides the commenter's
 // approval scope when the policy grants one. The comment escalation asks the
 // policy alone: removal is enforced on the final action inside the write
 // sequence, so a removed principal is refused either way.
@@ -48,7 +48,7 @@ func reviewAdmission(route string, c ReviewCommand, a *Access, r *http.Request, 
 		if c.Kind == "support-policy" {
 			action = "admin"
 		}
-		if c.Kind == "approval" || hubprotocol.IsSupportApproval(c) {
+		if c.Kind == "approval" || c.Kind == "change-request" || hubprotocol.IsSupportApproval(c) {
 			action = "approval"
 		}
 		// Reviewers can comment with their existing approval scope, but cannot assign.
@@ -91,7 +91,7 @@ func (s *Store) reviewRequest(w http.ResponseWriter, r *http.Request, a *Access,
 			http.Error(w, "invalid review", 400)
 			return
 		}
-		if hubprotocol.IsSupport(c) && !v2 {
+		if hubprotocol.V2Only(c) && !v2 {
 			http.Error(w, "review version unavailable", 400)
 			return
 		}

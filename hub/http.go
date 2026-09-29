@@ -40,7 +40,7 @@ func (s *Store) operatorRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		defer release()
 	}
-	s.artifactRequest(w, r, ctx, d, "")
+	s.artifactRequest(w, r, ctx, d, "", Principal{})
 }
 
 // Serve never starts an HTTP listener without mutual TLS. Shutdown cancels new
@@ -119,7 +119,7 @@ func (s *Store) serve(ctx context.Context, handler http.Handler) error {
 	return errors.New("hub listener failed")
 }
 
-func (s *Store) artifactRequest(w http.ResponseWriter, r *http.Request, ctx context.Context, d, project string) {
+func (s *Store) artifactRequest(w http.ResponseWriter, r *http.Request, ctx context.Context, d, project string, by Principal) {
 	switch r.Method {
 	case "PUT":
 		err := s.Put(ctx, d, http.MaxBytesReader(w, r.Body, MaxArtifactBytes+1))
@@ -135,7 +135,7 @@ func (s *Store) artifactRequest(w http.ResponseWriter, r *http.Request, ctx cont
 			return
 		}
 		if project != "" {
-			if err := s.linkProject(ctx, project, d); err != nil {
+			if err := s.linkProject(ctx, project, d, by); err != nil {
 				http.Error(w, "metadata unavailable", http.StatusServiceUnavailable)
 				return
 			}
@@ -163,7 +163,7 @@ func (s *Store) artifactRequest(w http.ResponseWriter, r *http.Request, ctx cont
 
 // linkProject bounds the catalogue that backup/v2 promises to restore. The
 // store owns the database exclusively, and this mutex serializes HTTP writers.
-func (s *Store) linkProject(ctx context.Context, project, digest string) error {
+func (s *Store) linkProject(ctx context.Context, project, digest string, by Principal) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	exists, err := s.linkedProjectArtifact(ctx, project, digest)
@@ -180,5 +180,5 @@ func (s *Store) linkProject(ctx context.Context, project, digest string) error {
 	if count >= 65536 {
 		return ErrLimit
 	}
-	return s.linkProjectArtifact(ctx, project, digest)
+	return s.linkProjectArtifact(ctx, project, digest, by)
 }

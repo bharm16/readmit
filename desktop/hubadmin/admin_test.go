@@ -2,7 +2,10 @@ package hubadmin
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json/v2"
 	"fmt"
 	"os"
@@ -298,4 +301,60 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func accessCopy(t *testing.T) (string, hub.AccessPolicy) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := hub.AccessPolicy{Schema: "readmit-hub-access/v1", Issuer: "https://idp.example", Audience: "https://hub.example", Clients: []string{"readmit-client"},
+		Keys:   []hub.AccessKey{{ID: "current", N: base64.RawURLEncoding.EncodeToString(key.N.Bytes()), E: "AQAB"}},
+		Grants: []hub.ProjectGrant{{Project: "alpha", Subject: "ana", Role: "analyst"}}, Tokens: []hub.ScopedToken{}}
+	data, err := json.Marshal(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "access.json")
+	if err := os.WriteFile(file, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return file, policy
+}
+
+// A membership change is prepared over a local copy with the hub's own
+// policy reader and handed over as a new policy and its install command; the
+// copy itself is never changed and nothing runs.
+func TestHubAdministrationPreparesMembershipChangesTheHubPolicyReaderAccepts(t *testing.T) {
+	copy, _ := accessCopy(t)
+	before, _ := os.ReadFile(copy)
+	admin := new(Admin)
+	added := admin.PrepareMembership(MembershipRequest{Operation: "add-member", PolicyCopy: copy, PolicyPath: "/etc/readmit-hub/access.json", Project: "alpha", Subject: "rui", Role: "reviewer"})
+	if added.State != "completed" || added.Before != "" || added.After != "reviewer" || !strings.Contains(added.Command, "mv -f '/etc/readmit-hub/.access.json.new' '/etc/readmit-hub/access.json'") {
+		t.Fatalf("add: %+v", added)
+	}
+	policy, err := hub.ReadAccessPolicy([]byte(added.Policy))
+	if err != nil || len(policy.Grants) != 2 || policy.Grants[1] != (hub.ProjectGrant{Project: "alpha", Subject: "rui", Role: "reviewer"}) {
+		t.Fatalf("the prepared policy: %v %+v", err, policy.Grants)
+	}
+	changed := admin.PrepareMembership(MembershipRequest{Operation: "change-role", PolicyCopy: copy, PolicyPath: "/etc/readmit-hub/access.json", Project: "alpha", Subject: "ana", Role: "viewer"})
+	if changed.State != "completed" || changed.Before != "analyst" || changed.After != "viewer" {
+		t.Fatalf("change: %+v", changed)
+	}
+	for name, refused := range map[string]MembershipRequest{
+		"an existing member added":  {Operation: "add-member", Project: "alpha", Subject: "ana", Role: "viewer"},
+		"a stranger's role changed": {Operation: "change-role", Project: "alpha", Subject: "rui", Role: "viewer"},
+		"the same role":             {Operation: "change-role", Project: "alpha", Subject: "ana", Role: "analyst"},
+		"an unknown role":           {Operation: "add-member", Project: "alpha", Subject: "rui", Role: "superuser"},
+		"an invalid project":        {Operation: "add-member", Project: "Alpha!", Subject: "rui", Role: "viewer"},
+	} {
+		refused.PolicyCopy, refused.PolicyPath = copy, "/etc/readmit-hub/access.json"
+		if answer := admin.PrepareMembership(refused); answer.State != "failed" || answer.Policy != "" {
+			t.Fatalf("%s: %+v", name, answer)
+		}
+	}
+	if after, _ := os.ReadFile(copy); string(after) != string(before) {
+		t.Fatal("the local copy was changed")
+	}
 }

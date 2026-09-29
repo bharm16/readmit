@@ -436,8 +436,8 @@ type SuiteApprovalReview struct {
 }
 
 // SuiteReviewersResult is the team reviewers a review request can ask: the
-// people the signed-in hub project's history names, other than the person
-// signed in.
+// signed-in hub project's active members who may approve, other than the
+// person signed in.
 type SuiteReviewersResult struct {
 	State     State          `json:"state"`
 	Reason    string         `json:"reason,omitzero"`
@@ -551,7 +551,7 @@ func (a *App) SuiteCoverage(request SuiteCoverageRequest) SuiteAssessment {
 }
 
 // SuiteReviewers lists the team reviewers a review request can ask, from the
-// signed-in customer hub's review history.
+// signed-in customer hub's project members.
 func (a *App) SuiteReviewers(request RequestContext) SuiteReviewersResult {
 	return runNamed[SuiteReviewersResult, *SuiteReviewersResult](a, profiles["SuiteReviewers"], func(ctx context.Context) SuiteReviewersResult {
 		result := SuiteReviewersResult{Context: request, Reviewers: []string{}}

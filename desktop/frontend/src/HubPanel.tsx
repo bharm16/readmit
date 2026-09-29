@@ -1,32 +1,33 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./hub.css";
 import {
-  chooseHubConfig,
-  connectHub,
-  disconnectHub,
-  diagnoseHub,
-  startHubAuth,
+  chooseHubTeamConfig,
   completeHubAuth,
+  connectHub,
+  diagnoseHub,
+  discardEditorDraft,
+  disconnectHub,
   hubStatus,
-  listHubProjectArtifacts,
-  downloadHubArtifact,
-  uploadHubArtifact,
-  type HubResult,
-  type HubDiagnosisResult,
-  type HubArtifactsResult,
-  type HubTransferResult,
+  readHubTeam,
+  saveHubTeam,
+  startHubAuth,
+  type Artifact,
   type HubCheckItem,
+  type HubConfigChoice,
+  type HubResult,
+  type HubTeamResult,
 } from "./bindings";
-import { OfflineRevisionDraft, TeamCollaboration, type RevisionContext } from "./TeamCollaboration";
-import { OperatorHub } from "./OperatorHub";
-import { HubAdministration } from "./HubAdministration";
-import type { Artifact } from "./bindings";
+import { TeamCollaboration, RevisionSheet } from "./TeamCollaboration";
+import { TeamAdministratorSetup } from "./HubAdministration";
+import { EmptyState, FormDialog, Menu, Modal, ValueRows } from "./layout";
 import { useLifecycle } from "./lifecycle";
 import { ViewKey, useViewState } from "./viewstate";
 
-/** The hub panel sits directly above the privacy screens, so the collaboration
- * journeys it hosts can name the open workspace's sharing-policy entries and
- * published support bundles without retyping a path. */
+/** Settings › Team: the one named team this window works with. Without a
+ * configuration it offers Connect team; configured, Sign in, one flow that
+ * connects, checks what it needs and signs in through the person's own
+ * browser; signed in, the selected project's Activity, Files and Reviews,
+ * read through that session. Administrator setup holds the named tasks. */
 export function HubPanel({
   workspace,
   entries = [],
@@ -39,487 +40,496 @@ export function HubPanel({
 }: {
   workspace?: string | null;
   entries?: Artifact[];
-  /** Each new value starts Choose configuration once, as Security's Add
-   * connection › Team does. */
+  /** Each new value opens Connect team once, as Security's Add connection ›
+   * Team does. */
   request?: number;
-  /** The request was taken up; the window stops asking. */
   onHandled?: () => void;
-  /** A choice of configuration ended: chosen, or not. */
+  /** Connect team ended: saved, or not. */
   onConfigured?: (chosen: boolean) => void;
-  /** The same, for the operator-only hub below. */
+  /** The same, for the operator hub in Administrator setup. */
   operatorRequest?: number;
   onOperatorHandled?: () => void;
   onOperatorConfigured?: (chosen: boolean) => void;
 }) {
   const [status, setStatus] = useViewState<HubResult | null>("HubPanel.status", null);
-  const [diagnosis, setDiagnosis] = useViewState<HubDiagnosisResult | null>("HubPanel.diagnosis", null);
-  const [authUrl, setAuthUrl] = useViewState<string | null>("HubPanel.authUrl", null);
-  const [selectedProject, setSelectedProject] = useViewState<string | null>("HubPanel.selectedProject", null);
-  const [artifacts, setArtifacts] = useViewState<HubArtifactsResult | null>("HubPanel.artifacts", null);
-  const [transfer, setTransfer] = useViewState<HubTransferResult | null>("HubPanel.transfer", null);
-  const [downloadDest, setDownloadDest] = useViewState("HubPanel.downloadDest", "");
-  const [uploadSource, setUploadSource] = useViewState("HubPanel.uploadSource", "");
-  // A sign-in waits for the browser under the facade's hub-sign-in operation,
-  // which its cancel stops.
-  const lifecycle = useLifecycle<"working" | "signing-in">({ names: { "signing-in": "hub-sign-in" } });
-  const busy = lifecycle.running !== null;
-  const [message, setMessage] = useViewState<string | null>("HubPanel.message", null);
-  const [adminOpen, setAdminOpen] = useViewState("HubPanel.adminOpen", false);
-  // The project whose results the panel shows now. An answer for another
-  // project — one asked for before the selection, configuration or session
-  // changed — is discarded rather than shown under this one.
-  const shown = useRef<string | null>(null);
-  // The last project and resource an offline draft was offered for, kept
-  // after sign-out for local retention only; another configuration drops it.
-  const [offline, setOffline] = useViewState<RevisionContext | null>("HubPanel.offline", null);
-  const rememberRevision = useCallback((context: RevisionContext) => setOffline(context), []);
+  const [project, setProject] = useViewState<string | null>("HubPanel.project", null);
+  const [page, setPage] = useViewState<"team" | "admin">("HubPanel.page", "team");
+  const [sheet, setSheet] = useState<null | "connect" | "signin" | "session">(null);
+  const [revision, setRevision] = useState<{ resource: string; base: string; source?: string; draft?: string } | null>(null);
+  const [team, setTeam] = useState<HubTeamResult | null>(null);
+  const [operatorAsk, setOperatorAsk] = useState(0);
+  const reads = useLifecycle<"status" | "team">({ background: true });
+  const actions = useLifecycle<"signout">();
 
-  function clearProject() {
-    shown.current = null;
-    setSelectedProject(null);
-    setArtifacts(null);
-    setTransfer(null);
-  }
+  const authenticated = status?.authenticated ?? false;
+  const configured = status?.state === "completed" && Boolean(status.config_path);
+  const authorized = (status?.projects ?? []).filter((entry) => entry.authorized);
+  const selected = authorized.find((entry) => entry.project === project)?.project ?? authorized[0]?.project ?? null;
+  // The project last opened, which offline revision drafts are kept for.
+  const drafting = selected ?? project;
+  useEffect(() => {
+    if (selected && selected !== project) setProject(selected);
+  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+  const context = `${status?.session_scope ?? `${status?.hub_url ?? ""}|${status?.expires_at ?? ""}`}|${status?.config_path ?? ""}|${status?.issuer ?? ""}|${status?.subject ?? ""}|${selected ?? ""}`;
+  // The context the team on screen was read for. A reply for any other one —
+  // asked before the team, the person or the project changed — is dropped.
+  const shownFor = useRef("");
+
+  const refreshStatus = useCallback(async () => {
+    const answer = await reads.run("status", () => hubStatus());
+    if (answer) setStatus(answer);
+  }, [reads, setStatus]);
 
   useEffect(() => {
-    let active = true;
-    void hubStatus().then((res) => {
-      if (active) setStatus(res);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    void refreshStatus();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const readTeam = useCallback(async () => {
+    if (!authenticated || !selected) return;
+    const asked = context;
+    const answer = await reads.run("team", () => readHubTeam({ project: selected, workspace: workspace ?? "" }));
+    if (!answer || shownFor.current !== asked) return;
+    if (answer.state === "permission_denied") {
+      // An expired session or a withdrawn grant: what the hub says now is
+      // what the page shows, with Sign in where it is needed.
+      await refreshStatus();
+    }
+    setTeam(answer);
+  }, [authenticated, context, reads, refreshStatus, selected, workspace]);
+
+  // After a deliberate sign-in the project's metadata is read through that
+  // session, and read again whenever the team, the person or the project
+  // changes; the previous context's data is gone first.
+  useEffect(() => {
+    shownFor.current = context;
+    setTeam(null);
+    if (authenticated && selected) void readTeam();
+  }, [context]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A request is handled once: a remount, or StrictMode's second run, does
-  // not start the setup again.
+  // not open Connect team again.
   const handled = useRef(0);
   useEffect(() => {
     if (request === 0) handled.current = 0;
     if (request === 0 || request === handled.current) return;
     handled.current = request;
     onHandled?.();
-    void handleChooseConfig();
+    setPage("team");
+    setSheet("connect");
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
+  const operatorHandled = useRef(0);
+  useEffect(() => {
+    if (operatorRequest === 0) operatorHandled.current = 0;
+    if (operatorRequest === 0 || operatorRequest === operatorHandled.current) return;
+    operatorHandled.current = operatorRequest;
+    onOperatorHandled?.();
+    setPage("admin");
+    setOperatorAsk((count) => count + 1);
+  }, [operatorRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleChooseConfig() {
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const res = await chooseHubConfig();
-      // Only a completed choice changes what is selected. A cancelled one
-      // leaves the panel as it was, a remembered configuration's reason
-      // included, and a refused one says why beside the selection the
-      // application kept.
-      if (res.state === "completed") {
-        setStatus(res);
-        setDiagnosis(null);
-        clearProject();
-        setOffline(null);
-      } else if (res.state !== "cancelled") {
-        setMessage(res.reason ?? "The hub configuration was not selected.");
-      }
-      onConfigured?.(res.state === "completed");
-    });
-  }
+  const signOut = async () => {
+    const answer = await actions.run("signout", () => disconnectHub());
+    if (answer) setStatus(answer);
+  };
 
-  async function handleDiagnose() {
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const res = await diagnoseHub();
-      setDiagnosis(res);
-    });
-  }
+  const teamName = status?.team || hostName(status?.hub_url) || "Team";
+  const moreItems = [
+    ...(configured ? [{ label: "Edit team", onSelect: () => setSheet("connect") }] : []),
+    { label: "Administrator setup", onSelect: () => setPage("admin") },
+  ];
 
-  async function handleConnect() {
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const res = await connectHub();
-      setStatus(res);
-    });
-  }
+  const connectSheet = (
+    <ConnectTeamSheet
+      open={sheet === "connect"}
+      current={status}
+      onClose={() => {
+        setSheet(null);
+        onConfigured?.(false);
+      }}
+      onSaved={(saved) => {
+        setStatus(saved);
+        setProject(null);
+        setSheet(null);
+        onConfigured?.(true);
+      }}
+    />
+  );
+  const signInSheet = (
+    <SignInSheet
+      open={sheet === "signin"}
+      status={status}
+      onEdit={() => setSheet("connect")}
+      onClose={() => setSheet(null)}
+      onSignedIn={(signedIn) => {
+        setStatus(signedIn);
+        setSheet(null);
+      }}
+      onStatus={setStatus}
+    />
+  );
 
-  async function handleDisconnect() {
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const res = await disconnectHub();
-      setStatus(res);
-      setDiagnosis(null);
-      clearProject();
-      setAuthUrl(null);
-    });
-  }
-
-  async function handleStartAuth() {
-    await lifecycle.run("signing-in", async () => {
-      setMessage(null);
-      try {
-        const res = await startHubAuth();
-        if (res.state !== "completed" || !res.auth_url) {
-          setMessage(res.reason ?? "Failed to start identity provider authentication.");
-          return;
-        }
-        setAuthUrl(res.auth_url);
-        // The sign-in holds the application's one operation slot while it
-        // waits for the browser, so the panel stays busy and offers only its
-        // cancel. A sign-in that does not complete keeps the connection as it
-        // was and says why; nothing is retried.
-        const authRes = await completeHubAuth("", "");
-        if (authRes.state === "completed") {
-          setStatus(authRes);
-        } else {
-          setMessage(authRes.reason ?? "Sign-in did not complete.");
-        }
-      } finally {
-        setAuthUrl(null);
-      }
-    });
-  }
-
-  async function handleRefreshStatus() {
-    await lifecycle.run("working", async () => {
-      const res = await hubStatus();
-      setStatus(res);
-      // A session that ended, or a project no longer authorized, takes its
-      // results with it.
-      if (!res.authenticated || !res.projects?.some((p) => p.project === shown.current && p.authorized)) {
-        clearProject();
-      }
-    });
-  }
-
-  async function handleViewArtifacts(project: string) {
-    if (shown.current !== project) {
-      setArtifacts(null);
-      setTransfer(null);
-    }
-    shown.current = project;
-    setSelectedProject(project);
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const res = await listHubProjectArtifacts(project);
-      if (shown.current === project) setArtifacts(res);
-    });
-  }
-
-  async function handleDownload(digest: string) {
-    if (!selectedProject || !downloadDest) {
-      setMessage("Please specify a destination file path.");
-      return;
-    }
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const project = selectedProject;
-      const res = await downloadHubArtifact({
-        project,
-        digest,
-        destination_path: downloadDest,
-      });
-      if (shown.current === project) setTransfer(res);
-    });
-  }
-
-  async function handleUpload() {
-    if (!selectedProject || !uploadSource) {
-      setMessage("Please specify a source file path to upload.");
-      return;
-    }
-    await lifecycle.run("working", async () => {
-      setMessage(null);
-      const project = selectedProject;
-      const res = await uploadHubArtifact({
-        project,
-        source_path: uploadSource,
-      });
-      if (shown.current !== project) return;
-      setTransfer(res);
-      if (res.state === "completed") {
-        // Refresh project artifacts
-        void handleViewArtifacts(selectedProject);
-      }
-    });
-  }
-
-  const isConnected = status?.connected ?? false;
-  const isAuthenticated = status?.authenticated ?? false;
-  // A remembered configuration that no longer validates is shown with its
-  // reason; it is neither diagnosed nor connected to until one is chosen again.
-  const isConfigured = status?.state === "completed" && Boolean(status.config_path);
-
-  const teamContext = `${status?.config_path ?? ""}|${status?.issuer ?? ""}|${status?.subject ?? ""}|${selectedProject}`;
-  return (
-    <section className="hub-panel" aria-labelledby="hub-panel-title">
-      <h3 id="hub-panel-title">Hub</h3>
-      <p>
-        Connect to a customer-controlled artifact hub with mutual TLS and customer IdP
-        authentication. Startup contacts no network service.
-      </p>
-
-      <div className="hub-context-status" role="status" aria-live="polite">
-        <p>
-          <strong>Connection </strong>
-          <span className={`hub-mode-badge ${isConnected ? "connected" : "offline"}`}>
-            {isConnected ? `Connected (${status?.hub_url ?? ""})` : "Offline / Local Mode"}
-          </span>
-        </p>
-        {status?.config_path ? (
-          <p className="hub-config-path">Configuration file: {status.config_path}</p>
-        ) : (
-          <p className="hub-hint">No configuration file selected. Working entirely offline.</p>
-        )}
-        {status?.reason ? <p className="hub-reason">{status.reason}</p> : null}
-        {message ? <p className="hub-message">{message}</p> : null}
-      </div>
-
-      {status?.custody_warning ? (
-        <div className="hub-custody-warning" role="note">
-          <strong>Copy custody: </strong>
-          {status.custody_warning}
-        </div>
-      ) : null}
-
-      <div className="hub-actions">
-        <button type="button" disabled={busy} onClick={() => void handleChooseConfig()}>
-          Choose configuration…
-        </button>
-        <button
-          type="button"
-          disabled={busy || !isConfigured}
-          onClick={() => void handleDiagnose()}
-        >
-          Check connection setup
-        </button>
-        {!isConnected ? (
-          <button
-            type="button"
-            disabled={busy || !isConfigured}
-            onClick={() => void handleConnect()}
-          >
-            Connect to hub
-          </button>
-        ) : (
-          <button type="button" disabled={busy} onClick={() => void handleDisconnect()}>
-            Disconnect
-          </button>
-        )}
-        <button type="button" disabled={busy} onClick={() => void handleRefreshStatus()}>
-          Refresh connection status
-        </button>
-      </div>
-
-      {diagnosis ? (
-        <div className="hub-diagnosis-results" aria-label="Prerequisite diagnostics">
-          <h4>Connection checks ({diagnosis.passed ? "All Passed" : "Checks Failed"})</h4>
-          <ul className="hub-checks-list">
-            {(diagnosis.checks ?? []).map((check: HubCheckItem) => (
-              <li key={check.name} className={check.passed ? "check-passed" : "check-failed"}>
-                <span className="check-indicator">{check.passed ? "PASS" : "FAIL"}</span>
-                <span className="check-name"> {check.name}: </span>
-                <span className="check-msg">{check.message}</span>
-                {check.detail ? <span className="check-detail"> ({check.detail})</span> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {isConnected && !isAuthenticated ? (
-        <div className="hub-auth-section">
-          <h4>Sign in</h4>
-          <p>
-            Sign in with your customer identity provider via PKCE loopback authentication, over this hub&apos;s mutual-TLS
-            connection.
-          </p>
-          <button type="button" disabled={busy} onClick={() => void handleStartAuth()}>
-            Sign in
-          </button>
-          {authUrl ? (
-            <p className="hub-auth-url">
-              Waiting for browser callback…{" "}
-              <a href={authUrl} target="_blank" rel="noreferrer">
-                Open sign-in page
-              </a>{" "}
-              <button type="button" onClick={lifecycle.cancel}>
-                Cancel sign-in
-              </button>
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {isAuthenticated ? (
-        <div className="hub-identity-section">
-          <h4>Signed-in identity</h4>
-          <p>
-            <strong>Subject ID</strong> {status?.subject}
-          </p>
-          <p>
-            <strong>Session expires</strong> {status?.expires_at}
-          </p>
-          <details>
-            <summary>Identity details</summary>
-            <p>
-              <strong>Issuer:</strong> {status?.issuer} | <strong>Audience:</strong> {status?.audience}
-            </p>
-          </details>
-          <button type="button" disabled={busy} onClick={() => void handleDisconnect()}>
-            Sign out and disconnect
-          </button>
-        </div>
-      ) : null}
-
-      {isConnected && isAuthenticated && status?.projects ? (
-        <div className="hub-projects-section">
-          <h4>Projects</h4>
-          <ul className="hub-projects-list">
-            {status.projects.map((proj) => (
-              <li key={proj.project} className="hub-project-card">
-                <div className="hub-project-header">
-                  <strong>{proj.project}</strong>
-                  <span className={`badge ${proj.authorized ? "authorized" : "denied"}`}>
-                    {proj.authorized ? "Authorized" : `Denied: ${proj.reason ?? "Unauthorized"}`}
-                  </span>
-                  {proj.head !== undefined && proj.head > 0 ? (
-                    <span className="head-count"> (Head: {proj.head})</span>
-                  ) : null}
-                </div>
-                {proj.capabilities && proj.capabilities.length > 0 ? (
-                  <details className="hub-capabilities">
-                    <summary>Permissions</summary>
-                    {proj.capabilities.map((cap) => (
-                      <span key={cap} className="capability-badge">
-                        [{cap}]
-                      </span>
-                    ))}
-                  </details>
-                ) : null}
-                {proj.warning ? <p className="project-warning">{proj.warning}</p> : null}
-                {proj.authorized ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void handleViewArtifacts(proj.project)}
-                  >
-                    View artifacts
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {selectedProject && artifacts ? (
-        <div className="hub-artifacts-section">
-          <h4>Artifacts: {selectedProject}</h4>
-          {artifacts.warning ? <p className="warning">{artifacts.warning}</p> : null}
-          <div className="hub-transfer-controls">
-            <label htmlFor="hub-dest-path">Download file</label>
-            <input
-              id="hub-dest-path"
-              type="text"
-              value={downloadDest}
-              onChange={(e) => setDownloadDest(e.target.value)}
-              placeholder="/path/to/downloaded-file"
-            />
-          </div>
-
-          <div className="hub-upload-controls">
-            <label htmlFor="hub-src-path">Artifact file</label>
-            <input
-              id="hub-src-path"
-              type="text"
-              value={uploadSource}
-              onChange={(e) => setUploadSource(e.target.value)}
-              placeholder="/path/to/local-artifact"
-            />
-            <button type="button" disabled={busy || !uploadSource} onClick={() => void handleUpload()}>
-              Upload artifact
-            </button>
-            <p className="hub-hint">
-              Uploads the file&apos;s bytes to project {selectedProject} on {status?.hub_url ?? "the connected hub"}.
-            </p>
-          </div>
-
-          {transfer ? (
-            <div className="hub-transfer-result" role="status">
-              <p>
-                Transfer state: <strong>{transfer.transfer_state || transfer.state}</strong>
-                {transfer.size ? ` (${transfer.size} bytes)` : ""}
-              </p>
-              {transfer.digest ? (
-                <p>
-                  Artifact digest: <code>{transfer.digest}</code>
-                </p>
-              ) : null}
-              {transfer.reason ? <p className="error">{transfer.reason}</p> : null}
-              {transfer.warning ? <p className="warning">{transfer.warning}</p> : null}
-            </div>
-          ) : null}
-
-          {artifacts.artifacts && artifacts.artifacts.length > 0 ? (
-            <table className="hub-artifacts-table">
-              <thead>
-                <tr>
-                  <th>SHA-256</th>
-                  <th>Artifact type</th>
-                  <th>Uploaded by</th>
-                  <th>Uploaded at</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {artifacts.artifacts.map((art) => (
-                  <tr key={art.digest}>
-                    <td title={art.digest}>{art.digest.slice(0, 16)}…</td>
-                    <td>{art.kind}</td>
-                    <td>{art.actor}</td>
-                    <td>{art.at}</td>
-                    <td>
-                      <button
-                        type="button"
-                        disabled={busy || !downloadDest}
-                        onClick={() => void handleDownload(art.digest)}
-                      >
-                        Download
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>No artifacts found in this project.</p>
-          )}
-        </div>
-      ) : null}
-
-      <OperatorHub
-        request={operatorRequest}
-        {...(onOperatorHandled ? { onHandled: onOperatorHandled } : {})}
-        {...(onOperatorConfigured ? { onConfigured: onOperatorConfigured } : {})}
+  const revisionSheet = () => {
+    if (!drafting) return null;
+    return (
+      <RevisionSheet
+        open={revision !== null}
+        project={drafting}
+        teamName={teamName}
+        workspace={workspace ?? ""}
+        resource={revision?.resource ?? ""}
+        base={revision?.base ?? ""}
+        source={revision?.source ?? ""}
+        resources={team?.state === "completed" ? team.resources : []}
+        onClose={() => setRevision(null)}
+        onDone={(result) => {
+          // A submitted draft is done: it is no longer kept to submit again.
+          if (result.outcome === "completed" && revision?.draft) void discardEditorDraft(revision.draft);
+          void readTeam();
+        }}
       />
-      <h4>
-        <button type="button" aria-expanded={adminOpen} aria-controls="hub-admin-handoff" onClick={() => setAdminOpen(!adminOpen)}>
-          Host administration
-        </button>
-      </h4>
-      <div id="hub-admin-handoff" hidden={!adminOpen}><HubAdministration /></div>
+    );
+  };
 
-      {isAuthenticated && selectedProject ? (
-        // A new configuration, session or project is a new context: the
-        // team panel starts over rather than keeping another one's heads,
-        // command IDs or results.
-        <ViewKey key={teamContext} id={teamContext}>
-        <TeamCollaboration
-          project={selectedProject}
+  if (page === "admin") {
+    return (
+      <section className="team-view" aria-label="Administrator setup">
+        <ViewKey key={context} id={context}>
+        <TeamAdministratorSetup
+          status={status}
+          project={drafting}
+          team={team}
+          teamName={teamName}
           workspace={workspace ?? ""}
-          entries={entries}
-          capabilities={status?.projects?.find((p) => p.project === selectedProject)?.capabilities ?? []}
-          onRevisionContext={rememberRevision}
+          operatorRequest={operatorAsk}
+          onOperatorConfigured={onOperatorConfigured}
+          onBack={() => setPage("team")}
+          onRead={readTeam}
+          onCreateRevision={(resource, base, source, draft) => setRevision({ resource, base, ...(source ? { source } : {}), ...(draft ? { draft } : {}) })}
         />
+        {revisionSheet()}
         </ViewKey>
-      ) : null}
-      {!isAuthenticated && offline && workspace ? <OfflineRevisionDraft workspace={workspace} context={offline} /> : null}
+      </section>
+    );
+  }
+
+  if (!status) return null;
+
+  if (!configured) {
+    return (
+      <section className="team-view" aria-label="Team">
+        <div className="team-header">
+          <span className="team-name">Team</span>
+          <Menu label="More team actions" items={moreItems} />
+        </div>
+        {status.state === "failed" && status.reason ? <p role="alert">{status.reason}</p> : null}
+        <EmptyState
+          title="No team configured"
+          action={
+            <button type="button" className="primary" onClick={() => setSheet("connect")}>
+              Connect team
+            </button>
+          }
+        />
+        {connectSheet}
+      </section>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <section className="team-view" aria-label="Team">
+        <div className="team-header">
+          <span className="team-name">{teamName}</span>
+          <Menu label="More team actions" items={moreItems} />
+        </div>
+        <EmptyState
+          title={status.reason && /expired/i.test(status.reason) ? "Session ended" : "Not connected"}
+          action={
+            <button type="button" className="primary" onClick={() => setSheet("signin")}>
+              Sign in
+            </button>
+          }
+        />
+        {connectSheet}
+        {signInSheet}
+      </section>
+    );
+  }
+
+  return (
+    <section className="team-view" aria-label="Team">
+      <div className="team-header">
+        <span className="team-name">{teamName}</span>
+        <span className="team-separator" aria-hidden="true">
+          /
+        </span>
+        {authorized.length > 1 ? (
+          <select aria-label="Project" value={selected ?? ""} onChange={(event) => setProject(event.target.value)}>
+            {authorized.map((entry) => (
+              <option key={entry.project} value={entry.project}>
+                {entry.project}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="team-project-name">{selected ?? "No project"}</span>
+        )}
+        <Menu
+          className="team-account"
+          label="Account"
+          trigger={status.subject}
+          items={[
+            { label: "Session details", onSelect: () => setSheet("session") },
+            { label: "Edit team", onSelect: () => setSheet("connect") },
+            { label: "Administrator setup", onSelect: () => setPage("admin") },
+            { label: "Sign out", onSelect: () => void signOut(), separated: true, disabled: actions.running !== null },
+          ]}
+        />
+      </div>
+      {selected === null ? (
+        <EmptyState title="No projects you can open" />
+      ) : team === null ? (
+        <p aria-live="polite">Reading…</p>
+      ) : team.state !== "completed" ? (
+        <p role="alert">{team.reason ?? "The project could not be read."}</p>
+      ) : (
+        // Another team, person or project is another context: the view
+        // starts over rather than keeping another one's selections.
+        <ViewKey key={context} id={context}>
+          <TeamCollaboration
+            project={selected}
+            teamName={teamName}
+            team={team}
+            workspace={workspace ?? ""}
+            entries={entries}
+            onRead={readTeam}
+            onCreateRevision={(resource, base) => setRevision({ resource, base })}
+          />
+        </ViewKey>
+      )}
+      <Modal open={sheet === "session"} title="Session" size="small" onClose={() => setSheet(null)}>
+        <ValueRows
+          label="Session"
+          rows={[
+            { label: "Signed in as", value: status.subject ?? "—" },
+            { label: "Identity provider", value: status.issuer ?? "—" },
+            { label: "Team", value: status.hub_url ?? "—" },
+            { label: "Session ends", value: status.expires_at ? new Date(status.expires_at).toLocaleString() : "—" },
+          ]}
+        />
+      </Modal>
+      {connectSheet}
+      {revisionSheet()}
     </section>
+  );
+}
+
+function hostName(address: string | undefined): string {
+  if (!address) return "";
+  try {
+    return new URL(address).hostname;
+  } catch {
+    return "";
+  }
+}
+
+/** Connect team: a name and the configuration the organization provided,
+ * which carries the team's address, certificates, key locator and identity
+ * provider. Save selects it; it never connects. */
+function ConnectTeamSheet({
+  open,
+  current,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  current: HubResult | null;
+  onClose: () => void;
+  onSaved: (status: HubResult) => void;
+}) {
+  const [name, setName] = useState("");
+  const [choice, setChoice] = useState<HubConfigChoice | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setName(current?.team ?? "");
+    setChoice(current?.config_path ? { state: "completed", config: current.config_path, ...(current.hub_url ? { hub_url: current.hub_url } : {}) } : null);
+    setProblem(null);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const choose = async () => {
+    const answer = await chooseHubTeamConfig();
+    if (answer.state === "completed") {
+      setChoice(answer);
+      setProblem(null);
+      if (!name.trim() && answer.name) setName(answer.name);
+    } else if (answer.state !== "cancelled") {
+      setProblem(answer.reason ?? "This configuration cannot be used.");
+    }
+  };
+  return (
+    <FormDialog
+      open={open}
+      title={current?.config_path ? "Edit team" : "Connect team"}
+      submitLabel="Save"
+      submitDisabled={!choice?.config || name.trim() === ""}
+      dirty={choice?.config !== current?.config_path || name.trim() !== (current?.team ?? "")}
+      onClose={onClose}
+      status={problem ? <p role="alert">{problem}</p> : undefined}
+      onSubmit={async () => {
+        const saved = await saveHubTeam({ name: name.trim(), config: choice?.config ?? "" });
+        if (saved.state !== "completed") return { reason: saved.reason ?? "The team was not saved.", field: "team-name" };
+        onSaved(saved);
+        return null;
+      }}
+    >
+      <label htmlFor="team-name">Name</label>
+      <input id="team-name" maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+      <label htmlFor="team-config">Configuration</label>
+      <div className="field-with-action">
+        <span id="team-config">{choice?.hub_url ? hostName(choice.hub_url) || choice.hub_url : "—"}</span>
+        <button type="button" onClick={() => void choose()}>
+          {choice ? "Replace…" : "Choose file…"}
+        </button>
+      </div>
+      {choice?.projects && choice.projects.length > 0 ? <ValueRows label="Configuration" rows={[{ label: "Projects", value: choice.projects.join(", ") }]} /> : null}
+    </FormDialog>
+  );
+}
+
+type Step = { key: "check" | "connect" | "browser"; state: "waiting" | "running" | "done" | "failed" };
+
+/** Sign in: one flow, started by the person, that checks the team's setup,
+ * connects and signs in through the identity provider in their own browser.
+ * A step that fails says why and offers Edit; nothing is retried. */
+function SignInSheet({
+  open,
+  status,
+  onEdit,
+  onClose,
+  onSignedIn,
+  onStatus,
+}: {
+  open: boolean;
+  status: HubResult | null;
+  onEdit: () => void;
+  onClose: () => void;
+  onSignedIn: (status: HubResult) => void;
+  onStatus: (status: HubResult) => void;
+}) {
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [checks, setChecks] = useState<HubCheckItem[]>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [page, setPage] = useState<string | null>(null);
+  const flow = useLifecycle<"signing-in" | "working">({ names: { "signing-in": "hub-sign-in" } });
+  const set = (key: Step["key"], state: Step["state"]) => setSteps((all) => all.map((step) => (step.key === key ? { ...step, state } : step)));
+  const start = async () => {
+    setProblem(null);
+    setChecks([]);
+    setPage(null);
+    setSteps([
+      { key: "check", state: "waiting" },
+      { key: "connect", state: "waiting" },
+      { key: "browser", state: "waiting" },
+    ]);
+    if (!status?.connected) {
+      set("check", "running");
+      const diagnosis = await flow.run("working", () => diagnoseHub());
+      if (!diagnosis) return;
+      if (diagnosis.state !== "completed" || !diagnosis.passed) {
+        set("check", "failed");
+        setChecks((diagnosis.checks ?? []).filter((check) => !check.passed));
+        setProblem(diagnosis.reason ?? null);
+        return;
+      }
+      set("check", "done");
+      set("connect", "running");
+      const connected = await flow.run("working", () => connectHub());
+      if (!connected) return;
+      if (connected.state !== "completed" || !connected.connected) {
+        set("connect", "failed");
+        setProblem(connected.reason ?? "The team could not be reached.");
+        return;
+      }
+      onStatus(connected);
+    }
+    set("check", "done");
+    set("connect", "done");
+    set("browser", "running");
+    await flow.run("signing-in", async () => {
+      const started = await startHubAuth();
+      if (started.state !== "completed" || !started.auth_url) {
+        set("browser", "failed");
+        setProblem(started.reason ?? "Sign-in could not start.");
+        return;
+      }
+      if (!started.opened) setPage(started.auth_url);
+      const signedIn = await completeHubAuth("", "");
+      setPage(null);
+      if (signedIn.state === "completed" && signedIn.authenticated) {
+        set("browser", "done");
+        onSignedIn(signedIn);
+        return;
+      }
+      // A cancelled or failed browser sign-in keeps the team configured
+      // and not signed in, with the reason.
+      set("browser", "failed");
+      setProblem(signedIn.reason ?? "Sign-in did not complete.");
+    });
+  };
+  useEffect(() => {
+    if (open) void start();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const labels: Record<Step["key"], string> = { check: "Check setup", connect: "Connect", browser: "Sign in with your browser" };
+  const words: Record<Step["state"], string> = { waiting: "", running: "In progress", done: "Done", failed: "Failed" };
+  const failed = steps.some((step) => step.state === "failed");
+  return (
+    <Modal
+      open={open}
+      title="Sign in"
+      size="normal"
+      onClose={onClose}
+      footer={
+        <div className="dialog-footer">
+          {failed ? (
+            <>
+              <button type="button" onClick={onEdit}>
+                Edit
+              </button>
+              <button type="button" className="primary" onClick={() => void start()}>
+                Try again
+              </button>
+            </>
+          ) : flow.running === "signing-in" ? (
+            <button type="button" onClick={flow.cancel}>
+              Stop
+            </button>
+          ) : null}
+        </div>
+      }
+    >
+      <ol className="sign-in-steps" aria-label="Sign-in steps">
+        {steps.map((step) => (
+          <li key={step.key} data-state={step.state}>
+            <span>{labels[step.key]}</span>
+            {words[step.state] ? <span className="step-state">{words[step.state]}</span> : null}
+          </li>
+        ))}
+      </ol>
+      {checks.length > 0 ? (
+        <ul className="plain-list" aria-label="Setup problems">
+          {checks.map((check) => (
+            <li key={check.name}>{check.message}</li>
+          ))}
+        </ul>
+      ) : null}
+      {problem ? <p role="alert">{problem}</p> : null}
+      {page ? (
+        <p>
+          <a href={page} target="_blank" rel="noreferrer">
+            Open sign-in page
+          </a>
+        </p>
+      ) : null}
+    </Modal>
   );
 }

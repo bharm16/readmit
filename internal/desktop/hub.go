@@ -50,16 +50,19 @@ type HubProjectInfo struct {
 
 // HubResult describes the current hub connection, authentication and project state.
 type HubResult struct {
-	State          State            `json:"state"`
-	Reason         string           `json:"reason,omitzero"`
-	Connected      bool             `json:"connected"`
-	Authenticated  bool             `json:"authenticated"`
-	Subject        string           `json:"subject,omitzero"`
-	Issuer         string           `json:"issuer,omitzero"`
-	Audience       string           `json:"audience,omitzero"`
-	ExpiresAt      string           `json:"expires_at,omitzero"`
-	ConfigPath     string           `json:"config_path,omitzero"`
-	HubURL         string           `json:"hub_url,omitzero"`
+	State         State  `json:"state"`
+	Reason        string `json:"reason,omitzero"`
+	Connected     bool   `json:"connected"`
+	Authenticated bool   `json:"authenticated"`
+	SessionScope  string `json:"session_scope,omitzero"`
+	Subject       string `json:"subject,omitzero"`
+	Issuer        string `json:"issuer,omitzero"`
+	Audience      string `json:"audience,omitzero"`
+	ExpiresAt     string `json:"expires_at,omitzero"`
+	ConfigPath    string `json:"config_path,omitzero"`
+	HubURL        string `json:"hub_url,omitzero"`
+	// Team is the name the person gave the selected configuration's team.
+	Team           string           `json:"team,omitzero"`
 	Projects       []HubProjectInfo `json:"projects,omitzero"`
 	CustodyWarning string           `json:"custody_warning,omitzero"`
 }
@@ -90,6 +93,8 @@ type HubAuthUrlResult struct {
 	Reason  string `json:"reason,omitzero"`
 	AuthURL string `json:"auth_url,omitzero"`
 	Port    int    `json:"port,omitzero"`
+	// Opened says the sign-in page was opened in the person's browser.
+	Opened bool `json:"opened,omitzero"`
 }
 
 func (r *HubAuthUrlResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -276,7 +281,9 @@ func (a *App) DisconnectHub() HubResult {
 		if status.Config != nil {
 			hubURL = status.Config.Hub
 		}
+		team, _ := a.hubTeamLabel(status.ConfigPath)
 		return HubResult{
+			Team:           team,
 			State:          Completed,
 			Connected:      false,
 			Authenticated:  false,
@@ -298,6 +305,7 @@ func (a *App) StartHubAuth() HubAuthUrlResult {
 			State:   Completed,
 			AuthURL: authURL,
 			Port:    port,
+			Opened:  a.openSignInPage(authURL),
 		}
 	})
 }
@@ -363,6 +371,7 @@ func (a *App) hubStatus(ctx context.Context) HubResult {
 		ConfigPath: configPath,
 		HubURL:     cfg.Hub,
 	}
+	res.Team, res.Reason = a.hubTeamLabel(configPath)
 
 	if session != nil {
 		if session.IsExpired(time.Now()) {
@@ -370,6 +379,7 @@ func (a *App) hubStatus(ctx context.Context) HubResult {
 			res.Reason = "hub session expired; sign in again"
 		} else {
 			res.Authenticated = true
+			res.SessionScope = a.teamConnectionBinding(client, session)
 			res.Subject = session.Subject
 			res.Issuer = session.Issuer
 			res.Audience = session.Audience

@@ -22,12 +22,15 @@ import (
 
 // The contract names the protocol reads and writes. A support command (the
 // sharing workflow) is the only v2 review command, and it is recorded as the
-// only v2 review event.
+// only v2 review event. A request for changes is the only v3 review command,
+// recorded as the only v3 review event.
 const (
 	ReviewCommandV1        = "readmit-hub-review-command/v1"
 	ReviewCommandV2        = "readmit-hub-review-command/v2"
+	ReviewCommandV3        = "readmit-hub-review-command/v3"
 	ReviewEventV1          = "readmit-hub-review-event/v1"
 	ReviewEventV2          = "readmit-hub-review-event/v2"
+	ReviewEventV3          = "readmit-hub-review-event/v3"
 	ReviewHistoryV1        = "readmit-hub-review-history/v1"
 	ReviewHistoryV2        = "readmit-hub-review-history/v2"
 	ReviewQuerySchema      = "readmit-hub-review-query/v1"
@@ -226,13 +229,14 @@ type AuditExport struct {
 }
 
 // commandSchemas maps each review kind onto the command version that carries
-// its family: the support kinds are the sharing workflow and ride v2; every
-// other kind rides v1.
+// its family: the support kinds are the sharing workflow and ride v2; a
+// request for changes rides v3; every other kind rides v1.
 var commandSchemas = map[string]string{
 	"comment":          ReviewCommandV1,
 	"assignment":       ReviewCommandV1,
 	"review-request":   ReviewCommandV1,
 	"approval":         ReviewCommandV1,
+	"change-request":   ReviewCommandV3,
 	"support-policy":   ReviewCommandV2,
 	"support-request":  ReviewCommandV2,
 	"support-approval": ReviewCommandV2,
@@ -255,12 +259,33 @@ func IsSupportRequest(c ReviewCommand) bool { return IsSupport(c) && c.Kind == "
 // IsSupportApproval reports whether c approves a support request.
 func IsSupportApproval(c ReviewCommand) bool { return IsSupport(c) && c.Kind == "support-approval" }
 
+// IsChangeRequest reports whether c asks for changes to a requested review.
+func IsChangeRequest(c ReviewCommand) bool { return c.Schema == ReviewCommandV3 }
+
+// V2Only reports whether c is carried only by the v2 routes: a support
+// command or a request for changes, which a v1 client cannot read.
+func V2Only(c ReviewCommand) bool { return IsSupport(c) || IsChangeRequest(c) }
+
+// EventSchema is the event version a command is recorded under.
+func EventSchema(c ReviewCommand) string {
+	switch {
+	case IsSupport(c):
+		return ReviewEventV2
+	case IsChangeRequest(c):
+		return ReviewEventV3
+	}
+	return ReviewEventV1
+}
+
 // ValidEventVersion reports whether a recorded event carries the event
 // version its command's family is recorded under. allowV2 admits the support
-// family, which an older record cannot hold.
-func ValidEventVersion(e ReviewEvent, allowV2 bool) bool {
-	if IsSupport(e.Command) {
+// family and allowV3 requests for changes, which an older record cannot hold.
+func ValidEventVersion(e ReviewEvent, allowV2, allowV3 bool) bool {
+	switch {
+	case IsSupport(e.Command):
 		return allowV2 && e.Schema == ReviewEventV2
+	case IsChangeRequest(e.Command):
+		return allowV3 && e.Schema == ReviewEventV3
 	}
 	return e.Command.Schema == ReviewCommandV1 && e.Schema == ReviewEventV1
 }
@@ -273,11 +298,17 @@ func DecodeReviewCommand(data []byte) (ReviewCommand, error) {
 	if len(data) > MaxCommandBytes || RequireExactMembers(data, "schema", "id", "expected", "kind", "evidence", "parent", "recipient", "text", "release") != nil || json.Unmarshal(data, &c, json.RejectUnknownMembers(true)) != nil {
 		return c, ErrRefused
 	}
-	if (c.Schema != ReviewCommandV1 && !IsSupport(c)) || !ValidProject(c.ID) || c.Expected < 0 || c.Expected >= MaxReviews || !ValidDigest(c.Evidence) || (c.Parent != "" && !ValidProject(c.Parent)) || !ValidText(c.Recipient, 256) || !ValidText(c.Text, 2048) || strings.TrimSpace(c.Text) == "" {
+	if (c.Schema != ReviewCommandV1 && !IsSupport(c) && !IsChangeRequest(c)) || !ValidProject(c.ID) || c.Expected < 0 || c.Expected >= MaxReviews || !ValidDigest(c.Evidence) || (c.Parent != "" && !ValidProject(c.Parent)) || !ValidText(c.Recipient, 256) || !ValidText(c.Text, 2048) || strings.TrimSpace(c.Text) == "" {
 		return c, ErrRefused
 	}
 	if IsSupport(c) {
 		return c, supportShape(c)
+	}
+	if IsChangeRequest(c) {
+		if c.Kind != "change-request" || c.Recipient != "" || !ValidDigest(c.Release) || c.Parent == "" {
+			return c, ErrRefused
+		}
+		return c, nil
 	}
 	switch c.Kind {
 	case "comment":

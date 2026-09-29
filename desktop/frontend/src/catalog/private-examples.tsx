@@ -87,5 +87,4 @@ export const privateExamples: Example[] = [
   p("RunnerPanel", "RunnerCapacity", {}),
   p("SyntheticPackets", "SyntheticPacketDetails", privateData.syntheticPacket),
   p("SyntheticPackets", "SyntheticRerunDetails", privateData.syntheticRerun),
-  p("TeamCollaboration", "LifecycleWrite", privateData.lifecycleWrite),
 ];

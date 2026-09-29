@@ -32,7 +32,7 @@ func (c *fakeClock) now() time.Time { return c.at }
 
 func memoryLog(t *testing.T) (projectLog, *memoryStorage, *fakeClock) {
 	t.Helper()
-	storage := newMemoryStorage([]projectLink{{logProject, evidence}, {logProject, retiredLink}}, func(d string) ([]byte, error) {
+	storage := newMemoryStorage([]projectLink{{Project: logProject, Digest: evidence}, {Project: logProject, Digest: retiredLink}}, func(d string) ([]byte, error) {
 		if d == evidence || d == retiredLink {
 			return []byte("synthetic evidence"), nil
 		}

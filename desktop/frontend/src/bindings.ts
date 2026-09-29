@@ -66,8 +66,23 @@ import type {
   GridResult,
   GuideResult,
   HubAdminFacade,
+  HubAdminMembershipRequest,
+  HubAdminMembershipResult,
   HubAdminRequest,
   HubAdminResult,
+  HubConfigChoice,
+  HubConflictRequest,
+  HubConflictResult,
+  HubFileRequest,
+  HubMembersResult,
+  HubRetentionApply,
+  HubRetentionRequest,
+  HubRetentionResult,
+  HubSetupExport,
+  HubSupportSummaryResult,
+  HubTeamReadRequest,
+  HubTeamRequest,
+  HubTeamResult,
   HubArtifactsResult,
   HubAuthUrlResult,
   HubDiagnosisResult,
@@ -1056,6 +1071,74 @@ export function previewHubAdministration(request: HubAdminRequest): Promise<HubA
 
 export function cancelHubAdministrationPreview(): Promise<HubAdminResult> {
   return guard(() => hubAdminFacade().CancelPreview(), { state: "failed" });
+}
+
+export function prepareHubMembership(request: HubAdminMembershipRequest): Promise<HubAdminMembershipResult> {
+  return guard(() => hubAdminFacade().PrepareMembership(request), { state: "failed" });
+}
+
+// Team: the named team a person connects to, the project metadata its
+// session reads, and the named transfers and administration tasks. A list
+// read never transfers an artifact's bytes.
+export function chooseHubTeamConfig(): Promise<HubConfigChoice> {
+  return guard(() => facade().ChooseHubTeamConfig(), { state: "failed" });
+}
+
+export function saveHubTeam(request: HubTeamRequest): Promise<HubResult> {
+  return guard(() => facade().SaveHubTeam(request), { state: "failed", connected: false, authenticated: false });
+}
+
+const emptyTeam = { capabilities: [], review_head: 0, lifecycle_head: 0, activity: [], reviews: [], files: [], resources: [] };
+
+export function readHubTeam(request: HubTeamReadRequest): Promise<HubTeamResult> {
+  return retryingRead(() => facade().ReadHubTeam(request), { state: "failed", ...emptyTeam });
+}
+
+export function reconcileTeamTransfer(operation: string): Promise<ReviewedActionResult> {
+  return guard(() => facade().ReconcileTeamTransfer(operation), { state: "failed", outcome: "uncertain", replayed: false, context: { project: "", generation: 0 } });
+}
+
+export function listHubMembers(project: string): Promise<HubMembersResult> {
+  return retryingRead(() => facade().ListHubMembers(project), { state: "failed", members: [] });
+}
+
+export function listHubReviewers(project: string): Promise<HubMembersResult> {
+  return retryingRead(() => facade().ListHubReviewers(project), { state: "failed", members: [] });
+}
+
+export function downloadHubFile(request: HubFileRequest): Promise<HubTransferResult> {
+  return guard(() => facade().DownloadHubFile(request), { state: "failed" });
+}
+
+export function downloadHubSummary(request: HubFileRequest): Promise<HubTransferResult> {
+  return guard(() => facade().DownloadHubSummary(request), { state: "failed" });
+}
+
+export function readHubSupportSummary(request: HubFileRequest): Promise<HubSupportSummaryResult> {
+  return guard(() => facade().ReadHubSupportSummary(request), { state: "failed" });
+}
+
+export function exportHubSetup(request: HubSetupExport): Promise<HubTransferResult> {
+  return guard(() => facade().ExportHubSetup(request), { state: "failed" });
+}
+
+export function chooseHubLocalCopy(kind: string): Promise<PathChoiceResult> {
+  return guard(() => facade().ChooseHubLocalCopy(kind), { state: "failed", kind, paths: [] });
+}
+
+export function previewHubRetention(request: HubRetentionRequest): Promise<HubRetentionResult> {
+  return guard(() => facade().PreviewHubRetention(request), { state: "failed", rows: [] });
+}
+
+/** Applies a reviewed retention change under the click's intent: a call that
+ * never reached the application is asked again with the same intent, which
+ * records nothing twice. */
+export function applyHubRetention(request: HubRetentionApply): Promise<HubRetentionResult> {
+  return submitted(() => facade().ApplyHubRetention(request), { state: "failed", rows: [] });
+}
+
+export function openHubConflict(request: HubConflictRequest): Promise<HubConflictResult> {
+  return guard(() => facade().OpenHubConflict(request), { state: "failed", tips: [], text: false, hunks: [] });
 }
 
 export function chooseHubConfig(): Promise<HubResult> {

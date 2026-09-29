@@ -15,15 +15,15 @@ import (
 	"github.com/bharm16/readmit/internal/operationguard"
 )
 
-// This file holds what the shell's ten local documents share: saved
+// This file holds what the shell's eleven local documents share: saved
 // filters, working session, editor drafts, remembered
-// projects, opened objects, remembered storage, preferences, and operation, commercial and hub selections. One store owns
+// projects, opened objects, remembered storage, preferences, operation, commercial and hub selections, and the team's name. One store owns
 // the folder they live in, the file names they are kept under, the one rule
 // they are read by, and the one way any of them is replaced. Each document supplies only its contract
 // version and its decoder. replaceDocument, beneath the store, is also how a
 // workspace save writes over an entry it may overwrite.
 
-// ShellDocuments is the store of the shell's ten local documents. They are
+// ShellDocuments is the store of the shell's eleven local documents. They are
 // separate owner-only files that live beside each other in one folder, each
 // named by the store and none derived from another, and none of them is
 // evidence: no case, run, result, review or report ever holds one.
@@ -32,7 +32,7 @@ type ShellDocuments struct {
 	Folder string
 }
 
-// The ten file names. The store owns them: nothing the shell is wired up
+// The eleven file names. The store owns them: nothing the shell is wired up
 // with names a document, only the folder they all live in. An earlier
 // release's recent-folder list may still be there beside them.
 const (
@@ -46,6 +46,7 @@ const (
 	storageName             = "storage.json"
 	preferencesName         = "preferences.json"
 	openedName              = "opened.json"
+	hubTeamName             = "hub-team.json"
 )
 
 // recentName is an earlier release's recent-folder list. It is read only

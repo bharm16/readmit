@@ -1,4 +1,4 @@
-import { useEffect, useRef, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   chooseOperatorHubConfig,
   connectOperatorHub,
@@ -8,40 +8,34 @@ import {
   type HubResult,
   type HubTransferResult,
 } from "./bindings";
+import { FormDialog, ValueRows } from "./layout";
 import { useLifecycle } from "./lifecycle";
 import { useViewState } from "./viewstate";
 
-/** The hub panel's operator-only mode. A hub its operator serves without an
- * access policy is an opaque store of artifacts by SHA-256 digest, reached
- * with the client certificate alone: no identity provider, no project and no
- * sign-in, so the team mode above can never reach it. Every read and store is
- * the person's own act. The application checks each read's bytes against the
- * digest before it writes them to a new file named in the save dialog, admits
- * a store against this computer's license before anything is chosen or sent,
- * and shows the custody notice. The selection and connection last while the
- * window is open. */
+/** Administrator setup › Operator hub: a hub its operator serves without
+ * team access, an opaque store of artifacts by SHA-256 reached with the
+ * client certificate alone, configured and connected on its own, apart from
+ * Team. Every store and read is the person's own act: a store is admitted
+ * against this computer's license first, and a read's bytes are checked
+ * against the hash before they are written to a new file. */
 export function OperatorHub({
   request = 0,
   onHandled,
   onConfigured,
 }: {
   /** Each new value starts Choose configuration once, as Security's Edit of
-   * the operator-only hub does. */
+   * the operator hub does. */
   request?: number;
-  /** The request was taken up; the window stops asking. */
   onHandled?: () => void;
-  /** A choice of configuration ended: chosen, or not. */
   onConfigured?: (chosen: boolean) => void;
 } = {}) {
   const [status, setStatus] = useViewState<HubResult | null>("OperatorHub.status", null);
   const [transfer, setTransfer] = useViewState<{ kind: "read" | "store"; result: HubTransferResult } | null>("OperatorHub.transfer", null);
-  const [digest, setDigest] = useViewState("OperatorHub.digest", "");
+  const [message, setMessage] = useViewState<string | null>("OperatorHub.message", null);
+  const [reading, setReading] = useState(false);
+  const [digest, setDigest] = useState("");
   const { running, run } = useLifecycle<"working">();
   const busy = running !== null;
-  const [message, setMessage] = useViewState<string | null>("OperatorHub.message", null);
-  // The mode is disclosed on demand; closing it hides it and keeps its state.
-  const [open, setOpen] = useViewState("OperatorHub.open", false);
-
   const connected = status?.connected ?? false;
   const configured = Boolean(status?.config_path);
 
@@ -51,154 +45,98 @@ export function OperatorHub({
       settle(await call());
     });
   }
-
   // Only a completed choice changes what is selected; a dismissed dialog
-  // leaves the mode as it was, and a refused choice says why beside it.
+  // leaves the mode as it was, and a refused choice says why.
   const choose = () =>
     act(chooseOperatorHubConfig, (result) => {
       if (result.state === "completed") {
         setStatus(result);
         setTransfer(null);
       } else if (result.state !== "cancelled") {
-        setMessage(result.reason ?? "The operator-only hub configuration was not selected.");
+        setMessage(result.reason ?? "This configuration cannot be used.");
       }
       onConfigured?.(result.state === "completed");
     });
-
-  // A request is handled once: a remount, or StrictMode's second run, does
-  // not start the setup again.
   const handled = useRef(0);
   useEffect(() => {
     if (request === 0) handled.current = 0;
     if (request === 0 || request === handled.current) return;
     handled.current = request;
     onHandled?.();
-    setOpen(true);
-    choose();
+    void choose();
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const connect = () =>
-    act(connectOperatorHub, (result) => {
-      if (result.state === "completed") {
-        setStatus(result);
-      } else {
-        setMessage(result.reason ?? "The operator-only hub was not connected.");
-      }
-    });
-
-  const disconnect = () =>
-    act(disconnectOperatorHub, (result) => {
-      setStatus(result);
-    });
-
-  // A dismissed dialog reads or stores nothing and leaves the last result.
   const settleTransfer = (kind: "read" | "store") => (result: HubTransferResult) => {
     if (result.state !== "cancelled") setTransfer({ kind, result });
   };
-
-  const store = () => act(storeOperatorHubArtifact, settleTransfer("store"));
-
-  const read = (event: FormEvent) => {
-    event.preventDefault();
-    if (busy || !digest.trim()) return;
-    void act(() => readOperatorHubArtifact(digest.trim()), settleTransfer("read"));
-  };
-
   return (
-    <section className="hub-operator" aria-labelledby="hub-operator-title">
-      <h4 id="hub-operator-title">
-        <button type="button" aria-expanded={open} aria-controls="hub-operator-mode" onClick={() => setOpen(!open)}>
-          Operator-only hub
+    <section className="hub-operator" aria-label="Operator hub">
+      <div className="section-toolbar">
+        <button type="button" disabled={busy} onClick={() => void choose()}>
+          {configured ? "Edit" : "Choose configuration…"}
         </button>
-      </h4>
-      <div id="hub-operator-mode" className="hub-operator-mode" hidden={!open}>
-        <p>
-          A hub its operator serves without team access is a store of artifacts by SHA-256 digest. Every client of the
-          hub&apos;s certificate authority reads and stores every artifact in it, with no project, role or sign-in.
-          Nothing is read or stored until you ask.
-        </p>
-
-        <div className="hub-context-status" role="status" aria-live="polite">
-          <p>
-            <span className={`hub-mode-badge ${connected ? "connected" : "offline"}`}>
-              {connected ? `Connected to operator-only hub (${status?.hub_url ?? ""})` : "Not connected"}
-            </span>
-          </p>
-          {status?.config_path ? (
-            <p className="hub-config-path">Operator-only configuration: {status.config_path}</p>
-          ) : (
-            <p className="hub-hint">No operator-only hub configuration chosen.</p>
-          )}
-          {message ? <p className="hub-message">{message}</p> : null}
-        </div>
-
-        {status?.custody_warning ? (
-          <div className="hub-custody-warning" role="note">
-            <strong>Copy custody: </strong>
-            {status.custody_warning}
-          </div>
-        ) : null}
-
-        <div className="hub-actions">
-          <button type="button" disabled={busy} onClick={() => void choose()}>
-            Choose configuration…
-          </button>
-          {!connected ? (
-            <button type="button" disabled={busy || !configured} onClick={() => void connect()}>
-              Connect
+        {connected ? (
+          <>
+            <button type="button" disabled={busy} onClick={() => void act(storeOperatorHubArtifact, settleTransfer("store"))}>
+              Upload file
             </button>
-          ) : (
-            <button type="button" disabled={busy} onClick={() => void disconnect()}>
+            <button type="button" disabled={busy} onClick={() => setReading(true)}>
+              Download by hash
+            </button>
+            <button type="button" disabled={busy} onClick={() => void act(disconnectOperatorHub, setStatus)}>
               Disconnect
             </button>
-          )}
-        </div>
-
-        {connected ? (
-          <div className="hub-operator-transfers">
-            <div className="hub-actions">
-              <button type="button" disabled={busy} onClick={() => void store()}>
-                Upload file…
-              </button>
-            </div>
-            <p className="hub-hint">
-              Stores the file you choose in the operator-only hub at {status?.hub_url ?? "the connected hub"}, where every
-              client of its certificate authority can read it. Download saves to a new file you name.
-            </p>
-            <form className="hub-operator-read" onSubmit={read}>
-              <label htmlFor="hub-operator-digest">Artifact SHA-256</label>
-              <input
-                id="hub-operator-digest"
-                type="text"
-                value={digest}
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(event) => setDigest(event.target.value)}
-              />
-              <button type="submit" disabled={busy || !digest.trim()}>
-                Download…
-              </button>
-            </form>
-          </div>
-        ) : null}
-
-        {transfer ? (
-          <div className="hub-transfer-result" role="status">
-            <p>
-              {transfer.kind === "read" ? "Read" : "Store"}: <strong>{transfer.result.transfer_state || transfer.result.state}</strong>
-              {transfer.result.size ? ` (${transfer.result.size} bytes)` : ""}
-            </p>
-            {transfer.result.digest ? (
-              <p>
-                Artifact digest: <code>{transfer.result.digest}</code>
-              </p>
-            ) : null}
-            {transfer.kind === "read" && transfer.result.state === "completed" ? <p>Saved as: {transfer.result.path}</p> : null}
-            {transfer.result.reason ? <p className="error">{transfer.result.reason}</p> : null}
-            {transfer.result.warning ? <p className="warning">{transfer.result.warning}</p> : null}
-          </div>
-        ) : null}
+          </>
+        ) : (
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || !configured}
+            onClick={() =>
+              void act(connectOperatorHub, (result) => {
+                if (result.state === "completed") setStatus(result);
+                else setMessage(result.reason ?? "The operator hub was not connected.");
+              })
+            }
+          >
+            Connect
+          </button>
+        )}
       </div>
+      <ValueRows
+        label="Operator hub"
+        rows={[
+          { label: "Status", value: connected ? "Connected" : "Not connected" },
+          { label: "Hub", value: status?.hub_url ?? "—" },
+        ]}
+      />
+      {connected ? <p className="consequence">Every holder of this hub's client certificates can read and store every file here.</p> : null}
+      {message ? <p role="alert">{message}</p> : null}
+      {transfer ? (
+        <p role={transfer.result.state === "completed" ? "status" : "alert"}>
+          {transfer.result.state === "completed"
+            ? transfer.kind === "read"
+              ? `Saved ${transfer.result.path ?? ""}`
+              : `Stored · ${transfer.result.digest ?? ""}`
+            : (transfer.result.reason ?? "The transfer did not complete.")}
+          {transfer.result.warning ? ` ${transfer.result.warning}` : ""}
+        </p>
+      ) : null}
+      <FormDialog
+        open={reading}
+        title="Download by hash"
+        submitLabel="Download"
+        submitDisabled={!/^[0-9a-f]{64}$/.test(digest.trim())}
+        onClose={() => setReading(false)}
+        onSubmit={async () => {
+          await act(() => readOperatorHubArtifact(digest.trim()), settleTransfer("read"));
+          setReading(false);
+          return null;
+        }}
+      >
+        <label htmlFor="operator-digest">SHA-256</label>
+        <input id="operator-digest" spellCheck={false} autoComplete="off" value={digest} onChange={(event) => setDigest(event.target.value)} />
+      </FormDialog>
     </section>
   );
 }

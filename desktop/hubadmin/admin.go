@@ -4,6 +4,7 @@ package hubadmin
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"path"
 	"path/filepath"
@@ -243,3 +244,104 @@ func localFile(value string, limit int64) ([]byte, error) {
 }
 
 func quote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+
+// MembershipRequest is one membership change over a local copy of the host's
+// access policy: add a member to a project, or change a member's role. The
+// installed policy stays the host operator's to replace.
+type MembershipRequest struct {
+	Operation  string `json:"operation"`
+	PolicyCopy string `json:"policy_copy"`
+	PolicyPath string `json:"policy_path"`
+	Project    string `json:"project"`
+	Subject    string `json:"subject"`
+	Role       string `json:"role"`
+}
+
+// MembershipResult is a prepared membership change: the exact grant before
+// and after, the complete new policy the hub's own reader accepted, and the
+// command that installs it on the host. Preparing changes nobody's access.
+type MembershipResult struct {
+	State         desktop.State `json:"state"`
+	Reason        string        `json:"reason,omitzero"`
+	Project       string        `json:"project,omitzero"`
+	Subject       string        `json:"subject,omitzero"`
+	Before        string        `json:"before,omitzero"`
+	After         string        `json:"after,omitzero"`
+	Command       string        `json:"command,omitzero"`
+	Prerequisites []string      `json:"prerequisites,omitzero"`
+	Touches       []string      `json:"touches,omitzero"`
+	DoesNotTouch  []string      `json:"does_not_touch,omitzero"`
+	// Policy is the complete new access policy, and PolicyName the file
+	// name the command installs it from.
+	Policy     string `json:"policy,omitzero"`
+	PolicyName string `json:"policy_name,omitzero"`
+}
+
+// membershipFile is the name a prepared policy is exported and installed
+// under.
+const membershipFile = "access.json"
+
+// PrepareMembership reads a local copy of the access policy with the hub's
+// own reader, applies one membership change and reads the result again the
+// same way, so a policy the hub would refuse is never handed over. It writes
+// nothing, runs nothing and contacts no hub.
+func (a *Admin) PrepareMembership(request MembershipRequest) MembershipResult {
+	fail := func(reason string) MembershipResult { return MembershipResult{State: "failed", Reason: reason} }
+	if !hostPath(request.PolicyPath) {
+		return fail("enter a clean absolute Linux path for the installed access policy")
+	}
+	subject := strings.TrimSpace(request.Subject)
+	if subject == "" || len(subject) > 256 || strings.IndexFunc(subject, unicode.IsControl) >= 0 {
+		return fail("enter the person's identity provider subject")
+	}
+	data, err := localFile(request.PolicyCopy, 1<<20)
+	if err != nil {
+		return fail("a local copy of the access policy is unavailable")
+	}
+	policy, err := hub.ReadAccessPolicy(data)
+	if err != nil {
+		return fail("the local copy is not an access policy the hub reads")
+	}
+	at := -1
+	for i, grant := range policy.Grants {
+		if grant.Project == request.Project && grant.Subject == subject {
+			at = i
+		}
+	}
+	result := MembershipResult{State: "completed", Project: request.Project, Subject: subject, After: request.Role, PolicyName: membershipFile}
+	switch request.Operation {
+	case "add-member":
+		if at >= 0 {
+			return fail(subject + " is already a member of " + request.Project + " as " + policy.Grants[at].Role + "; change their role instead")
+		}
+		policy.Grants = append(policy.Grants, hub.ProjectGrant{Project: request.Project, Subject: subject, Role: request.Role})
+	case "change-role":
+		if at < 0 {
+			return fail(subject + " is not a member of " + request.Project + "; add them instead")
+		}
+		if policy.Grants[at].Role == request.Role {
+			return fail(subject + " already has the " + request.Role + " role")
+		}
+		result.Before = policy.Grants[at].Role
+		policy.Grants[at].Role = request.Role
+	default:
+		return fail("choose Add member or Change role")
+	}
+	changed, err := json.Marshal(policy)
+	if err == nil {
+		_, err = hub.ReadAccessPolicy(changed)
+	}
+	if err != nil {
+		return fail("the changed policy is one the hub would refuse; check the project, the role and any tokens registered for this person")
+	}
+	staged := path.Join(path.Dir(request.PolicyPath), ".access.json.new")
+	result.Policy = string(changed) + "\n"
+	result.Command = "sudo install -o readmit-hub -g readmit-hub -m 0600 " + membershipFile + " " + quote(staged) + " && sudo mv -f " + quote(staged) + " " + quote(request.PolicyPath)
+	result.Prerequisites = []string{
+		"Copy the exported " + membershipFile + " to the hub host and run the command from the folder that holds it.",
+		"Confirm the installed policy still matches the copy prepared here; installing replaces it whole.",
+	}
+	result.Touches = []string{"Replaces the installed access policy in one rename; the hub reads it on its next request."}
+	result.DoesNotTouch = []string{"Nobody's access changes until the host operator installs this policy.", "The desktop writes no host file and contacts no hub."}
+	return result
+}
