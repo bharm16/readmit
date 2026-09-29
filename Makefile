@@ -25,7 +25,7 @@ test-focused:
 # Start the long packages first; Go de-duplicates them from ./... so each
 # still runs once, overlapping the short packages instead of trailing them.
 test:
-	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./tests ./internal/desktop ./...
+	CGO_ENABLED=1 go test -race -short -tags readmit_nosync ./internal/connectedrun ./tests ./internal/desktop ./...
 	$(MAKE) test-boundary
 	$(MAKE) test-corpus
 	$(MAKE) test-fhir-lab

@@ -12,7 +12,8 @@ check and behavior tests with the desktop shell's Go vet and tests on macOS
 binary or frontend bundle is built, no formatting or label-coverage gate runs
 (both stay in `make check` locally), and nothing is uploaded beyond the
 tested-tree record a push to main reads. `quality` and `desktop` remain the two
-required aggregates.
+required aggregates. The Go suite may be sharded across runners; every shard
+must pass, and sharding changes scheduling, not coverage.
 
 Everything else runs only when the owner dispatches a workflow by hand: the
 team hub's tests against PostgreSQL, the release archives and their five native smoke

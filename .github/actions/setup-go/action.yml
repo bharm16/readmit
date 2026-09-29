@@ -4,6 +4,9 @@ inputs:
   cache-scope:
     description: Distinct owner for this job or matrix shard.
     required: true
+  cache-save:
+    description: Allow this job to seed the immutable main cache on a miss.
+    default: 'true'
   cache-dependency-path:
     description: Glob of module checksums; use '**/go.sum' for the desktop module.
     default: go.sum
@@ -34,7 +37,7 @@ runs:
     # Main saves once per compiler/platform/dependency set and epoch. An exact
     # hit skips the post-job save; changed source still compiles against the
     # cached snapshot. Other refs restore main's entry without saving.
-    - if: github.ref == 'refs/heads/main'
+    - if: github.ref == 'refs/heads/main' && inputs.cache-save == 'true'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: |
@@ -43,7 +46,7 @@ runs:
         key: ${{ steps.paths.outputs.key }}
         restore-keys: |
           ${{ steps.paths.outputs.prefix }}
-    - if: github.ref != 'refs/heads/main'
+    - if: github.ref != 'refs/heads/main' || inputs.cache-save != 'true'
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: |
