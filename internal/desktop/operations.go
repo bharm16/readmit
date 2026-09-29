@@ -18,16 +18,32 @@ const operationSelectionSchema = "readmit-desktop-operation-selection/v1"
 
 // OperationResult exposes local clock state even after expiry. Reason is fixed
 // diagnostic text; it never renders signed identities or arbitrary paths.
+// Folder is the selected activation folder, and Author, Device and RunnerPool
+// what its operation policy assigns, read from the policy even before it is
+// activated.
 type OperationResult struct {
-	State     State                 `json:"state"`
-	Reason    string                `json:"reason,omitzero"`
-	Clock     *operationguard.State `json:"clock,omitzero"`
-	Selected  bool                  `json:"selected"`
-	Term      string                `json:"term,omitzero"`
-	Expires   string                `json:"expires,omitzero"`
-	GraceEnds string                `json:"grace_ends,omitzero"`
-	Authors   int                   `json:"author_seats"`
-	Runners   int                   `json:"runner_instances"`
+	State      State                 `json:"state"`
+	Reason     string                `json:"reason,omitzero"`
+	Clock      *operationguard.State `json:"clock,omitzero"`
+	Selected   bool                  `json:"selected"`
+	Folder     string                `json:"folder,omitzero"`
+	Author     string                `json:"author,omitzero"`
+	Device     string                `json:"device,omitzero"`
+	RunnerPool string                `json:"runner_pool,omitzero"`
+	Term       string                `json:"term,omitzero"`
+	Expires    string                `json:"expires,omitzero"`
+	GraceEnds  string                `json:"grace_ends,omitzero"`
+	Authors    int                   `json:"author_seats"`
+	Runners    int                   `json:"runner_instances"`
+}
+
+// assigned fills what the selected policy assigns, when it can be read.
+func (r *OperationResult) assigned(path string) {
+	policy, err := readSelectedPolicy(path)
+	if err != nil {
+		return
+	}
+	r.Folder, r.Author, r.Device, r.RunnerPool = filepath.Dir(path), policy.Author, policy.Device, policy.Authority
 }
 
 func (r *OperationResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -120,11 +136,28 @@ func (a *App) OperationStatus() OperationResult {
 	if refusal != "" {
 		return OperationResult{State: Failed, Reason: refusal}
 	}
+	// Nothing selected is not a failure: it is the state until an
+	// activation folder is chosen, and new work stays refused.
+	if path == "" {
+		return OperationResult{State: Empty, Reason: operationguard.ErrUnavailable.Error()}
+	}
+	result := activationStatus(path)
+	result.Selected = true
+	return result
+}
+
+// activationStatus reads what one activation folder's policy assigns, its
+// retained clock state and its signed term, selected or not. It writes
+// nothing and admits nothing.
+func activationStatus(path string) OperationResult {
+	result := OperationResult{}
+	result.assigned(path)
 	state, err := operationguard.Read(path)
 	if err != nil {
-		return OperationResult{State: Failed, Reason: err.Error(), Selected: path != ""}
+		result.State, result.Reason = Failed, err.Error()
+		return result
 	}
-	result := OperationResult{State: Completed, Clock: &state, Selected: true}
+	result.State, result.Clock = Completed, &state
 	if term, err := operationguard.Describe(path); err == nil {
 		result.Authors = term.Authors
 		result.Runners = term.Runners
@@ -136,6 +169,54 @@ func (a *App) OperationStatus() OperationResult {
 	}
 	return result
 }
+
+// ActivationFolderRequest names a supplied activation folder a person chose
+// and reviewed.
+type ActivationFolderRequest struct {
+	Folder string `json:"folder"`
+}
+
+// ReviewActivationFolder chooses a supplied activation folder natively and
+// reports what it holds — its assignment, clock state and term — without
+// selecting it: the selection changes only when ActivateActivationFolder
+// activates it.
+func (a *App) ReviewActivationFolder() OperationResult {
+	return run(a, true, false, func(ctx context.Context) OperationResult {
+		folder, declined := a.chooseFolder(ctx, "Choose the license activation folder")
+		if folder == "" {
+			return OperationResult{State: declined.state, Reason: declined.reason}
+		}
+		path := operationguard.ActivationPolicyIn(folder)
+		if _, err := readSelectedPolicy(path); err != nil {
+			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
+		}
+		return activationStatus(path)
+	})
+}
+
+// ActivateActivationFolder activates a reviewed activation folder, exactly as
+// `readmit license operation activate` does, and only once it is active
+// selects it for new work in the window. A refused activation leaves the
+// selection as it was.
+func (a *App) ActivateActivationFolder(request ActivationFolderRequest) OperationResult {
+	return run(a, false, false, func(context.Context) OperationResult {
+		if !filepath.IsAbs(request.Folder) {
+			return OperationResult{State: Failed, Reason: "select an absolute activation folder"}
+		}
+		path := operationguard.ActivationPolicyIn(request.Folder)
+		if _, err := readSelectedPolicy(path); err != nil {
+			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
+		}
+		if err := operationguard.Activate(path); err != nil {
+			return OperationResult{State: Failed, Reason: err.Error()}
+		}
+		if err := a.retainOperationPolicy(path); err != nil {
+			return OperationResult{State: Failed, Reason: err.Error()}
+		}
+		return a.OperationStatus()
+	})
+}
+
 func (a *App) changeOperation(apply func(string) error) OperationResult {
 	return run(a, false, false, func(context.Context) OperationResult {
 		_, path := a.selectedOperation()

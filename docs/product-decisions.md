@@ -286,11 +286,11 @@ an entitlement store, an activation folder or an operation policy is.
   `readmit license import` installed. `license import/show/renew/export/release`
   keep their flags, output and exit statuses for scripts and, without a store,
   act on that one installed license.
-- **Moving to a new computer:** *Deactivate this computer* releases the seat,
+- **Moving to a new computer:** *Deactivate* releases the seat,
   as `license release` does, and the account portal is where the seat is
   reissued.
 - **Renewal:** the pane warns ahead of expiry (thirty days, a reminder rather
-  than a term); *Get renewed license* opens the account address an operator
+  than a term); *Manage account* opens the account address an operator
   configured only when the person clicks it, with no automatic network access;
   activating the renewed file replaces the license in place. An expired license
   keeps read and export access, as it always has.

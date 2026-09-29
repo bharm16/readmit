@@ -123,6 +123,50 @@ test("a refused project creation stays in the sheet beside what was typed", asyn
   expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("Scheduling investigation");
 });
 
+test("a project refused for want of a license activates one and returns to New project, which creates only when asked again", async () => {
+  const user = userEvent.setup();
+  const document = {
+    version: "readmit-entitlement/v2", id: "ENT-0002", organization: "example-hospital", plan: "annual", sequence: 1,
+    not_before: "2026-09-18T00:00:00Z", expires: "2027-09-18T00:00:00Z", assignments: [{ author: "alice", devices: ["laptop"] }],
+    operation_capable: true,
+  };
+  const { facade } = await renderApp({
+    ProjectLocation: () => ({ state: "completed", location: WORKSPACE_ROOT }),
+    CreateNamedProject: () => ({ state: "permission_denied", reason: "new work needs an active license on this computer", context: noContext, recorded: false }),
+    ChooseLicenseFile: () => ({ state: "completed", path: "/private/received/license.json", name: "license.json" }),
+    ReviewLicense: () => ({ state: "completed", entitlement: "/private/received/license.json", trust: "/private/received/keys.json", digest: "d1", document, renewal: false, choose_keys: false }),
+    ActivateLicense: () => ({
+      state: "completed", outcome: "activated",
+      license: {
+        document_id: "ENT-0002", organization: "example-hospital", plan: "annual", sequence: 1, author_seats: 1, runner_slots: 0, author: "alice", device: "laptop",
+        starts: "2026-09-18T00:00:00Z", expires: "2027-09-18T00:00:00Z", grace_ends: "2027-09-18T00:00:00Z", term: "active", days_left: 300,
+        renew_soon: false, activated: "2026-09-29T00:00:00Z", deactivated: false, new_work: true, current_format: true, clock_rollback: false,
+      },
+    }),
+  });
+  await user.click(page().getAllByRole("button", { name: "New project" })[0]!);
+  let sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  await sheet.findByText(WORKSPACE_ROOT);
+  await user.type(sheet.getByLabelText("Name"), "Scheduling investigation");
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  await user.click(await sheet.findByRole("button", { name: "Activate" }));
+  // The activation flow opens on License, and nothing is installed until its
+  // final action.
+  const flow = within(await screen.findByRole("dialog", { name: "Activate license" }));
+  await user.click(flow.getByRole("button", { name: "Choose file" }));
+  await user.click(await flow.findByRole("button", { name: "Continue" }));
+  await user.click(await flow.findByRole("button", { name: "Continue" }));
+  await user.click(await flow.findByRole("button", { name: "Activate" }));
+  // Back where the task was refused, with the task to take again: nothing
+  // queued ran on its own.
+  sheet = within(await screen.findByRole("dialog", { name: "New project" }));
+  expect(screen.queryByRole("dialog", { name: "Activate license" })).toBeNull();
+  expect(page().getByRole("heading", { level: 1, name: "Projects" })).toBeTruthy();
+  expect(facade.callsTo("ActivateLicense")).toHaveLength(1);
+  expect(facade.callsTo("CreateNamedProject")).toHaveLength(1);
+  expect(sheet.getByRole("button", { name: "Create" })).toBeTruthy();
+});
+
 test("with no remembered location, Change chooses one in the host's dialog while the sheet stays open", async () => {
   const user = userEvent.setup();
   const { facade } = await renderApp({

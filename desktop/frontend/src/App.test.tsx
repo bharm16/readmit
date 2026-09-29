@@ -546,10 +546,7 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
       authenticated: false,
     }),
     CommercialStatus: busyFirst<CommercialStatusResult>(
-      () => ({
-        state: "empty",
-        reason: "the commercial portal destination is not configured; choose the operator-supplied destinations file",
-      }),
+      () => ({ state: "completed", environment: "sandbox", portal: "https://portal.example.test" }),
       { state: "busy", reason: BUSY },
     ),
     ListConnections: (context) =>
@@ -564,7 +561,7 @@ test("the panels' opening reads that meet a held slot are asked again and draw w
   await goToView(user, "Settings", "Team");
   expect(await screen.findByText(/Offline \/ Local Mode/i)).toBeTruthy();
   await goToView(user, "Settings", "License");
-  expect(await screen.findByText(/the commercial portal destination is not configured/)).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "Manage account" })).toBeTruthy();
   await goToView(user, "Settings", "Security");
   const table = await screen.findByRole("table", { name: "Connections" });
   expect(await within(table).findByText("Team hub")).toBeTruthy();

@@ -83,6 +83,17 @@ export interface ActionReviewResult {
   review?: ActionReview;
 }
 
+/** internal/desktop.ActivationFolderRequest */
+export interface ActivationFolderRequest {
+  folder: string;
+}
+
+/** internal/desktop.ActivationRenewalRequest */
+export interface ActivationRenewalRequest {
+  entitlement: string;
+  digest: string;
+}
+
 /** internal/desktop.AffectedTest */
 export interface AffectedTest {
   ref: ItemRef;
@@ -1162,6 +1173,12 @@ export type CommandId =
   | "larger-text"
   | "smaller-text"
   | "switch-theme";
+
+/** internal/desktop.CommercialSaveRequest */
+export interface CommercialSaveRequest {
+  path: string;
+  portal: string;
+}
 
 /** internal/desktop.CommercialStatusResult */
 export interface CommercialStatusResult {
@@ -3627,6 +3644,7 @@ export interface InstalledLicenseResult {
 
 /** internal/desktop.InstalledLicenseView */
 export interface InstalledLicenseView {
+  document_id: string;
   organization: string;
   plan: string;
   sequence: number;
@@ -3646,6 +3664,7 @@ export interface InstalledLicenseView {
   deactivated_at?: string;
   new_work: boolean;
   current_format: boolean;
+  clock_rollback: boolean;
 }
 
 /** internal/desktop.InterfaceRevision */
@@ -3925,6 +3944,7 @@ export interface LicenseActivateRequest {
   entitlement?: string;
   contents?: string;
   trust?: string;
+  digest: string;
   author?: string;
   device?: string;
   authority?: string;
@@ -3985,6 +4005,14 @@ export interface LicenseExportResult {
   path?: string;
 }
 
+/** internal/desktop.LicenseFileResult */
+export interface LicenseFileResult {
+  state: State;
+  reason?: string;
+  path?: string;
+  name?: string;
+}
+
 /** internal/desktop.LicenseFolderResult */
 export interface LicenseFolderResult {
   state: State;
@@ -3995,6 +4023,7 @@ export interface LicenseFolderResult {
 /** internal/desktop.LicenseReviewRequest */
 export interface LicenseReviewRequest {
   contents?: string;
+  entitlement?: string;
   choose_keys: boolean;
 }
 
@@ -4004,8 +4033,10 @@ export interface LicenseReviewResult {
   reason?: string;
   entitlement?: string;
   trust?: string;
+  digest?: string;
   document?: LicenseDocumentView;
   renewal: boolean;
+  choose_keys: boolean;
 }
 
 /** internal/desktop.LicenseVerifyResult */
@@ -4014,6 +4045,7 @@ export interface LicenseVerifyResult {
   reason?: string;
   entitlement?: string;
   trust?: string;
+  digest?: string;
   document?: LicenseDocumentView;
 }
 
@@ -4997,6 +5029,10 @@ export interface OperationResult {
   reason?: string;
   clock?: OperationGuardState;
   selected: boolean;
+  folder?: string;
+  author?: string;
+  device?: string;
+  runner_pool?: string;
   term?: string;
   expires?: string;
   grace_ends?: string;
@@ -9969,6 +10005,7 @@ export interface WorkspaceResult {
 
 /** The methods Wails binds for internal/desktop.App. */
 export interface Facade {
+  ActivateActivationFolder(request: ActivationFolderRequest): Promise<OperationResult>;
   ActivateLicense(request: LicenseActivateRequest): Promise<InstalledLicenseResult>;
   ActivateOperations(): Promise<OperationResult>;
   AddAttachments(request: ItemRequest): Promise<AttachmentsResult>;
@@ -10006,6 +10043,7 @@ export interface Facade {
   ChooseImportSources(kind: string): Promise<ImportSourcesResult>;
   ChooseInspectionPath(kind: string, source: string): Promise<InspectionPathResult>;
   ChooseLibraryFile(kind: string): Promise<PathChoiceResult>;
+  ChooseLicenseFile(): Promise<LicenseFileResult>;
   ChooseLicenseFolder(): Promise<LicenseFolderResult>;
   ChooseMaintenancePath(kind: string): Promise<MaintenancePathResult>;
   ChooseOperationPolicy(): Promise<OperationResult>;
@@ -10215,9 +10253,10 @@ export interface Facade {
   RemoveView(workspace: string, name: string): Promise<ViewsResult>;
   RenameItem(request: RenameRequest): Promise<ItemResult>;
   RenameView(workspace: string, from: string, to: string): Promise<ViewsResult>;
-  RenewLicenseDocument(): Promise<OperationResult>;
+  RenewLicenseDocument(request: ActivationRenewalRequest): Promise<OperationResult>;
   RepairSearch(request: RepairSearchRequest): Promise<BuildIndexResult>;
   ResetTarget(request: TargetResetRequest): Promise<TargetResetResult>;
+  ResolveLicenseClock(): Promise<InstalledLicenseResult>;
   ResolveOperationClock(): Promise<OperationResult>;
   ResolveProfileDraft(request: DraftRequest): Promise<ProfileResolutionResult>;
   RestoreProjectBackup(request: BackupRestoreRequest): Promise<BackupResult>;
@@ -10227,6 +10266,9 @@ export interface Facade {
   RevealBackup(id: string): Promise<RevealResult>;
   RevealIncomplete(folder: string): Promise<RevealResult>;
   RevealItem(request: ItemRequest): Promise<RevealResult>;
+  ReviewActivationFolder(): Promise<OperationResult>;
+  ReviewActivationRenewal(): Promise<LicenseVerifyResult>;
+  ReviewCommercialDestinations(): Promise<CommercialStatusResult>;
   ReviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult>;
   ReviewResetAction(request: ResetActionRequest): Promise<ResetActionResult>;
   RotateProtectionControl(workspace: string, entry: string, name: string): Promise<ProtectionResult>;
@@ -10234,6 +10276,7 @@ export interface Facade {
   RunDiagnosis(request: DiagnosisRequest): Promise<DiagnosisResult>;
   RunPractice(request: PracticeRequest): Promise<PracticeResult>;
   SaveCIHandoff(request: CIHandoffRequest): Promise<CIHandoffResult>;
+  SaveCommercialDestinations(request: CommercialSaveRequest): Promise<CommercialStatusResult>;
   SaveCredential(request: CredentialSaveRequest): Promise<CredentialsResult>;
   SaveDiagnoseConfig(request: RuleDocumentSaveRequest): Promise<DiagnoseConfigResult>;
   SaveEditorDraft(draft: EditorDraft): Promise<EditorDraftsResult>;

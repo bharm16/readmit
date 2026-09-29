@@ -37,6 +37,7 @@ export type ChildDestination =
   | "sample-data"
   | "benchmarks"
   | "encryption"
+  | "license-setup"
   | "new-test"
   | "edit-test"
   | "similar-findings";
@@ -58,6 +59,7 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   "sample-data": "tools",
   benchmarks: "tools",
   encryption: "settings",
+  "license-setup": "settings",
   "new-test": "tests",
   "edit-test": "tests",
   "similar-findings": "cases",

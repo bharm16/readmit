@@ -108,6 +108,9 @@ type InstalledLicense struct {
 	// admitted through this license; OperationReleased that it was released.
 	Activated         bool
 	OperationReleased bool
+	// ClockRollback reports a latched clock rollback in that operation
+	// state: new work is refused until it is explicitly resolved.
+	ClockRollback bool
 }
 
 // openInstalledStore opens the entitlement store the folder holds through the
@@ -170,7 +173,7 @@ func OpenInstalledLicense(root string, at time.Time) (InstalledLicense, error) {
 	}
 	installed.Authority = policy.Authority
 	if state, err := readState(policy.State); err == nil {
-		installed.Activated, installed.OperationReleased = true, state.Released
+		installed.Activated, installed.OperationReleased, installed.ClockRollback = true, state.Released, state.Rollback
 	}
 	return installed, nil
 }

@@ -14,6 +14,8 @@
 
 import type {
   ActionReviewResult,
+  ActivationFolderRequest,
+  ActivationRenewalRequest,
   AttachmentRemoveRequest,
   AttachmentsResult,
   BackupResult,
@@ -34,6 +36,7 @@ import type {
   CatalogQuery,
   CatalogResult,
   CleanRunResult,
+  CommercialSaveRequest,
   CommercialStatusResult,
   CompareRequest,
   CompareResult,
@@ -94,6 +97,7 @@ import type {
   LicenseActivateRequest,
   LicenseActivationRequest,
   LicenseExportResult,
+  LicenseFileResult,
   LicenseFolderResult,
   LicenseReviewRequest,
   LicenseReviewResult,
@@ -1005,6 +1009,8 @@ export function decideCorrelation(request: CorrelationReviewRequest): Promise<Co
 }
 export function chooseOperationPolicy(): Promise<OperationResult> {return guard(() => facade().ChooseOperationPolicy(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
 export function operationStatus(): Promise<OperationResult> {return guard(() => facade().OperationStatus(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
+export function reviewActivationFolder(): Promise<OperationResult> {return guard(() => facade().ReviewActivationFolder(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
+export function activateActivationFolder(request: ActivationFolderRequest): Promise<OperationResult> {return guard(() => facade().ActivateActivationFolder(request), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
 export function activateOperations(): Promise<OperationResult> {return guard(() => facade().ActivateOperations(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
 export function resolveOperationClock(): Promise<OperationResult> {return guard(() => facade().ResolveOperationClock(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
 export function releaseOperations(): Promise<OperationResult> {return guard(() => facade().ReleaseOperations(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
@@ -1012,15 +1018,19 @@ export function releaseOperations(): Promise<OperationResult> {return guard(() =
 export function verifyLicenseDocument(): Promise<LicenseVerifyResult> {return guard(() => facade().VerifyLicenseDocument(), {state:"failed"});}
 export function chooseLicenseFolder(): Promise<LicenseFolderResult> {return guard(() => facade().ChooseLicenseFolder(), {state:"failed"});}
 export function createLicenseActivation(request: LicenseActivationRequest): Promise<OperationResult> {return guard(() => facade().CreateLicenseActivation(request), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
-export function renewLicenseDocument(): Promise<OperationResult> {return guard(() => facade().RenewLicenseDocument(), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
+export function reviewActivationRenewal(): Promise<LicenseVerifyResult> {return guard(() => facade().ReviewActivationRenewal(), {state:"failed"});}
+export function renewLicenseDocument(request: ActivationRenewalRequest): Promise<OperationResult> {return guard(() => facade().RenewLicenseDocument(request), {state:"failed", selected:false, author_seats:0, runner_instances:0});}
 export function exportLicenseDocument(): Promise<LicenseExportResult> {return guard(() => facade().ExportLicenseDocument(), {state:"failed"});}
 export function showRunnerAdmissions(): Promise<RunnerStatusResult> {return guard(() => facade().ShowRunnerAdmissions(), {state:"failed"});}
 export function settleRunnerAdmission(request: RunnerSettleRequest): Promise<RunnerStatusResult> {return guard(() => facade().SettleRunnerAdmission(request), {state:"failed"});}
-export function chooseCommercialDestinations(): Promise<CommercialStatusResult> {return guard(() => facade().ChooseCommercialDestinations(), {state:"failed"});}
+export function reviewCommercialDestinations(): Promise<CommercialStatusResult> {return guard(() => facade().ReviewCommercialDestinations(), {state:"failed"});}
+export function saveCommercialDestinations(request: CommercialSaveRequest): Promise<CommercialStatusResult> {return guard(() => facade().SaveCommercialDestinations(request), {state:"failed"});}
 export function commercialStatus(): Promise<CommercialStatusResult> {return retryingRead(() => facade().CommercialStatus(), {state:"empty"});}
 
 export function licenseStatus(): Promise<InstalledLicenseResult> {return retryingRead(() => facade().LicenseStatus(), {state:"failed"});}
-export function reviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult> {return guard(() => facade().ReviewLicense(request), {state:"failed", renewal:false});}
+export function chooseLicenseFile(): Promise<LicenseFileResult> {return guard(() => facade().ChooseLicenseFile(), {state:"failed"});}
+export function reviewLicense(request: LicenseReviewRequest): Promise<LicenseReviewResult> {return guard(() => facade().ReviewLicense(request), {state:"failed", renewal:false, choose_keys:false});}
+export function resolveLicenseClock(): Promise<InstalledLicenseResult> {return guard(() => facade().ResolveLicenseClock(), {state:"failed"});}
 export function activateLicense(request: LicenseActivateRequest): Promise<InstalledLicenseResult> {return guard(() => facade().ActivateLicense(request), {state:"failed"});}
 export function deactivateLicense(): Promise<InstalledLicenseResult> {return guard(() => facade().DeactivateLicense(), {state:"failed"});}
 export function exportInstalledLicense(): Promise<LicenseExportResult> {return guard(() => facade().ExportInstalledLicense(), {state:"failed"});}

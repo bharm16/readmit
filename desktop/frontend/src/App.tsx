@@ -1,5 +1,6 @@
 import { HelpTopics } from "./ContextHelp";
-import { OperationAccess } from "./OperationAccess";
+import { AdministratorSetup } from "./OperationAccess";
+import { ComputerLicense } from "./ComputerLicense";
 import { SupportGuidance } from "./SupportGuidance";
 import { GeneralView, SecurityView, usePreferences, type ConnectionRoute } from "./Settings";
 import { useEncryption } from "./Encryption";
@@ -2050,6 +2051,21 @@ export default function App() {
 
   const openStorage = useCallback(() => openSettings("storage"), [openSettings]);
 
+  // A task refused for want of a license opens License with its activation
+  // flow, and a license installed there returns to that task, which is then
+  // built again and taken explicitly: nothing queued runs on its own.
+  const [licenseRequest, setLicenseRequest] = useState(0);
+  const licenseReturn = useRef<(() => void) | null>(null);
+  const activateFrom = (reopen?: () => void) => {
+    const from = sidebarOf(currentRoute.current.destination);
+    licenseReturn.current = () => {
+      routeTo({ type: "destination", destination: from });
+      reopen?.();
+    };
+    setLicenseRequest((held) => held + 1);
+    openSettings("license");
+  };
+
   /** Back to Security from a setup it started: with the saved connection
    * selected, or with nothing selected when the setup was closed unsaved. */
   const returnToSecurity = (ref?: string) => {
@@ -2095,7 +2111,7 @@ export default function App() {
       case "portal":
         setSetupFromSecurity("portal");
         requestSetup("portal");
-        openSettings("license");
+        open({ destination: "license-setup" });
         return;
       case "license":
         openSettings("license");
@@ -2951,7 +2967,7 @@ export default function App() {
                   if (root) void verifyCase(root, name);
                 }}
                 onConfigureEnvironment={() => go("environments")}
-                onOpenLicense={() => openSettings("license")}
+                onOpenLicense={() => activateFrom()}
                 {...(runSpecPath ? { initialSpec: runSpecPath } : {})}
                 preflightOnArrival={runArrival}
                 {...(runEnvironment ? { initialEnvironment: runEnvironment } : {})}
@@ -3220,7 +3236,17 @@ export default function App() {
               />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="license" className="task-panel view-panel" shown={settingsView === "license"}>
-              <OperationAccess request={setupRequests.portal} onHandled={setupHandled("portal")} onConfigured={configured("portal", "portal")} />
+              <ComputerLicense
+                activateRequest={licenseRequest}
+                onActivateHandled={() => setLicenseRequest(0)}
+                onActivationEnded={(activated) => {
+                  const back = licenseReturn.current;
+                  licenseReturn.current = null;
+                  if (activated) back?.();
+                }}
+                onAdministratorSetup={() => open({ destination: "license-setup" })}
+                onOpenRunners={() => openSettings("runners")}
+              />
             </TaskPanel>
             <TaskPanel tabs="settings-views" tab="team" className="task-panel view-panel" shown={settingsView === "team"}>
               <HubPanel
@@ -3266,6 +3292,10 @@ export default function App() {
               ) : null}
             </TaskPanel>
           </Categories>
+        </Page>
+
+        <Page id="license-setup" shown={place === "license-setup"} title="Administrator setup" back={<BackLink label="Settings" onBack={back} />}>
+          <AdministratorSetup portalRequest={setupRequests.portal} onPortalHandled={setupHandled("portal")} onPortalConfigured={configured("portal", "portal")} />
         </Page>
 
         <Page
@@ -3778,7 +3808,7 @@ export default function App() {
             createRefusedByLicense
               ? () => {
                   setCreatingProject(false);
-                  openSettings("license");
+                  activateFrom(() => setCreatingProject(true));
                 }
               : undefined
           }

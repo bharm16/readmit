@@ -9,6 +9,7 @@ package desktop_test
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,12 +56,15 @@ func TestTheWindowActivatesAReceivedLicenseAsTheCommandLineInstallsIt(t *testing
 	if review.State != desktop.Completed || review.Renewal || review.Entitlement != entitlementPath || review.Trust != trustPath || review.Document == nil || review.Document.Organization != "example-hospital" {
 		t.Fatalf("review: %+v", review)
 	}
-	activated := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: review.Entitlement, Trust: review.Trust, Author: "alice", Device: "laptop", Authority: "ci-pool"})
+	if review.Digest != digestOfBytes(document) {
+		t.Fatalf("the review names %q, not the reviewed bytes", review.Digest)
+	}
+	activated := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: review.Entitlement, Trust: review.Trust, Digest: review.Digest, Author: "alice", Device: "laptop", Authority: "ci-pool"})
 	if activated.State != desktop.Completed || activated.Outcome != "activated" || activated.License == nil {
 		t.Fatalf("activate: %+v", activated)
 	}
 	view := activated.License
-	if view.Organization != "example-hospital" || view.Plan != "example-plan" || view.AuthorSeats != 2 || view.RunnerSlots != 3 ||
+	if view.DocumentID != "ENT-0002" || view.Organization != "example-hospital" || view.Plan != "example-plan" || view.AuthorSeats != 2 || view.RunnerSlots != 3 ||
 		view.Author != "alice" || view.Device != "laptop" || view.RunnerPool != "ci-pool" || view.Term != "active" ||
 		!view.NewWork || view.Deactivated || !view.CurrentFormat || view.RenewSoon || view.DaysLeft != 90 {
 		t.Fatalf("the license in plain facts: %+v", view)
@@ -79,7 +83,8 @@ func TestTheWindowActivatesAReceivedLicenseAsTheCommandLineInstallsIt(t *testing
 	}
 	// New work in the window is admitted through it, as it is on the command
 	// line, and the window starts on it again after a restart.
-	if status := app.OperationStatus(); status.State != desktop.Completed || !status.Selected || status.Term != "active" {
+	if status := app.OperationStatus(); status.State != desktop.Completed || !status.Selected || status.Term != "active" ||
+		status.Folder != license || status.Author != "alice" || status.Device != "laptop" || status.RunnerPool != "ci-pool" {
 		t.Fatalf("operation status: %+v", status)
 	}
 	restarted := computerApp(t, &queueChooser{}, license)
@@ -94,8 +99,9 @@ func TestTheWindowActivatesAReceivedLicenseAsTheCommandLineInstallsIt(t *testing
 	// window says so without naming a contract.
 	other := claims(2, time.Now().UTC().Add(90*24*time.Hour))
 	other.Organization = "another-hospital"
-	otherPath, _ := writeReceived(t, "other", signer.document(t, other), signer.trustBytes(t))
-	refused := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: otherPath, Author: "alice", Device: "laptop"})
+	otherBytes := signer.document(t, other)
+	otherPath, _ := writeReceived(t, "other", otherBytes, signer.trustBytes(t))
+	refused := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: otherPath, Digest: digestOfBytes(otherBytes), Author: "alice", Device: "laptop"})
 	if refused.State != desktop.Failed || refused.Reason != "this license is for a different organization than the one activated on this computer; deactivate this computer before activating it" {
 		t.Fatalf("another organization's license: %+v", refused)
 	}
@@ -113,7 +119,7 @@ func TestAPastedLicenseActivatesWithTheVendorKeysChosenOnce(t *testing.T) {
 	if review.State != desktop.Completed || review.Entitlement != "" || review.Trust != trustPath {
 		t.Fatalf("pasted review: %+v", review)
 	}
-	activated := app.ActivateLicense(desktop.LicenseActivateRequest{Contents: pasted, Trust: review.Trust, Author: "bob", Device: "laptop"})
+	activated := app.ActivateLicense(desktop.LicenseActivateRequest{Contents: pasted, Trust: review.Trust, Digest: review.Digest, Author: "bob", Device: "laptop"})
 	if activated.State != desktop.Completed || activated.License.RunnerPool != "" || !activated.License.NewWork {
 		t.Fatalf("pasted activation: %+v", activated)
 	}
@@ -131,7 +137,7 @@ func TestAPastedLicenseActivatesWithTheVendorKeysChosenOnce(t *testing.T) {
 	if review := app.ReviewLicense(desktop.LicenseReviewRequest{Contents: later}); review.State != desktop.Completed || !review.Renewal || review.Trust != "" {
 		t.Fatalf("pasted renewal review: %+v", review)
 	}
-	renewed := app.ActivateLicense(desktop.LicenseActivateRequest{Contents: later})
+	renewed := app.ActivateLicense(desktop.LicenseActivateRequest{Contents: later, Digest: digestOfBytes([]byte(later))})
 	if renewed.State != desktop.Completed || renewed.Outcome != "renewed" || renewed.License.Sequence != 2 || renewed.License.RenewSoon {
 		t.Fatalf("pasted renewal: %+v", renewed)
 	}
@@ -188,14 +194,16 @@ func TestRenewingInTheWindowRefusesWhatLicenseRenewRefuses(t *testing.T) {
 		path, _ := writeReceived(t, c.name, c.document, signer.trustBytes(t))
 		app := computerApp(t, &queueChooser{batches: [][]string{{path}}}, license)
 		review := app.ReviewLicense(desktop.LicenseReviewRequest{})
+		// Only a key these keys do not hold can be addressed by choosing an
+		// updated keys file.
 		if c.store == entitlement.ErrUnknownKey {
-			if review.State != desktop.Failed || review.Reason != c.reason {
+			if review.State != desktop.Failed || review.Reason != c.reason || !review.ChooseKeys {
 				t.Errorf("%s: review: %+v", c.name, review)
 			}
-		} else if review.State != desktop.Completed || !review.Renewal {
+		} else if review.State != desktop.Completed || !review.Renewal || review.ChooseKeys {
 			t.Errorf("%s: review: %+v", c.name, review)
 		}
-		activated := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: path})
+		activated := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: path, Digest: digestOfBytes(c.document)})
 		if activated.State != desktop.Failed || activated.Reason != c.reason {
 			t.Errorf("%s: %+v", c.name, activated)
 		}
@@ -215,7 +223,7 @@ func TestRenewingInTheWindowRefusesWhatLicenseRenewRefuses(t *testing.T) {
 	if review.State != desktop.Completed || !review.Renewal || review.Trust != rotatedTrust {
 		t.Fatalf("rotated review: %+v", review)
 	}
-	renewed := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: renewalPath, Trust: rotatedTrust})
+	renewed := app.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: renewalPath, Trust: rotatedTrust, Digest: review.Digest})
 	if renewed.State != desktop.Completed || renewed.Outcome != "renewed" || renewed.License.Sequence != 2 {
 		t.Fatalf("rotated renewal: %+v", renewed)
 	}
@@ -268,8 +276,9 @@ func TestDeactivatingThisComputerStopsNewWorkAndStillExportsTheLicense(t *testin
 	}
 	// The license reissued for this computer activates again; the deactivated
 	// one is set aside, never deleted.
-	reissuePath, _ := writeReceived(t, "reissue", signer.document(t, claims(2, time.Now().UTC().Add(90*24*time.Hour))), signer.trustBytes(t))
-	again := restarted.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: reissuePath, Author: "bob", Device: "laptop"})
+	reissue := signer.document(t, claims(2, time.Now().UTC().Add(90*24*time.Hour)))
+	reissuePath, _ := writeReceived(t, "reissue", reissue, signer.trustBytes(t))
+	again := restarted.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: reissuePath, Digest: digestOfBytes(reissue), Author: "bob", Device: "laptop"})
 	if again.State != desktop.Completed || again.Outcome != "activated" || again.License.Author != "bob" || !again.License.NewWork {
 		t.Fatalf("activation after deactivation: %+v", again)
 	}
@@ -299,7 +308,7 @@ func TestLicenseActionsRefuseAndCancelWithoutWriting(t *testing.T) {
 	} {
 		app := computerApp(t, &queueChooser{batches: c.batches}, license)
 		review := app.ReviewLicense(c.request)
-		if review.State != c.state || review.Reason != c.reason || review.Document != nil {
+		if review.State != c.state || review.Reason != c.reason || review.Document != nil || review.ChooseKeys || review.Digest != "" {
 			t.Errorf("%s: %+v", c.name, review)
 		}
 		noContractNames(t, review.Reason)
@@ -311,10 +320,13 @@ func TestLicenseActionsRefuseAndCancelWithoutWriting(t *testing.T) {
 		reason  string
 	}{
 		{"nothing chosen", desktop.LicenseActivateRequest{}, "choose your license file or paste its contents first"},
-		{"no keys", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Author: "alice", Device: "laptop"}, "choose your vendor's verification keys file to activate this license"},
-		{"an unnamed person", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Author: "carol", Device: "laptop"}, "this license does not name that person"},
-		{"an unassigned computer", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Author: "bob", Device: "desk"}, "this license does not assign this computer to that person; a license moved to another computer is activated there"},
-		{"an unnamed runner pool", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Author: "alice", Device: "desk", Authority: "elsewhere"}, "this license does not include that runner pool"},
+		{"nothing reviewed", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Author: "alice", Device: "laptop"}, "review this license before activating it"},
+		{"other bytes than reviewed", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Digest: digestOfBytes(tampered), Author: "alice", Device: "laptop"}, "this license changed after it was reviewed; review it again"},
+		{"pasted text other than reviewed", desktop.LicenseActivateRequest{Contents: string(document) + " ", Trust: trustPath, Digest: digestOfBytes(document), Author: "alice", Device: "laptop"}, "this license changed after it was reviewed; review it again"},
+		{"no keys", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Digest: digestOfBytes(document), Author: "alice", Device: "laptop"}, "choose your vendor's verification keys file to activate this license"},
+		{"an unnamed person", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Digest: digestOfBytes(document), Author: "carol", Device: "laptop"}, "this license does not name that person"},
+		{"an unassigned computer", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Digest: digestOfBytes(document), Author: "bob", Device: "desk"}, "this license does not assign this computer to that person; a license moved to another computer is activated there"},
+		{"an unnamed runner pool", desktop.LicenseActivateRequest{Entitlement: entitlementPath, Trust: trustPath, Digest: digestOfBytes(document), Author: "alice", Device: "desk", Authority: "elsewhere"}, "this license does not include that runner pool"},
 		{"a relative path", desktop.LicenseActivateRequest{Entitlement: "entitlement.json", Trust: trustPath}, "choose the file by its full location"},
 	} {
 		activated := app.ActivateLicense(c.request)
@@ -355,7 +367,11 @@ func TestTheSelectedComputerLicenseRenewsAndReleasesAsItsStore(t *testing.T) {
 	later := signer.document(t, claims(2, time.Now().UTC().Add(400*24*time.Hour)))
 	laterPath, _ := writeReceived(t, "later", later, signer.trustBytes(t))
 	app := computerApp(t, &queueChooser{batches: [][]string{{laterPath}}}, license)
-	if renewed := app.RenewLicenseDocument(); renewed.State != desktop.Completed || renewed.Term != "active" {
+	review := app.ReviewActivationRenewal()
+	if review.State != desktop.Completed || review.Entitlement != laterPath || review.Digest != digestOfBytes(later) || review.Document.Sequence != 2 {
+		t.Fatalf("reviewing the later issue: %+v", review)
+	}
+	if renewed := app.RenewLicenseDocument(desktop.ActivationRenewalRequest{Entitlement: review.Entitlement, Digest: review.Digest}); renewed.State != desktop.Completed || renewed.Term != "active" {
 		t.Fatalf("renewing the selected license: %+v", renewed)
 	}
 	if !bytes.Equal(mustRead(t, filepath.Join(license, "entitlement.json")), later) {
@@ -404,11 +420,99 @@ func TestACurrentLicenseBesideAnEarlierOneIsNotARenewal(t *testing.T) {
 	if review := app.ReviewLicense(desktop.LicenseReviewRequest{Contents: current}); review.State != desktop.Completed || review.Renewal {
 		t.Fatalf("a current license reviewed as a renewal of an earlier one: %+v", review)
 	}
-	refused := app.ActivateLicense(desktop.LicenseActivateRequest{Contents: current, Author: "alice", Device: "laptop"})
+	refused := app.ActivateLicense(desktop.LicenseActivateRequest{Contents: current, Digest: digestOfBytes([]byte(current)), Author: "alice", Device: "laptop"})
 	if refused.State != desktop.Failed || refused.Reason != "this computer already has an active license; activate a renewal of it to replace it, or deactivate this computer before activating a different license" {
 		t.Fatalf("a current license beside an earlier one: %+v", refused)
 	}
 	if !bytes.Equal(mustRead(t, filepath.Join(license, "entitlement.json")), earlierBytes) {
 		t.Fatal("the earlier license changed")
+	}
+}
+
+// A clock set back behind the latest time this computer's license recorded is
+// reported on the license itself, refuses new work, and is resolved only by
+// the explicit action once the clock is correct, through the same resolution
+// `readmit license operation resolve` performs; the term is never bypassed.
+func TestAClockRollbackOnThisComputersLicenseIsReportedAndResolvedExplicitly(t *testing.T) {
+	signer := newSigning(t)
+	document := signer.document(t, claims(1, time.Now().UTC().Add(90*24*time.Hour)))
+	license := computerLicense(t)
+	if err := operationguard.InstallLicense(license, document, signer.trustBytes(t), "alice", "laptop", "", time.Now().UTC().Truncate(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	app := computerApp(t, &queueChooser{}, license)
+	if status := app.LicenseStatus(); status.State != desktop.Completed || status.License.ClockRollback || !status.License.NewWork {
+		t.Fatalf("before any rollback: %+v", status)
+	}
+	policyPath := operationguard.InstalledPolicyIn(license)
+	policy, err := operationguard.DecodePolicy(mustRead(t, policyPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	latch := func(highWater time.Time) {
+		t.Helper()
+		clock, err := operationguard.Read(policyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		clock.HighWater, clock.Rollback = highWater, true
+		data, err := json.Marshal(clock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(policy.State, append(data, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ahead := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
+	latch(ahead)
+	status := app.LicenseStatus()
+	if status.State != desktop.Completed || !status.License.ClockRollback || status.License.NewWork || status.License.Term != "active" {
+		t.Fatalf("a latched rollback: %+v", status)
+	}
+	// While the clock is still behind, resolving is refused and changes nothing.
+	refused := app.ResolveLicenseClock()
+	if refused.State != desktop.Failed || refused.Reason != "this computer's clock is still earlier than the latest time recorded here; correct the clock first" {
+		t.Fatalf("resolved while the clock was behind: %+v", refused)
+	}
+	noContractNames(t, refused.Reason)
+	if same, err := operationguard.Read(policyPath); err != nil || !same.Rollback || !same.HighWater.Equal(ahead) {
+		t.Fatalf("a refused resolution changed the clock state: %v %+v", err, same)
+	}
+	// Once the clock is correct, the explicit resolution clears it, and the
+	// command line's reader agrees.
+	latch(time.Now().UTC().Truncate(time.Second).Add(-time.Minute))
+	resolved := app.ResolveLicenseClock()
+	if resolved.State != desktop.Completed || resolved.Outcome != "resolved" || resolved.License.ClockRollback || !resolved.License.NewWork {
+		t.Fatalf("resolution: %+v", resolved)
+	}
+	if after, err := operationguard.Read(policyPath); err != nil || after.Rollback {
+		t.Fatalf("the command line's reader after resolution: %v %+v", err, after)
+	}
+	// With no place for this computer's license there is nothing to resolve.
+	if unplaced := freshApp(t, &queueChooser{}, "").ResolveLicenseClock(); unplaced.State != desktop.Failed || unplaced.Reason != "this computer's license has no place in this account's configuration folder" {
+		t.Fatalf("no license location: %+v", unplaced)
+	}
+}
+
+// The received license file is chosen natively and nothing is read until it
+// is reviewed: the review then verifies exactly the chosen file.
+func TestChoosingALicenseFileReadsNothingUntilItIsReviewed(t *testing.T) {
+	signer := newSigning(t)
+	document := signer.document(t, claims(1, time.Now().UTC().Add(90*24*time.Hour)))
+	entitlementPath, trustPath := writeReceived(t, "received", document, signer.trustBytes(t))
+	license := computerLicense(t)
+	chooser := &queueChooser{batches: [][]string{{entitlementPath}, {trustPath}}}
+	app := computerApp(t, chooser, license)
+	chosen := app.ChooseLicenseFile()
+	if chosen.State != desktop.Completed || chosen.Path != entitlementPath || chosen.Name != filepath.Base(entitlementPath) {
+		t.Fatalf("choose: %+v", chosen)
+	}
+	review := app.ReviewLicense(desktop.LicenseReviewRequest{Entitlement: chosen.Path})
+	if review.State != desktop.Completed || review.Entitlement != entitlementPath || review.Trust != trustPath || review.Digest != digestOfBytes(document) {
+		t.Fatalf("review of the chosen file: %+v", review)
+	}
+	if dismissed := computerApp(t, &queueChooser{}, license).ChooseLicenseFile(); dismissed.State != desktop.Cancelled {
+		t.Fatalf("a dismissed choice: %+v", dismissed)
 	}
 }

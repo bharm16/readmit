@@ -13,7 +13,7 @@ import { HubAdministration } from "../HubAdministration";
 import { HubPanel } from "../HubPanel";
 import { IconButton } from "../IconButton";
 import { MessageReader } from "../Inspector";
-import { OperationAccess } from "../OperationAccess";
+import { AdministratorSetup } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
 import { PacketPanel } from "../PacketPanel";
 import { PerformanceCorpus } from "../PerformanceCorpus";
@@ -123,7 +123,7 @@ export const examples: Example[] = [
     />
   )),
   e("ComputerLicense", () => (
-    <ComputerLicense portal={undefined} onChanged={noop} />
+    <ComputerLicense onAdministratorSetup={noop} />
   )),
   e("HelpTopics", () => <HelpTopics />),
   e("ControlledDetails", () => (
@@ -148,7 +148,7 @@ export const examples: Example[] = [
   e("MessageReader", () => (
     <MessageReader result={f.inspectionResult()} loading={false} busy={false} onInspect={async () => null} onReveal={noop} />
   )),
-  e("OperationAccess", () => <OperationAccess />),
+  e("AdministratorSetup", () => <AdministratorSetup />),
   e("OperatorHub", () => <OperatorHub />),
   e("PacketPanel", () => <PacketPanel {...common} />),
   e("PerformanceCorpus", () => <PerformanceCorpus {...common} request={1} />),

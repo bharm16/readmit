@@ -67,7 +67,7 @@ func TestAWindowActivationIsTheLicenseTheCommandLineShows(t *testing.T) {
 	if review.State != desktop.Completed || review.Renewal {
 		t.Fatalf("review: %+v", review)
 	}
-	activated := window.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: review.Entitlement, Trust: review.Trust, Author: "a.nguyen", Device: "ws-0413", Authority: "ci-pool-main"})
+	activated := window.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: review.Entitlement, Trust: review.Trust, Digest: review.Digest, Author: "a.nguyen", Device: "ws-0413", Authority: "ci-pool-main"})
 	if activated.State != desktop.Completed || !activated.License.NewWork {
 		t.Fatalf("activate: %+v", activated)
 	}
@@ -131,7 +131,11 @@ func TestRenewExportAndReleaseAgreeBetweenTheWindowAndTheCommandLine(t *testing.
 	later := writeEntitlementV2(t, "later.json", installableClaims(2))
 	exports := t.TempDir()
 	window := licensedWindow(t, root, &receivedFiles{folder: exports})
-	if renewed := window.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: later}); renewed.State != desktop.Completed || renewed.Outcome != "renewed" || renewed.License.Sequence != 2 {
+	reviewed := window.ReviewLicense(desktop.LicenseReviewRequest{Entitlement: later})
+	if reviewed.State != desktop.Completed || !reviewed.Renewal {
+		t.Fatalf("the window's review of the renewal: %+v", reviewed)
+	}
+	if renewed := window.ActivateLicense(desktop.LicenseActivateRequest{Entitlement: later, Digest: reviewed.Digest}); renewed.State != desktop.Completed || renewed.Outcome != "renewed" || renewed.License.Sequence != 2 {
 		t.Fatalf("the window's renewal: %+v", renewed)
 	}
 	if shown, _, err := withoutPolicy(t, "license", "show"); err != nil || !strings.Contains(shown, "Issue sequence: 2\n") {

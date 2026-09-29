@@ -716,8 +716,16 @@ export function FormDialog({
 }
 
 /** One step of a started flow: what it is called, whether its entries allow
- * going on, and its fields. */
-export type FlowStep = { key: string; label: string; valid: boolean; render: () => ReactNode };
+ * going on, and its fields. A step that must check its entries before the
+ * flow goes on (verifying a file, say) answers `advance`: a failure keeps the
+ * flow on this step with the reason shown. */
+export type FlowStep = {
+  key: string;
+  label: string;
+  valid: boolean;
+  render: () => ReactNode;
+  advance?: () => void | SubmitFailure | null | Promise<void | SubmitFailure | null>;
+};
 
 /** A started flow in one sheet: only the current step's fields, Back to the
  * one before with everything entered kept (the caller owns the values), and
@@ -729,12 +737,15 @@ export function StepDialog({
   onSubmit,
   submitLabel,
   submitDisabled = false,
+  nextLabel = "Next",
   ...sheet
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   steps: FlowStep[];
+  /** What going on from a step before the last is called. */
+  nextLabel?: string;
   step: string;
   onStep: (key: string) => void;
   onSubmit: () => void | SubmitFailure | null | Promise<void | SubmitFailure | null>;
@@ -752,9 +763,17 @@ export function StepDialog({
   return (
     <FormDialog
       {...sheet}
-      submitLabel={last ? submitLabel : "Next"}
+      submitLabel={last ? submitLabel : nextLabel}
       submitDisabled={!current.valid || (last && submitDisabled)}
-      onSubmit={last ? onSubmit : () => onStep(steps[at + 1]!.key)}
+      onSubmit={
+        last
+          ? onSubmit
+          : async () => {
+              const failure = await current.advance?.();
+              if (failure) return failure;
+              onStep(steps[at + 1]!.key);
+            }
+      }
       secondary={
         at > 0 ? (
           <button type="button" onClick={() => onStep(steps[at - 1]!.key)}>

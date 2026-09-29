@@ -479,6 +479,16 @@ func app2clock(t *testing.T, selection string) operationguard.State {
 	return *status.Clock
 }
 
+// renewChosen verifies the later issue the chooser answers, then installs
+// exactly the bytes verified, as the Renew activation sheet does.
+func renewChosen(app *desktop.App) desktop.OperationResult {
+	review := app.ReviewActivationRenewal()
+	if review.State != desktop.Completed {
+		return desktop.OperationResult{State: review.State, Reason: review.Reason}
+	}
+	return app.RenewLicenseDocument(desktop.ActivationRenewalRequest{Entitlement: review.Entitlement, Digest: review.Digest})
+}
+
 func TestRenewLicenseDocumentInstallsLaterIssuesAndRefusesTransfers(t *testing.T) {
 	signer := newSigning(t)
 	now := time.Now().UTC().Truncate(time.Second)
@@ -499,8 +509,23 @@ func TestRenewLicenseDocumentInstallsLaterIssuesAndRefusesTransfers(t *testing.T
 	before := app2clock(t, selection)
 	later := signer.document(t, claims(2, now.Add(60*24*time.Hour)))
 	laterPath, _ := writeReceived(t, "later", later, signer.trustBytes(t))
+	// A file changed after it was verified is verified again, never installed.
+	changing := freshApp(t, &queueChooser{batches: [][]string{{laterPath}}}, selection)
+	verified := changing.ReviewActivationRenewal()
+	if verified.State != desktop.Completed || verified.Document == nil || verified.Document.Sequence != 2 {
+		t.Fatalf("verifying the later issue: %+v", verified)
+	}
+	if err := os.WriteFile(laterPath, signer.document(t, claims(2, now.Add(61*24*time.Hour))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if result := changing.RenewLicenseDocument(desktop.ActivationRenewalRequest{Entitlement: verified.Entitlement, Digest: verified.Digest}); result.State != desktop.Failed || result.Reason != "the later issue changed after it was verified; verify it again" {
+		t.Fatalf("a changed later issue: %+v", result)
+	}
+	if err := os.WriteFile(laterPath, later, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	app2 := freshApp(t, &queueChooser{batches: [][]string{{laterPath}}}, selection)
-	if renewed := app2.RenewLicenseDocument(); renewed.State != desktop.Completed || renewed.Term != string(entitlement.StateActive) {
+	if renewed := renewChosen(app2); renewed.State != desktop.Completed || renewed.Term != string(entitlement.StateActive) {
 		t.Fatalf("renewal refused: %+v", renewed)
 	}
 	// The retained clock was carried across the renewal untouched: renewal
@@ -532,12 +557,12 @@ func TestRenewLicenseDocumentInstallsLaterIssuesAndRefusesTransfers(t *testing.T
 		c = refusal.claims(c)
 		refusedPath, _ := writeReceived(t, "refused", signer.document(t, c), signer.trustBytes(t))
 		refused := freshApp(t, &queueChooser{batches: [][]string{{refusedPath}}}, selection)
-		if result := refused.RenewLicenseDocument(); result.State != desktop.Failed || result.Reason != refusal.reason {
+		if result := renewChosen(refused); result.State != desktop.Failed || result.Reason != refusal.reason {
 			t.Fatalf("%s accepted: %+v", refusal.name, result)
 		}
 	}
 	// No renewal path exists until a policy is selected.
-	if result := freshApp(t, &queueChooser{}, "").RenewLicenseDocument(); result.State != desktop.Failed {
+	if result := freshApp(t, &queueChooser{}, "").RenewLicenseDocument(desktop.ActivationRenewalRequest{Entitlement: laterPath, Digest: "x"}); result.State != desktop.Failed {
 		t.Fatalf("renewal without selection: %+v", result)
 	}
 	// A released activation is not renewed in place; a new activation folder is.
@@ -545,7 +570,7 @@ func TestRenewLicenseDocumentInstallsLaterIssuesAndRefusesTransfers(t *testing.T
 		t.Fatal(released)
 	}
 	again := freshApp(t, &queueChooser{batches: [][]string{{laterPath}}}, selection)
-	if result := again.RenewLicenseDocument(); result.State != desktop.Failed || !strings.Contains(result.Reason, "released") {
+	if result := renewChosen(again); result.State != desktop.Failed || !strings.Contains(result.Reason, "released") {
 		t.Fatalf("released activation renewed: %+v", result)
 	}
 }
@@ -664,6 +689,97 @@ func TestRunnerAdmissionAdministrationShowsAndSettles(t *testing.T) {
 	}
 	if settled := app2.SettleRunnerAdmission(desktop.RunnerSettleRequest{Instance: "build-4821"}); settled.State != desktop.Completed || settled.Active != 0 {
 		t.Fatalf("active instance not released: %+v", settled)
+	}
+}
+
+// The Activation folder sheet reads a supplied folder without selecting it;
+// only its Activate activates the folder, exactly as the command line's
+// operation activate does, and then selects it. A dismissed choice or a
+// refused activation leaves the selection as it was.
+func TestAReviewedActivationFolderIsSelectedOnlyOnceActivated(t *testing.T) {
+	signer := newSigning(t)
+	document := signer.document(t, claims(1, time.Now().UTC().Add(30*24*time.Hour)))
+	entitlementPath, trustPath := writeReceived(t, "received", document, signer.trustBytes(t))
+	folder := t.TempDir()
+	creator := freshApp(t, &queueChooser{}, filepath.Join(t.TempDir(), "creator.json"))
+	if created := creator.CreateLicenseActivation(desktop.LicenseActivationRequest{Entitlement: entitlementPath, Trust: trustPath, Author: "alice", Device: "laptop", Folder: folder}); created.State != desktop.Completed {
+		t.Fatal(created)
+	}
+	selection := filepath.Join(t.TempDir(), "operations.json")
+	app := freshApp(t, &queueChooser{folders: []string{folder}}, selection)
+	reviewed := app.ReviewActivationFolder()
+	if reviewed.State != desktop.Failed || reviewed.Selected || reviewed.Folder != folder || reviewed.Author != "alice" || reviewed.Device != "laptop" || reviewed.Clock != nil {
+		t.Fatalf("reviewing an unactivated folder: %+v", reviewed)
+	}
+	if status := app.OperationStatus(); status.State != desktop.Empty || status.Selected {
+		t.Fatalf("reviewing a folder selected it: %+v", status)
+	}
+	if dismissed := freshApp(t, &queueChooser{}, selection).ReviewActivationFolder(); dismissed.State != desktop.Cancelled {
+		t.Fatalf("a dismissed choice: %+v", dismissed)
+	}
+	if refused := app.ActivateActivationFolder(desktop.ActivationFolderRequest{Folder: t.TempDir()}); refused.State != desktop.Failed {
+		t.Fatalf("a folder without a policy was activated: %+v", refused)
+	}
+	if status := app.OperationStatus(); status.State != desktop.Empty {
+		t.Fatalf("a refused activation changed the selection: %+v", status)
+	}
+	policyPath := filepath.Join(folder, "operation-policy.json")
+	activated := app.ActivateActivationFolder(desktop.ActivationFolderRequest{Folder: folder})
+	if activated.State != desktop.Completed || !activated.Selected || activated.Folder != folder || activated.Term != "active" {
+		t.Fatalf("activation: %+v", activated)
+	}
+	if clock, err := operationguard.Read(policyPath); err != nil || activated.Clock == nil || *activated.Clock != clock {
+		t.Fatalf("the window's activation disagrees with the command line's reader: %v %+v", err, activated)
+	}
+	if restored := freshApp(t, &queueChooser{}, selection).OperationStatus(); restored.State != desktop.Completed || restored.Folder != folder {
+		t.Fatalf("the activated folder was not selected: %+v", restored)
+	}
+}
+
+// The Account portal sheet reads the operator's destinations file and shows
+// its destination, keeping nothing; only Save keeps it, reading it again as it
+// does, and a later window restores what was saved with a local read.
+func TestAReviewedCommercialDestinationIsKeptOnlyBySave(t *testing.T) {
+	selection := filepath.Join(t.TempDir(), "operations.json")
+	dir := t.TempDir()
+	good := filepath.Join(dir, "good.json")
+	if err := os.WriteFile(good, []byte(`{"schema":"readmit-commercial-destinations/v1","environment":"production","portal":"https://portal.example.test/account"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := freshApp(t, &queueChooser{batches: [][]string{{good}}}, selection)
+	read := app.ReviewCommercialDestinations()
+	if read.State != desktop.Completed || read.Portal != "https://portal.example.test/account" || read.Environment != "production" || read.ConfigPath != good {
+		t.Fatalf("reviewed destination: %+v", read)
+	}
+	if status := app.CommercialStatus(); status.State != desktop.Empty {
+		t.Fatalf("reviewing a destination kept it: %+v", status)
+	}
+	if status := freshApp(t, &queueChooser{}, selection).CommercialStatus(); status.State != desktop.Empty {
+		t.Fatalf("reviewing a destination remembered it: %+v", status)
+	}
+	// A file changed into something invalid after it was read is refused at
+	// Save, and nothing is kept.
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte(`{"schema":"readmit-commercial-destinations/v1","environment":"sandbox","portal":"http://insecure.example.test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if refused := app.SaveCommercialDestinations(desktop.CommercialSaveRequest{Path: bad}); refused.State != desktop.Failed {
+		t.Fatalf("an invalid destination was saved: %+v", refused)
+	}
+	if refused := app.SaveCommercialDestinations(desktop.CommercialSaveRequest{Path: "good.json"}); refused.State != desktop.Failed {
+		t.Fatalf("a relative destination path was saved: %+v", refused)
+	}
+	// A file that declares another destination by now than the one shown is
+	// read again, never kept.
+	if refused := app.SaveCommercialDestinations(desktop.CommercialSaveRequest{Path: read.ConfigPath, Portal: "https://elsewhere.example.test"}); refused.State != desktop.Failed || refused.Reason != "the destinations file changed after it was read; choose it again" {
+		t.Fatalf("a destination other than the one shown was saved: %+v", refused)
+	}
+	saved := app.SaveCommercialDestinations(desktop.CommercialSaveRequest{Path: read.ConfigPath, Portal: read.Portal})
+	if saved.State != desktop.Completed || saved.Portal != read.Portal {
+		t.Fatalf("save: %+v", saved)
+	}
+	if status := freshApp(t, &queueChooser{}, selection).CommercialStatus(); status.State != desktop.Completed || status.Portal != read.Portal || status.ConfigPath != good {
+		t.Fatalf("the saved destination was not restored: %+v", status)
 	}
 }
 
