@@ -1,0 +1,22 @@
+{
+ "schema": "readmit-casegen-golden/v1",
+ "note": "Hand-authored field by field from docs/scenario-generation.md; control IDs follow its documented digest rule. Each names the fixture request, row, variant and arrival ordinal it must equal byte for byte.",
+ "messages": [
+  {"file": "siu-book.hl7", "request": "book-reschedule-cancel", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 1},
+  {"file": "siu-reschedule.hl7", "request": "book-reschedule-cancel", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 2},
+  {"file": "siu-cancel.hl7", "request": "book-reschedule-cancel", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 3},
+  {"file": "adt-admit.hl7", "request": "adt", "profile": "adt", "row": "plain", "variant": "baseline", "ordinal": 2},
+  {"file": "adt-merge.hl7", "request": "adt", "profile": "adt", "row": "plain", "variant": "baseline", "ordinal": 11},
+  {"file": "orm-new.hl7", "request": "orm", "profile": "orm", "row": "plain", "variant": "baseline", "ordinal": 2},
+  {"file": "oru-final.hl7", "request": "oru", "profile": "oru", "row": "plain", "variant": "baseline", "ordinal": 4},
+  {"file": "oru-corrected.hl7", "request": "oru", "profile": "oru", "row": "plain", "variant": "baseline", "ordinal": 6},
+  {"file": "siu-add-doctor.hl7", "request": "resource-changes", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 2},
+  {"file": "siu-cancel-room.hl7", "request": "resource-changes", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 3},
+  {"file": "siu-replace-cancel-consult.hl7", "request": "resource-changes", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 4},
+  {"file": "siu-replace-add-checkup.hl7", "request": "resource-changes", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 5},
+  {"file": "siu-snapshot-add-doctor.hl7", "request": "resource-snapshot", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 2},
+  {"file": "siu-snapshot-cancel-room.hl7", "request": "resource-snapshot", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 3},
+  {"file": "siu-snapshot-replace-cancel-consult.hl7", "request": "resource-snapshot", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 4},
+  {"file": "siu-snapshot-replace-add-checkup.hl7", "request": "resource-snapshot", "profile": "siu", "row": "plain", "variant": "baseline", "ordinal": 5}
+ ]
+}

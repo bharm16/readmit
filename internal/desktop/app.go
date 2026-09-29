@@ -17,6 +17,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/bundle"
+	"github.com/bharm16/readmit/internal/casegen"
 	"github.com/bharm16/readmit/internal/guide"
 	"github.com/bharm16/readmit/internal/hubclient"
 	"github.com/bharm16/readmit/internal/operation"
@@ -373,6 +374,10 @@ type App struct {
 	// operation holds. corpusProgress is nil while neither runs.
 	corpusMu       sync.Mutex
 	corpusProgress *CorpusProgress
+	// caseMu guards the stage and counts a running scenario case generation
+	// has reached; caseProgress is nil while none runs.
+	caseMu       sync.Mutex
+	caseProgress *casegen.Progress
 
 	// collectMu guards what a running reviewed collection has measured,
 	// which CollectionProgress reads without waiting for the slot the

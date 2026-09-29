@@ -202,6 +202,8 @@ type flowContractHarness struct {
 	server                     *httptest.Server
 }
 
+const flowContractIOBudget = 10 * time.Second
+
 func newFlowContractHarness(t *testing.T, mutation ...string) *flowContractHarness {
 	t.Helper()
 	return newFlowContractHarnessWithSource(t, false, mutation...)
@@ -217,7 +219,7 @@ func newFlowContractHarnessWithSource(t *testing.T, coherentHTTP bool, mutation 
 }
 
 // newFlowContractHarnessWithTiming selects the source and, separately, whether
-// acquisitions get the patient budget: two seconds per read and a coverage gap
+// acquisitions get the patient budget: ten seconds per read and a coverage gap
 // bounded only by the parent deadline. A test whose subject is not scheduling
 // latency takes the patient budget whatever its source, so a slow runner
 // cannot stop it before the behavior it tests.
@@ -241,6 +243,10 @@ func newFlowContractHarnessWithTiming(t *testing.T, coherentHTTP, patient bool, 
 		t.Logf("failed synthetic lifecycle preserved at %s", retained)
 	})
 	target := startTarget(t, root)
+	// Scoped admission spends this budget on repeated authority/configuration
+	// checks as well as dialing. The simpler interval fixture's one second
+	// expires under CI race load before a healthy flow can send.
+	target.connectTimeout = flowContractIOBudget.String()
 	fixture := &flowContractFixture{target: target, mode: "fixed"}
 	if len(mutation) > 0 {
 		fixture.mutation = mutation[0]
@@ -306,7 +312,7 @@ func newFlowContractHarnessWithTiming(t *testing.T, coherentHTTP, patient bool, 
 		}
 		snapshotSource.Observes.Kind = observesource.HTTPAPI
 		snapshotSource.File = nil
-		snapshotSource.HTTP = &observesource.HTTP{URL: server.URL + "/export", Classification: "nonproduction", CAFile: ca, ServerName: "example.com", Timeout: "2s", MaxBytes: 65536, Retry: observesource.Retry{Attempts: 0, Delay: "5ms"}}
+		snapshotSource.HTTP = &observesource.HTTP{URL: server.URL + "/export", Classification: "nonproduction", CAFile: ca, ServerName: "example.com", Timeout: flowContractIOBudget.String(), MaxBytes: 65536, Retry: observesource.Retry{Attempts: 0, Delay: "5ms"}}
 		if err := observesource.WriteSource(filepath.Join(root, "source.json"), snapshotSource); err != nil {
 			t.Fatal(err)
 		}
@@ -362,7 +368,7 @@ func newFlowContractHarnessWithTiming(t *testing.T, coherentHTTP, patient bool, 
 				// Authorization, TLS and the per-read re-verification of the
 				// selected configuration are part of acquisition. The file
 				// helper's 300ms budget expires before those complete under race.
-				projection.Limits.TimeoutMS = 2000
+				projection.Limits.TimeoutMS = flowContractIOBudget.Milliseconds()
 				pinned := ref(ds.Projection.ID, dataset.ProjectionSchema, ds.Projection.File, projection)
 				ds.Projection = &pinned
 			}
@@ -374,7 +380,7 @@ func newFlowContractHarnessWithTiming(t *testing.T, coherentHTTP, patient bool, 
 			interval.HorizonMS, interval.SampleMS, interval.MaxGapMS = 120, 20, 1000
 			if patient {
 				// These positive lifecycle fixtures qualify state/authority,
-				// not scheduling latency. A healthy admitted two-second HTTP read must
+				// not scheduling latency. A healthy admitted HTTP read must
 				// fit coverage within the unchanged finite parent deadline.
 				// Timing-negative tests author their tighter gap explicitly.
 				interval.MaxGapMS = flow.Limits.DeadlineMS

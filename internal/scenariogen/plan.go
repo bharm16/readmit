@@ -246,6 +246,11 @@ func readTemplate(data []byte) (template, scenario.Timeline, error) {
 	if err != nil {
 		return template{}, scenario.Timeline{}, errors.New("generator requires a valid scenario with confirmed lifecycle outcomes")
 	}
+	// This generator's fixed mapping predates resource participation; a v2
+	// workflow is generated only by the case generator.
+	if workflow.Schema == scenario.ResourceSchema {
+		return template{}, scenario.Timeline{}, errors.New("this generator writes no " + scenario.ResourceSchema + " workflow; generate its cases with scenario generate-case")
+	}
 	timeline, err := workflow.Preview()
 	if err != nil {
 		return template{}, scenario.Timeline{}, errors.New("generator requires a valid scenario with confirmed lifecycle outcomes")

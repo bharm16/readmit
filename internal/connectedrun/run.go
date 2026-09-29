@@ -20,7 +20,9 @@ import (
 )
 
 type Result struct {
-	boundaries   map[string]string
+	boundaries map[string]string
+	// schedule is a scheduled phase's delays, verified against its transport.
+	schedule     []time.Duration
 	Schema       string            `json:"schema"`
 	Plan         string            `json:"plan_identity"`
 	Instance     string            `json:"instance"`

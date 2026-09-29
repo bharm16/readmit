@@ -264,7 +264,7 @@ func TestDecodeDocumentDispatchesByContractName(t *testing.T) {
 		})
 	}
 	for name, document := range map[string]string{
-		"another version": `{"schema":"readmit-scenario/v2","scenario":{"id":"s","version":"1"}}`,
+		"another version": `{"schema":"readmit-scenario/v3","scenario":{"id":"s","version":"1"}}`,
 		"no contract":     `{"not":"a scenario"}`,
 		"no schema":       `{"scenario":{"id":"s","version":"1"}}`,
 	} {

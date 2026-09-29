@@ -185,6 +185,15 @@ func flowSchemaFor(plan *connectedtest.FlowPlan) string {
 	}
 	return FlowSchema
 }
+
+// phaseSchemaFor is the version each v2 phase of the lifecycle is retained
+// under: a scheduled lifecycle's phases record their declared delays.
+func phaseSchemaFor(plan *connectedtest.FlowPlan) string {
+	if plan.Document().Schema == connectedtest.ScheduledFlowPlanSchema {
+		return ScheduledPhaseSchema
+	}
+	return PhaseSchema
+}
 func initialFlow(plan *connectedtest.FlowPlan, instance string, at time.Time) FlowResult {
 	d := plan.Document().Test
 	r := FlowResult{Schema: flowSchemaFor(plan), Plan: plan.Identity(), Instance: instance, Boundary: d.Boundary, Engine: engine.Version(), State: "incomplete", Verdict: assertion.VerdictUndecided, StartedAt: at, Setup: "not-started", Cleanup: "not-started", Phases: []FlowPhaseResult{}}

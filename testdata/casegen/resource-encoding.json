@@ -1,0 +1,440 @@
+{
+ "schema": "readmit-casegen-resource-encoding/v1",
+ "note": "Hand-authored from each edition's HL7 v2 chapter 10 segment definitions and Tables 0206 (segment action code), 0278 (filler status code) and 0354 (message structure), never from generated output. Before any message is read, every position, data type and table here is checked against that edition's own pinned pack.",
+ "values": {
+  "add": "A",
+  "update": "U",
+  "delete": "D",
+  "booked": "Booked",
+  "cancelled": "Cancelled",
+  "deleted": "Deleted"
+ },
+ "kinds": {
+  "service": "AIS",
+  "general": "AIG",
+  "location": "AIL",
+  "personnel": "AIP"
+ },
+ "editions": {
+  "2.4": {
+   "source": "HL7 Version 2.4, Chapter 10 (Scheduling): RGS-2, AIS-2, AIG-2, AIL-2 and AIP-2 Segment Action Code (Table 0206); AIS-3 Universal Service Identifier, AIG-3 Resource ID, AIL-3 Location Resource ID, AIP-3 Personnel Resource ID; AIS-10, AIG-14, AIL-12 and AIP-12 Filler Status Code (Table 0278); Table 0354 message structure SIU_S12 for S18 and S20; 2.4's own data type definitions name the Table 0278-bound CE CE_0278",
+   "structure": "SIU_S12",
+   "rgs_action_code": 2,
+   "segments": {
+    "AIS": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CE"
+     ],
+     "filler_status": 10,
+     "filler_status_types": [
+      "CE_0278"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIG": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CE"
+     ],
+     "filler_status": 14,
+     "filler_status_types": [
+      "CE_0278"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIL": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "PL"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CE_0278"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 4
+     }
+    },
+    "AIP": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "XCN"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CE_0278"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 9,
+      "name_type": 10,
+      "identifier_type": 13
+     }
+    }
+   },
+   "msh9_structure": 3
+  },
+  "2.5": {
+   "source": "HL7 Version 2.5, Chapter 10 (Scheduling): RGS-2, AIS-2, AIG-2, AIL-2 and AIP-2 Segment Action Code (Table 0206); AIS-3 Universal Service Identifier, AIG-3 Resource ID, AIL-3 Location Resource ID, AIP-3 Personnel Resource ID; AIS-10, AIG-14, AIL-12 and AIP-12 Filler Status Code (Table 0278); Table 0354 message structure SIU_S12 for S18 and S20",
+   "structure": "SIU_S12",
+   "rgs_action_code": 2,
+   "segments": {
+    "AIS": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CE"
+     ],
+     "filler_status": 10,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIG": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CE"
+     ],
+     "filler_status": 14,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIL": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "PL"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 4
+     }
+    },
+    "AIP": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "XCN"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 9,
+      "name_type": 10,
+      "identifier_type": 13
+     }
+    }
+   },
+   "msh9_structure": 3
+  },
+  "2.5.1": {
+   "source": "HL7 Version 2.5.1, Chapter 10 (Scheduling): RGS-2, AIS-2, AIG-2, AIL-2 and AIP-2 Segment Action Code (Table 0206); AIS-3 Universal Service Identifier, AIG-3 Resource ID, AIL-3 Location Resource ID, AIP-3 Personnel Resource ID; AIS-10, AIG-14, AIL-12 and AIP-12 Filler Status Code (Table 0278); Table 0354 message structure SIU_S12 for S18 and S20",
+   "structure": "SIU_S12",
+   "rgs_action_code": 2,
+   "segments": {
+    "AIS": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CE"
+     ],
+     "filler_status": 10,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIG": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CE"
+     ],
+     "filler_status": 14,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIL": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "PL"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 4
+     }
+    },
+    "AIP": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "XCN"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 9,
+      "name_type": 10,
+      "identifier_type": 13
+     }
+    }
+   },
+   "msh9_structure": 3
+  },
+  "2.6": {
+   "source": "HL7 Version 2.6, Chapter 10 (Scheduling): RGS-2, AIS-2, AIG-2, AIL-2 and AIP-2 Segment Action Code (Table 0206); AIS-3 Universal Service Identifier, AIG-3 Resource ID, AIL-3 Location Resource ID, AIP-3 Personnel Resource ID; AIS-10, AIG-14, AIL-12 and AIP-12 Filler Status Code (Table 0278); Table 0354 message structure SIU_S12 for S18 and S20",
+   "structure": "SIU_S12",
+   "rgs_action_code": 2,
+   "segments": {
+    "AIS": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CWE"
+     ],
+     "filler_status": 10,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIG": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CWE"
+     ],
+     "filler_status": 14,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIL": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "PL"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 4
+     }
+    },
+    "AIP": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "XCN"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 9,
+      "name_type": 10,
+      "identifier_type": 13
+     }
+    }
+   },
+   "msh9_structure": 3
+  },
+  "2.7.1": {
+   "source": "HL7 Version 2.7.1, Chapter 10 (Scheduling): RGS-2, AIS-2, AIG-2, AIL-2 and AIP-2 Segment Action Code (Table 0206); AIS-3 Universal Service Identifier, AIG-3 Resource ID, AIL-3 Location Resource ID, AIP-3 Personnel Resource ID; AIS-10, AIG-14, AIL-12 and AIP-12 Filler Status Code (Table 0278); Table 0354 message structure SIU_S12 for S18 and S20",
+   "structure": "SIU_S12",
+   "rgs_action_code": 2,
+   "segments": {
+    "AIS": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CWE"
+     ],
+     "filler_status": 10,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIG": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CWE"
+     ],
+     "filler_status": 14,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIL": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "PL"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 4
+     }
+    },
+    "AIP": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "XCN"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 9,
+      "name_type": 10,
+      "identifier_type": 13
+     }
+    }
+   },
+   "msh9_structure": 3
+  },
+  "2.8.2": {
+   "source": "HL7 Version 2.8.2, Chapter 10 (Scheduling): RGS-2, AIS-2, AIG-2, AIL-2 and AIP-2 Segment Action Code (Table 0206); AIS-3 Universal Service Identifier, AIG-3 Resource ID, AIL-3 Location Resource ID, AIP-3 Personnel Resource ID; AIS-10, AIG-14, AIL-12 and AIP-12 Filler Status Code (Table 0278); Table 0354 message structure SIU_S12 for S18 and S20",
+   "structure": "SIU_S12",
+   "rgs_action_code": 2,
+   "segments": {
+    "AIS": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CWE"
+     ],
+     "filler_status": 10,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIG": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "CWE"
+     ],
+     "filler_status": 14,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 3
+     }
+    },
+    "AIL": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "PL"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 4
+     }
+    },
+    "AIP": {
+     "action_code": 2,
+     "identity": 3,
+     "identity_types": [
+      "XCN"
+     ],
+     "filler_status": 12,
+     "filler_status_types": [
+      "CWE"
+     ],
+     "identity_components": {
+      "code": 1,
+      "authority": 9,
+      "name_type": 10,
+      "identifier_type": 13
+     }
+    }
+   },
+   "msh9_structure": 3
+  }
+ }
+}

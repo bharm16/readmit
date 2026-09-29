@@ -1,0 +1,278 @@
+{
+ "schema": "readmit-case-generation/v1",
+ "generator_version": "readmit-case-generator-v1",
+ "scenario": {
+  "schema": "readmit-scenario/v1",
+  "scenario": {
+   "id": "siu-appointment-lifecycle",
+   "version": "1"
+  },
+  "profile": "readmit-siu-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+   {
+    "id": "patient-a",
+    "kind": "patient",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-PATIENT-A",
+    "initial_state": "active"
+   },
+   {
+    "id": "appointment-a",
+    "kind": "appointment",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-APPOINTMENT-A",
+    "patient": "patient-a",
+    "initial_state": "none"
+   }
+  ],
+  "steps": [
+   {
+    "id": "cancel-before-anything-was-booked",
+    "event": "S15",
+    "subject": "appointment-a",
+    "after": "0s",
+    "expect": "refused"
+   },
+   {
+    "id": "book",
+    "event": "S12",
+    "subject": "appointment-a",
+    "after": "1m",
+    "expect": "accepted"
+   },
+   {
+    "id": "book-the-same-appointment-again",
+    "event": "S12",
+    "subject": "appointment-a",
+    "after": "2m",
+    "expect": "refused"
+   },
+   {
+    "id": "reschedule",
+    "event": "S13",
+    "subject": "appointment-a",
+    "after": "3m",
+    "expect": "accepted"
+   },
+   {
+    "id": "modify",
+    "event": "S14",
+    "subject": "appointment-a",
+    "after": "4m",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel",
+    "event": "S15",
+    "subject": "appointment-a",
+    "after": "24h",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel-the-cancellation",
+    "event": "S15",
+    "subject": "appointment-a",
+    "after": "25h",
+    "expect": "refused"
+   },
+   {
+    "id": "reschedule-after-cancellation",
+    "event": "S13",
+    "subject": "appointment-a",
+    "after": "26h",
+    "expect": "refused"
+   },
+   {
+    "id": "record-a-no-show-after-cancellation",
+    "event": "S26",
+    "subject": "appointment-a",
+    "after": "27h",
+    "expect": "refused"
+   }
+  ]
+ },
+ "profile": {
+  "schema": "readmit-local-profile/v1",
+  "id": "owned-casegen-siu",
+  "version": "1",
+  "sha256": "4c9bff8efd6a0373fdfe121d3cc32687aba24a9cb1bddbf9a25b0477790dd38b"
+ },
+ "pack": {
+  "schema": "readmit-profile-pack/v5",
+  "id": "owned-casegen-2-5-1",
+  "version": "1",
+  "sha256": "79f1cf62e1d7cd0a99cccae032cfbdfe55c06d733a3afa149be917c67f82f9c4"
+ },
+ "seed": 0,
+ "wire": {
+  "delimiters": "|^~\\&",
+  "precision": "second",
+  "offset": "+00:00",
+  "processing_id": "T",
+  "sending": {
+   "application": "READMIT",
+   "facility": "SYNTHETIC"
+  },
+  "receiving": {
+   "application": "RECEIVER",
+   "facility": "READMIT"
+  },
+  "resource_updates": "action-code"
+ },
+ "bindings": {
+  "patients": [
+   {
+    "subject": "patient-a",
+    "identifier_type": "MR",
+    "additional_identifiers": []
+   }
+  ],
+  "visits": [],
+  "appointments": [
+   {
+    "subject": "appointment-a",
+    "placer": {
+     "namespace": "SYNTH-PLACER",
+     "identifier": "APPT-PLACER-1"
+    },
+    "start_after": "24h",
+    "duration_minutes": 30,
+    "reason": {
+     "code": "ROUTINE",
+     "text": "Routine visit",
+     "system": "SYNTH-REASON"
+    },
+    "contact": {
+     "id": "SCHED-1",
+     "family": "SCHEDULER",
+     "given": "SYNTHETIC",
+     "authority": "SYNTH-STAFF",
+     "id_type": "EI",
+     "name_type": "L"
+    },
+    "entered_by": {
+     "id": "CLERK-1",
+     "family": "CLERK",
+     "given": "SYNTHETIC",
+     "authority": "SYNTH-STAFF",
+     "id_type": "EI",
+     "name_type": "L"
+    },
+    "resources": [
+     {
+      "id": "consult",
+      "kind": "service",
+      "identifier": {
+       "code": "CONSULT",
+       "text": "Consultation",
+       "system": "SYNTH-SERVICE"
+      },
+      "role": {
+       "code": "SVC",
+       "text": "Service",
+       "system": "SYNTH-ROLE"
+      }
+     },
+     {
+      "id": "room",
+      "kind": "location",
+      "identifier": {
+       "code": "CLINIC-1",
+       "text": "Clinic room one",
+       "system": "SYNTH-FACILITY"
+      },
+      "role": {
+       "code": "EXAM",
+       "text": "Examination room",
+       "system": "SYNTH-ROLE"
+      }
+     }
+    ]
+   }
+  ],
+  "resources": [],
+  "orders": [],
+  "edits": [
+   {
+    "step": "reschedule",
+    "op": "reschedule",
+    "start_after": "48h",
+    "duration_minutes": 45
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": "plain",
+   "family": "SYNTHETIC",
+   "given": "PATIENT",
+   "notes": [
+    "Arrive early"
+   ],
+   "charset": "UNICODE UTF-8"
+  }
+ ],
+ "variants": [
+  {
+   "id": "baseline",
+   "polarity": "positive",
+   "mutations": []
+  },
+  {
+   "id": "duplicate-booking",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "duplicate",
+     "step": "book"
+    }
+   ]
+  },
+  {
+   "id": "missing-booking",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "omit",
+     "step": "book"
+    }
+   ]
+  },
+  {
+   "id": "cancel-before-reschedule",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "move",
+     "step": "cancel",
+     "before": "reschedule"
+    }
+   ]
+  },
+  {
+   "id": "changed-appointment",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "identifier",
+     "step": "cancel",
+     "subject": "appointment-a",
+     "value": "SYNTH-APPOINTMENT-Z"
+    }
+   ]
+  },
+  {
+   "id": "null-name",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "field",
+     "step": "book",
+     "selector": "PID-5",
+     "state": "null"
+    }
+   ]
+  }
+ ]
+}

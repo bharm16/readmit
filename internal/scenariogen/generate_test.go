@@ -481,3 +481,16 @@ func TestGenerationInterruptedAfterStreamNeverAcquiresCompletion(t *testing.T) {
 		t.Fatal("fresh recovery did not complete")
 	}
 }
+
+func TestAResourceWorkflowIsRefusedRatherThanMisgenerated(t *testing.T) {
+	template := `{"schema":"readmit-scenario/v2","scenario":{"id":"r","version":"1"},"profile":"readmit-siu-lifecycle-v2","base_time":"2026-04-06T08:00:00Z",
+"subjects":[{"id":"patient-a","kind":"patient","namespace":"N","identifier":"P1","initial_state":"active"},
+ {"id":"appointment-a","kind":"appointment","namespace":"N","identifier":"A1","patient":"patient-a","initial_state":"none"},
+ {"id":"doctor","kind":"resource","namespace":"S","identifier":"DR-1","appointment":"appointment-a","initial_state":"none"}],
+"steps":[{"id":"book","event":"S12","subject":"appointment-a","after":"0s","expect":"accepted"},
+ {"id":"add","event":"S18","subject":"doctor","after":"1m","expect":"accepted"}]}`
+	plan := []byte(`{"schema":"readmit-scenario-generator/v1","generator_version":"readmit-scenario-generator-v1","seed":0,"template":` + template + `,"rows":[{"id":"plain","patient_name":"X","notes":[],"encoding":"utf-8"}],"variants":[{"id":"baseline","mutations":[]}]}`)
+	if _, err := scenariogen.Decode(plan); err == nil {
+		t.Fatal("the v1 generator accepted a resource workflow it cannot write")
+	}
+}

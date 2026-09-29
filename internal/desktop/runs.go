@@ -486,8 +486,12 @@ func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view
 		summary.Outcome = receipt.State
 		summary.Boundary = "transport-only"
 		summary.SourceCase = c.caseByIdentity(receipt.Binding.Source)
-	} else if declares(filepath.Join(path, "manifest.json"), replay.Schema) {
-		opened, err := replay.Open(path)
+	} else if declares(filepath.Join(path, "manifest.json"), replay.Schema) || declares(filepath.Join(path, "manifest.json"), replay.ByteOnlySchema) {
+		open := replay.Open
+		if declares(filepath.Join(path, "manifest.json"), replay.ByteOnlySchema) {
+			open = replay.OpenByteOnly
+		}
+		opened, err := open(path)
 		if err != nil {
 			return view{}, err
 		}

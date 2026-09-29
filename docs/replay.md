@@ -299,6 +299,38 @@ The selected transformation list is retained even if a transformation changes no
 fields. The source bundle is never edited, and a run destination inside it,
 including a symlink or `alias/../` traversal, is refused.
 
+## Generated cases and scenario timing
+
+A case the [case generator](scenario-generation.md) wrote belongs to a
+generation that declared how its messages are sent, including any delay
+between them. That timing is never in the case: variants with different delays
+can share one case's bytes. Replay sends bytes and applies no generation's
+timing, so it keeps the two operations apart:
+
+- **Scenario execution** of a generated case is a
+  [scheduled connected lifecycle](connected-lifecycle.md#scheduled-lifecycles),
+  which names the generation and sends on its delays.
+- **Byte-only replay** of a generated case is `readmit replay --send
+  --ignore-scenario-timing`. The dry run states that scenario timing is not
+  applied. Without the option, a send of a generated case is refused before
+  anything is decided, opened or written:
+
+  ```text
+  readmit: this generated case requires its generation schedule for scenario execution; use the connected execution path, or explicitly choose byte-only replay without scenario timing
+  ```
+
+A byte-only replay is a `readmit-byte-only-run/v1`: a `readmit-run/v1` whose
+manifest also records `scenario_timing: not-applied`. The dry run and the send
+both state the choice before anything is sent. It is never a timing-faithful
+scenario execution, and readers of ordinary runs (`run explain`, `diff`,
+`drift`, `redact`, test results) do not read it. The option changes nothing else a send requires — the
+destination decision, the target's classification and the explicit `--send`
+still apply — and it is refused for any case the case generator did not write.
+Every other case, and every existing run, is unchanged. `readmit test` sends
+through the same replay and has no such option, so it refuses a generated case
+when the test is prepared, recording a configuration refusal and sending
+nothing.
+
 ## Outcomes and limits
 
 | Outcome | Meaning |
@@ -337,5 +369,8 @@ open case, through the same preparation and the same send: its preview is the
 dry run above, a send needs the person's explicit approval of that exact
 preview, retains the run and `RUN.decision.json` exactly as `--send` without
 `--decision` does, and is refused if anything the preview showed has changed.
-A preview's decision is shown there and not retained. See
+A preview's decision is shown there and not retained. The panel offers no
+byte-only replay: a generated case's preview says why it cannot be sent there,
+a send of one is refused, and a byte-only replay run elsewhere is listed as the
+run it is. See
 [replaying selected case messages](desktop.md#replaying-selected-case-messages).

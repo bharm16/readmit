@@ -716,6 +716,14 @@ export interface CaseFixture {
   observation: string;
 }
 
+/** internal/desktop.CaseGenerationSettings */
+export interface CaseGenerationSettings {
+  wire: CasegenWire;
+  bindings: CasegenBindings;
+  variants: CasegenVariant[];
+  derived_from?: string;
+}
+
 /** internal/desktop.CaseResult */
 export interface CaseResult {
   state: State;
@@ -756,6 +764,187 @@ export interface CaseSummary {
   sources?: ProjectSource[];
   scenario?: CaseScenario;
   fixture?: CaseFixture;
+}
+
+/** internal/casegen.Application */
+export interface CasegenApplication {
+  application: string;
+  facility: string;
+}
+
+/** internal/casegen.AppointmentBinding */
+export interface CasegenAppointmentBinding {
+  subject: string;
+  placer: CasegenIdentifier | null;
+  start_after: string;
+  duration_minutes: number;
+  reason: CasegenCode;
+  contact: CasegenPerson;
+  entered_by: CasegenPerson;
+  resources: CasegenResource[];
+}
+
+/** internal/casegen.Bindings */
+export interface CasegenBindings {
+  patients: CasegenPatientBinding[];
+  visits: CasegenVisitBinding[];
+  appointments: CasegenAppointmentBinding[];
+  resources: CasegenResourceBinding[];
+  orders: CasegenOrderBinding[];
+  edits: CasegenEdit[];
+}
+
+/** internal/casegen.Clause */
+export interface CasegenClause {
+  path: string;
+  reason: string;
+}
+
+/** internal/casegen.Code */
+export interface CasegenCode {
+  code: string;
+  text: string;
+  system: string;
+}
+
+/** internal/casegen.Edit */
+export interface CasegenEdit {
+  step: string;
+  op: string;
+  family?: string;
+  given?: string;
+  location?: CasegenLocation;
+  start_after?: string;
+  duration_minutes?: number;
+}
+
+/** internal/casegen.Identifier */
+export interface CasegenIdentifier {
+  namespace: string;
+  identifier: string;
+}
+
+/** internal/casegen.Location */
+export interface CasegenLocation {
+  point_of_care: string;
+  room: string;
+  bed: string;
+}
+
+/** internal/casegen.Mutation */
+export interface CasegenMutation {
+  op: string;
+  step: string;
+  charset?: string;
+  offset?: string;
+  after?: string;
+  before?: string;
+  subject?: string;
+  value?: string;
+  selector?: string;
+  state?: string;
+}
+
+/** internal/casegen.OrderBinding */
+export interface CasegenOrderBinding {
+  subject: string;
+  service: CasegenCode;
+  observation_system: string;
+}
+
+/** internal/casegen.PatientBinding */
+export interface CasegenPatientBinding {
+  subject: string;
+  identifier_type: string;
+  additional_identifiers: CasegenTypedIdentifier[];
+}
+
+/** internal/casegen.Person */
+export interface CasegenPerson {
+  id: string;
+  family: string;
+  given: string;
+  authority: string;
+  id_type: string;
+  name_type: string;
+}
+
+/** internal/casegen.Phase */
+export interface CasegenPhase {
+  id: string;
+  event: string;
+  expect: string;
+  occurrences: number[];
+}
+
+/** internal/casegen.Progress */
+export interface CasegenProgress {
+  stage: string;
+  cases: number;
+  done: number;
+  messages: number;
+}
+
+/** internal/casegen.Resource */
+export interface CasegenResource {
+  id: string;
+  kind: string;
+  identifier: CasegenCode;
+  role: CasegenCode;
+  identifier_type?: string;
+  name_type?: string;
+}
+
+/** internal/casegen.ResourceBinding */
+export interface CasegenResourceBinding {
+  subject: string;
+  kind: string;
+  text: string;
+  role: CasegenCode;
+  identifier_type?: string;
+  name_type?: string;
+}
+
+/** internal/casegen.Support */
+export interface CasegenSupport {
+  event: string;
+  trigger: string;
+  structure?: string;
+  status: string;
+  reason?: string;
+}
+
+/** internal/casegen.TypedIdentifier */
+export interface CasegenTypedIdentifier {
+  namespace: string;
+  identifier: string;
+  type: string;
+}
+
+/** internal/casegen.Variant */
+export interface CasegenVariant {
+  id: string;
+  polarity: string;
+  mutations: CasegenMutation[];
+}
+
+/** internal/casegen.VisitBinding */
+export interface CasegenVisitBinding {
+  subject: string;
+  class: string;
+  identifier_type: string;
+  location: CasegenLocation;
+}
+
+/** internal/casegen.Wire */
+export interface CasegenWire {
+  delimiters: string;
+  precision: string;
+  offset: string;
+  processing_id: string;
+  sending: CasegenApplication;
+  receiving: CasegenApplication;
+  resource_updates: string;
 }
 
 /** internal/desktop.CatalogFilter */
@@ -2545,6 +2734,20 @@ export interface GatePolicyResult {
   retain_until?: string;
   approver?: string;
   rationale?: string;
+}
+
+/** internal/desktop.GeneratedCase */
+export interface GeneratedCase {
+  case: ItemRef;
+  entry: string;
+  identity: string;
+  row: string;
+  variant: string;
+  polarity: string;
+  messages: number;
+  phases: CasegenPhase[];
+  evaluated: boolean;
+  verdict?: string;
 }
 
 /** internal/desktop.Grid */
@@ -6304,6 +6507,7 @@ export interface ReplayPreview {
   sendable: boolean;
   refusal?: string;
   revealed: boolean;
+  scenario_timing?: string;
 }
 
 /** internal/desktop.ReplayRequest */
@@ -7501,6 +7705,41 @@ export interface ScenarioCaseResult {
   profile_version?: string;
 }
 
+/** internal/desktop.ScenarioCasesProgressResult */
+export interface ScenarioCasesProgressResult {
+  state: State;
+  reason?: string;
+  progress?: CasegenProgress;
+}
+
+/** internal/desktop.ScenarioCasesRequest */
+export interface ScenarioCasesRequest {
+  context: RequestContext;
+  scenario: ItemRef;
+  profile: ItemRef;
+  pack?: ItemRef;
+  settings: CaseGenerationSettings;
+  intent_id: string;
+}
+
+/** internal/desktop.ScenarioCasesResult */
+export interface ScenarioCasesResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  support: CasegenSupport[];
+  unconvertible: CasegenClause[];
+  record?: string;
+  content_identity?: string;
+  replayed: boolean;
+  hl7_version?: string;
+  family?: string;
+  seed: number;
+  base_time?: string;
+  generator_version?: string;
+  cases: GeneratedCase[];
+}
+
 /** internal/scenario.Catalog */
 export interface ScenarioCatalog {
   profiles: ScenarioProfileCatalog[];
@@ -7535,7 +7774,7 @@ export interface ScenarioIdentity {
 }
 
 /** internal/scenario.Kind */
-export type ScenarioKind = "patient" | "visit" | "appointment" | "order";
+export type ScenarioKind = "patient" | "visit" | "appointment" | "order" | "resource";
 
 /** internal/scenario.KindAvailability */
 export interface ScenarioKindAvailability {
@@ -7626,7 +7865,8 @@ export type ScenarioProfileName =
   | "readmit-adt-lifecycle-v1"
   | "readmit-siu-lifecycle-v1"
   | "readmit-orm-lifecycle-v1"
-  | "readmit-oru-lifecycle-v1";
+  | "readmit-oru-lifecycle-v1"
+  | "readmit-siu-lifecycle-v2";
 
 /** internal/scenario.Scenario */
 export interface ScenarioScenario {
@@ -7667,6 +7907,7 @@ export interface ScenarioSubject {
   namespace: string;
   identifier: string;
   patient?: string;
+  appointment?: string;
   initial_state: ScenarioState;
 }
 
@@ -9836,6 +10077,7 @@ export interface Facade {
   FinishCapture(): Promise<CaptureProgressResult>;
   ForgetProject(id: string): Promise<ProjectForgetResult>;
   GenerateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult>;
+  GenerateScenarioCases(request: ScenarioCasesRequest): Promise<ScenarioCasesResult>;
   GenerateSynth(request: SynthGenerateRequest): Promise<SynthGenerateResult>;
   GenerateSyntheticPacket(request: SyntheticPacketRequest): Promise<SyntheticPacketResult>;
   GroupDiagnoses(request: GroupDiagnosesRequest): Promise<DiagnosisGroupsResult>;
@@ -10024,6 +10266,7 @@ export interface Facade {
   SaveView(workspace: string, name: string, query: GridQuery): Promise<ViewsResult>;
   ScanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult>;
   ScanSecrets(request: SecretScanRequest): Promise<SecretScanResult>;
+  ScenarioCasesProgress(): Promise<ScenarioCasesProgressResult>;
   Search(path: string, query: string): Promise<SearchResult>;
   SearchHubNotifications(request: HubReviewQueryRequest): Promise<HubReviewsResult>;
   SearchHubReviews(request: HubReviewQueryRequest): Promise<HubReviewsResult>;

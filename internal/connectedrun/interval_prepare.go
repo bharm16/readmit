@@ -12,6 +12,7 @@ import (
 	"github.com/bharm16/readmit/internal/observeinterval"
 	"github.com/bharm16/readmit/internal/sendpolicy"
 	"path/filepath"
+	"time"
 )
 
 const ConfigSchemaV2 = "readmit-connected-run-config/v2"
@@ -24,9 +25,12 @@ type ConfigV2 struct {
 }
 
 func prepareInterval(planPath, configPath string, plan *connectedtest.Plan, raw []byte) (*Prepared, error) {
-	return prepareIntervalMode(planPath, configPath, plan, raw, false)
+	return prepareIntervalMode(planPath, configPath, plan, raw, false, nil)
 }
-func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, raw []byte, sequence bool) (*Prepared, error) {
+
+// prepareIntervalMode prepares a standalone interval plan or, with sequence, a
+// lifecycle phase; schedule is a scheduled lifecycle phase's delays.
+func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, raw []byte, sequence bool, schedule []time.Duration) (*Prepared, error) {
 	var c ConfigV2
 	schema := connectedtest.PlanSchemaV3
 	if sequence {
@@ -49,7 +53,9 @@ func prepareIntervalMode(planPath, configPath string, plan *connectedtest.Plan, 
 	config.Send.Path = anchor(config.Send.Path)
 	selection := connectedtransport.Selection{Case: anchor(config.Case), Target: anchor(config.Target), Policy: anchor(config.Policy), Credential: anchor(config.Credential)}
 	var transport *connectedtransport.Prepared
-	if sequence {
+	if sequence && schedule != nil {
+		transport, err = connectedtransport.PrepareScheduled(plan, selection, schedule)
+	} else if sequence {
 		transport, err = connectedtransport.PrepareSequence(plan, selection)
 	} else {
 		transport, err = connectedtransport.Prepare(plan, selection)

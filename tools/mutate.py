@@ -152,6 +152,30 @@ MUTATIONS = (
         check="collector-unsupported-mode",
         rationale="an acknowledgement mode this receiver does not implement would be treated as declared",
     ),
+    Mutation(
+        name="accepted-edit-not-carried",
+        path="internal/casegen/message.go",
+        old="\t\tif step.Expect == scenario.Accepted {\n\t\t\tc = view.carried.clone()",
+        new="\t\tif step.Expect == \"never\" {\n\t\t\tc = view.carried.clone()",
+        check="scenario-case-generation",
+        rationale="a cancellation after a reschedule would carry the slot the reschedule replaced",
+    ),
+    Mutation(
+        name="control-id-ignores-scenario",
+        path="internal/casegen/message.go",
+        old='"\\x00" + scenario.ID + "\\x00" + scenario.Version',
+        new='"\\x00" + scenario.Version',
+        check="scenario-case-generation",
+        rationale="two scenarios with the same step names would send the same control IDs",
+    ),
+    Mutation(
+        name="cancelled-participation-left-booked",
+        path="internal/casegen/message.go",
+        old='{m.subjectResource(step.Subject, change), "U", "Cancelled"}',
+        new='{m.subjectResource(step.Subject, change), "U", "Booked"}',
+        check="scenario-case-generation",
+        rationale="a cancellation of a resource's participation (S20) would leave the receiver holding it as booked",
+    ),
 )
 
 # Checks no mutation can exercise, recorded so the gap is a decision rather than

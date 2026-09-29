@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/casegen"
+	"github.com/bharm16/readmit/internal/profileeval"
 	"github.com/bharm16/readmit/internal/scenario"
 	"github.com/bharm16/readmit/internal/scenariogen"
 	"github.com/bharm16/readmit/internal/scenariolibrary"
@@ -64,7 +66,54 @@ func scenarioCommand() *cobra.Command {
 		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Fixture checks passed: %d streams, %d fields. External target outcomes: unverified.\n", result.Streams, result.Fields)
 		return err
 	}}
-	command.AddCommand(preview, generate, library)
+	var caseOutput string
+	generateCase := &cobra.Command{
+		Use: "generate-case REQUEST PROFILE PACK --output new_directory", Short: "Generate executable cases from a scenario under a pinned local profile and pack", Annotations: declare(capabilityAuthor), Args: cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if caseOutput == "" {
+				return usage("scenario generate-case requires --output")
+			}
+			request, err := readInputFile(args[0], casegen.MaxBytes)
+			if err != nil {
+				return err
+			}
+			profile, err := readInputFile(args[1], profileeval.MaxBytes)
+			if err != nil {
+				return err
+			}
+			pack, err := readInputFile(args[2], profileeval.MaxBytes)
+			if err != nil {
+				return err
+			}
+			generation, err := casegen.Generate(cmd.Context(), request, profile, pack, casegen.Options{})
+			var unsupported *casegen.UnsupportedError
+			if errors.As(err, &unsupported) {
+				out := cmd.OutOrStdout()
+				for _, s := range unsupported.Support {
+					if _, err := fmt.Fprintf(out, "%-7s %-4s %-8s %s\n", s.Event, s.Trigger, s.Status, s.Reason); err != nil {
+						return err
+					}
+				}
+				return statedRefusal(err)
+			}
+			if err != nil {
+				return err
+			}
+			written, err := generation.WriteDirectory(cmd.Context(), caseOutput)
+			if err != nil {
+				return err
+			}
+			messages := 0
+			for _, c := range written.Cases {
+				messages += len(c.Occurrences)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Generated %d cases, %d messages, HL7 %s %s. generation.json retains the inputs, phases and variant ledger. Nothing was sent; no expected outcome was approved.\n",
+				len(written.Cases), messages, generation.Record.Ancestry.HL7Version, generation.Record.Ancestry.Family)
+			return err
+		},
+	}
+	generateCase.Flags().StringVar(&caseOutput, "output", "", "New directory for the generated cases and their generation record")
+	command.AddCommand(preview, generate, library, generateCase)
 	return command
 }
 

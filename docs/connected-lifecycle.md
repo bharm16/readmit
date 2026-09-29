@@ -78,6 +78,37 @@ grants for the separate policy-bound reviews. Only a complete passing phase may
 advance the retained state. Unexpected mutations stop subsequent effects and
 prevent ordinary cleanup from deleting a changed resource.
 
+## Scheduled lifecycles
+
+A `readmit-connected-test/v6` is a v4 lifecycle that sends one generated case
+on the delays its [case generation](scenario-generation.md#executing-a-cases-schedule)
+declared. It adds a `schedule` naming the generation record (a pinned
+`readmit-case-generation-record/v1` reference) and the case in it by `row` and
+`variant`. The delays come from that record, never from the case bytes, which
+a variant with another delay may share; the same bytes on two schedules are two
+reviewed plans.
+
+| Artifact | Contract |
+| --- | --- |
+| Authored flow / compiled plan | `readmit-connected-test/v6` / `readmit-execution-plan/v6` (each step's `delays_ms`) |
+| Ordered transport | `readmit-connected-transport/v3`: the retained sequence declares each delay, and each intent records the declared delay and when its send began |
+| Derived phase result | `readmit-connected-phase/v3` |
+
+Compilation requires the lifecycle's phases to be the case's phases and each
+step to be that phase's message, unchanged: its case event and exactly its
+bytes, with no synthetic assignment. It refuses a delay that is not whole
+milliseconds or that the deadline cannot hold with the earlier phases' delays.
+
+A delay counts from the start of its phase's sending, on the monotonic clock.
+Execution opens the phase's one connection, waits for each message's delay,
+and only then records its intent and rechecks its authority before writing it,
+so a grant withdrawn during a wait stops the send. A phase whose remaining
+budget cannot hold its longest delay and one message's window is refused
+before it arms; a cancellation during a wait records the message as not sent.
+A case bundle the case generator wrote is sent only this way: an unscheduled
+lifecycle or plan naming one is refused when it is prepared. A delay is never shortened, and a send that began
+before its declared delay is refused on reopening.
+
 ## CLI
 
 ```sh

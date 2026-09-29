@@ -22,3 +22,8 @@ testdata/lab-evidence/** -text
 testdata/profile-evaluation/** -text
 testdata/profile-evaluation/**/*.hl7 binary
 testdata/integration-lab/qualification/** -text
+
+# Generation requests pin the owned profiles and pack by their exact bytes, and
+# the golden messages are CR-terminated evidence.
+testdata/casegen/** -text
+testdata/casegen/golden/*.hl7 binary

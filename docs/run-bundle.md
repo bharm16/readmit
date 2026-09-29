@@ -85,6 +85,18 @@ The marker contains the lowercase digest and LF. Filesystem timestamps, absolute
 paths, and directory names do not affect identity. This detects content changes;
 it is not an authenticity signature.
 
+## Byte-only replay: readmit-byte-only-run/v1
+
+A `readmit-byte-only-run/v1` is a `readmit-run/v1` in every member and rule,
+plus one manifest member, `scenario_timing: "not-applied"`. It is written only
+when `readmit replay --send --ignore-scenario-timing` sends a case the case
+generator wrote as [byte-only replay](replay.md#generated-cases-and-scenario-timing):
+its bytes without the delays its generation declared. Only `replay.OpenByteOnly`
+reads it; `replay.Open`, and every reader of ordinary runs, reads
+`readmit-run/v1` and `readmit-sequence-run/v1` alone and refuses any manifest
+carrying `scenario_timing`. Its identity hashes `readmit-byte-only-run/v1\n` in
+place of `readmit-run/v1\n`.
+
 ## Go consumer boundary
 
 All replay APIs are in `internal/replay`:

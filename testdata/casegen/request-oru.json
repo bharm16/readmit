@@ -1,0 +1,280 @@
+{
+ "schema": "readmit-case-generation/v1",
+ "generator_version": "readmit-case-generator-v1",
+ "scenario": {
+  "schema": "readmit-order-scenario/v1",
+  "scenario": {
+   "id": "oru-lifecycle",
+   "version": "1"
+  },
+  "profile": "readmit-oru-lifecycle-v1",
+  "base_time": "2026-01-01T12:00:00Z",
+  "subjects": [
+   {
+    "id": "patient-a",
+    "kind": "patient",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-PATIENT-A",
+    "initial_state": "active"
+   },
+   {
+    "id": "order-a",
+    "kind": "order",
+    "namespace": "READMIT",
+    "identifier": "SYNTH-ORDER-A",
+    "patient": "patient-a",
+    "initial_state": "ordered"
+   }
+  ],
+  "steps": [
+   {
+    "id": "step-1",
+    "event": "ORU-C",
+    "subject": "order-a",
+    "after": "0m",
+    "expect": "refused"
+   },
+   {
+    "id": "step-2",
+    "event": "ORU-P",
+    "subject": "order-a",
+    "after": "1m",
+    "expect": "accepted"
+   },
+   {
+    "id": "step-3",
+    "event": "ORU-P",
+    "subject": "order-a",
+    "after": "2m",
+    "expect": "accepted"
+   },
+   {
+    "id": "step-4",
+    "event": "ORU-F",
+    "subject": "order-a",
+    "after": "3m",
+    "expect": "accepted"
+   },
+   {
+    "id": "step-5",
+    "event": "ORU-P",
+    "subject": "order-a",
+    "after": "4m",
+    "expect": "refused"
+   },
+   {
+    "id": "step-6",
+    "event": "ORU-C",
+    "subject": "order-a",
+    "after": "5m",
+    "expect": "accepted"
+   }
+  ],
+  "orders": [
+   {
+    "subject": "order-a",
+    "placer": {
+     "namespace": "SYNTH-PLACER",
+     "identifier": "PLACER-001"
+    },
+    "filler": {
+     "namespace": "SYNTH-FILLER",
+     "identifier": "FILLER-001"
+    }
+   }
+  ],
+  "results": [
+   {
+    "step": "step-1",
+    "observations": [
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "1",
+      "value": "Synthetic observation 1",
+      "status": "C"
+     },
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "2",
+      "value": "Synthetic observation 2",
+      "status": "C"
+     }
+    ]
+   },
+   {
+    "step": "step-2",
+    "observations": [
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "1",
+      "value": "Synthetic observation 1",
+      "status": "P"
+     },
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "2",
+      "value": "Synthetic observation 2",
+      "status": "P"
+     }
+    ]
+   },
+   {
+    "step": "step-3",
+    "observations": [
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "1",
+      "value": "Synthetic observation 1",
+      "status": "P"
+     },
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "2",
+      "value": "Synthetic observation 2",
+      "status": "P"
+     }
+    ]
+   },
+   {
+    "step": "step-4",
+    "observations": [
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "1",
+      "value": "Synthetic observation 1",
+      "status": "F"
+     },
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "2",
+      "value": "Synthetic observation 2",
+      "status": "F"
+     }
+    ]
+   },
+   {
+    "step": "step-5",
+    "observations": [
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "1",
+      "value": "Synthetic observation 1",
+      "status": "P"
+     },
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "2",
+      "value": "Synthetic observation 2",
+      "status": "P"
+     }
+    ]
+   },
+   {
+    "step": "step-6",
+    "observations": [
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "1",
+      "value": "Synthetic observation 1",
+      "status": "C"
+     },
+     {
+      "code": "SYNTH-TEXT",
+      "sub_id": "2",
+      "value": "Synthetic observation 2",
+      "status": "C"
+     }
+    ]
+   }
+  ]
+ },
+ "profile": {
+  "schema": "readmit-local-profile/v1",
+  "id": "owned-casegen-oru",
+  "version": "1",
+  "sha256": "52ad7bdf3e6578ebf05da0b98aee09cbff10b75e0933ea352e9881b08b5da24e"
+ },
+ "pack": {
+  "schema": "readmit-profile-pack/v5",
+  "id": "owned-casegen-2-5-1",
+  "version": "1",
+  "sha256": "79f1cf62e1d7cd0a99cccae032cfbdfe55c06d733a3afa149be917c67f82f9c4"
+ },
+ "seed": 0,
+ "wire": {
+  "delimiters": "|^~\\&",
+  "precision": "second",
+  "offset": "+00:00",
+  "processing_id": "T",
+  "sending": {
+   "application": "READMIT",
+   "facility": "SYNTHETIC"
+  },
+  "receiving": {
+   "application": "RECEIVER",
+   "facility": "READMIT"
+  },
+  "resource_updates": "action-code"
+ },
+ "bindings": {
+  "patients": [
+   {
+    "subject": "patient-a",
+    "identifier_type": "MR",
+    "additional_identifiers": []
+   }
+  ],
+  "visits": [],
+  "appointments": [],
+  "resources": [],
+  "orders": [
+   {
+    "subject": "order-a",
+    "service": {
+     "code": "SYNTH-PANEL",
+     "text": "Synthetic panel",
+     "system": "SYNTH-LAB"
+    },
+    "observation_system": "SYNTH-LAB"
+   }
+  ],
+  "edits": []
+ },
+ "rows": [
+  {
+   "id": "plain",
+   "family": "SYNTHETIC",
+   "given": "PATIENT",
+   "notes": [],
+   "charset": "UNICODE UTF-8"
+  }
+ ],
+ "variants": [
+  {
+   "id": "baseline",
+   "polarity": "positive",
+   "mutations": []
+  },
+  {
+   "id": "unlinked-correction",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "unlink-correction",
+     "step": "step-6"
+    }
+   ]
+  },
+  {
+   "id": "correction-before-final",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "move",
+     "step": "step-6",
+     "before": "step-4"
+    }
+   ]
+  }
+ ]
+}

@@ -208,6 +208,11 @@ func prepareSpec(raw []byte, dir string, durability artifactdir.Durability) (*Pl
 	if err != nil {
 		return nil, err
 	}
+	// A test sends its case by raw replay and offers no byte-only choice, so a
+	// generated case is refused here, before any result exists.
+	if prepared.ScenarioTiming() == replay.TimingRequired {
+		return nil, replay.ErrScenarioTiming
+	}
 	sourceInfo, err := os.Stat(source)
 	if err != nil {
 		return nil, errors.New("cannot inspect test case")

@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/bharm16/readmit/internal/collection"
@@ -54,6 +55,17 @@ type GeneratorInputs struct {
 	BaseTime         time.Time `json:"base_time"`
 	GeneratorVersion string    `json:"generator_version"`
 	ProfileVersion   string    `json:"profile_version"`
+}
+
+// CaseGenerator prefixes every version of the case generator
+// (internal/casegen). Its cases are sent on a schedule their generation
+// declared, which the case never records: several schedules may share its
+// bytes.
+const CaseGenerator = "readmit-case-generator-"
+
+// Scheduled reports whether the case generator, in any version, wrote the case.
+func (p Provenance) Scheduled() bool {
+	return p.Generator != nil && strings.HasPrefix(p.Generator.GeneratorVersion, CaseGenerator)
 }
 
 // UnmarshalJSON distinguishes a declared zero seed from an absent/null seed.

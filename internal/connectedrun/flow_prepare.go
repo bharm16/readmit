@@ -97,7 +97,7 @@ func PrepareFlow(planPath, configPath, instance string) (*PreparedFlow, error) {
 			return nil, invalid
 		}
 		childRaw, _ := json.Marshal(config, json.Deterministic(true))
-		child, err := prepareIntervalMode(filepath.Join(planPath, "phases", phase.ID), configPath, plan.Phase(phase.ID), childRaw, true)
+		child, err := prepareIntervalMode(filepath.Join(planPath, "phases", phase.ID), configPath, plan.Phase(phase.ID), childRaw, true, plan.Schedule(phase.ID))
 		if err != nil {
 			return nil, err
 		}

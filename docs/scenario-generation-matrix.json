@@ -1,0 +1,2233 @@
+{
+ "generator_version": "readmit-case-generator-v1",
+ "packs": {
+  "2.3.1": "84ed4ddfa9e5bd27a673fa830b5cfffd88dd5dce58eecd974186e88553e70111",
+  "2.4": "28e178c14b8c58274bda6888a39c11d094fb6f43ce90f1a8c4bc4c1e810eae3c",
+  "2.5": "33a2fa212948f9c9ceed56922ffc0bda6447cfac36eee6b9c75b832d67c06dbd",
+  "2.5.1": "829a7728d2131f1cde85f599388bbdd5d4d3cdefdd17215a285bf275bce837f1",
+  "2.6": "405f80481c9158247925d170b30a6d41c1369e6a152020a6947897d5b3af288e",
+  "2.7.1": "f2e42f02392bf4e2c6cca96a45fe9ddf2b8fe706d13617b3be17abc8dba2dc09",
+  "2.8.2": "8e081c49d736f7327d5b78706c8f0f0ef04d529b029592a27975cf1fc32b674c"
+ },
+ "rows": [
+  {
+   "event": "A04",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "reason": "the pack declares no SIU^S13 message in HL7 2.3.1",
+   "status": "unsupported",
+   "trigger": "S13"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "reason": "the pack declares no SIU^S14 message in HL7 2.3.1",
+   "status": "unsupported",
+   "trigger": "S14"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "reason": "the pack declares no SIU^S15 message in HL7 2.3.1",
+   "status": "unsupported",
+   "trigger": "S15"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "reason": "the pack declares no SIU^S26 message in HL7 2.3.1",
+   "status": "unsupported",
+   "trigger": "S26"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "reason": "the pack declares no SIU^S18 message in HL7 2.3.1",
+   "status": "unsupported",
+   "trigger": "S18"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "reason": "the pack declares no SIU^S20 message in HL7 2.3.1",
+   "status": "unsupported",
+   "trigger": "S20"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.3.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A04",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PL",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "undecided_rules": [
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S13",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S14",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S15",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S26",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S18",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S20",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CE_0278",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TQ",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XCN",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.4",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "component-usage-unclassified-CE",
+    "component-usage-unclassified-CX",
+    "component-usage-unclassified-EI",
+    "component-usage-unclassified-FN",
+    "component-usage-unclassified-HD",
+    "component-usage-unclassified-MSG",
+    "component-usage-unclassified-PT",
+    "component-usage-unclassified-TS",
+    "component-usage-unclassified-VID",
+    "component-usage-unclassified-XPN",
+    "conditional-predicate-unknown-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A04",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "verdict": "pass"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S14",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S15",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S26",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S18",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S20",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.5",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A04",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "verdict": "pass"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S14",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S15",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S26",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S18",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S20",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "base-field-usage-unclassified",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "base-field-usage-unclassified",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.5.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "base-field-usage-unclassified",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A04",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "verdict": "pass"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S14",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S15",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S26",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S18",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S20",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORM_O01",
+   "trigger": "O01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.6",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A04",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "verdict": "pass"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S14",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S15",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S26",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S18",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S20",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "reason": "the pack declares no ORM^O01 message in HL7 2.7.1",
+   "status": "unsupported",
+   "trigger": "O01"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "reason": "the pack declares no ORM^O01 message in HL7 2.7.1",
+   "status": "unsupported",
+   "trigger": "O01"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "reason": "the pack declares no ORM^O01 message in HL7 2.7.1",
+   "status": "unsupported",
+   "trigger": "O01"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.7.1",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A04",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A04",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A01",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A02",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A02",
+   "trigger": "A02",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A08",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A08",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A03",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A03",
+   "trigger": "A03",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A11",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A09",
+   "trigger": "A11",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A13",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A01",
+   "trigger": "A13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "A40",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-adt-lifecycle-v1",
+   "status": "generated",
+   "structure": "ADT_A39",
+   "trigger": "A40",
+   "verdict": "pass"
+  },
+  {
+   "event": "S12",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S12",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S13",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S13",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S14",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S14",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S15",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S15",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S26",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v1",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S26",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component",
+    "conditional-predicate-unrepresented-field"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S18",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S18",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "S20",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-siu-lifecycle-v2",
+   "status": "generated",
+   "structure": "SIU_S12",
+   "trigger": "S20",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-component"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORM-NW",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "reason": "the pack declares no ORM^O01 message in HL7 2.8.2",
+   "status": "unsupported",
+   "trigger": "O01"
+  },
+  {
+   "event": "ORM-XO",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "reason": "the pack declares no ORM^O01 message in HL7 2.8.2",
+   "status": "unsupported",
+   "trigger": "O01"
+  },
+  {
+   "event": "ORM-CA",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-orm-lifecycle-v1",
+   "reason": "the pack declares no ORM^O01 message in HL7 2.8.2",
+   "status": "unsupported",
+   "trigger": "O01"
+  },
+  {
+   "event": "ORU-P",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-F",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  },
+  {
+   "event": "ORU-C",
+   "hl7_version": "2.8.2",
+   "lifecycle": "readmit-oru-lifecycle-v1",
+   "status": "generated",
+   "structure": "ORU_R01",
+   "trigger": "R01",
+   "undecided_rules": [
+    "conditional-predicate-unknown-component",
+    "conditional-predicate-unknown-field",
+    "conditional-predicate-unrepresented-field",
+    "datatype-varies",
+    "field-terminology-external-unavailable-9999"
+   ],
+   "verdict": "undecided"
+  }
+ ],
+ "schema": "readmit-scenario-generation-matrix/v1"
+}

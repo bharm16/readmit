@@ -62,11 +62,14 @@ func begin(plan *Plan, path string) (*Run, *runWriter, error) {
 		return nil, nil, err
 	}
 	now := time.Now().UTC()
-	schema := Schema
+	schema, timing := Schema, ""
 	if plan.sequence {
 		schema = SequenceSchema
 	}
-	r := &Run{Manifest: Manifest{Schema: schema, State: "in_progress", ContainsSourceValues: true, ExportPolicy: "customer-local-only", SourceBundleIdentity: plan.sourceIdentity, Target: plan.Target(), StartedAt: now, MessageCount: len(plan.messages), Mappings: plan.Mappings(), Transformations: slices.Clone(plan.options.Transformations), Changes: cloneChanges(plan.changes)}, payloads: make(map[string][]byte)}
+	if plan.ScenarioTiming() == TimingNotApplied {
+		schema, timing = ByteOnlySchema, TimingNotApplied
+	}
+	r := &Run{Manifest: Manifest{Schema: schema, State: "in_progress", ContainsSourceValues: true, ExportPolicy: "customer-local-only", SourceBundleIdentity: plan.sourceIdentity, Target: plan.Target(), StartedAt: now, MessageCount: len(plan.messages), Mappings: plan.Mappings(), Transformations: slices.Clone(plan.options.Transformations), Changes: cloneChanges(plan.changes), ScenarioTiming: timing}, payloads: make(map[string][]byte)}
 	if r.Manifest.Transformations == nil {
 		r.Manifest.Transformations = []Transformation{}
 	}
@@ -193,7 +196,19 @@ func (w *runWriter) finish(r *Run) error {
 // Open verifies completion, content identity, occurrence mappings, exact payload
 // hashes, every transformation, sent prefixes, and outcomes before returning a
 // run. A run directory is customer-local evidence even when changes is empty.
+// It reads readmit-run/v1 and readmit-sequence-run/v1 only; a byte-only replay
+// is read by OpenByteOnly, so no reader takes one without asking for it.
 func Open(path string) (*Run, error) {
+	return open(path, Schema, SequenceSchema)
+}
+
+// OpenByteOnly verifies a readmit-byte-only-run/v1 as Open verifies a run: a
+// generated case's bytes sent without its scenario timing.
+func OpenByteOnly(path string) (*Run, error) {
+	return open(path, ByteOnlySchema)
+}
+
+func open(path string, schemas ...string) (*Run, error) {
 	files, err := readFiles(path)
 	if err != nil {
 		return nil, err
@@ -202,7 +217,7 @@ func Open(path string) (*Run, error) {
 	if err := json.Unmarshal(files["manifest.json"], &r.Manifest, json.RejectUnknownMembers(true)); err != nil {
 		return nil, errors.New("invalid run manifest")
 	}
-	if r.Manifest.Schema != Schema && r.Manifest.Schema != SequenceSchema {
+	if !slices.Contains(schemas, r.Manifest.Schema) || r.Manifest.Schema == ByteOnlySchema && r.Manifest.ScenarioTiming != TimingNotApplied || r.Manifest.Schema != ByteOnlySchema && r.Manifest.ScenarioTiming != "" {
 		return nil, errors.New("unsupported run bundle schema version")
 	}
 	if r.Manifest.State != "complete" {
@@ -257,7 +272,7 @@ func validateRun(r *Run) error {
 	previousSource := ""
 	for i, e := range r.Events {
 		mapping := m.Mappings[i]
-		if e.OutboundOccurrence != fmt.Sprintf("o%06d", i+1) || mapping.OutboundOccurrence != e.OutboundOccurrence || mapping.SourceOccurrence != e.SourceOccurrence || !occurrencePattern.MatchString(e.SourceOccurrence) || m.Schema == Schema && e.SourceOccurrence <= previousSource {
+		if e.OutboundOccurrence != fmt.Sprintf("o%06d", i+1) || mapping.OutboundOccurrence != e.OutboundOccurrence || mapping.SourceOccurrence != e.SourceOccurrence || !occurrencePattern.MatchString(e.SourceOccurrence) || m.Schema != SequenceSchema && e.SourceOccurrence <= previousSource {
 			return invalid
 		}
 		previousSource = e.SourceOccurrence

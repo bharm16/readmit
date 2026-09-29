@@ -46,16 +46,19 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 	var err error
 	var record IntervalRun
 	var start Result
-	if json.Unmarshal(files["manifest.json"], &record, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (record.Schema != SchemaV2 && record.Schema != PhaseSchema) || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(record.Schema, files) {
+	if json.Unmarshal(files["manifest.json"], &record, json.RejectUnknownMembers(true)) != nil || json.Unmarshal(files["started.json"], &start, json.RejectUnknownMembers(true)) != nil || (record.Schema != SchemaV2 && record.Schema != PhaseSchema && record.Schema != ScheduledPhaseSchema) || strings.TrimSpace(string(files["identity.sha256"])) != artifactdir.Identity(record.Schema, files) {
 		return Result{}, invalid
 	}
 	planSchema := connectedtest.PlanSchemaV3
 	transportSchema := connectedtransport.ReceiptSchema
 	runSchema := replay.Schema
-	if record.Schema == PhaseSchema {
+	if record.Schema == PhaseSchema || record.Schema == ScheduledPhaseSchema {
 		planSchema = connectedtest.PhasePlanSchema
 		transportSchema = connectedtransport.ReceiptSchemaV2
 		runSchema = replay.SequenceSchema
+	}
+	if record.Schema == ScheduledPhaseSchema {
+		transportSchema = connectedtransport.ReceiptSchemaV3
 	}
 
 	r := record.Summary
@@ -276,6 +279,7 @@ func openIntervalFiles(ctx context.Context, directory string, files map[string][
 		if e != nil || transport.Schema != transportSchema || !artifactdir.MatchesSubtree(files, "transport", transportSchema, transportEvidence.Identity) || !bytes.Equal(encoded, files["transport/receipt.json"]) || transport.Binding.Configuration != artifactdir.Identity("readmit-connected-configuration/v1", artifactdir.Subtree(files, "transport/configuration")) || !artifactdir.MatchesSubtree(files, "transport/plan", planSchema, artifactdir.Identity(plan.Document().Schema, plan.Files())) || !artifactdir.MatchesSubtree(files, "transport/run", runSchema, transport.RunIdentity) || transport.Instance != r.Instance || transport.Binding != intent || transport.RunIdentity != r.Transport || transport.State == "uncertain" && r.State != "uncertain" || finish.State != transport.State {
 			return Result{}, invalid
 		}
+		r.schedule = transportEvidence.Schedule
 		run, e := replay.Open(filepath.Join(directory, "transport", "run"))
 		if e != nil || !artifactdir.MatchesSubtree(files, "transport/run", runSchema, run.Identity) || !withinRunIO(r, run.Manifest.StartedAt, run.Manifest.CompletedAt) || r.SentAt.Before(run.Manifest.CompletedAt) || r.SentAt.After(r.CompletedAt) {
 			return Result{}, invalid

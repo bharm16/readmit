@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/bharm16/readmit/internal/artifactdir"
@@ -26,6 +27,12 @@ func evaluateFlowPhase(ctx context.Context, plan *connectedtest.FlowPlan, phase 
 	if run.Transport != "" {
 		transport, e := replay.Open(filepath.Join(path, "transport", "run"))
 		if e != nil || transport.Identity != run.Transport || len(transport.Events) != len(r.Steps) {
+			return r, invalid
+		}
+		// A scheduled phase sent on exactly the delays the reviewed plan
+		// declares for it; its transport evidence proves each send began no
+		// earlier.
+		if evidence.Schema != phaseSchemaFor(plan) || !slices.Equal(evidence.Result.schedule, plan.Schedule(phase.ID)) {
 			return r, invalid
 		}
 		for i, event := range transport.Events {

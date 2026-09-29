@@ -285,19 +285,22 @@ func preview(designed Scenario, bound profile) (Timeline, error) {
 // sequence is the state one preview has reached: where every identity is now,
 // and which patient identity each of them belongs to.
 type sequence struct {
-	state   map[string]State
-	patient map[string]string
+	state       map[string]State
+	patient     map[string]string
+	appointment map[string]string
 }
 
 // walk starts a sequence from the states its subjects declare they begin in.
 func walk(subjects []Subject) sequence {
 	reached := sequence{
-		state:   make(map[string]State, len(subjects)),
-		patient: make(map[string]string, len(subjects)),
+		state:       make(map[string]State, len(subjects)),
+		patient:     make(map[string]string, len(subjects)),
+		appointment: make(map[string]string, len(subjects)),
 	}
 	for _, subject := range subjects {
 		reached.state[subject.ID] = subject.InitialState
 		reached.patient[subject.ID] = subject.Patient
+		reached.appointment[subject.ID] = subject.Appointment
 	}
 	return reached
 }
@@ -311,6 +314,12 @@ func (s sequence) refuse(step Step, operator transition) string {
 	// readmit will not pretend a message addressed to the old one lands.
 	if patient := s.patient[step.Subject]; patient != "" && s.state[patient] == PatientMerged {
 		return "the patient identity this " + string(operator.kind) + " belongs to was merged away"
+	}
+	// A resource's participation changes only while its appointment is
+	// booked: a cancelled or missed appointment has no participation to add
+	// to or cancel.
+	if appointment := s.appointment[step.Subject]; appointment != "" && s.state[appointment] != AppointmentBooked {
+		return "the appointment this resource participates in is not booked"
 	}
 	if !slices.Contains(operator.from, s.state[step.Subject]) {
 		return string(step.Event) + " (" + operator.description + ") is not taken from " + quoted(string(s.state[step.Subject]))

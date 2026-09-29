@@ -50,6 +50,15 @@ and tests the finite source-only adapter plus refused variants. Rights review
 remains pending, so this candidate tree is not yet promoted into the
 independently approved verification corpus.
 
+The `testdata/casegen` tree holds the case generator's owned fixtures: a
+hand-authored fictional interface in HL7's shape (`owned/pack.json`, a
+`readmit-profile-pack/v5`, and one local profile per family), generation
+requests over the shipped scenario templates and a booking, reschedule and
+cancellation scenario, golden messages written field by field from
+`docs/scenario-generation.md`, and `target-expectations.json`, the independent
+target's answers and ledger after each phase, written from the scenarios'
+declared facts. None of it is generator output or HL7 content.
+
 Additional malformed examples live as explicit literals in tests. Semantic correctness of
 the fixtures is deliberately not an acceptance criterion for syntax inspection.
 

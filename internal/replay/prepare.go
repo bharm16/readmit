@@ -55,6 +55,10 @@ func prepareLocal(sourcePath string, target Target, options Options, scoped, seq
 	if err != nil {
 		return nil, err
 	}
+	generated := source.Manifest.Provenance.Scheduled()
+	if options.IgnoreScenarioTiming && (scoped || !generated) {
+		return nil, errors.New("only a raw replay of a generated case can ignore scenario timing; nothing else declares any")
+	}
 	if err := validateTarget(target); err != nil {
 		return nil, err
 	}
@@ -90,7 +94,7 @@ func prepareLocal(sourcePath string, target Target, options Options, scoped, seq
 		}
 		selected[id] = true
 	}
-	p := &Plan{sequence: sequence, scoped: scoped, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), Durability: options.Durability}, changes: []Change{}}
+	p := &Plan{sequence: sequence, scoped: scoped, generated: generated, sourcePath: resolved, sourceInfo: info, sourceIdentity: source.Identity, target: target, ca: ca, options: Options{Transformations: slices.Clone(options.Transformations), IgnoreScenarioTiming: options.IgnoreScenarioTiming, Durability: options.Durability}, changes: []Change{}}
 	rebases := make(map[string][]byte)
 	total := 0
 	events := source.Events

@@ -1,0 +1,255 @@
+{
+ "schema": "readmit-case-generation/v1",
+ "generator_version": "readmit-case-generator-v1",
+ "scenario": {
+  "schema": "readmit-scenario/v1",
+  "scenario": {
+   "id": "book-reschedule-cancel",
+   "version": "1"
+  },
+  "profile": "readmit-siu-lifecycle-v1",
+  "base_time": "2026-03-02T09:00:00Z",
+  "subjects": [
+   {
+    "id": "patient-a",
+    "kind": "patient",
+    "namespace": "SYNTH-MRN",
+    "identifier": "MRN-0001",
+    "initial_state": "active"
+   },
+   {
+    "id": "appointment-a",
+    "kind": "appointment",
+    "namespace": "SYNTH-SCHED",
+    "identifier": "APPT-0001",
+    "patient": "patient-a",
+    "initial_state": "none"
+   }
+  ],
+  "steps": [
+   {
+    "id": "book",
+    "event": "S12",
+    "subject": "appointment-a",
+    "after": "0s",
+    "expect": "accepted"
+   },
+   {
+    "id": "reschedule",
+    "event": "S13",
+    "subject": "appointment-a",
+    "after": "1h",
+    "expect": "accepted"
+   },
+   {
+    "id": "cancel",
+    "event": "S15",
+    "subject": "appointment-a",
+    "after": "2h",
+    "expect": "accepted"
+   }
+  ]
+ },
+ "profile": {
+  "schema": "readmit-local-profile/v1",
+  "id": "owned-casegen-siu",
+  "version": "1",
+  "sha256": "4c9bff8efd6a0373fdfe121d3cc32687aba24a9cb1bddbf9a25b0477790dd38b"
+ },
+ "pack": {
+  "schema": "readmit-profile-pack/v5",
+  "id": "owned-casegen-2-5-1",
+  "version": "1",
+  "sha256": "79f1cf62e1d7cd0a99cccae032cfbdfe55c06d733a3afa149be917c67f82f9c4"
+ },
+ "seed": 7,
+ "wire": {
+  "delimiters": "|^~\\&",
+  "precision": "second",
+  "offset": "+00:00",
+  "processing_id": "T",
+  "sending": {
+   "application": "READMIT",
+   "facility": "SYNTHETIC"
+  },
+  "receiving": {
+   "application": "RECEIVER",
+   "facility": "READMIT"
+  },
+  "resource_updates": "action-code"
+ },
+ "bindings": {
+  "patients": [
+   {
+    "subject": "patient-a",
+    "identifier_type": "MR",
+    "additional_identifiers": []
+   }
+  ],
+  "visits": [],
+  "appointments": [
+   {
+    "subject": "appointment-a",
+    "placer": {
+     "namespace": "SYNTH-PLACER",
+     "identifier": "APPT-PLACER-1"
+    },
+    "start_after": "24h",
+    "duration_minutes": 30,
+    "reason": {
+     "code": "ROUTINE",
+     "text": "Routine visit",
+     "system": "SYNTH-REASON"
+    },
+    "contact": {
+     "id": "SCHED-1",
+     "family": "SCHEDULER",
+     "given": "SYNTHETIC",
+     "authority": "SYNTH-STAFF",
+     "id_type": "EI",
+     "name_type": "L"
+    },
+    "entered_by": {
+     "id": "CLERK-1",
+     "family": "CLERK",
+     "given": "SYNTHETIC",
+     "authority": "SYNTH-STAFF",
+     "id_type": "EI",
+     "name_type": "L"
+    },
+    "resources": [
+     {
+      "id": "consult",
+      "kind": "service",
+      "identifier": {
+       "code": "CONSULT",
+       "text": "Consultation",
+       "system": "SYNTH-SERVICE"
+      },
+      "role": {
+       "code": "SVC",
+       "text": "Service",
+       "system": "SYNTH-ROLE"
+      }
+     }
+    ]
+   }
+  ],
+  "resources": [],
+  "orders": [],
+  "edits": [
+   {
+    "step": "reschedule",
+    "op": "reschedule",
+    "start_after": "72h",
+    "duration_minutes": 30
+   }
+  ]
+ },
+ "rows": [
+  {
+   "id": "plain",
+   "family": "DOE",
+   "given": "JANE",
+   "notes": [],
+   "charset": "UNICODE UTF-8"
+  }
+ ],
+ "variants": [
+  {
+   "id": "baseline",
+   "polarity": "positive",
+   "mutations": []
+  },
+  {
+   "id": "cancel-before-reschedule",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "move",
+     "step": "cancel",
+     "before": "reschedule"
+    }
+   ]
+  },
+  {
+   "id": "duplicate-booking",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "duplicate",
+     "step": "book"
+    }
+   ]
+  },
+  {
+   "id": "missing-booking",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "omit",
+     "step": "book"
+    }
+   ]
+  },
+  {
+   "id": "foreign-namespace",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "namespace",
+     "step": "reschedule",
+     "subject": "appointment-a",
+     "value": "OTHER-SCHED"
+    }
+   ]
+  },
+  {
+   "id": "invalid-start",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "field",
+     "step": "reschedule",
+     "selector": "TQ1-7",
+     "state": "invalid"
+    }
+   ]
+  },
+  {
+   "id": "late-reschedule",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "delay",
+     "step": "reschedule",
+     "after": "90m"
+    }
+   ]
+  },
+  {
+   "id": "missing-appointment-id",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "field",
+     "step": "reschedule",
+     "selector": "SCH-2",
+     "state": "empty"
+    }
+   ]
+  },
+  {
+   "id": "null-name",
+   "polarity": "negative",
+   "mutations": [
+    {
+     "op": "field",
+     "step": "book",
+     "selector": "PID-5",
+     "state": "null"
+    }
+   ]
+  }
+ ]
+}

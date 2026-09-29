@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -673,5 +674,32 @@ func TestASpecPreparedAtAnotherTargetSealsTheSpecAsExecuted(t *testing.T) {
 	artifact, err := testrunner.Execute(context.Background(), moved, filepath.Join(dir, "changed-result"))
 	if err != nil || artifact.Result.ErrorClass != "configuration_changed" || artifact.Run != nil {
 		t.Fatal("a changed saved spec was executed at another target")
+	}
+}
+
+// A test sends its case by raw replay and offers no byte-only choice, so a case
+// the case generator wrote is refused when the test is prepared. Running it
+// records that configuration refusal as its result, with no run: nothing is
+// sent.
+func TestAGeneratedCaseIsRefusedWhenATestIsPrepared(t *testing.T) {
+	dir, path, _ := setup(t)
+	target(t, dir, "127.0.0.1:9")
+	if err := os.RemoveAll(filepath.Join(dir, "test-case")); err != nil {
+		t.Fatal(err)
+	}
+	var inputs []bundle.Input
+	for _, name := range []string{"listen-s12.hl7", "listen-s13.hl7"} {
+		inputs = append(inputs, bundle.Input{Data: fixture(t, name), Options: hl7.Options{Format: hl7.Raw}})
+	}
+	provenance := bundle.Provenance{Mode: bundle.Generated, Generator: &bundle.GeneratorInputs{BaseTime: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), GeneratorVersion: bundle.CaseGenerator + "v1", ProfileVersion: "owned-casegen-siu+1"}}
+	if _, err := bundle.Write(filepath.Join(dir, "test-case"), inputs, provenance); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testrunner.Prepare(path); !errors.Is(err, replay.ErrScenarioTiming) {
+		t.Fatalf("a generated case was prepared for a test: %v", err)
+	}
+	artifact, err := testrunner.Run(context.Background(), path, filepath.Join(t.TempDir(), "result"))
+	if err != nil || artifact.Result.Status != testrunner.ExecutionError || artifact.Result.ErrorClass != "configuration" || artifact.Run != nil {
+		t.Fatalf("a generated case was run as a test: %v %+v", err, artifact)
 	}
 }

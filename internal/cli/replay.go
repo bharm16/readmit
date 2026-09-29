@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/bharm16/readmit/internal/replay"
@@ -14,7 +15,7 @@ import (
 func replayCommand() *cobra.Command {
 	var targetPath, output, shift, policyPath, decisionPath string
 	var messages, transforms []string
-	var send bool
+	var send, ignoreTiming bool
 	command := &cobra.Command{
 		Use:         "replay CASE --target config [--policy file --decision new_file] [--send --output new_run]",
 		Annotations: declareInterruptible(capabilityExecuteIfSend),
@@ -39,7 +40,7 @@ func replayCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			options := replay.Options{Occurrences: messages}
+			options := replay.Options{Occurrences: messages, IgnoreScenarioTiming: ignoreTiming}
 			hasShift := false
 			for _, name := range transforms {
 				transformation := replay.Transformation{Name: name}
@@ -92,6 +93,7 @@ func replayCommand() *cobra.Command {
 					}
 					fmt.Fprintln(writer)
 				}
+				writeScenarioTiming(writer, plan.ScenarioTiming())
 				for _, mapping := range plan.Mappings() {
 					raw, _ := plan.Outbound(mapping.OutboundOccurrence)
 					fmt.Fprintf(writer, "  %s source=%s wire_bytes=%d\n", mapping.OutboundOccurrence, mapping.SourceOccurrence, len(raw))
@@ -100,6 +102,13 @@ func replayCommand() *cobra.Command {
 					return errors.New("cannot write replay preview")
 				}
 				return nil
+			}
+			// The byte-only choice is stated before anything is sent.
+			if plan.ScenarioTiming() == replay.TimingNotApplied {
+				writeScenarioTiming(writer, replay.TimingNotApplied)
+				if err := writer.Flush(); err != nil {
+					return errors.New("cannot write replay summary")
+				}
 			}
 			result, err := replay.Send(ctx, plan, output, execution)
 			if err != nil {
@@ -132,10 +141,23 @@ func replayCommand() *cobra.Command {
 	command.Flags().StringVar(&targetPath, "target", "", "Explicit readmit-target/v1, /v2 or /v3 test endpoint configuration")
 	command.Flags().StringVar(&output, "output", "", "New customer-local run directory; only created with --send")
 	command.Flags().BoolVar(&send, "send", false, "Explicitly connect and send; default is a local-only dry run")
+	command.Flags().BoolVar(&ignoreTiming, "ignore-scenario-timing", false, "Byte-only replay of a generated case: send its bytes without the delays its generation declared, recorded in the run; never a scenario execution")
 	command.Flags().StringArrayVar(&messages, "message", nil, "Source message occurrence to include (repeatable; source order is preserved)")
 	command.Flags().StringArrayVar(&transforms, "transform", nil, "Named transformation: rebase-control-ids or shift-timestamps (repeatable)")
 	command.Flags().StringVar(&shift, "shift", "", "Explicit whole-second duration for shift-timestamps, e.g. 24h or -2h")
 	command.Flags().StringVar(&policyPath, "policy", "", "Existing "+sendpolicy.PolicySchema+" document naming the destinations approved for sending")
 	command.Flags().StringVar(&decisionPath, "decision", "", "New file retaining the "+sendpolicy.DecisionSchema+" decision (send default: OUTPUT"+replay.DecisionSuffix+")")
 	return command
+}
+
+// writeScenarioTiming states what a raw replay does with a generated case's
+// scenario timing: it never applies it, and it sends the case only as the
+// byte-only replay its caller chose.
+func writeScenarioTiming(w io.Writer, timing string) {
+	switch timing {
+	case replay.TimingRequired:
+		fmt.Fprintln(w, "Scenario timing: not applied by raw replay; a scheduled connected lifecycle sends this generated case on its generation's delays, and a raw send requires --ignore-scenario-timing")
+	case replay.TimingNotApplied:
+		fmt.Fprintln(w, "Scenario timing: not applied; byte-only replay was chosen, and this is not a scenario execution")
+	}
 }
