@@ -1,0 +1,62 @@
+/* Reports (views 09 and 26): the library list, and one report as a readable
+   document in the shared reading column. */
+
+.report-reader {
+  margin: 0 auto;
+  max-width: var(--report-column);
+  width: 100%;
+}
+
+.report-reader > h2 {
+  font-size: var(--text-section);
+  line-height: var(--line-section);
+  margin: var(--s6) 0 var(--s2);
+}
+
+.report-reader > h3,
+.report-details h3 {
+  font-size: var(--text-body);
+  line-height: var(--line-body);
+  margin: var(--s4) 0 var(--s2);
+}
+
+.report-reader p {
+  margin: 0 0 var(--s2);
+  overflow-wrap: anywhere;
+}
+
+.report-line {
+  color: var(--muted);
+  margin: 0 0 var(--s4);
+  overflow-wrap: anywhere;
+}
+
+.report-result {
+  font-size: var(--text-section);
+  font-weight: 600;
+  line-height: var(--line-section);
+}
+
+.report-notes {
+  white-space: pre-wrap;
+}
+
+.report-details {
+  margin-top: var(--s6);
+}
+
+.report-details > summary {
+  cursor: default;
+  font-weight: 600;
+}
+
+.report-limitations {
+  margin: 0 0 var(--s3);
+  padding-left: var(--s6);
+}
+
+.report-unavailable {
+  display: grid;
+  gap: var(--s2);
+  justify-items: start;
+}

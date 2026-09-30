@@ -3,19 +3,181 @@
     "name": "App",
     "source": "desktop/frontend/src/App.tsx",
     "exported": true,
-    "line": 304
+    "line": 281
   },
   {
-    "name": "SuiteHandoffNotice",
-    "source": "desktop/frontend/src/App.tsx",
+    "name": "BenchmarkDetails",
+    "source": "desktop/frontend/src/Benchmarks.tsx",
+    "exported": true,
+    "line": 307
+  },
+  {
+    "name": "StartSheet",
+    "source": "desktop/frontend/src/Benchmarks.tsx",
     "exported": false,
-    "line": 3327
+    "line": 343
+  },
+  {
+    "name": "FormatSheet",
+    "source": "desktop/frontend/src/Benchmarks.tsx",
+    "exported": false,
+    "line": 491
+  },
+  {
+    "name": "GenerateSheet",
+    "source": "desktop/frontend/src/Benchmarks.tsx",
+    "exported": false,
+    "line": 550
+  },
+  {
+    "name": "RetainedData",
+    "source": "desktop/frontend/src/Capture.tsx",
+    "exported": false,
+    "line": 366
+  },
+  {
+    "name": "CaptureSetup",
+    "source": "desktop/frontend/src/Capture.tsx",
+    "exported": false,
+    "line": 434
+  },
+  {
+    "name": "SourceEditor",
+    "source": "desktop/frontend/src/Capture.tsx",
+    "exported": false,
+    "line": 583
+  },
+  {
+    "name": "ResponderSheet",
+    "source": "desktop/frontend/src/Capture.tsx",
+    "exported": false,
+    "line": 889
+  },
+  {
+    "name": "NotesList",
+    "source": "desktop/frontend/src/CaseContext.tsx",
+    "exported": true,
+    "line": 11
+  },
+  {
+    "name": "AttachmentsList",
+    "source": "desktop/frontend/src/CaseContext.tsx",
+    "exported": true,
+    "line": 62
+  },
+  {
+    "name": "FilesList",
+    "source": "desktop/frontend/src/CaseContext.tsx",
+    "exported": true,
+    "line": 122
+  },
+  {
+    "name": "DraftStatus",
+    "source": "desktop/frontend/src/CaseSheets.tsx",
+    "exported": false,
+    "line": 21
+  },
+  {
+    "name": "ChipsInput",
+    "source": "desktop/frontend/src/CaseSheets.tsx",
+    "exported": true,
+    "line": 49
+  },
+  {
+    "name": "CaseDetailsSheet",
+    "source": "desktop/frontend/src/CaseSheets.tsx",
+    "exported": true,
+    "line": 103
+  },
+  {
+    "name": "ProjectSettingsSheet",
+    "source": "desktop/frontend/src/CaseSheets.tsx",
+    "exported": true,
+    "line": 207
+  },
+  {
+    "name": "RemoveCaseSheet",
+    "source": "desktop/frontend/src/CaseSheets.tsx",
+    "exported": true,
+    "line": 363
+  },
+  {
+    "name": "NoteSheet",
+    "source": "desktop/frontend/src/CaseSheets.tsx",
+    "exported": true,
+    "line": 396
+  },
+  {
+    "name": "CaseList",
+    "source": "desktop/frontend/src/Cases.tsx",
+    "exported": true,
+    "line": 88
+  },
+  {
+    "name": "ViewChips",
+    "source": "desktop/frontend/src/Cases.tsx",
+    "exported": false,
+    "line": 237
+  },
+  {
+    "name": "CaseSearchSheet",
+    "source": "desktop/frontend/src/Cases.tsx",
+    "exported": true,
+    "line": 266
+  },
+  {
+    "name": "CaseFilterSheet",
+    "source": "desktop/frontend/src/Cases.tsx",
+    "exported": true,
+    "line": 300
+  },
+  {
+    "name": "CaseFacts",
+    "source": "desktop/frontend/src/Cases.tsx",
+    "exported": true,
+    "line": 382
+  },
+  {
+    "name": "MessageField",
+    "source": "desktop/frontend/src/Checks.tsx",
+    "exported": false,
+    "line": 216
+  },
+  {
+    "name": "StateAndValue",
+    "source": "desktop/frontend/src/Checks.tsx",
+    "exported": false,
+    "line": 248
+  },
+  {
+    "name": "Choice",
+    "source": "desktop/frontend/src/Checks.tsx",
+    "exported": false,
+    "line": 276
+  },
+  {
+    "name": "DateBound",
+    "source": "desktop/frontend/src/Checks.tsx",
+    "exported": false,
+    "line": 305
+  },
+  {
+    "name": "WholeNumber",
+    "source": "desktop/frontend/src/Checks.tsx",
+    "exported": false,
+    "line": 327
+  },
+  {
+    "name": "CheckSheet",
+    "source": "desktop/frontend/src/Checks.tsx",
+    "exported": true,
+    "line": 337
   },
   {
     "name": "CommandPalette",
     "source": "desktop/frontend/src/CommandPalette.tsx",
     "exported": true,
-    "line": 39
+    "line": 41
   },
   {
     "name": "Side",
@@ -33,7 +195,7 @@
     "name": "NormalizationView",
     "source": "desktop/frontend/src/Comparison.tsx",
     "exported": false,
-    "line": 485
+    "line": 483
   },
   {
     "name": "ComputerLicense",
@@ -60,10 +222,10 @@
     "line": 512
   },
   {
-    "name": "HelpTopics",
-    "source": "desktop/frontend/src/ContextHelp.tsx",
+    "name": "ConnectedObservationFields",
+    "source": "desktop/frontend/src/ConnectedObservationFields.tsx",
     "exported": true,
-    "line": 30
+    "line": 18
   },
   {
     "name": "ControlledDetails",
@@ -75,61 +237,445 @@
     "name": "DataTable",
     "source": "desktop/frontend/src/DataTable.tsx",
     "exported": true,
-    "line": 64
+    "line": 81
   },
   {
     "name": "Pager",
     "source": "desktop/frontend/src/DataTable.tsx",
     "exported": true,
-    "line": 339
+    "line": 377
   },
   {
-    "name": "GuidedSample",
-    "source": "desktop/frontend/src/GuidedSample.tsx",
+    "name": "DemoTask",
+    "source": "desktop/frontend/src/DemoTask.tsx",
     "exported": true,
-    "line": 25
+    "line": 22
   },
   {
-    "name": "NewProjectForm",
-    "source": "desktop/frontend/src/Home.tsx",
-    "exported": true,
-    "line": 11
+    "name": "DurationField",
+    "source": "desktop/frontend/src/Encryption.tsx",
+    "exported": false,
+    "line": 71
   },
   {
-    "name": "DemoCallout",
-    "source": "desktop/frontend/src/Home.tsx",
+    "name": "ControlSheet",
+    "source": "desktop/frontend/src/Encryption.tsx",
+    "exported": false,
+    "line": 318
+  },
+  {
+    "name": "EnvironmentBanner",
+    "source": "desktop/frontend/src/EnvironmentBanner.tsx",
     "exported": true,
-    "line": 99
+    "line": 8
+  },
+  {
+    "name": "FHIRCheckStatus",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 89
+  },
+  {
+    "name": "FHIRClaims",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 95
+  },
+  {
+    "name": "CheckOutcome",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1030
+  },
+  {
+    "name": "ConnectionSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1052
+  },
+  {
+    "name": "FilePicker",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": true,
+    "line": 1392
+  },
+  {
+    "name": "DestinationsSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1422
+  },
+  {
+    "name": "CheckDestinationSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1517
+  },
+  {
+    "name": "ObservationLinkSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1575
+  },
+  {
+    "name": "ResetEditSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1613
+  },
+  {
+    "name": "IsolationFields",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1783
+  },
+  {
+    "name": "ResetActionSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1892
+  },
+  {
+    "name": "RemoveEnvironmentSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 1984
+  },
+  {
+    "name": "CredentialsActions",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 2018
+  },
+  {
+    "name": "CredentialsList",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 2066
+  },
+  {
+    "name": "CredentialSheet",
+    "source": "desktop/frontend/src/Environments.tsx",
+    "exported": false,
+    "line": 2169
+  },
+  {
+    "name": "FilterSheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 623
+  },
+  {
+    "name": "AnalyzeSheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 678
+  },
+  {
+    "name": "HistorySheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 742
+  },
+  {
+    "name": "ReviewSheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 823
+  },
+  {
+    "name": "SettingsSheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 914
+  },
+  {
+    "name": "ChooseCasesSheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 1316
+  },
+  {
+    "name": "SaveComparisonSheet",
+    "source": "desktop/frontend/src/Findings.tsx",
+    "exported": false,
+    "line": 1393
+  },
+  {
+    "name": "Chevron",
+    "source": "desktop/frontend/src/Help.tsx",
+    "exported": false,
+    "line": 20
+  },
+  {
+    "name": "ArticleRows",
+    "source": "desktop/frontend/src/Help.tsx",
+    "exported": false,
+    "line": 29
+  },
+  {
+    "name": "HelpTopics",
+    "source": "desktop/frontend/src/Help.tsx",
+    "exported": true,
+    "line": 45
+  },
+  {
+    "name": "SearchHelpSheet",
+    "source": "desktop/frontend/src/Help.tsx",
+    "exported": true,
+    "line": 66
+  },
+  {
+    "name": "DiagnosticsSheet",
+    "source": "desktop/frontend/src/Help.tsx",
+    "exported": true,
+    "line": 175
   },
   {
     "name": "TeamAdministratorSetup",
     "source": "desktop/frontend/src/HubAdministration.tsx",
     "exported": true,
-    "line": 34
+    "line": 54
+  },
+  {
+    "name": "MembersTask",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 128
+  },
+  {
+    "name": "MembershipSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 215
+  },
+  {
+    "name": "LocalCopy",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 323
+  },
+  {
+    "name": "HandoffDetails",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 346
+  },
+  {
+    "name": "RemoveMemberSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 375
+  },
+  {
+    "name": "RetentionTask",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 406
+  },
+  {
+    "name": "RetentionSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 447
+  },
+  {
+    "name": "AuditTask",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 588
+  },
+  {
+    "name": "AuditFilterSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 617
+  },
+  {
+    "name": "ExportAuditSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 669
+  },
+  {
+    "name": "RevisionsTask",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 718
+  },
+  {
+    "name": "ResolveSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 804
+  },
+  {
+    "name": "HostTasks",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": true,
+    "line": 937
+  },
+  {
+    "name": "HostTaskSheet",
+    "source": "desktop/frontend/src/HubAdministration.tsx",
+    "exported": false,
+    "line": 955
   },
   {
     "name": "HubPanel",
     "source": "desktop/frontend/src/HubPanel.tsx",
     "exported": true,
-    "line": 29
+    "line": 31
+  },
+  {
+    "name": "ConnectTeamSheet",
+    "source": "desktop/frontend/src/HubPanel.tsx",
+    "exported": false,
+    "line": 339
+  },
+  {
+    "name": "SignInSheet",
+    "source": "desktop/frontend/src/HubPanel.tsx",
+    "exported": false,
+    "line": 404
   },
   {
     "name": "IconButton",
     "source": "desktop/frontend/src/IconButton.tsx",
     "exported": true,
-    "line": 78
+    "line": 103
+  },
+  {
+    "name": "ImportFlow",
+    "source": "desktop/frontend/src/Import.tsx",
+    "exported": true,
+    "line": 199
+  },
+  {
+    "name": "PasteSheet",
+    "source": "desktop/frontend/src/Import.tsx",
+    "exported": false,
+    "line": 767
+  },
+  {
+    "name": "FormatSheet",
+    "source": "desktop/frontend/src/Import.tsx",
+    "exported": false,
+    "line": 796
+  },
+  {
+    "name": "MappingSheet",
+    "source": "desktop/frontend/src/Import.tsx",
+    "exported": false,
+    "line": 892
+  },
+  {
+    "name": "SaveMappingSheet",
+    "source": "desktop/frontend/src/Import.tsx",
+    "exported": false,
+    "line": 1084
   },
   {
     "name": "MessageReader",
     "source": "desktop/frontend/src/Inspector.tsx",
     "exported": true,
-    "line": 24
+    "line": 39
   },
   {
-    "name": "NoteDraft",
-    "source": "desktop/frontend/src/NoteDraft.tsx",
+    "name": "HexTable",
+    "source": "desktop/frontend/src/Inspector.tsx",
     "exported": true,
-    "line": 25
+    "line": 308
+  },
+  {
+    "name": "RawText",
+    "source": "desktop/frontend/src/Inspector.tsx",
+    "exported": false,
+    "line": 371
+  },
+  {
+    "name": "LibraryList",
+    "source": "desktop/frontend/src/Library.tsx",
+    "exported": true,
+    "line": 66
+  },
+  {
+    "name": "HistorySheet",
+    "source": "desktop/frontend/src/Library.tsx",
+    "exported": true,
+    "line": 193
+  },
+  {
+    "name": "SaveButtons",
+    "source": "desktop/frontend/src/Library.tsx",
+    "exported": true,
+    "line": 549
+  },
+  {
+    "name": "UseInTestSheet",
+    "source": "desktop/frontend/src/Library.tsx",
+    "exported": true,
+    "line": 617
+  },
+  {
+    "name": "MessageList",
+    "source": "desktop/frontend/src/Messages.tsx",
+    "exported": true,
+    "line": 311
+  },
+  {
+    "name": "NameSheet",
+    "source": "desktop/frontend/src/Messages.tsx",
+    "exported": false,
+    "line": 638
+  },
+  {
+    "name": "SearchSheet",
+    "source": "desktop/frontend/src/Messages.tsx",
+    "exported": false,
+    "line": 678
+  },
+  {
+    "name": "FilterSheet",
+    "source": "desktop/frontend/src/Messages.tsx",
+    "exported": false,
+    "line": 724
+  },
+  {
+    "name": "ColumnsSheet",
+    "source": "desktop/frontend/src/Messages.tsx",
+    "exported": false,
+    "line": 971
+  },
+  {
+    "name": "SearchSettingsSheet",
+    "source": "desktop/frontend/src/Messages.tsx",
+    "exported": true,
+    "line": 1010
+  },
+  {
+    "name": "ObservationValue",
+    "source": "desktop/frontend/src/Observations.tsx",
+    "exported": false,
+    "line": 119
+  },
+  {
+    "name": "TypedReadings",
+    "source": "desktop/frontend/src/Observations.tsx",
+    "exported": false,
+    "line": 126
+  },
+  {
+    "name": "NewObservationEditor",
+    "source": "desktop/frontend/src/Observations.tsx",
+    "exported": true,
+    "line": 534
+  },
+  {
+    "name": "ObservationEditor",
+    "source": "desktop/frontend/src/Observations.tsx",
+    "exported": false,
+    "line": 649
   },
   {
     "name": "AdministratorSetup",
@@ -165,67 +711,7 @@
     "name": "OperatorHub",
     "source": "desktop/frontend/src/OperatorHub.tsx",
     "exported": true,
-    "line": 22
-  },
-  {
-    "name": "PacketPanel",
-    "source": "desktop/frontend/src/PacketPanel.tsx",
-    "exported": true,
-    "line": 39
-  },
-  {
-    "name": "PacketInputRow",
-    "source": "desktop/frontend/src/PacketPanel.tsx",
-    "exported": false,
-    "line": 304
-  },
-  {
-    "name": "PacketViewDetails",
-    "source": "desktop/frontend/src/PacketPanel.tsx",
-    "exported": false,
-    "line": 323
-  },
-  {
-    "name": "PacketReviewDetails",
-    "source": "desktop/frontend/src/PacketPanel.tsx",
-    "exported": false,
-    "line": 333
-  },
-  {
-    "name": "Choice",
-    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
-    "exported": false,
-    "line": 117
-  },
-  {
-    "name": "PlanControls",
-    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
-    "exported": false,
-    "line": 143
-  },
-  {
-    "name": "ProgressLine",
-    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
-    "exported": false,
-    "line": 184
-  },
-  {
-    "name": "ScanReport",
-    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
-    "exported": false,
-    "line": 197
-  },
-  {
-    "name": "PerformanceCorpus",
-    "source": "desktop/frontend/src/PerformanceCorpus.tsx",
-    "exported": true,
-    "line": 285
-  },
-  {
-    "name": "SupportGuidance",
-    "source": "desktop/frontend/src/SupportGuidance.tsx",
-    "exported": true,
-    "line": 177
+    "line": 21
   },
   {
     "name": "PrivacyDocuments",
@@ -237,61 +723,109 @@
     "name": "PrivacyPanel",
     "source": "desktop/frontend/src/PrivacyPanel.tsx",
     "exported": true,
-    "line": 65
+    "line": 67
   },
   {
-    "name": "EditableDocument",
-    "source": "desktop/frontend/src/ProjectPanel.tsx",
+    "name": "FieldDetail",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
     "exported": false,
-    "line": 44
+    "line": 72
   },
   {
-    "name": "CaseDetailFields",
-    "source": "desktop/frontend/src/ProjectPanel.tsx",
+    "name": "SetupSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
     "exported": false,
-    "line": 100
+    "line": 476
   },
   {
-    "name": "ProjectPanel",
-    "source": "desktop/frontend/src/ProjectPanel.tsx",
+    "name": "SegmentSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 539
+  },
+  {
+    "name": "FieldSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 551
+  },
+  {
+    "name": "CompareButton",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 795
+  },
+  {
+    "name": "ChangeList",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 828
+  },
+  {
+    "name": "AffectedTestsSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 835
+  },
+  {
+    "name": "PacksSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 956
+  },
+  {
+    "name": "JsonSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
     "exported": true,
-    "line": 190
+    "line": 1016
+  },
+  {
+    "name": "EvaluateSheet",
+    "source": "desktop/frontend/src/ProfileLibrary.tsx",
+    "exported": false,
+    "line": 1057
+  },
+  {
+    "name": "ProjectList",
+    "source": "desktop/frontend/src/Projects.tsx",
+    "exported": true,
+    "line": 43
+  },
+  {
+    "name": "NewProjectSheet",
+    "source": "desktop/frontend/src/Projects.tsx",
+    "exported": true,
+    "line": 145
+  },
+  {
+    "name": "DraftsToRestore",
+    "source": "desktop/frontend/src/Projects.tsx",
+    "exported": true,
+    "line": 260
   },
   {
     "name": "ProtectionPanel",
     "source": "desktop/frontend/src/ProtectionPanel.tsx",
     "exported": true,
-    "line": 36
+    "line": 20
   },
   {
     "name": "PackageView",
     "source": "desktop/frontend/src/ProtectionPanel.tsx",
     "exported": false,
-    "line": 556
+    "line": 292
   },
   {
-    "name": "RecentWorkspaces",
-    "source": "desktop/frontend/src/RecentWorkspaces.tsx",
-    "exported": true,
-    "line": 12
-  },
-  {
-    "name": "Recovery",
-    "source": "desktop/frontend/src/Recovery.tsx",
-    "exported": true,
-    "line": 18
-  },
-  {
-    "name": "RetainedDrafts",
-    "source": "desktop/frontend/src/Recovery.tsx",
-    "exported": true,
-    "line": 84
+    "name": "FormatSheet",
+    "source": "desktop/frontend/src/RawInspection.tsx",
+    "exported": false,
+    "line": 356
   },
   {
     "name": "Reduction",
     "source": "desktop/frontend/src/Reduction.tsx",
     "exported": true,
-    "line": 45
+    "line": 46
   },
   {
     "name": "Reexecution",
@@ -300,148 +834,520 @@
     "line": 12
   },
   {
+    "name": "SearchSheet",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 318
+  },
+  {
+    "name": "FilterSheet",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 341
+  },
+  {
+    "name": "NewReportSheet",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 386
+  },
+  {
+    "name": "CheckDetail",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 891
+  },
+  {
+    "name": "ReportDetails",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 923
+  },
+  {
+    "name": "EditSheet",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 956
+  },
+  {
+    "name": "ExportSheet",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 985
+  },
+  {
+    "name": "ReviewSheet",
+    "source": "desktop/frontend/src/Reports.tsx",
+    "exported": false,
+    "line": 1072
+  },
+  {
     "name": "Reproducer",
     "source": "desktop/frontend/src/Reproducer.tsx",
     "exported": true,
-    "line": 48
+    "line": 49
   },
   {
     "name": "Review",
     "source": "desktop/frontend/src/Review.tsx",
     "exported": true,
-    "line": 38
+    "line": 39
   },
   {
     "name": "Preview",
     "source": "desktop/frontend/src/Review.tsx",
     "exported": false,
-    "line": 484
+    "line": 485
   },
   {
     "name": "Inventory",
     "source": "desktop/frontend/src/Review.tsx",
     "exported": false,
-    "line": 627
+    "line": 628
+  },
+  {
+    "name": "ReviewSheet",
+    "source": "desktop/frontend/src/ReviewSheet.tsx",
+    "exported": true,
+    "line": 20
   },
   {
     "name": "RevisionComparison",
     "source": "desktop/frontend/src/RevisionComparison.tsx",
     "exported": true,
-    "line": 62
+    "line": 63
   },
   {
     "name": "SaveForm",
     "source": "desktop/frontend/src/RulesEditor.tsx",
     "exported": false,
-    "line": 55
+    "line": 38
   },
   {
     "name": "OpenForm",
     "source": "desktop/frontend/src/RulesEditor.tsx",
     "exported": false,
-    "line": 93
+    "line": 76
   },
   {
     "name": "RawDocument",
     "source": "desktop/frontend/src/RulesEditor.tsx",
     "exported": false,
-    "line": 143
+    "line": 126
   },
   {
     "name": "NormalizationPolicyEditor",
     "source": "desktop/frontend/src/RulesEditor.tsx",
     "exported": true,
-    "line": 1045
+    "line": 192
+  },
+  {
+    "name": "RunChoice",
+    "source": "desktop/frontend/src/RunComparison.tsx",
+    "exported": false,
+    "line": 249
+  },
+  {
+    "name": "CheckDetail",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": false,
+    "line": 371
+  },
+  {
+    "name": "AnalysisView",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": false,
+    "line": 403
+  },
+  {
+    "name": "Details",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": false,
+    "line": 458
+  },
+  {
+    "name": "AnalyzeSheet",
+    "source": "desktop/frontend/src/RunExplanation.tsx",
+    "exported": false,
+    "line": 544
   },
   {
     "name": "SendReview",
     "source": "desktop/frontend/src/RunPanel.tsx",
     "exported": true,
-    "line": 102
+    "line": 106
+  },
+  {
+    "name": "JobTable",
+    "source": "desktop/frontend/src/RunPanel.tsx",
+    "exported": false,
+    "line": 435
+  },
+  {
+    "name": "Transformations",
+    "source": "desktop/frontend/src/RunPanel.tsx",
+    "exported": false,
+    "line": 470
   },
   {
     "name": "Field",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 56
+    "line": 57
   },
   {
     "name": "Refusal",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 96
+    "line": 97
   },
   {
     "name": "ResultLine",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 115
+    "line": 116
   },
   {
     "name": "RunnerSection",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 131
+    "line": 132
   },
   {
     "name": "ScheduleRow",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 665
+    "line": 681
   },
   {
     "name": "SchedulesSection",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 738
+    "line": 757
   },
   {
     "name": "SchedulePreviewView",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 918
+    "line": 948
   },
   {
     "name": "GateVerification",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 984
+    "line": 1014
   },
   {
     "name": "CISection",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 1022
+    "line": 1052
   },
   {
     "name": "RunnerCapacity",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": false,
-    "line": 1331
+    "line": 1368
   },
   {
     "name": "RunnerPanel",
     "source": "desktop/frontend/src/RunnerPanel.tsx",
     "exported": true,
-    "line": 1371
+    "line": 1408
+  },
+  {
+    "name": "ResultCell",
+    "source": "desktop/frontend/src/Runs.tsx",
+    "exported": true,
+    "line": 116
+  },
+  {
+    "name": "FilterSheet",
+    "source": "desktop/frontend/src/Runs.tsx",
+    "exported": false,
+    "line": 383
+  },
+  {
+    "name": "RunPicker",
+    "source": "desktop/frontend/src/Runs.tsx",
+    "exported": false,
+    "line": 459
+  },
+  {
+    "name": "SampleFixture",
+    "source": "desktop/frontend/src/SampleData.tsx",
+    "exported": true,
+    "line": 25
+  },
+  {
+    "name": "SyntheticFamilies",
+    "source": "desktop/frontend/src/SampleData.tsx",
+    "exported": true,
+    "line": 112
+  },
+  {
+    "name": "ScenarioLibraryCheck",
+    "source": "desktop/frontend/src/SampleData.tsx",
+    "exported": true,
+    "line": 172
+  },
+  {
+    "name": "NewScenarioSheet",
+    "source": "desktop/frontend/src/ScenarioLibrary.tsx",
+    "exported": false,
+    "line": 407
+  },
+  {
+    "name": "EventSheet",
+    "source": "desktop/frontend/src/ScenarioLibrary.tsx",
+    "exported": false,
+    "line": 492
+  },
+  {
+    "name": "SettingsSheet",
+    "source": "desktop/frontend/src/ScenarioLibrary.tsx",
+    "exported": false,
+    "line": 562
+  },
+  {
+    "name": "PreviewBody",
+    "source": "desktop/frontend/src/ScenarioLibrary.tsx",
+    "exported": false,
+    "line": 597
+  },
+  {
+    "name": "GeneralView",
+    "source": "desktop/frontend/src/Settings.tsx",
+    "exported": true,
+    "line": 80
+  },
+  {
+    "name": "GeneralSheet",
+    "source": "desktop/frontend/src/Settings.tsx",
+    "exported": false,
+    "line": 156
+  },
+  {
+    "name": "SecurityView",
+    "source": "desktop/frontend/src/Settings.tsx",
+    "exported": true,
+    "line": 279
+  },
+  {
+    "name": "AddConnection",
+    "source": "desktop/frontend/src/Settings.tsx",
+    "exported": false,
+    "line": 470
+  },
+  {
+    "name": "ConnectionDetail",
+    "source": "desktop/frontend/src/Settings.tsx",
+    "exported": false,
+    "line": 487
+  },
+  {
+    "name": "PrivacySheet",
+    "source": "desktop/frontend/src/Settings.tsx",
+    "exported": false,
+    "line": 590
+  },
+  {
+    "name": "StorageView",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": true,
+    "line": 219
+  },
+  {
+    "name": "CreateBackupSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 682
+  },
+  {
+    "name": "RestoreSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 798
+  },
+  {
+    "name": "RecoveryCopies",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 929
+  },
+  {
+    "name": "UpdateProjectSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 1012
+  },
+  {
+    "name": "ArchiveSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 1037
+  },
+  {
+    "name": "DeleteSourceSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": true,
+    "line": 1094
+  },
+  {
+    "name": "RepairSearchSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 1119
+  },
+  {
+    "name": "QuotaSheet",
+    "source": "desktop/frontend/src/Storage.tsx",
+    "exported": false,
+    "line": 1180
+  },
+  {
+    "name": "Choices",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": false,
+    "line": 27
+  },
+  {
+    "name": "NewSuiteSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 58
+  },
+  {
+    "name": "AddTestsSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 78
+  },
+  {
+    "name": "SuiteSettingsSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 92
+  },
+  {
+    "name": "TestRowSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 142
+  },
+  {
+    "name": "DatasetSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 262
+  },
+  {
+    "name": "BindingSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 429
+  },
+  {
+    "name": "RequirementSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 552
+  },
+  {
+    "name": "ExclusionSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 594
+  },
+  {
+    "name": "RunSuiteSheet",
+    "source": "desktop/frontend/src/SuiteSheets.tsx",
+    "exported": true,
+    "line": 669
+  },
+  {
+    "name": "SearchSheet",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 528
+  },
+  {
+    "name": "FilterSheet",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 551
+  },
+  {
+    "name": "TestsSection",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 612
+  },
+  {
+    "name": "DataSection",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 772
+  },
+  {
+    "name": "CoverageSection",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 899
+  },
+  {
+    "name": "VersionsSection",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 1054
+  },
+  {
+    "name": "DuplicateSheet",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 1384
+  },
+  {
+    "name": "RunsAssessedSheet",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 1399
+  },
+  {
+    "name": "EnvironmentApprovalSheet",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": false,
+    "line": 1450
+  },
+  {
+    "name": "ApprovalPreview",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": true,
+    "line": 1527
+  },
+  {
+    "name": "ChangeTables",
+    "source": "desktop/frontend/src/Suites.tsx",
+    "exported": true,
+    "line": 1551
   },
   {
     "name": "SyntheticPackets",
     "source": "desktop/frontend/src/SyntheticPackets.tsx",
     "exported": true,
-    "line": 35
+    "line": 36
   },
   {
     "name": "SyntheticPacketDetails",
     "source": "desktop/frontend/src/SyntheticPackets.tsx",
     "exported": false,
-    "line": 155
+    "line": 156
   },
   {
     "name": "SyntheticRerunDetails",
     "source": "desktop/frontend/src/SyntheticPackets.tsx",
     "exported": false,
-    "line": 166
+    "line": 167
   },
   {
     "name": "TaskTabs",
@@ -453,151 +1359,379 @@
     "name": "TaskPanel",
     "source": "desktop/frontend/src/TaskTabs.tsx",
     "exported": true,
-    "line": 67
-  },
-  {
-    "name": "CommandDetails",
-    "source": "desktop/frontend/src/TeamCollaboration.tsx",
-    "exported": false,
-    "line": 84
+    "line": 68
   },
   {
     "name": "TeamCollaboration",
     "source": "desktop/frontend/src/TeamCollaboration.tsx",
     "exported": true,
-    "line": 122
+    "line": 105
   },
   {
-    "name": "LifecycleWrite",
+    "name": "ActivityView",
     "source": "desktop/frontend/src/TeamCollaboration.tsx",
     "exported": false,
-    "line": 955
+    "line": 150
   },
   {
-    "name": "OfflineRevisionDraft",
+    "name": "ActivityTable",
     "source": "desktop/frontend/src/TeamCollaboration.tsx",
     "exported": true,
-    "line": 971
+    "line": 207
+  },
+  {
+    "name": "ActivityFilterSheet",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 229
+  },
+  {
+    "name": "SearchSheet",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 263
+  },
+  {
+    "name": "FilesView",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 275
+  },
+  {
+    "name": "ResourceHistory",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": true,
+    "line": 400
+  },
+  {
+    "name": "TransferReview",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": true,
+    "line": 426
+  },
+  {
+    "name": "TeamTransferOutcome",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": true,
+    "line": 457
+  },
+  {
+    "name": "ReviewsView",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 491
+  },
+  {
+    "name": "ReviewDetail",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 585
+  },
+  {
+    "name": "DecisionSheet",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 794
+  },
+  {
+    "name": "RequestReviewSheet",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 884
+  },
+  {
+    "name": "PublishPolicySheet",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": false,
+    "line": 1027
+  },
+  {
+    "name": "RevisionSheet",
+    "source": "desktop/frontend/src/TeamCollaboration.tsx",
+    "exported": true,
+    "line": 1083
+  },
+  {
+    "name": "FieldProblems",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": false,
+    "line": 147
+  },
+  {
+    "name": "CheckRows",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": true,
+    "line": 974
+  },
+  {
+    "name": "CheckDetails",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": true,
+    "line": 995
+  },
+  {
+    "name": "MessagesSheet",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": false,
+    "line": 1044
+  },
+  {
+    "name": "ResetSheet",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": false,
+    "line": 1098
+  },
+  {
+    "name": "CaseSheet",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": false,
+    "line": 1111
+  },
+  {
+    "name": "CheckSheet",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": true,
+    "line": 1161
+  },
+  {
+    "name": "SuggestSheet",
+    "source": "desktop/frontend/src/TestEditor.tsx",
+    "exported": false,
+    "line": 1333
+  },
+  {
+    "name": "SearchSheet",
+    "source": "desktop/frontend/src/Tests.tsx",
+    "exported": false,
+    "line": 503
+  },
+  {
+    "name": "FilterSheet",
+    "source": "desktop/frontend/src/Tests.tsx",
+    "exported": false,
+    "line": 526
+  },
+  {
+    "name": "DuplicateSheet",
+    "source": "desktop/frontend/src/Tests.tsx",
+    "exported": false,
+    "line": 905
+  },
+  {
+    "name": "JsonSheet",
+    "source": "desktop/frontend/src/Tests.tsx",
+    "exported": false,
+    "line": 918
+  },
+  {
+    "name": "Lanes",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 495
+  },
+  {
+    "name": "ClockLanes",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 538
+  },
+  {
+    "name": "EventList",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 645
+  },
+  {
+    "name": "LinkDetail",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 696
+  },
+  {
+    "name": "SourcesSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 774
+  },
+  {
+    "name": "OptionsSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 809
+  },
+  {
+    "name": "ReviewerField",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 895
+  },
+  {
+    "name": "LinkReviewSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 904
+  },
+  {
+    "name": "AddLinkSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 948
+  },
+  {
+    "name": "UndoReviewerSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 1022
+  },
+  {
+    "name": "LinkRulesSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 1039
+  },
+  {
+    "name": "LinkRulesEditor",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 1100
+  },
+  {
+    "name": "CoverageSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 1276
+  },
+  {
+    "name": "CoverageRowSheet",
+    "source": "desktop/frontend/src/Timeline.tsx",
+    "exported": false,
+    "line": 1547
   },
   {
     "name": "DisplayTerm",
     "source": "desktop/frontend/src/display.tsx",
     "exported": true,
-    "line": 62
+    "line": 174
   },
   {
     "name": "RetentionStatus",
     "source": "desktop/frontend/src/drafting.tsx",
     "exported": true,
-    "line": 303
+    "line": 306
   },
   {
     "name": "Page",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 34
+    "line": 69
   },
   {
     "name": "BackLink",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 66
+    "line": 125
   },
   {
     "name": "EmptyState",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 79
+    "line": 138
+  },
+  {
+    "name": "Reveal",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 149
   },
   {
     "name": "NavItem",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 134
+    "line": 206
   },
   {
     "name": "ProjectSwitcher",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 164
+    "line": 236
   },
   {
     "name": "OperationIndicator",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 205
+    "line": 281
   },
   {
     "name": "Categories",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 222
+    "line": 305
   },
   {
     "name": "Dialog",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 304
+    "line": 387
   },
   {
     "name": "Modal",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 398
+    "line": 481
   },
   {
     "name": "ValueRows",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 430
+    "line": 513
   },
   {
     "name": "FormDialog",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 473
+    "line": 549
+  },
+  {
+    "name": "StepDialog",
+    "source": "desktop/frontend/src/layout.tsx",
+    "exported": true,
+    "line": 733
   },
   {
     "name": "Menu",
     "source": "desktop/frontend/src/layout.tsx",
     "exported": true,
-    "line": 646
+    "line": 810
   },
   {
     "name": "Outcome",
     "source": "desktop/frontend/src/lifecycle.tsx",
     "exported": true,
-    "line": 230
+    "line": 239
   },
   {
     "name": "Status",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 39
+    "line": 15
   },
   {
     "name": "Badge",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 63
+    "line": 35
   },
   {
     "name": "Report",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 82
+    "line": 56
   },
   {
     "name": "Separator",
     "source": "desktop/frontend/src/shell.tsx",
     "exported": true,
-    "line": 106
-  },
-  {
-    "name": "IndexSetup",
-    "source": "desktop/frontend/src/shell.tsx",
-    "exported": true,
-    "line": 239
+    "line": 82
   },
   {
     "name": "Lead",
@@ -658,5 +1792,11 @@
     "source": "desktop/frontend/src/ui.tsx",
     "exported": true,
     "line": 139
+  },
+  {
+    "name": "ViewKey",
+    "source": "desktop/frontend/src/viewstate.tsx",
+    "exported": true,
+    "line": 77
   }
 ]

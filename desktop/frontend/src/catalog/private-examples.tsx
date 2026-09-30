@@ -29,14 +29,6 @@ export const privateExamples: Example[] = [
     busy: false,
     onNormalize: noop,
   }),
-  p("PacketPanel", "PacketInputRow", {
-    label: "Source case",
-    view: f.packetPreviewResult().preview?.case,
-  }),
-  p("PacketPanel", "PacketViewDetails", { view: f.packetResult().packet }),
-  p("PacketPanel", "PacketReviewDetails", {
-    view: f.packetReviewResult(false).review,
-  }),
   p("ProjectPanel", "EditableDocument", {
     result: f.revisionsResult(),
     indicators: f.indicatorTable(),

@@ -179,10 +179,6 @@ func TestRunOperationsRefuseEveryEntryThatIsNotOneRegularFileOfTheWorkspace(t *t
 			result := app.StartSuiteRun(desktop.SuiteRunRequest{Workspace: root, Suite: "nightly.json", Environment: "east", References: entry, Output: "fresh-run", Expected: nightly})
 			return refused{result.State, result.Reason}
 		}},
-		{"PreviewPacket(Spec)", []string{"the specification must be one entry of the open workspace"}, hostileDocuments(root, outside, "booking.json"), func(entry string) refused {
-			result := app.PreviewPacket(desktop.PacketRequest{Workspace: root, Case: "case", Spec: entry, Current: "run"})
-			return refused{result.State, result.Reason}
-		}},
 	}
 	// A reduction runs its regression test once per trial, against the
 	// environment, reset plan and policy it names beside it.
@@ -308,7 +304,6 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 		"a job through a symbolic link to a workspace run":   "alias-suite-run/runs/booking-one",
 		"a job through a linked runs folder":                 "linked-runs/runs/booking-one",
 	}
-	packet := "a retained packet is named by one entry of the open workspace"
 	refusesEveryEntry(t, []confinedMember{
 		{"OpenRunEvidence", []string{"a retained execution is named by one workspace entry, or one job inside a suite execution's runs"}, named, func(entry string) refused {
 			result := app.OpenRunEvidence(desktop.RunEvidenceRequest{Workspace: root, Entry: entry})
@@ -320,26 +315,6 @@ func TestRunEvidenceReadsRefuseEveryEntryThatLeavesTheWorkspace(t *testing.T) {
 		}},
 		{"DurableRunProgress", []string{"a run is named by one workspace entry, or one job inside a suite execution's runs"}, named, func(entry string) refused {
 			result := app.DurableRunProgress(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"PreviewPacket(Current)", []string{"the current result must be one retained execution of the open workspace"}, named, func(entry string) refused {
-			result := app.PreviewPacket(desktop.PacketRequest{Workspace: root, Case: "case", Spec: "booking.json", Current: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"PreviewPacket(Baseline)", []string{"the baseline result must be one retained execution of the open workspace"}, named, func(entry string) refused {
-			result := app.PreviewPacket(desktop.PacketRequest{Workspace: root, Case: "case", Spec: "booking.json", Current: "run", Baseline: entry})
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenPacket", []string{packet}, named, func(entry string) refused {
-			result := app.OpenPacket(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"ExportPacketReview", []string{packet}, named, func(entry string) refused {
-			result := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: entry, Destination: filepath.Join(t.TempDir(), "review")})
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenPacketReview", []string{"a portable review is named by one entry of the open workspace"}, named, func(entry string) refused {
-			result := app.OpenPacketReview(desktop.PacketReviewRequest{Workspace: root, Entry: entry})
 			return refused{result.State, result.Reason}
 		}},
 	})

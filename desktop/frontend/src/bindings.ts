@@ -138,14 +138,7 @@ import type {
   NotesResult,
   ObservationSupportResult,
   OperationResult,
-  PacketExportRequest,
-  PacketExportResult,
   PacketPathResult,
-  PacketPreviewResult,
-  PacketRequest,
-  PacketResult,
-  PacketReviewRequest,
-  PacketReviewResult,
   PastedSourceRequest,
   PastedSourceResult,
   PathChoiceResult,
@@ -363,6 +356,8 @@ import type {
   RunAnalysisResult,
   RunComparisonItemsRequest,
   RunComparisonItemsResult,
+  ReportRequest,
+  ReportResult,
 } from "./bindings.gen";
 
 export type * from "./bindings.gen";
@@ -639,30 +634,6 @@ export function sendReplay(request: ReplaySendRequest): Promise<ReplayResult> {
     state: "failed",
     reason: "The desktop connection was interrupted. The run folder and its decision hold whatever was sent; nothing is resent automatically.",
   });
-}
-
-export function previewPacket(request: PacketRequest): Promise<PacketPreviewResult> {
-  return guard(() => facade().PreviewPacket(request), { state: "failed" });
-}
-
-export function assemblePacket(request: PacketRequest): Promise<PacketResult> {
-  return guard(() => facade().AssemblePacket(request), { state: "failed" });
-}
-/** Verifies one sealed packet read-only: no historical path, no endpoint, no
- * execution, and no admission of any kind. */
-export function openPacket(workspace: string, entry: string): Promise<PacketResult> {
-  return guard(() => facade().OpenPacket(workspace, entry), { state: "failed" });
-}
-
-export function choosePacketExportPath(): Promise<PacketPathResult> {
-  return guard(() => facade().ChoosePacketExportPath(), { state: "failed" });
-}
-export function exportPacketReview(request: PacketExportRequest): Promise<PacketExportResult> {
-  return guard(() => facade().ExportPacketReview(request), { state: "failed" });
-}
-
-export function openPacketReview(request: PacketReviewRequest): Promise<PacketReviewResult> {
-  return guard(() => facade().OpenPacketReview(request), { state: "failed" });
 }
 
 export function chooseSyntheticPacketPath(kind: SyntheticPacketPathKind): Promise<PacketPathResult> {
@@ -2110,6 +2081,12 @@ export function testRunChecks(request: TestRunChecksRequest): Promise<TestRunChe
 
 // Runs (#555): a run's own page, its stale lock, a check group decided
 // against it, and two runs compared.
+
+/** One report of the project as its page reads it (#559): its packet is
+ * verified and its structured report read; text stays withheld until reveal. */
+export function openReport(request: ReportRequest): Promise<ReportResult> {
+  return retryingRead(() => facade().OpenReport(request), { state: "failed", context: request.context });
+}
 
 /** One run of the project, or one job of a suite run, as its page shows it. */
 export function openRun(request: RunRequest): Promise<RunDetailResult> {

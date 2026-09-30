@@ -397,9 +397,10 @@ test("a run's page shows its failed check first with what it expected and observ
 
   await user.click(page().getByRole("button", { name: "Create report" }));
   expect(await page().findByRole("heading", { level: 1, name: "Reports" })).toBeTruthy();
-  await waitFor(() => expect((page().getByLabelText("Current run or result") as HTMLSelectElement).value).toBe("job-002"));
-  expect((page().getByLabelText("Case") as HTMLSelectElement).value).toBe(CASE_ENTRY);
-  expect((page().getByLabelText("Historical test file") as HTMLSelectElement).value).toBe("t-reschedule-v4.json");
+  const sheet = await screen.findByRole("dialog", { name: "New report" });
+  await waitFor(() => expect((within(sheet).getByLabelText("Run") as HTMLSelectElement).value).toBe(FAILED.ref.id));
+  expect((within(sheet).getByLabelText("Name") as HTMLInputElement).value).toBe("Reschedule keeps one appointment report");
+  expect(within(sheet).queryByLabelText(/Historical test file|Case|folder/)).toBeNull();
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
@@ -602,13 +603,23 @@ test("Run reviewed test chooses its review, original run, phase and test by name
       context: request.context,
       review: review({ action: "run.reviewed-test" }, { reviewed: { review: REVIEWED.name, packet: PACKET.name, phase: "failure" } }),
     }),
+    OpenReport: (request) => ({
+      state: "completed",
+      context: request.context,
+      report: {
+        item: PACKET, form: "packet", current: true, title: PACKET.name, runs: [], checks: [], messages: [], limitations: [], evidence: [], packet: "packet-token", versions: [], review: "draft", revealed: false,
+        result: { outcome: "failed", status: "assertion_failure", error_class: "", run_state: "", journal_incomplete: false, delivery_uncertain: false },
+      },
+    }),
   });
   listing(facade, [], { report: [REVIEWED, PACKET] });
   await goTo(user, "Projects");
   await user.click(screen.getByRole("button", { name: "Open" }));
   await sidebar().findByRole("button", { name: /^Project: / });
   await goTo(user, "Reports");
-  await user.click(page().getByRole("button", { name: "Share" }));
+  await user.click(await page().findByRole("row", { name: /Reschedule packet/ }));
+  await user.keyboard("{Enter}");
+  await user.click(await page().findByRole("button", { name: "Share" }));
   await user.click(await page().findByRole("tab", { name: "Reexecute" }));
   await user.click(page().getByRole("button", { name: "Run reviewed test" }));
   const chooser = await screen.findByRole("dialog", { name: "Run reviewed test" });

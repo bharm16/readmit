@@ -24,3 +24,9 @@ func ObserveSenderForTest(observer replay.Observer) (restore func()) {
 	}
 	return func() { fixturetrial.Sender = original }
 }
+
+// ExportReviewV1ForTest writes a review with the line-based v1 writer an
+// earlier release shipped, the fixture v1 verification is held to.
+func ExportReviewV1ForTest(ctx context.Context, source, output string) (*Review, error) {
+	return exportReview(ctx, source, output, nil)
+}

@@ -21,6 +21,11 @@ import (
 const ReviewSchema = "readmit-portable-review/v1"
 const ReportSchema = "readmit-portable-report/v1"
 
+// ReviewSchemaV3 is a review whose renderings are made by the structured
+// renderer its manifest binds (DocumentSchema), from the packet and the
+// authored document it seals beside them.
+const ReviewSchemaV3 = "readmit-portable-review/v3"
+
 // ReviewManifest binds every rendering to the unchanged, independently verified
 // retained packet. A seal proves integrity, never disclosure approval.
 type ReviewManifest struct {
@@ -34,13 +39,24 @@ type ReviewManifest struct {
 
 // Review has no execute or mutate method. Render returns fresh bytes only for
 // known inert formats, and cannot read a historical target or credential path.
+//
+// Manifest carries the facts every version states; its Schema is the
+// review's own. Document is the structured report of a v3 review, nil for a
+// v1 review.
 type Review struct {
 	Identity   string
 	Manifest   ReviewManifest
+	Document   *Document
+	Authored   *Authored
 	renderings map[string][]byte
 }
 
+// Render returns the sealed bytes of one format. A v3 review also renders
+// its PDF on A4 paper ("pdf-a4"), from the same verified document.
 func (r *Review) Render(format string) ([]byte, error) {
+	if format == "pdf-a4" && r.Document != nil {
+		return renderPDF(r.Document, A4), nil
+	}
 	name, ok := reviewFormats[format]
 	if !ok {
 		return nil, errors.New("unsupported report format")
@@ -58,9 +74,26 @@ type portableReport struct {
 	Lines                []string `json:"lines"`
 }
 
-// ExportReview creates a new private sealed directory, without changing or
-// transmitting evidence. Interrupted output remains unsealed; retry elsewhere.
+// ExportReview creates a new private sealed review of one retained packet in
+// the structured format, titled after the test its current run executed.
+// Interrupted output remains unsealed; retry elsewhere.
 func ExportReview(ctx context.Context, source, output string) (*Review, error) {
+	return ExportDocumentReview(ctx, source, output, Authored{})
+}
+
+// ExportDocumentReview creates a new private sealed readmit-portable-review/v3
+// directory: the packet byte for byte, what a person wrote for the report,
+// and the five renderings of the structured report made from both. It
+// changes and transmits no evidence. An empty title is the current run's
+// test name followed by "report".
+func ExportDocumentReview(ctx context.Context, source, output string, authored Authored) (*Review, error) {
+	return exportReview(ctx, source, output, &authored)
+}
+
+// exportReview writes a v3 review, or, with no authored document, the
+// line-based v1 review earlier releases wrote, which tests keep as the
+// fixture v1 verification is held to.
+func exportReview(ctx context.Context, source, output string, authored *Authored) (*Review, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -84,7 +117,11 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	review, err := artifactdir.Create(output, reviewFamily, artifactdir.Durable)
+	family := reviewFamily
+	if authored != nil {
+		family = reviewFamilyV3
+	}
+	review, err := artifactdir.Create(output, family, artifactdir.Durable)
 	if err != nil {
 		return nil, err
 	}
@@ -97,15 +134,27 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 	if err != nil {
 		return nil, err
 	}
-	renders, err := reviewRenderings(ctx, dir, packet, nested)
+	var renders map[string][]byte
+	var raw []byte
+	if authored == nil {
+		renders, err = reviewRenderings(ctx, dir, packet, nested)
+	} else {
+		if strings.TrimSpace(authored.Title) == "" {
+			authored.Title = DefaultTitle(filepath.Join(dir, "packet"))
+		}
+		renders, err = documentRenderings(ctx, filepath.Join(dir, "packet"), packet, *authored)
+	}
 	if err != nil {
 		return nil, err
 	}
 	for name, data := range renders {
 		nested[name] = data
 	}
-	manifest := reviewManifest(packet, nested)
-	raw, err := encode(manifest)
+	if authored == nil {
+		raw, err = encode(reviewManifest(packet, nested))
+	} else {
+		raw, err = encode(reviewManifestV3(packet, nested))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +183,11 @@ func ExportReview(ctx context.Context, source, output string) (*Review, error) {
 	return OpenReview(ctx, dir)
 }
 
-// OpenReview validates the complete snapshot and regenerates every rendering.
-// Resealing an injected link/script or an invented verdict cannot bypass it.
+// OpenReview validates the complete snapshot and regenerates every rendering
+// with the renderer version its manifest binds: a v1 review through the v1
+// line renderer, byte for byte as it was sealed, and a v3 review from its
+// packet and authored document through the structured renderer. Resealing an
+// injected link/script or an invented verdict cannot bypass it.
 func OpenReview(ctx context.Context, dir string) (*Review, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -147,6 +199,12 @@ func OpenReview(ctx context.Context, dir string) (*Review, error) {
 	files, err := readTree(dir)
 	if err != nil {
 		return nil, err
+	}
+	var declared struct {
+		Schema string `json:"schema"`
+	}
+	if raw := files["manifest.json"]; len(raw) <= 1<<20 && json.Unmarshal(raw, &declared) == nil && declared.Schema == ReviewSchemaV3 {
+		return openReviewV3(ctx, dir, files)
 	}
 	invalid := errors.New("invalid, incomplete, changed or unsupported portable review")
 	raw := files["manifest.json"]

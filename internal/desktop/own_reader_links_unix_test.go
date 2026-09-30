@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/bharm16/readmit/internal/baseline"
@@ -292,33 +291,12 @@ func TestImportReadersRefuseALinkToAnEntryOfTheirKind(t *testing.T) {
 	})
 }
 
-// previewedPacket answers one packet preview as a refusal when the preview
-// reports a problem with its inputs, since a preview states what it could not
-// verify as a problem beside the rest of what it found, rather than failing.
-func previewedPacket(app *desktop.App, request desktop.PacketRequest) refused {
-	result := app.PreviewPacket(request)
-	if result.State == desktop.Completed && result.Preview != nil && len(result.Preview.Problems) > 0 {
-		return refused{desktop.Failed, strings.Join(result.Preview.Problems, "; ")}
-	}
-	return refused{result.State, result.Reason}
-}
-
-// Every retained folder a packet, a portable review, a transfer package or a
-// run's own reader opens: the case and the executions a packet is previewed
-// and assembled from, the packet a review is exported from and reopened, the
+// Every retained folder a transfer package or a run's own reader opens: the
 // package inspected, opened and discarded, and a run reopened and read for
 // progress.
 func TestEvidenceFolderReadersRefuseALinkToAFolderOfTheirKind(t *testing.T) {
 	app := newApp(t, &chooser{})
-	root, spec, baseline, current := packetWorkspace(t, app)
-	assembled := app.AssemblePacket(packetRequest(root, spec, baseline, current))
-	if assembled.State != desktop.Completed || assembled.Packet == nil {
-		t.Fatalf("a packet: %+v", assembled)
-	}
-	packet := assembled.Packet.Entry
-	if exported := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: packet, Destination: filepath.Join(root, "review")}); exported.State != desktop.Completed {
-		t.Fatalf("a portable review: %+v", exported)
-	}
+	root, _, _, current := packetWorkspace(t, app)
 	if saved := app.SaveProtectionControl(desktop.ProtectionControlRequest{
 		Workspace: root, Entry: "protection.json", Name: "lab-evidence", Storage: "os-volume-encryption",
 		Command: keyProgram(t, "test-only-not-a-real-key-4f8c1d2e6b0a9357", ""), Arguments: []string{"find-generic-password", "-w", "-s", "readmit-lab-key"},
@@ -336,59 +314,7 @@ func TestEvidenceFolderReadersRefuseALinkToAFolderOfTheirKind(t *testing.T) {
 		result := app.OpenProtectedPackage(desktop.ProtectionOpenRequest{Workspace: root, Entry: "protection.json", Control: control, Package: entry, Output: output})
 		return refused{result.State, result.Reason}
 	}
-	caseRefusal := []string{"the case is not a case bundle this release verifies"}
-	runRefusal := []string{"the entry is not a retained execution this release verifies"}
-	storage := []string{"report evidence must be bounded regular files without symlinks or empty directories"}
-	directory := []string{"artifact must be a regular directory"}
 	refusesLinksToEntriesItAccepts(t, root, []ownReader{
-		{"PreviewPacket(Case)", "case", caseRefusal, func(entry string) refused {
-			request := packetRequest(root, spec, baseline, current)
-			request.Case = entry
-			return previewedPacket(app, request)
-		}},
-		{"PreviewPacket(BaselineCase)", "case", caseRefusal, func(entry string) refused {
-			request := packetRequest(root, spec, baseline, current)
-			request.BaselineCase = entry
-			return previewedPacket(app, request)
-		}},
-		{"PreviewPacket(Current)", current, runRefusal, func(entry string) refused {
-			return previewedPacket(app, packetRequest(root, spec, baseline, entry))
-		}},
-		{"PreviewPacket(Baseline)", baseline, runRefusal, func(entry string) refused {
-			return previewedPacket(app, packetRequest(root, spec, entry, current))
-		}},
-		{"AssemblePacket(Case)", "case", storage, func(entry string) refused {
-			request := packetRequest(root, spec, baseline, current)
-			request.Case = entry
-			result := app.AssemblePacket(request)
-			return refused{result.State, result.Reason}
-		}},
-		{"AssemblePacket(BaselineCase)", "case", storage, func(entry string) refused {
-			request := packetRequest(root, spec, baseline, current)
-			request.BaselineCase = entry
-			result := app.AssemblePacket(request)
-			return refused{result.State, result.Reason}
-		}},
-		{"AssemblePacket(Current)", current, storage, func(entry string) refused {
-			result := app.AssemblePacket(packetRequest(root, spec, baseline, entry))
-			return refused{result.State, result.Reason}
-		}},
-		{"AssemblePacket(Baseline)", baseline, storage, func(entry string) refused {
-			result := app.AssemblePacket(packetRequest(root, spec, entry, current))
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenPacket", packet, directory, func(entry string) refused {
-			result := app.OpenPacket(root, entry)
-			return refused{result.State, result.Reason}
-		}},
-		{"ExportPacketReview(Packet)", packet, directory, func(entry string) refused {
-			result := app.ExportPacketReview(desktop.PacketExportRequest{Workspace: root, Packet: entry, Destination: filepath.Join(root, "exported-"+entry)})
-			return refused{result.State, result.Reason}
-		}},
-		{"OpenPacketReview", "review", directory, func(entry string) refused {
-			result := app.OpenPacketReview(desktop.PacketReviewRequest{Workspace: root, Entry: entry})
-			return refused{result.State, result.Reason}
-		}},
 		{"OpenRunEvidence", current, []string{"that entry is not a retained execution this release verifies"}, func(entry string) refused {
 			result := app.OpenRunEvidence(desktop.RunEvidenceRequest{Workspace: root, Entry: entry})
 			return refused{result.State, result.Reason}

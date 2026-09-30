@@ -228,7 +228,7 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 		switch schema, ok := sniffSchema(path); {
 		case ok && schema == report.RetainedSchema:
 			return PacketArtifact, true
-		case ok && schema == report.ReviewSchema:
+		case ok && (schema == report.ReviewSchema || schema == report.ReviewSchemaV3):
 			return PortableReviewArtifact, true
 		case ok && schema == report.Schema:
 			return SyntheticPacketArtifact, true

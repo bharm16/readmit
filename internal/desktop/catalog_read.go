@@ -77,6 +77,8 @@ type loadedCatalog struct {
 	doneRead    bool
 	identities  map[string]string
 	packets     *relations
+	// reviews are the recorded reviews of the project's reports, read once.
+	reviews map[string]reportHistory
 	// private are the project's private local-state folders by the
 	// commitment an export review records for each, read once per load.
 	private    map[string][]privateState
@@ -718,7 +720,8 @@ func capabilitiesFor(item CatalogItem, admitted admissions) []ActionID {
 	// A variant is saved as a new case derived from another; its own
 	// evidence is never saved over. Of the profiles, only a local profile is
 	// saved; a metadata pack or a package is read-only.
-	if slices.Contains(savedKinds, kind) && kind != VariantItem && (kind != ProfileItem || item.Summary.Profile != nil && item.Summary.Profile.Form == "local-profile") {
+	if slices.Contains(savedKinds, kind) && kind != VariantItem && (kind != ProfileItem || item.Summary.Profile != nil && item.Summary.Profile.Form == "local-profile") &&
+		(kind != ReportItem || item.Summary.Report != nil && item.Summary.Report.Form == "report") {
 		actions = append(actions, SaveAction)
 	}
 	if kind == SuiteItem {
@@ -922,6 +925,7 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	MappingItem:          readMappingItem,
 	SourceItem:           readSourceItem,
 	SuiteApprovalItem:    readSuiteApprovalItem,
+	ReportReviewItem:     readReportApprovalItem,
 }
 
 // privateState is one private local-state folder of the project: its entry

@@ -118,6 +118,8 @@ type PrepareActionRequest struct {
 	Run *RunActionOptions `json:"run,omitzero"`
 	// Team names a team transfer's project, file, resource and resolution.
 	Team *TeamActionOptions `json:"team,omitzero"`
+	// ReportExport names the format one report is exported as (#559).
+	ReportExport *ReportExportOptions `json:"report_export,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -158,6 +160,8 @@ type ActionReview struct {
 	Transport     *TransportReview        `json:"transport,omitzero"`
 	Run           *RunReview              `json:"run,omitzero"`
 	Team          *TeamActionReview       `json:"team,omitzero"`
+	ReportExport  *ReportExportReview     `json:"report_export,omitzero"`
+	ReportReview  *ReportReviewView       `json:"report_review,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -253,6 +257,8 @@ type ReviewedActionResult struct {
 	Run *ItemRef `json:"run,omitzero"`
 	// Team is what a team transfer recorded.
 	Team *TeamActionOutcome `json:"team,omitzero"`
+	// ReportExport is what a report export wrote.
+	ReportExport *ReportExportOutcome `json:"report_export,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -289,6 +295,10 @@ type boundAction struct {
 	run *runBinding
 	// team is what a team transfer sends.
 	team *teamBinding
+	// reportExport is what a report export writes.
+	reportExport *reportExportBinding
+	// reportReview is what a report review records.
+	reportReview *reportApproval
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -349,6 +359,10 @@ var actionPolicies = map[ActionID]actionPolicy{
 		review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "PostHubLifecycle"}, bind: bindTeamRevision, execute: executeTeam},
 	TeamResolveAction: {consent: UploadConsent, requirements: []ReviewRequirement{RationaleRequirement},
 		review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "PostHubLifecycle"}, bind: bindTeamResolve, execute: executeTeam},
+	ExportReportAction: {consent: ExportConsent, review: slot{}, perform: slot{writes: true},
+		bind: bindReportExport, execute: executeReportExport},
+	ReviewReportAction: {consent: ApproveConsent, review: slot{}, perform: slot{writes: true},
+		bind: bindReportReview, execute: executeReportReview},
 }
 
 // hold runs work holding one slot.

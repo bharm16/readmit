@@ -190,7 +190,7 @@ func TestReviewHeadingLinesAreKeptExactly(t *testing.T) {
 		t.Fatal(err)
 	}
 	output := filepath.Join(t.TempDir(), "review")
-	review, err := ExportReview(context.Background(), packet, output)
+	review, err := exportReview(context.Background(), packet, output, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

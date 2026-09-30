@@ -9,11 +9,10 @@
 import { expect, test } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { PacketPanel } from "./PacketPanel";
+import { SyntheticPackets } from "./SyntheticPackets";
 import { installFacade } from "./testkit/wails";
 import type { FacadeHandlers } from "./testkit/wails";
 import type { SyntheticPacketResult, SyntheticRerunResult } from "./bindings";
-import { WORKSPACE_ROOT } from "./testkit/fixtures";
 
 const PACKET_FOLDER = "named-new-packet-folder";
 const CHOSEN_PACKET = "chosen-packet-folder";
@@ -75,7 +74,7 @@ function renderSection(handlers: FacadeHandlers = {}) {
     },
     ...handlers,
   });
-  render(<PacketPanel workspace={WORKSPACE_ROOT} entries={[]} onRefresh={() => events.push("refresh")} />);
+  render(<SyntheticPackets onRefresh={() => events.push("refresh")} />);
   const section = within(screen.getByRole("region", { name: "Samples" }));
   return { facade, events, section };
 }
@@ -122,8 +121,7 @@ test("a synthetic packet is generated into a newly named folder, read back as ve
   expect(section.getByRole("heading", { name: "Rerun copies" })).toBeTruthy();
   expect(events).toContain("refresh");
   // Nothing about a synthetic packet reaches the person's own evidence.
-  expect(facade.callsTo("AssemblePacket")).toHaveLength(0);
-  expect(facade.callsTo("ExportPacketReview")).toHaveLength(0);
+  expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });
 
 test("a dismissed save dialog names nothing and generation stays unavailable", async () => {

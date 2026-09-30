@@ -26,7 +26,7 @@ func TestReviewExportsAndVerifiesActualPacketOffline(t *testing.T) {
 		t.Fatal(err)
 	}
 	packet := filepath.Join(t.TempDir(), "packet")
-	if _, err := report.Assemble(context.Background(), report.RetainedInput{Case: filepath.Join(source, "reproducer"), Spec: filepath.Join(source, "spec.json"), Current: filepath.Join(source, "post-fix"), Baseline: filepath.Join(source, "baseline")}, packet); err != nil {
+	if _, err := report.Assemble(context.Background(), report.RetainedInput{Case: filepath.Join(source, "reproducer"), Spec: filepath.Join(source, "spec.json"), Current: filepath.Join(source, "baseline"), Baseline: filepath.Join(source, "post-fix")}, packet); err != nil {
 		t.Fatal(err)
 	}
 	before := snapshot(t, packet)
@@ -52,8 +52,8 @@ func TestReviewExportsAndVerifiesActualPacketOffline(t *testing.T) {
 			t.Fatalf("empty %s", name)
 		}
 	}
-	if !strings.Contains(string(read(t, filepath.Join(moved, "junit.xml"))), "<failure") {
-		t.Fatal("baseline failure lost")
+	if !strings.Contains(string(read(t, filepath.Join(moved, "junit.xml"))), "<failure") || opened.Manifest.Schema != report.ReviewSchemaV3 {
+		t.Fatal("current failure lost or not the structured review")
 	}
 	if !reflect.DeepEqual(before, snapshot(t, packet)) {
 		t.Fatal("source changed")
@@ -95,10 +95,20 @@ func TestReviewEscapesHostileEvidenceAndRejectsResealedReports(t *testing.T) {
 	if _, err := report.Assemble(ctx, report.RetainedInput{Case: filepath.Join(source, "reproducer"), Spec: specPath, Current: result}, packet); err != nil {
 		t.Fatal(err)
 	}
+	// The line-based v1 review an earlier release wrote still verifies, byte
+	// for byte, through the v1 renderer its manifest binds.
 	output := filepath.Join(t.TempDir(), "review")
-	r, err := report.ExportReview(ctx, packet, output)
+	r, err := report.ExportReviewV1ForTest(ctx, packet, output)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if r.Manifest.Schema != report.ReviewSchema || r.Document != nil {
+		t.Fatal("v1 review not opened as v1")
+	}
+	for format, name := range map[string]string{"html": "report.html", "pdf": "report.pdf", "markdown": "report.md", "json": "report.json", "junit": "junit.xml"} {
+		if rendered, err := r.Render(format); err != nil || !bytes.Equal(rendered, read(t, filepath.Join(output, name))) {
+			t.Fatalf("v1 %s not its sealed bytes", format)
+		}
 	}
 	html, err := r.Render("html")
 	if err != nil {
