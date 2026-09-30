@@ -352,6 +352,9 @@ func (a *App) bindSuiteApproval(ctx context.Context, request PrepareActionReques
 	if !version.runnable() {
 		return nil, refusal{Failed, notRunnable}
 	}
+	if version.connected != nil {
+		return nil, refusal{Failed, "this connected suite retains exact connected releases and promotion; a legacy baseline or team review cannot approve them"}
+	}
 	options := SuiteApprovalOptions{}
 	if request.SuiteApproval != nil {
 		options = *request.SuiteApproval

@@ -40,6 +40,18 @@ func (a *App) importSuite(ctx context.Context, request RequestContext) ItemDraft
 		result.refuse(Failed, err.Error())
 		return result
 	}
+	if declaresConnectedSuite(data) {
+		document, err := suite.DecodeConnected(data)
+		if err != nil {
+			result.refuse(Failed, "that file is not a valid connected suite")
+			return result
+		}
+		draft := connectedDraft(document)
+		result.State, result.New, result.Ref = Completed, true, &ItemRef{Kind: SuiteItem}
+		result.Draft = &ItemDraft{Name: readableName(document.ID), Suite: &draft}
+		result.Suite = &SuiteContext{Tests: []SuiteTestVersion{}, Document: string(data), Runnable: true}
+		return result
+	}
 	document, err := suite.Decode(data)
 	if err != nil {
 		result.refuse(Failed, "that file is not a suite this release reads: "+err.Error())
@@ -102,6 +114,9 @@ func (a *App) exportRunConfiguration(ctx context.Context, request SuiteExportReq
 	if loaded == nil {
 		result.refuse(declined.state, declined.reason)
 		return result
+	}
+	if version.connected != nil {
+		return a.exportConnectedRunConfiguration(ctx, loaded, version, request)
 	}
 	at := slices.IndexFunc(version.draft.Environments, func(environment SuiteEnvironment) bool {
 		return environment.ID == request.Environment || environment.Name == request.Environment

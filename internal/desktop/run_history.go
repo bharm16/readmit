@@ -68,6 +68,9 @@ func init() { readers[RunItem] = readRunItem }
 // read whole yet.
 func readRunItem(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(RunItem)]
+	if declares(filepath.Join(path, "manifest.json"), suite.ConnectedExecutionSchema) {
+		return readConnectedSuiteRun(c, item, path)
+	}
 	active := c.executing != nil && c.executing(path)
 	read, err := readRun(c, item, paths)
 	if err != nil {

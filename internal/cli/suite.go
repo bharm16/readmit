@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactdir"
+	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/suite"
 	"github.com/spf13/cobra"
 )
@@ -12,7 +15,7 @@ import (
 func suiteCommand() *cobra.Command {
 	command := &cobra.Command{Use: "suite", Short: "Bind reusable regression templates to data rows and an explicit environment"}
 	for _, execute := range []bool{false, true} {
-		var environment, output, deadline, releases, promotion, promotionIdentity, revision string
+		var environment, output, deadline, releases, promotion, promotionIdentity, revision, runnerConfig, authority, instance string
 		var send, asJSON bool
 		name := "prepare"
 		capability := capabilityAuthor
@@ -20,7 +23,64 @@ func suiteCommand() *cobra.Command {
 			name = "run"
 			capability = capabilityExecute
 		}
-		child := &cobra.Command{Use: name + " FILE", Short: "Prepare a new private suite directory; run requires explicit send authorization", Annotations: declareInterruptible(capability), RunE: func(cmd *cobra.Command, args []string) error {
+		child := &cobra.Command{Use: name + " FILE", Args: cobra.ExactArgs(1), Short: "Prepare a new private suite directory; run requires explicit send authorization", Annotations: declareInterruptible(capability), RunE: func(cmd *cobra.Command, args []string) error {
+			var header struct {
+				Schema string `json:"schema"`
+			}
+			raw, readErr := (artifactdir.Document{MaxBytes: suite.MaxBytes}).Read(args[0])
+			if readErr == nil && json.Unmarshal(raw, &header) == nil && header.Schema == suite.ConnectedSchema {
+				if releases != "" || environment == "" || output == "" || execute && !send {
+					return usage("connected suites use embedded released pins and require an environment, new output and explicit send for execution")
+				}
+				request := suite.ConnectedRequest{Path: args[0], Environment: environment, Output: output, Promotion: promotion, PromotionIdentity: promotionIdentity, Revision: revision, Instance: instance}
+				if !execute {
+					if promotion != "" || promotionIdentity != "" || revision != "" || runnerConfig != "" || authority != "" || instance != "" {
+						return usage("connected preparation is passive and consumes no execution authority")
+					}
+					prepared, e := suite.PrepareConnected(request)
+					if e != nil {
+						return refusal(e)
+					}
+					if asJSON {
+						return writeJSON(cmd, prepared.Queue)
+					}
+					_, e = fmt.Fprintf(cmd.OutOrStdout(), "Prepared %d connected jobs. Nothing was sent.\n", len(prepared.Queue.Jobs))
+					return e
+				}
+				if runnerConfig == "" || authority == "" || instance == "" {
+					return usage("connected execution requires --runner-config, --authority and --instance")
+				}
+				config, e := customerrunner.ReadConfig(runnerConfig)
+				if e != nil {
+					return refusal(e)
+				}
+				ctx, cancel, e := deadlineContext(cmd.Context(), deadline)
+				if e != nil {
+					return e
+				}
+				defer cancel()
+				report, e := customerrunner.RunConnectedSuite(ctx, config, request, authority)
+				if e != nil {
+					return refusal(e)
+				}
+				if asJSON {
+					if e = writeJSON(cmd, report); e != nil {
+						return e
+					}
+				} else {
+					_, e = fmt.Fprintf(cmd.OutOrStdout(), "Connected suite gate exit %d; inspect retained evidence privately.\n", report.ExitCode())
+					if e != nil {
+						return e
+					}
+				}
+				if report.ExitCode() != 0 {
+					return verdict(report.ExitCode(), errors.New("connected suite gate did not pass"))
+				}
+				return nil
+			}
+			if runnerConfig != "" || authority != "" || instance != "" {
+				return usage("connected runner options require a connected suite version")
+			}
 			if (!execute && (promotion != "" || promotionIdentity != "" || revision != "")) || (promotion == "" && (promotionIdentity != "" || revision != "")) || (promotion != "" && (promotionIdentity == "" || revision == "" || releases == "")) {
 				return usage("promotion run requires --promotion, --promotion-identity, --revision and --releases together")
 			}
@@ -59,12 +119,15 @@ func suiteCommand() *cobra.Command {
 		child.Flags().StringVar(&output, "output", "", "New private directory for compiled configuration and durable runs")
 		child.Flags().BoolVar(&asJSON, "json", false, "Write the existing versioned queue plan or execution report")
 		if execute {
+			child.Flags().StringVar(&runnerConfig, "runner-config", "", "Installed customer runner configuration")
+			child.Flags().StringVar(&authority, "authority", "", "Installed finite connected authority")
+			child.Flags().StringVar(&instance, "instance", "", "Stable customer-selected dispatch identity")
 			child.Flags().BoolVar(&send, "send", false, "Authorize this suite execution; existing output is never resumed")
 			child.Flags().StringVar(&deadline, "deadline", "", "Stop the suite after this positive duration")
 		}
 		command.AddCommand(child)
 	}
-	command.AddCommand(suiteGatePolicyCommand(), suiteGateCommand(false), suiteGateCommand(true), suiteCICommand(), suiteCoverageCommand(), suitePromotionCommand(false), suitePromotionCommand(true))
+	command.AddCommand(suiteGatePolicyCommand(), suiteGateCommand(false), suiteGateCommand(true), suiteCICommand(), suiteCoverageCommand(), suitePromotionCommand(false), suitePromotionCommand(true), suiteConnectedInspectCommand())
 	return command
 }
 
@@ -83,6 +146,31 @@ func suiteCoverageCommand() *cobra.Command {
 		}
 		if requirements == "" {
 			return usage("coverage requires --requirements")
+		}
+		var header struct {
+			Schema string `json:"schema"`
+		}
+		raw, e := (artifactdir.Document{MaxBytes: suite.MaxBytes}).Read(requirements)
+		if e == nil && json.Unmarshal(raw, &header) == nil && header.Schema == suite.ConnectedCoverageSchema {
+			if len(repeats) > 0 {
+				return usage("connected coverage has no implicit repeated-run stability claim")
+			}
+			report, e := suite.AssessConnectedCoverage(cmd.Context(), args[0], requirements, now)
+			if e != nil {
+				return refusal(e)
+			}
+			if e = writeJSON(cmd, report); e != nil {
+				return e
+			}
+			for _, job := range report.Jobs {
+				if !job.Eligible {
+					return refusal(errors.New("connected suite coverage is incomplete"))
+				}
+			}
+			if report.Passed != report.Denominator {
+				return refusal(errors.New("connected suite requirement coverage is incomplete"))
+			}
+			return nil
 		}
 		report, err := suite.AssessCoverage(cmd.Context(), args[0], requirements, repeats, now)
 		if err != nil {
@@ -135,6 +223,28 @@ func suitePromotionCommand(approve bool) *cobra.Command {
 		capability = capabilityAuthor
 	}
 	command := &cobra.Command{Use: name + " FILE", Short: "Review or approve exact suite inputs for one configured environment without sending", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		var header struct {
+			Schema string `json:"schema"`
+		}
+		raw, readErr := (artifactdir.Document{MaxBytes: suite.MaxBytes}).Read(args[0])
+		if readErr == nil && json.Unmarshal(raw, &header) == nil && header.Schema == suite.ConnectedSchema {
+			if releases != "" {
+				return usage("connected promotion uses the suite's embedded released pins")
+			}
+			if approve {
+				p, e := suite.ApproveConnectedPromotion(args[0], environment, revision, review, approver, rationale, output)
+				if e != nil {
+					return refusal(e)
+				}
+				_, e = fmt.Fprintln(cmd.OutOrStdout(), p.Identity())
+				return e
+			}
+			r, e := suite.ReviewConnectedPromotion(args[0], environment, revision)
+			if e != nil {
+				return refusal(e)
+			}
+			return writeJSON(cmd, r)
+		}
 		if err := cmd.Context().Err(); err != nil {
 			return err
 		}

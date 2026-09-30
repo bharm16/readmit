@@ -30,19 +30,16 @@ func (p *Plan) Identity() string        { return p.identity }
 func (p *Plan) Request() Request        { var r Request; _ = json.Unmarshal(encode(p.request), &r); return r }
 func (Plan) Format(w fmt.State, _ rune) { _, _ = io.WriteString(w, "FHIR validation plan (private)") }
 
-// Prepare reads only bounded selected bytes and immutable capability metadata.
-// No executable, Docker socket, credential, network or package resolver is used.
-func Prepare(raw, input []byte, c *Capability) (*Plan, error) {
+// Check verifies the qualified validator, Java and complete offline package
+// roots without a resource or worker. It names installed metadata requirements
+// only; Engine.Check remains the separate local daemon and exact image check.
+func (c *Capability) Check() error {
 	if c == nil || c.identity == "" {
-		return nil, unavailable("worker-missing", "install the optional local validation capability")
-	}
-	var r Request
-	if len(raw) > 256<<10 || json.Unmarshal(raw, &r, json.RejectUnknownMembers(true)) != nil || r.Schema != RequestSchema || r.Capability != c.identity || len(input) == 0 || len(input) > 16<<20 || r.InputSHA256 != digest(input) || r.TimeoutMS < 1 || r.TimeoutMS > 300000 || r.MaxOutputBytes < 1024 || r.MaxOutputBytes > 16<<20 || len(r.Profiles) > 32 {
-		return nil, invalid
+		return unavailable("worker-missing", "install the optional local validation capability")
 	}
 	m := c.manifest
 	if m.Validator.Version != validatorVersion || m.Validator.SHA256 != validatorSHA256 || m.Runtime.Version != runtimeVersion || m.Runtime.SHA256 != runtimeSHA256 {
-		return nil, unavailable("unsupported-runtime", "install the qualified validator and Java combination")
+		return unavailable("unsupported-runtime", "install the qualified validator and Java combination")
 	}
 	packages := map[string]string{}
 	for _, p := range m.Packages {
@@ -54,9 +51,26 @@ func Prepare(raw, input []byte, c *Capability) (*Plan, error) {
 	}
 	for required, sha256 := range requiredRoots {
 		if packages[required] != sha256 || !roots[required] {
-			return nil, unavailable("package-unavailable", "restage the complete pinned validator package closure")
+			return unavailable("package-unavailable", "restage the complete pinned validator package closure")
 		}
 	}
+	return nil
+}
+
+// Prepare reads only bounded selected bytes and immutable capability metadata.
+// No executable, Docker socket, credential, network or package resolver is used.
+func Prepare(raw, input []byte, c *Capability) (*Plan, error) {
+	if c == nil || c.identity == "" {
+		return nil, unavailable("worker-missing", "install the optional local validation capability")
+	}
+	var r Request
+	if len(raw) > 256<<10 || json.Unmarshal(raw, &r, json.RejectUnknownMembers(true)) != nil || r.Schema != RequestSchema || r.Capability != c.identity || len(input) == 0 || len(input) > 16<<20 || r.InputSHA256 != digest(input) || r.TimeoutMS < 1 || r.TimeoutMS > 300000 || r.MaxOutputBytes < 1024 || r.MaxOutputBytes > 16<<20 || len(r.Profiles) > 32 {
+		return nil, invalid
+	}
+	if err := c.Check(); err != nil {
+		return nil, err
+	}
+	m := c.manifest
 	if !slices.Contains([]string{"required", "not-requested"}, r.Requirements.Terminology) || !slices.Contains([]string{"required", "not-requested"}, r.Requirements.Invariants) || len(r.Requirements.FailSeverities) < 1 || len(r.Requirements.FailSeverities) > 4 {
 		return nil, invalid
 	}

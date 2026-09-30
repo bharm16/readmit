@@ -8,13 +8,16 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/durablerun"
+	"github.com/bharm16/readmit/internal/networkaction"
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
 	"github.com/bharm16/readmit/internal/runqueue"
+	"github.com/bharm16/readmit/internal/suite"
 )
 
 // sendScheduleAlert has no proxy, redirects, authentication headers or response
@@ -162,6 +165,40 @@ loop:
 // execution boundary with its own pinned input. A test whose dependency did
 // not pass is not run. The occurrence passes only when every test passed.
 func ExecuteManagedRun(ctx context.Context, entry runnerprotocol.ScheduleEntry, key string) string {
+	if dispatch, e := suite.ReadConnectedDispatch(entry.Spec); e == nil {
+		c, e := customerrunner.ReadConfig(entry.RunnerConfig)
+		if e != nil {
+			return "error"
+		}
+		prepared, remove, e := dispatch.Prepare(ctx)
+		if e != nil {
+			return "error"
+		}
+		defer remove()
+		if prepared.Identity != entry.Input {
+			return "error"
+		}
+		id := "c-" + networkaction.Digest([]byte(key))[:40]
+		report, e := customerrunner.RunConnectedSuite(ctx, c, suite.ConnectedRequest{Path: dispatch.Suite, Environment: dispatch.Environment, Output: filepath.Join(c.Root, id, "run"), Promotion: dispatch.Promotion, PromotionIdentity: dispatch.PromotionIdentity, Revision: dispatch.Revision, Instance: key}, dispatch.Authority)
+		if ctx.Err() != nil {
+			return "cancelled"
+		}
+		if e != nil {
+			return "error"
+		}
+		switch report.ExitCode() {
+		case 0:
+			return "passed"
+		case 1:
+			return "failed"
+		}
+		for _, job := range report.Jobs {
+			if job.Flow != nil && job.Flow.State == "uncertain" {
+				return "uncertain"
+			}
+		}
+		return "error"
+	}
 	c, e := customerrunner.ReadConfig(entry.RunnerConfig)
 	if e != nil {
 		return "error"
@@ -230,6 +267,25 @@ func executeQueuedJob(ctx context.Context, c customerrunner.Config, id string, j
 // prepares to the pinned input. A change is never approved here; the
 // schedule is paused.
 func RevalidateManagedRun(ctx context.Context, project string, entry runnerprotocol.ScheduleEntry) string {
+	if dispatch, e := suite.ReadConnectedDispatch(entry.Spec); e == nil {
+		c, e := customerrunner.ReadConfig(entry.RunnerConfig)
+		if e != nil || c.Project != project {
+			return runnerprotocol.ReasonUnreadable
+		}
+		prepared, remove, e := dispatch.Prepare(ctx)
+		if e != nil {
+			return runnerprotocol.ReasonPinChanged
+		}
+		defer remove()
+		if prepared.Identity != entry.Input {
+			return runnerprotocol.ReasonPinChanged
+		}
+		actualProject, environment, e := prepared.RuntimeScope()
+		if e != nil || actualProject != project || environment != c.Environment {
+			return runnerprotocol.ReasonNoAuthority
+		}
+		return ""
+	}
 	// A schedule runs only a runner configuration of its own project: an
 	// administrator of one project cannot point the scheduler at another's.
 	if c, e := customerrunner.ReadConfig(entry.RunnerConfig); e != nil || c.Project != project {

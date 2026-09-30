@@ -1,5 +1,11 @@
 # Saved suites in customer CI
 
+The legacy path below retains its v1 semantics. Approved connected v2/FHIR
+suites use the same `suite ci` command with the enrolled runner and separately
+installed finite authority described in [connected suites](connected-suites.md).
+Their capability handshake and persisted resource fence run before target
+effects; a legacy CI process is not a substitute for that admission.
+
 `readmit suite ci SUITE --environment ENV --output NEW_DIRECTORY --send`
 executes the saved [suite](suites.md) through the same durable engine as
 `suite run`. It needs no desktop or interactive prompt. This is a direct local
@@ -326,3 +332,66 @@ a value that would break the checklist's comment lines, an identity that is not
 a full SHA-256 identity, and a run, baseline and snapshot directory that are not
 three separate folders. The workflow uses the pinned identity as provisioned;
 it never computes one.
+
+## Enrolled connected suites
+
+For `readmit-suite/v2`, provision the customer-local `RUNNER_CONFIG`,
+`RUNNER_AUTHORITY`, `PROMOTION_FILE`, `PROMOTION_IDENTITY`, `TARGET_REVISION`
+and `DISPATCH_ID` alongside the installed binary, activated policy, suite,
+environment and private run directory. Install the exact packs and optional
+validator offline; configure private-network reachability and verified TLS
+before execution. [Connected suites](connected-suites.md) describes the finite
+authority and capability handshake. Do not put keys or tokens in these variables.
+
+The dispatch identity is unique to an authorized occurrence and stays unchanged
+across retries. `RUN_DIRECTORY` is a new private directory for that occurrence;
+an existing output or retained dispatch refuses, rather than silently sending
+again. Disable automatic reruns. The generated handoff uses this single command:
+
+```sh
+"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --runner-config "$RUNNER_CONFIG" --authority "$RUNNER_AUTHORITY" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --instance "$DISPATCH_ID" --send --deadline 5m
+```
+
+Customer-controlled GitHub Actions:
+
+```yaml
+name: Connected regression
+on: workflow_dispatch
+permissions: {}
+concurrency:
+  group: readmit-approved-connected-target
+  cancel-in-progress: false
+jobs:
+  regression:
+    runs-on: [self-hosted, readmit-private]
+    timeout-minutes: 10
+    steps:
+      - name: Execute the approved connected suite
+        shell: bash
+        run: |
+          "$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --runner-config "$RUNNER_CONFIG" --authority "$RUNNER_AUTHORITY" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --instance "$DISPATCH_ID" --send --deadline 5m
+```
+
+Customer-controlled Azure DevOps:
+
+```yaml
+trigger: none
+pr: none
+pool:
+  name: readmit-private
+steps:
+  - checkout: none
+  - bash: |
+      "$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --runner-config "$RUNNER_CONFIG" --authority "$RUNNER_AUTHORITY" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --instance "$DISPATCH_ID" --send --deadline 5m
+    displayName: Execute the approved connected suite
+    timeoutInMinutes: 10
+```
+
+Each invokes the installed command once, preserves its exit and uploads nothing.
+Hosted third-party agents default to synthetic data and an explicit artifact/log
+policy. Only fixed-label `ci.json` and `junit.xml` are candidates for authorized
+publication; raw proof under `execution/` stays customer-local. Adding
+`--requirements "$COVERAGE_FILE"` selects an exact v2 coverage declaration and
+keeps every blocked/skipped/quarantined job in the denominator. A reviewed
+connected gate uses `RUN_DIRECTORY/execution` as its current evidence and still
+cannot replace the suite's failure status.

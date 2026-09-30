@@ -90,51 +90,13 @@ func admission(ctx context.Context, c Config, instance, job, method string) (run
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	key, err := c.Key.locator().Read(ctx)
-	if err != nil {
-		return zero, ErrRefused
-	}
-	token, err := c.Token.locator().Read(ctx)
-	if err != nil {
-		return zero, ErrRefused
-	}
-	cert, err := privateRead(c.Certificate, 1<<20)
-	if err != nil || len(cert) > 1<<20 {
-		return zero, ErrRefused
-	}
-	ca, err := privateRead(c.CA, 1<<20)
-	if err != nil || len(ca) > 1<<20 {
-		return zero, ErrRefused
-	}
-	u, err := url.Parse(c.Hub)
-	if err != nil {
-		return zero, ErrRefused
-	}
-	tc, err := transportsecurity.ClientConfig(u.Hostname(), ca)
-	if err != nil {
-		return zero, ErrRefused
-	}
-	pair, err := tls.X509KeyPair(cert, key.Expose())
-	if err != nil {
-		return zero, ErrRefused
-	}
-	tc.MinVersion = tls.VersionTLS13
-	tc.Certificates = []tls.Certificate{pair}
-	tr := &http.Transport{TLSClientConfig: tc, DisableKeepAlives: true, ResponseHeaderTimeout: 3 * time.Second, MaxResponseHeaderBytes: 8192}
-	defer tr.CloseIdleConnections()
-	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrRefused }}
 	pin := engine.Current("readmit-test/v1")
 	raw, _ := json.Marshal(runnerprotocol.Request{Schema: "readmit-runner-request/v1", Environment: c.Environment, Instance: instance, Job: job, Engine: pin.Engine, Spec: pin.Spec, Profile: pin.Profile})
-	req, err := http.NewRequestWithContext(ctx, method, c.Hub+"/v1/projects/"+c.Project+"/runner", bytes.NewReader(raw))
+	response, finish, err := runnerRequest(ctx, c, method, "/v1/projects/"+c.Project+"/runner", raw)
 	if err != nil {
 		return zero, ErrRefused
 	}
-	req.Header.Set("Authorization", "Bearer "+string(token.Expose()))
-	req.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(req)
-	if err != nil {
-		return zero, ErrRefused
-	}
+	defer finish()
 	defer response.Body.Close()
 	if method == "DELETE" && response.StatusCode == 204 {
 		return zero, nil
@@ -151,6 +113,58 @@ func admission(ctx context.Context, c Config, instance, job, method string) (run
 		return zero, ErrRefused
 	}
 	return lease, nil
+}
+
+// runnerRequest is the one private-provider and verified mutual-TLS transport
+// for both runner protocols. Its caller bounds the context through reading the
+// response and invokes finish after closing the body. Provider diagnostics and
+// transport errors are never carried into operational output.
+func runnerRequest(ctx context.Context, c Config, method, path string, raw []byte) (*http.Response, func(), error) {
+	key, err := c.Key.locator().Read(ctx)
+	if err != nil {
+		return nil, nil, ErrRefused
+	}
+	token, err := c.Token.locator().Read(ctx)
+	if err != nil {
+		return nil, nil, ErrRefused
+	}
+	cert, err := privateRead(c.Certificate, 1<<20)
+	if err != nil || len(cert) > 1<<20 {
+		return nil, nil, ErrRefused
+	}
+	ca, err := privateRead(c.CA, 1<<20)
+	if err != nil || len(ca) > 1<<20 {
+		return nil, nil, ErrRefused
+	}
+	u, err := url.Parse(c.Hub)
+	if err != nil {
+		return nil, nil, ErrRefused
+	}
+	tc, err := transportsecurity.ClientConfig(u.Hostname(), ca)
+	if err != nil {
+		return nil, nil, ErrRefused
+	}
+	pair, err := tls.X509KeyPair(cert, key.Expose())
+	if err != nil {
+		return nil, nil, ErrRefused
+	}
+	tc.MinVersion = tls.VersionTLS13
+	tc.Certificates = []tls.Certificate{pair}
+	tr := &http.Transport{TLSClientConfig: tc, DisableKeepAlives: true, ResponseHeaderTimeout: 3 * time.Second, MaxResponseHeaderBytes: 8192}
+	client := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrRefused }}
+	req, err := http.NewRequestWithContext(ctx, method, c.Hub+path, bytes.NewReader(raw))
+	if err != nil {
+		tr.CloseIdleConnections()
+		return nil, nil, ErrRefused
+	}
+	req.Header.Set("Authorization", "Bearer "+string(token.Expose()))
+	req.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(req)
+	if err != nil {
+		tr.CloseIdleConnections()
+		return nil, nil, ErrRefused
+	}
+	return response, tr.CloseIdleConnections, nil
 }
 
 // refusalReason carries the hub's own fixed refusal phrase, so the

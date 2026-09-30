@@ -584,12 +584,34 @@
       "owner": "bharm16/readmit#258",
       "screen": "the Suites screen of the application",
       "action": "review and release immutable test versions with profile pins",
-      "backend": {"package": "internal/operation", "name": "ApproveExpectation"},
-      "inputs": ["readmit-test/v1", "readmit-local-profile/v1", "readmit-test-release/v1"],
-      "outputs": ["readmit-test-release/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "baseline, team release and environment approvals keep their own scopes and actors"},
-      "parity_test": {"package": "internal/desktop", "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"},
+      "backend": {
+        "package": "internal/cli",
+        "name": "expectationCommand"
+      },
+      "inputs": [
+        "readmit-test/v1",
+        "readmit-local-profile/v1",
+        "readmit-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-test-release/v1"
+      ],
+      "outputs": [
+        "readmit-test-release/v1",
+        "readmit-connected-test-release/v1"
+      ],
+      "prerequisites": [
+        "author"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/Suites.test.tsx",
+        "name": "baseline, team release and environment approvals keep their own scopes and actors"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"
+      },
       "implemented": true
     },
     {
@@ -600,12 +622,31 @@
       "owner": "bharm16/readmit#258",
       "screen": "the Suites screen of the application",
       "action": "review and release immutable test versions with profile pins",
-      "backend": {"package": "internal/operation", "name": "ReviewExpectation"},
-      "inputs": ["readmit-test/v1", "readmit-local-profile/v1", "readmit-test-release/v1"],
-      "outputs": ["readmit-expectation-review/v1"],
+      "backend": {
+        "package": "internal/cli",
+        "name": "expectationCommand"
+      },
+      "inputs": [
+        "readmit-test/v1",
+        "readmit-local-profile/v1",
+        "readmit-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6"
+      ],
+      "outputs": [
+        "readmit-expectation-review/v1",
+        "readmit-connected-test-release-review/v1"
+      ],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "baseline, team release and environment approvals keep their own scopes and actors"},
-      "parity_test": {"package": "internal/desktop", "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"},
+      "gui_test": {
+        "file": "desktop/frontend/src/Suites.test.tsx",
+        "name": "baseline, team release and environment approvals keep their own scopes and actors"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"
+      },
       "implemented": true
     },
     {
@@ -2282,12 +2323,49 @@
       "owner": "bharm16/readmit#258",
       "screen": "the Suites screen of the application",
       "action": "approve exact suite inputs for one configured environment without sending",
-      "backend": {"package": "internal/suite", "name": "ApprovePromotion"},
-      "inputs": ["readmit-suite/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-suite-releases/v1", "readmit-test-release/v1"],
-      "outputs": ["readmit-suite-promotion/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "baseline, team release and environment approvals keep their own scopes and actors"},
-      "parity_test": {"package": "internal/desktop", "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"},
+      "backend": {
+        "package": "internal/cli",
+        "name": "suitePromotionCommand"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1"
+      ],
+      "outputs": [
+        "readmit-suite-promotion/v1",
+        "readmit-suite-promotion/v2"
+      ],
+      "prerequisites": [
+        "author"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/Suites.test.tsx",
+        "name": "baseline, team release and environment approvals keep their own scopes and actors"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"
+      },
       "implemented": true
     },
     {
@@ -2298,12 +2376,73 @@
       "owner": "bharm16/readmit#258",
       "screen": "a suite's Set up CI",
       "action": "generate the documented CI workflow for one supported integration with the six provisioned variables validated",
-      "backend": {"package": "internal/suite", "name": "RunCI"},
-      "inputs": ["readmit-suite/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-suite-promotion/v1", "readmit-suite-coverage/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-job/v1", "readmit-result/v1"],
-      "outputs": ["readmit-test/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-job/v1", "readmit-result/v1", "hl7", "readmit-suite-ci/v1"],
-      "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "the CI handoff is generated in-app and results are inspected in-app"},
-      "parity_test": {"package": "internal/desktop", "name": "TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI"},
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteCICommand"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-suite-promotion/v1",
+        "readmit-suite-coverage/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-runner-authority/v1",
+        "readmit-runner/v1",
+        "readmit-suite-coverage/v2"
+      ],
+      "outputs": [
+        "readmit-test/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "hl7",
+        "readmit-suite-ci/v1",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-execution/v2",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4",
+        "readmit-connected-suite-ci/v1"
+      ],
+      "prerequisites": [
+        "execute"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "the CI handoff is generated in-app and results are inspected in-app"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI"
+      },
       "implemented": true
     },
     {
@@ -2314,12 +2453,42 @@
       "owner": "bharm16/readmit#258",
       "screen": "the Suites screen of the application",
       "action": "author and assess declared requirement coverage over a prepared suite without sending",
-      "backend": {"package": "internal/suite", "name": "AssessCoverage"},
-      "inputs": ["readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteCoverageCommand"
+      },
+      "inputs": [
+        "readmit-suite-coverage/v1",
+        "readmit-suite/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-test/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "readmit-suite-coverage/v2",
+        "readmit-suite-execution/v2",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "coverage lists every requirement and exclusion and never runs anything"},
-      "parity_test": {"package": "internal/desktop", "name": "TestASuiteVersionRunsAndItsHistoryCoverageAndComparisonReadTheRun"},
+      "gui_test": {
+        "file": "desktop/frontend/src/Suites.test.tsx",
+        "name": "coverage lists every requirement and exclusion and never runs anything"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestASuiteVersionRunsAndItsHistoryCoverageAndComparisonReadTheRun"
+      },
       "implemented": true
     },
     {
@@ -2330,12 +2499,52 @@
       "owner": "bharm16/readmit#307",
       "screen": "a suite's Set up CI",
       "action": "generate the documented CI workflow with the reviewed change-gate step run after the suite, its pins validated",
-      "backend": {"package": "internal/suite", "name": "RetainGate"},
-      "inputs": ["readmit-ci-gate-policy/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-suite-promotion/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
-      "outputs": ["readmit-ci-retention/v1", "readmit-ci-gate/v1"],
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteGateCommand"
+      },
+      "inputs": [
+        "readmit-ci-gate-policy/v1",
+        "readmit-suite-coverage/v1",
+        "readmit-suite/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-suite-promotion/v1",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-test/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "readmit-ci-gate-policy/v2",
+        "readmit-suite-coverage/v2",
+        "readmit-suite-execution/v2",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
+      "outputs": [
+        "readmit-ci-retention/v1",
+        "readmit-ci-gate/v1",
+        "readmit-ci-retention/v2",
+        "readmit-ci-gate/v2"
+      ],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "the reviewed change-gate step is added to the handoff only when asked for, with every reviewed pin, and a refusal is shown"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheGeneratedGateStepRetainsTheVerdictAHandRunGateRetains"},
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "the reviewed change-gate step is added to the handoff only when asked for, with every reviewed pin, and a refusal is shown"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestTheGeneratedGateStepRetainsTheVerdictAHandRunGateRetains"
+      },
       "implemented": true
     },
     {
@@ -2346,12 +2555,24 @@
       "owner": "bharm16/readmit#258",
       "screen": "a suite's Set up CI",
       "action": "read one reviewed CI gate policy and report its canonical identity for independent pinning",
-      "backend": {"package": "internal/suite", "name": "GatePolicy.Identity"},
-      "inputs": ["readmit-ci-gate-policy/v1"],
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteGatePolicyCommand"
+      },
+      "inputs": [
+        "readmit-ci-gate-policy/v1",
+        "readmit-ci-gate-policy/v2"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "the CI handoff is generated in-app and results are inspected in-app"},
-      "parity_test": {"package": "internal/desktop", "name": "TestInspectGatePolicyComputesTheCanonicalIdentity"},
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "the CI handoff is generated in-app and results are inspected in-app"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestInspectGatePolicyComputesTheCanonicalIdentity"
+      },
       "implemented": true
     },
     {
@@ -2362,12 +2583,52 @@
       "owner": "bharm16/readmit#258",
       "screen": "the Suites screen of the application",
       "action": "compile a saved suite against one environment into a new private workspace directory without sending",
-      "backend": {"package": "internal/suite", "name": "Prepare"},
-      "inputs": ["readmit-suite/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-suite-releases/v1", "readmit-test-release/v1"],
-      "outputs": ["readmit-test/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "import fills one draft, and export and run configuration write only where the person chooses"},
-      "parity_test": {"package": "internal/desktop", "name": "TestExportAndRunConfigurationWriteOnlyWhereThePersonChooses"},
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteCommand"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1"
+      ],
+      "outputs": [
+        "readmit-test/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2"
+      ],
+      "prerequisites": [
+        "author"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/Suites.test.tsx",
+        "name": "import fills one draft, and export and run configuration write only where the person chooses"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestExportAndRunConfigurationWriteOnlyWhereThePersonChooses"
+      },
       "implemented": true
     },
     {
@@ -2378,12 +2639,47 @@
       "owner": "bharm16/readmit#258",
       "screen": "the Suites screen of the application",
       "action": "review exact suite inputs for one configured environment without sending",
-      "backend": {"package": "internal/suite", "name": "ReviewPromotion"},
-      "inputs": ["readmit-suite/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-suite-releases/v1", "readmit-test-release/v1"],
-      "outputs": ["readmit-suite-promotion-review/v1"],
+      "backend": {
+        "package": "internal/cli",
+        "name": "suitePromotionCommand"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1"
+      ],
+      "outputs": [
+        "readmit-suite-promotion-review/v1",
+        "readmit-suite-promotion-review/v2"
+      ],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Suites.test.tsx", "name": "baseline, team release and environment approvals keep their own scopes and actors"},
-      "parity_test": {"package": "internal/desktop", "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"},
+      "gui_test": {
+        "file": "desktop/frontend/src/Suites.test.tsx",
+        "name": "baseline, team release and environment approvals keep their own scopes and actors"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestBaselineAndEnvironmentApprovalsKeepTheirScopesAndActors"
+      },
       "implemented": true
     },
     {
@@ -2394,12 +2690,64 @@
       "owner": "bharm16/readmit#258",
       "screen": "the durable-run panels of the evidence region, seeded from the Suites and releases panel",
       "action": "execute one prepared suite environment through the existing durable queue with explicit send authorization",
-      "backend": {"package": "internal/suite", "name": "Run"},
-      "inputs": ["readmit-suite/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-suite-promotion/v1"],
-      "outputs": ["readmit-test/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-job/v1", "readmit-result/v1", "hl7"],
-      "prerequisites": ["execute"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a suite is reviewed in the wide sheet with each test's dataset, target, state sharing and dependencies, an unknown count is never invented, and Send runs it once"},
-      "parity_test": {"package": "internal/desktop", "name": "TestASuiteIsPreflightedAndExecutedThroughTheExistingQueue"},
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteCommand"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-suite-promotion/v1",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-runner-authority/v1",
+        "readmit-runner/v1"
+      ],
+      "outputs": [
+        "readmit-test/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "hl7",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-execution/v2",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
+      "prerequisites": [
+        "execute"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/runs.test.tsx",
+        "name": "a suite is reviewed in the wide sheet with each test's dataset, target, state sharing and dependencies, an unknown count is never invented, and Send runs it once"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestASuiteIsPreflightedAndExecutedThroughTheExistingQueue"
+      },
       "implemented": true
     },
     {
@@ -2410,12 +2758,52 @@
       "owner": "bharm16/readmit#307",
       "screen": "a suite's Gate results",
       "action": "verify a retained CI change-gate snapshot against its pinned policy identity and name what could not be verified",
-      "backend": {"package": "internal/suite", "name": "VerifyGate"},
-      "inputs": ["readmit-ci-retention/v1", "readmit-ci-gate-policy/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-suite-promotion/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
-      "outputs": ["readmit-ci-gate/v1"],
+      "backend": {
+        "package": "internal/cli",
+        "name": "suiteGateCommand"
+      },
+      "inputs": [
+        "readmit-ci-retention/v1",
+        "readmit-ci-gate-policy/v1",
+        "readmit-suite-coverage/v1",
+        "readmit-suite/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-suite-promotion/v1",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-test/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "readmit-ci-retention/v2",
+        "readmit-ci-gate-policy/v2",
+        "readmit-suite-coverage/v2",
+        "readmit-suite-execution/v2",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
+      "outputs": [
+        "readmit-ci-gate/v1",
+        "readmit-ci-gate/v2"
+      ],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "a retained change gate is verified against its pinned identity, and what could not be verified is named"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowVerifiesRetainedGatesAsReadmitSuiteVerifyGateDoes"},
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "a retained change gate is verified against its pinned identity, and what could not be verified is named"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestTheWindowVerifiesRetainedGatesAsReadmitSuiteVerifyGateDoes"
+      },
       "implemented": true
     },
     {
@@ -6301,14 +6689,40 @@
       "kind": "desktop",
       "capability": "inspectCIResults application operation",
       "owner": "bharm16/readmit#263",
-      "screen": "Runs › Import CI results",
+      "screen": "Runs \u203a Import CI results",
       "action": "read a retained CI directory's suite gate and change gate summaries through their strict readers",
-      "backend": {"package": "internal/suite", "name": "DecodeCI"},
-      "inputs": ["readmit-suite-ci/v1", "readmit-ci-gate/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.InspectCIResults"
+      },
+      "inputs": [
+        "readmit-suite-ci/v1",
+        "readmit-ci-gate/v1",
+        "readmit-connected-suite-ci/v1",
+        "readmit-ci-retention/v2",
+        "readmit-ci-gate/v2",
+        "readmit-suite-execution/v2",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "imported CI results show the retained suite and gate states read-only"},
-      "parity_test": {"package": "internal/desktop", "name": "TestGUIPreparedSuiteAndCIHandoffExecuteThroughTheUnchangedCLI"},
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "imported CI results show the retained suite and gate states read-only"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestConnectedGateFacadeReverifiesActualSnapshotOffline"
+      },
       "implemented": true
     },
     {
@@ -6319,12 +6733,24 @@
       "owner": "bharm16/readmit#263",
       "screen": "a suite's Set up CI and Gate results",
       "action": "read one reviewed CI gate policy and report its canonical identity for independent pinning",
-      "backend": {"package": "internal/suite", "name": "GatePolicy.Identity"},
-      "inputs": ["readmit-ci-gate-policy/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.InspectGatePolicy"
+      },
+      "inputs": [
+        "readmit-ci-gate-policy/v1",
+        "readmit-ci-gate-policy/v2"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "the reviewed change-gate step is added to the handoff only when asked for, with every reviewed pin, and a refusal is shown"},
-      "parity_test": {"package": "internal/desktop", "name": "TestInspectGatePolicyComputesTheCanonicalIdentity"},
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "the reviewed change-gate step is added to the handoff only when asked for, with every reviewed pin, and a refusal is shown"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestConnectedGateFacadeReverifiesActualSnapshotOffline"
+      },
       "implemented": true
     },
     {
@@ -6335,12 +6761,52 @@
       "owner": "bharm16/readmit#307",
       "screen": "a suite's Gate results",
       "action": "verify a retained CI change-gate snapshot against its pinned policy identity and name what could not be verified",
-      "backend": {"package": "internal/suite", "name": "VerifyGate"},
-      "inputs": ["readmit-ci-retention/v1", "readmit-ci-gate-policy/v1", "readmit-suite-coverage/v1", "readmit-suite/v1", "readmit-suite-selection/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-suite-promotion/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-job/v1", "readmit-result/v1"],
-      "outputs": ["readmit-ci-gate/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.VerifyCIGate"
+      },
+      "inputs": [
+        "readmit-ci-retention/v1",
+        "readmit-ci-gate-policy/v1",
+        "readmit-suite-coverage/v1",
+        "readmit-suite/v1",
+        "readmit-suite-selection/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-suite-promotion/v1",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-test/v1",
+        "readmit-job/v1",
+        "readmit-result/v1",
+        "readmit-ci-retention/v2",
+        "readmit-ci-gate-policy/v2",
+        "readmit-suite-coverage/v2",
+        "readmit-suite-execution/v2",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
+      "outputs": [
+        "readmit-ci-gate/v1",
+        "readmit-ci-gate/v2"
+      ],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/CISheets.test.tsx", "name": "a retained change gate is verified against its pinned identity, and what could not be verified is named"},
-      "parity_test": {"package": "internal/desktop", "name": "TestTheWindowVerifiesRetainedGatesAsReadmitSuiteVerifyGateDoes"},
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "a retained change gate is verified against its pinned identity, and what could not be verified is named"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestConnectedGateFacadeReverifiesActualSnapshotOffline"
+      },
       "implemented": true
     },
     {
@@ -6823,12 +7289,46 @@
       "kind": "desktop",
       "capability": "preflightRun application operation",
       "owner": "bharm16/readmit#257",
-      "backend": {"package": "internal/durablerun", "name": "Prepare"},
-      "inputs": ["readmit-catalog/v1", "readmit-test-links/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1", "readmit-suite/v1", "readmit-suite-definition/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.PreflightRun"
+      },
+      "inputs": [
+        "readmit-catalog/v1",
+        "readmit-test-links/v1",
+        "readmit-environment-links/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-observation/v1",
+        "readmit-suite/v1",
+        "readmit-suite-definition/v1",
+        "readmit-suite-definition/v2",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1"
+      ],
       "outputs": [],
       "prerequisites": [],
       "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run test and Run suite are reviewed through run.test and run.suite with desktop.App.PrepareAction", "successor": "desktop.App.PrepareAction"}
+      "disposition": {
+        "kind": "superseded",
+        "reason": "no component calls this binding any longer: Run test and Run suite are reviewed through run.test and run.suite with desktop.App.PrepareAction",
+        "successor": "desktop.App.PrepareAction"
+      }
     },
     {
       "id": "desktop.RunDiagnosis",
@@ -6888,12 +7388,68 @@
       "kind": "desktop",
       "capability": "startSuiteRun application operation",
       "owner": "bharm16/readmit#257",
-      "backend": {"package": "internal/suite", "name": "Run"},
-      "inputs": ["readmit-suite/v1", "readmit-suite-releases/v1", "readmit-test-release/v1", "readmit-test/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-target/v3", "readmit-observation/v1", "readmit-run-lease/v1", "readmit-catalog/v1", "readmit-suite-definition/v1"],
-      "outputs": ["readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-test/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-send-decision/v1", "hl7"],
-      "prerequisites": ["execute"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.StartSuiteRun"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-suite-releases/v1",
+        "readmit-test-release/v1",
+        "readmit-test/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-target/v3",
+        "readmit-observation/v1",
+        "readmit-run-lease/v1",
+        "readmit-catalog/v1",
+        "readmit-suite-definition/v1",
+        "readmit-suite-definition/v2",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-runner-authority/v1",
+        "readmit-runner/v1"
+      ],
+      "outputs": [
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-test/v1",
+        "readmit-job/v1",
+        "readmit-engine/v1",
+        "readmit-result/v1",
+        "readmit-run/v1",
+        "readmit-send-decision/v1",
+        "hl7",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-execution/v2",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
+      "prerequisites": [
+        "execute"
+      ],
       "implemented": false,
-      "disposition": {"kind": "superseded", "reason": "no component calls this binding any longer: Run suite sends a saved suite version once through run.suite with desktop.App.ExecuteReviewedAction", "successor": "desktop.App.ExecuteReviewedAction"}
+      "disposition": {
+        "kind": "superseded",
+        "reason": "no component calls this binding any longer: Run suite sends a saved suite version once through run.suite with desktop.App.ExecuteReviewedAction",
+        "successor": "desktop.App.ExecuteReviewedAction"
+      }
     },
     {
       "id": "desktop.ChooseSyntheticPacketPath",
@@ -7416,12 +7972,131 @@
       "owner": "bharm16/readmit#553",
       "screen": "every whole-object editor sheet's Save",
       "action": "save an environment, test, observation, case's details, project's settings, check group or scenario plan whole, a local profile with the seal of its version, a variant with its lineage, project association and sequence changes, a report with the retained packet of its runs, or a normalization policy",
-      "backend": {"package": "internal/catalog", "name": "Store.Save"},
-      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-reproducer-plan/v1", "readmit-revisions/v1", "readmit-local-profile/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1", "readmit-profile-pack/v1", "readmit-assertion-set/v1", "readmit-scenario-generator/v1", "readmit-scenario/v1", "readmit-library-metadata/v1", "readmit-observation/v1", "readmit-secrets/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-mapping-recipe/v1", "readmit-source/v1", "readmit-import-plan/v1", "readmit-capture-listener/v1", "readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-network-policy/v1", "readmit-report-authored/v1", "readmit-report-sources/v1", "readmit-retained-packet/v1", "readmit-result/v1", "readmit-job/v1", "readmit-transform-plan/v1", "readmit-normalization-policy/v1"],
-      "outputs": ["readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-reproducer-plan/v1", "readmit-case/v3", "readmit-revisions/v1", "readmit-local-profile/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1", "readmit-assertion-set/v1", "readmit-scenario-generator/v1", "readmit-library-metadata/v1", "readmit-profile-pack/v1", "readmit-observation-links/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-mapping-recipe/v1", "readmit-source/v1", "readmit-import-plan/v1", "readmit-capture-listener/v1", "readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-network-policy/v1", "readmit-report-authored/v1", "readmit-report-sources/v1", "readmit-retained-packet/v1", "readmit-transform-plan/v1", "readmit-normalization-policy/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Edit details sends one whole case at the revision it opened with, and a refusal keeps every value"},
-      "parity_test": {"package": "internal/desktop", "name": "TestASaveIsOneWholeRevisionAndOneClickSavesOnce"},
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.SaveItem"
+      },
+      "inputs": [
+        "readmit-catalog/v1",
+        "readmit-target/v3",
+        "readmit-send-policy/v1",
+        "readmit-reset-plan/v1",
+        "readmit-environment-links/v1",
+        "readmit-test/v1",
+        "readmit-observation-source/v2",
+        "readmit-observation-window/v1",
+        "readmit-project/v1",
+        "readmit-project/v2",
+        "readmit-test-links/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-target/v1",
+        "readmit-target/v2",
+        "readmit-reproducer-plan/v1",
+        "readmit-revisions/v1",
+        "readmit-local-profile/v1",
+        "readmit-profile-version/v1",
+        "readmit-profile-origin/v1",
+        "readmit-profile-pack/v1",
+        "readmit-assertion-set/v1",
+        "readmit-scenario-generator/v1",
+        "readmit-scenario/v1",
+        "readmit-library-metadata/v1",
+        "readmit-observation/v1",
+        "readmit-secrets/v1",
+        "readmit-correlation-rules/v1",
+        "readmit-sequence-analysis/v1",
+        "readmit-mapping-recipe/v1",
+        "readmit-source/v1",
+        "readmit-import-plan/v1",
+        "readmit-capture-listener/v1",
+        "readmit-receiver-policy/v1",
+        "readmit-receiver-policy/v2",
+        "readmit-receiver-policy/v3",
+        "readmit-suite/v1",
+        "readmit-suite-definition/v1",
+        "readmit-fhir-connection/v1",
+        "readmit-connected-observation-setup/v1",
+        "readmit-fhir-observation/v1",
+        "readmit-dataset-projection/v1",
+        "readmit-observation-interval/v1",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-report-authored/v1",
+        "readmit-report-sources/v1",
+        "readmit-retained-packet/v1",
+        "readmit-result/v1",
+        "readmit-job/v1",
+        "readmit-transform-plan/v1",
+        "readmit-normalization-policy/v1",
+        "readmit-suite/v2",
+        "readmit-suite-definition/v2"
+      ],
+      "outputs": [
+        "readmit-catalog/v1",
+        "readmit-catalog-pending/v1",
+        "readmit-target/v3",
+        "readmit-send-policy/v1",
+        "readmit-reset-plan/v1",
+        "readmit-environment-links/v1",
+        "readmit-test/v1",
+        "readmit-observation-source/v2",
+        "readmit-observation-window/v1",
+        "readmit-project/v1",
+        "readmit-project/v2",
+        "readmit-test-links/v1",
+        "readmit-reproducer-plan/v1",
+        "readmit-case/v3",
+        "readmit-revisions/v1",
+        "readmit-local-profile/v1",
+        "readmit-profile-version/v1",
+        "readmit-profile-origin/v1",
+        "readmit-assertion-set/v1",
+        "readmit-scenario-generator/v1",
+        "readmit-library-metadata/v1",
+        "readmit-profile-pack/v1",
+        "readmit-observation-links/v1",
+        "readmit-correlation-rules/v1",
+        "readmit-sequence-analysis/v1",
+        "readmit-mapping-recipe/v1",
+        "readmit-source/v1",
+        "readmit-import-plan/v1",
+        "readmit-capture-listener/v1",
+        "readmit-receiver-policy/v1",
+        "readmit-receiver-policy/v2",
+        "readmit-receiver-policy/v3",
+        "readmit-suite/v1",
+        "readmit-suite-definition/v1",
+        "readmit-fhir-connection/v1",
+        "readmit-connected-observation-setup/v1",
+        "readmit-fhir-observation/v1",
+        "readmit-dataset-projection/v1",
+        "readmit-observation-interval/v1",
+        "readmit-environment-isolation/v1",
+        "readmit-network-policy/v1",
+        "readmit-report-authored/v1",
+        "readmit-report-sources/v1",
+        "readmit-retained-packet/v1",
+        "readmit-transform-plan/v1",
+        "readmit-normalization-policy/v1",
+        "readmit-suite/v2",
+        "readmit-suite-definition/v2"
+      ],
+      "prerequisites": [
+        "author"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/project.test.tsx",
+        "name": "Edit details sends one whole case at the revision it opened with, and a refusal keeps every value"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestConnectedSuiteSavesAndReopensThroughTheNamedCatalog"
+      },
       "implemented": true
     },
     {
@@ -7448,12 +8123,62 @@
       "owner": "bharm16/readmit#556",
       "screen": "the Add environment, Add observation, New test and Edit sheets, and the Library's New and Edit",
       "action": "start a new object from validated defaults or edit the saved values of its current or an earlier revision",
-      "backend": {"package": "internal/operation", "name": "DefaultTarget"},
-      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-test/v1", "readmit-test-release/v1", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-assertion-set/v1", "readmit-local-profile/v1", "readmit-profile-package/v1", "readmit-profile-origin/v1", "readmit-profile-pack/v1", "readmit-scenario-generator/v1", "readmit-scenario/v1", "readmit-order-scenario/v1", "readmit-library-metadata/v1", "readmit-observation/v1", "readmit-observation-links/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.OpenItemDraft"
+      },
+      "inputs": [
+        "readmit-catalog/v1",
+        "readmit-target/v3",
+        "readmit-send-policy/v1",
+        "readmit-reset-plan/v1",
+        "readmit-environment-links/v1",
+        "readmit-observation-source/v1",
+        "readmit-observation-source/v2",
+        "readmit-observation-source/v3",
+        "readmit-observation-window/v1",
+        "readmit-test/v1",
+        "readmit-test-release/v1",
+        "readmit-test-links/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-assertion-set/v1",
+        "readmit-local-profile/v1",
+        "readmit-profile-package/v1",
+        "readmit-profile-origin/v1",
+        "readmit-profile-pack/v1",
+        "readmit-scenario-generator/v1",
+        "readmit-scenario/v1",
+        "readmit-order-scenario/v1",
+        "readmit-library-metadata/v1",
+        "readmit-observation/v1",
+        "readmit-observation-links/v1",
+        "readmit-correlation-rules/v1",
+        "readmit-sequence-analysis/v1",
+        "readmit-suite/v1",
+        "readmit-suite-definition/v1",
+        "readmit-fhir-connection/v1",
+        "readmit-connected-observation-setup/v1",
+        "readmit-fhir-observation/v1",
+        "readmit-dataset-projection/v1",
+        "readmit-observation-interval/v1",
+        "readmit-environment-isolation/v1",
+        "readmit-suite/v2",
+        "readmit-suite-definition/v2"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "Add environment opens with Not classified and no transport chosen, and Edit starts from the saved values"},
-      "parity_test": {"package": "internal/desktop", "name": "TestANewEnvironmentDraftProjectsValidatedDefaultsAndLeavesTransportUnchosen"},
+      "gui_test": {
+        "file": "desktop/frontend/src/Environment.test.tsx",
+        "name": "Add environment opens with Not classified and no transport chosen, and Edit starts from the saved values"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestConnectedSuiteSavesAndReopensThroughTheNamedCatalog"
+      },
       "implemented": true
     },
     {
@@ -8177,12 +8902,78 @@
       "owner": "bharm16/readmit#555",
       "screen": "the review sheets: Run test, Run suite, Resume remaining, Run reviewed test, Send messages, Reset, Collect and Scan configured files, Export preview and Version review and Minimize failure",
       "action": "review an action before its final click",
-      "backend": {"package": "internal/desktop", "name": "App.PrepareAction"},
-      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-observation-completion/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1", "readmit-run-origin/v1", "readmit-hub-lifecycle-history/v1", "readmit-fhir-connection/v1", "readmit-fhir-connection-check/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-network-policy/v1", "readmit-smart-backend/v1", "readmit-isolation-result/v1", "readmit-environment-isolation-state/v1", "readmit-report-authored/v1", "readmit-report-sources/v1", "readmit-reduction-plan/v1", "readmit-correlation-rules/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.PrepareAction"
+      },
+      "inputs": [
+        "readmit-case/v1",
+        "readmit-target/v3",
+        "readmit-send-policy/v1",
+        "readmit-export-review/v1",
+        "readmit-suite/v1",
+        "readmit-catalog/v1",
+        "readmit-observation-source/v1",
+        "readmit-observation-source/v2",
+        "readmit-observation-source/v3",
+        "readmit-observation-window/v1",
+        "readmit-reset-plan/v1",
+        "readmit-environment-links/v1",
+        "readmit-secrets/v1",
+        "readmit-redact-local/v1",
+        "readmit-redact-inventory/v1",
+        "readmit-redact-policy/v1",
+        "readmit-test/v1",
+        "readmit-observation-completion/v1",
+        "readmit-suite-definition/v1",
+        "readmit-suite-approval/v1",
+        "readmit-test-release/v1",
+        "readmit-hub-review-history/v2",
+        "readmit-job/v1",
+        "readmit-engine/v1",
+        "readmit-result/v1",
+        "readmit-run/v1",
+        "readmit-retained-packet/v1",
+        "readmit-run-origin/v1",
+        "readmit-hub-lifecycle-history/v1",
+        "readmit-fhir-connection/v1",
+        "readmit-fhir-connection-check/v1",
+        "readmit-connected-observation-setup/v1",
+        "readmit-fhir-observation/v1",
+        "readmit-dataset-projection/v1",
+        "readmit-observation-interval/v1",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-smart-backend/v1",
+        "readmit-isolation-result/v1",
+        "readmit-environment-isolation-state/v1",
+        "readmit-report-authored/v1",
+        "readmit-report-sources/v1",
+        "readmit-reduction-plan/v1",
+        "readmit-correlation-rules/v1",
+        "readmit-suite-definition/v2",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-runner-authority/v1",
+        "readmit-runner/v1"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
-      "parity_test": {"package": "internal/desktop", "name": "TestARunIsReviewedFromTheSavedTestAndSentOnceByItsSend"},
+      "gui_test": {
+        "file": "desktop/frontend/src/runs.test.tsx",
+        "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"
+      },
+      "parity_test": {
+        "package": "hub",
+        "name": "TestConnectedNamedDesktopSuiteUsesActualRunnerAndSameRetainedOracle"
+      },
       "implemented": true
     },
     {
@@ -8193,12 +8984,126 @@
       "owner": "bharm16/readmit#555",
       "screen": "the final action of a review sheet: Send, Reset, Collect, Scan, Export, Approve or Start",
       "action": "run, resume, send, export, approve or derive exactly what was reviewed, with the setup marked complete or the declaration a derivation requires",
-      "backend": {"package": "internal/desktop", "name": "App.ExecuteReviewedAction"},
-      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1", "readmit-fhir-connection/v1", "readmit-fhir-connection-check/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-network-policy/v1", "readmit-smart-backend/v1", "readmit-isolation-result/v1", "readmit-environment-isolation-state/v1", "readmit-report-authored/v1", "readmit-report-sources/v1", "readmit-reduction-plan/v1", "readmit-correlation-rules/v1"],
-      "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "readmit-derived-export/v1", "readmit-suite-promotion/v1", "readmit-observation-completion/v1", "readmit-observation-evidence/v1", "readmit-reset-outcome/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-case/v3", "readmit-catalog/v1", "readmit-target/v3", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-command/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-reexecution-assessment/v1", "hl7", "readmit-run-origin/v1", "readmit-hub-lifecycle-command/v1", "readmit-fhir-connection-check/v1", "readmit-desktop-typed-collection/v1", "readmit-fhir-observation-sample/v1", "readmit-fhir-http-result/v1", "readmit-dataset-acquisition/v1", "readmit-dataset/v1", "readmit-isolation-result/v1", "readmit-environment-isolation-state/v1", "readmit-portable-review/v3", "readmit-portable-report/v3", "readmit-report-approval/v1", "readmit-reduction/v1", "readmit-reproducer-plan/v1"],
-      "prerequisites": ["execute-if-send", "author-if-approve", "execute-if-reach", "author-if-reach", "author-if-derive", "author-if-upload"],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
-      "parity_test": {"package": "internal/desktop", "name": "TestARunIsReviewedFromTheSavedTestAndSentOnceByItsSend"},
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.ExecuteReviewedAction"
+      },
+      "inputs": [
+        "readmit-case/v1",
+        "readmit-target/v3",
+        "readmit-send-policy/v1",
+        "readmit-export-review/v1",
+        "readmit-suite/v1",
+        "readmit-catalog/v1",
+        "readmit-observation-source/v1",
+        "readmit-observation-source/v2",
+        "readmit-observation-source/v3",
+        "readmit-observation-window/v1",
+        "readmit-reset-plan/v1",
+        "readmit-environment-links/v1",
+        "readmit-secrets/v1",
+        "readmit-redact-local/v1",
+        "readmit-redact-inventory/v1",
+        "readmit-redact-policy/v1",
+        "readmit-test/v1",
+        "readmit-suite-definition/v1",
+        "readmit-suite-approval/v1",
+        "readmit-test-release/v1",
+        "readmit-hub-review-history/v2",
+        "readmit-job/v1",
+        "readmit-engine/v1",
+        "readmit-result/v1",
+        "readmit-run/v1",
+        "readmit-retained-packet/v1",
+        "readmit-fhir-connection/v1",
+        "readmit-fhir-connection-check/v1",
+        "readmit-connected-observation-setup/v1",
+        "readmit-fhir-observation/v1",
+        "readmit-dataset-projection/v1",
+        "readmit-observation-interval/v1",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-smart-backend/v1",
+        "readmit-isolation-result/v1",
+        "readmit-environment-isolation-state/v1",
+        "readmit-report-authored/v1",
+        "readmit-report-sources/v1",
+        "readmit-reduction-plan/v1",
+        "readmit-correlation-rules/v1",
+        "readmit-suite-definition/v2",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-runner-authority/v1",
+        "readmit-runner/v1"
+      ],
+      "outputs": [
+        "readmit-run/v1",
+        "readmit-send-decision/v1",
+        "readmit-derived-export/v1",
+        "readmit-suite-promotion/v1",
+        "readmit-observation-completion/v1",
+        "readmit-observation-evidence/v1",
+        "readmit-reset-outcome/v1",
+        "readmit-export-review/v1",
+        "readmit-redact-local/v1",
+        "readmit-case/v3",
+        "readmit-catalog/v1",
+        "readmit-target/v3",
+        "readmit-suite-approval/v1",
+        "readmit-test-release/v1",
+        "readmit-hub-review-command/v1",
+        "readmit-job/v1",
+        "readmit-engine/v1",
+        "readmit-result/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-reexecution-assessment/v1",
+        "hl7",
+        "readmit-run-origin/v1",
+        "readmit-hub-lifecycle-command/v1",
+        "readmit-fhir-connection-check/v1",
+        "readmit-desktop-typed-collection/v1",
+        "readmit-fhir-observation-sample/v1",
+        "readmit-fhir-http-result/v1",
+        "readmit-dataset-acquisition/v1",
+        "readmit-dataset/v1",
+        "readmit-isolation-result/v1",
+        "readmit-environment-isolation-state/v1",
+        "readmit-portable-review/v3",
+        "readmit-portable-report/v3",
+        "readmit-report-approval/v1",
+        "readmit-reduction/v1",
+        "readmit-reproducer-plan/v1",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-execution/v2",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
+      "prerequisites": [
+        "execute-if-send",
+        "author-if-approve",
+        "execute-if-reach",
+        "author-if-reach",
+        "author-if-derive",
+        "author-if-upload"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/runs.test.tsx",
+        "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"
+      },
+      "parity_test": {
+        "package": "hub",
+        "name": "TestConnectedNamedDesktopSuiteUsesActualRunnerAndSameRetainedOracle"
+      },
       "implemented": true
     },
     {
@@ -8417,12 +9322,50 @@
       "capability": "open one run of a project, or one job of a suite run, with its one result, checks, messages, details and recovery",
       "screen": "a run's page: Checks, Messages and Details",
       "action": "open a run, show its values on purpose",
-      "backend": {"package": "internal/runresult", "name": "Open"},
-      "inputs": ["readmit-catalog/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-run-lease/v1", "readmit-test/v1", "readmit-observation/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-suite/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-run-origin/v1"],
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.OpenRun"
+      },
+      "inputs": [
+        "readmit-catalog/v1",
+        "readmit-job/v1",
+        "readmit-engine/v1",
+        "readmit-result/v1",
+        "readmit-run/v1",
+        "readmit-run-lease/v1",
+        "readmit-test/v1",
+        "readmit-observation/v1",
+        "readmit-case/v1",
+        "readmit-case/v2",
+        "readmit-case/v3",
+        "readmit-case/v4",
+        "readmit-case/v5",
+        "readmit-suite/v1",
+        "readmit-run-queue/v1",
+        "readmit-run-queue-report/v1",
+        "readmit-run-origin/v1",
+        "readmit-suite-execution/v2",
+        "readmit-suite-prepared/v2",
+        "readmit-run-queue/v2",
+        "readmit-run-queue-report/v2",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run/v3",
+        "readmit-connected-run/v4"
+      ],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "a run's page shows its failed check first with what it expected and observed, an unavailable observation never as zero, and text only on Show values"},
-      "parity_test": {"package": "internal/desktop", "name": "TestARunPageShowsAFailedDownstreamCheckBesideAcknowledgedMessages"},
+      "gui_test": {
+        "file": "desktop/frontend/src/runs.test.tsx",
+        "name": "a run's page shows its failed check first with what it expected and observed, an unavailable observation never as zero, and text only on Show values"
+      },
+      "parity_test": {
+        "package": "hub",
+        "name": "TestConnectedNamedDesktopSuiteUsesActualRunnerAndSameRetainedOracle"
+      },
       "implemented": true
     },
     {
@@ -9654,14 +10597,44 @@
       "kind": "desktop",
       "capability": "prepare and review exactly what a schedule runs",
       "owner": "bharm16/readmit#564",
-      "screen": "Schedules › New schedule",
+      "screen": "Schedules \u203a New schedule",
       "action": "review a new or edited schedule",
-      "backend": {"package": "internal/runqueue", "name": "PinnedJobs"},
-      "inputs": ["readmit-suite/v1", "readmit-runner/v1"],
-      "outputs": ["readmit-hub-schedule-command/v1"],
-      "prerequisites": ["author"],
-      "gui_test": {"file": "desktop/frontend/src/Schedules.test.tsx", "name": "a new schedule is reviewed with exact pins and next occurrences, and enabled by the scheduler's acknowledgement"},
-      "parity_test": {"package": "internal/desktop", "name": "TestSchedulesAreAcknowledgedPendingUntilAnsweredAndPinnedToTheirReview"},
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.PrepareSchedule"
+      },
+      "inputs": [
+        "readmit-suite/v1",
+        "readmit-runner/v1",
+        "readmit-suite-definition/v2",
+        "readmit-suite/v2",
+        "readmit-connected-test-release/v1",
+        "readmit-execution-plan/v4",
+        "readmit-execution-plan/v5",
+        "readmit-execution-plan/v6",
+        "readmit-connected-run-config/v3",
+        "readmit-connected-run-config/v4",
+        "readmit-environment-isolation/v1",
+        "readmit-fixture-adapter-registry/v1",
+        "readmit-network-policy/v1",
+        "readmit-suite-promotion/v2",
+        "readmit-connected-runner-authority/v1"
+      ],
+      "outputs": [
+        "readmit-hub-schedule-command/v1",
+        "readmit-connected-suite-dispatch/v1"
+      ],
+      "prerequisites": [
+        "author"
+      ],
+      "gui_test": {
+        "file": "desktop/frontend/src/Schedules.test.tsx",
+        "name": "a new schedule is reviewed with exact pins and next occurrences, and enabled by the scheduler's acknowledgement"
+      },
+      "parity_test": {
+        "package": "hub",
+        "name": "TestConnectedNamedDesktopSuiteUsesActualRunnerAndSameRetainedOracle"
+      },
       "implemented": true
     },
     {
@@ -9727,6 +10700,158 @@
       "gui_test": {"file": "desktop/frontend/src/Schedules.test.tsx", "name": "a new schedule is reviewed with exact pins and next occurrences, and enabled by the scheduler's acknowledgement"},
       "parity_test": {"package": "hub", "name": "TestManagedDispatchIsOncePerSlotAcrossTicksRestartsAndWithoutAnyApplication"},
       "implemented": true
+    },
+    {
+      "id": "hub.runner.POST./v2/projects/{project}/runner",
+      "source": "hub POST /v2/projects/{project}/runner",
+      "kind": "hub",
+      "capability": "Admit an exact connected dispatch",
+      "owner": "bharm16/readmit#585",
+      "backend": {
+        "package": "hub",
+        "name": "Store.connectedRunnerHandler"
+      },
+      "inputs": [
+        "readmit-runner-request/v2",
+        "readmit-runner-command/v1",
+        "readmit-runner-policy/v2",
+        "readmit-runner-capabilities/v1"
+      ],
+      "outputs": [
+        "readmit-runner-lease/v2",
+        "readmit-runner-dispatches/v1"
+      ],
+      "prerequisites": [
+        "hub:enrollment",
+        "hub:execution",
+        "hub-operation"
+      ],
+      "implemented": false,
+      "disposition": {
+        "kind": "machine-interface",
+        "reason": "customer-runner protocol over the actual customer hub; no GUI consent token or patient-bearing artifact is transmitted"
+      }
+    },
+    {
+      "id": "hub.runner.POST./v2/projects/{project}/runner/renew",
+      "source": "hub POST /v2/projects/{project}/runner/renew",
+      "kind": "hub",
+      "capability": "Renew its current fence",
+      "owner": "bharm16/readmit#585",
+      "backend": {
+        "package": "hub",
+        "name": "Store.connectedRunnerHandler"
+      },
+      "inputs": [
+        "readmit-runner-request/v2",
+        "readmit-runner-command/v1",
+        "readmit-runner-policy/v2",
+        "readmit-runner-capabilities/v1"
+      ],
+      "outputs": [
+        "readmit-runner-lease/v2",
+        "readmit-runner-dispatches/v1"
+      ],
+      "prerequisites": [
+        "hub:enrollment",
+        "hub:execution",
+        "hub-operation"
+      ],
+      "implemented": false,
+      "disposition": {
+        "kind": "machine-interface",
+        "reason": "customer-runner protocol over the actual customer hub; no GUI consent token or patient-bearing artifact is transmitted"
+      }
+    },
+    {
+      "id": "hub.runner.POST./v2/projects/{project}/runner/attempt",
+      "source": "hub POST /v2/projects/{project}/runner/attempt",
+      "kind": "hub",
+      "capability": "Persist a fenced effect intent",
+      "owner": "bharm16/readmit#585",
+      "backend": {
+        "package": "hub",
+        "name": "Store.connectedRunnerHandler"
+      },
+      "inputs": [
+        "readmit-runner-request/v2",
+        "readmit-runner-command/v1",
+        "readmit-runner-policy/v2",
+        "readmit-runner-capabilities/v1"
+      ],
+      "outputs": [
+        "readmit-runner-lease/v2",
+        "readmit-runner-dispatches/v1"
+      ],
+      "prerequisites": [
+        "hub:enrollment",
+        "hub:execution",
+        "hub-operation"
+      ],
+      "implemented": false,
+      "disposition": {
+        "kind": "machine-interface",
+        "reason": "customer-runner protocol over the actual customer hub; no GUI consent token or patient-bearing artifact is transmitted"
+      }
+    },
+    {
+      "id": "hub.runner.POST./v2/projects/{project}/runner/settle",
+      "source": "hub POST /v2/projects/{project}/runner/settle",
+      "kind": "hub",
+      "capability": "Retain outcome and settle matching ownership",
+      "owner": "bharm16/readmit#585",
+      "backend": {
+        "package": "hub",
+        "name": "Store.connectedRunnerHandler"
+      },
+      "inputs": [
+        "readmit-runner-request/v2",
+        "readmit-runner-command/v1",
+        "readmit-runner-policy/v2",
+        "readmit-runner-capabilities/v1"
+      ],
+      "outputs": [
+        "readmit-runner-lease/v2",
+        "readmit-runner-dispatches/v1"
+      ],
+      "prerequisites": [
+        "hub:enrollment",
+        "hub:execution",
+        "hub-operation"
+      ],
+      "implemented": false,
+      "disposition": {
+        "kind": "machine-interface",
+        "reason": "customer-runner protocol over the actual customer hub; no GUI consent token or patient-bearing artifact is transmitted"
+      }
+    },
+    {
+      "id": "cli.suite.inspect",
+      "source": "readmit suite inspect",
+      "kind": "cli",
+      "capability": "Verify connected suite and CI provenance offline",
+      "owner": "bharm16/readmit#585",
+      "screen": "Runs / imported CI results",
+      "action": "verify linked retained suite evidence without running a test or resolving providers",
+      "backend": {
+        "package": "internal/suite",
+        "name": "OpenConnectedExecution"
+      },
+      "inputs": [
+        "readmit-suite-execution/v2",
+        "readmit-connected-suite-ci/v1"
+      ],
+      "outputs": [],
+      "prerequisites": [],
+      "implemented": true,
+      "gui_test": {
+        "file": "desktop/frontend/src/CISheets.test.tsx",
+        "name": "the CI handoff is generated in-app and results are inspected in-app"
+      },
+      "parity_test": {
+        "package": "hub",
+        "name": "TestConnectedSuiteCustomerCLIPropagatesActualPassFailureAndOfflineProof"
+      }
     }
   ]
 }

@@ -98,6 +98,7 @@ var declaredSchemas = func() map[string]Kind {
 		// coverage document and a promotion approval are the suite workflow's own
 		// artifacts; the suite panel opens each through its own strict reader.
 		suite.Schema:          SuiteArtifact,
+		suite.ConnectedSchema: SuiteArtifact,
 		suite.ReleasesSchema:  SuiteReleasesArtifact,
 		expectation.Schema:    SuiteArtifact,
 		suite.CoverageSchema:  SuiteArtifact,
@@ -166,6 +167,7 @@ func classify(root, name string, isDir bool) (Kind, bool) {
 // each declares.
 var suiteSchemaRoles = map[string]SuiteRole{
 	suite.Schema:          SuiteDefinitionRole,
+	suite.ConnectedSchema: SuiteDefinitionRole,
 	suite.ReleasesSchema:  SuiteReleasesRole,
 	expectation.Schema:    TestReleaseRole,
 	suite.CoverageSchema:  SuiteCoverageRole,
@@ -226,6 +228,8 @@ func refinedMarker(path string, kind Kind) (Kind, bool) {
 		return UnsupportedArtifact, false
 	case PacketArtifact:
 		switch schema, ok := sniffSchema(path); {
+		case ok && schema == suite.ConnectedExecutionSchema:
+			return JobArtifact, true
 		case ok && schema == report.RetainedSchema:
 			return PacketArtifact, true
 		case ok && (schema == report.ReviewSchema || schema == report.ReviewSchemaV3):

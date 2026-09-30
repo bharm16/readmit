@@ -52,8 +52,9 @@ const SetupRequirement ReviewRequirement = "setup"
 // is scoped to: the suite environment a suite version runs at, and the
 // original phase a reviewed test reproduces (failure or pass).
 type RunActionOptions struct {
-	Environment string `json:"environment,omitzero"`
-	Phase       string `json:"phase,omitzero"`
+	Connected   *ConnectedSuiteRunOptions `json:"connected,omitzero"`
+	Environment string                    `json:"environment,omitzero"`
+	Phase       string                    `json:"phase,omitzero"`
 }
 
 // RunRefusal says what a person changes to make a run review ready: the
@@ -73,24 +74,25 @@ const (
 // MessageCount is the number of messages sent when it is known, and absent
 // when it is not.
 type RunReview struct {
-	Kind            RunKind               `json:"kind"`
-	Name            string                `json:"name"`
-	Version         string                `json:"version,omitzero"`
-	Test            *ItemRef              `json:"test,omitzero"`
-	Environment     *ItemRef              `json:"environment,omitzero"`
-	EnvironmentName string                `json:"environment_name,omitzero"`
-	Site            string                `json:"site,omitzero"`
-	Address         string                `json:"address,omitzero"`
-	Messages        []TestMessage         `json:"messages"`
-	MessageCount    *int                  `json:"message_count"`
-	Setup           []RunSetupStep        `json:"setup"`
-	Resets          []ResetReviewAction   `json:"resets"`
-	Jobs            []RunReviewJob        `json:"jobs"`
-	Targets         []RunReviewTarget     `json:"targets"`
-	Environments    []SuiteEnvironmentRef `json:"environments"`
-	Resume          *RunResumeReview      `json:"resume,omitzero"`
-	Reviewed        *RunReviewedTest      `json:"reviewed,omitzero"`
-	Refusal         RunRefusal            `json:"refusal,omitzero"`
+	Connected       *ConnectedSuitePreflight `json:"connected,omitzero"`
+	Kind            RunKind                  `json:"kind"`
+	Name            string                   `json:"name"`
+	Version         string                   `json:"version,omitzero"`
+	Test            *ItemRef                 `json:"test,omitzero"`
+	Environment     *ItemRef                 `json:"environment,omitzero"`
+	EnvironmentName string                   `json:"environment_name,omitzero"`
+	Site            string                   `json:"site,omitzero"`
+	Address         string                   `json:"address,omitzero"`
+	Messages        []TestMessage            `json:"messages"`
+	MessageCount    *int                     `json:"message_count"`
+	Setup           []RunSetupStep           `json:"setup"`
+	Resets          []ResetReviewAction      `json:"resets"`
+	Jobs            []RunReviewJob           `json:"jobs"`
+	Targets         []RunReviewTarget        `json:"targets"`
+	Environments    []SuiteEnvironmentRef    `json:"environments"`
+	Resume          *RunResumeReview         `json:"resume,omitzero"`
+	Reviewed        *RunReviewedTest         `json:"reviewed,omitzero"`
+	Refusal         RunRefusal               `json:"refusal,omitzero"`
 }
 
 // RunSetupStep is one manual step a run needs before it sends: its name and
@@ -147,8 +149,9 @@ type RunReviewedTest struct {
 
 // runBinding is what a run's final click executes.
 type runBinding struct {
-	kind RunKind
-	root string
+	connected *ConnectedSuiteRunOptions
+	kind      RunKind
+	root      string
 	// A test run and a resume execute a prepared spec at a target.
 	prepared *durablerun.Prepared
 	identity string
@@ -425,6 +428,9 @@ func bindRunSuite(a *App, ctx context.Context, request PrepareActionRequest, hel
 	loaded, version, data, declined := a.suiteForRun(ctx, SuiteRunTarget{Context: request.Context, Suite: request.Items[0]})
 	if loaded == nil {
 		return nil, declined
+	}
+	if declaresConnectedSuite(data) {
+		return bindConnectedRunSuite(a, ctx, request, held, loaded, version, data)
 	}
 	document, err := suite.Decode(data)
 	if err != nil {
@@ -775,6 +781,12 @@ func executeRun(a *App, ctx context.Context, bound *boundAction, decisions Revie
 	var err error
 	uncertain := false
 	switch {
+	case bound.action == RunSuiteAction && run.connected != nil:
+		result = executeConnectedRunSuite(a, ctx, bound, output)
+		if result.State != Completed {
+			return result
+		}
+		uncertain = result.Outcome == ActionUncertain
 	case bound.action == RunSuiteAction:
 		var path string
 		var remove func()

@@ -65,7 +65,14 @@ type suiteDefinition struct {
 // decodeSuiteDefinition reads one definition member exactly as written.
 func decodeSuiteDefinition(data []byte) (SuiteDraft, error) {
 	var definition suiteDefinition
-	if len(data) > suite.MaxBytes || json.Unmarshal(data, &definition, json.RejectUnknownMembers(true)) != nil || definition.Schema != SuiteDefinitionSchema {
+	if len(data) > suite.MaxBytes || json.Unmarshal(data, &definition, json.RejectUnknownMembers(true)) != nil {
+		return SuiteDraft{}, errors.New("the suite's definition cannot be read")
+	}
+	if definition.Schema == ConnectedSuiteDefinitionSchema {
+		if err := verifyConnectedDefinition(definition.Draft); err != nil {
+			return SuiteDraft{}, err
+		}
+	} else if definition.Schema != SuiteDefinitionSchema || definition.Draft.Connected != nil {
 		return SuiteDraft{}, errors.New("the suite's definition cannot be read")
 	}
 	return normalizedSuite(definition.Draft), nil
@@ -86,6 +93,9 @@ func verifySuite(files map[string]string) error {
 		data, err := boundedFile(path, suite.MaxBytes)
 		if err != nil {
 			return err
+		}
+		if declaresConnectedSuite(data) {
+			return verifyConnectedSuiteDocument(data)
 		}
 		if _, err := suite.Decode(data); err != nil {
 			return err
@@ -126,17 +136,18 @@ func normalizedSuite(draft SuiteDraft) SuiteDraft {
 // and entry the project entry holding it; both are empty for a version that
 // is not runnable.
 type suiteVersion struct {
-	item     catalog.Item
-	label    string
-	revision *catalog.Revision
-	draft    SuiteDraft
-	data     []byte
-	entry    string
-	document *suite.Document
+	item      catalog.Item
+	label     string
+	revision  *catalog.Revision
+	draft     SuiteDraft
+	data      []byte
+	entry     string
+	document  *suite.Document
+	connected *suite.ConnectedDocument
 }
 
 func (v *suiteVersion) original() bool { return v.revision == nil }
-func (v *suiteVersion) runnable() bool { return v.document != nil }
+func (v *suiteVersion) runnable() bool { return v.document != nil || v.connected != nil }
 
 // suiteItem is the suite a reference names, as this load's catalog holds it.
 func (c *loadedCatalog) suiteItem(ref ItemRef) (catalog.Item, error) {
@@ -186,6 +197,13 @@ func (c *loadedCatalog) suiteVersion(item catalog.Item, label string) (*suiteVer
 		if err != nil {
 			return nil, err
 		}
+		if declaresConnectedSuite(data) {
+			document, err := suite.DecodeConnected(data)
+			if err != nil {
+				return nil, err
+			}
+			return &suiteVersion{item: item, label: label, draft: connectedDraft(document), data: data, entry: item.Entry, connected: &document}, nil
+		}
 		document, err := suite.Decode(data)
 		if err != nil {
 			return nil, err
@@ -217,6 +235,19 @@ func (c *loadedCatalog) suiteVersion(item catalog.Item, label string) (*suiteVer
 		if err != nil {
 			return nil, err
 		}
+		if draft.Connected != nil {
+			document, err := suite.DecodeConnected(compiled)
+			if err != nil {
+				return nil, err
+			}
+			a, _ := json.Marshal(document, json.Deterministic(true))
+			b, _ := json.Marshal(draft.Connected.Document, json.Deterministic(true))
+			if string(a) != string(b) {
+				return nil, errors.New("the connected suite differs from its saved definition")
+			}
+			version.data, version.entry, version.connected = compiled, c.entryOf(path), &document
+			return version, nil
+		}
 		document, err := suite.Decode(compiled)
 		if err != nil {
 			return nil, err
@@ -233,6 +264,9 @@ func (c *loadedCatalog) suiteName(item catalog.Item) string {
 		return item.Name
 	}
 	if version, err := c.suiteVersion(item, originalVersion); err == nil {
+		if version.connected != nil {
+			return version.connected.ID
+		}
 		return version.document.ID
 	}
 	return "Suite"
@@ -965,6 +999,9 @@ func (c *loadedCatalog) compiled(version *suiteVersion) (*suite.Document, []byte
 	if !version.runnable() {
 		return nil, nil, refusal{Failed, notRunnable}
 	}
+	if version.connected != nil {
+		return nil, version.data, refusal{}
+	}
 	if version.original() {
 		return version.document, version.data, refusal{}
 	}
@@ -994,6 +1031,9 @@ func firstProblem(problems []FieldProblem) string {
 // at its member, or the members one version publishes — its definition and,
 // when it is runnable, the compiled suite — and the normalized draft.
 func validateSuiteItem(scope draftScope, draft ItemDraft) ([]catalog.Staged, ItemDraft, []FieldProblem) {
+	if draft.Suite.Connected != nil {
+		return validateConnectedSuiteItem(scope, draft)
+	}
 	problems := []FieldProblem{}
 	if draft.Name == "" {
 		problems = append(problems, FieldProblem{Field: "name", Problem: nameRule})
@@ -1056,13 +1096,23 @@ func readSuite(c *loadedCatalog, item catalog.Item, _ map[string]string) (view, 
 		environments = append(environments, environment.Name)
 	}
 	summary := &SuiteSummary{Tests: len(version.draft.Tests), Environments: environments, Entry: version.entry, Runnable: version.runnable()}
+	if version.connected != nil {
+		summary.Tests = len(version.connected.Tests)
+		for _, environment := range version.connected.Environments {
+			summary.Environments = append(summary.Environments, environment.ID)
+		}
+	}
 	if runs := c.suiteRunsOf(item, version.label); len(runs) > 0 {
 		summary.LatestRun = &ItemRef{Kind: RunItem, ID: runs[0].id}
 		summary.LatestRunAt, summary.LatestOutcome = stampedTime(runs[0].started), runs[0].outcome
 	}
 	name := ""
 	if version.original() {
-		name = version.document.ID
+		if version.connected != nil {
+			name = version.connected.ID
+		} else {
+			name = version.document.ID
+		}
 	}
 	return view{name: name, summary: ItemSummary{Suite: summary}}, nil
 }
@@ -1107,6 +1157,14 @@ func (c *loadedCatalog) suites() []suiteView {
 		for _, label := range suiteLabels(item) {
 			version, err := c.suiteVersion(item, label)
 			if err != nil || !version.runnable() {
+				continue
+			}
+			if version.connected != nil {
+				data, err := json.Marshal(version.connected, json.Deterministic(true))
+				if err == nil {
+					held.fingerprints[label] = suite.Identity(data)
+					held.name = version.connected.ID
+				}
 				continue
 			}
 			held.fingerprints[label] = suiteFingerprint(*version.document)
@@ -1210,12 +1268,15 @@ func (a *App) openSuiteDraft(ctx context.Context, request ItemRequest) ItemDraft
 	if name == "" && version.document != nil {
 		name = version.document.ID
 	}
+	if name == "" && version.connected != nil {
+		name = version.connected.ID
+	}
 	ref := ItemRef{Kind: SuiteItem, ID: item.ID, Revision: version.label}
 	if version.original() && len(item.Revisions) == 0 {
 		ref.Revision = ""
 	}
 	result.State, result.Ref, result.Draft, result.Suite = Completed, &ref, &ItemDraft{Name: name, Suite: &draft}, shown
-	if version.original() {
+	if version.original() && version.connected == nil {
 		// What the first save of this original must resolve is shown now.
 		if _, problems := loaded.planSuite(draft); len(problems) > 0 {
 			result.Problems = problems
