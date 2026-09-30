@@ -100,11 +100,12 @@ type ScanActionOptions struct {
 // under an environment's send policy, goes to that environment; a reset is
 // scoped to one environment; a credential scan to the project.
 type PrepareActionRequest struct {
-	Context     RequestContext       `json:"context"`
-	Action      ActionID             `json:"action"`
-	Items       []ItemRef            `json:"items"`
-	Destination *ItemRef             `json:"destination,omitzero"`
-	Replay      *ReplayActionOptions `json:"replay,omitzero"`
+	isolationInstance string
+	Context           RequestContext       `json:"context"`
+	Action            ActionID             `json:"action"`
+	Items             []ItemRef            `json:"items"`
+	Destination       *ItemRef             `json:"destination,omitzero"`
+	Replay            *ReplayActionOptions `json:"replay,omitzero"`
 	// SuiteApproval names what a suite approval review is asked for.
 	SuiteApproval *SuiteApprovalOptions `json:"suite_approval,omitzero"`
 	Scan          *ScanActionOptions    `json:"scan,omitzero"`
@@ -135,6 +136,8 @@ type ReviewDestination struct {
 // internal: a window passes it back unchanged and never shows it. A review
 // that cannot proceed carries no token and says why.
 type ActionReview struct {
+	Isolation     *IsolationActionReview  `json:"isolation,omitzero"`
+	FHIRCheck     *FHIRConnectionReview   `json:"fhir_check,omitzero"`
 	Token         string                  `json:"token,omitzero"`
 	Action        ActionID                `json:"action"`
 	Consent       Consent                 `json:"consent"`
@@ -224,15 +227,18 @@ const (
 // it runs. Replayed is true when the
 // same click arrived again and was answered with the original result.
 type ReviewedActionResult struct {
-	State     State                 `json:"state"`
-	Reason    string                `json:"reason,omitzero"`
-	Context   RequestContext        `json:"context"`
-	Outcome   ReviewedOutcome       `json:"outcome"`
-	Operation string                `json:"operation,omitzero"`
-	Replayed  bool                  `json:"replayed"`
-	Refreshed *ActionReview         `json:"refreshed,omitzero"`
-	Replay    *ReplayRun            `json:"replay,omitzero"`
-	Export    *PrivacyExportOutcome `json:"export,omitzero"`
+	Isolation       *IsolationOutcome     `json:"isolation,omitzero"`
+	TypedCollection *TypedCollectionView  `json:"typed_collection,omitzero"`
+	FHIRCheck       *FHIRCapabilityCheck  `json:"fhir_check,omitzero"`
+	State           State                 `json:"state"`
+	Reason          string                `json:"reason,omitzero"`
+	Context         RequestContext        `json:"context"`
+	Outcome         ReviewedOutcome       `json:"outcome"`
+	Operation       string                `json:"operation,omitzero"`
+	Replayed        bool                  `json:"replayed"`
+	Refreshed       *ActionReview         `json:"refreshed,omitzero"`
+	Replay          *ReplayRun            `json:"replay,omitzero"`
+	Export          *PrivacyExportOutcome `json:"export,omitzero"`
 	// SuiteApproval is the approval a suite approval action recorded.
 	SuiteApproval *SuiteApproval        `json:"suite_approval,omitzero"`
 	Collected     *CollectionRow        `json:"collected,omitzero"`
@@ -260,6 +266,9 @@ func (r *ReviewedActionResult) refuse(state State, reason string) {
 // request each action executes, the binding over all of it, the display, and
 // the preparation it was made from, so executing it binds exactly that again.
 type boundAction struct {
+	isolation       *isolationBinding
+	typedCollect    *typedCollectBinding
+	fhirCheck       *fhirCheckBinding
 	connected       *connectedBinding
 	executionReview *executionReview
 	action          ActionID
@@ -305,6 +314,13 @@ type actionPolicy struct {
 }
 
 var actionPolicies = map[ActionID]actionPolicy{
+	PreflightIsolationAction:     {consent: CollectConsent, review: slot{}, perform: slot{profile: "ResetTarget"}, bind: bindIsolationAction, execute: executeIsolationAction},
+	SetupIsolationAction:         {consent: ResetConsent, requirements: []ReviewRequirement{ConfirmationsRequirement}, review: slot{}, perform: slot{profile: "ResetTarget"}, bind: bindIsolationAction, execute: executeIsolationAction},
+	ReconcileIsolationAction:     {consent: CollectConsent, review: slot{}, perform: slot{profile: "ResetTarget"}, bind: bindIsolationAction, execute: executeIsolationAction},
+	CleanupIsolationAction:       {consent: ResetConsent, review: slot{}, perform: slot{profile: "ResetTarget"}, bind: bindIsolationAction, execute: executeIsolationAction},
+	CheckFHIRConnectionAction:    {consent: CollectConsent, review: slot{}, perform: slot{profile: "CheckEnvironment"}, bind: bindFHIRCheck, execute: executeFHIRCheck},
+	CheckFHIRAuthorizationAction: {consent: CollectConsent, review: slot{}, perform: slot{profile: "CheckEnvironment"}, bind: bindFHIRCheck, execute: executeFHIRCheck},
+	CheckFHIRCapabilitiesAction:  {consent: CollectConsent, review: slot{}, perform: slot{profile: "CheckEnvironment"}, bind: bindFHIRCheck, execute: executeFHIRCheck},
 	ReplaySendAction: {consent: SendConsent, review: slot{profile: "PreviewReplay"}, perform: slot{profile: "SendReplay"},
 		bind: bindReplaySend, execute: executeReplaySend},
 	ExportPacketAction: {consent: ExportConsent, review: slot{}, perform: slot{profile: "ExportDerivedPacket"},
@@ -562,6 +578,9 @@ func (a *App) ExecuteReviewedAction(request ExecuteActionRequest) ReviewedAction
 }
 
 func unmet(requirements []ReviewRequirement, bound *boundAction, decisions ReviewDecisions) string {
+	if slices.Contains(requirements, ConfirmationsRequirement) && bound.review.Isolation != nil && !isolationConfirmations(bound.review.Isolation, decisions.Confirmed) {
+		return "Confirm every manual step exactly once before setting up isolation"
+	}
 	if slices.Contains(requirements, RationaleRequirement) && strings.TrimSpace(decisions.Rationale) == "" {
 		return "an approval records why it is given; nothing was recorded"
 	}

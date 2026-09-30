@@ -366,6 +366,10 @@ func (c *loadedCatalog) referrers(item catalog.Item) []Referrer {
 		}
 		uses := false
 		switch other.Kind {
+		case string(ObservationItem):
+			if draft, err := c.observationOf(other); err == nil && draft.Connected != nil {
+				uses = draft.Connected.Environment == item.ID || draft.Connected.BarrierObservation == item.ID
+			}
 		case string(TestItem):
 			if spec, err := testrunner.ReadSpec(paths[primaryRole(TestItem)]); err == nil {
 				uses = names(spec.Target, spec.Observation.Path)

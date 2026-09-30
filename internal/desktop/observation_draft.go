@@ -10,8 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/bharm16/readmit/internal/catalog"
+	"github.com/bharm16/readmit/internal/dataset"
+	"github.com/bharm16/readmit/internal/fhirr4"
+	"github.com/bharm16/readmit/internal/importer"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
@@ -46,6 +51,9 @@ func fieldProblem(prefix string, err error) FieldProblem {
 }
 
 func readObservation(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
+	if _, held := paths["setup"]; held {
+		return readConnectedObservation(c, item, paths)
+	}
 	source, _, err := operation.ValidateObservationSource(paths[primaryRole(ObservationItem)])
 	if err != nil {
 		return view{}, err
@@ -94,6 +102,9 @@ func (c *loadedCatalog) completionRecords() []observewindow.Completion {
 // through the readers a collection reads them with, the database adapter
 // against the ones this release has, and the two together.
 func validateObservationDraft(scope draftScope, draft ItemDraft) ([]catalog.Staged, *ObservationDraft, []FieldProblem) {
+	if draft.Observation.Connected != nil {
+		return validateConnectedObservationDraft(scope, draft)
+	}
 	problems := []FieldProblem{}
 	observation := *draft.Observation
 	source := observation.Source
@@ -262,6 +273,9 @@ func readObservationLinks(path string) (ObservationLinks, error) {
 // verifyObservation reads a staged observation revision through the readers
 // a collection reads each of its documents with, together.
 func verifyObservation(files map[string]string) error {
+	if _, held := files["setup"]; held {
+		return verifyConnectedObservation(files)
+	}
 	if _, _, err := operation.ValidateObservationPair(files["source"], files["window"]); err != nil {
 		return err
 	}
@@ -294,17 +308,25 @@ func withheldArguments(draft *ObservationDraft) {
 // ObservationFieldsRequest names the source an editor holds, saved or not,
 // whose export's fields a record key can be chosen from.
 type ObservationFieldsRequest struct {
-	Context RequestContext       `json:"context"`
-	Source  observesource.Source `json:"source"`
+	Typed        bool                  `json:"typed,omitzero"`
+	Environment  string                `json:"environment,omitzero"`
+	Resource     string                `json:"resource,omitzero"`
+	SchemaSample string                `json:"schema_sample,omitzero"`
+	Context      RequestContext        `json:"context"`
+	Source       *observesource.Source `json:"source,omitzero"`
 }
 
 // ObservationFieldsResult lists the fields one export offers a record key,
 // in the export's order, or says why it cannot.
 type ObservationFieldsResult struct {
-	State   State          `json:"state"`
-	Reason  string         `json:"reason,omitzero"`
-	Context RequestContext `json:"context"`
-	Fields  []string       `json:"fields"`
+	Continuations []ObservationFieldChoice `json:"continuations,omitzero"`
+	Projection    *dataset.Projection      `json:"projection,omitzero"`
+	Choices       []ObservationFieldChoice `json:"choices,omitzero"`
+	Search        []fhirr4.SearchParameter `json:"search,omitzero"`
+	State         State                    `json:"state"`
+	Reason        string                   `json:"reason,omitzero"`
+	Context       RequestContext           `json:"context"`
+	Fields        []string                 `json:"fields"`
 }
 
 func (r *ObservationFieldsResult) refuse(state State, reason string) {
@@ -325,10 +347,35 @@ func (a *App) ObservationFields(request ObservationFieldsRequest) ObservationFie
 			result.refuse(declined.state, declined.reason)
 			return result
 		}
-		source := request.Source
+		if request.Resource != "" || request.SchemaSample != "" || request.Source != nil && request.Source.Capture != nil {
+			return a.connectedObservationFields(ctx, request, result)
+		}
+		source := observesource.Source{}
+		if request.Source != nil {
+			source = *request.Source
+		}
 		if source.File == nil || source.Extraction == nil || source.File.Path == "" {
 			result.refuse(Failed, "only a file export with a chosen input file lists its fields")
 			return result
+		}
+		if request.Typed {
+			switch source.Extraction.Envelope {
+			case importer.JSONEnvelope, importer.XMLEnvelope:
+				request.SchemaSample = source.File.Path
+				return a.connectedObservationFields(ctx, request, result)
+			case importer.TextEnvelope:
+				if source.Extraction.Text != nil {
+					for column := 1; column <= min(source.Extraction.Text.Fields, importer.MaxEnvelopeFields); column++ {
+						name := strconv.Itoa(column)
+						result.Fields = append(result.Fields, name)
+						result.Choices = append(result.Choices, ObservationFieldChoice{ID: name, Locator: importer.Locator{name}})
+					}
+					projection := projectionFor(source)
+					result.Projection = &projection
+					result.State = Completed
+					return result
+				}
+			}
 		}
 		path := source.File.Path
 		if !filepath.IsAbs(path) {
@@ -347,7 +394,10 @@ func (a *App) ObservationFields(request ObservationFieldsRequest) ObservationFie
 		}
 		for _, field := range fields {
 			result.Fields = append(result.Fields, field[0])
+			result.Choices = append(result.Choices, ObservationFieldChoice{ID: strings.Join(field, "."), Locator: field})
 		}
+		projection := projectionFor(source)
+		result.Projection = &projection
 		result.State = Completed
 		if len(result.Fields) == 0 {
 			result.State = Empty

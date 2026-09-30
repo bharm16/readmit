@@ -4,10 +4,13 @@ import "context"
 
 // The files ChooseEnvironmentFile chooses.
 const (
-	caCertificateFile     = "ca-certificate"
-	clientCertificateFile = "client-certificate"
-	locatorProgramFile    = "locator-program"
-	observationInputFile  = "observation-input"
+	caCertificateFile       = "ca-certificate"
+	clientCertificateFile   = "client-certificate"
+	locatorProgramFile      = "locator-program"
+	observationInputFile    = "observation-input"
+	publicKeysFile          = "public-keys"
+	validatorCapabilityFile = "validator-capability"
+	isolationRegistryFile   = "isolation-registry"
 )
 
 // ChooseEnvironmentFile presents the host's file dialog for one file an
@@ -20,6 +23,16 @@ func (a *App) ChooseEnvironmentFile(kind string) PathChoiceResult {
 	return run(a, true, false, func(ctx context.Context) PathChoiceResult {
 		title, filter, pattern := "", "All files (*.*)", "*.*"
 		switch kind {
+		case publicKeysFile:
+			title, filter, pattern = "Choose the registered public keys", "JSON public keys (*.json)", "*.json"
+		case validatorCapabilityFile:
+			folder, declined := a.chooseFolder(ctx, "Choose the installed validator capability")
+			if folder == "" {
+				return PathChoiceResult{State: declined.state, Reason: declined.reason}
+			}
+			return PathChoiceResult{State: Completed, Kind: kind, Paths: []string{folder}}
+		case isolationRegistryFile:
+			title, filter, pattern = "Choose the authorized fixture adapters", "JSON adapter registry (*.json)", "*.json"
 		case caCertificateFile:
 			title, filter, pattern = "Choose a CA certificate", "PEM certificates (*.pem *.crt)", "*.pem;*.crt"
 		case clientCertificateFile:

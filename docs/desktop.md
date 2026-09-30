@@ -4678,6 +4678,88 @@ Observation group; Add observation, the same editor, is also reached from
 Security's Add connection › Source and from a finalized capture's Set up
 observation.
 
+### Connected v2 and FHIR R4 configuration
+
+The Connection sheet selects either v2 MLLP (explicit plain or TLS transport) or
+FHIR R4 HTTPS. Historical target fields and saved v2 readers keep their meaning.
+A FHIR connection records R4 4.0.1, the HTTPS base, classification, TLS server name
+and optional public CA, plus explicitly selected laboratory no-auth or SMART
+Backend Services authentication. SMART configuration names the registered client,
+token endpoint, required system scopes, signing key reference and selected public
+JWK file. The project credential registry holds the provider; no credential or
+private key value enters the Connection sheet or its saved document.
+
+Test connection opens and closes one verified TLS connection with no HTTP or token
+request. Test authorization deliberately resolves the signing-key reference and
+requests a short-lived token, without querying application resources. Check
+capabilities deliberately reads the CapabilityStatement. Each is a separate
+backend-held exact-action review. Dated connectivity, authorization and capability
+results retain the environment revision they checked; editing the connection,
+scopes, keys or allowed destinations requires a fresh review. A recorded claim is
+never a permanent Connected, Supported or application-workflow assertion.
+
+The Source/Completion sheet saves connected typed observations as one revision:
+source, selected field projection, run-variable/business-key and before/after
+phase mapping, and the IG04 full-horizon or separately named processing barrier
+policy. Every actual test execution acquires its fresh before-run baseline before
+stimulus. FHIR source authority is an explicit choice: authoritative application
+API, delayed replica or reference FHIR store. No authority is preselected. Search
+criteria are typed named choices, with explicit identifier system and value;
+additional parameters come from the exact environment revision's recorded
+capabilities. Field positions, all-items or explicit indexed multiplicity, value
+types, schema sample columns and capture selectors come from Go-owned pickers.
+JSON/XML field locators are relative to each declared record; JSON page
+continuation choices keep their document scope. An explicit Use current source
+format adopts the current Go template without dropping fields, business-key
+mapping or completion; unsupported selections remain visible until replaced.
+Arbitrary SQL, FHIRPath, query text and internal source/window filenames are not
+editor inputs. Unsupported saved clauses remain in the draft and refusals keep
+all fields; changing projection, source, scopes or completion never drops checks.
+
+A standalone Collect reads one bounded source snapshot, with its actual paging,
+row, byte and deadline limits stated in the review. Its retained typed values keep
+zero, empty, null, absent, invalid and unavailable distinct. It does not fabricate
+a stimulus or claim that a connected test's horizon/barrier completed. Snapshot
+history and inspection reopen the retained shared-engine evidence offline; a
+later source/projection/completion edit marks the earlier collection incompatible
+while retaining its original readings. A search needing run variables is collected
+by the actual test run that resolves those variables, not by a standalone snapshot.
+
+The Reset sheet can explicitly select typed fixture isolation in place of a
+check-only plan. It chooses an operator-registered adapter and its approved typed
+create, exact claim or select prerequisites, dependencies and explicit manual
+claims. Check capabilities, Set up, Reconcile and Clean up are distinct reviewed
+actions. Setup acquires the target-enforced lease and retains each intent/effect;
+reconciliation reads current owned versions, and cleanup deletes only the reviewed
+owned versions in reverse dependency order. Check-only plans keep their original
+operators and are never silently converted to mutations. Registered fixture
+scope/revision and current catalog connection revision are separate; the review
+binds both, the adapter URL, registry, credentials and policy. A changed key,
+registry, policy, target or resource version refuses the old review. Manual claims
+are per-execution inputs and are never restored as authority.
+
+The isolation editor supports isolated tenants and reserved namespaces. An
+imported recorded-baseline clause remains whole and read-only with a precise
+refusal: that mode needs retained fixture-adapter inventory proof, which cannot be
+substituted by an ordinary typed dataset snapshot. This is a limit of this editor,
+not a change to the engine's historical contracts.
+
+Security inventory uses the same saved owners for FHIR/auth boundaries and the
+actual fixture-adapter destination. The optional local validator is described as
+not configured, capability unavailable, or capability installed/worker not checked.
+Listing validates only local capability metadata and starts no worker or remote
+service. Opening, listing, editing, saving and navigating never resolve credentials,
+request tokens, perform DNS/TLS, collect, send, set up or clean up anything.
+
+New managed members are `readmit-fhir-connection/v1`,
+`readmit-connected-observation-setup/v1`, and
+`readmit-environment-isolation/v1`; they publish through the existing catalog CAS
+and intent protocol. Engine source/projection/interval documents are generated
+under internal catalog paths in that same publication. Existing readers remain
+unchanged. Native viewport/theme/text/focus evidence is separate from these
+facade and component tests; #567's integrated registry remains its owner and is
+extended when that registry is delivered.
+
 ### Named environments and observations
 
 An Environment is a named object of the project, saved whole by `SaveItem`:

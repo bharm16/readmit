@@ -7320,8 +7320,8 @@
       "screen": "every whole-object editor sheet's Save",
       "action": "save an environment, test, observation, case's details, project's settings, check group or scenario plan whole, a local profile with the seal of its version, or a variant with its lineage and project association",
       "backend": {"package": "internal/catalog", "name": "Store.Save"},
-      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-reproducer-plan/v1", "readmit-revisions/v1", "readmit-local-profile/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1", "readmit-profile-pack/v1", "readmit-assertion-set/v1", "readmit-scenario-generator/v1", "readmit-scenario/v1", "readmit-library-metadata/v1", "readmit-observation/v1", "readmit-secrets/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-mapping-recipe/v1", "readmit-source/v1", "readmit-import-plan/v1", "readmit-capture-listener/v1", "readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3", "readmit-suite/v1", "readmit-suite-definition/v1"],
-      "outputs": ["readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-reproducer-plan/v1", "readmit-case/v3", "readmit-revisions/v1", "readmit-local-profile/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1", "readmit-assertion-set/v1", "readmit-scenario-generator/v1", "readmit-library-metadata/v1", "readmit-profile-pack/v1", "readmit-observation-links/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-mapping-recipe/v1", "readmit-source/v1", "readmit-import-plan/v1", "readmit-capture-listener/v1", "readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3", "readmit-suite/v1", "readmit-suite-definition/v1"],
+      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-target/v1", "readmit-target/v2", "readmit-reproducer-plan/v1", "readmit-revisions/v1", "readmit-local-profile/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1", "readmit-profile-pack/v1", "readmit-assertion-set/v1", "readmit-scenario-generator/v1", "readmit-scenario/v1", "readmit-library-metadata/v1", "readmit-observation/v1", "readmit-secrets/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-mapping-recipe/v1", "readmit-source/v1", "readmit-import-plan/v1", "readmit-capture-listener/v1", "readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-network-policy/v1"],
+      "outputs": ["readmit-catalog/v1", "readmit-catalog-pending/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-test/v1", "readmit-observation-source/v2", "readmit-observation-window/v1", "readmit-project/v1", "readmit-project/v2", "readmit-test-links/v1", "readmit-reproducer-plan/v1", "readmit-case/v3", "readmit-revisions/v1", "readmit-local-profile/v1", "readmit-profile-version/v1", "readmit-profile-origin/v1", "readmit-assertion-set/v1", "readmit-scenario-generator/v1", "readmit-library-metadata/v1", "readmit-profile-pack/v1", "readmit-observation-links/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-mapping-recipe/v1", "readmit-source/v1", "readmit-import-plan/v1", "readmit-capture-listener/v1", "readmit-receiver-policy/v1", "readmit-receiver-policy/v2", "readmit-receiver-policy/v3", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-network-policy/v1"],
       "prerequisites": ["author"],
       "gui_test": {"file": "desktop/frontend/src/project.test.tsx", "name": "Edit details sends one whole case at the revision it opened with, and a refusal keeps every value"},
       "parity_test": {"package": "internal/desktop", "name": "TestASaveIsOneWholeRevisionAndOneClickSavesOnce"},
@@ -7352,7 +7352,7 @@
       "screen": "the Add environment, Add observation, New test and Edit sheets, and the Library's New and Edit",
       "action": "start a new object from validated defaults or edit the saved values of its current or an earlier revision",
       "backend": {"package": "internal/operation", "name": "DefaultTarget"},
-      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-test/v1", "readmit-test-release/v1", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-assertion-set/v1", "readmit-local-profile/v1", "readmit-profile-package/v1", "readmit-profile-origin/v1", "readmit-profile-pack/v1", "readmit-scenario-generator/v1", "readmit-scenario/v1", "readmit-order-scenario/v1", "readmit-library-metadata/v1", "readmit-observation/v1", "readmit-observation-links/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-suite/v1", "readmit-suite-definition/v1"],
+      "inputs": ["readmit-catalog/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-test/v1", "readmit-test-release/v1", "readmit-test-links/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5", "readmit-assertion-set/v1", "readmit-local-profile/v1", "readmit-profile-package/v1", "readmit-profile-origin/v1", "readmit-profile-pack/v1", "readmit-scenario-generator/v1", "readmit-scenario/v1", "readmit-order-scenario/v1", "readmit-library-metadata/v1", "readmit-observation/v1", "readmit-observation-links/v1", "readmit-correlation-rules/v1", "readmit-sequence-analysis/v1", "readmit-suite/v1", "readmit-suite-definition/v1", "readmit-fhir-connection/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Environment.test.tsx", "name": "Add environment opens with Not classified and no transport chosen, and Edit starts from the saved values"},
@@ -8016,12 +8016,12 @@
       "owner": "bharm16/readmit#556",
       "screen": "the History of a saved observation",
       "action": "see actual collections and why an incomplete one observed nothing",
-      "backend": {"package": "internal/observewindow", "name": "ReadCompletion"},
-      "inputs": ["readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-observation-completion/v1"],
+      "backend": {"package": "internal/desktop", "name": "App.ObservationHistory"},
+      "inputs": ["readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-observation-completion/v1", "readmit-connected-observation-setup/v1", "readmit-desktop-typed-collection/v1", "readmit-fhir-observation-sample/v1", "readmit-fhir-http-result/v1", "readmit-dataset/v1"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/observation.test.tsx", "name": "History lists actual collections and an incomplete one shows its reason instead of zero records"},
-      "parity_test": {"package": "internal/desktop", "name": "TestAReviewedCollectRefusesAChangedSourceAndNeverReportsZeroForIncomplete"},
+      "gui_test": {"file": "desktop/frontend/src/Observations.test.tsx", "name": "Collect reviews one bounded snapshot and its inspector preserves zero, empty, null, absent, invalid and unavailable readings"},
+      "parity_test": {"package": "internal/desktop", "name": "TestExplicitFHIRObservationRetainsTypedZeroAndReopensWithoutRequests"},
       "implemented": true
     },
     {
@@ -8032,12 +8032,12 @@
       "owner": "bharm16/readmit#556",
       "screen": "the Inspect completion action of a collection",
       "action": "inspect a collection's completion",
-      "backend": {"package": "internal/operation", "name": "ExplainObservation"},
-      "inputs": ["readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-observation-completion/v1"],
+      "backend": {"package": "internal/desktop", "name": "App.InspectCompletion"},
+      "inputs": ["readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-observation-completion/v1", "readmit-connected-observation-setup/v1", "readmit-desktop-typed-collection/v1", "readmit-fhir-observation-sample/v1", "readmit-fhir-http-result/v1", "readmit-dataset/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/observation.test.tsx", "name": "Inspect completion reads the selected collection without collecting again"},
-      "parity_test": {"package": "internal/desktop", "name": "TestAReviewedCollectRefusesAChangedSourceAndNeverReportsZeroForIncomplete"},
+      "parity_test": {"package": "internal/desktop", "name": "TestExplicitFHIRObservationRetainsTypedZeroAndReopensWithoutRequests"},
       "implemented": true
     },
     {
@@ -8060,16 +8060,16 @@
       "id": "desktop.ObservationFields",
       "source": "desktop.App.ObservationFields",
       "kind": "desktop",
-      "capability": "list the fields a file export's chosen input offers a record key, reading it locally only",
+      "capability": "list typed fields and acquisition defaults from a selected local export, retained capture, explicit schema sample or saved FHIR capabilities",
       "owner": "bharm16/readmit#556",
-      "screen": "the Record key field picker of a file export observation",
-      "action": "choose the record key field from the export's own header or first record",
-      "backend": {"package": "internal/importer", "name": "EnvelopeShape.Fields"},
-      "inputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3"],
+      "screen": "the field, continuation and search-criterion pickers of an Observation sheet",
+      "action": "choose Go-owned typed fields, paging and bounded source defaults without querying a service",
+      "backend": {"package": "internal/desktop", "name": "App.ObservationFields"},
+      "inputs": ["readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-catalog/v1", "readmit-fhir-connection-check/v1", "readmit-case/v1", "readmit-case/v2", "readmit-case/v3", "readmit-case/v4", "readmit-case/v5"],
       "outputs": [],
       "prerequisites": [],
-      "gui_test": {"file": "desktop/frontend/src/observation.test.tsx", "name": "a File export observation offers only its own fields, picks the record key from the chosen export's header, and saves source and completion in one save"},
-      "parity_test": {"package": "internal/desktop", "name": "TestObservationFieldsReadsOnlyTheChosenExportHeader"},
+      "gui_test": {"file": "desktop/frontend/src/Observations.test.tsx", "name": "typed export projections carry Go field locators exactly and remain whole when another member cannot be saved"},
+      "parity_test": {"package": "internal/desktop", "name": "TestTypedObservationPickerDefaultsRespectEverySourceBudget"},
       "implemented": true
     },
     {
@@ -8081,7 +8081,7 @@
       "screen": "the review sheets: Run test, Run suite, Resume remaining, Run reviewed test, Send messages, Reset, Collect and Scan configured files, Export preview and Version review",
       "action": "review an action before its final click",
       "backend": {"package": "internal/desktop", "name": "App.PrepareAction"},
-      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-observation-completion/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1", "readmit-run-origin/v1", "readmit-hub-lifecycle-history/v1"],
+      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-observation-completion/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1", "readmit-run-origin/v1", "readmit-hub-lifecycle-history/v1", "readmit-fhir-connection/v1", "readmit-fhir-connection-check/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-network-policy/v1", "readmit-smart-backend/v1", "readmit-isolation-result/v1", "readmit-environment-isolation-state/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
@@ -8097,8 +8097,8 @@
       "screen": "the final action of a review sheet: Send, Reset, Collect, Scan, Export or Approve",
       "action": "run, resume, send, export, approve or derive exactly what was reviewed, with the setup marked complete or the declaration a derivation requires",
       "backend": {"package": "internal/desktop", "name": "App.ExecuteReviewedAction"},
-      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1"],
-      "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "readmit-derived-export/v1", "readmit-suite-promotion/v1", "readmit-observation-completion/v1", "readmit-observation-evidence/v1", "readmit-reset-outcome/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-case/v3", "readmit-catalog/v1", "readmit-target/v3", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-command/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-reexecution-assessment/v1", "hl7", "readmit-run-origin/v1", "readmit-hub-lifecycle-command/v1"],
+      "inputs": ["readmit-case/v1", "readmit-target/v3", "readmit-send-policy/v1", "readmit-export-review/v1", "readmit-suite/v1", "readmit-catalog/v1", "readmit-observation-source/v1", "readmit-observation-source/v2", "readmit-observation-source/v3", "readmit-observation-window/v1", "readmit-reset-plan/v1", "readmit-environment-links/v1", "readmit-secrets/v1", "readmit-redact-local/v1", "readmit-redact-inventory/v1", "readmit-redact-policy/v1", "readmit-test/v1", "readmit-suite-definition/v1", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-history/v2", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run/v1", "readmit-retained-packet/v1", "readmit-fhir-connection/v1", "readmit-fhir-connection-check/v1", "readmit-connected-observation-setup/v1", "readmit-fhir-observation/v1", "readmit-dataset-projection/v1", "readmit-observation-interval/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-network-policy/v1", "readmit-smart-backend/v1", "readmit-isolation-result/v1", "readmit-environment-isolation-state/v1"],
+      "outputs": ["readmit-run/v1", "readmit-send-decision/v1", "readmit-derived-export/v1", "readmit-suite-promotion/v1", "readmit-observation-completion/v1", "readmit-observation-evidence/v1", "readmit-reset-outcome/v1", "readmit-export-review/v1", "readmit-redact-local/v1", "readmit-case/v3", "readmit-catalog/v1", "readmit-target/v3", "readmit-suite-approval/v1", "readmit-test-release/v1", "readmit-hub-review-command/v1", "readmit-job/v1", "readmit-engine/v1", "readmit-result/v1", "readmit-run-queue/v1", "readmit-run-queue-report/v1", "readmit-reexecution-assessment/v1", "hl7", "readmit-run-origin/v1", "readmit-hub-lifecycle-command/v1", "readmit-fhir-connection-check/v1", "readmit-desktop-typed-collection/v1", "readmit-fhir-observation-sample/v1", "readmit-fhir-http-result/v1", "readmit-dataset-acquisition/v1", "readmit-dataset/v1", "readmit-isolation-result/v1", "readmit-environment-isolation-state/v1"],
       "prerequisites": ["execute-if-send", "author-if-approve", "execute-if-reach", "author-if-reach", "author-if-derive", "author-if-upload"],
       "gui_test": {"file": "desktop/frontend/src/runs.test.tsx", "name": "Run test reviews the exact version, environment, messages and setup, sends once on Send and opens the running run, which Stop stops"},
       "parity_test": {"package": "internal/desktop", "name": "TestARunIsReviewedFromTheSavedTestAndSentOnceByItsSend"},
@@ -8561,7 +8561,7 @@
       "screen": "Settings / Security",
       "action": "see configured external access and its actual state",
       "backend": {"package": "internal/desktop", "name": "App.ListConnections"},
-      "inputs": ["readmit-catalog/v1", "readmit-environment-check/v1"],
+      "inputs": ["readmit-catalog/v1", "readmit-environment-check/v1", "readmit-fhir-connection/v1", "readmit-fhir-connection-check/v1", "readmit-environment-isolation/v1", "readmit-fixture-adapter-registry/v1", "readmit-environment-isolation-state/v1", "readmit-fhir-validator-capability/v1"],
       "outputs": [],
       "prerequisites": [],
       "gui_test": {"file": "desktop/frontend/src/Settings.test.tsx", "name": "the security inventory lists saved environments, sources and the team hub with their actual states"},
@@ -9394,6 +9394,34 @@
       "prerequisites": [],
       "implemented": false,
       "disposition": {"kind": "developer-tooling", "reason": "explicit local developer installation from this checkout; not a customer distribution or automatic update workflow"}
+    },
+    {
+      "id": "desktop.GetIsolationEditor",
+      "source": "desktop.App.GetIsolationEditor",
+      "kind": "desktop",
+      "capability": "read supported registered fixture adapters, typed prerequisites and manual isolation choices without credential resolution or network activity",
+      "owner": "bharm16/readmit#586",
+      "screen": "Environments / Reset sheet",
+      "action": "choose authorized fixture adapters and typed isolation operators",
+      "backend": {
+        "package": "internal/desktop",
+        "name": "App.GetIsolationEditor"
+      },
+      "inputs": [
+        "readmit-catalog/v1",
+        "readmit-fixture-adapter-registry/v1"
+      ],
+      "outputs": [],
+      "prerequisites": [],
+      "gui_test": {
+        "file": "desktop/frontend/src/Environments.test.tsx",
+        "name": "Reset saves registered isolation prerequisites and manual claims without changing a legacy check-only plan or executing setup"
+      },
+      "parity_test": {
+        "package": "internal/desktop",
+        "name": "TestIsolationEditorRealFacadeSavesPassivelyAndRunsReviewedLifecycle"
+      },
+      "implemented": true
     }
   ]
 }

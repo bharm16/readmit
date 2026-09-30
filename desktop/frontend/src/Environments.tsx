@@ -10,6 +10,7 @@ import {
   checkEnvironmentDestination,
   listWholeCatalog,
   listCredentials,
+  getIsolationEditor,
   locateItem,
   newIntentId,
   openItemDraft,
@@ -24,6 +25,11 @@ import {
   type EnvironmentCheckResult,
   type EnvironmentReport,
   type EnvironmentSummary,
+  type EnvironmentIsolation,
+  type IsolationEditorResult,
+  type FHIRCapabilityCheck,
+  type FHIRConnection,
+  type EnvironmentFileKind,
   type ItemDraft,
   type ItemRef,
   type Referrer,
@@ -71,6 +77,30 @@ export const TRANSPORTS: { value: "tls" | "plain"; label: string }[] = [
 const PURPOSES: Record<SecretPurpose, string> = { "mllp-endpoint": "MLLP endpoint", "source-endpoint": "Evidence source" };
 const STORES: Record<SecretStore, string> = { "os-keychain": "OS keychain", "customer-managed": "Customer-managed vault" };
 const ROTATIONS: Record<string, string> = { current: "Current", overdue: "Overdue", "not-declared": "Not declared" };
+
+export function authenticationText(mode: string | undefined): string {
+  return mode === "smart" ? "SMART Backend Services" : mode === "none" ? "None" : "Not selected";
+}
+
+export function validatorText(state: string | undefined): string {
+  return ({ "not-configured": "Local, offline · No worker selected", "capability-unavailable": "Local, offline · Capability unavailable", "capability-installed-worker-not-checked": "Local, offline · Worker not checked" } as Record<string, string>)[state ?? ""] ?? "Local, offline · Unavailable";
+}
+
+function FHIRCheckStatus({ check, revision }: { check: FHIRCapabilityCheck | undefined; revision: string | undefined }) {
+  if (!check) return <>Not checked</>;
+  const outcomes: Record<string, string> = { reachable: "Reachable", authorized: "Authorization verified", recorded: "Capabilities recorded", unavailable: "Unavailable", cancelled: "Stopped" };
+  return <>{outcomes[check.outcome] ?? "Not checked"} · {checkedAt(check.checked_at)}{check.revision !== revision ? " · before the last edit; check again" : ""}</>;
+}
+
+function FHIRClaims({ check }: { check: FHIRCapabilityCheck | undefined }) {
+  if (!check?.claims) return null;
+  const interactions: Record<string, string> = { read: "Read", vread: "Read version", "search-type": "Search", history: "History", "history-instance": "Resource history", "history-type": "Type history", create: "Create", update: "Update", patch: "Patch", delete: "Delete" };
+  return <ValueRows rows={[
+    { label: "Declared version", value: check.claims.fhir_version },
+    { label: "Declared formats", value: check.claims.formats.join(", ") || "None" },
+    ...check.claims.rest.flatMap((rest) => rest.resources.map((resource) => ({ label: resource.type, value: resource.interactions.map((interaction) => interactions[interaction] ?? "Unrecognized interaction").join(", ") || "No interactions declared" }))),
+  ]} />;
+}
 
 /** How a connection check's outcome reads. */
 export const CHECK_OUTCOMES: Record<string, string> = {
@@ -173,6 +203,7 @@ export type EnvironmentsProps = {
 /** Environments supplies its page's title, way back, actions and body. */
 export function useEnvironments({ root, context, place, go, back, busy, onAdded, capture, onObservationClosed, onObservationSaved }: EnvironmentsProps) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
+  const [listSelected, setListSelected] = useState<string | null>(null);
   const [listFailure, setListFailure] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const addRequested = place.kind === "list" && place.adding === true;
@@ -194,6 +225,7 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
 
   useEffect(() => {
     setItems(null);
+    setListSelected(null);
     void refresh();
   }, [refresh]);
 
@@ -289,8 +321,8 @@ export function useEnvironments({ root, context, place, go, back, busy, onAdded,
         rowId={(item) => item.ref.id}
         rowLabel={(item) => item.name}
         columns={columns}
-        selected={null}
-        onSelect={(id) => go(id)}
+        selected={listSelected}
+        onSelect={setListSelected}
         onOpen={(id) => go(id)}
         loading={items === null}
       />
@@ -362,12 +394,13 @@ function useEnvironmentDetail({
   const [draft, setDraft] = useState<ItemDraft | null>(null);
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
   const [sheet, setSheet] = useState<
-    null | "connection" | "approve" | "check" | "ranges" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation" | "observation-link"
+    null | "connection" | "approve" | "check" | "check-authorization" | "check-capabilities" | "isolation-preflight" | "isolation-setup" | "isolation-reconcile" | "isolation-cleanup" | "ranges" | "destinations" | "check-destination" | "reset-edit" | "reset" | "remove" | "details" | "observation" | "observation-link"
   >(null);
   // The project's named observations, which the Observation group and the
   // reset's observation checks name.
   const [observations, setObservations] = useState<CatalogItem[]>([]);
   const [check, setCheck] = useState<EnvironmentCheckResult | null>(null);
+  const [fhirChecks, setFHIRChecks] = useState<Partial<Record<"check" | "check-authorization" | "check-capabilities", FHIRCapabilityCheck>>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const ref = item?.ref ?? null;
 
@@ -385,6 +418,7 @@ function useEnvironmentDetail({
 
   useEffect(() => {
     setCheck(null);
+    setFHIRChecks({});
     setDraft(null);
     void reload();
   }, [reload]);
@@ -402,14 +436,16 @@ function useEnvironmentDetail({
   }, [editingFromElsewhere, draft !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Saves the environment with one change applied to its whole draft. */
-  const saveWith = async (change: (draft: ItemDraft) => ItemDraft, fields: Record<string, string>): Promise<SubmitFailure | null> => {
-    if (!ref || !draft) return { reason: "This environment is not open." };
+  const saveWith = async (change: (draft: ItemDraft) => ItemDraft, fields: Record<string, string>, opened?: { ref: ItemRef; draft: ItemDraft }): Promise<SubmitFailure | null> => {
+    const fixedRef = opened?.ref ?? ref;
+    const fixedDraft = opened?.draft ?? draft;
+    if (!fixedRef || !fixedDraft) return { reason: "This environment is not open." };
     const answer = await saveItem({
       context: context(),
       kind: "environment",
-      item: ref.id,
-      ...(ref.revision ? { base_revision: ref.revision } : {}),
-      draft: change(draft),
+      item: fixedRef.id,
+      ...(fixedRef.revision ? { base_revision: fixedRef.revision } : {}),
+      draft: change(fixedDraft),
       intent_id: newIntentId(),
     });
     if (answer.outcome !== "saved") return saveProblem(answer, fields);
@@ -426,17 +462,20 @@ function useEnvironmentDetail({
 
   const summary = summaryOf(item);
   const target = draft?.environment;
+  const fhir = draft?.fhir;
   const tls = target?.transport === "tls";
   const observationRef = summary?.observation ?? null;
   const reset = draft?.reset;
+  const isolation = draft?.isolation;
   const names = draft?.links?.action_names ?? [];
-  const address = target?.address || summary?.address || "";
+  const address = fhir?.base || target?.address || summary?.address || "";
   // A saved transport to anything but this computer is approved on its own,
   // by a reviewed action, before it is checked or sent to.
   const unapproved = summary?.approval_required === true && !summary.transport_approved && Boolean(target?.transport);
   const observationName = (id: string | undefined) => observations.find((entry) => entry.ref.id === id)?.name ?? "Observation no longer in the project";
 
   const checkedLine = (): ReactNode => {
+    if (fhir && fhirChecks.check) return <FHIRCheckStatus check={fhirChecks.check} revision={ref.revision} />;
     if (check) {
       if (check.state !== "completed" || !check.report) return <span role="alert">{check.reason ?? "The connection was not checked."}</span>;
       return <CheckOutcome report={check.report} at={check.checked_at} />;
@@ -484,15 +523,28 @@ function useEnvironmentDetail({
         <ValueRows
           rows={[
             { label: "Address", value: address || "—" },
-            { label: "Transport", value: `${tls ? "TLS" : target?.transport === "plain" ? "TCP/MLLP" : "—"}${unapproved ? " · Not approved" : ""}` },
-            { label: "Classification", value: classificationText(target?.classification ?? summary?.classification) },
+            ...(fhir ? [{ label: "Protocol", value: `FHIR R4 ${fhir.version}` }, { label: "Authentication", value: authenticationText(fhir.authentication) }] : []),
+            { label: "Transport", value: fhir ? "HTTPS" : `${tls ? "TLS" : target?.transport === "plain" ? "TCP/MLLP" : "—"}${unapproved ? " · Not approved" : ""}` },
+            { label: "Classification", value: classificationText(fhir?.classification ?? target?.classification ?? summary?.classification) },
+            ...(fhir?.server_name ? [{ label: "Server name", value: fhir.server_name }] : []),
+            ...(fhir?.ca_file ? [{ label: "CA certificate", value: fileName(fhir.ca_file) }] : []),
+            ...(fhir?.authentication === "smart" ? [
+              { label: "Registered client ID", value: fhir.client_id || "—" },
+              { label: "Token endpoint", value: fhir.token_endpoint || "—" },
+              { label: "Required scopes", value: fhir.scopes?.join(", ") || "None" },
+              { label: "Signing key reference", value: fhir.key_reference || "—" },
+              { label: "Authorization checked", value: <FHIRCheckStatus check={fhirChecks["check-authorization"] ?? summary?.authorization} revision={ref.revision} /> },
+            ] : []),
             ...(tls && target?.server_name ? [{ label: "Server name", value: target.server_name }] : []),
             ...(tls && target?.ca_file ? [{ label: "CA certificate", value: fileName(target.ca_file) }] : []),
             ...(tls && target?.client_certificate ? [{ label: "Client certificate", value: fileName(target.client_certificate) }] : []),
             ...(target?.credential?.reference ? [{ label: "Credential", value: target.credential.reference }] : []),
             { label: "Last checked", value: checkedLine() },
+            ...(fhir ? [{ label: "Capabilities", value: <FHIRCheckStatus check={fhirChecks["check-capabilities"] ?? summary?.capabilities} revision={ref.revision} /> }] : []),
+            ...(fhir && summary?.validator ? [{ label: "Validation", value: validatorText(summary.validator) }] : []),
           ]}
         />
+        {fhir ? <FHIRClaims check={fhirChecks["check-capabilities"] ?? summary?.capabilities} /> : null}
       </section>
 
       <section className="value-group" aria-labelledby="environment-observation">
@@ -529,14 +581,14 @@ function useEnvironmentDetail({
       <section className="value-group" aria-labelledby="environment-reset">
         <header className="value-group-header">
           <h2 id="environment-reset">Reset</h2>
-          {reset && reset.actions.length > 0 ? (
+          {(reset && reset.actions.length > 0) || isolation ? (
             <>
               <button type="button" disabled={busy || !draft} onClick={() => setSheet("reset-edit")}>
                 Edit
               </button>
-              <button type="button" disabled={busy} onClick={() => setSheet("reset")}>
+              {reset && reset.actions.length > 0 ? <button type="button" disabled={busy} onClick={() => setSheet("reset")}>
                 Reset
-              </button>
+              </button> : null}
             </>
           ) : null}
         </header>
@@ -562,7 +614,7 @@ function useEnvironmentDetail({
               </tbody>
             </table>
           </>
-        ) : (
+        ) : isolation ? null : (
           <div className="value-empty">
             <span>No reset</span>
             <button type="button" disabled={busy || !draft} onClick={() => setSheet("reset-edit")}>
@@ -570,6 +622,21 @@ function useEnvironmentDetail({
             </button>
           </div>
         )}
+        {isolation ? <>
+          <ValueRows rows={[
+            { label: "Isolation", value: isolation.name },
+            { label: "Adapter", value: isolation.adapter },
+            { label: "Mode", value: ISOLATION_MODES[isolation.mode] ?? "Unsupported saved mode" },
+            { label: "Prerequisites", value: isolation.resources.map((resource) => resource.name).join(", ") },
+            ...(isolation.manual.length ? [{ label: "Manual claims", value: isolation.manual.map((manual) => manual.name).join(", ") }] : []),
+          ]} />
+          <div className="isolation-actions">
+            <button type="button" disabled={busy} onClick={() => setSheet("isolation-preflight")}>Check fixture capabilities</button>
+            <button type="button" disabled={busy} onClick={() => setSheet("isolation-setup")}>Set up isolation</button>
+            <button type="button" disabled={busy} onClick={() => setSheet("isolation-reconcile")}>Reconcile isolation</button>
+            <button type="button" disabled={busy} onClick={() => setSheet("isolation-cleanup")}>Clean up isolation</button>
+          </div>
+        </> : null}
       </section>
 
       <ConnectionSheet
@@ -612,8 +679,52 @@ function useEnvironmentDetail({
         )}
         outcome={() => <p role="status">Transport approved</p>}
       />
+      {isolation ? ([
+        { sheet: "isolation-preflight", title: "Check fixture capabilities", action: "environment.isolation.preflight", final: "Collect" },
+        { sheet: "isolation-setup", title: "Set up isolation", action: "environment.isolation.setup", final: "Reset" },
+        { sheet: "isolation-reconcile", title: "Reconcile isolation", action: "environment.isolation.reconcile", final: "Collect" },
+        { sheet: "isolation-cleanup", title: "Clean up isolation", action: "environment.isolation.cleanup", final: "Reset" },
+      ] as const).map((choice) => <ReviewSheet
+        key={choice.sheet}
+        open={sheet === choice.sheet}
+        title={choice.title}
+        action={choice.action}
+        finalLabel={choice.final}
+        context={context}
+        items={[ref]}
+        onClose={() => setSheet(null)}
+        onDone={() => void refresh()}
+        blocked={(review, confirmed) => choice.sheet === "isolation-setup" && (review.isolation?.manual ?? []).some((manual) => !confirmed.includes(manual.id))}
+        render={(review, confirmed, setConfirmed) => <>
+          <ValueRows rows={[
+            { label: "Environment", value: item.name },
+            { label: "Isolation", value: review.isolation?.name || isolation.name },
+            { label: "Adapter", value: review.isolation?.adapter || isolation.adapter },
+            ...(review.isolation ? [{ label: "Fixture environment", value: review.isolation.registered_environment }, { label: "Fixture revision", value: review.isolation.environment_revision }, { label: "Tenant", value: review.isolation.tenant }, { label: "Namespace", value: review.isolation.namespace }] : []),
+          ]} />
+          {review.isolation?.effect ? <p className="consequence">{review.isolation.effect}</p> : null}
+          {review.isolation?.effects.length ? <ol className="review-actions" aria-label="Isolation effects">
+            {review.isolation.effects.map((effect, index) => <li key={index}>
+              <strong>{effect.resource}</strong> · {effect.operation.startsWith("delete-owned-version") ? "Delete exact owned version" : ({ create: "Create", claim: "Claim", select: "Use", delete: "Delete", observe: "Observe", release: "Release lease" } as Record<string, string>)[effect.operation] ?? "Unrecognized effect"}
+              {effect.logical_id ? isolation.resources.some((resource) => resource.name === effect.resource && resource.logical_id === effect.logical_id) ? <ValueRows rows={[{ label: "Resource ID", value: effect.logical_id }, ...(effect.version ? [{ label: "Resource version", value: effect.version }] : [])]} /> : <details><summary>Resource details</summary><ValueRows rows={[{ label: "Resource ID", value: effect.logical_id }, ...(effect.version ? [{ label: "Resource version", value: effect.version }] : [])]} /></details> : null}
+            </li>)}
+          </ol> : null}
+          {(review.isolation?.manual ?? []).map((manual) => <label key={manual.id} className="check">
+            <input type="checkbox" checked={confirmed.includes(manual.id)} onChange={(event) => setConfirmed(event.target.checked ? [...confirmed, manual.id] : confirmed.filter((id) => id !== manual.id))} />
+            <span><strong>{manual.name}</strong><br />{manual.instructions}</span>
+          </label>)}
+        </>}
+        outcome={(result) => result.isolation ? <ValueRows rows={[
+          { label: "Checked", value: checkedAt(result.isolation.checked_at) },
+          { label: "Setup", value: isolationOutcomeText(result.isolation.setup) },
+          { label: "Cleanup", value: isolationOutcomeText(result.isolation.cleanup) },
+          { label: "Evidence", value: result.isolation.complete ? "Complete" : "Incomplete" },
+          { label: "Retained resources", value: String(result.isolation.resources) },
+          ...result.isolation.manual.map((manual, index) => ({ label: isolation.manual.find((entry) => entry.id === manual.id)?.name || `Manual claim ${index + 1}`, value: manual.provenance === "operator-declared-current-execution" || manual.provenance === "operator-declared-current-continuation" ? "Operator asserted" : "Unconfirmed" })),
+        ]} /> : null}
+      />) : null}
       <FormDialog
-        open={sheet === "check"}
+        open={sheet === "check" && !fhir}
         title="Test connection"
         size="small"
         submitLabel="Test connection"
@@ -628,6 +739,42 @@ function useEnvironmentDetail({
       >
         <p className="consequence">Connects to {address}; no messages are sent.</p>
       </FormDialog>
+      {fhir ? ([
+        { sheet: "check", title: "Test connection", action: "environment.check-fhir-connection" },
+        { sheet: "check-authorization", title: "Test authorization", action: "environment.check-fhir-authorization" },
+        { sheet: "check-capabilities", title: "Check capabilities", action: "environment.check-fhir-capabilities" },
+      ] as const).map((choice) => (
+        <ReviewSheet
+          key={choice.sheet}
+          open={sheet === choice.sheet}
+          title={choice.title}
+          finalLabel={choice.title}
+          action={choice.action}
+          context={context}
+          items={[ref]}
+          onClose={() => setSheet(null)}
+          onDone={(result) => {
+            if (result.fhir_check) setFHIRChecks((held) => ({ ...held, [choice.sheet]: result.fhir_check }));
+            void refresh();
+          }}
+          render={(review) => <>
+            <ValueRows rows={[
+              { label: "Environment", value: item.name },
+              { label: "Destination", value: review.destination.address || address },
+              { label: "Protocol", value: review.fhir_check?.protocol || `FHIR R4 ${fhir.version}` },
+              { label: "Authentication", value: authenticationText(review.fhir_check?.authentication) },
+              ...(review.fhir_check?.client_id ? [{ label: "Registered client ID", value: review.fhir_check.client_id }] : []),
+              ...(review.fhir_check?.key_reference ? [{ label: "Signing key reference", value: review.fhir_check.key_reference }] : []),
+              ...(review.fhir_check?.scopes.length ? [{ label: "Required scopes", value: review.fhir_check.scopes.join(", ") }] : []),
+            ]} />
+            {review.fhir_check?.effect ? <p className="consequence">{review.fhir_check.effect}</p> : null}
+          </>}
+          outcome={(result) => <>
+            {result.fhir_check ? <p role="status"><FHIRCheckStatus check={result.fhir_check} revision={ref.revision} /></p> : null}
+            <FHIRClaims check={result.fhir_check} />
+          </>}
+        />
+      )) : null}
       <Modal
         open={sheet === "ranges"}
         title="Allowed destinations"
@@ -694,17 +841,25 @@ function useEnvironmentDetail({
       <ResetEditSheet
         open={sheet === "reset-edit"}
         draft={draft}
+        context={context}
+        environment={ref}
         address={address}
         observations={observations}
         onClose={() => setSheet(null)}
-        onSave={(plan, name, actionNames) =>
+        onSave={(plan, name, actionNames, isolation, opened) =>
           saveWith(
-            (held) => ({
-              ...held,
-              reset: plan,
-              links: { ...(held.links ?? {}), reset_name: name, action_names: actionNames },
-            }),
-            { "reset.actions": "reset-add-action", "links.reset_name": "reset-name" },
+            (held) => {
+              const next = { ...held };
+              const links = { ...(held.links ?? {}) };
+              if (plan) { next.reset = plan; links.reset_name = name; links.action_names = actionNames; }
+              else { delete next.reset; delete links.reset_name; delete links.action_names; }
+              if (isolation) next.isolation = isolation;
+              else delete next.isolation;
+              if (held.links || plan) next.links = links;
+              return next;
+            },
+            { "reset.actions": "reset-add-action", "links.reset_name": "reset-name", "isolation.adapter": "isolation-adapter", "isolation.name": "isolation-name", "isolation.mode": "isolation-mode", "isolation.resources": "isolation-resources", "isolation.manual": "isolation-manual" },
+            opened,
           )
         }
       />
@@ -834,6 +989,7 @@ function useEnvironmentDetail({
         unapproved
           ? { label: "Approve transport…", onSelect: () => setSheet("approve"), disabled: unusable }
           : { label: "Test connection…", onSelect: () => setSheet("check"), disabled: unusable },
+        ...(fhir ? [{ label: "Test authorization…", onSelect: () => setSheet("check-authorization"), disabled: unusable }, { label: "Check capabilities…", onSelect: () => setSheet("check-capabilities"), disabled: unusable }] : []),
         ...(reset && reset.actions.length > 0 ? [{ label: "Reset…", onSelect: () => setSheet("reset"), disabled: busy }] : []),
         ...menu,
       ],
@@ -849,6 +1005,10 @@ function useEnvironmentDetail({
             Test connection
           </button>
         )}
+        {fhir ? <>
+          <button type="button" disabled={unusable} onClick={() => setSheet("check-authorization")}>Test authorization</button>
+          <button type="button" disabled={unusable} onClick={() => setSheet("check-capabilities")}>Check capabilities</button>
+        </> : null}
         <Menu label="More environment actions" items={menu} />
       </>
     ),
@@ -907,6 +1067,12 @@ function ConnectionSheet({
   onSaved: (saved: ItemRef) => void | Promise<void>;
 }) {
   const [base, setBase] = useState<ItemDraft | null>(null);
+  const [baseRef, setBaseRef] = useState<ItemRef | null>(null);
+  const initialized = useRef(false);
+  const connected = useVocabulary()?.connected;
+  const [protocol, setProtocol] = useState<"mllp-v2" | "fhir-r4">("mllp-v2");
+  const [fhir, setFHIR] = useState<FHIRConnection | null>(null);
+  const [scopes, setScopes] = useState("");
   const [name, setName] = useState("");
   const [host, setHost] = useState("");
   const [port, setPort] = useState("");
@@ -925,16 +1091,22 @@ function ConnectionSheet({
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { initialized.current = false; setBase(null); setBaseRef(null); return; }
+    if (initialized.current || mode === "edit" && !draft) return;
     let cancelled = false;
     const fill = (held: ItemDraft, fresh: boolean) => {
       const target: Partial<Target> = held.environment ?? {};
       const address = splitAddress(target.address ?? "");
       setBase(held);
+      setBaseRef(item?.ref ?? null);
+      initialized.current = true;
+      setProtocol(held.fhir ? "fhir-r4" : "mllp-v2");
+      setFHIR(structuredClone(held.fhir ?? connected?.connection ?? null));
+      setScopes(held.fhir?.scopes?.join("\n") ?? "");
       setName(fresh ? "" : (held.name ?? item?.name ?? ""));
       setHost(address.host);
       setPort(address.port);
-      setClassification((target.classification || "unclassified") as TargetClassification);
+      setClassification((held.fhir?.classification || target.classification || "unclassified") as TargetClassification);
       setTransport(fresh ? "" : ((target.transport as "tls" | "plain" | undefined) ?? ""));
       setServerName(target.server_name ?? "");
       setCaFile(target.ca_file ?? "");
@@ -942,7 +1114,7 @@ function ConnectionSheet({
       setCredential(target.credential?.reference ?? "");
       setConnectTimeout(target.connect_timeout ?? "");
       setMessageTimeout(target.message_timeout ?? "");
-      setMaxAck(target.max_ack_bytes ? String(target.max_ack_bytes) : "");
+      setMaxAck(target.max_ack_bytes === undefined ? "" : String(target.max_ack_bytes));
       setMore(false);
       setDirty(false);
       setChooseFailure(null);
@@ -955,7 +1127,7 @@ function ConnectionSheet({
       });
     }
     void listCredentials({ context: context(), ref: item?.ref ?? { kind: "environment", id: "" } }).then((answer) => {
-      if (!cancelled) setCredentials(answer.credentials.filter((row) => row.purpose === "mllp-endpoint"));
+      if (!cancelled) setCredentials(answer.credentials);
     });
     return () => {
       cancelled = true;
@@ -966,8 +1138,12 @@ function ConnectionSheet({
     set(value);
     setDirty(true);
   };
+  const changeFHIR = <K extends keyof FHIRConnection>(field: K, value: FHIRConnection[K]) => {
+    setFHIR((current) => current ? { ...current, [field]: value } : current);
+    setDirty(true);
+  };
 
-  const choose = async (kind: "ca-certificate" | "client-certificate", set: (path: string) => void) => {
+  const choose = async (kind: EnvironmentFileKind, set: (path: string) => void) => {
     setChooseFailure(null);
     const answer = await chooseEnvironmentFile(kind);
     if (answer.state === "completed" && answer.paths?.[0]) {
@@ -995,6 +1171,15 @@ function ConnectionSheet({
     "environment.connect_timeout": "environment-connect-timeout",
     "environment.message_timeout": "environment-message-timeout",
     "environment.max_ack_bytes": "environment-max-ack",
+    "fhir.base": "environment-fhir-base",
+    "fhir.server_name": "environment-fhir-server-name",
+    "fhir.classification": "environment-classification",
+    "fhir.authentication": "environment-fhir-authentication",
+    "fhir.client_id": "environment-fhir-client",
+    "fhir.token_endpoint": "environment-fhir-token",
+    "fhir.algorithm": "environment-fhir-algorithm",
+    "fhir.key_reference": "environment-fhir-key",
+    "fhir.scopes": "environment-fhir-scopes",
   };
 
   return (
@@ -1008,7 +1193,7 @@ function ConnectionSheet({
       onSubmit={async () => {
         if (!base) return { reason: "The environment is still being read." };
         const ackBytes = wholeNumber(maxAck);
-        if (ackBytes === null) {
+        if (protocol === "mllp-v2" && ackBytes === null) {
           revealMore("environment-max-ack");
           return { reason: "Enter a whole number of bytes.", field: "environment-max-ack" };
         }
@@ -1020,19 +1205,28 @@ function ConnectionSheet({
           ...(tls ? { server_name: serverName.trim(), ca_file: caFile, client_certificate: clientCertificate } : { server_name: "", ca_file: "", client_certificate: "" }),
           connect_timeout: connectTimeout.trim(),
           message_timeout: messageTimeout.trim(),
-          max_ack_bytes: ackBytes,
+          max_ack_bytes: ackBytes ?? 0,
         };
         if (credential && tls) target.credential = { secrets_file: base.environment?.credential?.secrets_file || "secrets.json", reference: credential };
         else delete target.credential;
         if (!target.server_name) delete target.server_name;
         if (!target.ca_file) delete target.ca_file;
         if (!target.client_certificate) delete target.client_certificate;
+        const next: ItemDraft = { ...base, name: name.trim() };
+        if (protocol === "fhir-r4") {
+          if (!fhir) return { reason: "The FHIR connection choices are unavailable." };
+          next.fhir = { ...fhir, classification, scopes: scopes.split(/\s+/).filter(Boolean) };
+          delete next.environment;
+        } else {
+          next.environment = target;
+          delete next.fhir;
+        }
         const answer = await saveItem({
           context: context(),
           kind: "environment",
-          ...(item ? { item: item.ref.id } : {}),
-          ...(item?.ref.revision ? { base_revision: item.ref.revision } : {}),
-          draft: { ...base, name: name.trim(), environment: target },
+          ...(baseRef ? { item: baseRef.id } : {}),
+          ...(baseRef?.revision ? { base_revision: baseRef.revision } : {}),
+          draft: next,
           intent_id: newIntentId(),
         });
         if (answer.outcome !== "saved" || !answer.saved) {
@@ -1045,8 +1239,15 @@ function ConnectionSheet({
         return null;
       }}
     >
+      {base ? <>
       <label htmlFor="environment-name">Name</label>
       <input id="environment-name" type="text" autoFocus value={name} onChange={(event) => changed(setName)(event.target.value)} />
+      <label htmlFor="environment-protocol">Protocol</label>
+      <select id="environment-protocol" value={protocol} onChange={(event) => changed(setProtocol)(event.target.value as "mllp-v2" | "fhir-r4")}>
+        <option value="mllp-v2">HL7 v2 MLLP</option>
+        <option value="fhir-r4">FHIR R4 HTTPS</option>
+      </select>
+      {protocol === "mllp-v2" ? (
       <div className="field-pair">
         <div>
           <label htmlFor="environment-host">Host</label>
@@ -1057,6 +1258,7 @@ function ConnectionSheet({
           <input id="environment-port" type="text" inputMode="numeric" value={port} onChange={(event) => changed(setPort)(event.target.value)} />
         </div>
       </div>
+      ) : null}
       <label htmlFor="environment-classification">Classification</label>
       <select id="environment-classification" value={classification} onChange={(event) => changed(setClassification)(event.target.value as TargetClassification)}>
         {(["unclassified", "nonproduction", "production"] as TargetClassification[]).map((value) => (
@@ -1066,7 +1268,7 @@ function ConnectionSheet({
         ))}
       </select>
       {classification === "production" ? <p className="consequence">Readmit never sends to a production environment.</p> : null}
-      <fieldset className="checks">
+      {protocol === "mllp-v2" ? <fieldset className="checks">
         <legend>Transport</legend>
         {TRANSPORTS.map((choice) => (
           <label key={choice.value} className="check">
@@ -1080,8 +1282,8 @@ function ConnectionSheet({
             {choice.label}
           </label>
         ))}
-      </fieldset>
-      {mode === "edit" && tls ? (
+      </fieldset> : null}
+      {protocol === "mllp-v2" && mode === "edit" && tls ? (
         <>
           <label htmlFor="environment-server-name">Server name</label>
           <input id="environment-server-name" type="text" spellCheck={false} value={serverName} onChange={(event) => changed(setServerName)(event.target.value)} />
@@ -1090,12 +1292,12 @@ function ConnectionSheet({
           {chooseFailure ? <p className="field-error" role="alert">{chooseFailure}</p> : null}
         </>
       ) : null}
-      {mode === "edit" && tls ? (
+      {protocol === "mllp-v2" && mode === "edit" && tls ? (
         <>
           <label htmlFor="environment-credential">Credential</label>
           <select id="environment-credential" value={credential} onChange={(event) => changed(setCredential)(event.target.value)}>
             <option value="">None</option>
-            {credentials.map((row) => (
+            {credentials.filter((row) => row.purpose === "mllp-endpoint").map((row) => (
               <option key={row.name} value={row.name}>
                 {row.name}
               </option>
@@ -1104,7 +1306,7 @@ function ConnectionSheet({
           </select>
         </>
       ) : null}
-      {mode === "edit" ? (
+      {protocol === "mllp-v2" && mode === "edit" ? (
         <>
           <div>
             <button type="button" className="quiet" aria-expanded={more} onClick={() => setMore(!more)}>
@@ -1123,6 +1325,63 @@ function ConnectionSheet({
           ) : null}
         </>
       ) : null}
+      {protocol === "fhir-r4" && fhir ? (
+        <>
+          <ValueRows rows={[{ label: "Version", value: `FHIR R4 ${fhir.version}` }]} />
+          <label htmlFor="environment-fhir-base">Base URL</label>
+          <input id="environment-fhir-base" type="text" spellCheck={false} value={fhir.base} onChange={(event) => changeFHIR("base", event.target.value)} />
+          <label htmlFor="environment-fhir-server-name">Server name</label>
+          <input id="environment-fhir-server-name" type="text" spellCheck={false} value={fhir.server_name} onChange={(event) => changeFHIR("server_name", event.target.value)} />
+          <FilePicker label="CA certificate" path={fhir.ca_file ?? ""} onChoose={() => void choose("ca-certificate", (path) => changeFHIR("ca_file", path))} onClear={() => changeFHIR("ca_file", "")} />
+          <label htmlFor="environment-fhir-authentication">Authentication</label>
+          <select id="environment-fhir-authentication" value={fhir.authentication} onChange={(event) => changeFHIR("authentication", event.target.value)}>
+            {!fhir.authentication ? <option value="">Choose authentication</option> : null}
+            <option value="none">None</option>
+            <option value="smart">SMART Backend Services</option>
+            {fhir.authentication && !["none", "smart"].includes(fhir.authentication) ? <option value={fhir.authentication}>Unsupported authentication</option> : null}
+          </select>
+          {fhir.authentication === "smart" ? (
+            <>
+              <label htmlFor="environment-fhir-client">Registered client ID</label>
+              <input id="environment-fhir-client" type="text" spellCheck={false} value={fhir.client_id ?? ""} onChange={(event) => changeFHIR("client_id", event.target.value)} />
+              <label htmlFor="environment-fhir-token">Token endpoint</label>
+              <input id="environment-fhir-token" type="text" spellCheck={false} value={fhir.token_endpoint ?? ""} onChange={(event) => changeFHIR("token_endpoint", event.target.value)} />
+              <label htmlFor="environment-fhir-algorithm">Signing algorithm</label>
+              <select id="environment-fhir-algorithm" value={fhir.algorithm ?? ""} onChange={(event) => changeFHIR("algorithm", event.target.value)}>
+                {!fhir.algorithm ? <option value="">Choose an algorithm</option> : null}
+                <option value="RS384">RS384</option>
+                <option value="ES384">ES384</option>
+              </select>
+              <label htmlFor="environment-fhir-scopes">Required scopes</label>
+              <textarea id="environment-fhir-scopes" spellCheck={false} rows={3} value={scopes} onChange={(event) => changed(setScopes)(event.target.value)} />
+              <label htmlFor="environment-fhir-key">Signing key reference</label>
+              <select id="environment-fhir-key" value={fhir.key_reference ?? ""} onChange={(event) => changeFHIR("key_reference", event.target.value)}>
+                <option value="">Choose a reference</option>
+                {credentials.filter((row) => row.purpose === "source-endpoint").map((row) => <option key={row.name} value={row.name}>{row.name}</option>)}
+                {fhir.key_reference && !credentials.some((row) => row.name === fhir.key_reference) ? <option value={fhir.key_reference}>{fhir.key_reference}</option> : null}
+              </select>
+              <label htmlFor="environment-fhir-key-id">Registered key ID</label>
+              <input id="environment-fhir-key-id" type="text" spellCheck={false} value={fhir.key_id ?? ""} onChange={(event) => changeFHIR("key_id", event.target.value)} />
+              <FilePicker label="Public keys" path={fhir.public_keys_file ?? ""} onChoose={() => void choose("public-keys", (path) => changeFHIR("public_keys_file", path))} onClear={() => changeFHIR("public_keys_file", "")} />
+            </>
+          ) : null}
+          <label htmlFor="environment-fhir-validation">Validation</label>
+          <select id="environment-fhir-validation" value={fhir.validation?.engine ?? "none"} onChange={(event) => {
+            if (event.target.value === "none") changeFHIR("validation", { ...fhir.validation, capability: fhir.validation?.capability ?? "", engine: "none" });
+            else changeFHIR("validation", { ...fhir.validation, capability: fhir.validation?.capability ?? "", engine: "local" });
+          }}>
+            <option value="none">No worker selected</option>
+            <option value="local">Local, offline</option>
+          </select>
+          {fhir.validation?.engine === "local" ? <>
+            <FilePicker label="Local validator capability" path={fhir.validation.capability} onChoose={() => void choose("validator-capability", (path) => changeFHIR("validation", { ...fhir.validation!, capability: path }))} />
+            <label htmlFor="environment-fhir-validator-socket">Container engine socket</label>
+            <input id="environment-fhir-validator-socket" type="text" value={fhir.validation.socket ?? ""} onChange={(event) => changeFHIR("validation", { ...fhir.validation!, socket: event.target.value })} />
+          </> : null}
+          {chooseFailure ? <p className="field-error" role="alert">{chooseFailure}</p> : null}
+        </>
+      ) : protocol === "fhir-r4" ? <p role="alert">The FHIR connection choices are unavailable.</p> : null}
+      </> : <p aria-live="polite">Reading…</p>}
     </FormDialog>
   );
 }
@@ -1354,6 +1613,8 @@ type ResetRow = { id: string; name: string; operator: ResetOperator; instruction
 function ResetEditSheet({
   open,
   draft,
+  context,
+  environment,
   address,
   observations,
   onSave,
@@ -1361,28 +1622,39 @@ function ResetEditSheet({
 }: {
   open: boolean;
   draft: ItemDraft | null;
+  context: () => RequestContext;
+  environment: ItemRef;
   address: string;
   observations: CatalogItem[];
-  onSave: (plan: NonNullable<ItemDraft["reset"]>, name: string, actionNames: string[]) => Promise<SubmitFailure | null>;
+  onSave: (plan: NonNullable<ItemDraft["reset"]> | null, name: string, actionNames: string[], isolation: EnvironmentIsolation | null, opened: { ref: ItemRef; draft: ItemDraft } | undefined) => Promise<SubmitFailure | null>;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
   const [rows, setRows] = useState<ResetRow[]>([]);
   const [dirty, setDirty] = useState(false);
+  const [isolation, setIsolation] = useState<EnvironmentIsolation | null>(null);
+  const isolationHeld = useRef<EnvironmentIsolation | null>(null);
+  const opened = useRef<{ ref: ItemRef; draft: ItemDraft } | undefined>(undefined);
+  const initialized = useRef(false);
   // The action its own sheet edits: an index, or "new".
   const [editing, setEditing] = useState<number | "new" | null>(null);
   // Each operator's authority is the facade's, published in its vocabulary.
   const vocabulary = useVocabulary();
   const authorityOf = (operator: ResetOperator) => vocabulary?.reset_operators.find((entry) => entry.operator === operator)?.authority ?? "none";
   useEffect(() => {
-    if (!open) return;
+    if (!open) { initialized.current = false; return; }
+    if (!draft || initialized.current) return;
+    initialized.current = true;
+    opened.current = { ref: environment, draft };
     const plan = draft?.reset;
     const names = draft?.links?.action_names ?? [];
     setName(draft?.links?.reset_name ?? "");
     setRows((plan?.actions ?? []).map((action, index) => ({ id: action.id, name: names[index] ?? "", operator: action.operator, instructions: action.instructions, observation: action.observation ?? "" })));
+    setIsolation(structuredClone(draft.isolation ?? null));
+    isolationHeld.current = structuredClone(draft.isolation ?? null);
     setDirty(false);
     setEditing(null);
-  }, [open, draft]);
+  }, [open, draft, environment]);
   const change = (next: ResetRow[]) => {
     setRows(next);
     setDirty(true);
@@ -1400,30 +1672,32 @@ function ResetEditSheet({
       <FormDialog
         open={open && editing === null}
         title="Edit reset"
-        size="wide"
         submitLabel="Save"
         dirty={dirty}
         onClose={onClose}
         onSubmit={() => {
-          if (name.trim() === "") return { reason: "Name the reset.", field: "reset-name" };
-          const plan = {
+          if (!isolation && rows.length > 0 && name.trim() === "") return { reason: "Name the reset.", field: "reset-name" };
+          const plan = !isolation && rows.length > 0 ? {
             schema: draft?.reset?.schema || "readmit-reset-plan/v1",
             environment: draft?.reset?.environment || draft?.environment?.name || "",
             actions: rows.map((row) => ({
               id: row.id,
               operator: row.operator,
               authority: authorityOf(row.operator),
-              instructions: row.operator === "operator_confirms" ? row.instructions : "",
+              instructions: row.instructions,
               ...(row.operator === "collection_empty" || row.operator === "observation_empty" ? { observation: row.observation } : {}),
             })),
-          };
+          } : null;
           return onSave(
             plan,
             name.trim(),
             rows.map((row) => row.name),
+            isolation,
+            opened.current,
           );
         }}
       >
+        {!isolation ? <>
         <label htmlFor="reset-name">Name</label>
         <input id="reset-name" type="text" value={name} onChange={(event) => { setName(event.target.value); setDirty(true); }} />
         {rows.length > 0 ? (
@@ -1469,6 +1743,20 @@ function ResetEditSheet({
             Add action
           </button>
         </div>
+        </> : null}
+        <label className="check">
+          <input type="checkbox" checked={isolation !== null} onChange={(event) => {
+            if (event.target.checked) setIsolation(structuredClone(isolationHeld.current ?? { schema: "", name: "", registry_file: "", adapter: "", mode: "", resources: [], manual: [] }));
+            else { isolationHeld.current = structuredClone(isolation); setIsolation(null); }
+            setDirty(true);
+          }} />
+          External isolation
+        </label>
+        {isolation && draft?.reset ? <p className="consequence">Saving external isolation replaces the check-only reset. Setup requires its own review.</p> : null}
+        {isolation ? <IsolationFields context={context} isolation={isolation} onChange={(apply) => {
+          setIsolation((held) => { if (!held) return held; const next = structuredClone(held); apply(next); return next; });
+          setDirty(true);
+        }} /> : null}
       </FormDialog>
       <ResetActionSheet
         open={open && editing !== null}
@@ -1483,6 +1771,120 @@ function ResetEditSheet({
       />
     </>
   );
+}
+
+const ISOLATION_MODES: Record<string, string> = { "isolated-tenant": "Isolated tenant", "reserved-namespace": "Reserved namespace", "recorded-baseline": "Recorded baseline" };
+const ISOLATION_OWNERSHIP: Record<string, string> = { create: "Create synthetic resource", claim: "Claim exact existing resource", select: "Use exact existing resource" };
+
+function isolationOutcomeText(state: string): string {
+  return ({ "not-started": "Not run", "not-applicable": "Not applicable", "preflight-verified": "Capabilities checked", ready: "Prerequisites ready", "recovered-no-setup": "No setup attempted", verified: "Verified", complete: "Complete", cleaned: "Cleaned up", uncertain: "Uncertain", failed: "Failed", refused: "Refused", "lease-acquired": "Lease acquired", "resources-ready": "Prerequisites ready", reconciled: "Reconciled", released: "Lease released" } as Record<string, string>)[state] ?? "Unconfirmed";
+}
+
+function IsolationFields({ context, isolation, onChange }: { context: () => RequestContext; isolation: EnvironmentIsolation; onChange: (change: (value: EnvironmentIsolation) => void) => void }) {
+  const [editor, setEditor] = useState<IsolationEditorResult | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const readVersion = useRef(0);
+  const read = useCallback(async () => {
+    const generation = ++readVersion.current;
+    setEditor(null);
+    const answer = await getIsolationEditor({ context: context(), registry_file: isolation.registry_file });
+    if (generation === readVersion.current) setEditor(answer);
+  }, [context, isolation.registry_file]);
+  useEffect(() => { void read(); return () => { readVersion.current++; }; }, [read]);
+  const adapter = editor?.adapters.find((entry) => entry.id === isolation.adapter);
+  return <>
+    <label htmlFor="isolation-name">Isolation name</label>
+    <input id="isolation-name" type="text" value={isolation.name} onChange={(event) => onChange((value) => { value.name = event.target.value; })} />
+    <FilePicker label="Fixture adapter registry" path={isolation.registry_file} onChoose={() => void chooseEnvironmentFile("isolation-registry").then((answer) => {
+      if (answer.state === "completed" && answer.paths?.[0]) { onChange((value) => { value.registry_file = answer.paths![0]!; }); setProblem(null); }
+      else if (answer.state !== "cancelled") setProblem(answer.reason ?? "The registry was not chosen.");
+    })} />
+    {problem || editor?.reason ? <p role="alert">{problem ?? editor?.reason}</p> : null}
+    {isolation.registry_file ? <button type="button" className="quiet" onClick={() => void read()}>Refresh registry</button> : null}
+    <label htmlFor="isolation-adapter">Adapter</label>
+    <select id="isolation-adapter" value={isolation.adapter} onChange={(event) => onChange((value) => { value.adapter = event.target.value; })}>
+      <option value="">Choose a registered adapter</option>
+      {(editor?.adapters ?? []).map((entry) => <option key={entry.id} value={entry.id}>{entry.id}</option>)}
+      {isolation.adapter && !adapter ? <option value={isolation.adapter}>Adapter no longer registered</option> : null}
+    </select>
+    {adapter ? <ValueRows rows={[{ label: "Tenant", value: adapter.tenant }, { label: "Namespace", value: adapter.namespace }, { label: "Destination", value: adapter.address }]} /> : null}
+    <label htmlFor="isolation-mode">Isolation mode</label>
+    <select id="isolation-mode" value={isolation.mode} onChange={(event) => onChange((value) => { value.mode = event.target.value; })}>
+      <option value="">Choose isolation</option>
+      {(editor?.modes ?? []).map((mode) => <option key={mode} value={mode}>{ISOLATION_MODES[mode] ?? "Unsupported mode"}</option>)}
+      {isolation.mode && !editor?.modes.includes(isolation.mode) ? <option value={isolation.mode}>{ISOLATION_MODES[isolation.mode] ? `${ISOLATION_MODES[isolation.mode]} · Unsupported here` : "Unsupported saved mode"}</option> : null}
+    </select>
+    {isolation.mode && editor?.state === "completed" && !editor.modes.includes(isolation.mode) ? <p role="status">This saved mode is unsupported here. Its draft is held; choose a supported isolation mode before saving.</p> : null}
+    <fieldset id="isolation-resources" tabIndex={-1}>
+      <legend>Prerequisites</legend>
+      {isolation.resources.map((resource, index) => {
+        const template = adapter?.templates.find((entry) => entry.id === resource.template && entry.kind === resource.kind);
+        const attributes = [...new Set([...(template?.attributes ?? []), ...Object.keys(resource.attributes)])];
+        return <div key={index} className="filter-rule">
+          <label htmlFor={`isolation-resource-name-${index}`}>Prerequisite name {index + 1}</label>
+          <input id={`isolation-resource-name-${index}`} type="text" value={resource.name} onChange={(event) => onChange((value) => { value.resources[index]!.name = event.target.value; })} />
+          <label htmlFor={`isolation-template-${index}`}>Template {index + 1}</label>
+          <select id={`isolation-template-${index}`} value={resource.template} onChange={(event) => {
+            const choice = adapter?.templates.find((entry) => entry.id === event.target.value);
+            if (choice) onChange((value) => { value.resources[index]!.template = choice.id; value.resources[index]!.kind = choice.kind; });
+          }}>
+            <option value="">Choose a registered template</option>
+            {(adapter?.templates ?? []).map((entry) => <option key={entry.id} value={entry.id}>{entry.id}</option>)}
+            {resource.template && !template ? <option value={resource.template}>Unsupported saved template</option> : null}
+          </select>
+          <label htmlFor={`isolation-ownership-${index}`}>Ownership {index + 1}</label>
+          <select id={`isolation-ownership-${index}`} value={resource.ownership} onChange={(event) => onChange((value) => { value.resources[index]!.ownership = event.target.value; })}>
+            <option value="">Choose ownership</option>
+            {(editor?.ownership ?? []).map((ownership) => <option key={ownership} value={ownership}>{ISOLATION_OWNERSHIP[ownership] ?? "Unsupported ownership"}</option>)}
+            {resource.ownership && !editor?.ownership.includes(resource.ownership) ? <option value={resource.ownership}>Unsupported saved ownership</option> : null}
+          </select>
+          {resource.ownership === "claim" || resource.ownership === "select" || resource.logical_id || resource.version ? <>
+            <label htmlFor={`isolation-logical-id-${index}`}>Existing resource ID {index + 1}</label>
+            <input id={`isolation-logical-id-${index}`} type="text" value={resource.logical_id ?? ""} onChange={(event) => onChange((value) => { value.resources[index]!.logical_id = event.target.value; })} />
+            <label htmlFor={`isolation-version-${index}`}>Existing resource version {index + 1}</label>
+            <input id={`isolation-version-${index}`} type="text" value={resource.version ?? ""} onChange={(event) => onChange((value) => { value.resources[index]!.version = event.target.value; })} />
+          </> : null}
+          {attributes.map((attribute, at) => <div key={attribute}>
+            <label htmlFor={`isolation-attribute-${index}-${at}`}>Attribute {attribute} for prerequisite {index + 1}</label>
+            <input id={`isolation-attribute-${index}-${at}`} type="text" value={resource.attributes[attribute] ?? ""} onChange={(event) => onChange((value) => { value.resources[index]!.attributes[attribute] = event.target.value; })} />
+            {template && !template.attributes.includes(attribute) ? <p role="alert">This saved attribute is unsupported by the selected template.<button type="button" className="quiet" onClick={() => onChange((value) => { delete value.resources[index]!.attributes[attribute]; })}>Remove attribute</button></p> : null}
+          </div>)}
+          {resource.template && !template ? <p role="alert">This prerequisite is unsupported by the selected adapter. Its values are still held.</p> : null}
+          <label htmlFor={`isolation-dependencies-${index}`}>Dependencies for prerequisite {index + 1}</label>
+          <select id={`isolation-dependencies-${index}`} multiple value={resource.depends_on} onChange={(event) => {
+            const dependencies = Array.from(event.target.selectedOptions).map((option) => option.value);
+            onChange((value) => { value.resources[index]!.depends_on = dependencies; });
+          }}>
+            {isolation.resources.slice(0, index).filter((entry) => entry.name).map((entry, at) => <option key={entry.id || at} value={entry.id || entry.name}>{entry.name}</option>)}
+            {resource.depends_on.filter((id) => !isolation.resources.slice(0, index).some((entry) => (entry.id || entry.name) === id)).map((id) => <option key={id} value={id}>Prerequisite no longer available</option>)}
+          </select>
+          {resource.identifiers.map((identifier, at) => <div key={at} className="filter-rule">
+            <label htmlFor={`isolation-identifier-scope-${index}-${at}`}>Identifier scope {index + 1}.{at + 1}</label>
+            <input id={`isolation-identifier-scope-${index}-${at}`} type="text" value={identifier.scope} onChange={(event) => onChange((value) => { value.resources[index]!.identifiers[at]!.scope = event.target.value; })} />
+            <label htmlFor={`isolation-identifier-namespace-${index}-${at}`}>Identifier namespace {index + 1}.{at + 1}</label>
+            <input id={`isolation-identifier-namespace-${index}-${at}`} type="text" value={identifier.namespace} onChange={(event) => onChange((value) => { value.resources[index]!.identifiers[at]!.namespace = event.target.value; })} />
+            <label htmlFor={`isolation-identifier-value-${index}-${at}`}>Identifier value {index + 1}.{at + 1}</label>
+            <input id={`isolation-identifier-value-${index}-${at}`} type="text" value={identifier.value} onChange={(event) => onChange((value) => { value.resources[index]!.identifiers[at]!.value = event.target.value; })} />
+            <IconButton icon="close" label={`Remove identifier ${index + 1}.${at + 1}`} onClick={() => onChange((value) => { value.resources[index]!.identifiers.splice(at, 1); })} />
+          </div>)}
+          <button type="button" className="quiet" onClick={() => onChange((value) => { value.resources[index]!.identifiers.push({ scope: "", namespace: "", value: "" }); })}>Add identifier</button>
+          <IconButton icon="close" label={`Remove prerequisite ${index + 1}`} onClick={() => onChange((value) => { value.resources.splice(index, 1); })} />
+        </div>;
+      })}
+      <button type="button" disabled={!adapter || isolation.resources.length >= 32} onClick={() => onChange((value) => { value.resources.push({ id: "", name: "", template: "", kind: "", ownership: "", depends_on: [], attributes: {}, identifiers: [] }); })}>Add prerequisite</button>
+    </fieldset>
+    <fieldset id="isolation-manual" tabIndex={-1}>
+      <legend>Manual claims</legend>
+      {isolation.manual.map((manual, index) => <div key={index} className="filter-rule">
+        <label htmlFor={`isolation-manual-name-${index}`}>Manual claim name {index + 1}</label>
+        <input id={`isolation-manual-name-${index}`} type="text" value={manual.name} onChange={(event) => onChange((value) => { value.manual[index]!.name = event.target.value; })} />
+        <label htmlFor={`isolation-manual-instructions-${index}`}>Manual instructions {index + 1}</label>
+        <textarea id={`isolation-manual-instructions-${index}`} rows={3} value={manual.instructions} onChange={(event) => onChange((value) => { value.manual[index]!.instructions = event.target.value; })} />
+        <IconButton icon="close" label={`Remove manual claim ${index + 1}`} onClick={() => onChange((value) => { value.manual.splice(index, 1); })} />
+      </div>)}
+      <button type="button" disabled={isolation.manual.length >= 16} onClick={() => onChange((value) => { value.manual.push({ id: "", name: "", instructions: "" }); })}>Add manual claim</button>
+    </fieldset>
+  </>;
 }
 
 /** One reset action: its name, its type and what that type needs. Done returns
@@ -1536,7 +1938,7 @@ function ResetActionSheet({
           id: row?.id ?? "",
           name: name.trim(),
           operator,
-          instructions: operator === "operator_confirms" ? instructions.trim() : "",
+          instructions: operator === "operator_confirms" ? instructions.trim() : instructions,
           observation: operator === "collection_empty" || operator === "observation_empty" ? observation : "",
         });
         return null;

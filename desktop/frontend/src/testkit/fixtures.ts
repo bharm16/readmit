@@ -249,6 +249,20 @@ export function shellResult(): ShellResult {
  * window's description. A test that is about one of these passes its own. */
 export function vocabularyFixture(bounds: Partial<Vocabulary["bounds"]> = {}): Vocabulary {
   return {
+    connected: {
+      connection: { schema: "readmit-fhir-connection/v1", base: "", version: "4.0.1", classification: "unclassified", authentication: "", server_name: "" },
+      observation: {
+        schema: "readmit-connected-observation-setup/v1", namespace: "observed", phase: "both", business_keys: [], baseline: "before-run",
+        completion: { schema: "readmit-observation-interval/v1", source: "", namespace: "", enabled: true, mode: "snapshots", freshness: "snapshot-only", horizon_ms: 30000, sample_ms: 1000, max_gap_ms: 3000, max_samples: 64, max_records: 1000, max_bytes: 16777216 },
+      },
+      search: { resource: "Appointment", boundary: "", criteria: [], fields: [], budget: { pages: 16, rows: 1000, bytes: 16777216, timeout_ms: 30000 } },
+      resources: [{ resource: "Appointment", fields: [
+        { id: "status", type: "code", code_system: "http://hl7.org/fhir/appointmentstatus", selector: { steps: [{ field: "status", each: false }] }, repeated: false },
+        { id: "start", type: "datetime", selector: { steps: [{ field: "start", each: false }] }, repeated: false },
+      ] }],
+      value_types: ["text", "decimal", "boolean", "date", "datetime", "code"], phases: ["before", "after", "both"],
+      boundaries: ["authoritative-application-api", "delayed-replica", "reference-fhir-store"], baseline_modes: ["before-run"],
+    },
     diagnosis_builtins: [
       { id: "siu", name: "SIU", profile: "readmit-siu-v1", ruleset: "readmit-siu-diagnosis/v1" },
       { id: "lifecycle", name: "Lifecycle", profile: "readmit-lifecycle-v1", ruleset: "readmit-lifecycle-diagnosis/v1" },
