@@ -718,6 +718,13 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 		case ReportReviewItem:
 			_, err := readReportApprovalFile(files[string(ReportReviewItem)])
 			return err
+		case ReportShareItem:
+			data, err := boundedFile(files[string(ReportShareItem)], catalog.MaxMemberBytes)
+			if err != nil {
+				return err
+			}
+			_, err = decodeReportShare(data)
+			return err
 		}
 		return errors.New("this release does not save this kind of object")
 	}

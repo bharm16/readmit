@@ -14,6 +14,7 @@ import (
 
 	"github.com/bharm16/readmit/internal/artifactdir"
 	"github.com/bharm16/readmit/internal/artifactpath"
+	"github.com/bharm16/readmit/internal/destination"
 	"github.com/bharm16/readmit/internal/secret"
 )
 
@@ -318,4 +319,15 @@ func DecodeTarget(raw []byte, directory string) (Target, error) {
 		return Target{}, err
 	}
 	return anchor(target, directory), nil
+}
+
+// Record is the configuration record a replay of target retains, read the
+// way a prepared replay reads it: the authorities file is read for its
+// digest, and nothing is resolved or contacted.
+func Record(target Target) (TargetRecord, error) {
+	ca, err := destination.ReadAuthorities(target.CAFile)
+	if err != nil {
+		return TargetRecord{}, err
+	}
+	return targetRecord(target, ca), nil
 }

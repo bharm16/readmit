@@ -45,6 +45,11 @@ type transformer struct {
 	local    localState
 	original map[string]*hl7.Document
 	derived  map[string]*hl7.Document
+	// keyed, when set, derives surrogates and date shifts from a
+	// customer-local key instead of fresh randomness, so the same source
+	// value under the same scope always derives the same way (a [Deriver]).
+	// Create never sets it.
+	keyed []byte
 }
 
 func (t *transformer) has(name string) bool { return slices.Contains(t.policy.PacketPolicies, name) }
@@ -282,7 +287,9 @@ func (t *transformer) applyRule(doc *hl7.Document, value hl7.Reading, rule Field
 			}
 		}
 		var entropy [16]byte
-		if _, err := rand.Read(entropy[:]); err != nil {
+		if t.keyed != nil {
+			copy(entropy[:], t.keyedSum("surrogate", key))
+		} else if _, err := rand.Read(entropy[:]); err != nil {
 			return nil, false, errors.New("cannot generate surrogate")
 		}
 		surrogate := "R" + hex.EncodeToString(entropy[:])
@@ -301,8 +308,10 @@ func (t *transformer) applyRule(doc *hl7.Document, value hl7.Reading, rule Field
 		}
 	}
 	if days == 0 {
-		n, err := rand.Int(rand.Reader, big.NewInt(730))
-		if err != nil {
+		var n *big.Int
+		if t.keyed != nil {
+			n = new(big.Int).Mod(new(big.Int).SetBytes(t.keyedSum("date-shift", key)), big.NewInt(730))
+		} else if n, err = rand.Int(rand.Reader, big.NewInt(730)); err != nil {
 			return nil, false, errors.New("cannot select testing date shift")
 		}
 		days = int(n.Int64()) - 365

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -253,6 +254,66 @@ func (f File) PackExpecting(ctx context.Context, name string, generation uint64,
 		return Package{}, 0, stepRefusal{PackageStep, err}
 	}
 	return descriptor, notRead, nil
+}
+
+// PackSources is PackExpecting over content already held in memory under the
+// names the package records, such as an output generated for one share: no
+// plaintext copy of it is written anywhere before it is encrypted. The names
+// and bounds are the ones Collect enforces.
+func (f File) PackSources(ctx context.Context, name string, generation uint64, sources []Source, output string, at time.Time) (Package, error) {
+	document, err := f.Read()
+	if err != nil {
+		return Package{}, err
+	}
+	entry, err := Writable(document, name)
+	if err != nil {
+		return Package{}, err
+	}
+	if generation != 0 && uint64(entry.Generation) != generation {
+		return Package{}, ErrGenerationChanged
+	}
+	if len(sources) == 0 || len(sources) > MaxEntries {
+		return Package{}, stepRefusal{SourcesStep, errors.New("a package holds between one and the maximum number of entries")}
+	}
+	names := make([]string, 0, len(sources))
+	total := int64(0)
+	for _, source := range sources {
+		if err := EntryName(source.Name); err != nil {
+			return Package{}, stepRefusal{SourcesStep, err}
+		}
+		if int64(len(source.Data)) > MaxEntryBytes {
+			return Package{}, stepRefusal{SourcesStep, errors.New("a file to pack exceeds the package's per-file size limit")}
+		}
+		total += int64(len(source.Data))
+		names = append(names, source.Name)
+	}
+	if total > MaxPackageBytes {
+		return Package{}, stepRefusal{SourcesStep, errors.New("the content to pack exceeds the package's limits")}
+	}
+	// A name that is another's folder would leave a package no open can
+	// write back out, as Collect's roots rule prevents.
+	taken := make(map[string]bool, len(names))
+	for _, name := range names {
+		if taken[name] {
+			return Package{}, stepRefusal{SourcesStep, errors.New("two entries to pack would be recorded under the same name")}
+		}
+		taken[name] = true
+	}
+	for _, name := range names {
+		parts := strings.Split(name, "/")
+		for i := 1; i < len(parts); i++ {
+			if taken[strings.Join(parts[:i], "/")] {
+				return Package{}, stepRefusal{SourcesStep, errors.New("an entry to pack would be recorded inside another")}
+			}
+		}
+	}
+	sorted := slices.Clone(sources)
+	slices.SortFunc(sorted, func(a, b Source) int { return strings.Compare(a.Name, b.Name) })
+	descriptor, err := Pack(ctx, entry, sorted, 0, output, at)
+	if err != nil {
+		return Package{}, stepRefusal{PackageStep, err}
+	}
+	return descriptor, nil
 }
 
 // Open decrypts a package into a new directory under a control the document

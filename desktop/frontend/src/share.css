@@ -1,0 +1,66 @@
+/* Share report (views 27 and 46): a started flow whose setup steps keep the
+   flow column, whose preview gives the generated output the full width, and
+   whose one footer holds Back, the consequence and the final action.
+   Geometry and colour come from the shared tokens. */
+
+.share-flow.share-preview {
+  max-width: none;
+}
+
+.share-footer {
+  align-items: center;
+  background: Canvas;
+  bottom: 0;
+  gap: var(--s4);
+  padding-bottom: var(--s3);
+  position: sticky;
+}
+
+.share-final {
+  align-items: center;
+  display: flex;
+  gap: var(--s4);
+  margin-left: auto;
+}
+
+.share-final > .consequence {
+  margin: 0;
+}
+
+.share-output {
+  border: 1px solid var(--line);
+  min-height: 24rem;
+}
+
+.share-document {
+  border: 0;
+  display: block;
+  height: 70vh;
+  width: 100%;
+}
+
+.share-text {
+  margin: 0;
+  max-height: 70vh;
+  overflow: auto;
+  padding: var(--s3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.share-issues > ul {
+  margin: 0;
+  padding-left: var(--s6);
+}
+
+.share-check,
+.share-result {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+}
+
+.share-result > p {
+  margin: 0;
+}

@@ -77,6 +77,10 @@ func createWithProver(ctx context.Context, request Request, prover Prover) (*Rev
 	if err != nil {
 		return nil, err
 	}
+	if len(request.Key) > 0 && len(request.Key) < MinDeriverKeyBytes {
+		return nil, errors.New("a derivation key is at least 32 bytes")
+	}
+	prepared.inputs.Key = request.Key
 	derived, err := derive(prepared.inputs)
 	if err != nil {
 		return nil, err
@@ -148,14 +152,21 @@ func prepare(request Request) (prepared, error) {
 	if err != nil {
 		return fail(err)
 	}
-	commitment, _ := encode(Inputs{PolicySHA256: digest(values["policy"]), InventorySHA256: digest(values["inventory"]), SpecSHA256: digest(values["spec"])})
+	commitment := InputCommitment(values["policy"], values["inventory"], values["spec"])
 	return prepared{
 		inputs: deriveInputs{
 			Case: source, CasePath: request.CasePath, Spec: spec, Policy: policy,
 			Inventory: inventory, Artifacts: facts, Sources: sources,
 		},
-		commitment: digest(commitment),
+		commitment: commitment,
 	}, nil
+}
+
+// InputCommitment is the commitment a review makes to the exact policy,
+// inventory and specification bytes it was derived from.
+func InputCommitment(policy, inventory, spec []byte) string {
+	raw, _ := encode(Inputs{PolicySHA256: digest(policy), InventorySHA256: digest(inventory), SpecSHA256: digest(spec)})
+	return digest(raw)
 }
 
 // seal writes the review and its private state: the derived case and spec when

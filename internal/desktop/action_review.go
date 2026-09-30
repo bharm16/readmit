@@ -118,11 +118,15 @@ type PrepareActionRequest struct {
 	Run *RunActionOptions `json:"run,omitzero"`
 	// Team names a team transfer's project, file, resource and resolution.
 	Team *TeamActionOptions `json:"team,omitzero"`
-	// ReportExport names the format one report is exported as (#559).
-	ReportExport *ReportExportOptions `json:"report_export,omitzero"`
 	// Minimize names the checks, grouping and bounds a minimization of one
 	// failed run is asked for (#558).
 	Minimize *MinimizeOptions `json:"minimize,omitzero"`
+	// ReportShare is one share draft of one report (#560).
+	ReportShare *ReportShareOptions `json:"report_share,omitzero"`
+	// Package names the encrypted package a Decrypt or Delete acts on.
+	Package *PackageActionOptions `json:"package,omitzero"`
+	// Support says where a report's support summary goes.
+	Support *ReportSupportOptions `json:"support,omitzero"`
 }
 
 // ReviewDestination is where an action's effect lands: a named target and
@@ -163,9 +167,12 @@ type ActionReview struct {
 	Transport     *TransportReview        `json:"transport,omitzero"`
 	Run           *RunReview              `json:"run,omitzero"`
 	Team          *TeamActionReview       `json:"team,omitzero"`
-	ReportExport  *ReportExportReview     `json:"report_export,omitzero"`
 	ReportReview  *ReportReviewView       `json:"report_review,omitzero"`
 	Minimize      *MinimizeReview         `json:"minimize,omitzero"`
+	ReportShare   *ReportShareReview      `json:"report_share,omitzero"`
+	ShareCheck    *ShareCheckView         `json:"share_check,omitzero"`
+	PackageAction *PackageActionReview    `json:"package_action,omitzero"`
+	ReportSupport *ReportSupportReview    `json:"report_support,omitzero"`
 }
 
 // ExportReviewView is the export review a derived packet is exported from:
@@ -261,10 +268,16 @@ type ReviewedActionResult struct {
 	Run *ItemRef `json:"run,omitzero"`
 	// Team is what a team transfer recorded.
 	Team *TeamActionOutcome `json:"team,omitzero"`
-	// ReportExport is what a report export wrote.
-	ReportExport *ReportExportOutcome `json:"report_export,omitzero"`
 	// Minimize is what a minimization reached.
 	Minimize *MinimizeOutcome `json:"minimize,omitzero"`
+	// ReportShare is what a report share wrote or sent.
+	ReportShare *ReportShareOutcome `json:"report_share,omitzero"`
+	// ShareCheck is the check a share needs, ready for its reviewed run.
+	ShareCheck *ShareCheckOutcome `json:"share_check,omitzero"`
+	// PackageAction is what a Decrypt or Delete did.
+	PackageAction *PackageActionOutcome `json:"package_action,omitzero"`
+	// Support is what a support summary export wrote.
+	Support *ReportSupportOutcome `json:"support,omitzero"`
 }
 
 func (r *ReviewedActionResult) refuse(state State, reason string) {
@@ -301,12 +314,18 @@ type boundAction struct {
 	run *runBinding
 	// team is what a team transfer sends.
 	team *teamBinding
-	// reportExport is what a report export writes.
-	reportExport *reportExportBinding
 	// reportReview is what a report review records.
 	reportReview *reportApproval
 	// minimize is what a minimization's Start runs (#558).
 	minimize *minimizeBinding
+	// reportShare is what a report share writes or sends.
+	reportShare *reportShareBinding
+	// shareCheck is what preparing a share's check derives.
+	shareCheck *shareCheckBinding
+	// packageAction is what a Decrypt or Delete acts on.
+	packageAction *packageBinding
+	// support is the summary a support export publishes.
+	support *supportBinding
 }
 
 // slot is the operation slot one step of an action holds: a declared,
@@ -367,10 +386,12 @@ var actionPolicies = map[ActionID]actionPolicy{
 		review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "PostHubLifecycle"}, bind: bindTeamRevision, execute: executeTeam},
 	TeamResolveAction: {consent: UploadConsent, requirements: []ReviewRequirement{RationaleRequirement},
 		review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "PostHubLifecycle"}, bind: bindTeamResolve, execute: executeTeam},
-	ExportReportAction: {consent: ExportConsent, review: slot{}, perform: slot{writes: true},
-		bind: bindReportExport, execute: executeReportExport},
 	ReviewReportAction: {consent: ApproveConsent, review: slot{}, perform: slot{writes: true},
 		bind: bindReportReview, execute: executeReportReview},
+	ShareReportAction: {consent: ExportConsent, review: slot{}, perform: slot{writes: true},
+		bind: bindReportShare, execute: executeReportShare},
+	SendReportAction: {consent: UploadConsent, review: slot{profile: "ReadHubTeam"}, perform: slot{profile: "UploadHubArtifact"},
+		bind: bindReportShare, execute: executeReportShare},
 }
 
 // hold runs work holding one slot.

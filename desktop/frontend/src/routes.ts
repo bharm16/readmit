@@ -29,7 +29,8 @@ export type ChildDestination =
   | "minimize-failure"
   | "schedules"
   | "share-report"
-  | "export-report"
+  | "share-templates"
+  | "encrypted-packages"
   | "notes"
   | "case-notes"
   | "case-attachments"
@@ -53,7 +54,8 @@ export const CHILD_OF: Record<ChildDestination, Destination> = {
   "minimize-failure": "runs",
   schedules: "runs",
   "share-report": "reports",
-  "export-report": "reports",
+  "share-templates": "reports",
+  "encrypted-packages": "reports",
   notes: "cases",
   "case-notes": "cases",
   "case-attachments": "cases",

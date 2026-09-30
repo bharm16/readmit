@@ -444,3 +444,39 @@ func TestPackRefusesAChangedGeneration(t *testing.T) {
 		t.Fatalf("a package that checks no generation: %+v (%v)", unchecked, err)
 	}
 }
+
+// Content held in memory packs under the same names, bounds and generation
+// check as a tree, and opens back to the same bytes; a name recorded inside
+// another is refused before anything is written.
+func TestPackSourcesPacksContentHeldInMemory(t *testing.T) {
+	root := t.TempDir()
+	file := registered(t, "lab-evidence")
+	t.Setenv(storeSwitch, "emit")
+	ctx := context.Background()
+	at := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	sources := []Source{{Name: "Shared report.pdf", Data: []byte("%PDF synthetic")}, {Name: "Attachments/scan.txt", Data: []byte("synthetic scan")}}
+	descriptor, err := file.PackSources(ctx, "lab-evidence", 1, sources, filepath.Join(root, "package"), at)
+	if err != nil || len(descriptor.Entries) != 2 {
+		t.Fatalf("pack sources: %+v (%v)", descriptor, err)
+	}
+	if _, _, err := file.Open(ctx, "", filepath.Join(root, "package"), filepath.Join(root, "opened")); err != nil {
+		t.Fatal(err)
+	}
+	if raw := held(t, filepath.Join(root, "opened", "Attachments", "scan.txt")); raw != "synthetic scan" {
+		t.Fatalf("the package did not open to the packed bytes: %q", raw)
+	}
+	for label, refused := range map[string][]Source{
+		"a name inside another": {{Name: "report", Data: []byte("a")}, {Name: "report/inner", Data: []byte("b")}},
+		"a repeated name":       {{Name: "report", Data: []byte("a")}, {Name: "report", Data: []byte("b")}},
+		"nothing":               {},
+	} {
+		output := filepath.Join(root, strings.ReplaceAll(label, " ", "-"))
+		if _, err := file.PackSources(ctx, "lab-evidence", 1, refused, output, at); err == nil {
+			t.Fatalf("%s was packed", label)
+		}
+		absent(t, output, label)
+	}
+	if _, err := file.PackSources(ctx, "lab-evidence", 2, sources, filepath.Join(root, "stale"), at); !errors.Is(err, ErrGenerationChanged) {
+		t.Fatalf("a generation not chosen answered %v", err)
+	}
+}

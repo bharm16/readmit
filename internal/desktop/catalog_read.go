@@ -930,6 +930,7 @@ var readers = map[ItemKind]func(*loadedCatalog, catalog.Item, map[string]string)
 	SuiteApprovalItem:       readSuiteApprovalItem,
 	ReportReviewItem:        readReportApprovalItem,
 	NormalizationPolicyItem: readNormalizationPolicyItem,
+	ReportShareItem:         readReportShareItem,
 }
 
 // privateState is one private local-state folder of the project: its entry

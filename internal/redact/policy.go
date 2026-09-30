@@ -68,71 +68,8 @@ func DecodePolicy(data []byte) (Policy, error) {
 			return refuse("the field rules name %s more than once", selector.String())
 		}
 		seen[selector.String()] = true
-		if rule.Class != "structural" && !slices.Contains(exportreview.Categories, rule.Class) {
-			return refuse("the field rule for %s declares a class outside the coverage checklist", selector.String())
-		}
-		switch rule.Policy {
-		case Surrogate:
-			if !scopeToken.MatchString(rule.Scope) {
-				return refuse("the field rule for %s (%s) declares a scope that is not a lowercase named scope", selector.String(), rule.Policy)
-			}
-			if !validSelectors(rule.Authority) {
-				return refuse("the field rule for %s (%s) declares an unsupported authority selector or more than 4 selectors", selector.String(), rule.Policy)
-			}
-			if rule.Replacement != nil {
-				return refuse("the field rule for %s (%s) must not declare a replacement", selector.String(), rule.Policy)
-			}
-			if len(rule.Allowed) != 0 {
-				return refuse("the field rule for %s (%s) must not declare allowed literals", selector.String(), rule.Policy)
-			}
-			if rule.Class == "structural" {
-				return refuse("the field rule for %s (%s) must not declare the structural class", selector.String(), rule.Policy)
-			}
-		case DateShift:
-			if rule.Class != "dates-and-ages" {
-				return refuse("the field rule for %s (%s) must declare the dates-and-ages class", selector.String(), rule.Policy)
-			}
-			if rule.Scope != "" {
-				return refuse("the field rule for %s (%s) must not declare a scope", selector.String(), rule.Policy)
-			}
-			if len(rule.Authority) != 0 {
-				return refuse("the field rule for %s (%s) must not declare authority selectors", selector.String(), rule.Policy)
-			}
-			if rule.Replacement != nil {
-				return refuse("the field rule for %s (%s) must not declare a replacement", selector.String(), rule.Policy)
-			}
-			if len(rule.Allowed) != 0 {
-				return refuse("the field rule for %s (%s) must not declare allowed literals", selector.String(), rule.Policy)
-			}
-		case Remove, Replace, Retain:
-			if rule.Scope != "" {
-				return refuse("the field rule for %s (%s) must not declare a scope", selector.String(), rule.Policy)
-			}
-			if len(rule.Authority) != 0 {
-				return refuse("the field rule for %s (%s) must not declare authority selectors", selector.String(), rule.Policy)
-			}
-			if rule.Policy != Replace && rule.Replacement != nil {
-				return refuse("the field rule for %s (%s) declares a replacement, which only %s may carry", selector.String(), rule.Policy, Replace)
-			}
-			if rule.Policy != Retain && len(rule.Allowed) != 0 {
-				return refuse("the field rule for %s (%s) declares allowed literals, which only %s may carry", selector.String(), rule.Policy, Retain)
-			}
-			if rule.Policy == Replace && (rule.Replacement == nil || !safeReplacement(*rule.Replacement)) {
-				return refuse("the field rule for %s (%s) must declare a replacement that is bounded printable UTF-8 text without delimiters", selector.String(), rule.Policy)
-			}
-			if rule.Policy == Retain && (len(rule.Allowed) == 0 || len(rule.Allowed) > 64) {
-				return refuse("the field rule for %s (%s) must declare between 1 and 64 allowed literals", selector.String(), rule.Policy)
-			}
-			if rule.Policy == Retain && rule.Class != "structural" {
-				return refuse("the field rule for %s (%s) must declare the structural class", selector.String(), rule.Policy)
-			}
-			for _, value := range rule.Allowed {
-				if len(value) > 4096 || !utf8.ValidString(value) {
-					return refuse("the field rule for %s (%s) declares an allowed literal that is longer than 4096 bytes or not valid UTF-8", selector.String(), rule.Policy)
-				}
-			}
-		default:
-			return refuse("the field rule for %s declares an unsupported policy", selector.String())
+		if _, problem := fieldRuleProblem(rule); problem != "" {
+			return refuse("%s", problem)
 		}
 	}
 	seen = map[string]bool{}
@@ -200,6 +137,95 @@ func DecodePolicy(data []byte) (Policy, error) {
 	}
 	slices.Sort(policy.RequiredFailures)
 	return policy, nil
+}
+
+// ValidateFieldRule reports why one field rule is outside the closed set this
+// package derives with, in the words DecodePolicy uses, or nil. A sharing
+// draft edits single rules and checks each one here before it is applied.
+func ValidateFieldRule(rule FieldRule) error {
+	if _, problem := fieldRuleProblem(rule); problem != "" {
+		return fmt.Errorf("invalid redaction policy: %s", problem)
+	}
+	return nil
+}
+
+// fieldRuleProblem is the canonical selector of one field rule and the
+// declaration it gets wrong, or an empty problem.
+func fieldRuleProblem(rule FieldRule) (string, string) {
+	selector, err := hl7.ParseSelector(rule.Selector)
+	if err != nil {
+		return "", "a field rule does not name a supported field selector"
+	}
+	fail := func(format string, args ...any) (string, string) {
+		return selector.String(), fmt.Sprintf(format, args...)
+	}
+	if rule.Class != "structural" && !slices.Contains(exportreview.Categories, rule.Class) {
+		return fail("the field rule for %s declares a class outside the coverage checklist", selector.String())
+	}
+	switch rule.Policy {
+	case Surrogate:
+		if !scopeToken.MatchString(rule.Scope) {
+			return fail("the field rule for %s (%s) declares a scope that is not a lowercase named scope", selector.String(), rule.Policy)
+		}
+		if !validSelectors(rule.Authority) {
+			return fail("the field rule for %s (%s) declares an unsupported authority selector or more than 4 selectors", selector.String(), rule.Policy)
+		}
+		if rule.Replacement != nil {
+			return fail("the field rule for %s (%s) must not declare a replacement", selector.String(), rule.Policy)
+		}
+		if len(rule.Allowed) != 0 {
+			return fail("the field rule for %s (%s) must not declare allowed literals", selector.String(), rule.Policy)
+		}
+		if rule.Class == "structural" {
+			return fail("the field rule for %s (%s) must not declare the structural class", selector.String(), rule.Policy)
+		}
+	case DateShift:
+		if rule.Class != "dates-and-ages" {
+			return fail("the field rule for %s (%s) must declare the dates-and-ages class", selector.String(), rule.Policy)
+		}
+		if rule.Scope != "" {
+			return fail("the field rule for %s (%s) must not declare a scope", selector.String(), rule.Policy)
+		}
+		if len(rule.Authority) != 0 {
+			return fail("the field rule for %s (%s) must not declare authority selectors", selector.String(), rule.Policy)
+		}
+		if rule.Replacement != nil {
+			return fail("the field rule for %s (%s) must not declare a replacement", selector.String(), rule.Policy)
+		}
+		if len(rule.Allowed) != 0 {
+			return fail("the field rule for %s (%s) must not declare allowed literals", selector.String(), rule.Policy)
+		}
+	case Remove, Replace, Retain:
+		if rule.Scope != "" {
+			return fail("the field rule for %s (%s) must not declare a scope", selector.String(), rule.Policy)
+		}
+		if len(rule.Authority) != 0 {
+			return fail("the field rule for %s (%s) must not declare authority selectors", selector.String(), rule.Policy)
+		}
+		if rule.Policy != Replace && rule.Replacement != nil {
+			return fail("the field rule for %s (%s) declares a replacement, which only %s may carry", selector.String(), rule.Policy, Replace)
+		}
+		if rule.Policy != Retain && len(rule.Allowed) != 0 {
+			return fail("the field rule for %s (%s) declares allowed literals, which only %s may carry", selector.String(), rule.Policy, Retain)
+		}
+		if rule.Policy == Replace && (rule.Replacement == nil || !safeReplacement(*rule.Replacement)) {
+			return fail("the field rule for %s (%s) must declare a replacement that is bounded printable UTF-8 text without delimiters", selector.String(), rule.Policy)
+		}
+		if rule.Policy == Retain && (len(rule.Allowed) == 0 || len(rule.Allowed) > 64) {
+			return fail("the field rule for %s (%s) must declare between 1 and 64 allowed literals", selector.String(), rule.Policy)
+		}
+		if rule.Policy == Retain && rule.Class != "structural" {
+			return fail("the field rule for %s (%s) must declare the structural class", selector.String(), rule.Policy)
+		}
+		for _, value := range rule.Allowed {
+			if len(value) > 4096 || !utf8.ValidString(value) {
+				return fail("the field rule for %s (%s) declares an allowed literal that is longer than 4096 bytes or not valid UTF-8", selector.String(), rule.Policy)
+			}
+		}
+	default:
+		return fail("the field rule for %s declares an unsupported policy", selector.String())
+	}
+	return selector.String(), ""
 }
 
 func validSelectors(values []string) bool {

@@ -35,6 +35,9 @@ type deriveInputs struct {
 	// Sources is the private source linkage of the case, spec, policy and
 	// inventory documents themselves.
 	Sources []sourceReference
+	// Key, when set, draws surrogates and date shifts from a
+	// customer-local key (see [Deriver]).
+	Key []byte
 }
 
 // artifactFact is one inventoried original artifact after verification: the
@@ -82,6 +85,10 @@ func derive(in deriveInputs) (derivation, error) {
 		},
 		original: map[string]*hl7.Document{},
 		derived:  map[string]*hl7.Document{},
+		keyed:    slices.Clone(in.Key),
+	}
+	if len(in.Key) == 0 {
+		t.keyed = nil
 	}
 	if err := t.reviewFacts(in.Inventory, in.Artifacts); err != nil {
 		return derivation{}, err

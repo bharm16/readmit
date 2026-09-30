@@ -661,7 +661,10 @@ func bindResumeRun(a *App, ctx context.Context, request PrepareActionRequest, he
 }
 
 func bindReviewedTest(a *App, ctx context.Context, request PrepareActionRequest, held bool) (*boundAction, refusal) {
-	if len(request.Items) != 3 || request.Items[0].Kind != ReportItem || request.Items[1].Kind != ReportItem || request.Items[2].Kind != TestItem ||
+	// A share's check (#560) names the export review and the report alone:
+	// the test it runs is the one preparing the check wrote for that review.
+	check := len(request.Items) == 2
+	if len(request.Items) != 3 && !check || request.Items[0].Kind != ReportItem || request.Items[1].Kind != ReportItem || !check && request.Items[2].Kind != TestItem ||
 		request.Run == nil || request.Run.Phase != "failure" && request.Run.Phase != "pass" {
 		return nil, refusal{Failed, "a reviewed test is reviewed for one approved export review, its original packet and phase, and one rebound test"}
 	}
@@ -669,18 +672,30 @@ func bindReviewedTest(a *App, ctx context.Context, request PrepareActionRequest,
 	if loaded == nil {
 		return nil, declined
 	}
-	if items[0].Summary.Report == nil || items[0].Summary.Report.Form != "export-review" || items[1].Summary.Report == nil || items[1].Summary.Report.Form != "packet" {
+	originalForm := items[1].Summary.Report != nil && (items[1].Summary.Report.Form == "packet" || check && items[1].Summary.Report.Form == "report")
+	if items[0].Summary.Report == nil || items[0].Summary.Report.Form != "export-review" || !originalForm {
 		return nil, refusal{Failed, "a reviewed test reproduces the phase of an original packet an export review was derived from"}
 	}
 	opened, private, err := loaded.exportReview(filepath.Join(loaded.root, records[0].Entry))
 	if err != nil {
 		return nil, refusal{Failed, err.Error()}
 	}
-	specPath, label, err := loaded.testVersionPath(records[2], request.Items[2].Revision)
-	if err != nil {
-		return nil, refusal{Failed, "this test cannot be read: " + err.Error()}
+	var specPath, label string
+	var testRef *ItemRef
+	if check {
+		if specPath = shareCheckSpec(loaded.root, records[0].Entry); specPath == "" {
+			return nil, refusal{Failed, "prepare the share's check again"}
+		}
+	} else {
+		if specPath, label, err = loaded.testVersionPath(records[2], request.Items[2].Revision); err != nil {
+			return nil, refusal{Failed, "this test cannot be read: " + err.Error()}
+		}
+		testRef = &ItemRef{Kind: TestItem, ID: records[2].ID, Revision: label}
 	}
 	specEntry := loaded.entryOf(specPath)
+	if check {
+		specEntry = specPath
+	}
 	reexecution := ReexecutionRequest{Workspace: loaded.root, Review: records[0].Entry, LocalState: private.entry, OriginalPacket: records[1].Entry,
 		Spec: specEntry, Phase: request.Run.Phase, Approval: opened.Identity}
 	plan, declined := prepareReexecution(ctx, loaded.root, reexecution)
@@ -696,8 +711,7 @@ func bindReviewedTest(a *App, ctx context.Context, request PrepareActionRequest,
 	if err != nil {
 		return nil, refusal{Failed, "the rebound test could not be read back"}
 	}
-	testRef := ItemRef{Kind: TestItem, ID: records[2].ID, Revision: label}
-	review := &RunReview{Kind: TestRunKind, Name: spec.Name, Version: label, Test: &testRef, EnvironmentName: cmp.Or(preview.Target.Name, preview.Target.Address),
+	review := &RunReview{Kind: TestRunKind, Name: spec.Name, Version: label, Test: testRef, EnvironmentName: cmp.Or(preview.Target.Name, preview.Target.Address),
 		Address: preview.Target.Address, Messages: loaded.sentMessages(spec), Setup: setupSteps(spec, nil), Resets: []ResetReviewAction{}, Jobs: []RunReviewJob{},
 		Targets: []RunReviewTarget{}, Environments: []SuiteEnvironmentRef{},
 		Reviewed: &RunReviewedTest{Review: items[0].Name, Packet: items[1].Name, Phase: request.Run.Phase}}
@@ -716,7 +730,7 @@ func bindReviewedTest(a *App, ctx context.Context, request PrepareActionRequest,
 	review.Refusal = kind
 	return &boundAction{action: RunReviewedTestAction, origin: request, run: run,
 		binding: binding(string(RunReviewedTestAction), loaded.root, loaded.document.Project.ID, a.reviewer(), a.policyBinding(ctx, true, held),
-			records[0].ID, opened.Identity, records[1].ID, records[2].ID, label, fileDigest(specPath), preview.Identity, destination.Name, strings.Join(run.setup, "\x00")),
+			records[0].ID, opened.Identity, records[1].ID, testID(records), label, fileDigest(specPath), preview.Identity, destination.Name, strings.Join(run.setup, "\x00")),
 		review: ActionReview{Items: items, Ready: ready, Refusal: reason, Run: review, Requirements: setupRequirement(review),
 			Destination: ReviewDestination{Name: review.EnvironmentName, Classification: preview.Target.Classification, Address: preview.Target.Address, Output: destination.Name}}}, noRefusal
 }
@@ -913,4 +927,12 @@ func sendReview(loaded *loadedCatalog, items []CatalogItem, entry string, previe
 		review.Refusal = LicenseRefusal
 	}
 	return review
+}
+
+// testID is a reviewed test's rebound test, or none for a share's check.
+func testID(records []catalog.Item) string {
+	if len(records) < 3 {
+		return ""
+	}
+	return records[2].ID
 }

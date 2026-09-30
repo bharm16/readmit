@@ -160,57 +160,6 @@ export const privateData = {
 
   decision,
   replayRun,
-  reviewInventory: {
-    review: {
-      name: "synthetic-review",
-      report: "readmit-export-review/v1",
-      state: "blocked",
-      data_origin: "derived-testing-data",
-      identity: HASH,
-      input_commitment: HASH,
-      local_state_commitment: HASH,
-      policies_applied: [],
-      surfaces: [
-        { name: "case", content: "unmapped-field", findings: 1, unresolved: 1 },
-      ],
-      coverage: [
-        {
-          class: "identifiers",
-          status: "unresolved",
-          handled_locations: 0,
-          unresolved_locations: 1,
-        },
-      ],
-      uncovered_classes: ["identifiers"],
-      residual_scan: {
-        status: "not-run",
-        files_checked: 0,
-        known_values_checked: 0,
-        unresolved_locations: [],
-        limitations: "Unresolved findings block generation and scanning.",
-      },
-      required_failures: [],
-      original_failed_assertions: [],
-      decision: "incomplete-review",
-      decision_reason: "An incomplete review cannot authorize disclosure.",
-      unresolved: 1,
-      offset: 0,
-      limit: 200,
-      total: 1,
-      findings: [
-        {
-          surface: "case",
-          location: "sample-case / PID-3",
-          class: "identifiers",
-          reason: "Synthetic unmapped identifier location.",
-          resolved: false,
-          policy: "",
-        },
-      ],
-      scope: "Synthetic review fixture.",
-      boundary: "No disclosure approval or source authenticity claim.",
-    },
-  },
   explanation: {
     explanation: {
       run: "post-fix",

@@ -81,7 +81,7 @@ var itemKinds = []ItemKind{ProjectItem, CaseItem, TestItem, SuiteItem, RunItem, 
 	ReportItem, CheckGroupItem, ProfileItem, ScenarioItem, AnalysisItem, VariantItem, BackupItem, RunnerItem, ScheduleItem,
 	AnalysisSettingsItem, FindingReviewItem,
 	LinkRulesItem, CoverageItem, LinkReviewItem,
-	MappingItem, SourceItem, SuiteApprovalItem, ReportReviewItem, NormalizationPolicyItem}
+	MappingItem, SourceItem, SuiteApprovalItem, ReportReviewItem, NormalizationPolicyItem, ReportShareItem}
 
 // Availability is whether an object's backing can be read now. Readability
 // grants nothing: whether an action is permitted is Capabilities.

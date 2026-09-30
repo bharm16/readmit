@@ -6,7 +6,7 @@
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ActionReview, CatalogItem, CatalogQuery, ReportView } from "./bindings";
+import type { CatalogItem, CatalogQuery, ReportView } from "./bindings";
 import { renderApp } from "./testkit/app";
 import { CASE_ENTRY, caseCatalogItem, catalogOfListing, folderChosen, GRID_OCCURRENCE, NEXT_OCCURRENCE, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { goTo, page, sidebar } from "./testkit/navigation";
@@ -78,6 +78,7 @@ function view(overrides: Partial<ReportView> = {}): ReportView {
     review: "draft",
     draft: { title: "Reschedule regression", notes: "Seen in QA.", run: FAILED.ref, comparison: PASSED.ref },
     revealed: false,
+    shares: [],
     ...overrides,
   };
 }
@@ -107,19 +108,6 @@ async function openReports(user: User, reports: CatalogItem[], handlers: FacadeH
   await sidebar().findByRole("button", { name: /^Project: / });
   await goTo(user, "Reports");
   return rendered;
-}
-
-function exportReview(overrides: Partial<NonNullable<ActionReview["report_export"]>> = {}): ActionReview {
-  return {
-    token: "export-token",
-    action: "report.export",
-    consent: "export",
-    items: [REGRESSION],
-    destination: { output: "Reschedule regression.pdf" },
-    requirements: [],
-    ready: true,
-    report_export: { report: "Reschedule regression", version: "2", format: "pdf", paper: "letter", file: "Reschedule regression.pdf", size: 18_432, original: false, contains_source_values: true, ...overrides },
-  };
 }
 
 test("Reports lists named reports newest first with their case and review, and filters them", async () => {
@@ -232,65 +220,6 @@ test("a report reads as a document: result, failed checks first, comparison, mes
     ["2 · Current", "Reschedule regression", "Draft"],
     ["1", "Reschedule keeps one appointment report", "Reviewed"],
   ]);
-});
-
-test("Export shows the exact output before writing it, and original evidence is a separate choice", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openReports(user, [REGRESSION], {
-    OpenReport: (request) => ({ state: "completed", context: request.context, report: view() }),
-    PrepareAction: (request) => ({
-      state: "completed",
-      context: request.context,
-      review:
-        request.report_export?.format === "original"
-          ? { ...exportReview({ format: "original", file: "Reschedule regression", size: 90_000, original: true }), report_export: { report: "Reschedule regression", version: "2", format: "original", file: "Reschedule regression", size: 90_000, original: true, contains_source_values: true } }
-          : exportReview({ paper: request.report_export?.paper ?? "letter" }),
-    }),
-    ExecuteReviewedAction: (request) => ({ state: "completed", context: request.context, outcome: "completed", replayed: false, report_export: { file: "Reschedule regression.pdf" } }),
-  });
-  await user.click(await page().findByRole("row", { name: /Reschedule regression/ }));
-  await user.keyboard("{Enter}");
-  await page().findByRole("heading", { level: 1, name: "Reschedule regression" });
-  await user.click(page().getByRole("button", { name: "Export" }));
-  const sheet = await screen.findByRole("dialog", { name: "Export report" });
-  expect(await within(sheet).findByText("Reschedule regression.pdf")).toBeTruthy();
-  expect(within(sheet).getByText("18.0 KB")).toBeTruthy();
-  expect(within(sheet).getByText("May contain patient data.")).toBeTruthy();
-  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
-  await user.click(within(sheet).getByRole("radio", { name: "A4" }));
-  await waitFor(() => expect(facade.callsTo("PrepareAction").at(-1)!.args[0]).toMatchObject({ action: "report.export", items: [REGRESSION.ref], report_export: { format: "pdf", paper: "a4" } }));
-  await user.click(within(sheet).getByRole("radio", { name: "Original evidence" }));
-  expect(await within(sheet).findByText("Includes the original messages. May contain patient data.")).toBeTruthy();
-  await user.click(within(sheet).getByRole("radio", { name: "PDF" }));
-  await within(sheet).findByText("Reschedule regression.pdf");
-  await user.click(within(sheet).getByRole("button", { name: "Export" }));
-  await waitFor(() => expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(1));
-  expect(facade.callsTo("ExecuteReviewedAction")[0]!.args[0]).toMatchObject({ token: "export-token" });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Export report" })).toBeNull());
-});
-
-test("an export prepared before an edit is stale and exports nothing", async () => {
-  const user = userEvent.setup();
-  const { facade } = await openReports(user, [REGRESSION], {
-    OpenReport: (request) => ({ state: "completed", context: request.context, report: view() }),
-    PrepareAction: (request) => ({ state: "completed", context: request.context, review: exportReview() }),
-    ExecuteReviewedAction: (request) => ({
-      state: "failed",
-      context: request.context,
-      outcome: "stale",
-      replayed: false,
-      reason: "the reviewed action can no longer be prepared: the object changed since it was shown; look at it again. Nothing was done",
-    }),
-  });
-  await user.click(await page().findByRole("row", { name: /Reschedule regression/ }));
-  await user.keyboard("{Enter}");
-  await page().findByRole("heading", { level: 1, name: "Reschedule regression" });
-  await user.click(page().getByRole("button", { name: "Export" }));
-  const sheet = await screen.findByRole("dialog", { name: "Export report" });
-  await within(sheet).findByText("Reschedule regression.pdf");
-  await user.click(within(sheet).getByRole("button", { name: "Export" }));
-  expect(await within(sheet).findByText(/the object changed since it was shown/)).toBeTruthy();
-  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(1);
 });
 
 test("editing the title publishes a new version of the same runs, and a failed save keeps the entered text", async () => {

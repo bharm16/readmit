@@ -208,17 +208,13 @@ The existing run/result `customer-local-only` flags retain their original meanin
 only the enclosing explicit review/approval and generated export gates apply to
 this packet. Those flags do not independently approve a result for sharing.
 
-The [desktop shell](desktop.md#reading-an-export-review) reads a review through
-`redact.OpenReview`, groups its located findings by where each one is and
-what kind of content it is, in this command's own words, and states whether an approval names the exact identity the bytes on disk
-have now. It records no approval and never reads the private
-directory. The same shell's [privacy panel](desktop.md#privacy-review-protected-export-and-support-sharing)
-derives a review and exports a packet through `Create` and `Export` — these
-operations, with the same fail-closed gates and the same refusals, driven by a
-review identity a person types in fresh. The panel authors new policy and
-inventory documents through structured controls and reopens existing documents
-through these same readers. It retains no approval and performs no
-re-execution while preparing an export.
+The [desktop shell](desktop.md#sharing-a-report) uses a policy as a named
+disclosure template of a report's share, and derives a review through `Create`
+when a template checks derived tests by a run: the inventory is assembled from
+the report's retained runs, the derivation draws its surrogates and date shifts
+from the project's sharing key, and the checked share writes the derived test
+through `Export`, with the same fail-closed gates and the same refusals. It
+retains no approval and performs no re-execution while preparing an export.
 
 `redact.OpenReview` and `redact.OpenExport` are verified offline Go readers.
 `OpenExport` applies the same review contract to embedded reviews, binds each
@@ -315,11 +311,11 @@ any possible delivery at the target before a separately authorized new attempt;
 never reuse a job directory. A preparation error creates no job. An interruption
 or storage failure may retain an incomplete job, never passing proof.
 
-The desktop shell's [privacy panel](desktop.md#privacy-review-protected-export-and-support-sharing)
-runs this operation too: its preview is `PrepareReexecution` and shows the
-recorded target and the derived messages a send would deliver, and its send is
-`Execute`, offered only after an explicit authorization of that single send and
-refused unless the inputs still prepare to the preview the person reviewed.
+The desktop shell's [share check](desktop.md#sharing-a-report) runs this
+operation too, as a reviewed run: its review is `PrepareReexecution` and shows
+the recorded target and the derived messages a send would deliver, and its Send
+is `Execute`, refused unless the inputs still prepare to the review the person
+saw.
 Its refusals, assessment and retained job are this command's, and it neither
 resets, retries nor resumes.
 

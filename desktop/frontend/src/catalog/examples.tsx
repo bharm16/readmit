@@ -13,11 +13,6 @@ import { IconButton } from "../IconButton";
 import { MessageReader } from "../Inspector";
 import { AdministratorSetup } from "../OperationAccess";
 import { OperatorHub } from "../OperatorHub";
-import { PrivacyDocuments } from "../PrivacyDocuments";
-import { PrivacyPanel } from "../PrivacyPanel";
-import { ProtectionPanel } from "../ProtectionPanel";
-import { Reexecution } from "../Reexecution";
-import { Review } from "../Review";
 import { SendReview } from "../RunPanel";
 import { RunnerPanel } from "../RunnerPanel";
 import { SyntheticPackets } from "../SyntheticPackets";
@@ -74,7 +69,6 @@ const common = {
   onOpenCase: noop,
   onChanged: noop,
 };
-const list = ["synthetic-document.json"];
 const content = <p>Synthetic example content for visual inspection.</p>;
 export interface Example {
   name: string;
@@ -115,27 +109,6 @@ export const examples: Example[] = [
   )),
   e("AdministratorSetup", () => <AdministratorSetup />),
   e("OperatorHub", () => <OperatorHub />),
-  e("PrivacyDocuments", () => (
-    <PrivacyDocuments
-      {...common}
-      task="policy"
-      policyName="policy.json"
-      inventoryName="inventory.json"
-      onSaved={noop}
-    />
-  )),
-  e("PrivacyPanel", () => <PrivacyPanel {...common} />),
-  e("ProtectionPanel", () => <ProtectionPanel {...common} />),
-  e("Reexecution", () => <Reexecution workspace={f.WORKSPACE_ROOT} onRun={noop} />),
-  e("Review", () => (
-    <Review
-      {...common}
-      reviewEntries={list}
-      reviewResult={null}
-      reviewProgress={null}
-      onReview={noop}
-    />
-  )),
   e("SendReview", () => (
     <SendReview
       request={{ kind: "test", test: { kind: "test", id: "catalog-test" } }}

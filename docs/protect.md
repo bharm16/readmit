@@ -42,14 +42,14 @@ readmit protect discard transfer-2026-09-18
 | `protect inspect PACKAGE` | Reports what a package declares about itself, without a key |
 | `protect discard PACKAGE [--override-retention]` | Unlinks the files a package declares and states what that does not establish |
 
-The [desktop shell](desktop.md#privacy-review-protected-export-and-support-sharing)
+The [desktop shell](desktop.md#encrypted-packages)
 reaches these operations from Settings › Security › Encryption: a control is
 added or edited in one sheet, listed with its storage declaration, state,
 generation and rotation, and shown with the locator arguments counted, never
 echoed; changing a control's key program is recorded as a rotation. Check
 control reads the key once and records nothing, and Export control writes the
-reference only. Packages are packed, inspected, opened and discarded from
-Encryption's Packages. Retiring a control there is `protect retire`, written as
+reference only. A report's share writes an encrypted package, and Encrypted
+packages lists, decrypts and deletes them. Retiring a control there is `protect retire`, written as
 the same bytes; the window asks once, then shows the control retired, offers it
 for no new package and still opens what it wrote.
 The window never renders key material, a rotation is recorded only when the

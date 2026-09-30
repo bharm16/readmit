@@ -165,10 +165,10 @@ func TestEditingAReportWithdrawsItsExportAndKeepsItsRuns(t *testing.T) {
 	baseline, postFix := runs["@baseline"].Ref, runs["@post-fix"].Ref
 	saved := createReport(t, app, context, "report-1", desktop.ReportDraft{Title: "Reschedule regression", Run: baseline, Comparison: &postFix})
 	first := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *saved.Saved}).Report
-	prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved},
-		ReportExport: &desktop.ReportExportOptions{Format: "html"}})
-	if prepared.Review == nil || !prepared.Review.Ready || prepared.Review.ReportExport == nil || prepared.Review.ReportExport.File != "Reschedule regression.html" ||
-		prepared.Review.ReportExport.Size == 0 || prepared.Review.ReportExport.Version != "1" {
+	stalePath := filepath.Join(t.TempDir(), "stale.html")
+	prepared := prepareShare(t, app, dialogs, context, *saved.Saved, desktop.ReportShareOptions{Format: "html"}, stalePath)
+	if prepared.Review == nil || !prepared.Review.Ready || prepared.Review.ReportShare == nil || prepared.Review.ReportShare.Output.Name != "Reschedule regression.html" ||
+		prepared.Review.ReportShare.Output.Size == 0 || prepared.Review.ReportShare.Version != "1" {
 		t.Fatalf("the export review: %+v", prepared)
 	}
 
@@ -205,88 +205,15 @@ func TestEditingAReportWithdrawsItsExportAndKeepsItsRuns(t *testing.T) {
 		t.Fatalf("an edit that changes the runs: %+v", other)
 	}
 
-	dialogs.destination, dialogs.opened = filepath.Join(t.TempDir(), "stale.html"), nil
+	dialogs.opened = nil
 	stale := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-stale"})
 	if stale.Outcome != desktop.ActionStale || len(dialogs.opened) != 0 {
 		t.Fatalf("an export of an earlier version: %+v %v", stale, dialogs.opened)
 	}
-	if _, err := os.Stat(dialogs.destination); !os.IsNotExist(err) {
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Fatal("a stale export wrote")
 	}
 	if second.Review != "draft" || second.Versions[1].Review != "reviewed" {
 		t.Fatalf("a new version keeps the earlier review: %+v", second.Versions)
-	}
-}
-
-// An export writes exactly the bytes its review rendered to the file a person
-// names, and is never itself a review; original evidence is the portable
-// review `readmit report review` verifies, and a rendered report never
-// carries the original message bytes.
-func TestAReportExportWritesTheReviewedBytesAndOriginalEvidenceReadmitReviews(t *testing.T) {
-	app, dialogs, context, runs := reportsProject(t)
-	baseline := runs["@baseline"].Ref
-	saved := createReport(t, app, context, "report-1", desktop.ReportDraft{Title: "Reschedule regression", Run: baseline})
-	for _, format := range []string{"html", "pdf", "markdown", "json", "junit"} {
-		options := &desktop.ReportExportOptions{Format: format}
-		if format == "pdf" {
-			options.Paper = "a4"
-		}
-		prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved}, ReportExport: options})
-		if prepared.Review == nil || !prepared.Review.Ready {
-			t.Fatalf("%s review: %+v", format, prepared)
-		}
-		dialogs.destination = filepath.Join(t.TempDir(), prepared.Review.ReportExport.File)
-		exported := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-" + format})
-		if exported.Outcome != desktop.ActionCompleted || exported.ReportExport == nil || exported.ReportExport.File != filepath.Base(dialogs.destination) {
-			t.Fatalf("%s export: %+v", format, exported)
-		}
-		written, err := os.ReadFile(dialogs.destination)
-		if err != nil || len(written) != prepared.Review.ReportExport.Size {
-			t.Fatalf("%s written: %v", format, err)
-		}
-		if bytes.Contains(written, []byte("MSH|")) {
-			t.Fatalf("the %s report carries original message bytes", format)
-		}
-		if format == "pdf" && !bytes.Contains(written, []byte("/MediaBox [0 0 595.28 841.89]")) {
-			t.Fatal("the A4 PDF")
-		}
-	}
-	// A file written is not a review.
-	if exported := app.OpenReport(desktop.ReportRequest{Context: context, Ref: *saved.Saved}).Report; exported.Review != "draft" {
-		t.Fatalf("an exported version reads as reviewed: %+v", exported.Versions)
-	}
-	if listed(t, app, context.Project, desktop.ReportItem)["Reschedule regression"].Summary.Report.Status != "draft" {
-		t.Fatal("the listed report reads as reviewed")
-	}
-
-	prepared := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved},
-		ReportExport: &desktop.ReportExportOptions{Format: "original"}})
-	if prepared.Review == nil || !prepared.Review.ReportExport.Original || !prepared.Review.ReportExport.ContainsSourceValues {
-		t.Fatalf("original evidence review: %+v", prepared)
-	}
-	dialogs.destination = filepath.Join(t.TempDir(), "original")
-	if exported := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-original"}); exported.Outcome != desktop.ActionCompleted {
-		t.Fatalf("original evidence: %+v", exported)
-	}
-	review, err := report.OpenReview(t.Context(), dialogs.destination)
-	if err != nil || review.Document == nil || review.Document.Title != "Reschedule regression" || review.Manifest.Schema != report.ReviewSchemaV3 {
-		t.Fatalf("the original evidence export: %v", err)
-	}
-	var stdout, stderr bytes.Buffer
-	if err := cli.Execute("test", []string{"report", "review", dialogs.destination}, &stdout, &stderr); err != nil || !strings.Contains(stdout.String(), review.Identity) {
-		t.Fatalf("the command line: %v %s", err, stderr.String())
-	}
-
-	// A file already there is never overwritten.
-	prepared = app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.ExportReportAction, Items: []desktop.ItemRef{*saved.Saved}, ReportExport: &desktop.ReportExportOptions{Format: "html"}})
-	dialogs.destination = filepath.Join(t.TempDir(), "taken.html")
-	if err := os.WriteFile(dialogs.destination, []byte("kept"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if refused := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: prepared.Review.Token, IntentID: "export-taken"}); refused.State != desktop.Failed {
-		t.Fatalf("an existing file: %+v", refused)
-	}
-	if kept, _ := os.ReadFile(dialogs.destination); string(kept) != "kept" {
-		t.Fatal("an existing file was overwritten")
 	}
 }
