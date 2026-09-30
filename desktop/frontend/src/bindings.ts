@@ -13,6 +13,20 @@
 // values to an analytics or rendering service: nothing leaves the machine.
 
 import type {
+  BenchmarkDefaultsResult,
+  BenchmarkInputsResult,
+  BenchmarkRequest,
+  BenchmarkResult,
+  BenchmarksResult,
+  DemoProgressResult,
+  DiagnosticsResult,
+  GenerateInputRequest,
+  GenerateInputResult,
+  HelpArticleResult,
+  HelpSearchResult,
+  HelpTopicsResult,
+  StartBenchmarkRequest,
+  StartBenchmarkResult,
   ActionReviewResult,
   ActivationFolderRequest,
   ActivationRenewalRequest,
@@ -40,13 +54,9 @@ import type {
   CommercialStatusResult,
   CompareRequest,
   CompareResult,
-  CorpusGenerateRequest,
-  CorpusGenerateResult,
   CorpusPathKind,
   CorpusPathResult,
   CorpusProgressResult,
-  CorpusScanRequest,
-  CorpusScanResult,
   CorrelationReviewRequest,
   CorrelationReviewResult,
   DraftRequest,
@@ -64,7 +74,6 @@ import type {
   FiltersResult,
   GatePolicyResult,
   GridResult,
-  GuideResult,
   HubAdminFacade,
   HubAdminMembershipRequest,
   HubAdminMembershipResult,
@@ -215,7 +224,6 @@ import type {
   RunnerSettleRequest,
   RunnerStatusResult,
   RunnerUpdateResult,
-  SampleCaptureRequest,
   SaveItemRequest,
   SaveItemResult,
   SchedulePolicyRequest,
@@ -448,10 +456,6 @@ export function cancel(operation?: InterruptibleOperation): void {
   } catch {
     // Nothing is running if the facade is not bound yet.
   }
-}
-
-export function createSampleWorkspace(): Promise<WorkspaceResult> {
-  return guard(() => facade().CreateSampleWorkspace(), { state: "failed" });
 }
 
 export function openCase(workspace: string, name: string): Promise<CaseResult> {
@@ -757,24 +761,12 @@ export function compare(request: CompareRequest): Promise<CompareResult> {
   return guard(() => facade().Compare(request), { state: "failed" });
 }
 
-/** Reports the guided sample over the open workspace: the steps, what the folder
- * shows about each, and the step to perform next. It reads and writes nothing. */
-export function guide(workspace: string): Promise<GuideResult> {
-  return retryingRead(() => facade().Guide(workspace), { state: "failed" });
-}
-
 /** Executes a saved regression test against the built-in practice receiver and
  * writes the run into one new entry of the open workspace. This is the only
  * operation in the window that sends, and it sends over a loopback port the
  * receiver binds in this process; no other host is reachable from it. */
 export function runPractice(request: PracticeRequest): Promise<PracticeResult> {
   return guard(() => facade().RunPractice(request), { state: "failed" });
-}
-
-/** The sample capture needs no activation: it accepts only the pinned
- * synthetic fixture bytes. What it answers is the case it wrote, verified. */
-export function captureSample(request: SampleCaptureRequest): Promise<CaseResult> {
-  return guard(() => facade().CaptureSample(request), { state: "failed" });
 }
 
 /** Lays one verified case out as a synchronized event sequence over the lanes
@@ -1482,12 +1474,75 @@ export function chooseCorpusPath(kind: CorpusPathKind): Promise<CorpusPathResult
   return guard(() => facade().ChooseCorpusPath(kind), { state: "failed" });
 }
 
-export function generateCorpus(request: CorpusGenerateRequest): Promise<CorpusGenerateResult> {
-  return guard(() => facade().GenerateCorpus(request), { state: "failed" });
+// Benchmarks (#566): the open project's generated inputs and measured scans,
+// kept in the project's own area. The lists are small local reads that never
+// wait for the operation slot; Generate input and Start benchmark are named
+// "corpus" operations a Stop cancels.
+
+/** The generator's and the scanner's choices and defaults; no copy is kept here. */
+export function benchmarkDefaults(): Promise<BenchmarkDefaultsResult> {
+  return retryingRead(() => facade().BenchmarkDefaults(), {
+    state: "failed",
+    defaults: {
+      generator_version: "", profile_version: "", max_messages: 0, seed: "", base_time: "", framings: [], batch_boundaries: [], terminators: [],
+      encodings: [], directions: [], plan: { schema: "", framing: "mllp", terminator: "cr", encoding: "utf-8", direction: "unknown", members: [] },
+      batch_records: 0, max_batch_records: 0, batch_bytes: 0, max_batch_bytes: 0, window_limit: 0, max_window_limit: 0,
+    },
+  });
 }
 
-export function scanCorpus(request: CorpusScanRequest): Promise<CorpusScanResult> {
-  return guard(() => facade().ScanCorpus(request), { state: "failed" });
+export function listBenchmarks(request: RequestContext): Promise<BenchmarksResult> {
+  return retryingRead(() => facade().ListBenchmarks(request), { state: "failed", context: request, results: [] });
+}
+
+export function listBenchmarkInputs(request: RequestContext): Promise<BenchmarkInputsResult> {
+  return retryingRead(() => facade().ListBenchmarkInputs(request), { state: "failed", context: request, inputs: [] });
+}
+
+export function openBenchmark(request: BenchmarkRequest): Promise<BenchmarkResult> {
+  return retryingRead(() => facade().OpenBenchmark(request), { state: "failed", context: request.context });
+}
+
+/** Writes one named synthetic input into the project; it imports and sends nothing. */
+export function generateInput(request: GenerateInputRequest): Promise<GenerateInputResult> {
+  return guard(() => facade().GenerateInput(request), { state: "failed", context: request.context });
+}
+
+/** Scans one input and records what it measured, or what a stopped scan read. */
+export function startBenchmark(request: StartBenchmarkRequest): Promise<StartBenchmarkResult> {
+  return guard(() => facade().StartBenchmark(request), { state: "failed", context: request.context });
+}
+
+// Help (#566): the articles bundled with this build. They take no slot, open
+// no file and reach no network.
+
+export function helpTopics(): Promise<HelpTopicsResult> {
+  return guard(() => facade().HelpTopics(), { state: "failed", topics: [] });
+}
+
+export function helpArticle(id: string): Promise<HelpArticleResult> {
+  return guard(() => facade().HelpArticle(id), { state: "failed" });
+}
+
+export function searchHelp(query: string): Promise<HelpSearchResult> {
+  return guard(() => facade().SearchHelp(query), { state: "failed", matches: [] });
+}
+
+/** This build's version, platform and supported operations, on demand. */
+export function diagnostics(): Promise<DiagnosticsResult> {
+  return guard(() => facade().Diagnostics(), { state: "failed" });
+}
+
+/** Opens the synthetic demo project, creating it the first time. */
+export function openDemoProject(): Promise<ProjectOpenResult> {
+  return guard(() => facade().OpenDemoProject(), { state: "failed", context: noDemoContext, recorded: false });
+}
+
+const noDemoContext: RequestContext = { project: "", generation: 0 };
+
+/** The demo task over the open project, read back from what it holds. */
+export function demoProgress(request: RequestContext): Promise<DemoProgressResult> {
+  return retryingRead(() => facade().DemoProgress(request), { state: "failed" });
 }
 
 /** A read of what a running generation or scan has reached. It never waits

@@ -210,21 +210,16 @@ func TestARepeatedCreatePublishesOneTestVersion(t *testing.T) {
 	}
 }
 
-// The guided sample saves its own test through the one Save without a
-// license, as authoring the sample always did; any other test is authoring
-// and is refused without one.
-func TestTheGuidedSampleSavesItsTestWithoutALicense(t *testing.T) {
+// The demo saves its own test through the one Save without a license, as
+// authoring the sample always did; any other test, and the same test in a
+// project that is not the demo, is authoring and is refused without one.
+func TestTheDemoSavesItsTestWithoutALicense(t *testing.T) {
 	app := desktop.New(&chooser{folder: t.TempDir()}, desktop.ShellDocuments{Folder: t.TempDir()})
-	created := app.CreateSampleWorkspace()
-	if created.State != desktop.Completed {
-		t.Fatalf("sample: %+v", created)
+	demo := app.OpenDemoProject()
+	if demo.State != desktop.Completed {
+		t.Fatalf("demo: %+v", demo)
 	}
-	root := created.Workspace.Root
-	document, err := project.Encode(project.Document{Schema: project.SchemaV2, Settings: project.Settings{Title: "Sample"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeDocument(t, root, project.DocumentName, string(document))
+	root := demo.Context.Project
 	opened := app.OpenCase(root, guide.CaseName)
 	if opened.Case == nil {
 		t.Fatalf("open the sample case: %+v", opened)
@@ -237,10 +232,10 @@ func TestTheGuidedSampleSavesItsTestWithoutALicense(t *testing.T) {
 	draft.Name, draft.Messages, draft.Target = "Rescheduling updates the original appointment", []string{"s0001-e000001", "s0001-e000002"}, guide.TargetName
 	draft.Boundary, draft.Observation, draft.Reset = testrunner.LedgerBoundary, "practice-observation.json", "Start a fresh practice receiver."
 	draft.Expectations = []testauthor.Expectation{{ID: "one-appointment", Operator: testauthor.LedgerCount, Count: &count}}
-	context := desktop.RequestContext{Project: root}
+	context := demo.Context
 	saved := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.TestItem, Draft: desktop.ItemDraft{Test: &draft}, IntentID: "sample-1"})
 	if saved.Outcome != desktop.SavedOutcome {
-		t.Fatalf("the sample's test was not saved without a license: %+v", saved)
+		t.Fatalf("the demo's test was not saved without a license: %+v", saved)
 	}
 	if progress := guideOf(t, app, root).Guide; !slices.ContainsFunc(progress.Steps, func(step guide.Step) bool { return step.ID == guide.StepTest && step.Done }) {
 		t.Fatalf("the guided sample does not read the saved test: %+v", progress)
@@ -250,6 +245,21 @@ func TestTheGuidedSampleSavesItsTestWithoutALicense(t *testing.T) {
 	writeDocument(t, root, "other-target.json", replayTarget("127.0.0.1:2575", "nonproduction"))
 	if refused := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.TestItem, Draft: desktop.ItemDraft{Test: &other}, IntentID: "other-1"}); refused.State != desktop.PermissionDenied {
 		t.Fatalf("a test outside the sample was saved without a license: %+v", refused)
+	}
+
+	// The same frozen sample in a folder of the person's own is not the demo.
+	created := app.CreateSampleWorkspace()
+	if created.State != desktop.Completed {
+		t.Fatalf("sample: %+v", created)
+	}
+	elsewhere := created.Workspace.Root
+	document, err := project.Encode(project.Document{Schema: project.SchemaV2, Settings: project.Settings{Title: "Sample"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeDocument(t, elsewhere, project.DocumentName, string(document))
+	if refused := app.SaveItem(desktop.SaveItemRequest{Context: desktop.RequestContext{Project: elsewhere}, Kind: desktop.TestItem, Draft: desktop.ItemDraft{Test: &draft}, IntentID: "sample-2"}); refused.State != desktop.PermissionDenied {
+		t.Fatalf("the sample's test was saved without a license outside the demo: %+v", refused)
 	}
 }
 

@@ -362,6 +362,16 @@ latest explicit check of each environment is kept beside the catalog in
 `.readmit/checks/ID.json`, a strict-JSON `readmit-environment-check/v1`
 document (new, not yet in a released version) naming the environment, the
 revision checked, when, and what the check found; the next check replaces it.
+Benchmarks are kept beside the catalog too: each synthetic input generated
+for Benchmarks is a `readmit-corpus/v1` corpus and its manifest in
+`.readmit/benchmarks/inputs/ID/`, each complete benchmark a
+`readmit-benchmark/v1` document in `.readmit/benchmarks/results/ID/`, and
+`.readmit/benchmarks/benchmarks.json`, a strict-JSON `readmit-benchmarks/v1`
+document (new, not yet in a released version), records the name given each
+input, when each was written, and what each benchmark measured — a stopped
+scan as incomplete, with the records and bytes it read and no duration, peak
+or digest. They hold no evidence and are backed up and removed with the
+project.
 Deleting the catalog loses the names
 and dates the application recorded and the association of saved revisions,
 never evidence; the objects are discovered again under derived identities.

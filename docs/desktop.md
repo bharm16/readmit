@@ -1117,8 +1117,8 @@ saved object's revisions and `TestHistory` a test's versions with what each
 changed and the runs that executed each exactly. `ImportTestDraft` opens a
 chosen spec as a new draft bound to the project's case with the same
 evidence, and `ExportTestItem` writes a saved version's exact bytes to a new
-file. The guided sample's own test is saved without a license, as authoring
-the sample always was.
+file. The demo's own test is saved without a license in the demo project, as
+authoring the sample always was.
 
 A local Profile is published with the `readmit-profile-version/v1` seal of
 exactly its content in the same revision, so no profile is ever current
@@ -2926,7 +2926,9 @@ A folder this account cannot write reports `permission_denied`.
 
 ## The guided sample
 
-`Guide` reports the four steps of the guided sample over the open workspace —
+The window no longer calls `Guide` or `CreateSampleWorkspace`: Try demo opens
+the demo project and `DemoProgress` reads its steps (see Help, the demo and
+diagnostics). `Guide` reports the four steps of the guided sample over the open workspace —
 create the sample, author a test over its case, run that test against the
 practice receiver as the defect makes it behave, run the same spec against the
 corrected receiver — together with what the folder shows about each and the step
@@ -3226,55 +3228,82 @@ link — and an existing file are refused and left unchanged, a file that does n
 parse or that changed writes nothing, and the result names the copy's length
 and digest, which are the source's.
 
-**The performance corpus** is [`readmit corpus generate` and `readmit corpus
-scan`](corpus.md) in the window. Generation takes the four generator inputs,
-the message count and the plan it is framed under from structured controls with
-nothing preselected, as the command has no likely value for any of them. The
-screen takes every number in plain decimal digits: a leading zero, which the
-command's flags read as octal, and a count past what the window can send
-exactly cannot be sent. The seed crosses the facade as the digits typed and is
-read the way the command's flag reads it, so a seed up to 2^64-1 survives and
-the same digits are the same seed.
-`GenerateCorpus` writes the corpus and then its `readmit-corpus/v1` manifest to
-two new files of a folder chosen through the host's dialog, through the same
-`corpus.Write` the command calls, so the same declarations write the same bytes.
-Generation is new authoring and is admitted like the command.
+[`readmit corpus generate` and `readmit corpus scan`](corpus.md) are in the
+window as Tools › Benchmarks (#566), described below. `GenerateCorpus` and
+`ScanCorpus`, which wrote to folders chosen in the host's dialog, remain bound
+but no screen calls them.
 
-A scan chooses exactly one stream through the host's file dialog and declares
-the full `readmit-import-plan/v1` vocabulary an import declares, optional batch
-bounds, and an optional window of up to 200 records. `ScanCorpus` streams it
-through the shared `operation.ScanCorpus` and `importer.Scan`, holding one read
-window, one record and one parsing batch whatever the stream's length, and
-reports every line the command prints: the counts, the batch bounds, the peak
-held against the resident bound, whether an import of the same bytes would be
-within the case bounds or which ones it is past, the window of rows, the elapsed
-time and the proposed-targets note. With a benchmark asked for, a folder chosen
-through the host's dialog and a new file name are required before the scan
-starts, and the destination is checked to be new and allowed before the stream
-is read; the
-`readmit-benchmark/v1` document is written only when the scan completed. A
-scan needs no activation, as the command needs none. Changing the stream, a
-declaration, a bound, the window or the benchmark choice clears the report
-shown, as changing a generation input clears the corpus reported.
+### Benchmarks
 
-While a generation or a scan runs, `CorpusProgress` answers the counts it has
-reached without waiting for the operation slot, and the screen shows them — the
-same counts `--progress` writes, naming no file. **Cancel generation** and
-**Cancel scan** stop exactly that operation. A cancelled generation removes the partial corpus and writes no manifest.
-A cancelled scan answers with the counts it reached, the case bounds not
-evaluated and no benchmark, as the command prints `State: cancelled`.
+Benchmarks keeps what was measured, not setup, in the open project: its
+inputs and results live in the project's own area and are listed, backed up
+and removed with it, so Benchmarks needs an open project. `GenerateInput`
+writes one named synthetic input — a `readmit-corpus/v1` corpus and its
+manifest, through the same `corpus.Write` — into
+`.readmit/benchmarks/inputs/ID/` and records the name and manifest in the
+project's `readmit-benchmarks/v1` document. The manifest retains the seed,
+base time and generator and profile versions, so generating again from them
+writes the same bytes. Generating imports no case, contacts nothing and
+measures nothing, and is admitted like `readmit corpus generate`; a cancelled
+generation records nothing. `BenchmarkDefaults` reports the generator's
+supported framings, terminator, encodings and directions, its versions and
+message bound, the default declaration (MLLP, CR, UTF-8, unknown direction),
+a base time for a draft to capture once, and the scanner's documented batch
+limits (256 records, 8,388,608 bytes) and window bound (0, counts only, up to
+200), so the window keeps no copy of any of them.
 
-Every refusal is the command's own sentence: a declaration the bytes
-contradict, a record past its bound, a window or batch past its bound, a
-destination that exists or lies inside retained evidence, a file that is not a
-regular file. A file this account cannot read, and a folder it cannot write,
-are denied rather than failed, told apart by the error the shared operation
-returned rather than by opening anything again, and a scan whose benchmark
-could not be written still reports what it counted. A destination folder whose
-entries this account cannot look at is refused by the same reservation the
-command line's writers use, because it cannot be shown not to be retained
-evidence. While either screen's call holds the facade, the rest of the window
-is unavailable rather than answered busy.
+`StartBenchmark` scans a generated input under the format its manifest
+records, or one chosen file under a declared format, through the shared
+`operation.ScanCorpus`, and records the result. A chosen file's format is
+filled in only when the import probe proposes exactly one declarable reading;
+otherwise the person declares it. A complete scan also writes an unchanged
+`readmit-benchmark/v1` document in `.readmit/benchmarks/results/ID/`. A scan
+stopped through `Cancel("corpus")` is recorded as incomplete with the records
+and bytes it read, and with no duration, peak, digest or case-bounds verdict:
+nothing is claimed for the part it did not read. The peak a result records is
+the peak capacity of the scanner's own buffers (`peak_scan_buffer_bytes`),
+shown as Peak buffer, not the process's resident memory. `ListBenchmarks`
+lists results newest first, and `ListBenchmarkInputs` and `OpenBenchmark`
+read the same document; none of the three waits for the operation slot.
+
+### Help, the demo and diagnostics
+
+Tools is three launcher rows — Inspect file, Sample data, Benchmarks — each
+opening its task. Help lists the five task articles; an article opens on its
+own page with its steps, the troubleshooting articles it links and, for a
+task, the action that starts it in the open project, or Projects when none is
+open. `HelpTopics`, `HelpArticle` and `SearchHelp` read the articles bundled
+with this build: five task articles and the troubleshooting articles they link
+to. They take no operation slot, open no file and reach no network, and an
+article this version does not have is refused, never substituted. Help ›
+Diagnostics shows, on demand, the build, its operations, the window's current
+errors and the privacy status; Export support summary opens the support
+summary's review on Reports.
+
+`OpenDemoProject` opens the demo, a named project of the frozen synthetic
+sample kept in the application's own storage beside the shell documents,
+creating it the first time: the
+`readmit-synth-v1` family, prepared as the sample workspace is, with a project
+document of its own. It never writes over an existing folder, and a folder at
+its place that is not the demo is refused and left as it is. Like the sample
+workspace and the practice run, it needs no activation, and neither does
+recording its catalog while its sample case is the frozen one; `SaveItem` of
+the demo's own test — the frozen case at the practice target — needs none in
+the demo project and needs a license in any other. `DemoProgress`
+reads the demo task back from the project: the saved test and the two practice
+runs are done only when the project holds them, the catalog's current revision
+of a saved test preferred, and the three steps that are reads — opening the
+messages, viewing the failed check, comparing — are marked by the window only
+from the successful result of the call each names. It supplies the demo's test
+for New test to open with, the new entry each practice run is written into,
+and the saved test and each run as the project's objects. A practice run is a
+run of the project: Runs lists it, its page reads the test result it keeps
+beside the receiver it ran against, and two of them compare as any two runs of
+a test. Each step opens its ordinary screen — the case, New test, the run's
+page, the comparison — and closing the steps starts nothing.
+
+`Diagnostics` reports the build's version, Go release and platform and every
+named operation with the admissions it takes, and no path, project or value.
 
 ## Not supported in this release
 

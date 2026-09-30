@@ -234,7 +234,16 @@ func (a *App) runOf(ctx context.Context, request RunRequest) (*loadedCatalog, *C
 	if record.Entry == "" {
 		return nil, nil, "", refusal{Failed, "this run has no retained folder"}
 	}
-	return loaded, item, filepath.Join(loaded.root, record.Entry), refusal{}
+	return loaded, item, runFolder(filepath.Join(loaded.root, record.Entry)), refusal{}
+}
+
+// runFolder is the folder a run's result is read from: the entry itself, or
+// the result a practice run keeps inside it.
+func runFolder(path string) string {
+	if practiceRun(path) {
+		return filepath.Join(path, practiceResult)
+	}
+	return path
 }
 
 // testDetail reads a test run: its checks, its messages and their
@@ -947,7 +956,7 @@ func (a *App) CompareRunItems(request RunComparisonItemsRequest) RunComparisonIt
 				result.refuse(Failed, cmp.Or(item.Name, "A run")+" cannot be compared: only a finished run of a test is")
 				return result
 			}
-			retained, err := runresult.Open(filepath.Join(window.root, record.Entry))
+			retained, err := runresult.Open(runFolder(filepath.Join(window.root, record.Entry)))
 			if err != nil {
 				result.refuse(Failed, cmp.Or(item.Name, "A run")+" cannot be compared: its retained evidence did not verify")
 				return result

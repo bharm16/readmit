@@ -1,0 +1,61 @@
+/* Help: one article in a readable column. */
+.help-article {
+  max-width: 47.5rem;
+}
+
+.help-steps {
+  margin: 0 0 1.5rem;
+  padding-inline-start: 1.5rem;
+}
+
+.help-steps li + li {
+  margin-top: 0.5rem;
+}
+
+.help-article h2 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.benchmark-progress {
+  margin: 0 0 0.75rem;
+}
+
+/* The demo task in the sidebar: compact, one step's action at a time. */
+.demo-task {
+  border-top: 1px solid var(--line);
+  margin-top: var(--s2);
+  padding: var(--s2) 0;
+}
+
+.demo-task-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.demo-task-header h2 {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.demo-steps {
+  margin: var(--s2) 0 0;
+  padding-inline-start: 1.25rem;
+}
+
+.demo-steps li {
+  min-height: 1.75rem;
+}
+
+.demo-steps li.done {
+  color: var(--muted);
+}
+
+.demo-steps li.done::marker {
+  content: "✓  ";
+}
+
+.demo-origin {
+  margin-top: var(--s2);
+}

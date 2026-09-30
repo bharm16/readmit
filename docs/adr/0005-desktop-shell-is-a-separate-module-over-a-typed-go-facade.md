@@ -266,3 +266,13 @@ cancellation, so the privacy status and the window's own `Cancel` still address
 the capture. The alternative, a second slot for background sessions, would
 have let writes race the capture's own publication and split what the privacy
 status reads; admitting only reads keeps every write serialized as before.
+
+#566 (2026-09-29) keeps one folder beside the shell documents that is not a
+document: the synthetic demo project, `demo/readmit-sample`, created once by
+Try demo from the frozen sample and opened as a named project from then on.
+It holds no evidence of a person's and adds no shell document; a folder at
+its place that is not the demo is refused and left as it is. Benchmark inputs
+and results are not kept here: they live in the open project's own area
+(`readmit-benchmarks/v1`), so they are backed up and removed with the
+project. The alternative, a tenth shell document of benchmarks, would have
+kept measurements of a project's inputs apart from the project.

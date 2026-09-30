@@ -20,6 +20,7 @@ import {
   type IncompleteSave,
   type TestRunChecksResult,
   type ItemRef,
+  type TestDraftDocument,
   type TestExpectation,
   type TestHistoryResult,
   type TestOrigin,
@@ -123,12 +124,16 @@ export type TestsProps = {
   /** A retained editor draft to reopen, once, in the editor it came from. */
   restoreDraft?: EditorDraft | null;
   onRestored?: (reason?: string) => void;
+  /** A test to open New test with, once, over its case: the demo's supplied
+   * test, for the person to review and create. */
+  seedTest?: { case: ItemRef; test: TestDraftDocument } | null;
+  onSeeded?: (reason?: string) => void;
   /** The field inspected in the open case, offered first for an ACK check. */
   inspectedField?: string | undefined;
 };
 
 /** Tests supplies its pages' titles, ways back, actions and bodies. */
-export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded, restoreDraft = null, onRestored, inspectedField }: TestsProps) {
+export function useTests({ root, shown: pageShown, place, go, back, busy, onRun, onLibrary, addCheckGroup = null, onCheckGroupAdded, restoreDraft = null, onRestored, seedTest = null, onSeeded, inspectedField }: TestsProps) {
   // Tests reads under its own request scope, so its reads never make another
   // list's answer look stale.
   const scope = useRef(new RequestScope());
@@ -250,6 +255,21 @@ export function useTests({ root, shown: pageShown, place, go, back, busy, onRun,
       onRestored?.();
     })();
   }, [restoreDraft]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!seedTest) return;
+    void (async () => {
+      const answer = await openItemDraft({ context: context(), ref: { kind: "test", id: "" }, from: { case: seedTest.case, messages: seedTest.test.messages } });
+      if (answer.state !== "completed") {
+        onSeeded?.(answer.reason ?? "New test could not be opened over this case.");
+        return;
+      }
+      const base = startOf("new", answer);
+      setStart({ ...base, work: { name: seedTest.test.name, test: seedTest.test, links: base.work?.links ?? {} } });
+      go({ kind: "new" });
+      onSeeded?.();
+    })();
+  }, [seedTest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const editingItem = editId ? (items?.find((item) => item.ref.id === editId) ?? null) : null;
   const editor = useTestEditor({

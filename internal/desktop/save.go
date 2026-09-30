@@ -251,7 +251,7 @@ func (a *App) SaveItem(request SaveItemRequest) SaveItemResult {
 			result.refuse(Failed, savedKindsRule)
 			return result
 		}
-		if !sampleSave(request) {
+		if !a.demoSave(request) {
 			if err := a.admitAuthor(); err != nil {
 				result.refuse(PermissionDenied, err.Error())
 				return result

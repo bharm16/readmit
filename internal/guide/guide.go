@@ -267,7 +267,15 @@ func writeTarget(root string) error {
 // test, and the result reader re-derives each verdict from the retained run. A
 // folder that is not a sample workspace is not an error — it is the guided
 // sample with nothing done yet.
-func Read(root string) (Progress, error) {
+func Read(root string) (Progress, error) { return ReadWith(root, nil) }
+
+// ReadWith is Read for a project whose catalog names its current tests.
+// preferred are entries of the folder, the files the catalog's current
+// revisions were saved as; the first of them that is the guided test is the
+// saved test, ahead of any other entry. A catalog keeps every revision it
+// published as an entry of the project, so without the preference an earlier
+// revision of the same test could be read in place of the current one.
+func ReadWith(root string, preferred []string) (Progress, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return Progress{}, errors.New("the workspace folder cannot be read")
@@ -292,7 +300,10 @@ func Read(root string) (Progress, error) {
 	progress.Case, progress.Identity = CaseName, source.Identity
 	progress.Steps[0].Done, progress.Steps[0].Entry = true, CaseName
 
-	name, saved := savedSpec(root, entries)
+	name, saved := preferredSpec(root, preferred)
+	if name == "" {
+		name, saved = savedSpec(root, entries)
+	}
 	if name == "" {
 		return progress.settled(), nil
 	}
@@ -357,6 +368,24 @@ func savedSpec(root string, entries []os.DirEntry) (string, testrunner.Spec) {
 			continue
 		}
 		return entry.Name(), spec
+	}
+	return "", testrunner.Spec{}
+}
+
+// preferredSpec is the first of names, each one entry of the folder, that
+// decodes as the guided test.
+func preferredSpec(root string, names []string) (string, testrunner.Spec) {
+	for _, name := range names {
+		if artifactpath.EntryName(name) != nil {
+			continue
+		}
+		path, err := artifactpath.File(root, name)
+		if err != nil {
+			continue
+		}
+		if spec, err := testrunner.ReadSpec(path); err == nil && spec.Input.Case == CaseName && spec.Target == TargetName {
+			return name, spec
+		}
 	}
 	return "", testrunner.Spec{}
 }

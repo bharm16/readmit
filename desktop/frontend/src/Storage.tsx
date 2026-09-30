@@ -96,7 +96,7 @@ const SYSTEMS: Record<string, string> = { darwin: "macOS", windows: "Windows", l
 const ARCHITECTURES: Record<string, string> = { arm64: "ARM", amd64: "Intel" };
 
 /** The platform a staged candidate is for, as people name it. */
-function platformName(os: string, arch: string): string {
+export function platformName(os: string, arch: string): string {
   const system = SYSTEMS[os] ?? "Unsupported platform";
   const architecture = os === "darwin" && arch === "arm64" ? "Apple silicon" : ARCHITECTURES[arch];
   return architecture ? `${system}, ${architecture}` : system;
