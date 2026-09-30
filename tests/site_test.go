@@ -252,7 +252,9 @@ func TestPreviewSiteTablesAreCaptionedScopedAndScrollable(t *testing.T) {
 
 func TestEveryPublishedClaimCitesAFileAndATestThatExist(t *testing.T) {
 	defined := make(map[string]bool)
-	for _, root := range []string{"../tests", "../internal", "../desktop"} {
+	// Customer-runner parity needs the actual hub's mTLS/PostgreSQL boundary,
+	// so its independently witnessed tests live in that separate module.
+	for _, root := range []string{"../tests", "../internal", "../desktop", "../hub"} {
 		err := filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err

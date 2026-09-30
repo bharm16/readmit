@@ -54,18 +54,19 @@ func (r *RunDetailResult) refuse(state State, reason string) { r.State, r.Reason
 // and what came back, a suite run's jobs, the details it was run with and,
 // for a run the journal recorded, what recovery establishes.
 type RunDetail struct {
-	Item              CatalogItem      `json:"item"`
-	Job               string           `json:"job,omitzero"`
-	Name              string           `json:"name"`
-	Result            RunResult        `json:"result,omitzero"`
-	DeliveryUncertain bool             `json:"delivery_uncertain"`
-	Checks            []RunCheck       `json:"checks"`
-	Messages          []RunMessage     `json:"messages"`
-	Jobs              []RunJob         `json:"jobs"`
-	Details           RunDetails       `json:"details"`
-	Recovery          *RunRecovery     `json:"recovery,omitzero"`
-	Report            *RunReportSource `json:"report,omitzero"`
-	Revealed          bool             `json:"revealed"`
+	ConnectedReport   *runqueue.ConnectedReport `json:"connected_report,omitzero"`
+	Item              CatalogItem               `json:"item"`
+	Job               string                    `json:"job,omitzero"`
+	Name              string                    `json:"name"`
+	Result            RunResult                 `json:"result,omitzero"`
+	DeliveryUncertain bool                      `json:"delivery_uncertain"`
+	Checks            []RunCheck                `json:"checks"`
+	Messages          []RunMessage              `json:"messages"`
+	Jobs              []RunJob                  `json:"jobs"`
+	Details           RunDetails                `json:"details"`
+	Recovery          *RunRecovery              `json:"recovery,omitzero"`
+	Report            *RunReportSource          `json:"report,omitzero"`
+	Revealed          bool                      `json:"revealed"`
 }
 
 // RunReportSource is what Create report hands the report it starts: the run,
@@ -197,6 +198,32 @@ func (a *App) OpenRun(request RunRequest) RunDetailResult {
 		switch {
 		case item.Availability != ItemAvailable:
 			detail.Details.Reason = item.Reason
+		case declares(filepath.Join(path, "manifest.json"), suite.ConnectedExecutionSchema):
+			execution, err := suite.OpenConnectedExecution(ctx, path)
+			if err != nil {
+				result.refuse(Failed, "the connected suite execution and its linked proof do not verify")
+				return result
+			}
+			detail.ConnectedReport = connectedReportView(execution.Report, request.Reveal)
+			if request.Job != "" && !slices.ContainsFunc(execution.Report.Jobs, func(job runqueue.ConnectedJobReport) bool { return job.ID == request.Job }) {
+				result.refuse(Failed, "the connected suite run holds no such job")
+				return result
+			}
+			for _, job := range execution.Report.Jobs {
+				outcome := RunIncomplete
+				if !job.ExecutionError && job.Flow != nil && job.Flow.State == "complete" {
+					switch job.Flow.Verdict {
+					case assertion.VerdictPass:
+						outcome = RunPassed
+					case assertion.VerdictFail:
+						outcome = RunFailed
+					}
+				}
+				detail.Jobs = append(detail.Jobs, RunJob{ID: job.ID, Test: job.ID, Result: outcome, Admission: job.Admission, Reason: job.Reason})
+				if request.Job == job.ID && job.Flow != nil {
+					detail.Job, detail.Name, detail.Result = job.ID, job.ID, outcome
+				}
+			}
 		case summary.Kind == SuiteRunKind && request.Job == "":
 			loaded.suiteDetail(path, detail)
 		case summary.Kind == SuiteRunKind:

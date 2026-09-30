@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharm16/readmit/internal/connectedrun"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/operationguard"
 )
@@ -108,10 +109,17 @@ var prepare = func(specPath string) (runner, error) {
 }
 
 type state struct {
-	job    Job
-	runner runner
-	output string
-	report JobReport
+	job                     Job
+	runner                  runner
+	output                  string
+	report                  JobReport
+	connected               *connectedrun.PreparedFlow
+	executeConnected        ConnectedExecution
+	flow                    *connectedrun.FlowResult
+	planIdentity            string
+	instance                string
+	verifyConnected         func(context.Context, string) error
+	connectedExecutionError bool
 	// done is set when nothing more will happen to this job, whether it ran,
 	// was refused or was skipped. passed is set only by a run that passed.
 	done    bool
@@ -291,6 +299,11 @@ func (q *schedule) run(ctx context.Context, parallelism int) {
 			current.started = true
 			running++
 			go func() {
+				if current.connected != nil {
+					current.startConnected(ctx)
+					finished <- index
+					return
+				}
 				summary, err := current.runner.Start(ctx, current.output)
 				current.report.Admission = Executed
 				if err != nil {

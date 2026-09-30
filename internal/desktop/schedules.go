@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bharm16/readmit/internal/artifactpath"
 	"github.com/bharm16/readmit/internal/catalog"
 	"github.com/bharm16/readmit/internal/hubclient"
 	"github.com/bharm16/readmit/internal/runnerprotocol"
@@ -30,16 +31,17 @@ import (
 // ScheduleDraft is a schedule as its sheet holds it: what it runs, where and
 // when, and where its fixed alert goes.
 type ScheduleDraft struct {
-	Name          string   `json:"name"`
-	Suite         ItemRef  `json:"suite"`
-	Environment   string   `json:"environment"`
-	Runner        string   `json:"runner"`
-	Repeat        string   `json:"repeat"`
-	Days          []string `json:"days"`
-	At            string   `json:"at"`
-	Zone          string   `json:"zone"`
-	WindowMinutes int      `json:"window_minutes"`
-	Route         string   `json:"route"`
+	Connected     *ConnectedSuiteRunOptions `json:"connected,omitzero"`
+	Name          string                    `json:"name"`
+	Suite         ItemRef                   `json:"suite"`
+	Environment   string                    `json:"environment"`
+	Runner        string                    `json:"runner"`
+	Repeat        string                    `json:"repeat"`
+	Days          []string                  `json:"days"`
+	At            string                    `json:"at"`
+	Zone          string                    `json:"zone"`
+	WindowMinutes int                       `json:"window_minutes"`
+	Route         string                    `json:"route"`
 }
 
 // SchedulePin is one exact version a schedule is pinned to.
@@ -265,7 +267,14 @@ func (a *App) prepareSchedule(ctx context.Context, loaded *loadedCatalog, draft 
 	if err != nil || !version.runnable() {
 		return nil, []FieldProblem{{Field: "suite", Problem: "choose a runnable version of this suite"}}, refusal{}
 	}
-	at := slices.IndexFunc(version.draft.Environments, func(e SuiteEnvironment) bool { return e.ID == draft.Environment })
+	environments := version.draft.Environments
+	if version.connected != nil {
+		environments = []SuiteEnvironment{}
+		for _, environment := range version.connected.Environments {
+			environments = append(environments, SuiteEnvironment{ID: environment.ID, Name: environment.ID, Bindings: []SuiteBinding{}})
+		}
+	}
+	at := slices.IndexFunc(environments, func(e SuiteEnvironment) bool { return e.ID == draft.Environment })
 	if at < 0 {
 		problems = append(problems, FieldProblem{Field: "environment", Problem: "choose one of this suite's environments"})
 	}
@@ -289,7 +298,7 @@ func (a *App) prepareSchedule(ctx context.Context, loaded *loadedCatalog, draft 
 		entry.Version = "Original"
 	}
 	if at >= 0 {
-		entry.Environment = cmp.Or(version.draft.Environments[at].Name, version.draft.Environments[at].ID)
+		entry.Environment = cmp.Or(environments[at].Name, environments[at].ID)
 	} else {
 		entry.Environment = "Environment"
 	}
@@ -314,11 +323,42 @@ func (a *App) prepareSchedule(ctx context.Context, loaded *loadedCatalog, draft 
 	if len(problems) != 0 {
 		return nil, problems, refusal{}
 	}
-	queue, declined := a.placeScheduledSuite(ctx, loaded, item, version, version.draft.Environments[at].ID)
+	connected := draft.Connected
+	if version.connected != nil {
+		if connected == nil {
+			return nil, []FieldProblem{{Field: "runner", Problem: "this connected suite needs its installed finite authority and exact promotion"}}, refusal{}
+		}
+		options := *connected
+		if options.RunnerConfig != "" {
+			selected, err := artifactpath.File(loaded.root, options.RunnerConfig)
+			if err != nil || selected != runnerConfig {
+				return nil, []FieldProblem{{Field: "runner", Problem: "the connected options must name the selected project runner"}}, refusal{}
+			}
+		}
+		options.RunnerConfig, _ = filepath.Rel(loaded.root, runnerConfig)
+		options.Instance = "schedule-preview"
+		connected = &options
+	}
+	queue, declined := a.placeScheduledSuite(ctx, loaded, item, version, environments[at].ID, connected)
 	if declined.reason != "" {
 		return nil, nil, declined
 	}
-	identity, _, err := runqueue.PinnedJobs(ctx, queue)
+	identity := ""
+	if version.connected != nil {
+		dispatch, readErr := suite.ReadConnectedDispatch(queue)
+		if readErr == nil {
+			prepared, remove, prepareErr := dispatch.Prepare(ctx)
+			if prepareErr == nil {
+				identity = prepared.Identity
+				remove()
+			}
+			err = prepareErr
+		} else {
+			err = readErr
+		}
+	} else {
+		identity, _, err = runqueue.PinnedJobs(ctx, queue)
+	}
 	if err != nil {
 		return nil, nil, refusal{Failed, "the prepared suite could not be pinned: " + err.Error()}
 	}
@@ -334,8 +374,14 @@ func (a *App) prepareSchedule(ctx context.Context, loaded *loadedCatalog, draft 
 		}
 		review.Tests = append(review.Tests, SchedulePin{Name: name, Version: "Version " + cmp.Or(test.Test.Revision, "1")})
 	}
+	if version.connected != nil {
+		for _, test := range version.connected.Tests {
+			review.Tests = append(review.Tests, SchedulePin{Name: test.ID, Version: "Version " + test.Revision})
+		}
+		review.Targets = append(review.Targets, SchedulePin{Name: draft.Environment, Version: connected.Revision})
+	}
 	seen := map[string]bool{}
-	for _, binding := range version.draft.Environments[at].Bindings {
+	for _, binding := range environments[at].Bindings {
 		i := loaded.document.Find(binding.Target.ID)
 		if i < 0 || seen[binding.Target.ID] {
 			continue
@@ -363,10 +409,16 @@ func (a *App) prepareSchedule(ctx context.Context, loaded *loadedCatalog, draft 
 // folder of the project the schedule names, once per exact compiled content:
 // the same content reuses its folder, and a changed one gets a new folder, so
 // an acknowledged schedule's inputs are never rewritten under it.
-func (a *App) placeScheduledSuite(ctx context.Context, loaded *loadedCatalog, item catalog.Item, version *suiteVersion, environment string) (string, refusal) {
+func (a *App) placeScheduledSuite(ctx context.Context, loaded *loadedCatalog, item catalog.Item, version *suiteVersion, environment string, connected ...*ConnectedSuiteRunOptions) (string, refusal) {
 	_, data, declined := loaded.compiled(version)
 	if data == nil {
 		return "", declined
+	}
+	if version.connected != nil {
+		if len(connected) != 1 || connected[0] == nil {
+			return "", refusal{Failed, "select the installed connected runner authority and exact promotion"}
+		}
+		return a.placeScheduledConnectedSuite(ctx, loaded, item, version, environment, *connected[0])
 	}
 	var references []byte
 	if pins := latestBaseline(loaded.suiteApprovals(item.ID), version.label); pins != nil {

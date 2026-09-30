@@ -18,6 +18,7 @@ import (
 	"github.com/bharm16/readmit/internal/fixturereset"
 	"github.com/bharm16/readmit/internal/operation"
 	"github.com/bharm16/readmit/internal/replay"
+	"github.com/bharm16/readmit/internal/runqueue"
 )
 
 // A person reviews content and a destination; the backend binds and checks
@@ -242,18 +243,19 @@ const (
 // it runs. Replayed is true when the
 // same click arrived again and was answered with the original result.
 type ReviewedActionResult struct {
-	Isolation       *IsolationOutcome     `json:"isolation,omitzero"`
-	TypedCollection *TypedCollectionView  `json:"typed_collection,omitzero"`
-	FHIRCheck       *FHIRCapabilityCheck  `json:"fhir_check,omitzero"`
-	State           State                 `json:"state"`
-	Reason          string                `json:"reason,omitzero"`
-	Context         RequestContext        `json:"context"`
-	Outcome         ReviewedOutcome       `json:"outcome"`
-	Operation       string                `json:"operation,omitzero"`
-	Replayed        bool                  `json:"replayed"`
-	Refreshed       *ActionReview         `json:"refreshed,omitzero"`
-	Replay          *ReplayRun            `json:"replay,omitzero"`
-	Export          *PrivacyExportOutcome `json:"export,omitzero"`
+	ConnectedReport *runqueue.ConnectedReport `json:"connected_report,omitzero"`
+	Isolation       *IsolationOutcome         `json:"isolation,omitzero"`
+	TypedCollection *TypedCollectionView      `json:"typed_collection,omitzero"`
+	FHIRCheck       *FHIRCapabilityCheck      `json:"fhir_check,omitzero"`
+	State           State                     `json:"state"`
+	Reason          string                    `json:"reason,omitzero"`
+	Context         RequestContext            `json:"context"`
+	Outcome         ReviewedOutcome           `json:"outcome"`
+	Operation       string                    `json:"operation,omitzero"`
+	Replayed        bool                      `json:"replayed"`
+	Refreshed       *ActionReview             `json:"refreshed,omitzero"`
+	Replay          *ReplayRun                `json:"replay,omitzero"`
+	Export          *PrivacyExportOutcome     `json:"export,omitzero"`
 	// SuiteApproval is the approval a suite approval action recorded.
 	SuiteApproval *SuiteApproval        `json:"suite_approval,omitzero"`
 	Collected     *CollectionRow        `json:"collected,omitzero"`

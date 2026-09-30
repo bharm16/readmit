@@ -252,6 +252,9 @@ func (c *loadedCatalog) compareSuite(item catalog.Item, from, to string) (SuiteC
 		return comparison, err
 	}
 	comparison.To = later.label
+	if later.connected != nil {
+		return comparison, errors.New("connected suite changes require inspection of their pinned connected revisions; the legacy template comparison does not assess them")
+	}
 	if from == "" {
 		comparison.First = true
 		for _, test := range later.draft.Tests {
@@ -272,6 +275,9 @@ func (c *loadedCatalog) compareSuite(item catalog.Item, from, to string) (SuiteC
 		return comparison, err
 	}
 	comparison.From = earlier.label
+	if earlier.connected != nil {
+		return comparison, errors.New("a connected suite revision cannot be compared as a legacy template suite")
+	}
 	comparison.Changes = c.suiteChanges(earlier.draft, later.draft)
 	for _, test := range later.draft.Tests {
 		at := slices.IndexFunc(earlier.draft.Tests, func(prior SuiteTestDraft) bool { return prior.ID == test.ID })
@@ -595,6 +601,10 @@ func (c *loadedCatalog) suiteCoverage(ctx context.Context, result *SuiteAssessme
 	}
 	if !version.runnable() {
 		result.refuse(Empty, notRunnable)
+		return
+	}
+	if version.connected != nil {
+		result.refuse(Failed, "connected coverage requires a readmit-suite-coverage/v2 policy over the sealed connected execution")
 		return
 	}
 	if len(version.draft.Requirements) == 0 {

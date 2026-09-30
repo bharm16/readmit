@@ -305,6 +305,9 @@ export type AssertionOperator =
   | "record_key_matches"
   | "records_changed";
 
+/** internal/assertion.Outcome */
+export type AssertionOutcome = "passed" | "failed" | "undecided" | "skipped";
+
 /** internal/assertion.PairRef */
 export interface AssertionPairRef {
   left: AssertionFieldRef;
@@ -320,6 +323,16 @@ export interface AssertionRange {
   max: string;
 }
 
+/** internal/assertion.Reading */
+export interface AssertionReading {
+  Field: AssertionFieldValue | null;
+  Compared: AssertionFieldValue | null;
+  Records: number | null;
+  Matched: number | null;
+  Added: number | null;
+  Removed: number | null;
+}
+
 /** internal/assertion.RecordRef */
 export interface AssertionRecordRef {
   scope: AssertionRecordScope;
@@ -327,6 +340,24 @@ export interface AssertionRecordRef {
 
 /** internal/assertion.RecordScope */
 export type AssertionRecordScope = "before" | "after";
+
+/** internal/assertion.Report */
+export interface AssertionReport {
+  Verdict: AssertionVerdict;
+  Results: AssertionResult[];
+  Passed: number;
+  Failed: number;
+  Undecided: number;
+  Skipped: number;
+}
+
+/** internal/assertion.Result */
+export interface AssertionResult {
+  ID: string;
+  Operator: AssertionOperator;
+  Outcome: AssertionOutcome;
+  Observed: AssertionReading;
+}
 
 /** internal/assertionauthor.Draft */
 export interface AssertionSetDraftDocument {
@@ -355,6 +386,9 @@ export interface AssertionTransitionRef {
   from: AssertionRecordScope;
   to: AssertionRecordScope;
 }
+
+/** internal/assertion.Verdict */
+export type AssertionVerdict = "pass" | "fail" | "undecided";
 
 /** internal/assertion.Window */
 export interface AssertionWindow {
@@ -595,6 +629,16 @@ export interface BusinessKeyMapping {
   variable: string;
 }
 
+/** internal/desktop.CIConnectedStep */
+export interface CIConnectedStep {
+  runner_config: string;
+  authority: string;
+  promotion: string;
+  promotion_identity: string;
+  revision: string;
+  instance: string;
+}
+
 /** internal/suite.GateReport */
 export interface CIGateReport {
   schema: string;
@@ -639,6 +683,7 @@ export interface CIHandoffRequest {
   coverage_file: string;
   output: string;
   gate?: CIGateStep;
+  connected?: CIConnectedStep;
   suite?: string;
 }
 
@@ -657,6 +702,7 @@ export interface CIInspectResult {
   ci?: CIResultsView;
   gate?: CIResultsView;
   warning?: string;
+  refusal?: CustomerRunnerConnectedRefusalMetadata;
 }
 
 /** internal/desktop.CIResultsView */
@@ -1540,6 +1586,39 @@ export interface ConnectedObservation {
   fhir?: FHIRSearchDraft;
 }
 
+/** internal/desktop.ConnectedSuiteDraft */
+export interface ConnectedSuiteDraft {
+  document: SuiteConnectedDocument;
+}
+
+/** internal/desktop.ConnectedSuiteJobView */
+export interface ConnectedSuiteJobView {
+  id: string;
+  state: string;
+  plan_identity: string;
+  input: string;
+  after: string[];
+}
+
+/** internal/desktop.ConnectedSuitePreflight */
+export interface ConnectedSuitePreflight {
+  input: string;
+  project: string;
+  environment: string;
+  capabilities: RunnerprotocolCapabilities;
+  jobs: ConnectedSuiteJobView[];
+}
+
+/** internal/desktop.ConnectedSuiteRunOptions */
+export interface ConnectedSuiteRunOptions {
+  runner_config: string;
+  authority: string;
+  promotion: string;
+  promotion_identity: string;
+  revision: string;
+  instance: string;
+}
+
 /** internal/desktop.ConnectedVocabulary */
 export interface ConnectedVocabulary {
   connection: FHIRConnection;
@@ -1550,6 +1629,67 @@ export interface ConnectedVocabulary {
   phases: string[];
   boundaries: string[];
   baseline_modes: string[];
+}
+
+/** internal/connectedrun.FlowCheck */
+export interface ConnectedrunFlowCheck {
+  id: string;
+  outcome: AssertionOutcome;
+}
+
+/** internal/connectedrun.FlowClaim */
+export interface ConnectedrunFlowClaim {
+  phase: string;
+  dataset: string;
+  boundary: string;
+  meaning: string;
+}
+
+/** internal/connectedrun.FlowPhaseResult */
+export interface ConnectedrunFlowPhaseResult {
+  id: string;
+  state: string;
+  verdict: AssertionVerdict;
+  run_identity: string;
+  checks: ConnectedrunFlowCheck[];
+  steps: ConnectedtestAttempt[];
+  wire?: AssertionReport;
+  evaluation_error?: string;
+}
+
+/** internal/connectedrun.FlowResult */
+export interface ConnectedrunFlowResult {
+  qualification?: ConnectedrunFlowClaim[];
+  recovery_store?: ConnectedrunRecoveryStore;
+  previous?: string;
+  inherited?: number;
+  schema: string;
+  plan: string;
+  instance: string;
+  boundary: string;
+  engine: string;
+  state: string;
+  verdict: AssertionVerdict;
+  started_at: string;
+  completed_at: string;
+  setup: string;
+  cleanup: string;
+  isolation: string;
+  phases: ConnectedrunFlowPhaseResult[];
+}
+
+/** internal/connectedrun.RecoveryStore */
+export interface ConnectedrunRecoveryStore {
+  path: string;
+  identity: string;
+}
+
+/** internal/connectedtest.Attempt */
+export interface ConnectedtestAttempt {
+  step: string;
+  kind: string;
+  outcome: string;
+  uncertain: boolean;
 }
 
 /** internal/desktop.ConnectionAction */
@@ -2017,6 +2157,12 @@ export interface CredentialsResult {
   credentials: CredentialRow[];
   referring: Referrer[];
   problems?: FieldProblem[];
+}
+
+/** internal/customerrunner.ConnectedRefusalMetadata */
+export interface CustomerRunnerConnectedRefusalMetadata {
+  category: string;
+  required: string[];
 }
 
 /** internal/customerrunner.Status */
@@ -2495,6 +2641,12 @@ export interface DurableRunRequest {
   spec: string;
   output: string;
   expected_identity: string;
+}
+
+/** internal/durablerun.Resource */
+export interface DurableRunResource {
+  kind: string;
+  name: string;
 }
 
 /** internal/desktop.DurableRunResult */
@@ -8369,6 +8521,7 @@ export interface ReviewSurface {
 
 /** internal/desktop.ReviewedActionResult */
 export interface ReviewedActionResult {
+  connected_report?: RunQueueConnectedReport;
   isolation?: IsolationOutcome;
   typed_collection?: TypedCollectionView;
   fhir_check?: FHIRCapabilityCheck;
@@ -8442,6 +8595,7 @@ export interface RuleDocumentSaveRequest {
 
 /** internal/desktop.RunActionOptions */
 export interface RunActionOptions {
+  connected?: ConnectedSuiteRunOptions;
   environment?: string;
   phase?: string;
 }
@@ -8627,6 +8781,7 @@ export interface RunDestination {
 
 /** internal/desktop.RunDetail */
 export interface RunDetail {
+  connected_report?: RunQueueConnectedReport;
   item: CatalogItem;
   job?: string;
   name: string;
@@ -8816,6 +8971,7 @@ export interface RunMessageEvidence {
 
 /** internal/desktop.RunPreflight */
 export interface RunPreflight {
+  connected?: ConnectedSuitePreflight;
   kind: string;
   spec: string;
   test?: ItemRef;
@@ -8838,6 +8994,7 @@ export interface RunPreflight {
 
 /** internal/desktop.RunPreflightRequest */
 export interface RunPreflightRequest {
+  connected?: ConnectedSuiteRunOptions;
   workspace: string;
   spec: string;
   suite?: SuiteRunTarget;
@@ -8874,6 +9031,27 @@ export interface RunProgressResult {
 
 /** internal/runqueue.Admission */
 export type RunQueueAdmission = "executed" | "start_failed" | "refused" | "skipped";
+
+/** internal/runqueue.ConnectedJobReport */
+export interface RunQueueConnectedJobReport {
+  id: string;
+  admission: RunQueueAdmission;
+  reason: string;
+  resources: DurableRunResource[];
+  flow?: ConnectedrunFlowResult;
+  execution_error?: boolean;
+}
+
+/** internal/runqueue.ConnectedReport */
+export interface RunQueueConnectedReport {
+  schema: string;
+  parallelism: number;
+  jobs: RunQueueConnectedJobReport[];
+  executed: number;
+  start_failed: number;
+  refused: number;
+  skipped: number;
+}
 
 /** internal/runqueue.Isolation */
 export type RunQueueIsolation = "shared" | "isolated";
@@ -8928,6 +9106,7 @@ export interface RunResumeReview {
 
 /** internal/desktop.RunReview */
 export interface RunReview {
+  connected?: ConnectedSuitePreflight;
   kind: RunKind;
   name: string;
   version?: string;
@@ -9274,6 +9453,21 @@ export interface RunnerUpdateResult {
   state: State;
   reason?: string;
   engine?: string;
+}
+
+/** internal/runnerprotocol.Capabilities */
+export interface RunnerprotocolCapabilities {
+  schema: string;
+  engine: string;
+  pins: RunnerprotocolCapabilityPin[];
+}
+
+/** internal/runnerprotocol.CapabilityPin */
+export interface RunnerprotocolCapabilityPin {
+  kind: string;
+  id: string;
+  version: string;
+  sha256: string;
 }
 
 /** internal/runnerprotocol.Grant */
@@ -9696,6 +9890,7 @@ export interface ScheduleCommandResult {
 
 /** internal/desktop.ScheduleDraft */
 export interface ScheduleDraft {
+  connected?: ConnectedSuiteRunOptions;
   name: string;
   suite: ItemRef;
   environment: string;
@@ -10744,6 +10939,42 @@ export interface SuiteComparison {
   tests: SuiteTestChange[];
 }
 
+/** internal/suite.ConnectedBinding */
+export interface SuiteConnectedBinding {
+  test: string;
+  plan: string;
+  plan_identity: string;
+  config: string;
+}
+
+/** internal/suite.ConnectedDocument */
+export interface SuiteConnectedDocument {
+  schema: string;
+  id: string;
+  owner: string;
+  tags: string[];
+  parallelism: number;
+  tests: SuiteConnectedTest[];
+  environments: SuiteConnectedEnvironment[];
+}
+
+/** internal/suite.ConnectedEnvironment */
+export interface SuiteConnectedEnvironment {
+  id: string;
+  bindings: SuiteConnectedBinding[];
+}
+
+/** internal/suite.ConnectedTest */
+export interface SuiteConnectedTest {
+  id: string;
+  revision: string;
+  definition: string;
+  release: string;
+  release_identity: string;
+  after: string[];
+  state: string;
+}
+
 /** internal/desktop.SuiteContext */
 export interface SuiteContext {
   original: boolean;
@@ -10778,6 +11009,7 @@ export interface SuiteDataset {
 
 /** internal/desktop.SuiteDraft */
 export interface SuiteDraft {
+  connected?: ConnectedSuiteDraft;
   id?: string;
   owner?: string;
   tags: string[];
@@ -10927,6 +11159,7 @@ export interface SuiteRunReport {
 
 /** internal/desktop.SuiteRunRequest */
 export interface SuiteRunRequest {
+  connected?: ConnectedSuiteRunOptions;
   workspace: string;
   suite: string;
   item?: SuiteRunTarget;
@@ -10938,6 +11171,7 @@ export interface SuiteRunRequest {
 
 /** internal/desktop.SuiteRunResult */
 export interface SuiteRunResult {
+  connected_report?: RunQueueConnectedReport;
   state: State;
   reason?: string;
   output?: string;

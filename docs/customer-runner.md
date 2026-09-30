@@ -1,5 +1,11 @@
 # Customer-controlled runner
 
+Approved connected suites use the versioned admission and finite installed
+authority in [connected suites](connected-suites.md). The v1 single-test path
+below keeps its historical loopback and test/SIU pins. A connected capability
+agreement never silently converts that older job or authorizes a fixture
+fallback. Both paths resolve credentials only on the customer's runner host.
+
 Commands that create or run work use the [explicit license setup](license-v2.md#running-command-line-recipes-with-an-activated-license). Read-only commands and frozen practice need no activation.
 
 

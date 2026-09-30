@@ -68,6 +68,8 @@ func Health(root string) (Status, error) {
 			lease, err := runnerprotocol.DecodeLease(raw)
 			if err == nil && time.Now().Before(lease.Expires) {
 				s.State = "lease_current"
+			} else if connected, e := runnerprotocol.DecodeConnectedLease(raw); e == nil && time.Now().Before(connected.Expires) {
+				s.State = "lease_current"
 			}
 		}
 	} else if !os.IsNotExist(err) {

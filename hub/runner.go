@@ -34,6 +34,10 @@ func (s *Store) runnerHandler(access *Access, policyPath string, clock func() ti
 		release  func() error
 	}
 	leases := map[string]held{}
+	connected := s.connectedRunnerHandler(access, policyPath+".connected", clock, func(project, environment string, now time.Time) (bool, func()) {
+		mu.Lock()
+		return now.Before(leases[project+"/"+environment].expires), mu.Unlock
+	})
 	// A fresh handler waits out grants a stopped predecessor may have issued.
 
 	runner := s.admitRequest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +94,16 @@ func (s *Store) runnerHandler(access *Access, policyPath string, clock func() ti
 					w.WriteHeader(204)
 					return
 				}
+				reserved, reservationErr := s.connectedEnvironmentReserved(policyPath+".connected", g.Project, req.Environment)
+				if reservationErr != nil || reserved {
+					mu.Unlock()
+					if reservationErr != nil {
+						http.Error(w, "connected policy unavailable", http.StatusServiceUnavailable)
+					} else {
+						http.Error(w, "environment requires connected runner v2 admission", http.StatusConflict)
+					}
+					return
+				}
 				if now.Before(readyAt) || (now.Before(old.expires) && (old.instance != req.Instance || old.job != req.Job || old.subject != p.Subject)) {
 					mu.Unlock()
 					http.Error(w, "environment leased or recovering", 409)
@@ -141,6 +155,10 @@ func (s *Store) runnerHandler(access *Access, policyPath string, clock func() ti
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if (len(parts) == 4 || len(parts) == 5) && parts[0] == "v2" && parts[1] == "projects" && parts[3] == "runner" {
+			connected.ServeHTTP(w, r)
+			return
+		}
 		if len(parts) != 4 || parts[0] != "v1" || parts[1] != "projects" || parts[3] != "runner" {
 			team.ServeHTTP(w, r)
 			return

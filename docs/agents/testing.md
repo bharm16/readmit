@@ -193,14 +193,19 @@ names the `gui_test` that drives it — a component test
 (`desktop/frontend/src/X.test.tsx`) or a journey
 (`desktop/frontend/src/journeys/X.journey.tsx`), by its exact title — and the
 `parity_test` (`{"package": "internal/desktop", "name": "TestX"}`) that proves
-it reaches the shared engine. The hub host administration binding alone names
-`desktop/hubadmin` parity tests because the hub module imports the root module;
-those tests call its real readers and offline functions, and the journey bridge
-binds the same method as the production shell. The ledger still resolves every
-parity reference. An open row names no test and its owner is the
-open issue that will add its screen. A row that is not customer work carries a
-typed `disposition` instead; a Makefile target or tools script is a `tooling`
-row disposed as `developer-tooling`, with no backend.
+it reaches the shared engine. The hub host administration binding names
+`desktop/hubadmin` parity tests; those tests call its real readers and offline
+functions, and the journey bridge binds the same method as the production
+shell. When a facade or CLI operation requires actual customer-runner enrollment
+and persisted admission, its parity test may live in the separate `hub` module,
+which imports the root module. It must call the normal public facade or CLI
+against the real mTLS hub and disposable PostgreSQL store, with independent
+target witnesses rather than mocked job records. Run that affected hub scope
+with race instrumentation and vet separately from the root and desktop gates.
+The ledger still resolves every parity reference. An open row names no test and
+its owner is the open issue that will add its screen. A row that is not customer
+work carries a typed `disposition` instead; a Makefile target or tools script is
+a `tooling` row disposed as `developer-tooling`, with no backend.
 `go test ./internal/capability` resolves every reference against the tree, so
 rename a test, an operation or a contract together with its row.
 

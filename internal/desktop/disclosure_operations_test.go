@@ -90,6 +90,9 @@ func TestEveryOperationThatCanReachADestinationRunsUnderADisclosedName(t *testin
 			t.Errorf("the enumeration no longer finds that %s can reach a destination", method)
 		}
 	}
+	if why := reaching["InspectCIResults"]; len(why) != 0 {
+		t.Errorf("offline CI inspection was classified as reaching a destination: %v", why)
+	}
 	// Local work stays local: none of these is mistaken for reaching anything.
 	for _, method := range []string{"PreflightRun", "PreviewReduction", "DisconnectHub", "SelectHubConfig", "SaveTarget", "DisclosureStatus"} {
 		if why := reaching[method]; len(why) != 0 {
@@ -257,8 +260,10 @@ func TestOnlyDeclaredProgramsAreStarted(t *testing.T) {
 //     system;
 //   - it, or one it calls, calls a function or method of the hub's client
 //     packages that takes a context — the calls that wait on the hub, its
-//     identity provider or a runner's hub. The rest of those packages read
-//     local files only.
+//     identity provider or a runner's hub. The two explicit connected CI
+//     inspection readers use a context only for passive retained proof; they
+//     contact no destination or provider. The remaining non-contextual calls
+//     read local files only.
 //
 // The last two are read from the facade's own source.
 func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
@@ -271,6 +276,9 @@ func reachingOf(t *testing.T) (map[string][]string, map[string][]string) {
 			for _, declaration := range file.Decls {
 				function, ok := declaration.(*ast.FuncDecl)
 				if !ok || !function.Name.IsExported() || len(function.Type.Params.List) == 0 {
+					continue
+				}
+				if client == "customerrunner" && (function.Name.Name == "InspectConnectedCI" || function.Name.Name == "InspectConnectedCIRefusal") {
 					continue
 				}
 				first, ok := function.Type.Params.List[0].Type.(*ast.SelectorExpr)

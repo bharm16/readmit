@@ -559,6 +559,14 @@ and expands setup dependencies into the existing `internal/runqueue` scheduler.
 existing test, queue and durable evidence contracts are unchanged. See
 [regression suites](suites.md).
 
+`readmit-suite/v2` selects approved connected lifecycle plans and separate
+environment bindings. Its versioned preparation, queue report, promotion,
+coverage and CI evidence compose `connectedrun.ExecuteFlow` and the existing
+queue scheduler. The actual runner's capability handshake, persisted dispatch
+fence and finite customer-installed authority recheck effects; no new evaluator,
+scheduler or billing service is introduced. All v1 readers keep their semantics.
+See [connected suites](connected-suites.md).
+
 ## Customer runner
 
 `runner` uses the same compiled durable/test engine, with private local jobs and

@@ -15,6 +15,7 @@ func expectationCommand() *cobra.Command {
 		var id, previous, review, approver, rationale, output string
 		var profiles []string
 		var show bool
+		var connected bool
 		name := "review"
 		capability := capabilityFree
 		if approve {
@@ -22,6 +23,27 @@ func expectationCommand() *cobra.Command {
 			capability = capabilityAuthor
 		}
 		command := &cobra.Command{Use: name + " SPEC", Annotations: declare(capability), Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			if connected {
+				if len(profiles) > 0 || show || id != "" {
+					return usage("connected releases use the sealed plan's exact definition and profile pins")
+				}
+				if !approve {
+					r, e := expectation.ReviewConnected(args[0])
+					if e != nil {
+						return refusal(e)
+					}
+					return writeJSON(cmd, r)
+				}
+				if output == "" {
+					return usage("connected release requires a new --output")
+				}
+				p, e := expectation.ApproveConnected(args[0], previous, review, approver, rationale, output)
+				if e != nil {
+					return refusal(e)
+				}
+				_, e = fmt.Fprintln(cmd.OutOrStdout(), p.Identity())
+				return e
+			}
 			request := operation.ExpectationRequest{ID: id, Spec: args[0], Previous: previous, Output: output, Profiles: profiles, ShowValues: show, Review: review, Approver: approver, Rationale: rationale}
 			if !approve {
 				result, e := operation.ReviewExpectation(request)
@@ -41,6 +63,7 @@ func expectationCommand() *cobra.Command {
 			return err
 		}}
 		command.Flags().StringVar(&id, "id", "", "Stable test identity (required)")
+		command.Flags().BoolVar(&connected, "connected-plan", false, "Review or release a sealed connected lifecycle plan without changing legacy test readers")
 		command.Flags().StringVar(&previous, "previous", "", "Exact previous released test; omit for the first revision")
 		command.Flags().StringArrayVar(&profiles, "profile", nil, "Local profile document to seal and pin (repeatable; omission explicitly pins none)")
 		if approve {

@@ -25,6 +25,7 @@ import (
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/replay"
 	"github.com/bharm16/readmit/internal/runexplain"
+	"github.com/bharm16/readmit/internal/runqueue"
 	"github.com/bharm16/readmit/internal/runresult"
 	"github.com/bharm16/readmit/internal/suite"
 	"github.com/bharm16/readmit/internal/testrunner"
@@ -267,8 +268,9 @@ func (a *App) OpenDurableRun(path string) DurableRunResult {
 // Output names the new entry the run writes into; empty asks for the next free
 // generated name, so a person never copies an internal path by hand.
 type RunPreflightRequest struct {
-	Workspace string `json:"workspace"`
-	Spec      string `json:"spec"`
+	Connected *ConnectedSuiteRunOptions `json:"connected,omitzero"`
+	Workspace string                    `json:"workspace"`
+	Spec      string                    `json:"spec"`
 	// Suite names one saved suite version instead of Spec: it is compiled
 	// against the current version of each named environment it binds.
 	Suite       *SuiteRunTarget `json:"suite,omitzero"`
@@ -301,24 +303,25 @@ func (r *RunPreflightResult) refuse(state State, reason string) { r.State, r.Rea
 // whose target is Target. Saving the environment again changes the identity,
 // so the send refuses until the test is preflighted again.
 type RunPreflight struct {
-	Kind         string          `json:"kind"` // "test" or "suite"
-	Spec         string          `json:"spec"`
-	Test         *ItemRef        `json:"test,omitzero"`
-	Environment  *ItemRef        `json:"environment,omitzero"`
-	Name         string          `json:"name"`
-	Schema       string          `json:"schema"`
-	Identity     string          `json:"identity"`
-	Selected     []RunSelected   `json:"selected"`
-	Target       RunTargetView   `json:"target"`
-	Boundary     string          `json:"boundary"`
-	Observation  string          `json:"observation,omitzero"`
-	InitialState string          `json:"initial_state"`
-	Reset        string          `json:"reset,omitzero"`
-	Engine       RunEnginePin    `json:"engine"`
-	Deadline     string          `json:"deadline"`
-	Destination  RunDestination  `json:"destination"`
-	Admission    RunAdmission    `json:"admission"`
-	Suite        *SuitePreflight `json:"suite,omitzero"`
+	Connected    *ConnectedSuitePreflight `json:"connected,omitzero"`
+	Kind         string                   `json:"kind"` // "test" or "suite"
+	Spec         string                   `json:"spec"`
+	Test         *ItemRef                 `json:"test,omitzero"`
+	Environment  *ItemRef                 `json:"environment,omitzero"`
+	Name         string                   `json:"name"`
+	Schema       string                   `json:"schema"`
+	Identity     string                   `json:"identity"`
+	Selected     []RunSelected            `json:"selected"`
+	Target       RunTargetView            `json:"target"`
+	Boundary     string                   `json:"boundary"`
+	Observation  string                   `json:"observation,omitzero"`
+	InitialState string                   `json:"initial_state"`
+	Reset        string                   `json:"reset,omitzero"`
+	Engine       RunEnginePin             `json:"engine"`
+	Deadline     string                   `json:"deadline"`
+	Destination  RunDestination           `json:"destination"`
+	Admission    RunAdmission             `json:"admission"`
+	Suite        *SuitePreflight          `json:"suite,omitzero"`
 }
 
 // RunSelected is one occurrence an execution sends, named the way the source
@@ -456,6 +459,9 @@ func runReaching(saved savedRun, test string, target replay.Target) reachingTarg
 
 func readRun(c *loadedCatalog, item catalog.Item, paths map[string]string) (view, error) {
 	path := paths[primaryRole(RunItem)]
+	if declares(filepath.Join(path, "manifest.json"), suite.ConnectedExecutionSchema) {
+		return readConnectedSuiteRun(c, item, path)
+	}
 	summary := &RunSummary{}
 	if regular(filepath.Join(path, "suite.json")) {
 		// One execution of a suite: several jobs, each to its own target.
@@ -655,6 +661,9 @@ func (a *App) preflightSuiteItem(ctx context.Context, request RunPreflightReques
 // preflightSuiteDocument preflights the suite document raw, whose references
 // resolve from root.
 func (a *App) preflightSuiteDocument(ctx context.Context, root string, request RunPreflightRequest, raw []byte) RunPreflightResult {
+	if declaresConnectedSuite(raw) {
+		return a.preflightConnectedSuite(ctx, root, request, raw)
+	}
 	document, err := suite.Decode(raw)
 	if err != nil {
 		return RunPreflightResult{State: Failed, Reason: "that entry does not declare a suite this release reads"}
@@ -810,8 +819,9 @@ func (a *App) authorPreview(ctx context.Context) bool {
 // that make it an approved suite, the fresh output entry, and the suite
 // identity the preflight fixed, which is required.
 type SuiteRunRequest struct {
-	Workspace string `json:"workspace"`
-	Suite     string `json:"suite"`
+	Connected *ConnectedSuiteRunOptions `json:"connected,omitzero"`
+	Workspace string                    `json:"workspace"`
+	Suite     string                    `json:"suite"`
 	// Item names one saved suite version instead of Suite.
 	Item        *SuiteRunTarget `json:"item,omitzero"`
 	Environment string          `json:"environment"`
@@ -824,10 +834,11 @@ type SuiteRunRequest struct {
 // was admitted, refused, skipped and executed, and each job's own durable
 // summary — exactly as `readmit suite run` retains it.
 type SuiteRunResult struct {
-	State  State           `json:"state"`
-	Reason string          `json:"reason,omitzero"`
-	Output string          `json:"output,omitzero"`
-	Report *suiteRunReport `json:"report,omitzero"`
+	ConnectedReport *runqueue.ConnectedReport `json:"connected_report,omitzero"`
+	State           State                     `json:"state"`
+	Reason          string                    `json:"reason,omitzero"`
+	Output          string                    `json:"output,omitzero"`
+	Report          *suiteRunReport           `json:"report,omitzero"`
 }
 
 func (r *SuiteRunResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -878,7 +889,7 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 			if loaded == nil {
 				return SuiteRunResult{State: declined.state, Reason: declined.reason}
 			}
-			if suite.Identity(data) != request.Expected {
+			if !declaresConnectedSuite(data) && suite.Identity(data) != request.Expected {
 				return SuiteRunResult{State: Failed, Reason: "the selected suite changed after the preflight; preflight it again before executing"}
 			}
 			path, remove, err := placeCompiled(loaded.root, data)
@@ -901,6 +912,10 @@ func (a *App) StartSuiteRun(request SuiteRunRequest) SuiteRunResult {
 		output, err := runEntryPath(root, request.Output)
 		if err != nil {
 			return SuiteRunResult{State: Failed, Reason: "the suite output must be one new entry of the open workspace"}
+		}
+		raw, readErr := readBoundedEntry(suitePath, suite.MaxBytes)
+		if readErr == nil && declaresConnectedSuite(raw) {
+			return a.startConnectedSuite(ctx, root, suitePath, output, request, raw)
 		}
 		references := ""
 		if request.References != "" {

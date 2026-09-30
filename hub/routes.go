@@ -68,5 +68,9 @@ func Routes() []Route {
 		// customer runners.
 		{Service: "runner", Method: "POST", Path: "/v1/projects/{project}/runner", Purpose: "acquire an execution lease"},
 		{Service: "runner", Method: "DELETE", Path: "/v1/projects/{project}/runner", Purpose: "release an execution lease"},
+		{Service: "runner", Method: "POST", Path: "/v2/projects/{project}/runner", Purpose: "admit one exact connected dispatch under durable resource fencing"},
+		{Service: "runner", Method: "POST", Path: "/v2/projects/{project}/runner/renew", Purpose: "renew the same connected ownership and capability agreement"},
+		{Service: "runner", Method: "POST", Path: "/v2/projects/{project}/runner/attempt", Purpose: "persist a fenced attempted effect before its target is reached"},
+		{Service: "runner", Method: "POST", Path: "/v2/projects/{project}/runner/settle", Purpose: "retain terminal outcome and release only settled matching ownership"},
 	}
 }

@@ -1101,18 +1101,31 @@ func (a *App) OpenSchedulePolicy(path string) SchedulePreviewResult {
 // prepare, and where the reviewed file is written. Gate, when present, adds
 // the reviewed change-gate step after the suite run.
 type CIHandoffRequest struct {
-	Integration     string      `json:"integration"`
-	Binary          string      `json:"binary"`
-	OperationPolicy string      `json:"operation_policy"`
-	SuiteFile       string      `json:"suite_file"`
-	Environment     string      `json:"environment"`
-	RunDirectory    string      `json:"run_directory"`
-	CoverageFile    string      `json:"coverage_file"`
-	Output          string      `json:"output"`
-	Gate            *CIGateStep `json:"gate,omitzero"`
+	Integration     string           `json:"integration"`
+	Binary          string           `json:"binary"`
+	OperationPolicy string           `json:"operation_policy"`
+	SuiteFile       string           `json:"suite_file"`
+	Environment     string           `json:"environment"`
+	RunDirectory    string           `json:"run_directory"`
+	CoverageFile    string           `json:"coverage_file"`
+	Output          string           `json:"output"`
+	Gate            *CIGateStep      `json:"gate,omitzero"`
+	Connected       *CIConnectedStep `json:"connected,omitzero"`
 	// Suite names the saved suite version the agent's suite file holds, for
 	// the checklist; empty names none.
 	Suite string `json:"suite,omitzero"`
+}
+
+// CIConnectedStep names the customer-installed runner and finite authority
+// for one promoted connected suite. Instance is one dispatch identity, kept
+// unchanged across CI retries; another attempt never gains a new authority.
+type CIConnectedStep struct {
+	RunnerConfig      string `json:"runner_config"`
+	Authority         string `json:"authority"`
+	Promotion         string `json:"promotion"`
+	PromotionIdentity string `json:"promotion_identity"`
+	Revision          string `json:"revision"`
+	Instance          string `json:"instance"`
 }
 
 // CIGateStep is the reviewed change gate a handoff runs after the suite: the
@@ -1198,27 +1211,50 @@ func validateCIHandoff(request CIHandoffRequest) string {
 	if !runnerprotocol.ID(request.Environment) {
 		return "the environment is the named nonproduction environment the suite binds to"
 	}
-	if declined := uncleanPath(
-		agentValue{"the run directory", request.RunDirectory},
-		agentValue{"the coverage declaration", request.CoverageFile},
-	); declined != "" {
+	if declined := uncleanPath(agentValue{"the run directory", request.RunDirectory}); declined != "" {
 		return declined
+	}
+	if connected := request.Connected; connected != nil {
+		if request.CoverageFile != "" {
+			if declined := uncleanPath(agentValue{"the connected coverage declaration", request.CoverageFile}); declined != "" {
+				return declined
+			}
+		}
+		if declined := uncleanPath(agentValue{"the customer runner configuration", connected.RunnerConfig}, agentValue{"the installed connected runner authority", connected.Authority}, agentValue{"the connected promotion approval", connected.Promotion}); declined != "" {
+			return declined
+		}
+		if !fullIdentity(connected.PromotionIdentity) {
+			return "the connected promotion approval identity is its full 64-character lowercase SHA-256 identity"
+		}
+		if strings.TrimSpace(connected.Revision) == "" || len(connected.Revision) > 256 || !utf8.ValidString(connected.Revision) || strings.ContainsFunc(connected.Revision, unicode.IsControl) {
+			return "the target revision is the operator's one-line assumption of at most 256 bytes"
+		}
+		if !runnerprotocol.ID(connected.Instance) {
+			return "the connected dispatch identity names this one invocation and stays unchanged across retries"
+		}
+		if request.Gate == nil {
+			return ""
+		}
+	}
+	if request.Connected == nil {
+		if declined := uncleanPath(agentValue{"the coverage declaration", request.CoverageFile}); declined != "" {
+			return declined
+		}
 	}
 	gate := request.Gate
 	if gate == nil {
 		return ""
 	}
-	if declined := uncleanPath(
-		agentValue{"the release references", gate.Releases},
-		agentValue{"the promotion approval", gate.Promotion},
-	); declined != "" {
-		return declined
-	}
-	if !fullIdentity(gate.PromotionIdentity) {
-		return "the promotion approval identity is its full 64-character lowercase SHA-256 identity"
-	}
-	if strings.TrimSpace(gate.Revision) == "" || len(gate.Revision) > 256 || !utf8.ValidString(gate.Revision) || strings.ContainsFunc(gate.Revision, unicode.IsControl) {
-		return "the target revision is the operator's one-line assumption of at most 256 bytes"
+	if request.Connected == nil {
+		if declined := uncleanPath(agentValue{"the release references", gate.Releases}, agentValue{"the promotion approval", gate.Promotion}); declined != "" {
+			return declined
+		}
+		if !fullIdentity(gate.PromotionIdentity) {
+			return "the promotion approval identity is its full 64-character lowercase SHA-256 identity"
+		}
+		if strings.TrimSpace(gate.Revision) == "" || len(gate.Revision) > 256 || !utf8.ValidString(gate.Revision) || strings.ContainsFunc(gate.Revision, unicode.IsControl) {
+			return "the target revision is the operator's one-line assumption of at most 256 bytes"
+		}
 	}
 	if declined := uncleanPath(
 		agentValue{"the reviewed baseline run directory", gate.Baseline},
@@ -1296,9 +1332,11 @@ const ciWorkflowMarker = "# --- reviewed workflow (install as-is) ---"
 // gate assesses. ciGateCommand is the documented change gate. It needs no
 // operation policy: assessing retained evidence is not licensed work.
 const (
-	ciSuiteCommand      = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m`
-	ciGatedSuiteCommand = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --releases "$RELEASES_FILE" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --send --deadline 5m`
-	ciGateCommand       = `"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"`
+	ciSuiteCommand          = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --send --deadline 5m`
+	ciConnectedSuiteCommand = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --runner-config "$RUNNER_CONFIG" --authority "$RUNNER_AUTHORITY" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --instance "$DISPATCH_ID" --send --deadline 5m`
+	ciGatedSuiteCommand     = `"$READMIT_BIN" --operation-policy "$OPERATION_POLICY" suite ci "$SUITE_FILE" --environment "$SUITE_ENVIRONMENT" --output "$RUN_DIRECTORY" --requirements "$COVERAGE_FILE" --releases "$RELEASES_FILE" --promotion "$PROMOTION_FILE" --promotion-identity "$PROMOTION_IDENTITY" --revision "$TARGET_REVISION" --send --deadline 5m`
+	ciGateCommand           = `"$READMIT_BIN" suite gate "$RUN_DIRECTORY" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"`
+	ciConnectedGateCommand  = `"$READMIT_BIN" suite gate "$RUN_DIRECTORY/execution" --baseline "$BASELINE_DIRECTORY" --policy "$GATE_POLICY" --policy-identity "$GATE_POLICY_IDENTITY" --output "$GATE_DIRECTORY"`
 )
 
 // ciHandoffDocument renders the supported integrations' exact documented
@@ -1324,19 +1362,52 @@ func ciHandoffDocument(request CIHandoffRequest) string {
 	}
 	gate := request.Gate
 	command := ciSuiteCommand
+	gateCommand := ciGateCommand
+	if connected := request.Connected; connected != nil {
+		command = ciConnectedSuiteCommand
+		checklist = []string{
+			"Provision these non-secret path/selection variables on the trusted customer-owned agent:",
+			"  OPERATION_POLICY=" + request.OperationPolicy,
+			"  READMIT_BIN=" + request.Binary,
+			"  SUITE_FILE=" + request.SuiteFile,
+			"  SUITE_ENVIRONMENT=" + request.Environment,
+			"  RUN_DIRECTORY=" + request.RunDirectory + " (a new path on the persistent private volume for this one invocation)",
+			"  RUNNER_CONFIG=" + connected.RunnerConfig,
+			"  RUNNER_AUTHORITY=" + connected.Authority,
+			"  PROMOTION_FILE=" + connected.Promotion,
+			"  PROMOTION_IDENTITY=" + connected.PromotionIdentity,
+			"  TARGET_REVISION=" + connected.Revision,
+			"  DISPATCH_ID=" + connected.Instance + " (keep this identity unchanged across retries of this dispatch)",
+			"The approved connected suite embeds its exact released expectations; a separate legacy releases file is not selected.",
+		}
+		if request.Suite != "" {
+			checklist = append(checklist, "SUITE_FILE holds the saved suite "+request.Suite+".")
+		}
+		if request.CoverageFile != "" {
+			command = strings.Replace(command, " --send", ` --requirements "$COVERAGE_FILE" --send`, 1)
+			checklist = append(checklist, "  COVERAGE_FILE="+request.CoverageFile+" (an approved readmit-suite-coverage/v2 declaration)")
+		}
+	}
 	if gate != nil {
-		command = ciGatedSuiteCommand
-		checklist = append(checklist,
-			"The reviewed change gate adds these eight, pinned in protected customer configuration:",
-			"  RELEASES_FILE="+gate.Releases,
-			"  PROMOTION_FILE="+gate.Promotion,
-			"  PROMOTION_IDENTITY="+gate.PromotionIdentity,
-			"  TARGET_REVISION="+gate.Revision,
-			"  BASELINE_DIRECTORY="+gate.Baseline,
-			"  GATE_POLICY="+gate.Policy,
-			"  GATE_POLICY_IDENTITY="+gate.PolicyIdentity,
-			"  GATE_DIRECTORY="+gate.SnapshotDirectory+" (a new path on the persistent private volume for this one invocation)",
-		)
+		if request.Connected == nil {
+			command = ciGatedSuiteCommand
+			checklist = append(checklist,
+				"The reviewed change gate adds these eight, pinned in protected customer configuration:",
+				"  RELEASES_FILE="+gate.Releases,
+				"  PROMOTION_FILE="+gate.Promotion,
+				"  PROMOTION_IDENTITY="+gate.PromotionIdentity,
+				"  TARGET_REVISION="+gate.Revision,
+				"  BASELINE_DIRECTORY="+gate.Baseline,
+				"  GATE_POLICY="+gate.Policy,
+				"  GATE_POLICY_IDENTITY="+gate.PolicyIdentity,
+				"  GATE_DIRECTORY="+gate.SnapshotDirectory+" (a new path on the persistent private volume for this one invocation)",
+			)
+		} else {
+			gateCommand = ciConnectedGateCommand
+			checklist = append(checklist, "The reviewed connected change gate adds these protected values:",
+				"  BASELINE_DIRECTORY="+gate.Baseline, "  GATE_POLICY="+gate.Policy+" (an approved readmit-ci-gate-policy/v2 document)",
+				"  GATE_POLICY_IDENTITY="+gate.PolicyIdentity, "  GATE_DIRECTORY="+gate.SnapshotDirectory+" (a new private path for this invocation)")
+		}
 	}
 	checklist = append(checklist,
 		"No checkout, upload, retry or network install runs here. Raw evidence and reports stay private and are not CI artifacts.",
@@ -1375,7 +1446,7 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          ` + ciGateCommand + "\n"
+          ` + gateCommand + "\n"
 		}
 		return workflow
 	case "azure":
@@ -1392,7 +1463,7 @@ steps:
 `
 		if gate != nil {
 			workflow += `  - bash: |
-      ` + ciGateCommand + `
+      ` + gateCommand + `
     displayName: Retain the reviewed change gate
     condition: succeededOrFailed()
     timeoutInMinutes: 10
@@ -1401,7 +1472,7 @@ steps:
 		return workflow
 	default:
 		if gate != nil {
-			return "#!/bin/sh\n" + header + command + "\nexecution=$?\n" + ciGateCommand + "\ngate=$?\n" +
+			return "#!/bin/sh\n" + header + command + "\nexecution=$?\n" + gateCommand + "\ngate=$?\n" +
 				"if [ \"$execution\" -ne 0 ]; then\n  exit \"$execution\"\nfi\nexit \"$gate\"\n"
 		}
 		return "#!/bin/sh\n" + header + command + "\nexit $?\n"
@@ -1423,11 +1494,12 @@ type CIResultsView struct {
 // gate summary. Missing summaries are reported; an absent summary is never a
 // pass.
 type CIInspectResult struct {
-	State   State          `json:"state"`
-	Reason  string         `json:"reason,omitzero"`
-	CI      *CIResultsView `json:"ci,omitzero"`
-	Gate    *CIResultsView `json:"gate,omitzero"`
-	Warning string         `json:"warning,omitzero"`
+	State   State                                    `json:"state"`
+	Reason  string                                   `json:"reason,omitzero"`
+	CI      *CIResultsView                           `json:"ci,omitzero"`
+	Gate    *CIResultsView                           `json:"gate,omitzero"`
+	Warning string                                   `json:"warning,omitzero"`
+	Refusal *customerrunner.ConnectedRefusalMetadata `json:"refusal,omitzero"`
 }
 
 func (r *CIInspectResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
@@ -1435,9 +1507,27 @@ func (r *CIInspectResult) refuse(state State, reason string) { r.State, r.Reason
 // InspectCIResults reads the retained aggregate files of one CI output
 // directory read-only. It never re-runs, resumes or resends anything.
 func (a *App) InspectCIResults(directory string) CIInspectResult {
-	return run(a, false, false, func(context.Context) CIInspectResult {
+	return run(a, false, false, func(ctx context.Context) CIInspectResult {
 		if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
 			return CIInspectResult{State: Failed, Reason: "a CI output directory is named by a cleaned absolute path"}
+		}
+		if schema, ok := sniffSchema(filepath.Join(directory, "manifest.json")); ok && schema == suite.ConnectedGateRetentionSchema {
+			report, err := suite.InspectConnectedGateSummary(directory)
+			if err != nil {
+				return CIInspectResult{State: Failed, Reason: "the retained connected gate summary does not verify"}
+			}
+			return CIInspectResult{State: Completed, Gate: &CIResultsView{Schema: report.Schema, State: report.State, ExitCode: report.ExitCode}, Warning: "This is the original retained summary. Verify the gate with its independently pinned policy identity."}
+		}
+		if schema, ok := sniffSchema(filepath.Join(directory, "manifest.json")); ok && schema == customerrunner.ConnectedCISchema {
+			report, err := customerrunner.InspectConnectedCI(ctx, directory)
+			if err != nil {
+				return CIInspectResult{State: Failed, Reason: "the connected CI summary and its linked actual execution proof do not verify"}
+			}
+			metadata, e := customerrunner.InspectConnectedCIRefusal(ctx, directory)
+			if e != nil {
+				return CIInspectResult{State: Failed, Reason: "the private connected refusal metadata does not verify"}
+			}
+			return CIInspectResult{State: Completed, CI: &CIResultsView{Schema: report.Schema, State: report.State, ExitCode: report.ExitCode}, Refusal: metadata}
 		}
 		result := CIInspectResult{State: Completed}
 		raw, declined := readPrivateFile(filepath.Join(directory, "ci.json"), 4096)
@@ -1452,7 +1542,14 @@ func (a *App) InspectCIResults(directory string) CIInspectResult {
 			result.CI = &CIResultsView{Schema: report.Schema, State: report.State, ExitCode: report.ExitCode}
 		}
 		if raw, declined := readPrivateFile(filepath.Join(directory, "gate.json"), 4096); declined.reason == "" {
-			if report, err := suite.DecodeGateReport(raw); err == nil {
+			decode := suite.DecodeGateReport
+			var header struct {
+				Schema string `json:"schema"`
+			}
+			if json.Unmarshal(raw, &header) == nil && header.Schema == suite.ConnectedGateSchema {
+				decode = suite.DecodeConnectedGateReport
+			}
+			if report, err := decode(raw); err == nil {
 				result.Gate = &CIResultsView{Schema: report.Schema, State: report.State, ExitCode: report.ExitCode}
 			} else {
 				result.Warning = "a retained change-gate summary is present but not readable"
@@ -1489,6 +1586,17 @@ func (a *App) InspectGatePolicy(path string) GatePolicyResult {
 		raw, declined := readPrivateFile(path, suite.MaxBytes)
 		if declined.reason != "" {
 			return GatePolicyResult{State: declined.state, Reason: declined.reason}
+		}
+		var header struct {
+			Schema string `json:"schema"`
+		}
+		if json.Unmarshal(raw, &header) == nil && header.Schema == suite.ConnectedGatePolicySchema {
+			policy, err := suite.DecodeConnectedGatePolicy(raw)
+			if err != nil {
+				return GatePolicyResult{State: Failed, Reason: "the connected gate policy does not verify"}
+			}
+			return GatePolicyResult{State: Completed, Identity: policy.Identity(), Environment: policy.Environment, Revision: policy.Revision, Engine: policy.Engine, PromotionIdentity: policy.Promotion,
+				Specifications: len(policy.Coverage.Specifications), RetainUntil: policy.RetainUntil, Approver: policy.Approver, Rationale: policy.Rationale}
 		}
 		policy, err := suite.DecodeGatePolicy(raw)
 		if err != nil {
@@ -1555,7 +1663,11 @@ func verifyCIGate(ctx context.Context, directory, identity string, now time.Time
 	if !fullIdentity(identity) {
 		return CIGateVerifyResult{State: Failed, Reason: "the pinned gate policy identity is its full 64-character lowercase SHA-256 identity"}
 	}
-	report := suite.VerifyGate(ctx, directory, identity, now)
+	verify := suite.VerifyGate
+	if schema, ok := sniffSchema(filepath.Join(directory, "policy.json")); ok && schema == suite.ConnectedGatePolicySchema {
+		verify = suite.VerifyConnectedGate
+	}
+	report := verify(ctx, directory, identity, now)
 	// A cancellation that stopped the reading leaves the gate unknown; one that
 	// arrived after the verdict was reached does not take it back.
 	if report.State == "unknown" && ctx.Err() != nil {

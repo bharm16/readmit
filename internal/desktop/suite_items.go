@@ -61,6 +61,7 @@ const (
 // hold (an imported or original suite); Source then holds the reference as
 // the document declared it, and a save refuses it at that member.
 type SuiteDraft struct {
+	Connected *ConnectedSuiteDraft `json:"connected,omitzero"`
 	// ID is the suite document's identifier; empty for a new suite, which a
 	// save derives from the name.
 	ID          string   `json:"id,omitzero"`

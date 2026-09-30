@@ -64,6 +64,22 @@ func (f FileAuthority) Check(ctx context.Context, b Binding) (Actor, error) {
 	if ctx.Err() != nil || !runnerprotocol.ID(f.Actor) || !runnerprotocol.ID(f.Generation) {
 		return Actor{}, refused
 	}
+	if err := checkAdmission(ctx); err != nil {
+		return Actor{}, err
+	}
+	if authority, ok := ctx.Value(authorityKey{}).(Authority); ok {
+		// A runtime authority can delegate to an ordinary FileAuthority.
+		// Consume this override at the boundary so that delegation cannot
+		// recursively select itself; enclosing admission checks stay intact.
+		actor, err := authority.Check(context.WithValue(ctx, authorityKey{}, nil), b)
+		if err != nil {
+			return Actor{}, err
+		}
+		if !CurrentActor(actor) {
+			return Actor{}, refused
+		}
+		return actor, nil
+	}
 	raw, err := (artifactdir.Document{MaxBytes: 64 << 10, OwnerOnly: runtime.GOOS != "windows"}).Read(f.Path)
 	var g RunnerGrant
 	if err != nil || json.Unmarshal(raw, &g, json.RejectUnknownMembers(true)) != nil {
