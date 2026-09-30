@@ -1,0 +1,475 @@
+{
+  "issue": 567,
+  "date": "2026-09-30",
+  "qualification": "accepted-functional-scope",
+  "scope": {
+    "owner_date": "2026-09-30",
+    "excluded_qualification": [
+      "additional viewport/size/zoom testing",
+      "accessibility and screen-reader qualification",
+      "Windows qualification"
+    ],
+    "functionality": "All product functionality retained; existing responsive, keyboard/accessibility and Windows support retained."
+  },
+  "base_commit": "9ecff689c18e29224a7d85662d0cae58adbcb497",
+  "source_fingerprint": {
+    "sha256": "a8fe8b50fc425fc1bd0f3f8a22b7c7068cf81207817336958e647ce9d75b4c1c",
+    "files": 3973,
+    "algorithm": "SHA-256 over sorted tracked source/test/workflow paths, NUL, and raw SHA-256 of each file; cmd/internal/desktop/hub/tests/testdata/tools/.github/workflows plus go.mod/go.sum/Makefile. Documentation receipts excluded."
+  },
+  "checks": [
+    {
+      "command": "make check",
+      "result": "passed"
+    },
+    {
+      "command": "GOMAXPROCS=2 GOFLAGS='-p=2' make test",
+      "result": "passed",
+      "scope": "Complete root race suite plus production observation-byte/streaming boundaries and FHIR/proof labs."
+    },
+    {
+      "command": "npm ci && npm run build",
+      "directory": "desktop/frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npm test -- --maxWorkers=2",
+      "directory": "desktop/frontend",
+      "result": "passed",
+      "files": 49,
+      "tests": 591
+    },
+    {
+      "command": "go vet ./... && go test ./bindgen ./journeybridge ./hubadmin",
+      "directory": "desktop",
+      "result": "passed"
+    }
+  ],
+  "journeys": {
+    "full_command": "READMIT_POSTGRES_BIN=/path/to/postgresql/bin GOMAXPROCS=2 GOFLAGS='-p=2' npm run test:journeys -- --maxWorkers=2",
+    "full_run": {
+      "passed": 76,
+      "failed": 1,
+      "skipped": 1
+    },
+    "corrective_command": "GOMAXPROCS=2 GOFLAGS='-p=2' npm run test:journeys -- src/journeys/reusable-work.journey.tsx --maxWorkers=1",
+    "corrective_run": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "latest_distinct": {
+      "passed": 77,
+      "skipped": 1
+    },
+    "evidence_scope": "Combined full-run and corrected affected-workflow results, not a claim of a single entirely green full run. The editor-read defect found by the full run is fixed and its whole five-test workflow passes.",
+    "tests": [
+      {
+        "file": "desktop/frontend/src/journeys/comparison.journey.tsx",
+        "test": "a comparison is read under a named normalization policy exactly as readmit normalize reads it, a rule the reader refuses is refused before anything is saved, and the extended policy is what the command line reads",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/comparison.journey.tsx",
+        "test": "two cases are compared exactly as readmit diff reports them, a mismatched pair is refused with the key to declare, and a case changed after import is refused as the command line refuses it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/crash-recovery.journey.tsx",
+        "test": "a crash while a send waits on its acknowledgement leaves the delivery uncertain, and reopening never sends it again",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/crash-recovery.journey.tsx",
+        "test": "a test half authored when the application ended comes back for its case and is finished from where it was",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/entitlement.journey.tsx",
+        "test": "a delivered license is verified, installed and activated without hand-written configuration, and once released admits no new work",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/entitlement.journey.tsx",
+        "test": "an expired term refuses new work until the later issue the vendor signs is installed, and a term in its grace period still admits it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/entitlement.journey.tsx",
+        "test": "the commercial portal is an operator-supplied destination: stated as missing, refused when invalid, and once chosen shown as a link that survives a restart",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/environment.journey.tsx",
+        "test": "a send policy and a reset plan are saved under the identity of their bytes, refused when invalid, and read unchanged by target check and the reset reader",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/environment.journey.tsx",
+        "test": "credential references are registered, refused, edited, cancelled and bound in the window and read unchanged by the command line",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/execution.journey.tsx",
+        "test": "a test of an independent downstream system fails on its defect, passes once it is fixed and fails again when the defect returns",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/execution.journey.tsx",
+        "test": "the downstream's exported state is observed through a declared window, and missing, stale and incomplete exports are errors, never an empty result",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/expectation-review.journey.tsx",
+        "test": "checks suggested from a passing run are added only as a person accepts them, a failed run proposes nothing, a cancelled review adds nothing, and the command line runs what was saved",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/grid-paging.journey.tsx",
+        "test": "a 10,000-message case is read one window at a time with no index set up, and a case changed between two reads is refused",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/guided-sample.journey.tsx",
+        "test": "the guided sample is authored, fails on the defect, passes once it is corrected and reopens with both verdicts",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "a call Wails would reject fails the journey, though the window reports it only as unreachable",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "a crash abandons the window at once, and the next launch starts from what was on disk",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "a dialog the journey did not answer fails the journey instead of opening nothing quietly",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "a dismissed dialog is a cancellation that opens nothing",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "a journey changes only a file that is already on the machine, in place",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "an answer scripted for another dialog is refused and fails the journey",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "closing a window whose call never finished fails the journey and names the call",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/harness.journey.tsx",
+        "test": "no journey can place, change, age or export a file or an activation folder outside its own root",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hostile-content.journey.tsx",
+        "test": "markup in evidence, file names and searches is shown as inert text and never becomes an element",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub-administration.journey.tsx",
+        "test": "the hub administration handoff reads a real configuration and never runs its host step",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub-selection.journey.tsx",
+        "test": "a chosen hub configuration is restored selected and offline when the window is reopened, and reopening reaches nothing",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub-selection.journey.tsx",
+        "test": "a remembered hub configuration that stopped validating is shown with why after a reopen, and choosing one again recovers",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub.journey.tsx",
+        "test": "Team views on a real hub work from the keyboard and in a compact window, ask before discarding an edited comment, keep it through a stopped hub, and record a retried decision once under its intent",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub.journey.tsx",
+        "test": "a support summary the team approved downloads from a real hub byte for byte, and the person's notifications and searches read what the hub recorded",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub.journey.tsx",
+        "test": "an operator stores and reads artifacts by digest on a real operator-only hub: an unlicensed store, a damaged stored copy, a stopped hub, a hub switched to team mode and a disconnection are each reported, never retried",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub.journey.tsx",
+        "test": "publishing to a real hub needs an activated license and a role that may write, and a damaged stored copy, an expired session, a stopped hub and a disconnection are each reported, never retried",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/hub.journey.tsx",
+        "test": "two people review the same evidence on a real hub: the decision made against a stale history is refused as a conflict and recorded once renewed",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/interruption.journey.tsx",
+        "test": "a capture started from a saved listener stops when Cancel capture is pressed, and reopening after a kill starts nothing",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/interruption.journey.tsx",
+        "test": "a note's text the window retained survives a kill, and text it had not yet retained comes back whole or not at all",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/interruption.journey.tsx",
+        "test": "cancelling an import while it writes its case stops it there, registers nothing, and the window says it was cancelled",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/keyboard.journey.tsx",
+        "test": "a keyboard-only person opens the sample, verifies and inspects a case, moves between regions, resizes and scales, and recovers from refusals",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/license.journey.tsx",
+        "test": "a delivered license file is activated here, used by the command line with nothing named, renewed in place, saved, and deactivated only when asked",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/license.journey.tsx",
+        "test": "administrator activation choices, export and clock correction agree with the command line",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/maintenance.journey.tsx",
+        "test": "a project is backed up and verified, backed up again with no project open, held to a quota and restored into a separate project",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/maintenance.journey.tsx",
+        "test": "a staged update is checked from Settings, its rollback copy taken and shown, and refused once its package is altered, with nothing installed",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/maintenance.journey.tsx",
+        "test": "an archive keeps the project, and Delete from this computer is refused once the project changed and while a protected package is retained",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/maintenance.journey.tsx",
+        "test": "an earlier project document is listed with when and why it was kept, opened read-only and restored as a separate project, and a copy damaged since is refused",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/maintenance.journey.tsx",
+        "test": "on a full disk an archive, a delete, a staged update and a restore are refused with the project kept, the restore's unfinished folder is shown, and the delete completes once there is room",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/maintenance.journey.tsx",
+        "test": "one case is archived and deleted from its row, leaving the rest of the project, and then the project is deleted against its verified archive",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/measurement.journey.tsx",
+        "test": "the window's own paths over the largest case a bundle admits, timed as a person waits for them",
+        "status": "skipped"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/own-evidence.journey.tsx",
+        "test": "a person's own export becomes a registered, searchable case in a new project and reopens where they left it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/packets.journey.tsx",
+        "test": "a report's value-free support summary is exported under the project's sharing policy into a new folder, and the command line verifies it and refuses it once changed",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/primary.journey.tsx",
+        "test": "a new project completes import, duplicate regression, report, redacted export and restart (required derived check: false)",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/primary.journey.tsx",
+        "test": "a new project completes import, duplicate regression, report, redacted export and restart (required derived check: true)",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/privacy-status.journey.tsx",
+        "test": "Security lists the environment active while a send holds its connection, and checked after an explicit check",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/projects.journey.tsx",
+        "test": "projects are created, reopened from Projects, removed from recents, renamed and located after a move",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/protection.journey.tsx",
+        "test": "a control is retired only once the person confirms it, writes no new package afterwards and still opens the package it wrote, exactly as readmit protect retire decides",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/raw-files.journey.tsx",
+        "test": "a corpus generated and scanned in the window is the command line's corpus, manifest and benchmark",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/raw-files.journey.tsx",
+        "test": "a raw file is inspected and copied in the window exactly as the command line inspects and copies it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reduction.journey.tsx",
+        "test": "a failure is minimized by one reviewed series: refused without a reset, stopped mid-trial, bounded by its trial limit and reduced, as the downstream system and the command line record it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/replay.journey.tsx",
+        "test": "a replay cancelled while its acknowledgement is held leaves that delivery uncertain, and nothing sends it again",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/replay.journey.tsx",
+        "test": "selected case messages are previewed as readmit replay previews them and sent to an independent downstream system once, only after explicit approval",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reproducer-revisions.journey.tsx",
+        "test": "a variant is edited, undone and refused where it cannot be saved, and saved as the revision project show reads",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reusable-work.journey.tsx",
+        "test": "a check group, a profile and a scenario are created in the library, and the scenario generates a synthetic case from its saved seed and base time without running a test",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reusable-work.journey.tsx",
+        "test": "a suite of two tests with an environment's bindings, two data rows, an explicit override, a dependency and coverage is saved in one Save and reopens whole, runs through its exact review, and reports its jobs as they ended",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reusable-work.journey.tsx",
+        "test": "a suite version changed by another editor after approval review refuses the old approval without sending or recording it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reusable-work.journey.tsx",
+        "test": "a suite version is approved as a local baseline and, as its own decision that deploys nothing, for an environment, and that approval is marked changed once the environment it bound moves",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/reusable-work.journey.tsx",
+        "test": "two retained runs of one test compare a changed check definition as a changed check, never as a regression",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/run-explanation.journey.tsx",
+        "test": "saved check groups are decided against retained runs assertion by assertion as the command line re-decides them, passing, failing, unobserved and without evidence, and nothing is sent",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/run-history.journey.tsx",
+        "test": "retained runs are chosen from the keyboard, Back restores the choice, a check group is decided read-only, a report is handed off, and a compact window shows a run alone",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/runner-documents.journey.tsx",
+        "test": "a job is written once for a saved test, previewed against the environment its prepared inputs bind and refused under a runner for another, and a schedule policy for it is exported and opened again",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/runner-documents.journey.tsx",
+        "test": "a runner's setup is refused while the runner would refuse it, reviewed, exported once for another host and read unchanged by the command line's runner",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/runner-documents.journey.tsx",
+        "test": "a staged runner update is verified against the pinned deployment key without being run, and an unsigned or a foreign candidate is refused as the command line refuses it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/runner.journey.tsx",
+        "test": "a customer runner executes the saved test once against the downstream system through the real hub, to the verdict the window's own run and the command line's runner reach",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/runner.journey.tsx",
+        "test": "a runner whose hub grant went stale is refused until the window's grant revision is installed, a job whose delivery is never acknowledged stays uncertain, and its job id is never run again by the window or the command line",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/saved-views.journey.tsx",
+        "test": "a filter applied stores nothing, a saved view shows exactly its messages after the case is reopened, and it is renamed and removed in place",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/saved-views.journey.tsx",
+        "test": "a name another view holds and a views document a later release wrote are refused, and neither changes what is stored",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/schedules.journey.tsx",
+        "test": "Pause acknowledged during a real active scheduled send lets that run finish and prevents the queued occurrence from dispatching",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/schedules.journey.tsx",
+        "test": "a suite's schedule is enabled by the hub scheduler's acknowledgement, a repeated command is recorded once, an unacknowledged change stays Pending across a window restart until it is sent again, and Delete removes it",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/schedules.journey.tsx",
+        "test": "an expired installed hub license prevents an enabled schedule from dispatching and keeps its history readable",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/schedules.journey.tsx",
+        "test": "at its slot the hub scheduler dispatches nothing for a paused schedule, refuses and pauses one whose runner has no grant or whose pinned suite changed, and never catches up a slot it missed while stopped",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/stale-authority.journey.tsx",
+        "test": "a note restored after a reopen cannot be stored once the activation is released, and stays retained",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/synthetic-packets.journey.tsx",
+        "test": "a synthetic demonstration packet is generated into a new folder, verified as readmit report verify verifies it, prepared into runnable copies outside it and refused once changed, labelled synthetic throughout",
+        "status": "passed"
+      },
+      {
+        "file": "desktop/frontend/src/journeys/transform-plans.journey.tsx",
+        "test": "sequence changes the engine refuses are refused in its words, and the rest are previewed and saved as the one derived case readmit diff and project show read",
+        "status": "passed"
+      }
+    ]
+  },
+  "registry": {
+    "views": 46,
+    "catalog_records": 785,
+    "original_metadata_and_owners_preserved": true,
+    "semantic_review": "completed for functional scope; inherited/inert catalog states attributed to their real consumers"
+  },
+  "failure_history": [
+    "Original isolation-lifecycle failure under concurrent validation retained; unchanged test and production deadlines pass in complete bounded-concurrency root run.",
+    "A validation bootstrap overlapped dependency reinstallation; its incomplete run is not acceptance evidence.",
+    "Original frontend failures and the saved-test editor journey failure retained. Corrected Tests, RunnerPanel, Settings and Capture cases passed; final frontend591 and reusable5 are green."
+  ],
+  "required_pr_checks": [
+    "quality",
+    "desktop"
+  ],
+  "integration": "The required checks must pass on the pushed head before merge; main after merge is checked separately."
+}

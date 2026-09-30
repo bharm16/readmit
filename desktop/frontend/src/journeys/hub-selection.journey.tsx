@@ -12,7 +12,8 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
-import { Journey, press, region, whenEnabled } from "../testkit/journey";
+import { Journey, press, region } from "../testkit/journey";
+import { goToView, page } from "../testkit/navigation";
 import { countingListener } from "./probes.js";
 import type { CountingListener } from "./probes.js";
 
@@ -29,22 +30,17 @@ afterEach(async () => {
   await hub.close();
 });
 
-/** The customer hub panel of the privacy region. */
-function hubPanel() {
-  return within(region("Hub"));
+/** Settings › Team. */
+async function team(user: UserEvent) {
+  await goToView(user, "Settings", "Team");
+  return within(await screen.findByRole("region", { name: "Team" }));
 }
 
-/** The privacy status row of the customer hub. */
-function hubRow() {
-  const table = screen.getByRole("table", { name: "Deliberately configured activities and their destinations" });
-  return within(within(table).getByRole("rowheader", { name: "Customer artifact hub" }).closest("tr")!);
-}
-
-/** Reads the privacy status again and waits for the hub row to show a state
- * and the sentence beside it. */
-async function expectHubState(user: UserEvent, state: string): Promise<void> {
-  await press(user, screen.getByRole("button", { name: "Refresh privacy status" }));
-  await waitFor(() => expect(hubRow().getAllByRole("cell")[3]?.textContent).toBe(state));
+/** The team hub's row in Settings › Security, as its cells read. */
+async function securityRow(user: UserEvent): Promise<string[]> {
+  await goToView(user, "Settings", "Security");
+  const row = await page().findByRole("row", { name: "Team hub" });
+  return Array.from(row.querySelectorAll("td,th")).map((cell) => cell.textContent ?? "");
 }
 
 /** The operator's hub client configuration, naming hub as its endpoint. */
@@ -71,32 +67,38 @@ function writeConfiguration(hubEndpoint: string): string {
   );
 }
 
-/** Chooses the operator's folder in the hub panel, as a person does. */
-async function chooseConfiguration(user: UserEvent): Promise<void> {
-  await journey.chooseFolder(journey.path("hub-operator"), "Choose customer hub configuration folder");
-  await press(user, hubPanel().getByRole("button", { name: "Choose configuration…" }));
+/** Connect team: the operator's file chosen in the host's dialog and saved
+ * under the name the file's address offers. */
+async function connectTeam(user: UserEvent, configuration: string): Promise<void> {
+  const panel = await team(user);
+  await press(user, await panel.findByRole("button", { name: "Connect team" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Connect team" }));
+  await journey.chooseFiles([configuration], "Choose your team's configuration");
+  await press(user, sheet.getByRole("button", { name: "Choose file…" }));
+  expect(await sheet.findByText("cardio-icu")).toBeTruthy();
+  expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("127.0.0.1");
+  await press(user, sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Connect team" })).toBeNull());
 }
 
 test("a chosen hub configuration is restored selected and offline when the window is reopened, and reopening reaches nothing", async () => {
   const user = userEvent.setup();
   const configuration = writeConfiguration(`https://${hub.address}`);
   await journey.launch();
-  expect(await hubPanel().findByText("No configuration file selected. Working entirely offline.")).toBeTruthy();
-  await chooseConfiguration(user);
-  expect(await hubPanel().findByText(`Configuration file: ${configuration}`)).toBeTruthy();
+  expect(await (await team(user)).findByText("No team configured")).toBeTruthy();
+  await connectTeam(user, configuration);
+  expect(await within(region("Team")).findByText("Not connected")).toBeTruthy();
 
-  // Closed and reopened, the window shows the configuration it remembered,
-  // offline, with connecting left as the person's own next act.
+  // Closed and reopened, the window shows the team it remembered, offline,
+  // with signing in left as the person's own next act.
   await journey.close();
   const reopenedFrom = journey.calls.length;
   await journey.launch();
-  expect(await hubPanel().findByText(`Configuration file: ${configuration}`)).toBeTruthy();
-  expect(hubPanel().getByText("Offline / Local Mode")).toBeTruthy();
-  await whenEnabled(hubPanel().getByRole("button", { name: "Connect to hub" }));
-  await expectHubState(
-    user,
-    "Configured, offlineA hub configuration is selected; not connected. Connecting is a deliberate action.",
-  );
+  const reopened = await team(user);
+  expect(await reopened.findByText("Not connected")).toBeTruthy();
+  expect(reopened.getByText("127.0.0.1")).toBeTruthy();
+  expect(reopened.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  expect(await securityRow(user)).toContain("Not checked");
   await journey.close();
 
   // The reopened window asked the hub for nothing: its only hub call was the
@@ -115,35 +117,31 @@ test("a remembered hub configuration that stopped validating is shown with why a
   const user = userEvent.setup();
   const configuration = writeConfiguration(`https://${hub.address}`);
   await journey.launch();
-  await chooseConfiguration(user);
-  expect(await hubPanel().findByText(`Configuration file: ${configuration}`)).toBeTruthy();
+  await connectTeam(user, configuration);
+  expect(await within(region("Team")).findByText("Not connected")).toBeTruthy();
   await journey.close();
 
   // While the window is closed the operator's file changes to name a plain
   // http endpoint, which no hub configuration may.
   writeConfiguration(`http://${hub.address}`);
   await journey.launch();
-  // The panel says the remembered configuration no longer validates, that the
-  // endpoint is why, and how to recover.
+  // Team says the remembered configuration no longer validates, that the
+  // endpoint is why, and offers to connect again; nothing can sign in.
+  const panel = await team(user);
   expect(
-    await hubPanel().findByText(
-      /^the remembered hub configuration no longer validates \(.*endpoint.*https.*\); choose a hub configuration again$/,
-    ),
+    await panel.findByText(/^the remembered hub configuration no longer validates \(.*endpoint.*https.*\); choose a hub configuration again$/),
   ).toBeTruthy();
-  expect(hubPanel().getByText(`Configuration file: ${configuration}`)).toBeTruthy();
-  expect(hubPanel().getByRole("button", { name: "Check connection setup" }).hasAttribute("disabled")).toBe(true);
-  expect(hubPanel().getByRole("button", { name: "Connect to hub" }).hasAttribute("disabled")).toBe(true);
-  await expectHubState(
-    user,
-    "Not configuredNo hub configuration is selected. Every hub operation is unavailable and nothing is connected.",
-  );
+  expect(panel.getByText("No team configured")).toBeTruthy();
+  expect(panel.queryByRole("button", { name: "Sign in" })).toBeNull();
+  expect(await securityRow(user)).toContain("Unavailable");
 
   // Corrected and chosen again, it is selected and offline once more.
   writeConfiguration(`https://${hub.address}`);
-  await chooseConfiguration(user);
-  await waitFor(() => expect(hubPanel().queryByText(/no longer validates/)).toBeNull());
-  expect(hubPanel().getByText(`Configuration file: ${configuration}`)).toBeTruthy();
-  await whenEnabled(hubPanel().getByRole("button", { name: "Connect to hub" }));
+  await connectTeam(user, configuration);
+  const recovered = within(region("Team"));
+  expect(await recovered.findByText("Not connected")).toBeTruthy();
+  expect(recovered.queryByText(/no longer validates/)).toBeNull();
+  expect(recovered.getByRole("button", { name: "Sign in" })).toBeTruthy();
   await journey.close();
   expect(hub.accepted()).toBe(0);
 });

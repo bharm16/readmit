@@ -7,7 +7,7 @@ import { findMessageRow } from "./testkit/navigation";
 // domain decisions stay with the Go readers, which the shared-operation tests
 // exercise directly.
 import { afterEach, expect, test, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import {
@@ -173,6 +173,19 @@ test("a prepared rerun is not a case: it is named among the project's files, and
   expect(facade.callsTo("ProjectFiles")).toHaveLength(1);
 });
 
+test("a folder whose files cannot be listed says why instead of listing nothing", async () => {
+  const user = userEvent.setup();
+  await renderApp({
+    SelectWorkspace: () => folderChosen(WORKSPACE_ROOT, []),
+    ProjectFiles: (request) => ({ state: "failed", reason: "the folder holds no project document this release reads", context: request.context, files: [] }),
+  });
+  await openFolder(user);
+  await user.click(await sidebar().findByRole("button", { name: /^Project: / }));
+  await user.click(screen.getByRole("menuitem", { name: "Files" }));
+  expect((await page().findByRole("alert")).textContent).toBe("the folder holds no project document this release reads");
+  expect(page().queryByText("No other files")).toBeNull();
+});
+
 test("a boundary that cannot answer is a fixed failed sentence, never the error's own words", async () => {
   const user = userEvent.setup();
   await renderApp({
@@ -314,6 +327,17 @@ test("a refused case verification keeps the verified case and everything derived
   // The verified case, its grid and its inspector remain, for recovery.
   expect(await readCaseIdentity(user, CASE_IDENTITY)).toBeTruthy();
   expect((await findMessageRow(GRID_OCCURRENCE))).toBeTruthy();
+});
+
+test("a project search that matches nothing says so", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  await openFolder(user);
+  await within(screen.getByRole("region", { name: "Navigation" })).findByRole("button", { name: /^Project: / });
+  facade.reply({ Search: () => ({ state: "empty", reason: "nothing in this workspace matches", matches: [] }) });
+  await user.keyboard("{Control>}f{/Control}");
+  await user.type(screen.getByRole("searchbox", { name: "Search this project" }), "OWN-MOVE-1{Enter}");
+  expect(await within(screen.getByRole("dialog", { name: "Search this project" })).findByText("No matches.")).toBeTruthy();
 });
 
 test("recordings of where the viewer is are chained, so the newest place is recorded last", async () => {
@@ -844,4 +868,23 @@ test("details sit beside a list that fits and are shown alone, with the way back
   await user.click(screen.getByRole("button", { name: "Back to messages" }));
   expect(screen.queryByRole("region", { name: "Details" })).toBeNull();
   expect(screen.getByRole("region", { name: "Main content" })).toBeTruthy();
+});
+
+
+test("a delayed project-list refresh cannot take focus from an open sheet", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  const pending = facade.park("ListCatalog");
+  await openFolder(user);
+  await page().findByRole("heading", { level: 1, name: "Cases" });
+  await user.keyboard("{Control>}k{/Control}");
+  const field = screen.getByRole("combobox", { name: "Search commands" });
+  await user.type(field, "hel");
+  const asked = facade.callsTo("ListCatalog").at(-1)!;
+  await act(async () => {
+    pending.resolve({ state: "empty", context: (asked.args[0] as { context: RequestContext }).context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } });
+  });
+  expect(document.activeElement).toBe(field);
+  await user.keyboard("p");
+  expect((field as HTMLInputElement).value).toBe("help");
 });

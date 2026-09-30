@@ -37,7 +37,12 @@ export async function goTo(
   user: UserEvent,
   destination: Destination,
 ): Promise<void> {
-  await user.click(await sidebar().findByRole("button", { name: destination }));
+  const button = await waitFor(() => {
+    const offered = sidebar().getByRole("button", { name: destination });
+    if (offered.matches(":disabled")) throw new Error(`${destination} is not available while work finishes`);
+    return offered;
+  }, { timeout: 10_000 });
+  await user.click(button);
 }
 
 /** Opens one view of the page shown now: its tab, its category, the action in

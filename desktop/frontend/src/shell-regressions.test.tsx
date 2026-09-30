@@ -1,12 +1,15 @@
 import { expect, test } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessageReader } from "./Inspector";
 import { EmptyState, Modal, Page } from "./layout";
 import { Status } from "./shell";
 import { renderApp } from "./testkit/app";
+import { goTo, page } from "./testkit/navigation";
 import {
   inspectionResult,
+  folderWithCase,
+  catalogOfListing,
   GRID_OCCURRENCE,
 } from "./testkit/fixtures";
 
@@ -82,4 +85,23 @@ test("the shared compositions carry their title, reason and one action, and no p
   expect(paragraphs).toEqual(["No cases yet", "failedthe case is not readable"]);
   expect(screen.queryByText(/^Help:/)).toBeNull();
   expect(container.ownerDocument.querySelector("details")).toBeNull();
+});
+
+
+test("Cases finishes an exhausted busy read with Retry even when admission returned no context", async () => {
+  const user = userEvent.setup();
+  const { facade } = await renderApp({ SelectWorkspace: () => folderWithCase() });
+  let refuse = true;
+  facade.reply({ ListCatalog: query => query.kind === "case" && refuse
+    ? { state: "busy", reason: "The current operation is still finishing.", context: { project: "", generation: 0 } }
+    : catalogOfListing(query, facade) });
+  await goTo(user, "Projects");
+  await user.click(page().getByRole("button", { name: "Open" }));
+  await page().findByText("The current operation is still finishing.", undefined, { timeout: 5000 });
+  expect(page().queryByText("No cases yet")).toBeNull();
+  expect(page().queryByText("Loading")).toBeNull();
+  refuse = false;
+  await user.click(page().getByRole("button", { name: "Retry" }));
+  await page().findByRole("table", { name: "Cases" });
+  await waitFor(() => expect(page().queryByText("The current operation is still finishing.")).toBeNull());
 });

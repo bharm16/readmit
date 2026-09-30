@@ -218,6 +218,10 @@ function MessageField({ id, label, value, onChange }: { id: string; label: strin
   const source = match ? Number(match[1]) : 1;
   const at = match ? Number(match[2]) : 1;
   const message = (s: number, m: number) => `s${String(Math.max(1, s)).padStart(4, "0")}-e${String(Math.max(1, m)).padStart(6, "0")}`;
+  // A number being retyped is kept as typed; the check takes it once it is a
+  // whole number from 1.
+  const [typed, setTyped] = useState<{ source: string | null; at: string | null }>({ source: null, at: null });
+  const number = (text: string) => (/^\d+$/.test(text) && Number(text) >= 1 ? Number(text) : null);
   return (
     <fieldset className="check-field">
       <legend>{label}</legend>
@@ -232,11 +236,33 @@ function MessageField({ id, label, value, onChange }: { id: string; label: strin
       <div className="inline-fields">
         <span>
           <label htmlFor={`${id}-source`}>Source</label>
-          <input id={`${id}-source`} type="number" min={1} value={source} onChange={(event) => onChange({ ...value, message: message(Number(event.target.value), at) })} />
+          <input
+            id={`${id}-source`}
+            type="number"
+            min={1}
+            value={typed.source ?? source}
+            onChange={(event) => {
+              const next = number(event.target.value);
+              setTyped({ ...typed, source: event.target.value });
+              if (next !== null) onChange({ ...value, message: message(next, at) });
+            }}
+            onBlur={() => setTyped({ ...typed, source: null })}
+          />
         </span>
         <span>
           <label htmlFor={`${id}-message`}>Message</label>
-          <input id={`${id}-message`} type="number" min={1} value={at} onChange={(event) => onChange({ ...value, message: message(source, Number(event.target.value)) })} />
+          <input
+            id={`${id}-message`}
+            type="number"
+            min={1}
+            value={typed.at ?? at}
+            onChange={(event) => {
+              const next = number(event.target.value);
+              setTyped({ ...typed, at: event.target.value });
+              if (next !== null) onChange({ ...value, message: message(source, next) });
+            }}
+            onBlur={() => setTyped({ ...typed, at: null })}
+          />
         </span>
       </div>
       <label htmlFor={`${id}-path`}>Field</label>

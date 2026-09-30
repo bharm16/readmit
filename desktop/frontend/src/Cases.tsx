@@ -102,6 +102,7 @@ export function CaseList({
   onSort,
   busy,
   loading,
+  failure = null,
 }: {
   cases: CatalogItem[];
   /** The project's interface revisions, which search matches by name. */
@@ -123,6 +124,7 @@ export function CaseList({
   busy: boolean;
   /** The project's cases are being read: no rows are known yet. */
   loading: boolean;
+  failure?: string | null;
 }) {
   const shown = sortCases(applyView(cases, view, revisions), sort);
   const filtered = view.query !== "" || view.statuses.length > 0 || view.owner !== "" || view.tags.length > 0;
@@ -130,6 +132,9 @@ export function CaseList({
   usePaletteActions(chosen?.name ?? null, chosen ? actionsFor(chosen) : []);
   if (loading && cases.length === 0) {
     return <DataTable label="Cases" className="page-table" rows={[]} rowId={() => ""} rowLabel={() => ""} columns={[]} selected={null} onSelect={() => {}} onOpen={() => {}} loading />;
+  }
+  if (failure) {
+    return <div role="alert"><p>{failure}</p><button type="button" disabled={busy || loading} onClick={onRetry}>Retry</button></div>;
   }
   if (cases.length === 0) {
     return (

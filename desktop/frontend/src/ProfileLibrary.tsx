@@ -146,7 +146,7 @@ export function useProfile({
       const answer = await openItemDraft({ context: context(), ref });
       if (current()) setOpened(answer);
     });
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, context]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOpened(null);

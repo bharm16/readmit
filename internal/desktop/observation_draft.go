@@ -17,6 +17,7 @@ import (
 	"github.com/bharm16/readmit/internal/dataset"
 	"github.com/bharm16/readmit/internal/fhirr4"
 	"github.com/bharm16/readmit/internal/importer"
+	"github.com/bharm16/readmit/internal/observation"
 	"github.com/bharm16/readmit/internal/observesource"
 	"github.com/bharm16/readmit/internal/observewindow"
 	"github.com/bharm16/readmit/internal/operation"
@@ -333,6 +334,10 @@ func (r *ObservationFieldsResult) refuse(state State, reason string) {
 	r.State, r.Reason = state, reason
 }
 
+// ledgerRecordFields are the members of one appointment record of a receiver
+// ledger handoff, readmit-observation/v1, in its documented order.
+var ledgerRecordFields = []string{"record_id", "patient_id", "placer_id", "filler_id", "appointment_start"}
+
 // ObservationFields reads the export a file-export source names, a path
 // relative to the project or one chosen on this machine, within the source's
 // read bound, and lists the fields its declared extraction offers a record
@@ -385,6 +390,18 @@ func (a *App) ObservationFields(request ObservationFieldsRequest) ObservationFie
 		data, err := operation.ReadInputFile(path, limit)
 		if err != nil {
 			result.refuse(Failed, "the input file cannot be read within its maximum size")
+			return result
+		}
+		// A receiver ledger handoff is the one file a test run reads as
+		// appointment records. Its records are listed at records, and an
+		// empty ledger still names what each record holds, so its record key
+		// can be chosen before the first run has written a record.
+		if _, err := observation.Decode(data); err == nil {
+			for _, field := range ledgerRecordFields {
+				result.Fields = append(result.Fields, field)
+				result.Choices = append(result.Choices, ObservationFieldChoice{ID: field, Locator: importer.Locator{field}})
+			}
+			result.State = Completed
 			return result
 		}
 		fields, err := source.Extraction.Shape().Fields(data)

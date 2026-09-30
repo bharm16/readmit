@@ -1,17 +1,18 @@
 // Retiring an encryption control decides what it writes next, never what it
 // wrote. A person adds a control to their project in Settings › Security ›
-// Encryption over the key store their administrator staged, checks it, and
-// writes a transfer package under it from Encryption › Packages. Retire asks
-// first; cancelled once, the control stays active, and confirmed it is
-// retired: the window shows it retired, offers it for no new package and
-// still opens the package it wrote. Over the same files the command line
-// reads the same retirement, refuses a new package in the operation's own
-// sentence, opens the same package to the same bytes, and retires a copy of
-// the document the window read to exactly the bytes the window wrote.
+// Encryption over the key store their administrator staged, and checks it;
+// the administrator records a rotation and writes a transfer package under it
+// from the command line. Retire asks first; cancelled once, the control stays
+// active, and confirmed it is retired: the window shows it retired, offers
+// no further change to it, and still decrypts the package it wrote from
+// Encrypted packages. Over the same files the command line reads the same
+// retirement, refuses a new package in the operation's own sentence, opens
+// the same package to the same bytes, and retires a copy of the document the
+// window read to exactly the bytes the window wrote.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { byContent, enter, Journey, press } from "../testkit/journey";
+import { enter, Journey, press } from "../testkit/journey";
 import { goToView, page } from "../testkit/navigation";
 import { licensedProject } from "./steps";
 
@@ -32,11 +33,11 @@ const LOCATOR = "lab-evidence-key";
 const CONTROL = "lab-evidence";
 const RETIRED = "the protection control is retired; it opens the packages it wrote and writes no new one";
 
-/** The Packages task of the Encryption page, opened from its More menu. */
-async function packages(user: ReturnType<typeof userEvent.setup>) {
+/** Encryption › Encrypted packages, opened from its More menu. */
+async function encryptedPackages(user: ReturnType<typeof userEvent.setup>) {
   await press(user, page().getByRole("button", { name: "More encryption actions" }));
-  await press(user, await screen.findByRole("menuitem", { name: "Packages" }));
-  return within(await screen.findByRole("dialog", { name: "Packages" }));
+  await press(user, await screen.findByRole("menuitem", { name: "Encrypted packages" }));
+  await page().findByRole("heading", { level: 1, name: "Encrypted packages" });
 }
 
 /** The detail of the control, opened from its row in the controls table. */
@@ -95,43 +96,20 @@ test("a control is retired only once the person confirms it, writes no new packa
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog", { name: CONTROL })).toBeNull());
 
-  // The control is chosen for a package of the specification at generation
-  // 1, from the protection file the packing task names itself.
-  let task = await packages(user);
-  let packing = within(task.getByRole("group", { name: "Encrypted transfer packages" }));
-  await within(packing.getByLabelText("Protection file")).findByRole("option", { name: "protection.json" });
-  await user.selectOptions(packing.getByLabelText("Protection file"), "protection.json");
-  await journey.settled();
-  await packing.findByRole("option", { name: CONTROL });
-  await user.selectOptions(packing.getByLabelText("Protection control"), CONTROL);
-  await user.selectOptions(packing.getByLabelText("Package contents"), "reschedule-test.json");
-  await enter(user, packing.getByLabelText("Package folder"), "before-retirement");
-
-  // The administrator records a rotation from the command line before the
-  // person packs: the package is refused, and nothing is written.
+  // The administrator records a rotation and writes a transfer package of
+  // the specification under the control from the command line; the window
+  // reads the control at its new generation.
   const rotated = await journey.commandLine([...policy, "protect", "rotate", "--protection", `${lab}/protection.json`, "--name", CONTROL]);
   expect(rotated.code, rotated.stderr).toBe(0);
-  await press(user, packing.getByRole("button", { name: "Create encrypted package" }));
-  expect(await packing.findByText("the control's key generation changed since it was chosen; nothing was written; choose it again")).toBeTruthy();
-  expect(() => journey.readFile(`${lab}/before-retirement/transfer.json`)).toThrow();
+  const written = await journey.commandLine([...policy, "protect", "pack", "--protection", `${lab}/protection.json`, "--name", CONTROL,
+    "--output", `${lab}/before-retirement`, `${lab}/reschedule-test.json`]);
+  expect(written.code, written.stderr).toBe(0);
+  await press(user, page().getByRole("button", { name: "Back to settings" }));
+  await press(user, await page().findByRole("button", { name: "Encryption" }));
+  detail = await controlDetail(user);
+  expect(await detail.findByText("2")).toBeTruthy();
   await user.keyboard("{Escape}");
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Packages" })).toBeNull());
-
-  // Opened again, Packages reads the file afresh and withdraws the choice;
-  // chosen again at its new generation, the control writes the package.
-  await journey.settled();
-  task = await packages(user);
-  packing = within(task.getByRole("group", { name: "Encrypted transfer packages" }));
-  expect(await packing.findByText("Generation changed; choose the control again.")).toBeTruthy();
-  expect((packing.getByLabelText("Protection control") as HTMLSelectElement).value).toBe("");
-  await user.selectOptions(packing.getByLabelText("Protection control"), CONTROL);
-  await press(user, packing.getByRole("button", { name: "Create encrypted package" }));
-  expect(await packing.findByText(byContent(/^Package before-retirement · /))).toHaveProperty(
-    "textContent",
-    `Package before-retirement · control ${CONTROL} · key generation 2 · 1 entries.`,
-  );
-  await user.keyboard("{Escape}");
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Packages" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: CONTROL })).toBeNull());
 
   // A colleague keeps a copy of the document as it stands before retirement,
   // so the command line can retire the same bytes the window reads.
@@ -159,17 +137,14 @@ test("a control is retired only once the person confirms it, writes no new packa
   detail = await controlDetail(user);
   expect(await detail.findByText("Retired", { selector: ".dialog-status" })).toBeTruthy();
   expect((detail.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled).toBe(true);
+  await press(user, detail.getByRole("button", { name: `More actions for ${CONTROL}` }));
+  for (const item of ["Record rotation", "Retire control…"]) {
+    expect((screen.getByRole("menuitem", { name: item }) as HTMLButtonElement).disabled).toBe(true);
+  }
+  await user.keyboard("{Escape}");
   expect(journey.callsTo("RetireProtectionControl")).toHaveLength(1);
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog", { name: CONTROL })).toBeNull());
-
-  task = await packages(user);
-  packing = within(task.getByRole("group", { name: "Encrypted transfer packages" }));
-  await user.selectOptions(packing.getByLabelText("Protection file"), "protection.json");
-  await waitFor(() => expect(journey.callsTo("ReadProtection").at(-1)?.settled).toBe(true));
-  expect(within(packing.getByLabelText("Protection control")).getAllByRole("option").map((option) => option.textContent)).toEqual([
-    "Select a control…",
-  ]);
 
   // The command line reads the same retirement and writes no new package
   // under it, refusing in the operation's own sentence.
@@ -183,17 +158,22 @@ test("a control is retired only once the person confirms it, writes no new packa
   expect(packed).toEqual({ code: 1, stdout: "", stderr: `readmit: ${RETIRED}\n` });
   expect(() => journey.readFile(`${lab}/after-retirement/transfer.json`)).toThrow();
 
-  // The window still opens the package the control wrote, to the exact bytes
-  // packed, and so does the command line.
-  await within(task.getByLabelText("Transfer package")).findByRole("option", { name: "before-retirement" });
-  await user.selectOptions(task.getByLabelText("Transfer package"), "before-retirement");
-  // Its descriptor, read without a key, now stands below the one the pack
-  // answered with.
-  await waitFor(() => expect(task.getAllByText(byContent(/^Package before-retirement · control lab-evidence · key generation 2 · /))).toHaveLength(2));
-  await press(user, task.getByRole("button", { name: "Open package" }));
-  const opened = (await task.findByText(byContent(/^Opened into \S+\. /))).textContent ?? "";
-  const output = opened.replace(/^Opened into (\S+)\. .*$/, "$1");
-  expect(journey.readFile(`${lab}/${output}/reschedule-test.json`)).toBe(specification);
+  // The window still decrypts the package the control wrote, to the exact
+  // bytes packed, into a new folder named in the save dialog, and so does the
+  // command line.
+  await encryptedPackages(user);
+  await press(user, await page().findByRole("row", { name: "before-retirement" }));
+  const chosen = within(await page().findByRole("region", { name: "before-retirement" }));
+  expect(within(chosen.getByLabelText("Package", { selector: "dl" })).getByText(`${CONTROL} · Generation 2`)).toBeTruthy();
+  await press(user, chosen.getByRole("button", { name: "Decrypt" }));
+  const decrypt = within(await screen.findByRole("dialog", { name: "Decrypt" }));
+  journey.makeFolder("decrypted");
+  await journey.nameNewFolder(journey.path("decrypted", "before-retirement"), "Export package");
+  await press(user, decrypt.getByRole("button", { name: "Choose" }));
+  expect(await decrypt.findByText(/^before-retirement · decrypted$/)).toBeTruthy();
+  await press(user, decrypt.getByRole("button", { name: "Decrypt" }));
+  expect(await chosen.findByText("Decrypted before-retirement")).toBeTruthy();
+  expect(journey.readFile("decrypted/before-retirement/reschedule-test.json")).toBe(specification);
   const commandOpened = await journey.commandLine([
     "protect", "open", "--protection", `${lab}/protection.json`, "--package", `${lab}/before-retirement`, "--output", "command-opened",
   ]);
@@ -210,7 +190,6 @@ test("a control is retired only once the person confirms it, writes no new packa
   expect(again).toEqual({ code: 1, stdout: "", stderr: "readmit: the protection control is already retired\n" });
 
   // The key never reached the window, the document or the command's output.
-  await waitFor(() => expect(journey.callsTo("OpenProtectedPackage").at(-1)?.settled).toBe(true));
   expect(document.body.textContent).not.toContain(KEY_MATERIAL);
   for (const text of [journey.readFile(`${lab}/protection.json`), shown.stdout, retired.stdout]) {
     expect(text).not.toContain(KEY_MATERIAL);

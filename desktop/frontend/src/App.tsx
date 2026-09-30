@@ -412,6 +412,8 @@ export default function App() {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  // Why the project's files could not be listed, when they could not.
+  const [filesFailure, setFilesFailure] = useState<string | null>(null);
   const [noteEditing, setNoteEditing] = useState<{ note: NoteItem | null } | null>(null);
   // The check group a test's editor adds to its draft when it opens.
   const [pendingCheckGroup, setPendingCheckGroup] = useState<ItemRef | null>(null);
@@ -423,6 +425,7 @@ export default function App() {
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   // The project's cases are being read after it was opened.
   const [casesLoading, setCasesLoading] = useState(false);
+  const [casesFailure, setCasesFailure] = useState<string | null>(null);
   // The case whose recorded details are shown.
   const [caseFacts, setCaseFacts] = useState<CatalogItem | null>(null);
   // A retained draft being resumed: once its project is open, the sheet it
@@ -603,7 +606,10 @@ export default function App() {
   const overview = investigation?.overview ?? null;
   const verified = evidence?.case ?? null;
 
-  const focusRegion = useCallback((region: RegionId) => {
+  const focusRegion = useCallback((region: RegionId, afterRead = false) => {
+    // A navigation read may finish after the person opened a sheet. Its
+    // completion must not take keyboard input away from that modal.
+    if (afterRead && document.querySelector("dialog[open]")) return;
     regionElements.current[region]?.focus();
   }, []);
 
@@ -697,7 +703,7 @@ export default function App() {
       });
       await refreshRecent();
       if (opened) {
-        focusRegion("evidence");
+        focusRegion("evidence", true);
       }
       return opened;
     },
@@ -785,7 +791,7 @@ export default function App() {
         void loadMessages(folder, { case: name, identity: autoIndex }, NO_QUERY, null, 0);
         void listViews(folder).then((answer) => setViews(answer.views));
       }
-      focusRegion("evidence");
+      focusRegion("evidence", true);
       return outcome;
     },
     [clearCase, focusRegion, loadMessages, run],
@@ -1033,18 +1039,28 @@ export default function App() {
   const projectScope = useRef(new RequestScope());
   const projectContext = useCallback(() => projectScope.current.enter(root ?? ""), [root]);
 
+  const casesScope = useRef(new RequestScope());
   const refreshCases = useCallback(async () => {
+    const context = casesScope.current.enter(root ?? "");
+    setCasesFailure(null);
     if (!root) {
       setCases([]);
+      setCasesLoading(false);
       return;
     }
-    const context = projectContext();
+    setCasesLoading(true);
     const listed = await listWholeCatalog({ context, kind: "case", filter: {} });
-    if (!projectScope.current.current(listed)) return;
+    // A refused admission may have no reply context. Ownership is the request
+    // we issued; unrelated project reads must not invalidate this list.
+    if (!casesScope.current.current({ context })) return;
+    setCasesLoading(false);
+    if (listed.state !== "completed" && listed.state !== "empty") {
+      setCasesFailure(listed.reason ?? "The cases could not be read.");
+      return;
+    }
     setCases(listed.page?.items ?? []);
     listedCases.current = listed.page?.items ?? [];
-    setCasesLoading(false);
-  }, [projectContext, root]);
+  }, [root]);
 
   // The project object one case entry is: a variant, or a case, with its
   // name and, for a variant, the case it was made from.
@@ -1154,7 +1170,9 @@ export default function App() {
     if (place === "case-attachments") void refreshAttachments();
     if (place === "project-files" && root) {
       void projectFiles({ context: projectContext(), ref: currentProject?.ref ?? { kind: "project", id: "" } }).then((answer) => {
-        if (projectScope.current.current(answer)) setFiles(answer.files);
+        if (!projectScope.current.current(answer)) return;
+        setFiles(answer.files);
+        setFilesFailure(answer.state === "completed" || answer.state === "empty" ? null : (answer.reason ?? "The project's files could not be listed."));
       });
     }
   }, [currentProject, place, projectContext, refreshAttachments, refreshNotes, root]);
@@ -1171,18 +1189,23 @@ export default function App() {
     setNotes([]);
     setAttachments([]);
     setFiles([]);
+    setFilesFailure(null);
     setCaseNotices({});
     setAttachmentNotice(null);
     setResumeNotice(null);
     setCasesLoading(true);
     void refreshCases();
+    return () => { casesScope.current.next(); };
   }, [refreshCases]);
 
   // A retained sheet draft reopens its sheet once its project is open and its
   // object is listed. One whose object is gone stays among the drafts.
   useEffect(() => {
-    if (!resuming || root !== resuming.workspace || casesLoading) return;
+    if (!resuming || root !== resuming.workspace) return;
     const ref = resuming.item?.ref;
+    // A project note needs only its verified project. An unrelated case-list
+    // read may still be in flight, and must not strand its recovery.
+    if (casesLoading && !(resuming.kind === "note" && ref?.kind === "project")) return;
     setResuming(null);
     if (!currentProject || currentProject.ref.id !== resuming.item?.project_id) {
       setResumeNotice("This folder no longer holds the project this draft was written in.");
@@ -2385,6 +2408,7 @@ export default function App() {
                 revisions={currentProject?.summary.project?.revisions ?? []}
                 notices={caseNotices}
                 loading={casesLoading}
+                failure={casesFailure}
                 view={caseListView}
                 onView={setCaseListView}
                 selected={selectedCase}
@@ -2884,6 +2908,7 @@ export default function App() {
           {root ? (
             <FilesList
               files={files}
+              failure={filesFailure}
               onOpen={(file) => {
                 open({ destination: "inspect-file" });
                 fileReader.openPath(childPath(root, file.name));
@@ -3344,7 +3369,7 @@ export default function App() {
             />
           </form>
           <Report indicators={indicators} progress={running === "search" ? "Searching this project." : null} result={found && found.state !== "completed" ? found : null} />
-          {found && found.state === "completed" && found.matches.length === 0 ? <p className="hint">No matches.</p> : null}
+          {found && (found.state === "completed" || found.state === "empty") && found.matches.length === 0 ? <p className="hint">No matches.</p> : null}
           {found && found.matches.length > 0 ? (
             <ul className="search-matches" aria-label="Search results">
               {found.matches.map((match) => (

@@ -61,6 +61,20 @@ test("Connect team saves a name and the organization's configuration without con
   expect(facade.callsTo("StartHubAuth")).toHaveLength(0);
 });
 
+test("a remembered configuration that no longer validates is connected afresh, not edited", async () => {
+  const user = userEvent.setup();
+  installFacade({
+    HubStatus: () => ({ state: "failed", connected: false, authenticated: false, config_path: "/etc/readmit/hub-client.json", hub_url: "http://hub.example:8443", team: "Integration team", reason: "the remembered hub configuration no longer validates (endpoint must use https); choose a hub configuration again" }),
+  });
+  render(<HubPanel />);
+  expect(await screen.findByText(/no longer validates/)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Connect team" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Connect team" }));
+  expect((sheet.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+  expect(sheet.getByRole("button", { name: "Choose file…" })).toBeTruthy();
+  expect((sheet.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
 test("Sign in is one flow that checks setup, connects and signs in through the browser, then reads the project", async () => {
   const user = userEvent.setup();
   const facade = installFacade({
@@ -296,6 +310,35 @@ test("a support summary review reads only the summary, approves it once and down
   await user.click(await screen.findByRole("button", { name: "Download summary" }));
   expect(facade.oneCall("DownloadHubSummary")[0]).toEqual({ project: "cardio-study", digest: "e".repeat(64) });
   expect(await screen.findByText("Saved /Users/rui/support-summary.json")).toBeTruthy();
+});
+
+test("a support summary review read while the team is still being read shows the summary, not the busy answer", async () => {
+  const user = userEvent.setup();
+  const support: HubTeamResult["reviews"][number] = {
+    id: "support-ask", support: true, item: "Support summary", requested_by: "ana", recipient: "rui", requested: "2026-09-20T10:00:00Z", updated: "2026-09-20T10:00:00Z",
+    status: "requested", evidence: "e".repeat(64), release: "f".repeat(64), to_me: true, discussion: [], requests: [{ id: "support-ask", evidence: "e".repeat(64), release: "f".repeat(64) }],
+  };
+  let asked = 0;
+  const facade = installFacade({
+    HubStatus: () => signedIn(),
+    ReadHubTeam: () => teamResult({ reviews: [support] }),
+    ReadHubSupportSummary: () => (++asked === 1 ? { state: "busy", reason: "another operation is already running" } : { state: "completed", source_kind: "retained-packet", outcome: "assertion_failure" }),
+  });
+  render(<HubPanel />);
+  await openTab(user, "Reviews");
+  await user.dblClick(await within(await screen.findByRole("table", { name: "Reviews" })).findByText("Support summary"));
+  expect(await screen.findByText("Check failed")).toBeTruthy();
+  expect(screen.queryByText("another operation is already running")).toBeNull();
+  expect(facade.callsTo("ReadHubSupportSummary")).toHaveLength(2);
+});
+
+test("a signed-in team whose hub cannot be reached says so instead of listing no projects silently", async () => {
+  installFacade({
+    HubStatus: () => signedIn({ projects: [{ project: "cardio-study", authorized: false, reason: "hub connection failed" }] }),
+  });
+  render(<HubPanel />);
+  expect(await screen.findByText("No projects you can open")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toBe("hub connection failed");
 });
 
 async function openAdmin(user: ReturnType<typeof userEvent.setup>, task: string) {

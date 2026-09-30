@@ -153,6 +153,8 @@ unanswered is rejected. The kit's verbs:
   team-enabled. It needs `READMIT_POSTGRES_BIN` naming a PostgreSQL
   installation's `bin` folder; without one the hub is not built,
   `Journey.hubAvailable` is false and a hub journey calls `context.skip()`.
+  An optional fourth `startHub` argument selects a pre-provisioned operation
+  policy, for changing an actual signed installed hub license before dispatch.
   CI's `hub-journeys` job runs the hub journeys with PostgreSQL 16, beside
   the `hub` job rather than after it; the desktop workflow's journeys skip
   them.

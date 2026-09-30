@@ -13,7 +13,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { Journey, region, whenEnabled } from "../testkit/journey";
+import { Journey, whenEnabled } from "../testkit/journey";
+import { page, sidebar } from "../testkit/navigation";
 import { openedCase } from "./steps";
 
 let journey: Journey;
@@ -45,13 +46,14 @@ async function activate(user: UserEvent, control: HTMLElement): Promise<void> {
   await user.keyboard("{Enter}");
 }
 
-/** The regions the facade declares, in its focus order. */
-const DECLARED = ["Commands", "Workspace", "Evidence", "Inspector", "Privacy"];
+/** The regions the facade declares, in its focus order, while a message's
+ * details are open. */
+const DECLARED = ["Navigation", "Main content", "Details"];
 
 /** The declared region that holds focus now, by its accessible name. */
 function focusedRegion(): string | null {
   const active = document.activeElement;
-  return DECLARED.find((name) => active !== null && region(name).contains(active)) ?? null;
+  return DECLARED.find((name) => active !== null && screen.getByRole("region", { name }).contains(active)) ?? null;
 }
 
 /** Every status the window shows states itself in words: the text left once
@@ -77,21 +79,20 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
 
   // Ctrl+O opens the host's folder dialog. Dismissing it is a cancellation the
   // window says in words, and the window stays usable.
-  const navigation = within(region("Workspace"));
   await journey.dismissDialog("folder", "Open project");
   await user.keyboard("{Control>}o{/Control}");
-  expect(await navigation.findByText("no folder was chosen")).toBeTruthy();
+  expect(await page().findByText("no folder was chosen")).toBeTruthy();
   // Choosing a folder through a symbolic link is refused with its reason.
   await journey.chooseFolder(linked, "Open project");
   await user.keyboard("{Control>}o{/Control}");
-  expect(await navigation.findByText("a workspace must be an existing folder that is not a symbolic link")).toBeTruthy();
+  expect(await page().findByText("a workspace must be an existing folder that is not a symbolic link")).toBeTruthy();
   everyStatusReadsAsWords();
 
-  // The first-run choice is reached and pressed with the keyboard alone.
-  await journey.chooseFolder(journey.path("work"), "Choose sample location");
-  await activate(user, screen.getByRole("button", { name: "Explore sample" }));
-  const guided = within(region("Guided sample"));
-  await activate(user, await guided.findByRole("button", { name: "Open case" }));
+  // The demo is reached and opened with the keyboard alone, and so is its
+  // first step, the sample messages.
+  await activate(user, page().getByRole("button", { name: "Try demo" }));
+  const demo = within(await sidebar().findByRole("region", { name: "Demo" }, { timeout: 30_000 }));
+  await activate(user, await demo.findByRole("button", { name: "Open sample messages" }));
   const messages = await openedCase();
 
   // A message of the verified case is inspected from the keyboard: its row in
@@ -120,18 +121,19 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
   await user.keyboard("{Shift>}{F6}{/Shift}");
   expect(focusedRegion()).toBe(visited[visited.length - 2]);
 
-  // The pane separator is operable from the keyboard within its bounds.
-  const separator = screen.getByRole("separator", { name: "Resize the evidence and inspector panes" });
+  // The details separator is operable from the keyboard within its bounds:
+  // moving it left widens the details.
+  const separator = screen.getByRole("separator", { name: "Resize details" });
   await tabTo(user, separator);
   const before = Number(separator.getAttribute("aria-valuenow"));
-  await user.keyboard("{ArrowLeft}");
+  await user.keyboard("{ArrowRight}");
   expect(Number(separator.getAttribute("aria-valuenow"))).toBeLessThan(before);
-  await user.keyboard("{Home}");
+  await user.keyboard("{End}");
   const minimum = separator.getAttribute("aria-valuemin");
   expect(separator.getAttribute("aria-valuenow")).toBe(minimum);
-  await user.keyboard("{ArrowLeft}");
+  await user.keyboard("{ArrowRight}");
   expect(separator.getAttribute("aria-valuenow")).toBe(minimum);
-  await user.keyboard("{End}");
+  await user.keyboard("{Home}");
   expect(separator.getAttribute("aria-valuenow")).toBe(separator.getAttribute("aria-valuemax"));
 
   // Text scales up and back down from the keyboard.
@@ -143,8 +145,8 @@ test("a keyboard-only person opens the sample, verifies and inspects a case, mov
   await waitFor(() => expect(scale()).toBe(initial));
 
   // Escape with nothing running cancels nothing and breaks nothing: the
-  // workspace the window opened is still the one it shows.
+  // project the window opened is still the one it shows, on its case.
   await user.keyboard("{Escape}");
-  expect(await navigation.findByText(journey.path("work", "readmit-sample"), { selector: ".root" })).toBeTruthy();
-  everyStatusReadsAsWords();
+  expect(sidebar().getByRole("button", { name: /^Project: / })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Messages" })).toBeTruthy();
 });

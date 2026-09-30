@@ -1,32 +1,27 @@
-// Authoring, saving, reopening and previewing a transformation plan, against
-// the real facade over real files.
+// Previewing and saving sequence changes of a case variant, against the real
+// facade over real files.
 //
 // An interface engineer's export holds a booking and its reschedule. Before a
 // reproducer leaves the room, they want its control IDs renamed and its dates
 // moved by a day, and they want to see what that would do before anything is
-// replayed. The relation that matters — each message's control ID, within its
-// source — is already written down in a correlation rules document in the
-// project, and they author the plan in Review and transform. A
-// shift the decoder cannot read back is refused on save and nothing is
-// written; they remove that step from the keyboard, add the right one, and the
-// saved plan pins the rules digest `readmit correlate` reports. The preview
-// the window shows is the one `readmit transform` prints for the same case,
-// rules and plan.
-//
-// A colleague's plan edited by hand — its date shift also names an entry — is
-// in the project too. Reopening it and previewing it are refused in the
-// decoder's own sentence, which the command line prints for the same file,
-// and the steps on screen are left alone. An open that would replace steps
-// nobody saved is asked first; declined from the keyboard it reads nothing,
-// and accepted it brings back exactly the steps that were saved.
+// saved. The relation that matters — each message's control ID, within its
+// source — is saved as named link rules from the case's Timeline, and the
+// changes are added in Create variant. A shift the engine cannot read is
+// refused in its own sentence, which `readmit transform` prints for the same
+// step, and the changes on screen stay as they were. The preview lists every
+// position the changes rewrite and what they leave alone, and Save writes one
+// derived case: the command line's `project show` reads it as a revision the
+// transformation made, and `readmit diff` finds exactly the positions the
+// preview listed changed, and nothing else.
 //
 // Every message and value here is synthetic.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { enter, Journey, press } from "../testkit/journey";
-import { goToView } from "../testkit/navigation";
-import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport, licensedProject } from "./steps";
+import { Journey, press } from "../testkit/journey";
+import { openCaseFlow, openView, page } from "../testkit/navigation";
+import { namesIn } from "./probes.js";
+import { EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport, licensedProject, pressServed } from "./steps";
 
 let journey: Journey;
 
@@ -38,199 +33,152 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-const RULES = "interface.rules.json";
-const PLAN = "reschedule.plan.json";
-const HAND_EDITED = "hand-edited.plan.json";
-const MEMBERS_REFUSED = "a transformation step carries only the members its operator declares";
+const RULES_NAME = "Interface rules";
 const SHIFT_REFUSED = "a date shift is a nonzero whole-second duration within ten years, for example 24h or -2h";
 
-/** The review-and-transform panel beside the open case. */
-function transformPanel() {
-  return screen.getByRole("region", { name: "Review and transform" });
-}
-
-/** The authored steps as the panel lists them. */
-function authored(): string[] {
-  const list = within(transformPanel()).queryByRole("list", { name: "Authored transformation steps" });
+/** The changes the variant lists, as each reads. */
+function changes(): string[] {
+  const list = screen.queryByRole("list", { name: "Changes in order" });
   if (!list) return [];
   return within(list)
     .getAllByRole("listitem")
-    .map((item) => (item.textContent ?? "").replace(/\s*Remove$/, ""));
+    .map((item) => [...item.querySelectorAll(".variant-change-text > span")].map((part) => part.textContent ?? "").join(" | "));
 }
 
-/** Adds one step through the operator form. */
-async function addStep(user: UserEvent, operator: string, field: string, value: string): Promise<void> {
-  const panel = within(transformPanel());
-  await user.selectOptions(panel.getByLabelText("Operator"), operator);
-  await enter(user, panel.getByLabelText(field), value);
-  await press(user, panel.getByRole("button", { name: "Add step" }));
+/** Opens Add change, fills it and presses Add; returns the sheet. */
+async function addChange(user: UserEvent, kind: string, fill: (sheet: ReturnType<typeof within>) => Promise<void>) {
+  await press(user, page().getByRole("button", { name: "Add change" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Add change" }));
+  await user.selectOptions(sheet.getByLabelText("Transformation"), kind);
+  await fill(sheet);
+  const asked = journey.callsTo("ResolveVariant").length;
+  await press(user, sheet.getByRole("button", { name: "Add" }));
+  await waitFor(() => expect(journey.callsTo("ResolveVariant")[asked]?.settled).toBe(true));
+  return sheet;
 }
 
-/** The one relation the plan preserves — each message's control ID, within
- * its source — as the rules document the project holds. */
-const RULES_DOCUMENT = JSON.stringify({
-  schema: "readmit-correlation-rules/v1",
-  rules: [{ id: "message", operator: "control-id", scope: "source" }],
-});
-
-/** Shift+Tab until the control has focus, as a keyboard user reaches a
- * control just before the one they are in. */
-async function shiftTabTo(user: UserEvent, control: HTMLElement): Promise<void> {
-  for (let step = 0; step < 20; step++) {
-    if (document.activeElement === control) return;
-    await user.tab({ shift: true });
-  }
-  throw new Error(`${control.getAttribute("aria-label") ?? control.textContent} is not reachable with Shift+Tab`);
+/** A shift of whole days, later. */
+function shiftDays(user: UserEvent, days: string) {
+  return async (sheet: ReturnType<typeof within>) => {
+    await user.type(sheet.getByLabelText("Amount"), days);
+    await user.selectOptions(sheet.getByLabelText("Unit"), "days");
+    await user.selectOptions(sheet.getByLabelText("Direction"), "later");
+  };
 }
 
-test("a transformation plan refused on save is corrected from the keyboard, saved, reopened and previewed as readmit transform previews it, and a plan the decoder refuses is refused in its words", async () => {
+test("sequence changes the engine refuses are refused in its words, and the rest are previewed and saved as the one derived case readmit diff and project show read", async () => {
   const user = userEvent.setup();
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   const project = await licensedProject(journey, user);
-  // The project's folder, as a path inside the journey's root.
   const folder = project.slice(journey.path().length + 1);
-  journey.writeFile(`${folder}/${RULES}`, RULES_DOCUMENT);
-  // A colleague's plan for the same interface, edited by hand: its date shift
-  // also names a sequence entry, which no shift declares.
+  const incident = await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
+
+  // The relation the renaming keeps — each message's control ID, within its
+  // source — saved as named link rules from the case's Timeline.
+  await openView(user, "Timeline");
+  await press(user, await page().findByRole("button", { name: "More timeline actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: "Manage link rules" }));
+  await press(user, within(await screen.findByRole("dialog", { name: "Link rules" })).getByRole("button", { name: "New link rules" }));
+  const editor = within(await screen.findByRole("dialog", { name: "New link rules" }));
+  await user.type(editor.getByLabelText("Name"), RULES_NAME);
+  await press(user, editor.getByRole("button", { name: "Add rule" }));
+  await user.selectOptions(editor.getByLabelText("Match by"), "control-id");
+  await user.selectOptions(editor.getByLabelText("Scope"), "source");
+  await pressServed(user, journey, editor.getByRole("button", { name: "Save" }), "SaveItem");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New link rules" })).toBeNull());
+  const savedRules = journey.callsTo("SaveItem").at(-1)?.result as { outcome: string };
+  expect(savedRules.outcome).toBe("saved");
+
+  // A variant of both messages.
+  await openCaseFlow(user, "Create variant");
+  const picker = within(await screen.findByRole("dialog", { name: "Included messages" }));
+  await user.click(await picker.findByRole("checkbox", { name: "1. SIU · S12" }));
+  await user.click(picker.getByRole("checkbox", { name: "2. SIU · S13" }));
+  await press(user, picker.getByRole("button", { name: "Apply" }));
+  await screen.findByRole("table", { name: "Included messages" });
+
+  // Control IDs renamed under the saved rule.
+  await addChange(user, "rebase-identifiers/v1", async (sheet) => {
+    await user.selectOptions(sheet.getByLabelText("Link rules"), RULES_NAME);
+    await sheet.findByRole("option", { name: "rule-1" });
+    await user.selectOptions(sheet.getByLabelText("Rule"), "rule-1");
+  });
+  await waitFor(() => expect(changes()).toEqual(["Rebase identifiers | All messages · rule-1"]));
+
+  // A shift of four thousand days is past what the engine reads: refused in
+  // its sentence, the sheet stays open and the changes are as they were.
+  const refused = await addChange(user, "shift-dates/v1", shiftDays(user, "4000"));
+  expect(await refused.findByText(SHIFT_REFUSED)).toBeTruthy();
+  expect(journey.callsTo("ResolveVariant").at(-1)?.result).toMatchObject({ state: "failed", reason: SHIFT_REFUSED });
+  await press(user, refused.getByRole("button", { name: "Cancel" }));
+  expect(changes()).toEqual(["Rebase identifiers | All messages · rule-1"]);
+
+  // The command line refuses the same step in the same words.
   journey.writeFile(
-    `${folder}/${HAND_EDITED}`,
+    `${folder}/rules.json`,
+    JSON.stringify({ schema: "readmit-correlation-rules/v1", rules: [{ id: "rule-1", operator: "control-id", scope: "source" }] }),
+  );
+  journey.writeFile(
+    `${folder}/refused.plan.json`,
     JSON.stringify({
       schema: "readmit-transform-plan/v1",
-      case: "a".repeat(64),
+      case: journey.readFile(`${folder}/${incident}/identity.sha256`).trim(),
       rules: "b".repeat(64),
-      steps: [{ operator: "shift-dates/v1", shift: "24h", entry: "t000001" }],
+      steps: [{ operator: "shift-dates/v1", shift: "96000h" }],
     }),
   );
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
-  await goToView(user, "Reports", "Transform and export");
-  const panel = within(transformPanel());
-  await panel.findByRole("option", { name: RULES });
-  await user.selectOptions(panel.getByLabelText("Correlation rules"), RULES);
-
-  // A shift of "1 day" is not a duration the decoder reads back. The save is
-  // refused in its words, nothing is written, and what was typed stays.
-  await addStep(user, "rebase-identifiers/v1", "Correlation rule id", "message");
-  await addStep(user, "shift-dates/v1", "Shift duration", "1 day");
-  expect(authored()).toEqual(["rebase-identifiers/v1 · message", "shift-dates/v1 · 1 day"]);
-  await enter(user, panel.getByLabelText("New plan document in this workspace"), `${PLAN}{Enter}`);
-  expect(await panel.findByText(SHIFT_REFUSED)).toBeTruthy();
-  expect(journey.callsTo("SaveTransformPlan")[0]?.result).toEqual({ state: "failed", reason: SHIFT_REFUSED });
-  expect(() => journey.readFile(`${folder}/${PLAN}`)).toThrow();
-  expect(authored()).toHaveLength(2);
-  expect((panel.getByLabelText("New plan document in this workspace") as HTMLInputElement).value).toBe(PLAN);
-
-  // The shift is removed from the keyboard and the right one added. Saved,
-  // the plan is selected for preview and pins the digest `readmit correlate`
-  // reports for the rules it names.
-  await shiftTabTo(user, panel.getByRole("button", { name: "Remove step 2" }));
-  await user.keyboard("{Enter}");
-  expect(authored()).toEqual(["rebase-identifiers/v1 · message"]);
-  await addStep(user, "shift-dates/v1", "Shift duration", "24h");
-  await press(user, panel.getByRole("button", { name: "Save plan" }));
-  const saved = await panel.findByText(/^Saved reschedule\.plan\.json · 2 steps · rules digest [0-9a-f]{64}\. It is selected below to preview\.$/);
-  const correlated = await journey.commandLine([
-    "correlate", `${project}/reschedule-feed`, "--rules", `${project}/${RULES}`, "--format", "json",
-  ]);
-  expect(correlated.code).toBe(0);
-  const digest = (JSON.parse(correlated.stdout) as { rules_sha256: string }).rules_sha256;
-  expect(saved.textContent).toContain(`rules digest ${digest}.`);
-  const written = JSON.parse(journey.readFile(`${folder}/${PLAN}`)) as { rules: string; steps: unknown[] };
-  expect(written.rules).toBe(digest);
-  expect(written.steps).toEqual([
-    { operator: "rebase-identifiers/v1", rule: "message" },
-    { operator: "shift-dates/v1", shift: "24h" },
-  ]);
-  await waitFor(() => expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe(PLAN));
-
-  // The preview is what `readmit transform` prints for the same case, rules
-  // and plan: both messages' control IDs renamed and both messages' MSH-7 and
-  // appointment start moved, six positions in a sequence of two, nothing
-  // repeated.
-  await press(user, panel.getByRole("button", { name: "Preview" }));
-  expect(await panel.findByText(`Preview of ${PLAN} under ${RULES}.`)).toBeTruthy();
-  const transformed = await journey.commandLine([
-    "transform", `${project}/reschedule-feed`, "--rules", `${project}/${RULES}`, "--plan", `${project}/${PLAN}`, "--format", "json",
-  ]);
-  expect(transformed.code).toBe(0);
-  const printed = JSON.parse(transformed.stdout) as {
-    summary: { entries: number; copies: number; changes: number; relations: number; preserved: number; unsupported: number };
-    changes: { entry: string; selector: string }[];
-    unsupported: { code: string }[];
-  };
-  // Each message's control ID is the only one in its source, so the rule
-  // relates nothing and there is no relation to keep. What is left alone is
-  // stated: the date fields a shift does not read, once, and the one version
-  // and family the export declares, which no pinned pack verified.
-  expect(printed.summary).toEqual({ occurrences: 2, entries: 2, copies: 0, changes: 6, relations: 0, preserved: 0, unsupported: 2 });
-  expect(printed.unsupported.map((item) => item.code)).toEqual(["unshifted-positions", "unverified-combination"]);
-  const shown = journey.callsTo("PreviewTransformation").at(-1)?.result as { transformation: { preview: unknown } };
-  expect(shown.transformation.preview).toEqual(JSON.parse(transformed.stdout));
-  expect(panel.getByText("2 entries · 0 copies · 6 positions rewritten")).toBeTruthy();
-  expect(panel.getByText("0 of 0 relations preserved · 2 left alone")).toBeTruthy();
-  expect(printed.changes.map((change) => `${change.entry} ${change.selector}`).sort()).toEqual(
-    [
-      "t000001 MSH[1]-10[1]", "t000002 MSH[1]-10[1]", "t000001 MSH[1]-7[1]", "t000002 MSH[1]-7[1]",
-      "t000001 SCH[1]-11[1].4", "t000002 SCH[1]-11[1].4",
-    ].sort(),
-  );
-
-  // The colleague's plan: reopening it and previewing it are refused in the
-  // decoder's sentence, which the command line prints for the same file, and
-  // the steps on screen stay as they were.
-  await user.selectOptions(panel.getByLabelText("Saved plan to reopen"), HAND_EDITED);
-  await press(user, panel.getByRole("button", { name: "Open plan" }));
-  expect(await panel.findByText(MEMBERS_REFUSED)).toBeTruthy();
-  expect(journey.callsTo("OpenTransformPlan").at(-1)?.args).toEqual([project, HAND_EDITED]);
-  expect(authored()).toEqual(["rebase-identifiers/v1 · message", "shift-dates/v1 · 24h"]);
-  await user.selectOptions(panel.getByLabelText("Transform plan"), HAND_EDITED);
-  await press(user, panel.getByRole("button", { name: "Preview" }));
-  await waitFor(() => expect(journey.callsTo("PreviewTransformation").at(-1)?.args[0]).toMatchObject({ plan: HAND_EDITED }));
-  await waitFor(() => expect(journey.callsTo("PreviewTransformation").at(-1)?.settled).toBe(true));
-  expect(journey.callsTo("PreviewTransformation").at(-1)?.result).toEqual({ state: "failed", reason: MEMBERS_REFUSED });
-  expect(panel.queryByText(/^Preview of /)).toBeNull();
   const refusedByCommand = await journey.commandLine([
-    "transform", `${project}/reschedule-feed`, "--rules", `${project}/${RULES}`, "--plan", `${project}/${HAND_EDITED}`, "--format", "json",
+    "transform", `${project}/${incident}`, "--rules", `${project}/rules.json`, "--plan", `${project}/refused.plan.json`, "--format", "json",
   ]);
   expect(refusedByCommand.code).toBe(1);
   expect(refusedByCommand.stdout).toBe("");
-  expect(refusedByCommand.stderr).toBe(`readmit: ${MEMBERS_REFUSED}\n`);
+  expect(refusedByCommand.stderr).toBe(`readmit: ${SHIFT_REFUSED}\n`);
 
-  // A step nobody saved is added, so reopening the saved plan is asked
-  // first. Declined with Escape it reads nothing; accepted, the saved steps
-  // come back exactly as they were written.
-  await addStep(user, "duplicate-occurrence/v1", "Sequence entry", "t000002");
-  await user.selectOptions(panel.getByLabelText("Saved plan to reopen"), PLAN);
-  const opens = journey.callsTo("OpenTransformPlan").length;
-  await press(user, panel.getByRole("button", { name: "Open plan" }));
-  const question = within(await panel.findByRole("group", { name: `Open ${PLAN} in place of these steps?` }));
-  await waitFor(() => expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep these steps" })));
-  await user.keyboard("{Escape}");
-  expect(panel.queryByRole("group", { name: `Open ${PLAN} in place of these steps?` })).toBeNull();
-  expect(journey.callsTo("OpenTransformPlan")).toHaveLength(opens);
-  expect(authored()).toHaveLength(3);
-  await press(user, panel.getByRole("button", { name: "Open plan" }));
-  await press(
-    user,
-    within(await panel.findByRole("group", { name: `Open ${PLAN} in place of these steps?` })).getByRole("button", {
-      name: `Replace them with ${PLAN}`,
-    }),
+  // A day later is accepted.
+  await addChange(user, "shift-dates/v1", shiftDays(user, "1"));
+  await waitFor(() => expect(changes()).toEqual(["Rebase identifiers | All messages · rule-1", "Shift dates | All messages | 1 day later"]));
+  const resolved = journey.callsTo("ResolveVariant").at(-1)?.result as {
+    variant: { changes: { operator: string; occurrence: string; selector: string }[]; notes: { code: string }[] };
+  };
+  const positions = resolved.variant.changes.map((change) => `${change.occurrence} ${change.selector}`).sort();
+  expect(positions).toEqual(
+    [
+      "s0001-e000001 MSH[1]-10[1]", "s0002-e000001 MSH[1]-10[1]", "s0001-e000001 MSH[1]-7[1]", "s0002-e000001 MSH[1]-7[1]",
+      "s0001-e000001 SCH[1]-11[1].4", "s0002-e000001 SCH[1]-11[1].4",
+    ].sort(),
   );
-  expect(await panel.findByText(`Opened ${PLAN} · 2 steps · rules digest ${digest}. It is selected below to preview.`)).toBeTruthy();
-  expect(authored()).toEqual(["rebase-identifiers/v1 · message", "shift-dates/v1 · 24h"]);
-  expect((panel.getByLabelText("Transform plan") as HTMLSelectElement).value).toBe(PLAN);
+  // What is left alone is stated: the date fields a shift does not read, and
+  // the version and family no pinned pack verified.
+  expect(resolved.variant.notes.map((note) => note.code)).toEqual(["unshifted-positions", "unverified-combination"]);
 
-  // The reopened plan previews as it did when it was saved, which is still
-  // what the command line prints for it.
-  const previews = journey.callsTo("PreviewTransformation").length;
-  await press(user, panel.getByRole("button", { name: "Preview" }));
-  expect(await panel.findByText(`Preview of ${PLAN} under ${RULES}.`)).toBeTruthy();
-  expect(journey.callsTo("PreviewTransformation")).toHaveLength(previews + 1);
-  const reopened = journey.callsTo("PreviewTransformation").at(-1)?.result as { transformation: { preview: unknown } };
-  expect(reopened.transformation.preview).toEqual(JSON.parse(transformed.stdout));
-  expect(panel.getByText("2 entries · 0 copies · 6 positions rewritten")).toBeTruthy();
+  // The preview lists each rewritten position, and what is left alone.
+  await press(user, page().getByRole("button", { name: "Preview" }));
+  const fields = within(await screen.findByRole("table", { name: "Changed fields" }));
+  expect(fields.getAllByRole("row").slice(1)).toHaveLength(6);
+  expect(screen.getByText("Only MSH-7 and SCH-11 start and end move")).toBeTruthy();
+  expect(screen.getByText("Profile does not verify this message type")).toBeTruthy();
 
-  // Nothing here wrote into the case: the command line still verifies it
-  // as the evidence that was imported.
-  const timeline = await journey.commandLine(["timeline", `${project}/reschedule-feed`]);
+  // Saved, the variant is one derived case the project records as a
+  // revision the transformation made from the imported case.
+  await press(user, page().getByRole("button", { name: "Save variant" }));
+  await waitFor(() => expect((journey.callsTo("SaveItem").at(-1)?.result as { outcome?: string } | undefined)?.outcome).toBe("saved"));
+  const shown = await journey.commandLine(["project", "show", project]);
+  expect(shown.code, shown.stderr).toBe(0);
+  const lineage = new RegExp(`\\n {2}(\\S+) evidence=verified identity=([0-9a-f]{64}) [^\\n]*\\n {4}operation=readmit-transform/v1 parent=${incident} `).exec(shown.stdout);
+  const written = lineage?.[1] ?? "";
+  expect(namesIn(project)).toContain(written);
+  expect(lineage?.[2]).toBe(journey.readFile(`${folder}/${written}/identity.sha256`).trim());
+
+  // Compared by message type, the derived case differs from the imported
+  // one in exactly the fields holding the positions the preview listed.
+  const diffed = await journey.commandLine(["diff", `${project}/${incident}`, `${project}/${written}`, "--key", "MSH-9", "--format", "json"]);
+  expect(diffed.code, diffed.stderr).toBe(0);
+  const report = JSON.parse(diffed.stdout) as { pairs: { left: { occurrence: string }; fields: { selector: string }[] }[] };
+  expect(report.pairs.flatMap((pair) => pair.fields.map((field) => `${pair.left.occurrence} ${field.selector}`)).sort()).toEqual(
+    positions.map((position) => position.replace(/\.\d+$/, "")),
+  );
+
+  // Nothing here wrote into the imported case.
+  const timeline = await journey.commandLine(["timeline", `${project}/${incident}`]);
   expect(timeline.code).toBe(0);
 });

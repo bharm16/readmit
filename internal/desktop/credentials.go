@@ -82,18 +82,31 @@ type CredentialRequest struct {
 // otherwise a reference is registered under Name for Purpose. An edit
 // replaces the locator's arguments only when ReplaceArguments is set, and
 // then with exactly Arguments, so an empty list clears them; a new reference
-// is registered with Arguments.
+// is registered with Arguments. Shown is the reference as the edit showed it
+// when it opened: a member still equal to what was shown is one the person
+// did not change, and the edit leaves it as it is registered now, so a
+// change made elsewhere meanwhile survives.
 type CredentialSaveRequest struct {
-	Context          RequestContext `json:"context"`
-	Name             string         `json:"name"`
-	Update           bool           `json:"update"`
-	Purpose          secret.Purpose `json:"purpose,omitzero"`
-	Store            secret.Store   `json:"store"`
-	Address          string         `json:"address"`
-	Command          string         `json:"command"`
-	Arguments        []string       `json:"arguments,omitzero"`
-	ReplaceArguments bool           `json:"replace_arguments"`
-	MaxAge           string         `json:"max_age,omitzero"`
+	Context          RequestContext   `json:"context"`
+	Name             string           `json:"name"`
+	Update           bool             `json:"update"`
+	Purpose          secret.Purpose   `json:"purpose,omitzero"`
+	Store            secret.Store     `json:"store"`
+	Address          string           `json:"address"`
+	Command          string           `json:"command"`
+	Arguments        []string         `json:"arguments,omitzero"`
+	ReplaceArguments bool             `json:"replace_arguments"`
+	MaxAge           string           `json:"max_age,omitzero"`
+	Shown            *CredentialShown `json:"shown,omitzero"`
+}
+
+// CredentialShown is what an edit started from: the members of a reference
+// its sheet opened with.
+type CredentialShown struct {
+	Store   secret.Store `json:"store"`
+	Address string       `json:"address"`
+	Command string       `json:"command"`
+	MaxAge  string       `json:"max_age,omitzero"`
 }
 
 // CredentialCheckResult says whether a reference's locator resolved. Nothing
@@ -199,19 +212,22 @@ func (a *App) SaveCredential(request CredentialSaveRequest) CredentialsResult {
 	})
 }
 
-// credentialChange is what an edit changes from the reference as registered.
+// credentialChange is what an edit changes from the reference as registered:
+// each member the person changed from what the edit showed, and that differs
+// from what is registered now.
 func credentialChange(current secret.Reference, request CredentialSaveRequest) secret.Change {
 	change := secret.Change{}
-	if request.Store != current.Store {
+	shown := request.Shown
+	if request.Store != current.Store && (shown == nil || request.Store != shown.Store) {
 		change.Store = &request.Store
 	}
-	if request.Address != current.Address {
+	if request.Address != current.Address && (shown == nil || request.Address != shown.Address) {
 		change.Address = &request.Address
 	}
-	if request.Command != current.Command {
+	if request.Command != current.Command && (shown == nil || request.Command != shown.Command) {
 		change.Command = &request.Command
 	}
-	if request.MaxAge != current.MaxAge {
+	if request.MaxAge != current.MaxAge && (shown == nil || request.MaxAge != shown.MaxAge) {
 		change.MaxAge = &request.MaxAge
 	}
 	if request.ReplaceArguments {

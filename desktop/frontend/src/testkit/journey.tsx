@@ -113,7 +113,7 @@ export function region(name: string): HTMLElement {
 export async function whenEnabled<E extends HTMLElement>(element: E): Promise<E> {
   await waitFor(() => {
     if ((element as unknown as { disabled?: boolean }).disabled || element.matches(":disabled")) {
-      throw new Error("the control is still disabled");
+      throw new Error(`the control is still disabled: ${element.getAttribute("aria-label") ?? element.textContent}`);
     }
   });
   return element;
@@ -346,9 +346,14 @@ export class Journey {
 
   /** Starts the independent downstream scheduling system a person's
    * interface feeds (testkit/downstream.js), on a loopback port, writing its
-   * ledger export to a file inside the root. It stops when the journey ends. */
-  async startDownstream(exportFile: string, mode?: DownstreamMode): Promise<Downstream> {
-    const downstream = await startDownstream({ exportPath: pathInRoot(this.root, exportFile), ...(mode ? { mode } : {}) });
+   * ledger export to a file inside the root, and, given observationFile, its
+   * readmit-observation/v1 handoff there too. It stops when the journey ends. */
+  async startDownstream(exportFile: string, mode?: DownstreamMode, observationFile?: string): Promise<Downstream> {
+    const downstream = await startDownstream({
+      exportPath: pathInRoot(this.root, exportFile),
+      ...(observationFile ? { observationPath: pathInRoot(this.root, observationFile) } : {}),
+      ...(mode ? { mode } : {}),
+    });
     this.downstreams.push(downstream);
     return downstream;
   }
@@ -373,8 +378,8 @@ export class Journey {
    * "operator" mode it is served operator-only, its operation policy binding
    * the client certificate to its licensed author. It stops when the journey
    * ends. */
-  async startHub(project: string, grants: HubGrant[], mode: HubMode = "team"): Promise<Hub> {
-    const licensePolicy = `${this.provisionLicense("hub-operator/license")}/operation-policy.json`;
+  async startHub(project: string, grants: HubGrant[], mode: HubMode = "team", installedPolicy?: string): Promise<Hub> {
+    const licensePolicy = installedPolicy ?? `${this.provisionLicense("hub-operator/license")}/operation-policy.json`;
     const hub = await startHub({
       hubBinary: inject("journeyHub"),
       bridgeBinary: this.binary,

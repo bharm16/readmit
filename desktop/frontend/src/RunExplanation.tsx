@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   analyzeRun,
+  cancel,
   clearStaleRunLock,
   listWholeCatalog,
   openRun,
@@ -548,6 +549,8 @@ function AnalyzeSheet({ open, root, onClose, onAnalyze }: { open: boolean; root:
   const scope = useRef(new RequestScope());
   const [groups, setGroups] = useState<CatalogItem[] | null>(null);
   const [picked, setPicked] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [stopping, setStopping] = useState(false);
   useEffect(() => {
     if (!open || !root) return;
     setPicked("");
@@ -563,7 +566,18 @@ function AnalyzeSheet({ open, root, onClose, onAnalyze }: { open: boolean; root:
       submitLabel="Analyze"
       submitDisabled={!group}
       onClose={onClose}
-      onSubmit={() => (group ? onAnalyze({ kind: "check-group", id: group.ref.id, revision: group.ref.revision! }) : { reason: "Choose a check group." })}
+      secondary={analyzing ? <button type="button" disabled={stopping} onClick={() => { setStopping(true); cancel("run-explanation"); }}>{stopping ? "Stopping…" : "Stop"}</button> : null}
+      onSubmit={async () => {
+        if (!group) return { reason: "Choose a check group." };
+        setAnalyzing(true);
+        setStopping(false);
+        try {
+          return await onAnalyze({ kind: "check-group", id: group.ref.id, revision: group.ref.revision! });
+        } finally {
+          setAnalyzing(false);
+          setStopping(false);
+        }
+      }}
     >
       {groups === null ? <p aria-live="polite">Reading…</p> : groups.length === 0 ? <p>No saved check groups.</p> : null}
       {groups && groups.length > 0 ? (

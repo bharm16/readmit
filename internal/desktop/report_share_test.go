@@ -21,6 +21,7 @@ import (
 	"github.com/bharm16/readmit/internal/redact"
 	"github.com/bharm16/readmit/internal/report"
 	"github.com/bharm16/readmit/internal/reportshare"
+	"github.com/bharm16/readmit/internal/testrunner"
 )
 
 // prepareShare chooses path as the share's destination, as the save dialog
@@ -221,6 +222,9 @@ func TestATemplateRedactsAShareAndAChangedTreatmentWithdrawsItsPreview(t *testin
 	if prepared.Review == nil || share == nil || share.Template != "Clinic A" || share.Output.Type != desktop.ShareOutputFolder || len(share.Output.Files) != 2 {
 		t.Fatalf("the templated share: %+v", prepared)
 	}
+	if share.Items == nil || share.Rows == nil || share.Issues == nil {
+		t.Fatalf("a list of the share is absent rather than empty: %+v", share)
+	}
 	if len(share.Templates) != 2 || share.Templates[0].Name != "Clinic A" {
 		t.Fatalf("the templates: %+v", share.Templates)
 	}
@@ -345,6 +349,29 @@ func TestAnEncryptedShareIsWrittenUnderItsControlAndASendNeedsATeam(t *testing.T
 // and the share stays blocked until that run is retained.
 func TestATemplatesCheckRunIsARealSeparatelyReviewedRun(t *testing.T) {
 	app, dialogs, context, ref, _ := templateProject(t)
+	// This retained acceptance fixture uses processing ID T. Permit that
+	// known structural literal so preparation must actually succeed.
+	path := filepath.Join(context.Project, "Clinic B.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := redact.DecodePolicy(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range policy.Fields {
+		if policy.Fields[i].Selector == "MSH-11" {
+			policy.Fields[i].Allowed = append(policy.Fields[i].Allowed, "T")
+		}
+	}
+	raw, err = json.Marshal(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	options := desktop.ReportShareOptions{Format: "markdown", Template: "Clinic B.json", Contents: desktop.ShareContents{Messages: true}}
 	prepared := prepareShare(t, app, dialogs, context, ref, options, filepath.Join(t.TempDir(), "Checked"))
 	if prepared.Review == nil || prepared.Review.Ready || prepared.Review.Token != "" || prepared.Review.ReportShare.RunCheck == nil || prepared.Review.ReportShare.RunCheck.Satisfied {
@@ -381,17 +408,24 @@ func TestATemplatesCheckRunIsARealSeparatelyReviewedRun(t *testing.T) {
 	}
 	prepared2 := app.ExecuteReviewedAction(desktop.ExecuteActionRequest{Context: context, Token: review.Token, IntentID: "check-1",
 		Decisions: desktop.ReviewDecisions{DeclaredInventory: review.ShareCheck.Inventory.Digest}})
-	if prepared2.Outcome == desktop.ActionCompleted {
-		if prepared2.ShareCheck == nil || prepared2.ShareCheck.Phase != "failure" || prepared2.ShareCheck.Packet.ID != ref.ID {
-			t.Fatalf("the prepared check: %+v", prepared2.ShareCheck)
-		}
-		run := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.RunReviewedTestAction,
-			Items: []desktop.ItemRef{prepared2.ShareCheck.Review, prepared2.ShareCheck.Packet}, Run: &desktop.RunActionOptions{Phase: prepared2.ShareCheck.Phase}})
-		if run.Review == nil || run.Review.Run == nil || run.Review.Run.Reviewed == nil || run.Review.Consent != desktop.SendConsent {
-			t.Fatalf("the check's reviewed run: %+v", run)
-		}
-	} else if prepared2.Reason == "" {
-		t.Fatalf("a check that could not be prepared says why: %+v", prepared2)
+	if prepared2.Outcome != desktop.ActionCompleted || prepared2.State != desktop.Completed {
+		t.Fatalf("the check must be prepared successfully: %+v", prepared2)
+	}
+	if prepared2.ShareCheck == nil || prepared2.ShareCheck.Phase != "failure" || prepared2.ShareCheck.Packet.ID != ref.ID {
+		t.Fatalf("the prepared check: %+v", prepared2.ShareCheck)
+	}
+	paths, err := filepath.Glob(filepath.Join(context.Project, ".readmit", "sharing", "run-*", "spec.json"))
+	if err != nil || len(paths) != 1 {
+		t.Fatalf("one local check specification: %v %v", paths, err)
+	}
+	spec, err := testrunner.ReadSpec(paths[0])
+	if err != nil || spec.Observation.Path != filepath.Join(context.Project, "observation.json") {
+		t.Fatalf("the local check lost its original observation binding: %+v %v", spec, err)
+	}
+	run := app.PrepareAction(desktop.PrepareActionRequest{Context: context, Action: desktop.RunReviewedTestAction,
+		Items: []desktop.ItemRef{prepared2.ShareCheck.Review, prepared2.ShareCheck.Packet}, Run: &desktop.RunActionOptions{Phase: prepared2.ShareCheck.Phase}})
+	if run.Review == nil || run.Review.Run == nil || run.Review.Run.Reviewed == nil || run.Review.Consent != desktop.SendConsent {
+		t.Fatalf("the check's reviewed run: %+v", run)
 	}
 	if still := prepareShare(t, app, dialogs, context, ref, options, filepath.Join(t.TempDir(), "Still")); still.Review.Ready || still.Review.ReportShare.RunCheck.Satisfied {
 		t.Fatal("a share is ready before its check ran")

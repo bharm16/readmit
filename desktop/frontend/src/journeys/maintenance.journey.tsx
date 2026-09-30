@@ -225,7 +225,8 @@ test("a project is backed up and verified, backed up again with no project open,
   expect(restored).not.toBe(journey.path(PROJECT));
   const shown = await journey.commandLine(["project", "show", restored]);
   expect(shown.code).toBe(0);
-  expect(shown.stdout).toMatch(/^ {2}reschedule-feed evidence=verified /m);
+  expect(shown.stdout).toMatch(/^ {2}case-001 evidence=verified /m);
+  expect(shown.stdout).toContain(`title: ${CASE_TITLE}\n`);
   // The project it was restored from is unchanged.
   expect((await journey.commandLine(["project", "show", PROJECT])).code).toBe(0);
 });
@@ -320,7 +321,9 @@ test("one case is archived and deleted from its row, leaving the rest of the pro
   await press(user, within(done).getByRole("button", { name: "Done" }));
   expect(await screen.findByText("No cases yet")).toBeTruthy();
   expect(journey.digest(`${PROJECT}/neighbour-notes.txt`)).toBe(neighbour);
-  expect((await journey.commandLine(["project", "show", PROJECT])).stdout).not.toMatch(/reschedule-feed/);
+  const kept = (await journey.commandLine(["project", "show", PROJECT])).stdout;
+  expect(kept).toContain("Cases: 0\n");
+  expect(kept).not.toContain(CASE_TITLE);
 
   // The project is archived whole, then deleted from its row on Projects:
   // the folder is gone and its verified archive remains.

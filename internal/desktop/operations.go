@@ -207,8 +207,13 @@ func (a *App) ActivateActivationFolder(request ActivationFolderRequest) Operatio
 		if _, err := readSelectedPolicy(path); err != nil {
 			return OperationResult{State: Failed, Reason: operationguard.ErrUnavailable.Error()}
 		}
-		if err := operationguard.Activate(path); err != nil {
-			return OperationResult{State: Failed, Reason: err.Error()}
+		// A folder activated before, on this computer or by the command
+		// line, is selected as it is: activating it again would be refused
+		// because its state already exists. A released one stays refused.
+		if state, err := operationguard.Read(path); err != nil || state.Released {
+			if err := operationguard.Activate(path); err != nil {
+				return OperationResult{State: Failed, Reason: err.Error()}
+			}
 		}
 		if err := a.retainOperationPolicy(path); err != nil {
 			return OperationResult{State: Failed, Reason: err.Error()}

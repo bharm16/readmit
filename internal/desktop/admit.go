@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/bharm16/readmit/internal/operationguard"
 	"github.com/bharm16/readmit/internal/secret"
@@ -139,20 +140,51 @@ func operate[R any, PR interface {
 	var release func()
 	var claimed bool
 	ctx := context.Background()
+	var cancel context.CancelFunc
 	if profile.Interruptible {
-		ctx, release, claimed = a.begin(profile.Name)
-	} else {
-		release, claimed = a.claim(profile.Name)
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
 	}
+	take := func() {
+		if ctx.Err() != nil {
+			return
+		}
+		claimed = a.claimOperation(profile.Name, reads, cancel)
+		if claimed {
+			release = a.release
+		}
+	}
+	take()
 	if !claimed && reads {
 		ctx, release, claimed = a.claimBeside(profile.Name)
+	}
+	// The waiting action keeps the same cancellation when it acquires the
+	// slot: Stop during a background read must not turn into a later action.
+	if !claimed && !reads {
+		if done, waiting := a.waitForRead(profile.Name, cancel); waiting {
+			defer done()
+			for deadline := time.Now().Add(readWait); !claimed && ctx.Err() == nil && time.Now().Before(deadline) && a.heldByRead(); {
+				select {
+				case <-ctx.Done():
+				case <-time.After(readPoll):
+					take()
+				}
+			}
+		}
+	}
+	if claimed {
+		defer release()
+	}
+	if ctx != nil && ctx.Err() != nil {
+		var stopped R
+		PR(&stopped).refuse(cancelledRefusal.state, cancelledRefusal.reason)
+		return stopped
 	}
 	if !claimed {
 		var busy R
 		PR(&busy).refuse(Busy, a.busyReason())
 		return busy
 	}
-	defer release()
 	if check != nil {
 		if refusal, proceed := check(); !proceed {
 			return refusal
@@ -184,4 +216,67 @@ func operate[R any, PR interface {
 		PR(&out).refuse(Failed, settlementFailed)
 	}
 	return out
+}
+
+// readWait bounds how long an action waits for a read holding the slot, and
+// readPoll is how often it looks again.
+const (
+	readWait = 5 * time.Second
+	readPoll = 5 * time.Millisecond
+)
+
+// claimOperation takes the slot, its read classification and cancellation
+// together, so neither a waiting action nor Stop sees a partially claimed slot.
+func (a *App) claimOperation(name string, reads bool, cancel context.CancelFunc) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running || a.beside || reads && a.waiting > 0 {
+		return false
+	}
+	a.running, a.reading, a.operation, a.cancel = true, reads, name, cancel
+	return true
+}
+
+// heldByRead reports whether a local read holds the slot now, or the slot is
+// free.
+func (a *App) heldByRead() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.running && !a.beside || a.running && a.reading
+}
+
+// readWaiter preserves a queued action's cancellation before slot acquisition.
+type readWaiter struct {
+	name   string
+	cancel context.CancelFunc
+}
+
+// waitForRead registers an action while a read holds the slot. Later reads
+// yield until the caller releases its registration.
+func (a *App) waitForRead(name string, cancel context.CancelFunc) (func(), bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !(a.running && a.reading) {
+		return nil, false
+	}
+	waiter := &readWaiter{name: name, cancel: cancel}
+	if a.readWaiters == nil {
+		a.readWaiters = make(map[*readWaiter]struct{})
+	}
+	a.readWaiters[waiter] = struct{}{}
+	a.waiting++
+	return func() {
+		a.mu.Lock()
+		delete(a.readWaiters, waiter)
+		a.waiting--
+		a.mu.Unlock()
+	}, true
+}
+
+// readsYield reports whether a read must leave the slot to an action waiting
+// for it; the read is answered busy and the window asks it again.
+func (a *App) readsYield() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.waiting > 0
 }

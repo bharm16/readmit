@@ -1102,7 +1102,8 @@ export function downloadHubSummary(request: HubFileRequest): Promise<HubTransfer
 }
 
 export function readHubSupportSummary(request: HubFileRequest): Promise<HubSupportSummaryResult> {
-  return guard(() => facade().ReadHubSupportSummary(request), { state: "failed" });
+  // Read as the review opens, beside the team's own reads.
+  return retryingRead(() => facade().ReadHubSupportSummary(request), { state: "failed" });
 }
 
 export function exportHubSetup(request: HubSetupExport): Promise<HubTransferResult> {
@@ -1729,8 +1730,11 @@ export function discardIncompleteSave(request: IncompleteSaveRequest): Promise<C
   return guard(() => facade().DiscardIncompleteSave(request), { state: "failed", context: request.context });
 }
 
+/** Prepares the review a final action is bound to. It takes no action, so a
+ * busy answer — the slot held by a read the window issued on its own — is
+ * asked again rather than shown in the review as its refusal. */
 export function prepareAction(request: PrepareActionRequest): Promise<ActionReviewResult> {
-  return guard(() => facade().PrepareAction(request), { state: "failed", context: request.context });
+  return retryingRead(() => facade().PrepareAction(request), { state: "failed", context: request.context });
 }
 
 /** The final Send, Export or Approve of one review, under the intent its
@@ -2100,7 +2104,7 @@ export function metadataPacks(context: RequestContext): Promise<MetadataPacksRes
 
 /** Generates a scenario's messages in memory for reading; nothing is written or sent. */
 export function previewScenarioDraft(request: DraftRequest): Promise<ScenarioPlanPreviewResult> {
-  return guard(() => facade().PreviewScenarioDraft(request), { state: "failed", context: request.context, problems: [], seed: 0, streams: 0, messages: [] });
+  return retryingRead(() => facade().PreviewScenarioDraft(request), { state: "failed", context: request.context, problems: [], seed: 0, streams: 0, messages: [] });
 }
 
 export function inspectScenarioPreview(request: ScenarioPreviewInspectRequest): Promise<InspectionResult> {
@@ -2194,7 +2198,7 @@ export function analyzeRun(request: RunAnalysisRequest): Promise<RunAnalysisResu
 
 /** Two runs compared, with up to fourteen more counted. */
 export function compareRunItems(request: RunComparisonItemsRequest): Promise<RunComparisonItemsResult> {
-  return guard(() => facade().CompareRunItems(request), { state: "failed", context: request.context });
+  return retryingRead(() => facade().CompareRunItems(request), { state: "failed", context: request.context });
 }
 
 /** Reads operator-selected local fixture adapter metadata; never resolves a credential. */

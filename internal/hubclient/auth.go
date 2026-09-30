@@ -248,14 +248,23 @@ func (f *AuthFlow) WaitForCallback(ctx context.Context) (code string, err error)
 // would otherwise close it only once it does.
 func (f *AuthFlow) Close() {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	if !f.closed {
-		f.closed = true
-		if f.server != nil {
-			f.server.Close()
-		}
-		f.listener.Close()
+	if f.closed {
+		f.mu.Unlock()
+		return
 	}
+	f.closed = true
+	server, listener := f.server, f.listener
+	f.mu.Unlock()
+	// The callback publishes its result before net/http flushes the response.
+	// Do not hold the callback's mutex while waiting for its handler to finish.
+	if server != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			server.Close()
+		}
+	}
+	listener.Close()
 }
 
 // ExchangeCode exchanges the authorization code for an RFC 9068 access token at the token endpoint.

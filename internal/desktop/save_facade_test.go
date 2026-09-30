@@ -299,6 +299,17 @@ func TestAVariantSaveIsOneCaseWithItsLineage(t *testing.T) {
 	if staging, _ := os.ReadDir(filepath.Join(root, ".readmit", "staging")); len(staging) != 0 {
 		t.Fatalf("a published variant left staging behind: %v", staging)
 	}
+	// The same variant made again is the same evidence, which the project
+	// registers once: refused in its words before anything is placed, and
+	// nothing is left to retry or discard.
+	twice := app.SaveItem(desktop.SaveItemRequest{Context: context, Kind: desktop.VariantItem, Draft: draft, IntentID: "variant-again"})
+	if twice.Outcome != desktop.InvalidOutcome || len(twice.Problems) != 1 || twice.Problems[0].Problem != "the same revision identity is registered twice" ||
+		!slices.Equal(entries(t, root), held) || twice.Operation != "" {
+		t.Fatalf("the same evidence saved twice: %+v", twice)
+	}
+	if staging, _ := os.ReadDir(filepath.Join(root, ".readmit", "staging")); len(staging) != 0 {
+		t.Fatalf("a refused variant left staging behind: %v", staging)
+	}
 	for name, request := range map[string]desktop.SaveItemRequest{
 		"saved over":           {Context: context, Kind: desktop.VariantItem, Item: saved.Saved.ID, BaseRevision: "1", Draft: draft, IntentID: "over"},
 		"another evidence":     {Context: context, Kind: desktop.VariantItem, Draft: desktop.ItemDraft{Variant: &desktop.VariantDraft{Source: incident, Plan: reproducer.Plan{Schema: plan.Schema, Case: strings.Repeat("0", 64), Steps: plan.Steps}}}, IntentID: "other"},

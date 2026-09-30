@@ -217,6 +217,21 @@ func TestPreviewImportAcrossModes(t *testing.T) {
 	}
 }
 
+// A feed of more MLLP frames than one parse admits is previewed frame by
+// frame, as the import writes it: every booking is a message row, and none of
+// the feed is reported unparsed.
+func TestAPreviewOfALargeMLLPFeedListsEveryFrameAsTheImportWritesIt(t *testing.T) {
+	app := workspaceApp(t)
+	plan := mllpPlan()
+	preview := app.PreviewImport(desktop.ImportRequest{Workspace: t.TempDir(), Mode: "plan", Files: []string{mllpSource(t, bundle.MaxEvents)}, Plan: &plan})
+	if preview.State != desktop.Completed || preview.RowTotal != bundle.MaxEvents || preview.Problems.Unparsed != 0 {
+		t.Fatalf("the preview of %d frames: %s %q, %d rows, %d unparsed", bundle.MaxEvents, preview.State, preview.Reason, preview.RowTotal, preview.Problems.Unparsed)
+	}
+	if len(preview.Rows) == 0 || preview.Rows[0].Kind != "message" {
+		t.Fatalf("the first preview row is %+v", preview.Rows)
+	}
+}
+
 // An engine export the window cannot read is refused without naming it, in
 // the words `readmit import engine` refuses it with, when previewing and when
 // committing alike.

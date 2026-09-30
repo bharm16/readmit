@@ -27,7 +27,7 @@ import type {
   ScenarioPlanPreviewResult,
 } from "./bindings";
 import { renderApp } from "./testkit/app";
-import { caseResult, catalogOfListing, folderWithCase, vocabularyFixture } from "./testkit/fixtures";
+import { caseResult, catalogOfListing, folderWithCase, vocabularyFixture, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { goTo, page } from "./testkit/navigation";
 import type { FacadeHandlers, FacadeStub } from "./testkit/wails";
 
@@ -178,6 +178,8 @@ test("a check group of every check type keeps each check's name, saves as one dr
   await user.click(page().getByRole("tab", { name: "Checks" }));
   await user.click((await page().findAllByRole("button", { name: "New check group" }))[0]!);
   await user.type(await page().findByLabelText("Name"), "Every check");
+  // The new group is opened in the project that is open now.
+  expect((facade.callsTo("OpenItemDraft").at(-1)!.args[0] as ItemRequest).context.project).toBe(WORKSPACE_ROOT);
   for (const check of EVERY_CHECK) {
     await user.click(page().getAllByRole("button", { name: "Add check" })[0]!);
     const sheet = within(await screen.findByRole("dialog", { name: "Add check" }));
@@ -248,6 +250,38 @@ test("a condition has its own field and value and does not replace the expected 
   expect(clause!.subject.field?.selector).toBe("ERR-3");
   expect(clause!.expected).toEqual({ field: { state: "present", text: "207" } });
   expect(clause!.when).toEqual({ field: { scope: "observed", message: "s0001-e000001", selector: "MSA-1" }, equals: { state: "present", text: "AR" } });
+});
+
+test("a check's source and message numbers are retyped as a person types them", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openLibrary(user, { "check-group": [] }, {
+    OpenItemDraft: (request: ItemRequest): ItemDraftResult => ({
+      state: "completed",
+      context: request.context,
+      new: true,
+      ref: { kind: "check-group", id: "" },
+      draft: { check_group: { set: { schema: "readmit-assertion-set-draft/v1", name: "", assertions: [] }, unsupported: [] } },
+    }),
+    SaveItem: (request) => savedAs(request, "g-new"),
+  });
+  await user.click(page().getByRole("tab", { name: "Checks" }));
+  await user.click((await page().findAllByRole("button", { name: "New check group" }))[0]!);
+  await user.type(await page().findByLabelText("Name"), "Reschedule");
+  await user.click(page().getAllByRole("button", { name: "Add check" })[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "Add check" }));
+  // Emptied and typed again, a number is what was typed, never appended to.
+  for (const [label, text] of [["Source", "2"], ["Message", "13"]] as const) {
+    await user.clear(sheet.getByLabelText(label));
+    await user.type(sheet.getByLabelText(label), text);
+    expect((sheet.getByLabelText(label) as HTMLInputElement).value).toBe(text);
+  }
+  await user.type(sheet.getByLabelText("Field"), "MSA-1");
+  await user.type(sheet.getByLabelText("Value"), "AA");
+  await user.click(sheet.getByRole("button", { name: "Add" }));
+  await user.click(page().getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+  const [clause] = facade.oneCall("SaveItem")[0].draft.check_group!.set.assertions;
+  expect(clause!.subject.field).toEqual({ scope: "observed", message: "s0002-e000013", selector: "MSA-1" });
 });
 
 const UNSUPPORTED: CheckGroupDraft = {
@@ -683,6 +717,26 @@ test("a new scenario previews the same messages for its saved seed and base time
   await waitFor(() => expect(facade.callsTo("OpenCase").some((call) => call.args[1] === "synthetic-0a1b2c3d4e5f-case")).toBe(true));
 });
 
+test("a preview answered busy, with nothing listed, says so and leaves the scenario editor usable", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openLibrary(user, { scenario: [], profile: [PROFILE] }, {
+    OpenItemDraft: (request: ItemRequest): ItemDraftResult => ({ state: "completed", context: request.context, new: true, ref: { kind: "scenario", id: "" }, draft: { scenario: scenarioDraft() } }),
+    // The facade's busy refusal carries no lists at all.
+    PreviewScenarioDraft: () => ({ state: "busy", reason: "another operation is already running", context: { project: "", generation: 0 }, problems: null, seed: 0, streams: 0, messages: null }) as unknown as ScenarioPlanPreviewResult,
+  });
+  await user.click(page().getByRole("tab", { name: "Scenarios" }));
+  await user.click((await page().findAllByRole("button", { name: "New scenario" }))[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "New scenario" }));
+  await user.type(sheet.getByLabelText("Name"), "Reschedule");
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  await page().findByRole("table", { name: "Events" });
+  await user.click(page().getByRole("button", { name: "Preview" }));
+  expect(await page().findByText("another operation is already running", undefined, { timeout: 5_000 })).toBeTruthy();
+  expect(facade.callsTo("PreviewScenarioDraft").length).toBeGreaterThan(1);
+  await user.click(page().getByRole("button", { name: "Back to events" }));
+  expect(await page().findByRole("table", { name: "Events" })).toBeTruthy();
+});
+
 // ---------- Sample data ----------
 
 test("the SIU fixture starts only on a loopback address and Stop cancels it", async () => {
@@ -790,4 +844,38 @@ test("the scenario library check compares a chosen library with its expectations
   expect(await check.findByText("Matches the expectations")).toBeTruthy();
   expect(check.getByText("Template 1 · v1")).toBeTruthy();
   expect(check.getByText("42")).toBeTruthy();
+});
+
+
+test("scenario Edit JSON preserves the whole generator plan and template, rejects invalid edits and writes only at Save", async () => {
+ const user = userEvent.setup();
+ const original = scenarioDraft();
+ const changed = { ...scenarioDraft(19), plan: { ...scenarioDraft(19).plan, rows: [...original.plan.rows, { ...original.plan.rows[0]!, id: "second" }], variants: [...original.plan.variants, { id: "second-variant", mutations: [] }] } };
+ let valid = false;
+ const { facade } = await openLibrary(user, { scenario: [SCENARIO] }, {
+  OpenItemDraft: request => ({ state: "completed", context: request.context, new: false, ref: SCENARIO.ref, draft: { name: SCENARIO.name, scenario: original } }),
+  LibraryDocument: request => ({ state: "completed", context: request.context, document: JSON.stringify(original.plan) }),
+  ApplyLibraryDocument: request => valid ? ({ state: "completed", context: request.context, new: false, draft: { name: SCENARIO.name, scenario: changed } }) : ({ state: "failed", context: request.context, new: false, reason: "unknown generator member" }),
+  SaveItem: request => savedAs(request, SCENARIO.ref.id, "2"),
+ });
+ await user.click(page().getByRole("tab", { name: "Scenarios" }));
+ await openRow(user, "Scenarios", SCENARIO.name);
+ await user.click(await page().findByRole("button", { name: "More scenario actions" }));
+ await user.click(screen.getByRole("menuitem", { name: "Edit JSON" }));
+ const sheet = within(await screen.findByRole("dialog", { name: "Edit JSON" }));
+ const document = await sheet.findByLabelText("Document");
+ await waitFor(() => expect((document as HTMLTextAreaElement).value).toBe(JSON.stringify(original.plan)));
+ await user.clear(document); await user.type(document, "invalid");
+ await user.click(sheet.getByRole("button", { name: "Apply" }));
+ expect(await sheet.findByText("unknown generator member")).toBeTruthy();
+ expect((document as HTMLTextAreaElement).value).toBe("invalid");
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
+ valid = true;
+ await user.clear(document); await user.paste(JSON.stringify(changed.plan));
+ await user.click(sheet.getByRole("button", { name: "Apply" }));
+ await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit JSON" })).toBeNull());
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
+ await user.click(page().getByRole("button", { name: "Save" }));
+ await waitFor(() => expect(facade.callsTo("SaveItem")).toHaveLength(1));
+ expect((facade.oneCall("SaveItem")[0] as SaveItemRequest).draft.scenario).toEqual(changed);
 });

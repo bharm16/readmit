@@ -297,6 +297,7 @@ export function useVariantEditor({
     const answer = await saveItem({ context: context(), kind: "variant", draft: { name, variant: draft }, intent_id: intent });
     setSaving(null);
     if (answer.outcome === "saved" && answer.saved) {
+      retry.current = null;
       if (draftId.current !== "") void discardEditorDraft(draftId.current);
       draftId.current = "";
       onSaved(answer.saved);

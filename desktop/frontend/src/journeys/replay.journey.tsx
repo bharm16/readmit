@@ -1,29 +1,21 @@
-// The replay screen over the real facade: a person investigating a scheduling
-// feed replays the two messages of the case to the independent downstream
-// system of testkit/downstream.js, rebased and shifted a day. The preview is
-// the command line's dry run for the same case, target and policy, and sends
-// nothing. A production environment and a destination the policy does not
-// approve are refused before any send is offered. The approved send reaches
-// the downstream system exactly as previewed — its own ledger, which readmit
-// did not write, holds the shifted appointment — and retains the run and its
-// decision the command line's send would retain. A send cancelled while its
+// Sending a case's messages over the real facade: a person investigating a
+// scheduling feed selects the two messages of the case and sends them to the
+// independent downstream system of testkit/downstream.js, with new control IDs
+// and every time shifted a day. The review is the command line's dry run for
+// the same case, environment and allowed ranges, and sends nothing. A
+// production environment and an environment whose allowed ranges leave the
+// downstream out are refused before Send is offered. The Send reaches the
+// downstream system exactly as reviewed — its own ledger, which readmit did
+// not write, holds the shifted appointment — and retains the run and its
+// decision the command line's send would retain. A send stopped while its
 // acknowledgement is held leaves that delivery uncertain, and neither the
 // held acknowledgement nor reopening the application ever sends it again.
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { UserEvent } from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { enter, Journey, press } from "../testkit/journey";
-import {
-  activateLicense,
-  openedCase,
-  configureTarget,
-  createProject,
-  EXPORTED_BOOKING,
-  EXPORTED_RESCHEDULE,
-  importExport,
-  tabTo,
-} from "./steps";
+import { findMessageRow, goTo, page } from "../testkit/navigation";
+import { activateLicense, createProject, EXPORTED_BOOKING, EXPORTED_RESCHEDULE, importExport } from "./steps";
 
 let journey: Journey;
 
@@ -35,33 +27,71 @@ afterEach(async () => {
   await journey.dispose();
 });
 
-const PROJECT = "investigations/scheduling-investigation";
-const CASE = `${PROJECT}/reschedule-feed`;
+/** The project folder, relative to the journey's root, once it is created. */
+let PROJECT = "";
+const caseFolder = () => `${PROJECT}/case-001`;
+const DOWNSTREAM = "Scheduling downstream";
 const PRODUCTION =
   "this configuration records the production classification; readmit does not replay to a production-classified environment";
 
-/** The panel a heading names. */
-function panelOf(heading: string) {
-  const panel = screen.getByRole("heading", { name: heading }).closest("section");
-  if (!panel) throw new Error(`the ${heading} panel is not open`);
-  return within(panel as HTMLElement);
+/** Presses a control that starts work in the facade once the window has
+ * finished what it was reading, as a person acts on what has drawn: the
+ * facade runs one operation at a time and refuses a click that meets a read
+ * the window issued on its own. */
+async function act(user: UserEvent, control: HTMLElement): Promise<void> {
+  await journey.settled();
+  await press(user, control);
 }
 
-const replay = () => panelOf("Replay");
-const preview = () => within(replay().getByRole("region", { name: "Replay preview" }));
+/** Adds a named environment at an address over TCP/MLLP, and allows one
+ * range as its destinations. */
+async function addEnvironment(user: UserEvent, name: string, address: string, classification: "nonproduction" | "production", range: string): Promise<void> {
+  const [host, port] = address.split(":") as [string, string];
+  await goTo(user, "Environments");
+  if (page().queryByRole("button", { name: "Back to environments" })) await press(user, page().getByRole("button", { name: "Back to environments" }));
+  await press(user, (await page().findAllByRole("button", { name: "Add environment" }))[0]!);
+  const sheet = within(await screen.findByRole("dialog", { name: "Add environment" }));
+  await enter(user, await sheet.findByRole("textbox", { name: "Name" }), name);
+  await enter(user, sheet.getByRole("textbox", { name: "Host" }), host);
+  await enter(user, sheet.getByRole("textbox", { name: "Port" }), port);
+  await user.selectOptions(sheet.getByRole("combobox", { name: "Classification" }), classification);
+  await user.click(sheet.getByRole("radio", { name: "TCP/MLLP" }));
+  await act(user, sheet.getByRole("button", { name: "Save" }));
+  await page().findByRole("heading", { level: 1, name });
+  await press(user, page().getByRole("button", { name: "More environment actions" }));
+  await press(user, await screen.findByRole("menuitem", { name: "Allowed destinations" }));
+  await press(user, within(await screen.findByRole("dialog", { name: "Allowed destinations" })).getByRole("button", { name: "Edit" }));
+  const ranges = within(await screen.findByRole("dialog", { name: "Edit allowed destinations" }));
+  await enter(user, ranges.getByRole("textbox", { name: "Name of range 1" }), "Allowed peers");
+  await enter(user, ranges.getByRole("textbox", { name: "Range 1" }), range);
+  await act(user, ranges.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit allowed destinations" })).toBeNull());
+}
 
-/** The command line's replay of the same case, with the flags the window's
+/** The file one role of a saved environment is kept in, as the project's
+ * catalog records it for the environment's current revision. */
+function member(name: string, role: string): string {
+  const catalog = JSON.parse(journey.readFile(`${PROJECT}/.readmit/catalog.json`)) as {
+    items: { kind: string; name?: string; revisions: { members: { role: string; path: string }[] }[] }[];
+  };
+  const item = catalog.items.find((entry) => entry.kind === "environment" && entry.name === name);
+  const path = item?.revisions.at(-1)?.members.find((entry) => entry.role === role)?.path;
+  if (!path) throw new Error(`${name} has no ${role}`);
+  return `${PROJECT}/${path}`;
+}
+
+/** The command line's replay of the same case, with the flags the review's
  * choices stand for. */
-function commandLine(target: string, policy: string, extra: string[] = []) {
+function commandLine(environment: string, extra: string[] = []) {
   return journey.commandLine([
     "--operation-policy",
     journey.path("vendor-delivered-license", "operation-policy.json"),
     "replay",
-    CASE,
+    caseFolder(),
     "--target",
-    `${PROJECT}/${target}`,
+    member(environment, "target"),
     "--policy",
-    `${PROJECT}/${policy}`,
+    member(environment, "policy"),
     "--message",
     "s0001-e000001",
     "--message",
@@ -76,52 +106,34 @@ function commandLine(target: string, policy: string, extra: string[] = []) {
   ]);
 }
 
-/** Records a production environment at the downstream's address and a send
- * policy approving only a network the downstream is not on: what a
- * colleague's configuration of the wrong environment looks like. */
-async function configureRefusals(user: UserEvent, address: string): Promise<void> {
-  const panel = panelOf("Environments");
-  await press(user, panel.getByRole("button", { name: "Target" }));
-  await enter(user, panel.getByLabelText("Target Config File"), "production-target.json");
-  await enter(user, panel.getByLabelText("Environment Name"), "scheduling-production");
-  await user.selectOptions(panel.getByLabelText("Classification"), "production");
-  await enter(user, panel.getByLabelText("Destination Address"), address);
-  await press(user, panel.getByRole("button", { name: "Save target" }));
-  expect(await panel.findByText("Target configuration saved successfully.")).toBeTruthy();
-  await press(user, panel.getByRole("button", { name: "Send policy" }));
-  await enter(user, panel.getByLabelText("Policy File"), "elsewhere-policy.json");
-  await press(user, await panel.findByRole("button", { name: "New send policy" }));
-  await enter(user, panel.getByLabelText("Approved destination prefix"), "10.1.0.0/16{Enter}");
-  await panel.findByText("10.1.0.0/16", { selector: "code" });
-  for (const prefix of panel.queryAllByText(/^\d+\.\d+\.\d+\.\d+\/\d+$/, { selector: "code" })) {
-    if (prefix.textContent !== "10.1.0.0/16") await press(user, within(prefix.closest("li") as HTMLElement).getByRole("button", { name: "Remove" }));
+/** Selects both messages of the open case and opens Send selected. */
+async function sendSelected(user: UserEvent) {
+  await goTo(user, "Cases");
+  for (const occurrence of ["s0001-e000001", "s0002-e000001"]) {
+    const box = within(await findMessageRow(occurrence)).getByRole("checkbox") as HTMLInputElement;
+    if (!box.checked) await user.click(box);
   }
-  await press(user, panel.getByRole("button", { name: "Save policy" }));
-  expect(await panel.findByText("Approved-destination policy saved.")).toBeTruthy();
-  expect(JSON.parse(journey.readFile(`${PROJECT}/elsewhere-policy.json`))).toEqual({
-    schema: "readmit-send-policy/v1",
-    approved_destinations: ["10.1.0.0/16"],
-  });
+  await press(user, screen.getByRole("button", { name: "Send selected" }));
+  return within(await screen.findByRole("dialog", { name: "Send messages" }));
 }
 
-/** Names the target configuration and send policy, as entries of the open
- * project. */
-async function aimAt(user: UserEvent, target: string, policy: string): Promise<void> {
-  const panel = replay();
-  await enter(user, panel.getByLabelText("Target configuration"), target);
-  await enter(user, panel.getByLabelText("Send policy"), policy);
+/** Chooses the environment the review is prepared for, and waits for the
+ * review prepared for it. */
+async function sendTo(user: UserEvent, review: ReturnType<typeof within>, environment: string): Promise<void> {
+  const asked = journey.callsTo("PrepareAction").length;
+  if (!review.queryByRole("combobox", { name: "Environment" })) await press(user, review.getByRole("button", { name: "Change" }));
+  await review.findByRole("option", { name: environment });
+  await user.selectOptions(review.getByRole("combobox", { name: "Environment" }), environment);
+  await waitFor(() => expect(journey.callsTo("PrepareAction")[asked]?.settled).toBe(true));
 }
 
-/** Presses Preview replay and waits for the answer to this press. */
-async function previewReplay(user: UserEvent): Promise<void> {
-  const asked = journey.callsTo("PreviewReplay").length;
-  await press(user, replay().getByRole("button", { name: "Preview replay" }));
-  await waitFor(() => expect(journey.callsTo("PreviewReplay")[asked]?.settled).toBe(true));
+/** Waits for the review prepared after the last change to be answered. */
+async function prepared(): Promise<void> {
+  await waitFor(() => expect(journey.callsTo("PrepareAction").at(-1)?.settled).toBe(true));
 }
 
-/** The rows of one table of the replay panel, cell by cell. */
-function rowsOf(caption: string | RegExp): string[][] {
-  const table = replay().getByRole("table", { name: caption });
+/** The rows of a table, cell by cell. */
+function rowsOf(table: HTMLElement): string[][] {
   return within(table)
     .getAllByRole("row")
     .slice(1)
@@ -137,170 +149,137 @@ const REBASED_RESCHEDULE = EXPORTED_RESCHEDULE.replace("20260101120100+0000", "2
   .replace("OWN-MOVE-1", "READMIT000002")
   .replace("^^^20260103110000+0000", "^^^20260104110000+0000");
 
-test("selected case messages are previewed as readmit replay previews them and sent to an independent downstream system once, only after explicit approval", async () => {
-  const user = userEvent.setup();
+async function investigation(user: UserEvent) {
   journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
   const downstream = await journey.startDownstream("downstream/appointments.csv", "fixed");
   await journey.launch();
   await activateLicense(user, journey);
-  await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
+  const folder = await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
+  PROJECT = folder.slice(journey.path().length + 1);
   await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
-  await configureTarget(user, downstream.address);
-  await configureRefusals(user, downstream.address);
-  await openedCase();
+  await addEnvironment(user, DOWNSTREAM, downstream.address, "nonproduction", "127.0.0.1/32");
+  return downstream;
+}
 
-  // Both messages, the named downstream environment under its policy, rebased
-  // and shifted a day, previewed.
-  const panel = replay();
-  await press(user, await panel.findByRole("button", { name: "Replay s0001-e000001" }));
-  await press(user, panel.getByRole("button", { name: "Replay s0002-e000001" }));
-  await aimAt(user, "downstream-target.json", "send-policy.json");
-  await user.click(panel.getByLabelText(/Rebase control IDs/));
-  await user.click(panel.getByLabelText(/Shift timestamps/));
-  await enter(user, panel.getByLabelText("Shift by"), "24h");
-  await previewReplay(user);
-  expect(preview().getByText("Dry run: no connection opened.")).toBeTruthy();
-  expect(preview().getByText(`Target: scheduling-downstream · nonproduction · plain · ${downstream.address}`)).toBeTruthy();
-  const wire = rowsOf("Messages this send would put on the wire, in order");
-  expect(wire.map(([outbound, source]) => `${outbound} ${source}`)).toEqual(["o000001 s0001-e000001", "o000002 s0002-e000001"]);
+test("selected case messages are previewed as readmit replay previews them and sent to an independent downstream system once, only after explicit approval", async () => {
+  const user = userEvent.setup();
+  const downstream = await investigation(user);
+  // What a colleague's configuration of the wrong environment looks like: a
+  // production environment at the same address, and one whose allowed range
+  // leaves the downstream out.
+  await addEnvironment(user, "Scheduling production", downstream.address, "production", "127.0.0.1/32");
+  await addEnvironment(user, "Elsewhere", downstream.address, "nonproduction", "10.1.0.0/16");
+  expect(JSON.parse(journey.readFile(member("Elsewhere", "policy")))).toEqual({ schema: "readmit-send-policy/v1", approved_destinations: ["10.1.0.0/16"] });
 
-  // The command line's dry run of the same case says the same thing, message
-  // for message, and neither reached the downstream system.
-  const dryRun = await commandLine("downstream-target.json", "send-policy.json", ["--decision", "cli-preview.decision.json"]);
+  // Both messages, the downstream environment, new control IDs and every
+  // time a day later: reviewed, nothing sent.
+  const review = await sendSelected(user);
+  await sendTo(user, review, DOWNSTREAM);
+  expect(await review.findByText(`Sends 2 messages to ${DOWNSTREAM} once.`)).toBeTruthy();
+  await press(user, review.getByRole("button", { name: "Edit" }));
+  await user.click(review.getByRole("checkbox", { name: "New control IDs" }));
+  await prepared();
+  await enter(user, review.getByLabelText("Shift times by"), "24h");
+  await user.tab();
+  await prepared();
+  await waitFor(() => expect(review.getByText("New control IDs, Times shifted 24h")).toBeTruthy());
+  const changed = await review.findByRole("table", { name: "Changed content" });
+  expect(rowsOf(changed).every(([, before, after]) => before === after)).toBe(true);
+  expect(downstream.received()).toEqual([]);
+  expect(downstream.connected()).toBe(0);
+
+  // What the changes do is shown only on purpose, and it is what the command
+  // line's dry run of the same case, environment and changes says.
+  await act(user, review.getByRole("button", { name: "Show values" }));
+  await prepared();
+  await waitFor(() => expect(rowsOf(review.getByRole("table", { name: "Changed content" }))).toContainEqual(["MSH[1]-10[1]", "OWN-BOOK-1", "READMIT000001"]));
+  const revealed = rowsOf(review.getByRole("table", { name: "Changed content" }));
+  expect(revealed).toContainEqual(["SCH[1]-11[1].4", "20260102100000+0000", "20260103100000+0000"]);
+  await press(user, review.getByRole("button", { name: "Hide values" }));
+  const dryRun = await commandLine(DOWNSTREAM, ["--decision", `${PROJECT}/cli-preview.decision.json`]);
   expect(dryRun.code).toBe(0);
   for (const line of [
     "Dry run: no connection opened",
     `Target: "${downstream.address}" (plain)`,
-    "Environment: scheduling-downstream",
     "Send policy: denied (send_not_explicit)",
     `Destination: ${downstream.address} resolved to 127.0.0.1`,
     "Approved destinations: 127.0.0.1/32",
     "Messages: 2",
     "Transformation: rebase-control-ids",
     "Transformation: shift-timestamps shift=24h",
-    ...wire.map(([outbound, source, bytes]) => `  ${outbound} source=${source} wire_bytes=${bytes}`),
   ]) {
     expect(dryRun.stdout.split("\n")).toContain(line);
   }
-  for (const line of ["Send policy: denied (send_not_explicit)", `Destination: ${downstream.address} resolved to 127.0.0.1`, "Approved destinations: 127.0.0.1/32", "Messages: 2", "Transformation: shift-timestamps shift=24h"]) {
-    expect(preview().getByText(line)).toBeTruthy();
-  }
   expect(downstream.received()).toEqual([]);
-  expect(downstream.connected()).toBe(0);
 
-  // What the transformations change is named, and its values are shown only
-  // on purpose.
-  expect(rowsOf(/values hidden until revealed/)).toContainEqual(["s0001-e000001", "rebase-control-ids", "MSH[1]-10[1]", "present", "present"]);
-  await press(user, preview().getByRole("button", { name: "Show values" }));
-  await replay().findByRole("table", { name: /values revealed/ });
-  const revealed = rowsOf(/values revealed/);
-  expect(revealed).toContainEqual(["s0001-e000001", "rebase-control-ids", "MSH[1]-10[1]", "OWN-BOOK-1 (present)", "READMIT000001 (present)"]);
-  expect(revealed).toContainEqual(["s0001-e000001", "shift-timestamps", "SCH[1]-11[1].4", "20260102100000+0000 (present)", "20260103100000+0000 (present)"]);
-  await press(user, preview().getByRole("button", { name: "Hide values" }));
-  await replay().findByRole("table", { name: /values hidden until revealed/ });
-
-  // A production environment is refused before any plan exists, in the
-  // command line's words; a destination the policy does not approve is
-  // previewed and never offered for a send.
-  await aimAt(user, "production-target.json", "send-policy.json");
-  await previewReplay(user);
-  expect(replay().getByText(`Not previewed: ${PRODUCTION}`)).toBeTruthy();
-  expect(replay().getByText("Send policy: denied (production_classification)")).toBeTruthy();
-  expect(replay().queryByRole("region", { name: "Replay preview" })).toBeNull();
-  const refusedByHand = await commandLine("production-target.json", "send-policy.json", ["--decision", "cli-production.decision.json"]);
+  // A production environment is refused before anything can be sent, in the
+  // command line's words; a destination outside the allowed ranges is refused
+  // too, and Send is never enabled for either.
+  await sendTo(user, review, "Scheduling production");
+  expect(await review.findByText(new RegExp(PRODUCTION.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))).toBeTruthy();
+  expect((review.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  const refusedByHand = await commandLine("Scheduling production", ["--decision", `${PROJECT}/cli-production.decision.json`]);
   expect(refusedByHand.code).not.toBe(0);
   expect(refusedByHand.stderr).toBe(`readmit: ${PRODUCTION}\n`);
-  await aimAt(user, "downstream-target.json", "elsewhere-policy.json");
-  await previewReplay(user);
-  expect(
-    preview().getByText(
-      "This preview cannot be sent: the send policy refuses this destination (unapproved_destination); a send is refused before anything is sent",
-    ),
-  ).toBeTruthy();
-  expect(preview().queryByLabelText(/I approve sending/)).toBeNull();
+  await sendTo(user, review, "Elsewhere");
+  expect(await review.findByText(/unapproved_destination|allowed range/)).toBeTruthy();
+  expect((review.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
   expect(downstream.received()).toEqual([]);
+  expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 
-  // Approved, the send reaches the downstream system once, exactly as
-  // previewed, and its own ledger holds the appointment a day later.
-  await aimAt(user, "downstream-target.json", "send-policy.json");
-  await previewReplay(user);
-  const approval = preview().getByLabelText(/I approve sending these 2 message\(s\) once to /);
-  expect((preview().getByRole("button", { name: "Send once" }) as HTMLButtonElement).disabled).toBe(true);
-  await user.click(approval);
-  await press(user, preview().getByRole("button", { name: "Send once" }));
-  await replay().findByText("Every message was accepted by the target.");
+  // Sent, it reaches the downstream system once, exactly as reviewed, and
+  // its own ledger holds the appointment a day later.
+  await sendTo(user, review, DOWNSTREAM);
+  await waitFor(() => expect((review.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false));
+  await act(user, review.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(journey.callsTo("ExecuteReviewedAction").at(-1)?.settled).toBe(true), { timeout: 30_000 });
   expect(downstream.received()).toEqual([REBASED_BOOKING, REBASED_RESCHEDULE]);
   expect(downstream.ledger()).toEqual({ "PLACER-101": "20260104110000+0000" });
-  const established = rowsOf("What each message's send established");
-  expect(established.map((cells) => cells.slice(0, 4).join(" "))).toEqual([
-    "o000001 s0001-e000001 application_accepted acknowledged",
-    "o000002 s0002-e000001 application_accepted acknowledged",
-  ]);
-  expect(replay().getByText(/^Retained in replay-001, with its send decision in replay-001\.decision\.json\./)).toBeTruthy();
-  expect(JSON.parse(journey.readFile(`${PROJECT}/replay-001.decision.json`))).toMatchObject({
+  await press(user, await page().findByRole("tab", { name: "Messages" }));
+  const delivered = rowsOf(await page().findByRole("table", { name: "Messages" }));
+  expect(delivered.map((cells) => cells.slice(1).join(" "))).toEqual(["Acknowledged AA", "Acknowledged AA"]);
+  const decision = journey.readFile(`${PROJECT}/replay-001.decision.json`);
+  expect(JSON.parse(decision)).toMatchObject({
     schema: "readmit-send-decision/v1",
     allowed: true,
     reason: "approved",
     explicit_send: true,
     address: downstream.address,
   });
-  // The approval is spent: nothing is offered to send again.
-  expect(replay().queryByRole("button", { name: "Send once" })).toBeNull();
-  expect(journey.callsTo("SendReplay")).toHaveLength(1);
+  // The review is spent: the send happened once.
+  expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(1);
 
-  // The command line's send of the same case establishes what the window's
-  // did, message for message, and puts the same bytes on the wire.
-  const sentByHand = await commandLine("downstream-target.json", "send-policy.json", ["--send", "--output", `${PROJECT}/cli-run`]);
+  // The command line's send of the same case puts the same bytes on the wire
+  // and is decided the same way.
+  const sentByHand = await commandLine(DOWNSTREAM, ["--send", "--output", `${PROJECT}/cli-run`]);
   expect(sentByHand.code).toBe(0);
-  for (const [outbound, source, outcome, delivery, sent, received, ack] of established) {
-    expect(sentByHand.stdout).toContain(
-      `  ${outbound} outcome=${outcome} delivery=${delivery} sent_bytes=${sent} received_bytes=${received} ack=${ack?.replace(" ", " correlation=")} elapsed=`,
-    );
-    expect(source).toMatch(/^s000\d-e000001$/);
-  }
+  expect(sentByHand.stdout).toMatch(/o000001 outcome=application_accepted delivery=acknowledged /);
+  expect(sentByHand.stdout).toMatch(/o000002 outcome=application_accepted delivery=acknowledged /);
   expect(downstream.received()).toEqual([REBASED_BOOKING, REBASED_RESCHEDULE, REBASED_BOOKING, REBASED_RESCHEDULE]);
   expect(JSON.parse(journey.readFile(`${PROJECT}/cli-run.decision.json`))).toMatchObject({ allowed: true, reason: "approved" });
 });
 
 test("a replay cancelled while its acknowledgement is held leaves that delivery uncertain, and nothing sends it again", async () => {
   const user = userEvent.setup();
-  journey.writeFile("exports/scheduling-feed.hl7", EXPORTED_BOOKING + EXPORTED_RESCHEDULE);
-  const downstream = await journey.startDownstream("downstream/appointments.csv", "fixed");
-  await journey.launch();
-  await activateLicense(user, journey);
-  await createProject(user, journey, "investigations", "scheduling-investigation", "Scheduling interface");
-  await importExport(user, journey, "exports/scheduling-feed.hl7", "Reschedule is refused");
-  await configureTarget(user, downstream.address);
-  await openedCase();
+  const downstream = await investigation(user);
 
-  // Every message of the case, as captured, from the keyboard.
-  await aimAt(user, "downstream-target.json", "send-policy.json");
-  await tabTo(user, replay().getByRole("button", { name: "Preview replay" }));
-  const asked = journey.callsTo("PreviewReplay").length;
-  await user.keyboard("{Enter}");
-  await waitFor(() => expect(journey.callsTo("PreviewReplay")[asked]?.settled).toBe(true));
-  expect(preview().getByText("Transformations: none; message payload bytes unchanged")).toBeTruthy();
-  await tabTo(user, preview().getByLabelText(/I approve sending these 2 message\(s\)/));
-  await user.keyboard(" ");
-  await tabTo(user, preview().getByRole("button", { name: "Send once" }));
+  // Every message of the case, as captured.
+  const review = await sendSelected(user);
+  await sendTo(user, review, DOWNSTREAM);
+  expect(await review.findByText(`Sends 2 messages to ${DOWNSTREAM} once.`)).toBeTruthy();
+  expect(review.getByText("None")).toBeTruthy();
 
   // The downstream system applies the first message and holds its
-  // acknowledgement; the keyboard is on the send's own cancel.
+  // acknowledgement; the person stops the send from its run page.
   downstream.holdAcknowledgements();
-  await user.keyboard("{Enter}");
+  await act(user, review.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(downstream.received()).toEqual([EXPORTED_BOOKING]));
-  await waitFor(() => expect(document.activeElement).toBe(replay().getByRole("button", { name: "Cancel send" })));
-  await user.keyboard("{Enter}");
-  expect(
-    await replay().findByText("the replay was cancelled; messages after the one in flight were not attempted, and nothing is sent again"),
-  ).toBeTruthy();
-  expect(rowsOf("What each message's send established").map((cells) => cells.slice(0, 4).join(" "))).toEqual([
-    "o000001 s0001-e000001 cancelled uncertain",
-    "o000002 s0002-e000001 not_attempted not_sent",
-  ]);
-  expect(replay().getByText(/^Delivery uncertain for 1 message\(s\): inspect the receiver before any new send\./)).toBeTruthy();
-  expect(replay().getByText("Not every message was accepted. This is not a passing replay.")).toBeTruthy();
-  expect(replay().queryByRole("button", { name: "Send once" })).toBeNull();
+  await press(user, await page().findByRole("button", { name: "Stop" }));
+  await waitFor(() => expect(journey.callsTo("ExecuteReviewedAction").at(-1)?.settled).toBe(true), { timeout: 30_000 });
+  await press(user, await page().findByRole("tab", { name: "Messages" }));
+  const delivered = rowsOf(await page().findByRole("table", { name: "Messages" }));
+  expect(delivered.map((cells) => cells[1])).toEqual(["Uncertain", "Not attempted"]);
+  expect(page().getByText(new RegExp(`^\\w[\\w ]* · Delivery uncertain · ${DOWNSTREAM} · `))).toBeTruthy();
 
   // The held acknowledgement arrives, and the window is closed and reopened:
   // the uncertain delivery is never sent again, and the reschedule never was.
@@ -308,5 +287,5 @@ test("a replay cancelled while its acknowledgement is held leaves that delivery 
   await journey.close();
   await journey.launch();
   expect(downstream.received()).toEqual([EXPORTED_BOOKING]);
-  expect(journey.callsTo("SendReplay")).toHaveLength(1);
+  expect(journey.callsTo("ExecuteReviewedAction")).toHaveLength(1);
 });

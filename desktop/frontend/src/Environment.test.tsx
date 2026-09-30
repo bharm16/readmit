@@ -344,6 +344,8 @@ test("Edit credential keeps its arguments unless Replace arguments is turned on"
   await user.click(within(sheet).getByRole("button", { name: "Save" }));
   const kept = facade.oneCall("SaveCredential")[0];
   expect(kept).toMatchObject({ name: "qa-endpoint", update: true, replace_arguments: false });
+  // The edit names what it opened with, so a member left as shown is not a change.
+  expect(kept).toMatchObject({ shown: { store: "os-keychain", address: "peer-under-test:2575", command: "/opt/locator" } });
   expect(kept).not.toHaveProperty("arguments");
 
   await user.click(within(table).getByRole("button", { name: "More actions for qa-endpoint" }));

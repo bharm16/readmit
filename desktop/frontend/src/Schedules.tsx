@@ -48,7 +48,7 @@ const DAYS = [
   { key: "sun", label: "Sunday" },
 ];
 const OCCURRENCE: Record<string, string> = {
-  claimed: "Running", passed: "Passed", failed: "Failed", error: "Error", cancelled: "Cancelled", uncertain: "Uncertain",
+  claimed: "Pending result", passed: "Passed", failed: "Failed", error: "Error", cancelled: "Cancelled", uncertain: "Uncertain",
   missed: "Missed", skipped: "Skipped", refused: "Refused",
 };
 const REASON: Record<string, string> = {

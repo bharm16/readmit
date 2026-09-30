@@ -296,3 +296,34 @@ test("Mark reviewed records the version shown, and an export alone never makes a
   await user.click(page().getByRole("button", { name: "More report actions" }));
   expect(screen.queryByRole("menuitem", { name: "Mark reviewed" })).toBeNull();
 });
+
+test("a failed list refresh after an acknowledged report save offers Retry without repeating the save", async () => {
+  const user = userEvent.setup();
+  let saved = false;
+  let refuseRefresh = true;
+  const { facade } = await openReports(user, [], {
+    SaveItem: request => {
+      saved = true;
+      return { state: "completed", context: request.context, outcome: "saved", replayed: false, problems: [], saved: REGRESSION.ref };
+    },
+    OpenReport: request => ({ state: "completed", context: request.context, report: view() }),
+  });
+  facade.reply({ ListCatalog: query => {
+    if (query.kind === "report" && saved && refuseRefresh) return { state: "failed", context: query.context, reason: "The report list could not be refreshed." };
+    const items = query.kind === "report" ? (saved ? [REGRESSION] : []) : query.kind === "run" ? [FAILED, PASSED] : query.kind === "case" ? [CASE] : [];
+    return { state: items.length ? "completed" : "empty", context: query.context, page: { items, total: items.length, snapshot: "s", recorded: true, incomplete: [] } };
+  } });
+  await user.click(await page().findByRole("button", { name: "New report" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "New report" }));
+  await user.selectOptions(sheet.getByLabelText("Run"), FAILED.ref.id);
+  await user.click(sheet.getByRole("button", { name: "Create" }));
+  await page().findByRole("heading", { level: 1, name: REGRESSION.name });
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+  await user.click(page().getByRole("button", { name: "Back to reports" }));
+  await page().findByText("The report list could not be refreshed.");
+  expect(page().queryByText("No reports yet")).toBeNull();
+  refuseRefresh = false;
+  await user.click(page().getByRole("button", { name: "Retry" }));
+  await within(await page().findByRole("table", { name: "Reports" })).findByText(REGRESSION.name);
+  expect(facade.callsTo("SaveItem")).toHaveLength(1);
+});

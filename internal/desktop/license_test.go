@@ -734,6 +734,22 @@ func TestAReviewedActivationFolderIsSelectedOnlyOnceActivated(t *testing.T) {
 	if restored := freshApp(t, &queueChooser{}, selection).OperationStatus(); restored.State != desktop.Completed || restored.Folder != folder {
 		t.Fatalf("the activated folder was not selected: %+v", restored)
 	}
+	// Another window that never selected it chooses the folder already
+	// activated: Activate selects it as it is and repeats no activation.
+	other := freshApp(t, &queueChooser{}, filepath.Join(t.TempDir(), "other.json"))
+	if again := other.ActivateActivationFolder(desktop.ActivationFolderRequest{Folder: folder}); again.State != desktop.Completed || !again.Selected || again.Term != "active" {
+		t.Fatalf("an activated folder chosen again: %+v", again)
+	}
+	if clock, err := operationguard.Read(policyPath); err != nil || *activated.Clock != clock {
+		t.Fatalf("choosing an activated folder again changed its state: %v", err)
+	}
+	// A released folder is not activated again by choosing it.
+	if released := other.ReleaseOperations(); released.State != desktop.Completed {
+		t.Fatalf("release: %+v", released)
+	}
+	if refused := freshApp(t, &queueChooser{}, filepath.Join(t.TempDir(), "third.json")).ActivateActivationFolder(desktop.ActivationFolderRequest{Folder: folder}); refused.State != desktop.Failed {
+		t.Fatalf("a released folder was selected again: %+v", refused)
+	}
 }
 
 // The Account portal sheet reads the operator's destinations file and shows

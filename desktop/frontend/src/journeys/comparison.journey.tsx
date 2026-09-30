@@ -1,33 +1,35 @@
-// Comparing two collections, and reading the comparison under a normalization
+// Comparing two cases, and reading the comparison under a named normalization
 // policy, over the real facade.
 //
-// A laboratory interface was upgraded. The person captured what the analyser
-// sent before and after the upgrade with the command line, and opens both
-// cases in the window. After the upgrade every result carries a later message
-// time, the white-cell count drifts by a hundredth or two — a drift the lab
-// tolerates — every tenth result reads markedly higher, every twenty-fifth is
-// still pending, and every fiftieth names the patient differently. The first
-// result of the old feed is not in the new one, and the new feed holds one
-// result the old one never sent.
+// A laboratory interface was upgraded. The person imported what the analyser
+// sent before and after the upgrade as two cases of one project. After the
+// upgrade every result carries a later message time, the white-cell count
+// drifts by a hundredth or two — a drift the lab tolerates — every tenth
+// result reads markedly higher, every twenty-fifth is still pending, and
+// every fiftieth names the patient differently. The first result of the old
+// feed is not in the new one, and the new feed holds one result the old one
+// never sent.
 //
-// The window compares the two, is refused until the person names the field
-// that identifies one result, and pages the 251 rows exactly as `readmit diff`
-// reports them. A case a later release wrote is not offered, and a case whose
-// stored bytes change after the window listed it is refused in the command
-// line's words. Under a colleague's policy the window hides the time and the
-// tolerated drift and keeps everything else visible, exactly as `readmit
-// normalize` reads the same policy; the person opens that policy, extends it
-// with a rule of their own and saves it as a new entry, and the command line
-// reads what they saved. Policies the reader refuses are refused by the
-// preview, the editor and the command line in one sentence, and an open that
-// would replace unsaved rules is asked first and can be cancelled.
+// Compare is refused until the person names the field that identifies one
+// result, and then lists the differences exactly as `readmit diff` reports
+// them. A case whose stored bytes change after it was imported is refused, as
+// the command line refuses it. Under a policy the person names — the time
+// within the hour and the tolerated drift — the window hides what the policy
+// ignores and keeps everything else, exactly as `readmit normalize` reads the
+// saved policy; a rule the policy reader refuses is refused before anything is
+// saved, and the policy extended with a rule for the name is what the command
+// line then reads.
 //
 // Every message and value here is synthetic.
-import { afterEach, beforeEach, expect, test } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { enter, Journey, press, region, whenEnabled } from "../testkit/journey";
-import { activateLicense, framed, tabTo } from "./steps";
+import { ROW_REM } from "../geometry";
+import { rootFontSize } from "../measure";
+import { Journey, press } from "../testkit/journey";
+import { goTo, openCaseFlow, openListedCase, page } from "../testkit/navigation";
+import { filesUnder } from "./probes.js";
+import { declareMllpImport, finishImport, framed, licensedProject } from "./steps";
 
 let journey: Journey;
 
@@ -36,8 +38,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await journey.dispose();
 });
+
+/** The list's height in pixels, as a window of ordinary size lays it out. */
+const HEIGHT = 440;
 
 /** One analyser result, MLLP-framed. Every value is synthetic. */
 function labResult(control: number, time: string, count: string, family: string): string {
@@ -63,87 +69,27 @@ const AFTER = Array.from({ length: 250 }, (_, index) => {
   return labResult(result, "20260101120512", count, renamed(result) ? "RENAMED" : "SYNTHETIC");
 }).join("");
 
-/** Results 2 to 250, which both feeds hold: result k is the kth message
- * before the upgrade and the (k-1)th after it. Result 1 is only before, and
- * result 251 only after. */
+/** Results 2 to 250, which both feeds hold. */
 const SHARED = Array.from({ length: 249 }, (_, index) => index + 2);
 const PAIRED = SHARED.length;
-const ROWS = PAIRED + 2;
 const PENDING = SHARED.filter(pending).length;
 const HIGHER = SHARED.filter(higher).length;
 const RENAMED = SHARED.filter(renamed).length;
 /** Each paired result differs in its message time and its count, and a
  * renamed one in the patient's name too. */
 const DIFFERENCES = PAIRED * 2 + RENAMED;
-
-/** The occurrence the nth message of a captured feed is. */
-const occurrence = (n: number) => `s0001-e${String(n).padStart(6, "0")}`;
-const shared = (result: number) => `${occurrence(result)} ↔ ${occurrence(result - 1)}`;
-
-/** The rows a comparison on the control ID holds, in the order a comparison
- * reports records: every paired result, result 1 that only the old feed
- * holds, then result 251 that only the new one holds. */
-const ROW_PAIRS = [...SHARED.map(shared), `${occurrence(1)} ↔ `, ` ↔ ${occurrence(250)}`];
-
-type Outcome = "suppressed" | "retained" | "undecided" | "unaddressed";
-
-interface Difference {
-  pair: string;
-  selector: string;
-  outcome: Outcome;
-}
-
-/** Every difference of a paired result, position by position in message
- * order, with what a policy of the time and the tolerated drift, and
- * optionally of the name, does about it. */
-function expectedDifferences(nameIgnored: boolean): Difference[] {
-  return SHARED.flatMap((result): Difference[] => [
-    { pair: shared(result), selector: "MSH[1]-7[1]", outcome: "suppressed" },
-    ...(renamed(result) ? [{ pair: shared(result), selector: "PID[1]-5[1]", outcome: nameIgnored ? "suppressed" : "unaddressed" } as const] : []),
-    {
-      pair: shared(result),
-      selector: "OBX[1]-5[1]",
-      outcome: pending(result) ? "undecided" : higher(result) ? "retained" : "suppressed",
-    },
-  ]);
-}
-
-/** How the preview words each outcome. */
-const SHOWN: Record<Outcome, string> = {
-  suppressed: "Hidden by the policy",
-  retained: "Kept by the policy",
-  undecided: "The policy could not decide",
-  unaddressed: "No rule addresses this position",
-};
-
-/** Each rule's counts — compared, suppressed, retained, undecided: every
- * paired result has each position, and only the count's rule keeps some or
- * cannot decide some. */
+/** What a policy of the time within the hour and the count within a
+ * twentieth hides: every time, and every count that only drifted. */
 const SUPPRESSED = PAIRED + (PAIRED - HIGHER - PENDING);
-const COLLEAGUE_RULES = [
-  `volatile-message-time ${PAIRED} ${PAIRED} 0 0`,
-  `analyser-drift ${PAIRED} ${PAIRED - HIGHER - PENDING} ${HIGHER} ${PENDING}`,
-];
 
-/** A colleague's policy: the message time within the hour and the count
- * within a twentieth. */
-const COLLEAGUE_POLICY = `${JSON.stringify(
-  {
-    schema: "readmit-normalization-policy/v1",
-    rules: [
-      { id: "volatile-message-time", selector: "MSH-7", operator: "timestamp", precision: "hour" },
-      { id: "analyser-drift", selector: "OBX[1]-5", operator: "numeric", tolerance: "0.05" },
-    ],
-  },
-  null,
-  2,
-)}\n`;
-
+const BEFORE_CASE = "Before upgrade";
+const AFTER_CASE = "After upgrade";
+const POLICY = "Analyser drift";
 const MISMATCHED =
   "these collections are not copies of one another; name the fields that identify one record, such as MSH-10, to align them";
 const TAMPERED = "bundle is incomplete or its identity does not match contents";
-const UNDECODABLE = "invalid normalization policy JSON";
 const UNSIGNED = "a numeric tolerance is an unsigned decimal distance";
+const NUMBER_RULE = "a number rule compares within one tolerance of zero or more";
 
 interface Reference {
   occurrence: string;
@@ -158,321 +104,301 @@ interface DiffReport {
   inserted: Reference[];
 }
 
+interface RuleReport {
+  id: string;
+  compared: number;
+  suppressed: number;
+  retained: number;
+  undecided: number;
+}
+
 interface NormalizationReport {
   summary: Record<string, number>;
-  rules: { id: string; compared: number; suppressed: number; retained: number; undecided: number }[];
-  differences: { left_occurrence: string; right_occurrence: string; selector: string; outcome: string; rule?: string }[];
+  rules: RuleReport[];
+  differences: { left_occurrence: string; right_occurrence: string; selector: string; outcome: string }[];
 }
 
-/** The license's operation policy: capturing is licensed work. */
-function operationPolicy(): string {
-  return journey.path("vendor-delivered-license", "operation-policy.json");
+interface Compared {
+  state: string;
+  reason?: string;
+  comparison?: {
+    summary: Record<string, number>;
+    keys: string[];
+    alignment: string;
+    rules: RuleReport[];
+    suppressed: number;
+    total: number;
+    rows: { kind: string; earlier?: { id: string }; later?: { id: string }; field?: string; outcome?: string }[];
+  };
 }
 
-/** Captures both feeds into case bundles with the command line, as the person
- * did before opening the window. */
-async function captureFeeds(): Promise<void> {
+/** Imports both feeds into one licensed project as two cases, and returns
+ * the project and each case's entry. */
+async function labProject(user: UserEvent): Promise<{ project: string; before: string; after: string }> {
   journey.writeFile("exports/before-upgrade.mllp", BEFORE);
   journey.writeFile("exports/after-upgrade.mllp", AFTER);
-  journey.makeFolder("lab");
-  for (const [feed, output] of [
-    ["exports/before-upgrade.mllp", "lab/before"],
-    ["exports/after-upgrade.mllp", "lab/after"],
-  ] as const) {
-    const captured = await journey.commandLine(["--operation-policy", operationPolicy(), "capture", feed, "--output", output]);
-    expect(captured.code, captured.stderr).toBe(0);
+  const project = await licensedProject(journey, user);
+  await declareMllpImport(user, journey, "exports/before-upgrade.mllp", BEFORE_CASE);
+  const before = await finishImport(user, journey);
+  await casesList(user);
+  await declareMllpImport(user, journey, "exports/after-upgrade.mllp", AFTER_CASE);
+  const after = await finishImport(user, journey);
+  return { project, before, after };
+}
+
+/** Back from the open case to the project's Cases, where Import is. */
+async function casesList(user: UserEvent): Promise<void> {
+  await goTo(user, "Cases");
+  for (let step = 0; step < 3 && !screen.queryByRole("table", { name: "Cases" }); step++) {
+    const back = page().queryAllByRole("button", { name: /^Back to / })[0];
+    if (!back) break;
+    await user.click(back);
   }
+  await screen.findByRole("table", { name: "Cases" });
 }
 
-/** Opens the lab folder and verifies the case captured before the upgrade. */
-async function openBefore(user: UserEvent) {
-  await journey.chooseFolder(journey.path("lab"), "Open project");
-  await press(user, screen.getAllByRole("button", { name: "Open workspace…" })[0] as HTMLElement);
-  const navigation = within(region("Workspace"));
-  const listed = (await navigation.findByText("before", { selector: ".name" })).closest("li") as HTMLElement;
-  await press(user, within(listed).getByRole("button", { name: "Open case" }));
-  return within(await screen.findByRole("region", { name: "Compare collections" }));
+/** Chooses a field path in a field picker: listed, or typed as another. */
+async function pickField(user: UserEvent, scope: ReturnType<typeof within>, label: string, selector: string): Promise<void> {
+  const picker = scope.getByRole("combobox", { name: label }) as HTMLSelectElement;
+  await waitFor(() => expect(picker.disabled).toBe(false));
+  if ([...picker.options].some((option) => option.value === selector)) {
+    await user.selectOptions(picker, selector);
+    return;
+  }
+  await user.selectOptions(picker, "\u0000other");
+  await user.type(scope.getByRole("textbox", { name: `${label} path` }), selector);
 }
 
-/** The key field of the comparison form. */
-function keyField(panel: ReturnType<typeof within>): HTMLElement {
-  return panel.getByLabelText("Record keys");
+/** The comparison the window was last answered, once every read it asked
+ * after the first `from` has settled, a busy read asked again included. */
+async function answered(from: number): Promise<Compared> {
+  await waitFor(() => expect(journey.callsTo("CompareCases").length).toBeGreaterThan(from));
+  await journey.settled();
+  return journey.callsTo("CompareCases").at(-1)!.result as Compared;
 }
 
-/** Asks for the comparison of the open case with another, on the keys typed,
- * pressing Enter in the key field, and waits for the answer. */
-async function compareWith(user: UserEvent, panel: ReturnType<typeof within>, right: string, keys: string): Promise<void> {
-  await user.selectOptions(await whenEnabled(panel.getByLabelText("Compare with")), right);
-  await enter(user, keyField(panel), keys);
-  const asked = journey.callsTo("Compare").length;
-  await user.type(keyField(panel), "{Enter}");
-  await waitFor(() => expect(journey.callsTo("Compare")[asked]?.settled).toBe(true));
+/** Opens Compare from the case imported before the upgrade, with the one
+ * after it, and returns the comparison the window was answered. */
+async function compareBeforeWithAfter(user: UserEvent): Promise<Compared> {
+  await openListedCase(user, BEFORE_CASE);
+  await screen.findByRole("button", { name: "More case actions" }, { timeout: 10_000 });
+  await openCaseFlow(user, "Compare");
+  const chooser = within(await screen.findByRole("dialog", { name: "Compare with" }));
+  await user.selectOptions(await chooser.findByLabelText("Case"), await chooser.findByRole("option", { name: AFTER_CASE }));
+  // A person compares once the case has drawn; its reads take the window's
+  // one operation slot while it opens.
+  await journey.settled();
+  const asked = journey.callsTo("CompareCases").length;
+  await press(user, chooser.getByRole("button", { name: "Compare" }));
+  return answered(asked);
 }
 
-/** The occurrences each drawn row holds, left and right, as `readmit diff`
- * lists the same records: paired, then missing, then inserted. */
-function drawnRows(panel: ReturnType<typeof within>): string[] {
-  return panel.getAllByRole("row").slice(1).map((row: HTMLElement) => {
-    const left = row.querySelector(".pane-left .occurrence")?.textContent ?? "";
-    const right = row.querySelector(".pane-right .occurrence")?.textContent ?? "";
-    return `${left} ↔ ${right}`;
-  });
+/** Opens Comparison options from the page's header. */
+async function options(user: UserEvent) {
+  await press(user, page().getAllByRole("button", { name: "Comparison options" })[0]!);
+  return within(await screen.findByRole("dialog", { name: "Comparison options" }));
+}
+
+/** Names MSH-10 as the field that identifies one result, and returns the
+ * comparison answered under it. */
+async function keyedOnControlId(user: UserEvent): Promise<Compared> {
+  const sheet = await options(user);
+  await pickField(user, sheet, "Add to record keys", "MSH-10");
+  await press(user, sheet.getByRole("button", { name: "Add" }));
+  await journey.settled();
+  const asked = journey.callsTo("CompareCases").length;
+  await press(user, sheet.getByRole("button", { name: "Apply" }));
+  return answered(asked);
+}
+
+/** A comparison's rows as `occurrence ↔ occurrence field`, missing and
+ * inserted messages with no field. */
+function rowsOf(compared: Compared): string[] {
+  return compared.comparison!.rows.map((row) => `${row.earlier?.id ?? ""} ↔ ${row.later?.id ?? ""} ${row.field ?? ""}`.trim());
 }
 
 function reportedRows(report: DiffReport): string[] {
   return [
-    ...report.pairs.map((pair) => `${pair.left.occurrence} ↔ ${pair.right.occurrence}`),
-    ...report.missing.map((missing) => `${missing.occurrence} ↔ `),
-    ...report.inserted.map((inserted) => ` ↔ ${inserted.occurrence}`),
+    ...report.pairs.flatMap((pair) => pair.fields.map((field) => `${pair.left.occurrence} ↔ ${pair.right.occurrence} ${field.selector}`)),
+    ...report.missing.map((missing) => `${missing.occurrence} ↔`),
+    ...report.inserted.map((inserted) => `↔ ${inserted.occurrence}`),
   ];
 }
 
-/** Presses a control from the keyboard: from the key field, Tab until the
- * control has focus, then Enter. */
-async function activate(user: UserEvent, panel: ReturnType<typeof within>, control: HTMLElement): Promise<void> {
-  keyField(panel).focus();
-  await tabTo(user, control);
-  await user.keyboard("{Enter}");
-}
-
-/** The differences the preview lists, as the person reads them: the pair,
- * the position and what the policy did. */
-function drawnDifferences(section: ReturnType<typeof within>): { pair: string; selector: string; shown: string }[] {
-  return section
-    .getAllByRole("listitem")
-    .filter((item: HTMLElement) => item.className.startsWith("outcome-"))
-    .map((item: HTMLElement) => ({
-      pair: item.querySelector(".occurrence")?.textContent ?? "",
-      selector: item.querySelector(".selector")?.textContent ?? "",
-      shown: item.querySelector(".status")?.textContent ?? "",
-    }));
-}
-
-function shownDifferences(differences: Difference[]): { pair: string; selector: string; shown: string }[] {
-  return differences.map((difference) => ({ pair: difference.pair, selector: difference.selector, shown: SHOWN[difference.outcome] }));
-}
-
-test("two collections are compared and paged exactly as readmit diff reports them, a mismatched pair is refused with the key to declare, and collections this release cannot compare are refused as the command line refuses them", async () => {
+test("two cases are compared exactly as readmit diff reports them, a mismatched pair is refused with the key to declare, and a case changed after import is refused as the command line refuses it", async () => {
   const user = userEvent.setup();
-  journey.provisionLicense("vendor-delivered-license");
-  await captureFeeds();
-  // A colleague's newer release wrote a case this release does not read.
-  const newer = await journey.commandLine(["--operation-policy", operationPolicy(), "capture", "exports/after-upgrade.mllp", "--output", "lab/newer-case"]);
-  expect(newer.code, newer.stderr).toBe(0);
-  journey.changeFile("lab/newer-case/manifest.json", journey.readFile("lab/newer-case/manifest.json").replace('"schema":"readmit-case/v1"', '"schema":"readmit-case/v9"'));
-  await journey.launch();
-  const panel = await openBefore(user);
-
-  // Only the two case bundles are offered; the newer case is listed, and
-  // refused by the command line as well.
-  expect(within(region("Workspace")).getByText("newer-case", { selector: ".name" })).toBeTruthy();
-  const picker = panel.getByLabelText("Compare with") as HTMLSelectElement;
-  expect(Array.from(picker.options).map((option) => option.value)).toEqual(["", "after", "before"]);
-  const unsupported = await journey.commandLine(["diff", "lab/before", "lab/newer-case", "--key", "MSH-10"]);
-  expect(unsupported.code).toBe(1);
-  expect(unsupported.stderr).toBe("readmit: unsupported case bundle schema version\n");
+  // The list's measured height, which a real layout gives it and jsdom does
+  // not: without one the list draws a fixed first handful of rows.
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("table-view") ? HEIGHT : 0;
+  });
+  const { project, before, after } = await labProject(user);
 
   // Two collections that are not copies of one another are refused until the
   // field that identifies one result is named; the command line refuses them
   // too, naming its own option.
-  await compareWith(user, panel, "after", "");
-  expect(await panel.findByText(MISMATCHED)).toBeTruthy();
-  expect(panel.queryByRole("table")).toBeNull();
-  const unkeyed = await journey.commandLine(["diff", "lab/before", "lab/after"]);
-  expect(unkeyed.code).toBe(1);
-  expect(unkeyed.stderr).toBe("readmit: unrelated collections require explicit --key selectors for alignment\n");
+  const unkeyed = await compareBeforeWithAfter(user);
+  expect(unkeyed).toMatchObject({ state: "failed", reason: MISMATCHED });
+  expect(await page().findByText(MISMATCHED)).toBeTruthy();
+  expect(screen.queryByRole("table", { name: "Differences" })).toBeNull();
+  const refused = await journey.commandLine(["diff", `${project}/${before}`, `${project}/${after}`]);
+  expect(refused.code).toBe(1);
+  expect(refused.stderr).toBe("readmit: unrelated collections require explicit --key selectors for alignment\n");
 
-  // Named, the results pair on their control IDs, and the counts are the
-  // scenario's.
-  await compareWith(user, panel, "after", "MSH-10");
-  expect(await panel.findByText("Rows 1–200 of 251")).toBeTruthy();
-  expect(panel.getByText(`${PAIRED} paired · ${PAIRED} changed · 0 unchanged`)).toBeTruthy();
-  expect(panel.getByText("1 only in after · 1 not in after")).toBeTruthy();
-  const diffed = await journey.commandLine(["diff", "lab/before", "lab/after", "--key", "MSH-10", "--format", "json"]);
+  // Named, the results pair on their control IDs, and every difference is
+  // the one `readmit diff` reports, in its order.
+  const keyed = await keyedOnControlId(user);
+  expect(keyed.state).toBe("completed");
+  const diffed = await journey.commandLine(["diff", `${project}/${before}`, `${project}/${after}`, "--key", "MSH-10", "--format", "json"]);
   expect(diffed.code, diffed.stderr).toBe(0);
   const report = JSON.parse(diffed.stdout) as DiffReport;
   expect(report.summary).toMatchObject({ paired: PAIRED, changed: PAIRED, inserted: 1, missing: 1, ambiguous: 0, unaligned: 0 });
-  expect(panel.getByText("aligned by declared-keys on MSH[1]-10[1]")).toBeTruthy();
-  expect([report.alignment, ...report.keys]).toEqual(["declared-keys", "MSH[1]-10[1]"]);
-  expect(ROW_PAIRS).toHaveLength(ROWS);
-  expect(reportedRows(report)).toEqual(ROW_PAIRS);
-  expect(drawnRows(panel)).toEqual(ROW_PAIRS.slice(0, 200));
-
-  // Result 50 is row 49: it names the positions that differ — the time, the
-  // renamed patient and the count — and no value.
-  await activate(user, panel, panel.getByRole("button", { name: "49" }));
-  const opened = within(panel.getByRole("region", { name: "Differences" }));
-  const positions = ["MSH[1]-7[1]", "PID[1]-5[1]", "OBX[1]-5[1]"];
-  expect(opened.getAllByText(/^[A-Z]{3}\[\d+\]-\d+\[\d+\]$/).map((selector) => selector.textContent)).toEqual(positions);
-  expect(report.pairs[48]!.fields.map((field) => field.selector)).toEqual(positions);
-  expect(opened.queryByText("RENAMED")).toBeNull();
-
-  // The next window, from the keyboard, is the rest of the same comparison.
-  await activate(user, panel, panel.getByRole("button", { name: "Next 200" }));
-  expect(await panel.findByText("Rows 201–251 of 251")).toBeTruthy();
-  expect(drawnRows(panel)).toEqual(ROW_PAIRS.slice(200));
-  expect(panel.getByText("Not in the after collection")).toBeTruthy();
-  expect(panel.getByText("Only in the after collection")).toBeTruthy();
-  await activate(user, panel, panel.getByRole("button", { name: "Previous 200" }));
-  expect(await panel.findByText("Rows 1–200 of 251")).toBeTruthy();
+  expect(keyed.comparison!.summary).toEqual(report.summary);
+  expect([keyed.comparison!.alignment, ...keyed.comparison!.keys]).toEqual([report.alignment, ...report.keys]);
+  const rows = reportedRows(report);
+  expect(rows).toHaveLength(DIFFERENCES + 2);
+  expect(keyed.comparison!.total).toBe(rows.length);
+  // Scrolled to its end, the list reads the next window from where the rows
+  // it holds end, until it holds every row the report lists, in order.
+  const windows = () =>
+    journey
+      .callsTo("CompareCases")
+      .filter((call) => call.settled && (call.args[0] as { keys: string[] }).keys.length === 1 && (call.result as Compared).state === "completed");
+  const differences = await screen.findByRole("table", { name: "Differences" });
+  const viewport = differences.closest(".table-view") as HTMLElement;
+  for (let held = keyed.comparison!.rows.length; held < rows.length; held = windows().reduce((sum, call) => sum + rowsOf(call.result as Compared).length, 0)) {
+    const asked = windows().length;
+    viewport.scrollTop = Number(differences.getAttribute("aria-rowcount")) * ROW_REM * rootFontSize() - HEIGHT;
+    fireEvent.scroll(viewport);
+    await waitFor(() => expect(windows().length).toBe(asked + 1), { timeout: 10_000 });
+    expect(windows()[asked]!.args[0]).toMatchObject({ offset: held });
+    await waitFor(() => expect(Number(differences.getAttribute("aria-rowcount")) - 1).toBe(held + rowsOf(windows()[asked]!.result as Compared).length));
+  }
+  const paged = windows().flatMap((call) => rowsOf(call.result as Compared));
+  expect(paged).toEqual(rows);
+  expect(await page().findByText(`${PAIRED} matched · 1 only in earlier · 1 only in later`)).toBeTruthy();
+  const table = within(await screen.findByRole("table", { name: "Differences" }));
+  expect(table.getAllByText("Hidden").length).toBeGreaterThan(0);
+  expect(table.queryByText("RENAMED")).toBeNull();
 
   // Something outside the window rewrites one of the new feed's stored
-  // results. Comparing again is refused in the command line's words, and no
-  // row of the comparison before it is left on screen.
-  journey.changeFile("lab/after/payloads/s0001-e000001.bin", labResult(2, "20260101120512", "9.99", "SYNTHETIC"));
-  await press(user, panel.getByRole("button", { name: "Compare" }));
-  expect(await panel.findByText(TAMPERED)).toBeTruthy();
-  expect(panel.queryByRole("table")).toBeNull();
-  const tampered = await journey.commandLine(["diff", "lab/before", "lab/after", "--key", "MSH-10"]);
-  expect(tampered.code).toBe(1);
-  expect(tampered.stderr).toBe(`readmit: ${TAMPERED}\n`);
+  // results. Compare no longer offers it as a case to compare with, and the
+  // command line refuses it.
+  journey.changeFile(`${project.slice(journey.path().length + 1)}/${after}/payloads/s0001-e000001.bin`, labResult(2, "20260101120512", "9.99", "SYNTHETIC"));
+  await openCaseFlow(user, "Compare");
+  const chooser = within(await screen.findByRole("dialog", { name: "Compare with" }));
+  expect(await chooser.findByText("No other case")).toBeTruthy();
+  expect(chooser.queryByRole("option", { name: AFTER_CASE })).toBeNull();
+  const byCommand = await journey.commandLine(["diff", `${project}/${before}`, `${project}/${after}`, "--key", "MSH-10"]);
+  expect(byCommand.code).toBe(1);
+  expect(byCommand.stderr).toBe(`readmit: ${TAMPERED}\n`);
 });
 
-/** `readmit normalize` over the two cases on the control ID, under one
- * policy entry of the lab folder. */
-function normalizeWith(policy: string) {
-  return journey.commandLine(["normalize", "lab/before", "lab/after", "--key", "MSH-10", "--policy", `lab/${policy}`, "--format", "json"]);
+/** The one saved policy document that holds this many rules. */
+function savedPolicy(project: string, rules: number): string {
+  const folder = project.slice(journey.path().length + 1);
+  const held = filesUnder(project)
+    .filter((file) => file.endsWith(".json"))
+    .filter((file) => {
+      const text = journey.readFile(`${folder}/${file}`);
+      if (!text.includes('"readmit-normalization-policy/v1"')) return false;
+      return (JSON.parse(text) as { rules: unknown[] }).rules.length === rules;
+    });
+  expect(held).toHaveLength(1);
+  return `${project}/${held[0]}`;
 }
 
-/** What `readmit normalize` reports under a policy it reads. */
-async function readUnder(policy: string): Promise<NormalizationReport> {
-  const normalized = await normalizeWith(policy);
-  expect(normalized.code, normalized.stderr).toBe(0);
-  return JSON.parse(normalized.stdout) as NormalizationReport;
+/** What `readmit normalize` reports under one policy document. */
+async function normalizeWith(project: string, before: string, after: string, policy: string) {
+  return journey.commandLine(["normalize", `${project}/${before}`, `${project}/${after}`, "--key", "MSH-10", "--policy", policy, "--format", "json"]);
 }
 
-async function preview(user: UserEvent, section: ReturnType<typeof within>, policy: string): Promise<void> {
-  const picker = section.getByLabelText("Normalization policy");
-  // A policy saved a moment ago is offered once the folder is read again.
-  await within(picker).findByRole("option", { name: policy });
-  await user.selectOptions(await whenEnabled(picker), policy);
-  const asked = journey.callsTo("NormalizeCompare").length;
-  await press(user, section.getByRole("button", { name: "Preview" }));
-  await waitFor(() => expect(journey.callsTo("NormalizeCompare")[asked]?.settled).toBe(true));
+/** Saves the policy sheet open now, and returns the facade's answer. */
+async function savePolicy(user: UserEvent, sheet: ReturnType<typeof within>) {
+  const asked = journey.callsTo("SaveItem").length;
+  await press(user, sheet.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(journey.callsTo("SaveItem")[asked]?.settled).toBe(true));
+  return journey.callsTo("SaveItem")[asked]!.result as { outcome: string; problems: { problem: string }[] };
 }
 
-/** Each rule's row as the preview draws it: its ID and its four counts. */
-function drawnRules(section: ReturnType<typeof within>): string[] {
-  const table = section.getAllByRole("table")[0]!;
-  return within(table).getAllByRole("row").slice(1).map((row: HTMLElement) => {
-    const cells = Array.from(row.children).map((cell) => cell.textContent ?? "");
-    return [cells[0], ...cells.slice(3)].join(" ");
-  });
-}
-
-function reportedRules(report: NormalizationReport): string[] {
-  return report.rules.map((rule) => [rule.id, rule.compared, rule.suppressed, rule.retained, rule.undecided].join(" "));
-}
-
-test("a comparison is read under a retained normalization policy exactly as readmit normalize reads it, the policy is opened, extended and saved as a new entry the command line reads, and undecodable policies and a cancelled open change nothing", async () => {
+test("a comparison is read under a named normalization policy exactly as readmit normalize reads it, a rule the reader refuses is refused before anything is saved, and the extended policy is what the command line reads", async () => {
   const user = userEvent.setup();
-  await journey.launch();
-  await activateLicense(user, journey);
-  await captureFeeds();
-  journey.writeFile("lab/colleague-policy.json", COLLEAGUE_POLICY);
-  journey.placeFixture("normalize-policy-refused.json", "lab/refused-policy.json");
-  journey.writeFile("lab/truncated-policy.json", COLLEAGUE_POLICY.slice(0, 120));
-  const colleagueDigest = journey.digest("lab/colleague-policy.json");
-  const panel = await openBefore(user);
-  await compareWith(user, panel, "after", "MSH-10");
-  await panel.findByText("Rows 1–200 of 251");
-  const section = within(panel.getByRole("region", { name: "Comparison under a normalization policy" }));
+  const { project, before, after } = await labProject(user);
+  await compareBeforeWithAfter(user);
+  expect((await keyedOnControlId(user)).state).toBe("completed");
 
-  // Under the colleague's policy the time and the tolerated drift are hidden;
-  // the higher counts, the pending ones and the renamed patients stay visible.
-  await preview(user, section, "colleague-policy.json");
-  expect(await section.findByText(`${DIFFERENCES} differences · ${SUPPRESSED} suppressed · ${HIGHER} retained`)).toBeTruthy();
-  expect(section.getByText(`${PENDING} undecided · ${RENAMED} not addressed by any rule`)).toBeTruthy();
-  expect(section.getByText(`policy colleague-policy.json · exact bytes hash to ${colleagueDigest} · readmit-normalization/v1`)).toBeTruthy();
-  const colleague = await readUnder("colleague-policy.json");
-  expect(colleague.summary).toMatchObject({ differences: DIFFERENCES, suppressed: SUPPRESSED, retained: HIGHER, undecided: PENDING, unaddressed: RENAMED });
-  expect(drawnRules(section)).toEqual(COLLEAGUE_RULES);
-  expect(reportedRules(colleague)).toEqual(COLLEAGUE_RULES);
-  const expected = expectedDifferences(false);
-  expect(expected).toHaveLength(DIFFERENCES);
-  expect(
-    colleague.differences.map((difference) => ({
-      pair: `${difference.left_occurrence} ↔ ${difference.right_occurrence}`,
-      selector: difference.selector,
-      outcome: difference.outcome,
-    })),
-  ).toEqual(expected);
-  expect(drawnDifferences(section)).toEqual(shownDifferences(expected.slice(0, 200)));
-  await press(user, section.getByRole("button", { name: "Next 200" }));
-  expect(await section.findByText(`Differences 201–400 of ${DIFFERENCES}`)).toBeTruthy();
-  expect(drawnDifferences(section)).toEqual(shownDifferences(expected.slice(200, 400)));
+  // A new policy: the message time within the hour and the count within a
+  // tolerance typed with a sign, which the policy reader refuses. Nothing is
+  // saved, and the command line refuses the same rule.
+  await press(user, (await options(user)).getByRole("button", { name: "New policy" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "New policy" }));
+  await user.type(sheet.getByLabelText("Name"), POLICY);
+  await pickField(user, sheet, "Field path of rule 1", "MSH-7");
+  await user.selectOptions(sheet.getAllByLabelText("Comparison")[0]!, "timestamp");
+  await user.selectOptions(sheet.getByLabelText("Precision"), "hour");
+  await press(user, sheet.getByRole("button", { name: "Add rule" }));
+  await pickField(user, sheet, "Field path of rule 2", "OBX-5");
+  await user.selectOptions(sheet.getAllByLabelText("Comparison")[1]!, "numeric");
+  await user.clear(sheet.getByLabelText("Tolerance"));
+  await user.type(sheet.getByLabelText("Tolerance"), "-0.05");
+  const refusedSave = await savePolicy(user, sheet);
+  expect(refusedSave.outcome).not.toBe("saved");
+  expect(refusedSave.problems.map((problem) => problem.problem)).toEqual([NUMBER_RULE]);
+  expect(await sheet.findByText(NUMBER_RULE)).toBeTruthy();
+  journey.placeFixture("normalize-policy-refused.json", "exports/refused-policy.json");
+  const refused = await normalizeWith(project, before, after, journey.path("exports", "refused-policy.json"));
+  expect(refused.code).toBe(1);
+  expect(refused.stderr).toBe(`readmit: ${UNSIGNED}\n`);
 
-  // A policy the reader refuses is refused by the preview and the command
-  // line in one sentence, and no reading stays beside the refusal.
-  for (const [policy, sentence] of [
-    ["refused-policy.json", UNSIGNED],
-    ["truncated-policy.json", UNDECODABLE],
-  ] as const) {
-    await preview(user, section, policy);
-    expect(await section.findByText(sentence)).toBeTruthy();
-    expect(section.queryByText(/ differences · /)).toBeNull();
-    const refused = await normalizeWith(policy);
-    expect(refused.code).toBe(1);
-    expect(refused.stdout).toBe("");
-    expect(refused.stderr).toBe(`readmit: ${sentence}\n`);
-  }
+  // Corrected and saved, the policy is applied at once: the times and the
+  // tolerated drift are hidden, the higher counts, the pending ones and the
+  // renamed patients stay, exactly as `readmit normalize` reads the saved
+  // document.
+  await user.clear(sheet.getByLabelText("Tolerance"));
+  await user.type(sheet.getByLabelText("Tolerance"), "0.05");
+  const asked = journey.callsTo("CompareCases").length;
+  expect((await savePolicy(user, sheet)).outcome).toBe("saved");
+  const under = await answered(asked);
+  const colleague = await normalizeWith(project, before, after, savedPolicy(project, 2));
+  expect(colleague.code, colleague.stderr).toBe(0);
+  const read = JSON.parse(colleague.stdout) as NormalizationReport;
+  expect(read.summary).toMatchObject({ differences: DIFFERENCES, suppressed: SUPPRESSED, retained: HIGHER, undecided: PENDING, unaddressed: RENAMED });
+  expect(under.comparison!.rules).toEqual(read.rules);
+  expect(under.comparison!.suppressed).toBe(SUPPRESSED);
+  expect(under.comparison!.total).toBe(DIFFERENCES - SUPPRESSED + 2);
+  const kept = read.differences.filter((difference) => difference.outcome !== "suppressed");
+  expect(under.comparison!.rows.filter((row) => row.kind === "paired").map((row) => `${row.earlier!.id} ${row.later!.id} ${row.field} ${row.outcome ?? "unaddressed"}`)).toEqual(
+    kept.slice(0, under.comparison!.rows.filter((row) => row.kind === "paired").length).map((difference) => `${difference.left_occurrence} ${difference.right_occurrence} ${difference.selector} ${difference.outcome}`),
+  );
+  expect(await page().findByText(`${PAIRED} matched · 1 only in earlier · 1 only in later · ${SUPPRESSED} ignored by ${POLICY}`)).toBeTruthy();
+  const rules = within(screen.getByRole("table", { name: "Policy rules" }));
+  expect(rules.getAllByRole("row").slice(1).map((row) => [...row.querySelectorAll("td")].map((cell) => cell.textContent).join(" "))).toEqual(
+    read.rules.map((rule, index) => `${index === 0 ? "Timestamp" : "Number"} ${index === 0 ? "MSH[1]-7[1]" : "OBX[1]-5[1]"} ${rule.suppressed} ${rule.retained} ${rule.undecided}`),
+  );
 
-  // The person opens the colleague's policy into the editor: its rules are
-  // the editor's rules, beside the identity of the bytes it read.
-  await user.click(section.getByText("Normalization policy", { selector: "summary" }));
-  const editor = within(section.getByRole("region", { name: "Normalization policy editor" }));
-  const rules = () => editor.queryAllByRole("button", { name: /^Remove policy rule / }).map((button) => button.textContent);
-  await user.selectOptions(editor.getByLabelText("Retained policy document"), "colleague-policy.json");
-  await press(user, editor.getByRole("button", { name: "Open" }));
-  await waitFor(() => expect(rules()).toEqual(["Remove policy rule volatile-message-time", "Remove policy rule analyser-drift"]));
-  expect(editor.getByText(`Opened colleague-policy.json · exact bytes hash to ${colleagueDigest}`)).toBeTruthy();
+  // The original differences stay one choice away.
+  const originalAsked = journey.callsTo("CompareCases").length;
+  await user.click(page().getByRole("checkbox", { name: "Original differences" }));
+  const original = await answered(originalAsked);
+  expect(original.comparison!.total).toBe(DIFFERENCES + 2);
 
-  // They add a rule for the patient's name, from the keyboard.
-  await enter(user, editor.getByLabelText("Policy rule ID"), "patient-name");
-  await enter(user, editor.getByLabelText("Canonical selector"), "PID-5");
-  await user.keyboard("{Enter}");
-  expect(rules()).toEqual([
-    "Remove policy rule volatile-message-time",
-    "Remove policy rule analyser-drift",
-    "Remove policy rule patient-name",
-  ]);
-
-  // Opening another policy now would replace that unsaved rule: the window
-  // asks, and Escape keeps the rules and reads nothing.
-  const opens = journey.callsTo("OpenNormalizationPolicy").length;
-  await user.selectOptions(editor.getByLabelText("Retained policy document"), "truncated-policy.json");
-  await press(user, editor.getByRole("button", { name: "Open" }));
-  const question = within(editor.getByRole("group", { name: "Open truncated-policy.json in place of these rules?" }));
-  expect(document.activeElement).toBe(question.getByRole("button", { name: "Keep rules" }));
-  await user.keyboard("{Escape}");
-  expect(editor.queryByRole("group", { name: /^Open / })).toBeNull();
-  expect(document.activeElement).toBe(editor.getByRole("button", { name: "Open" }));
-  expect(journey.callsTo("OpenNormalizationPolicy")).toHaveLength(opens);
-  expect(rules()).toHaveLength(3);
-
-  // Asked again and answered, the undecodable policy is refused in the
-  // command line's sentence, and the rules stay as they were.
-  await user.keyboard("{Enter}");
-  await press(user, editor.getByRole("button", { name: "Replace rules" }));
-  expect(await editor.findByText(UNDECODABLE)).toBeTruthy();
-  expect(journey.callsTo("OpenNormalizationPolicy")).toHaveLength(opens + 1);
-  expect(rules()).toHaveLength(3);
-
-  // Saved as a new entry beside the colleague's, which is unchanged, the
-  // extended policy is what the command line reads and what the preview
-  // applies: the renamed patients are now hidden too.
-  await enter(user, editor.getByLabelText("New normalization-policy entry"), "extended-policy.json");
-  await press(user, editor.getByRole("button", { name: "Save as new" }));
-  const saved = await editor.findByText(/^Saved to extended-policy\.json · exact bytes hash to /);
-  expect(saved.textContent).toBe(`Saved to extended-policy.json · exact bytes hash to ${journey.digest("lab/extended-policy.json")}`);
-  expect(journey.digest("lab/colleague-policy.json")).toBe(colleagueDigest);
-  const extended = await readUnder("extended-policy.json");
-  expect(extended.rules.map((rule) => rule.id)).toEqual(["volatile-message-time", "analyser-drift", "patient-name"]);
-  expect(extended.summary).toMatchObject({ differences: DIFFERENCES, suppressed: SUPPRESSED + RENAMED, retained: HIGHER, undecided: PENDING, unaddressed: 0 });
-  await preview(user, section, "extended-policy.json");
-  expect(await section.findByText(`${DIFFERENCES} differences · ${SUPPRESSED + RENAMED} suppressed · ${HIGHER} retained`)).toBeTruthy();
-  const extendedRules = [...COLLEAGUE_RULES, `patient-name ${PAIRED} ${RENAMED} 0 0`];
-  expect(reportedRules(extended)).toEqual(extendedRules);
-  expect(drawnRules(section)).toEqual(extendedRules);
-  expect(drawnDifferences(section)).toEqual(shownDifferences(expectedDifferences(true).slice(0, 200)));
+  // The policy is extended with a rule that ignores the patient's name.
+  // Saved, it is what the command line reads and what the window applies:
+  // the renamed patients are now hidden too.
+  await user.click(page().getByRole("checkbox", { name: "Original differences" }));
+  await press(user, (await options(user)).getByRole("button", { name: "Edit policy" }));
+  const editor = within(await screen.findByRole("dialog", { name: "Edit policy" }));
+  await waitFor(() => expect(editor.getAllByRole("group")).toHaveLength(2));
+  await press(user, editor.getByRole("button", { name: "Add rule" }));
+  await pickField(user, editor, "Field path of rule 3", "PID-5");
+  const extendedAsked = journey.callsTo("CompareCases").length;
+  expect((await savePolicy(user, editor)).outcome).toBe("saved");
+  const extended = await answered(extendedAsked);
+  const extendedRead = await normalizeWith(project, before, after, savedPolicy(project, 3));
+  expect(extendedRead.code, extendedRead.stderr).toBe(0);
+  const extendedReport = JSON.parse(extendedRead.stdout) as NormalizationReport;
+  expect(extendedReport.summary).toMatchObject({ differences: DIFFERENCES, suppressed: SUPPRESSED + RENAMED, retained: HIGHER, undecided: PENDING, unaddressed: 0 });
+  expect(extended.comparison!.rules).toEqual(extendedReport.rules);
+  expect(extended.comparison!.suppressed).toBe(SUPPRESSED + RENAMED);
+  expect(await page().findByText(`${PAIRED} matched · 1 only in earlier · 1 only in later · ${SUPPRESSED + RENAMED} ignored by ${POLICY}`)).toBeTruthy();
 });

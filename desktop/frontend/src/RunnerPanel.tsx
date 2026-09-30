@@ -11,7 +11,7 @@ import {
   enrollRunner,
   executeRunnerJob,
   inspectRunnerJob,
-  listCatalog,
+  listWholeCatalog,
   listRunners,
   newIntentId,
   openItemDraft,
@@ -188,9 +188,11 @@ function saveFailure(result: { reason?: string; problems?: { problem: string }[]
 /** Add runner: Connection → Assignment → Review. The last step requests a
  * real admission for a runner on this Mac, or exports its setup for another
  * host's administrator; nothing is installed from here. */
-function AddRunnerFlow({ context, environments, onClose, onDone }: {
+function AddRunnerFlow({ context, environments, environmentFailure, onRetryEnvironments, onClose, onDone }: {
   context: () => RequestContext;
   environments: CatalogItem[];
+  environmentFailure: string | null;
+  onRetryEnvironments: () => void;
   onClose: () => void;
   onDone: (id: string) => void;
 }) {
@@ -230,7 +232,7 @@ function AddRunnerFlow({ context, environments, onClose, onDone }: {
         const checked = await previewRunnerConfig(configRequest(draft));
         return checked.state === "completed" ? null : { reason: checked.reason ?? "The runner configuration is not complete." };
       },
-      render: () => <AssignmentFields draft={draft} set={setDraft} environments={environments} host={host} onHost={setHost} localSupported={localSupported} />,
+      render: () => <>{environmentFailure ? <p role="alert">{environmentFailure} <button type="button" onClick={onRetryEnvironments}>Retry environments</button></p> : null}<AssignmentFields draft={draft} set={setDraft} environments={environments} host={host} onHost={setHost} localSupported={localSupported} /></>,
     },
     {
       key: "review",
@@ -727,13 +729,38 @@ export function RunnerPanel({
   const [opened, setOpened] = useViewState<string | null>("Runners.opened", null);
   const [adding, setAdding] = useState(false);
 
+  const reloads = useRef(0);
+  const loadedRoot = useRef(root);
+  const [environmentFailure, setEnvironmentFailure] = useState<string | null>(null);
   const reload = useCallback(async () => {
     if (!root) return;
-    const [answer, envs] = await Promise.all([listRunners(context()), listCatalog({ context: context(), kind: "environment", filter: {} })]);
+    const asked = ++reloads.current;
+    const request = context();
+    // These readers share one backend slot. Keep their request together and
+    // do not discard known choices when another operation refuses a read.
+    const envs = await listWholeCatalog({ context: request, kind: "environment", filter: {} });
+    const answer = await listRunners(request);
+    if (asked !== reloads.current) return;
     setList(answer);
-    setEnvironments(envs.page?.items ?? []);
+    if (envs.state === "completed" || envs.state === "empty") {
+      setEnvironments(envs.page?.items ?? []);
+      setEnvironmentFailure(null);
+    } else setEnvironmentFailure(envs.reason ?? "The environments could not be read.");
   }, [root, context]);
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    setList(null);
+    setEnvironments([]);
+    setEnvironmentFailure(null);
+    if (loadedRoot.current !== root) {
+      loadedRoot.current = root;
+      setOpened(null);
+      setSelected(null);
+      setAdding(false);
+    }
+    void reload();
+    return () => { reloads.current += 1; };
+  }, [reload]);
+  const add = () => { setAdding(true); void reload(); };
 
   const handled = useRef(0);
   useEffect(() => {
@@ -743,6 +770,7 @@ export function RunnerPanel({
     onHandled?.();
     setOpened(null);
     setAdding(true);
+    void reload();
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!root) return <section aria-label="Runners" className="runner-panel"><EmptyState title="Open a project to see its runners" /></section>;
@@ -758,6 +786,8 @@ export function RunnerPanel({
     <AddRunnerFlow
       context={context}
       environments={environments}
+      environmentFailure={environmentFailure}
+      onRetryEnvironments={() => void reload()}
       onClose={() => setAdding(false)}
       onDone={(id) => { setAdding(false); onConfigured?.(true); void reload().then(() => setOpened(id)); }}
     />
@@ -772,7 +802,7 @@ export function RunnerPanel({
   }
   let body: ReactNode;
   if (list && list.state !== "completed") body = <p role="alert">{list.reason}</p>;
-  else if (list && runners.length === 0) body = <EmptyState title="No runners" action={<button type="button" className="primary" onClick={() => setAdding(true)}>Add runner</button>} />;
+  else if (list && runners.length === 0) body = <EmptyState title="No runners" action={<button type="button" className="primary" onClick={add}>Add runner</button>} />;
   else body = (
     <DataTable
       label="Runners"
@@ -791,7 +821,7 @@ export function RunnerPanel({
       <div className="section-header">
         <h2>Runners</h2>
         <span className="row-actions">
-          <button type="button" className="primary" onClick={() => setAdding(true)}>Add runner</button>
+          <button type="button" className="primary" onClick={add}>Add runner</button>
         </span>
       </div>
       {body}

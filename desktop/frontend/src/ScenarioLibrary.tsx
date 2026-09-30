@@ -27,6 +27,7 @@ import { DataTable } from "./DataTable";
 import { IconButton } from "./IconButton";
 import { saveProblem } from "./Environments";
 import { MessageReader } from "./Inspector";
+import { JsonSheet } from "./ProfileLibrary";
 import { EmptyState, FormDialog, Menu, Modal, ValueRows, type SubmitFailure } from "./layout";
 import { HistorySheet, SaveButtons, exportItem, type LibraryPage } from "./Library";
 import { useLifecycle } from "./lifecycle";
@@ -73,7 +74,7 @@ export function useScenario({
   const [opened, setOpened] = useState<ItemDraftResult | null>(null);
   const [editing, setEditing] = useState<{ name: string; draft: Draft } | null>(null);
   const [creating, setCreating] = useState(false);
-  const [sheet, setSheet] = useState<null | { step: ScenarioStep; at: number | null } | "settings" | "history" | "details">(null);
+  const [sheet, setSheet] = useState<null | { step: ScenarioStep; at: number | null } | "settings" | "history" | "details" | "json">(null);
   const [preview, setPreview] = useState<ScenarioPlanPreviewResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -89,7 +90,7 @@ export function useScenario({
       const answer = await openItemDraft({ context: context(), ref });
       if (current()) setOpened(answer);
     });
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, context]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOpened(null);
@@ -311,6 +312,13 @@ export function useScenario({
           }}
         />
       ) : null}
+      {editing && sheet === "json" ? (
+        <JsonSheet context={context} kind="scenario" draft={{ name: editing.name, scenario: editing.draft }} onClose={() => setSheet(null)} onApply={(next) => {
+          if (!next.scenario) return;
+          setEditing({ name: next.name ?? editing.name, draft: next.scenario });
+          setPreview(null);
+        }} />
+      ) : null}
       {sheet === "history" && ref ? <HistorySheet context={context} item={ref} onClose={() => setSheet(null)} /> : null}
       <Modal
         open={sheet === "details"}
@@ -349,6 +357,7 @@ export function useScenario({
         items={[
           { label: "Add event", disabled: events.length === 0, onSelect: () => setSheet({ step: newStep(steps, scenario, events[0]?.event ?? ""), at: null }) },
           { label: "Generation settings", onSelect: () => setSheet("settings") },
+          { label: "Edit JSON", onSelect: () => setSheet("json") },
         ]}
       />
       <SaveButtons
@@ -377,6 +386,7 @@ export function useScenario({
       <Menu
         label="More scenario actions"
         items={[
+          { label: "Edit JSON", disabled: busy || running || !saved, onSelect: () => { if (saved) { setEditing({ name, draft: saved }); setSheet("json"); } } },
           { label: "History", onSelect: () => setSheet("history") },
           {
             label: "Export scenario…",
@@ -610,7 +620,7 @@ function PreviewBody({ preview, busy, onClose }: { preview: ScenarioPlanPreviewR
   if (preview.state !== "completed") {
     return (
       <EmptyState
-        title={preview.problems.map((problem) => problem.problem).join(" ") || preview.reason || "The scenario was not generated."}
+        title={(preview.problems ?? []).map((problem) => problem.problem).join(" ") || preview.reason || "The scenario was not generated."}
         action={
           <button type="button" onClick={onClose}>
             Back to events

@@ -348,12 +348,42 @@ func (r *importRead) units() []previewUnit {
 				unit.time = stampedTime(*mapping.ObservedAt)
 			}
 		}
-		if doc, err := hl7.Parse(input.Data, input.Options); err == nil {
-			unit.doc = doc
-		}
-		units = append(units, unit)
+		units = append(units, occurrences(unit, input.Options)...)
 	}
 	return units
+}
+
+// occurrences parses one extracted source the way the import writes it: an
+// MLLP source one frame at a time, so a feed of more frames than one parse
+// admits previews as the messages its case will hold, and anything else whole.
+func occurrences(source previewUnit, options hl7.Options) []previewUnit {
+	format := options.Format
+	if (format == "" || format == "auto") && len(source.data) > 0 && source.data[0] == 0x0b {
+		format = hl7.MLLP
+	}
+	if format != hl7.MLLP {
+		if doc, err := hl7.Parse(source.data, options); err == nil {
+			source.doc = doc
+		}
+		return []previewUnit{source}
+	}
+	options.Format = hl7.MLLP
+	data := source.data
+	units := []previewUnit{}
+	for start := 0; ; {
+		end, framing := bundle.NextOccurrence(data, start, hl7.MLLP)
+		unit := source
+		unit.data, unit.doc = data[start:end], nil
+		if framing == "" {
+			if doc, err := hl7.Parse(unit.data, options); err == nil {
+				unit.doc = doc
+			}
+		}
+		units = append(units, unit)
+		if start = end; start >= len(data) {
+			return units
+		}
+	}
 }
 
 // previewRows lists the parsed rows, at most MaxPreviewRows, and how many

@@ -138,8 +138,11 @@ export function useCaseComparison({
     });
   };
 
-  const comparison = result?.comparison ?? null;
-  const lineage = comparison?.lineage ?? [];
+  // A comparison the engine refused to align still names both sides and
+  // what each variant was made from; only its differences wait for keys.
+  const answered = result?.comparison ?? null;
+  const comparison = result?.state === "completed" ? answered : null;
+  const lineage = answered?.lineage ?? [];
   const tabs: { key: Tab; label: string }[] = [
     { key: "differences", label: "Differences" },
     ...(lineage.length > 0
@@ -165,12 +168,12 @@ export function useCaseComparison({
 
   const body = (
     <div className="object-page comparison-page">
-      {comparison ? (
+      {answered ? (
         <ValueRows
           label="Compared cases"
           rows={[
-            { label: "Current", value: sideText(comparison.current) },
-            { label: "Other", value: sideText(comparison.other) },
+            { label: "Current", value: sideText(answered.current) },
+            { label: "Other", value: sideText(answered.other) },
           ]}
         />
       ) : null}
@@ -183,26 +186,28 @@ export function useCaseComparison({
         </div>
       ) : null}
       {!other ? <EmptyState title="Choose a case to compare with" action={<button type="button" onClick={() => setChoosing(true)}>Choose case</button>} /> : null}
-      {comparison ? (
+      {answered ? (
         <TaskTabs label="Comparison views" id="comparison-views" tabs={tabs} selected={shownTab} onSelect={setTab}>
           {shownTab === "differences" ? (
-            <Differences
-              comparison={comparison}
-              rows={rows}
-              original={original}
-              reveal={reveal}
-              selected={selected}
-              onSelect={setSelected}
-              onOriginal={setOriginal}
-              onReveal={setReveal}
-              onMore={more}
-            />
+            comparison ? (
+              <Differences
+                comparison={comparison}
+                rows={rows}
+                original={original}
+                reveal={reveal}
+                selected={selected}
+                onSelect={setSelected}
+                onOriginal={setOriginal}
+                onReveal={setReveal}
+                onMore={more}
+              />
+            ) : null
           ) : shownTab === "lineage" ? (
             <Lineage lineage={lineage} />
           ) : shownTab === "plan" ? (
             <PlanChanges lineage={lineage} />
           ) : (
-            <RunEvidence context={context} cases={[comparison.current.ref, comparison.other.ref]} onCompare={onCompareRuns} />
+            <RunEvidence context={context} cases={[answered.current.ref, answered.other.ref]} onCompare={onCompareRuns} />
           )}
         </TaskTabs>
       ) : null}
@@ -667,6 +672,8 @@ function PolicySheet({
   useEffect(() => {
     if (!open) return;
     setLoaded(false);
+    setName("");
+    setRules([]);
     void openItemDraft({ context: context(), ref: policy ?? { kind: "normalization-policy", id: "" } }).then((answer) => {
       setName(answer.draft?.name ?? "");
       setBase(policy ? answer.ref?.revision : undefined);

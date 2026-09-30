@@ -6,6 +6,7 @@
 // reading fits, and an engine export is always the person's choice.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  cancel,
   chooseImportSources,
   classifyDroppedSources,
   importCase,
@@ -209,6 +210,8 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // The import writing its case, which Stop cancels.
+  const [importing, setImporting] = useState(false);
   const [sheet, setSheet] = useState<null | "paste" | "format" | "mapping" | "save-mapping">(null);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [reading, setReading] = useState<InspectionResult | null>(null);
@@ -655,6 +658,13 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
         }}
         submitLabel="Import"
         submitDisabled={!previewReady}
+        finalSecondary={
+          importing ? (
+            <button type="button" onClick={() => cancel("import")}>
+              Stop
+            </button>
+          ) : null
+        }
         busy={busy}
         onClose={onClose}
         status={
@@ -671,7 +681,8 @@ export function ImportFlow({ open, root, context, drafts, busy, onClose, onImpor
         onSubmit={async (): Promise<SubmitFailure | null> => {
           const req = request();
           if (!req || !preview?.preview_token) return { reason: "Preview the import first." };
-          const answer = await importCase({ context: context(), name: caseName.trim(), source: req, preview_token: preview.preview_token, intent_id: intentFor(intents.current, req, caseName) });
+          setImporting(true);
+          const answer = await importCase({ context: context(), name: caseName.trim(), source: req, preview_token: preview.preview_token, intent_id: intentFor(intents.current, req, caseName) }).finally(() => setImporting(false));
           if (answer.stale) {
             void runPreview();
             return { reason: "The inputs or their format changed since this preview; it was read again." };

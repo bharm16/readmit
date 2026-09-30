@@ -639,7 +639,7 @@ test("Storage's menu holds its named tasks, and Delete from this computer is not
   const user = userEvent.setup();
   await renderApp(handlers());
   const storage = await openStorage(user);
-  expect(await menuItems(user, storage)).toEqual(["Quota", "Recovery copies…", "Archive…", "Move project…", "Staged update…"]);
+  expect(await menuItems(user, storage)).toEqual(["Quota", "Recovery copies…", "Archive…", "Move project…", "Compatibility…", "Staged update…"]);
 });
 
 test("Archive of one case reviews that case with its related work and retention, and keeps it", async () => {
@@ -785,4 +785,22 @@ test("a prepared update shows Prepared and its rollback copy with Show in folder
   expect((await within(done).findByRole("status")).textContent).toBe("Prepared 1.1.0. The rollback copy is in Storage.");
   await user.click(within(done).getByRole("button", { name: "Show in folder" }));
   expect(facade.oneCall("RevealBackup")).toEqual(["r1"]);
+});
+
+
+test("project compatibility lists every document and version through the migration reader without writing", async () => {
+ const user = userEvent.setup();
+ const { facade } = await renderApp(handlers({ PreviewProjectMigration: () => ({ state: "completed", plan: { schema: "readmit-lifecycle-plan/v1", compatible: false, documents: [{ document: "project.json", supported: "readmit-project/v2", action: "read without rewriting" }, { document: "future-test.json", supported: "unsupported", action: "retain unchanged" }] }, guidance: "No document was changed." }) }));
+ const storage = within(await openStorage(user));
+ await user.click(storage.getByRole("button", { name: "More storage actions" }));
+ await user.click(screen.getByRole("menuitem", { name: "Compatibility…" }));
+ const sheet = within(await screen.findByRole("dialog", { name: "Project compatibility" }));
+ expect(await sheet.findByText("Unsupported documents")).toBeTruthy();
+ expect(sheet.getByText("project.json")).toBeTruthy();
+ expect(sheet.getByText("readmit-project/v2")).toBeTruthy();
+ expect(sheet.getByText("future-test.json")).toBeTruthy();
+ expect(facade.callsTo("PreviewProjectMigration").length).toBeGreaterThan(0);
+ expect(facade.callsTo("PreviewProjectMigration").every(call => JSON.stringify(call.args) === JSON.stringify([WORKSPACE_ROOT]))).toBe(true);
+ expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+ expect(facade.callsTo("SaveItem")).toHaveLength(0);
 });

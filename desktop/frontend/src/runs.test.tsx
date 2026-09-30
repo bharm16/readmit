@@ -5,7 +5,7 @@
 import { expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ActionReview, CatalogItem, CatalogQuery, ReviewedActionResult, RunDetail, RunSummary } from "./bindings";
+import type { ActionReview, CatalogItem, CatalogQuery, ReviewedActionResult, RunAnalysisResult, RunDetail, RunSummary } from "./bindings";
 import { renderApp } from "./testkit/app";
 import { CASE_ENTRY, caseCatalogItem, caseResult, catalogOfListing, folderChosen, folderWithCase, GRID_OCCURRENCE, messageRow, messagesResult, NEXT_OCCURRENCE, WORKSPACE_ROOT } from "./testkit/fixtures";
 import { findCaseRow, findMessageRow, goTo, page, sidebar } from "./testkit/navigation";
@@ -498,6 +498,30 @@ test("Analyze with checks decides a saved check group against the run as its own
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
 });
 
+test("Stop cancels only retained-run analysis, preserves the historical verdict and sends nothing", async () => {
+  const user = userEvent.setup();
+  const { facade } = await openRuns(user, [FAILED], {
+    OpenRun: (request) => ({ state: "completed", context: request.context, run: detail() }),
+    Cancel: async () => {},
+  });
+  const analyzing = facade.park("AnalyzeRun");
+  await user.click(await page().findByText("Reschedule keeps one appointment · v4"));
+  await page().findByRole("table", { name: "Checks" });
+  await user.click(page().getByRole("button", { name: "More run actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Analyze with checks" }));
+  const sheet = within(await screen.findByRole("dialog", { name: "Analyze with checks" }));
+  await user.click(await sheet.findByRole("radio", { name: "Reschedule checks · v2" }));
+  await user.dblClick(sheet.getByRole("button", { name: "Analyze" }));
+  await waitFor(() => expect(facade.callsTo("AnalyzeRun")).toHaveLength(1));
+  await user.dblClick(sheet.getByRole("button", { name: "Stop" }));
+  expect(facade.oneCall("Cancel")).toEqual(["run-explanation"]);
+  analyzing.resolve({ state: "cancelled", context: facade.oneCall("AnalyzeRun")[0].context, reason: "Analysis stopped.", missing: [] } satisfies RunAnalysisResult);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Analyze with checks" })).toBeNull());
+  expect(page().getByText(/^Failed · Scheduling QA/)).toBeTruthy();
+  expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+  expect(facade.callsTo("PrepareAction")).toHaveLength(0);
+});
+
 test("two finished runs of a test are compared earlier to later, a changed check is never a regression, and added runs are counted", async () => {
   const user = userEvent.setup();
   const EXTRA = run("r-extra", "Reschedule keeps one appointment", { kind: "test", test: { kind: "test", id: TEST.ref.id, revision: "4" }, version: "4", environment_name: "Scheduling QA", started_at: today(8, 0), result: "failed" });
@@ -590,4 +614,33 @@ test("Send selected opens the same review titled Send messages with exactly the 
   });
   expect(await within(sheet).findByText("Sends 1 message to Scheduling QA once.")).toBeTruthy();
   expect(facade.callsTo("ExecuteReviewedAction")).toHaveLength(0);
+});
+
+test("a comparison asked while another operation holds the window is asked again and shown", async () => {
+  const user = userEvent.setup();
+  let asked = 0;
+  const { facade } = await openRuns(user, [FAILED, PASSED], {
+    CompareRunItems: (request) =>
+      ++asked === 1
+        ? { state: "busy", reason: "another operation is already running", context: { project: "", generation: 0 } }
+        : {
+            state: "completed",
+            context: request.context,
+            comparison: {
+              earlier: { run: PASSED.ref, name: PASSED.name, version: "3", environment_name: "Scheduling QA", started_at: PASSED.summary.run!.started_at, result: "passed" },
+              later: { run: FAILED.ref, name: FAILED.name, version: "4", environment_name: "Scheduling QA", started_at: FAILED.summary.run!.started_at, result: "failed" },
+              repeats: [],
+              checks: [{ check: { id: "count", operator: "ledger_count", count: 1 }, earlier: "passed", later: "failed", earlier_observed: 1, later_observed: 2, change: "changed_check" }],
+              configuration: [],
+              specification: "unchanged",
+              stability: { state: "insufficient_history", runs: 2, passes: 1, failures: 1, errors: 0, incomplete: 0, flaky: [] },
+            },
+          },
+  });
+  const table = await page().findByRole("table", { name: "Runs" });
+  await user.click(within(table).getByRole("checkbox", { name: /^Select Reschedule keeps one appointment · v4/ }));
+  await user.click(within(table).getByRole("checkbox", { name: /^Select Reschedule keeps one appointment · v3/ }));
+  await user.click(page().getByRole("button", { name: "Compare" }));
+  expect(rowsOf(await page().findByRole("table", { name: "Checks" }))).toEqual([["Record count", "1 / Passed", "2 / Failed", "Changed check"]]);
+  expect(facade.callsTo("CompareRunItems")).toHaveLength(2);
 });

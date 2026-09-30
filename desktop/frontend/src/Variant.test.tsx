@@ -164,3 +164,25 @@ test("the sequence changes name the entry and the message it holds, and Undo tak
   expect(within(screen.getByRole("list", { name: "Changes in order" })).queryByText("2 days earlier")).toBeNull();
   expect(within(screen.getByRole("list", { name: "Changes in order" })).getByText("Move entry")).toBeTruthy();
 });
+
+test("a variant saved again after its save completed is a new submission, not a replay of the one before", async () => {
+  const user = userEvent.setup();
+  const facade = installFacade({
+    ListCatalog: (query) => ({ state: "completed", context: query.context, page: { items: [], total: 0, snapshot: "s", recorded: true, incomplete: [] } }),
+    MessageFields: () => ({ state: "completed", fields: [], complete: true }),
+    ResolveVariant: (request) => resolved(request.draft),
+    SaveEditorDraft: () => ({ state: "completed" }),
+    DiscardEditorDraft: () => ({ state: "completed" }),
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved: { kind: "variant", id: "variant-1", revision: "1" }, replayed: false, problems: [] }),
+  });
+  render(<Harness onSaved={() => undefined} />);
+  const picker = await screen.findByRole("dialog", { name: "Included messages" });
+  await user.click(await within(picker).findByRole("checkbox", { name: "1. SIU · S12" }));
+  await user.click(within(picker).getByRole("button", { name: "Apply" }));
+  await screen.findByRole("table", { name: "Included messages" });
+  await user.click(screen.getByRole("button", { name: "Save variant" }));
+  await user.click(screen.getByRole("button", { name: "Save variant" }));
+  const saves = facade.callsTo("SaveItem").map((call) => (call.args[0] as { intent_id: string }).intent_id);
+  expect(saves).toHaveLength(2);
+  expect(saves[1]).not.toBe(saves[0]);
+});

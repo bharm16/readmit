@@ -16,6 +16,7 @@ import (
 	"github.com/bharm16/readmit/internal/hl7"
 	"github.com/bharm16/readmit/internal/index"
 	"github.com/bharm16/readmit/internal/observation"
+	"github.com/bharm16/readmit/internal/testlicense"
 )
 
 // messagesWorkspace is one case of the grid fixture with no index beside it, a
@@ -257,5 +258,22 @@ func TestReadMessagesReportsACaseThatHoldsNoMessagesAsEmpty(t *testing.T) {
 	result := app.ReadMessages(desktop.MessagesRequest{Workspace: root, Case: "quiet", Identity: opened.Identity})
 	if result.State != desktop.Empty || result.Total != 0 || len(result.Rows) != 0 || result.Reason == "" {
 		t.Fatalf("an empty case: %+v", result)
+	}
+}
+
+// A read the window's one operation slot turns away still answers empty
+// lists, as every other refusal of a message window does, so the window never
+// reads rows or facets that are not there.
+func TestABusyMessageWindowAnswersEmptyLists(t *testing.T) {
+	app := windowWith(t, testlicense.New(t))
+	var answer desktop.MessagesResult
+	desktop.RunUnderProfileForTest(app, "CheckTarget", func(context.Context) {
+		answer = app.ReadMessages(desktop.MessagesRequest{})
+	})
+	if answer.State != desktop.Busy {
+		t.Fatalf("a read while another operation runs answered %s %q", answer.State, answer.Reason)
+	}
+	if answer.Rows == nil || answer.Facets.Types == nil || answer.Facets.Sources == nil || answer.Facets.AckCodes == nil {
+		t.Fatalf("a busy message window answered nil lists: %+v", answer)
 	}
 }

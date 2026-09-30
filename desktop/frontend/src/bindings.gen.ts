@@ -2147,6 +2147,15 @@ export interface CredentialSaveRequest {
   arguments?: string[];
   replace_arguments: boolean;
   max_age?: string;
+  shown?: CredentialShown;
+}
+
+/** internal/desktop.CredentialShown */
+export interface CredentialShown {
+  store: SecretStore;
+  address: string;
+  command: string;
+  max_age?: string;
 }
 
 /** internal/desktop.CredentialsResult */

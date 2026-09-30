@@ -313,12 +313,22 @@ func (a *App) saveItem(ctx context.Context, request SaveItemRequest) SaveItemRes
 		}
 		entry = built
 	}
+	verify := verifierFor(request.Kind)
+	if request.Kind == VariantItem {
+		verify = verifyNewVariant(root)
+	}
 	saved, err := store.Save(catalog.Draft{
 		Kind: string(request.Kind), ItemID: request.Item, Name: projection.Name, Base: request.BaseRevision,
 		Intent: request.IntentID, Digest: submissionDigest(request, staged), Author: a.reviewerName(), Members: staged, Entry: entry,
-	}, verifierFor(request.Kind), catalog.Options{Now: a.now, Fault: a.saveFault, Associate: associateEntry(root)})
+	}, verify, catalog.Options{Now: a.now, Fault: a.saveFault, Associate: associateEntry(root)})
 	var conflict *catalog.Conflict
 	switch {
+	case errors.Is(err, errRevisionRegistered) && store.Discard(request.IntentID) == nil:
+		// Refused before its case was placed: nothing of it is kept.
+		result.State, result.Outcome = Failed, InvalidOutcome
+		result.Problems = []FieldProblem{{Field: "variant", Problem: errRevisionRegistered.Error()}}
+		result.Reason = errRevisionRegistered.Error()
+		return result
 	case errors.As(err, &conflict):
 		result.State, result.Outcome, result.CurrentRevision = Failed, ConflictOutcome, conflict.Current
 		result.Reason = "the object changed since this edit began; nothing was saved and the draft is kept"

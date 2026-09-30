@@ -155,6 +155,10 @@ func TestCasesCompareUnderANamedPolicyAndKeepTheirOriginalDifferences(t *testing
 	if unkeyed.State != desktop.Failed || !strings.Contains(unkeyed.Reason, "MSH-10") {
 		t.Fatalf("a comparison guessed its keys: %+v", unkeyed)
 	}
+	// What the variant was made from does not wait for keys.
+	if refused := unkeyed.Comparison; refused == nil || len(refused.Rows) != 0 || len(refused.Lineage) != 1 || len(refused.Lineage[0].Steps) != len(plan.Steps)+2 {
+		t.Fatalf("a refused comparison left out the variant's lineage: %+v", unkeyed.Comparison)
+	}
 	compared := app.CompareCases(desktop.CaseComparisonRequest{Context: context, Current: incident, Other: variant, Keys: []string{"MSH-10"}, Limit: 50})
 	if compared.State != desktop.Completed || compared.Comparison == nil {
 		t.Fatalf("compare: %+v", compared)

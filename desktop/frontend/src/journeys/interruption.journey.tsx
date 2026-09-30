@@ -13,7 +13,8 @@
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { enter, Journey, press, region } from "../testkit/journey";
+import { enter, Journey, press } from "../testkit/journey";
+import { page, sidebar } from "../testkit/navigation";
 import { accepts, entries, freeLoopbackAddress, namesIn } from "./probes.js";
 import { BOOKING, declareMllpImport, framed, licensedProject, logTiming } from "./steps";
 
@@ -100,7 +101,7 @@ test("a capture started from a saved listener stops when Cancel capture is press
   expect(await history.findByText(/^Cancelled/)).toBeTruthy();
 
   // Start it again and kill the application while it listens.
-  await press(user, screen.getByRole("button", { name: "New capture" }));
+  await press(user, await screen.findByRole("button", { name: "New capture" }, { timeout: 15_000 }));
   setup = within(await screen.findByRole("dialog", { name: "New capture" }));
   await journey.settled();
   await enter(user, setup.getByLabelText("Name"), "Second capture");
@@ -113,14 +114,14 @@ test("a capture started from a saved listener stops when Cancel capture is press
   await journey.crash();
   expect(await accepts(address)).toBe(false);
 
-  // Reopening reads: the window comes back, goes back to where the person
-  // was, and starts nothing that listens, sends, polls or resets. Closing it
-  // waits until every call has settled and none has followed, so everything
-  // the reopened window did is in the record.
+  // Reopening reads: the window comes back, the person opens the project
+  // again, and nothing that listens, sends, polls or resets starts. Closing
+  // it waits until every call has settled and none has followed, so
+  // everything the reopened window did is in the record.
   const before = journey.calls.length;
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
-  expect(await within(region("Workspace")).findByText(journey.path("investigations", "interface"), { selector: ".root" })).toBeTruthy();
+  await press(user, await projectRow("Scheduling interface"));
+  expect(await sidebar().findByRole("button", { name: "Project: Scheduling interface" })).toBeTruthy();
   await journey.close();
   const reopened = journey.calls.slice(before).map((call) => call.method);
   for (const method of STARTS) {
@@ -129,43 +130,46 @@ test("a capture started from a saved listener stops when Cancel capture is press
   expect(await accepts(address)).toBe(false);
 });
 
-test("a note's text the window called retained survives a kill, and text it had not yet retained comes back whole or not at all", async () => {
+test("a note's text the window retained survives a kill, and text it had not yet retained comes back whole or not at all", async () => {
   const user = userEvent.setup();
-  const project = await licensedProject(journey, user);
-  const note = within(screen.getByRole("region", { name: "Note" }));
-  await user.type(note.getByLabelText("Body"), "first pass");
-  // The window says "retained" only once the newest keystroke's retention was
-  // answered, so everything typed so far is on disk from here on.
-  expect(await note.findByText("Retained. It will come back if this window stops.")).toBeTruthy();
+  await licensedProject(journey, user);
+  await press(user, sidebar().getByRole("button", { name: /^Project: / }));
+  await press(user, await screen.findByRole("menuitem", { name: "Project settings" }));
+  await press(user, within(await screen.findByRole("dialog", { name: "Project settings" })).getByRole("button", { name: "Open notes" }));
+  await press(user, (await page().findAllByRole("button", { name: "New note" }))[0]!);
+  const note = within(await screen.findByRole("dialog", { name: "New note" }));
+  await user.type(note.getByLabelText("Name"), "Reschedule");
+  await user.type(note.getByLabelText("Content"), "first pass");
+  const retained = () =>
+    journey
+      .callsTo("SaveEditorDraft")
+      .filter((call) => call.settled && (call.result as { state?: string } | undefined)?.state === "completed")
+      .map((call) => (call.args[0] as { content: { body: string } }).content.body);
+  // Once the newest keystroke's retention is answered, everything typed so
+  // far is on disk.
+  await waitFor(() => expect(retained().at(-1)).toBe("first pass"));
 
   // More keystrokes, and the process is killed the moment one of their
-  // retentions is in flight — while the window says it is still retaining.
-  // The window says so for as long as a retention is in flight, so the two
-  // are read at one moment: read afterwards, the window can already show the
-  // answer, which may arrive while the test waits to run again.
+  // retentions is in flight.
   const typed = "first pass and the reschedule";
-  const typing = user.type(note.getByLabelText("Body"), typed.slice("first pass".length)).catch(() => undefined);
+  const typing = user.type(note.getByLabelText("Content"), typed.slice("first pass".length)).catch(() => undefined);
   await waitFor(() => {
     if (!journey.callsTo("SaveEditorDraft").some((call) => !call.settled)) throw new Error("no retention is in flight");
-    expect(note.getByText("Retaining this draft…")).toBeTruthy();
   });
   await journey.crash();
   await typing;
   // The newest text the facade answered as retained before the kill.
-  const acknowledged = journey
-    .callsTo("SaveEditorDraft")
-    .filter((call) => call.settled && (call.result as { state?: string } | undefined)?.state === "completed")
-    .map((call) => (call.args[0] as { content: { body: string } }).content.body)
-    .at(-1) ?? "";
+  const acknowledged = retained().at(-1) ?? "";
   expect(acknowledged.startsWith("first pass")).toBe(true);
 
+  // Reopened, the draft is offered on Projects and resumes in its sheet.
   await journey.launch();
-  await press(user, await screen.findByRole("button", { name: "Reopen session" }));
-  expect(await within(region("Workspace")).findByText(project, { selector: ".root" })).toBeTruthy();
-  const reopened = within(screen.getByRole("region", { name: "Note" }));
+  await press(user, await page().findByRole("button", { name: "Review" }));
+  await press(user, within(await screen.findByRole("dialog", { name: "Drafts to restore" })).getByRole("button", { name: "Note · Reschedule" }));
+  const reopened = within(await screen.findByRole("dialog", { name: "New note" }, { timeout: 30_000 }));
   let body = "";
   await waitFor(() => {
-    body = (reopened.getByLabelText("Body") as HTMLTextAreaElement).value;
+    body = (reopened.getByLabelText("Content") as HTMLTextAreaElement).value;
     if (!body.startsWith(acknowledged)) throw new Error(`the acknowledged text did not come back: ${body}`);
   });
   // Whatever came back beyond it is a whole prefix of what was typed, never a
@@ -189,14 +193,14 @@ test("cancelling an import while it writes its case stops it there, registers no
 
   await press(user, flow.getByRole("button", { name: "Import" }));
   // The case is written in the project's own import area first.
-  const incoming = journey.path("investigations", "interface", ".readmit", "incoming");
+  const incoming = `${project}/.readmit/incoming`;
   const payloads = () => namesIn(incoming).reduce((count: number, intent: string) => count + entries(`${incoming}/${intent}/case/payloads`), 0);
   await waitFor(() => {
     if (payloads() === 0) throw new Error("the case is not being written yet");
   });
-  // The window's operation indicator stops the running import.
+  // The flow's Stop cancels the running import.
   const started = performance.now();
-  await user.click(within(region("Navigation")).getByRole("button", { name: "Stop" }));
+  await user.click(flow.getByRole("button", { name: "Stop" }));
   expect(await flow.findByText("the operation was cancelled")).toBeTruthy();
   logTiming("import Cancel while writing to cancelled shown", [performance.now() - started]);
 
@@ -207,3 +211,15 @@ test("cancelling an import while it writes its case stops it there, registers no
   expect(shown.code).toBe(0);
   expect(shown.stdout).toContain("Cases: 0");
 });
+
+/** A row of the Projects table once the list has been read. */
+async function projectRow(name: string): Promise<HTMLElement> {
+  const list = await page().findByRole("table", { name: "Projects" });
+  let row: HTMLElement | undefined;
+  await waitFor(() => {
+    row = within(list).getAllByRole("row").find((candidate) => candidate.getAttribute("aria-label") === name);
+    expect(row).toBeTruthy();
+  });
+  await journey.settled();
+  return row!;
+}

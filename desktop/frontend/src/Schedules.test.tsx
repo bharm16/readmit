@@ -200,3 +200,14 @@ test("schedule revisions show effective timing, missed and overlap semantics", a
   await waitFor(() => expect(facade.callsTo("SaveSchedulePolicy")).toHaveLength(1));
   expect(facade.oneCall("SaveSchedulePolicy")[0]).toMatchObject({ output: "" });
 });
+
+
+test("a claimed occurrence has a pending result and does not claim that dispatch started", async () => {
+  const user = userEvent.setup();
+  installFacade(base(() => [schedule({ recent: [{ day: "2026-09-30", due: "2026-09-30T02:30:00Z", state: "claimed" }] })]));
+  render(<Page />);
+  await user.click(await screen.findByRole("row", { name: "Scheduling smoke" }));
+  const recent = await screen.findByRole("table", { name: "Recent runs" });
+  expect(within(recent).getByText("Pending result")).toBeTruthy();
+  expect(within(recent).queryByText("Running")).toBeNull();
+});

@@ -864,6 +864,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
 /* WebKit draws a plain select as a fixed-height popup that ignores the
    field height; as a menu button it keeps its arrow and takes the token. */
 select {
+  height: var(--input);
   -webkit-appearance: menulist-button;
   appearance: menulist-button;
 }
@@ -2540,6 +2541,7 @@ h4 + .group,
 /* A toolbar above a list or table: what the list is showing on the left, how
    much of it on the right. */
 .toolbar {
+  min-height: var(--toolbar);
   align-items: center;
   display: flex;
   flex-wrap: wrap;

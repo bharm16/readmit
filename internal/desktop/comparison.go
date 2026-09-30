@@ -131,7 +131,8 @@ type CaseComparisonRequest struct {
 	Limit    int            `json:"limit"`
 }
 
-// CaseComparisonResult answers one comparison.
+// CaseComparisonResult answers one comparison. One the engine refuses to
+// align still carries both sides and the lineage of each variant, with no row.
 type CaseComparisonResult struct {
 	State      State           `json:"state"`
 	Reason     string          `json:"reason,omitzero"`
@@ -264,24 +265,37 @@ func (a *App) CompareCases(request CaseComparisonRequest) CaseComparisonResult {
 			}
 			sides[i], paths[i] = opened, path
 		}
+		// What each variant side was made from does not depend on how the
+		// records align, so a comparison the engine refuses still carries the
+		// two sides and their lineage, with no row.
+		lineage := []VariantLineage{}
+		for i, item := range items {
+			if item.Ref.Kind == VariantItem {
+				lineage = append(lineage, loaded.lineageOf(item, records[i]))
+			}
+		}
+		comparison := &CaseComparison{
+			Current: ComparisonSide{Ref: items[0].Ref, Name: items[0].Name, Messages: len(sides[0].Events)},
+			Other:   ComparisonSide{Ref: items[1].Ref, Name: items[1].Name, Messages: len(sides[1].Events)},
+			Keys:    nonNil(request.Keys), Fields: nonNil(request.Fields), Rules: []diff.RuleReport{},
+			Original: request.Original || request.Policy == nil, Revealed: request.Reveal,
+			Offset: request.Offset, Limit: request.Limit, Rows: []CaseComparisonRow{},
+			Unsupported: []diff.Unsupported{}, Lineage: lineage,
+		}
+		refuseAligned := func(reason string) CaseComparisonResult {
+			result.refuse(Failed, reason)
+			result.Comparison = comparison
+			return result
+		}
 		options := diff.Options{Keys: request.Keys, Fields: request.Fields}
 		shown := options
 		shown.ShowValues = request.Reveal
 		report, err := diff.Compare(diff.Input{Path: paths[0]}, diff.Input{Path: paths[1]}, shown)
 		if err != nil {
-			result.refuse(Failed, refusedComparison(err))
-			return result
+			return refuseAligned(refusedComparison(err))
 		}
-		comparison := &CaseComparison{
-			Current:   ComparisonSide{Ref: items[0].Ref, Name: items[0].Name, Messages: len(sides[0].Events)},
-			Other:     ComparisonSide{Ref: items[1].Ref, Name: items[1].Name, Messages: len(sides[1].Events)},
-			Keys:      nonNil(report.Keys),
-			Fields:    nonNil(report.Fields),
-			Alignment: report.Alignment, Summary: report.Summary, Rules: []diff.RuleReport{},
-			Original: request.Original || request.Policy == nil, Revealed: request.Reveal,
-			Offset: request.Offset, Limit: request.Limit,
-			Unsupported: nonNil(report.Unsupported), Lineage: []VariantLineage{},
-		}
+		comparison.Keys, comparison.Fields = nonNil(report.Keys), nonNil(report.Fields)
+		comparison.Alignment, comparison.Summary, comparison.Unsupported = report.Alignment, report.Summary, nonNil(report.Unsupported)
 		outcomes := map[string]diff.Difference{}
 		if request.Policy != nil {
 			item, exact, policyPaths, err := loaded.held(NormalizationPolicyItem, *request.Policy)
@@ -296,8 +310,7 @@ func (a *App) CompareCases(request CaseComparisonRequest) CaseComparisonResult {
 			}
 			normalized, err := diff.Normalize(diff.Input{Path: paths[0]}, diff.Input{Path: paths[1]}, options, policy)
 			if err != nil {
-				result.refuse(Failed, refusedComparison(err))
-				return result
+				return refuseAligned(refusedComparison(err))
 			}
 			comparison.Policy, comparison.PolicyName, comparison.Rules = &exact, item.Name, normalized.Rules
 			comparison.Suppressed = normalized.Summary.Suppressed
@@ -307,14 +320,8 @@ func (a *App) CompareCases(request CaseComparisonRequest) CaseComparisonResult {
 		}
 		rows := caseComparisonRows(report, caseMessageIndex(sides[0]), caseMessageIndex(sides[1]), outcomes, comparison.Original)
 		comparison.Total = len(rows)
-		comparison.Rows = []CaseComparisonRow{}
 		if request.Offset < len(rows) {
 			comparison.Rows = append(comparison.Rows, rows[request.Offset:min(len(rows), request.Offset+request.Limit)]...)
-		}
-		for i, item := range items {
-			if item.Ref.Kind == VariantItem {
-				comparison.Lineage = append(comparison.Lineage, loaded.lineageOf(item, records[i]))
-			}
 		}
 		result.State, result.Comparison = Completed, comparison
 		return result
