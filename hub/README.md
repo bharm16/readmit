@@ -784,6 +784,45 @@ artifact-only restore lacks a journal and cannot start scheduling. There is no
 new backup version or automated scheduler restore. Real PKI, destination/egress
 approval, retention and stopped-snapshot recovery drills remain owner gates.
 
+### Managed schedules
+
+`serve -schedules` (with `-access-policy` and `-runner-policy`, never with
+`-schedule-policy`) runs the managed schedule service instead of an installed
+policy file. The application creates, changes, enables, pauses and deletes a
+project's schedules through `POST /v1/projects/{project}/schedules`
+(`readmit-hub-schedule-command/v1`, the admin action and ordinary author
+admission) and reads them through `GET` (`readmit-hub-schedule-list/v1`,
+evidence.read). A command is answered (`readmit-hub-schedule-ack/v1`) only
+after the scheduler persisted it in the private
+`ARTIFACT_ROOT/scheduler-managed/state.json` (`readmit-hub-schedule-state/v1`):
+its revision, authoritative state, next occurrence and acknowledgement time.
+Each command names its intent: the same intent again answers the first
+acknowledgement and changes nothing, and the same intent for other content, or
+a command made against another revision, is a conflict. A hub serving without
+`-schedules` answers the route unavailable, so nothing is queued.
+
+A managed schedule runs a suite version the application prepared, daily, on
+weekdays or on selected days, at an `HH:MM` in a named IANA zone, within a run
+window of 1–720 minutes. Commands and dispatch are serialized: a slot is
+claimed durably before it is dispatched, and a schedule paused, deleted or
+changed between claim and dispatch never runs that slot (`cancelled`); a run
+already dispatched finishes. Each local day's slot has one occurrence key and
+records the schedule's generation and UTC offset, so a restart, a reconnect or
+a repeated command never runs it twice; an interrupted claim becomes
+`uncertain`. A slot past its window is `missed`, a nonexistent local minute is
+`skipped`, the first instant of a repeated minute runs once, and enabling
+authorizes only slots after its acknowledgement: nothing is caught up. Before
+every run the runner configuration must be readable here and the prepared
+suite must still prepare to its pinned input; otherwise the slot is `refused`
+and the schedule pauses with its reason (`pin-changed`, `unreadable`,
+`no-authority` when the runner policy is unavailable), and only a new reviewed
+change enables it again. Each test of the suite runs through the same pinned
+runner execution as a policy schedule, in dependency order. Notifications use
+the same fixed alert, sent once to the schedule's approved route.
+
+The artifact-only `backup` refuses once the managed state exists, as for the
+policy journal; use a stopped deployment snapshot.
+
 ### Offline operation admission
 
 `readmit-hub -config /private/hub.json -operation-policy /private/hub-operations.json serve` explicitly selects a

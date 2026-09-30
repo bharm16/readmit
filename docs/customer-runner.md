@@ -25,7 +25,7 @@ runner policy refuses the next renewal. Evidence read authorization is separate.
 The desktop application's runner panel generates these configuration and
 policy documents from structured forms and validates them through the same
 strict readers; installation on the runner host and the hub remains the
-administrator's action. See [the desktop shell](desktop.md#customer-runners-recurring-schedules-and-ci-handoffs).
+administrator's action. See [the desktop shell](desktop.md#runners-schedules-and-ci).
 
 The private strict `readmit-runner-policy/v1` file contains:
 
@@ -170,7 +170,7 @@ that those exact bytes implement that engine identity; verification does not
 execute an untrusted candidate to inspect its version. The desktop
 application's runner panel makes the same check against the configuration it
 names and refuses what this command refuses, in the same words; see [the
-desktop shell](desktop.md#staged-runner-updates).
+desktop shell](desktop.md#runners).
 
 The operator must explicitly change `update_engine` to approve an upgrade or a
 rollback; there is no implicit downgrade or automatic updater. Stop the service,

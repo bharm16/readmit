@@ -56,7 +56,7 @@ static build stand unchanged. Nothing here is added to the release archives.
 - Every new desktop capability is a facade method backed by an internal package.
   A capability the frontend cannot express as a typed call does not belong in the
   frontend.
-- The shell keeps ten bounded, versioned local documents (the recent folder
+- The shell keeps eleven bounded, versioned local documents (the recent folder
   paths of `readmit-desktop-recent/v1` were retired by #548: they are never
   written, and are read once, only before a projects list exists, to list the
   recorded projects they name): saved filters with the active selection and each project's saved views
@@ -78,9 +78,11 @@ static build stand unchanged. Nothing here is added to the release archives.
   (`readmit-desktop-operation-selection/v1`), the commercial destinations
   (`readmit-desktop-commercial-selection/v1`) and the customer hub
   configuration (`readmit-desktop-hub-selection/v1`), and the name the person
-  gave that team (`readmit-desktop-hub-team/v1`, amended 2026-09-29 by #562).
-  Saved field terms and a
-  retained draft can contain patient data typed by the operator. All eleven files
+  gave that team (`readmit-desktop-hub-team/v1`, amended 2026-09-29 by #562),
+  and what an admission, a read or an export last established about each runner
+  configuration, with when (`readmit-desktop-runner-status/v1`, amended
+  2026-09-30 by #564). Saved field terms and a
+  retained draft can contain patient data typed by the operator. All twelve files
   are owner-readable, replaced atomically, and kept
   outside evidence; unreadable documents are reported rather than overwritten.
   No evidence read from a case is persisted in shell state. No document is
@@ -284,3 +286,13 @@ whole series. It reads only that in-memory progress under its own lock, writes
 nothing and reaches nothing, so it cannot race the series it reports; the
 alternative, answering busy until the series ends, would leave the window
 unable to show the trials or offer Stop beside them.
+
+#564 (2026-09-30) adds `readmit-desktop-runner-status/v1`: per runner
+configuration path, the status an admission, a read or an export established
+(available, refused, offline or setup required) and when. It lets Settings ›
+Runners show a dated last contact after a restart without probing anything.
+It holds no credential, value or evidence, and a runner nothing has checked has
+no entry and reads Not checked. The alternative, keeping it in the project,
+would have tied one machine's view of a host to every copy of the project.
+Schedule changes the hub has not acknowledged are kept in the project instead
+(`readmit-schedule-intents/v1`), because they belong to the project's schedules.

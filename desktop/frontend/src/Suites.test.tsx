@@ -619,23 +619,25 @@ test("import fills one draft, and export and run configuration write only where 
   expect(facade.callsTo("PrepareAction").filter((call) => (call.args[0] as PrepareActionRequest).action.startsWith("run."))).toHaveLength(0);
 });
 
-test("Schedule and Set up CI open with this suite selected", async () => {
+test("Schedule opens this suite's schedules and Set up CI opens its sheet for the exact version", async () => {
   const user = userEvent.setup();
-  await openSmoke(user);
+  const { facade } = await openSmoke(user, {
+    ListSchedules: (request) => ({ state: "completed", context: request.context, schedules: [] }),
+    ListRunners: (context) => ({ state: "completed", context, runners: [] }),
+  });
   await user.click(page().getByRole("button", { name: "Schedule" }));
-  await page().findByRole("tab", { name: "Schedules", selected: true });
-  expect(page().getAllByDisplayValue("suite-s-smoke.json").length).toBeGreaterThan(0);
+  expect(await page().findByRole("heading", { level: 1, name: "Schedules" })).toBeTruthy();
+  await waitFor(() => expect(facade.callsTo("ListSchedules").length).toBeGreaterThan(0));
+  expect(facade.callsTo("ListSchedules")[0]!.args[0]).toMatchObject({ suite: SMOKE.ref.id });
 
   // Tests returns to the suite it was left on.
   await goTo(user, "Tests");
   await user.click(await page().findByRole("button", { name: "More suite actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Set up CI" }));
   const sheet = await screen.findByRole("dialog", { name: "Set up CI" });
-  await user.selectOptions(within(sheet).getByLabelText("Environment"), "staging");
-  await user.click(within(sheet).getByRole("button", { name: "Continue" }));
-  await page().findByRole("tab", { name: "CI handoff", selected: true });
-  expect(page().getByDisplayValue("suite-s-smoke.json")).toBeTruthy();
-  expect(page().getByDisplayValue("staging")).toBeTruthy();
+  expect(within(sheet).getByText("Version 4")).toBeTruthy();
+  expect(within(sheet).getByLabelText("Environment")).toBeTruthy();
+  expect(facade.callsTo("SaveCIHandoff")).toHaveLength(0);
 });
 
 test("a dependency on a removed test stays listed and can be unticked before Save", async () => {

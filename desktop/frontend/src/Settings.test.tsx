@@ -617,7 +617,7 @@ test("Add connection › Team chooses a hub configuration and returns to the Tea
   expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();
 });
 
-test("Add connection › Runner returns to the runner once its configuration is read", async () => {
+test("Add connection › Runner returns to the runner once it is added and admitted", async () => {
   const user = userEvent.setup();
   const RUNNER = connection({
     ref: "runner:config",
@@ -630,22 +630,37 @@ test("Add connection › Runner returns to the runner once its configuration is 
     actions: ["edit"],
     detail: { signed_in: false, config_path: "/etc/readmit-runner/config.json" },
   });
+  const saved = { kind: "runner" as const, id: "r1", revision: "1" };
   const { facade } = await renderApp({
-    ListConnections: (context) => ({ state: "completed", context, rows: facade.callsTo("ReadRunnerConfig").length > 0 ? [RUNNER, QA] : [QA] }),
-    ReadRunnerConfig: () => ({
-      state: "completed",
-      config: { hub: "https://hub.example.test:8443", project: "alpha", environment: "lab", root: "/var/lib/readmit-runner/runs", update_engine: "NEXT", key: { command: "/usr/local/bin/reader", arguments: [] }, token: { command: "/usr/local/bin/reader", arguments: [] } },
-      engine: "readmit-engine/v1",
-      jobs: [],
-      queued: [],
+    SelectWorkspace: () => folderWithCase(),
+    OperationStatus: () => ({ state: "completed", selected: true, author_seats: 1, runner_instances: 2 }),
+    ListConnections: (context) => ({ state: "completed", context, rows: facade.callsTo("EnrollRunner").length > 0 ? [RUNNER, QA] : [QA] }),
+    ListRunners: (context) => ({
+      state: "completed", context,
+      runners: facade.callsTo("SaveItem").length > 0 ? [{ ref: saved, name: "Runner lab", config: "/p/runner.json", environment: "lab", hub_environment: "lab", hub: "hub.example.test:8443", project: "alpha", root: "/r", status: "not-checked", active_jobs: 0, local: true }] : [],
     }),
+    ChooseRunnerPath: (kind) => ({ state: "completed", kind, paths: [`/etc/readmit-runner/${kind}`] }),
+    PreviewRunnerConfig: () => ({ state: "completed" }),
+    SaveItem: (request) => ({ state: "completed", context: request.context, outcome: "saved", saved, replayed: false, problems: [] }),
+    EnrollRunner: () => ({ state: "completed", project: "alpha", environment: "lab", expires_at: "2026-09-30T08:00:10Z", max_seconds: 600, max_jobs: 10 }),
   });
+  await openProject(user);
   await openSecurity(user);
   await user.click(await page().findByRole("button", { name: "Add connection" }));
   await user.click(await screen.findByRole("menuitem", { name: "Runner" }));
-  await user.type(await page().findByLabelText("Runner configuration file"), "/etc/readmit-runner/config.json");
-  await user.click(page().getByRole("button", { name: "Inspect runner" }));
-  await waitFor(() => expect(facade.callsTo("ReadRunnerConfig")).toHaveLength(1));
+  const sheet = await screen.findByRole("dialog", { name: "Add runner" });
+  await user.type(within(sheet).getByLabelText("Name"), "Runner lab");
+  await user.type(within(sheet).getByLabelText("Customer hub"), "https://hub.example.test:8443");
+  await user.type(within(sheet).getByLabelText("Hub project"), "alpha");
+  for (const label of ["hub certificate authority", "runner certificate", "key reader", "token reader"]) await user.click(within(sheet).getByRole("button", { name: `Choose ${label}` }));
+  await user.type(within(sheet).getByLabelText("Deployment key"), "key");
+  await user.type(within(sheet).getByLabelText("Approved build"), "NEXT");
+  await user.click(within(sheet).getByRole("button", { name: "Next" }));
+  await user.type(within(sheet).getByLabelText("Hub environment"), "lab");
+  await user.click(within(sheet).getByRole("button", { name: "Choose working folder" }));
+  await user.click(within(sheet).getByRole("button", { name: "Next" }));
+  await user.click(within(sheet).getByRole("button", { name: "Request admission" }));
+  await waitFor(() => expect(facade.callsTo("EnrollRunner")).toHaveLength(1));
   const detail = await screen.findByRole("dialog", { name: "Runner lab" });
   expect(within(detail).getByText("hub.example.test:8443")).toBeTruthy();
   expect(page().getByRole("button", { name: "Security", current: "page" })).toBeTruthy();

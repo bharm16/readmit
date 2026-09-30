@@ -63,8 +63,10 @@ type backupManifest struct {
 func (s *Store) Backup(ctx context.Context, destination string) error {
 	// The artifact backup contract cannot silently omit scheduler claims: restoring
 	// without them could repeat uncertain work. Use a stopped deployment snapshot.
-	if _, err := s.root.Lstat("scheduler"); !os.IsNotExist(err) {
-		return ErrSchedule
+	for _, journal := range []string{"scheduler", "scheduler-managed"} {
+		if _, err := s.root.Lstat(journal); !os.IsNotExist(err) {
+			return ErrSchedule
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

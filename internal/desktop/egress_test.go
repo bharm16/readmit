@@ -314,7 +314,7 @@ var destinationActivities = map[string]string{
 	"ListHubLifecycle": "hub", "PostHubLifecycle": "hub", "DownloadHubExport": "hub", "ReconcileHubOfflineDraft": "hub",
 	"ConnectOperatorHub": "hub", "ReadOperatorHubArtifact": "hub", "StoreOperatorHubArtifact": "hub",
 	"ReadHubTeam": "hub", "ListHubMembers": "hub", "ListHubReviewers": "hub", "DownloadHubFile": "hub", "DownloadHubSummary": "hub",
-	"ReconcileTeamTransfer": "hub",
+	"ReconcileTeamTransfer": "hub", "ListSchedules": "hub", "CommandSchedule": "hub",
 	"ReadHubSupportSummary": "hub", "PreviewHubRetention": "hub", "ApplyHubRetention": "hub", "OpenHubConflict": "hub",
 }
 

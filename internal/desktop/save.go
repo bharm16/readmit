@@ -32,10 +32,10 @@ import (
 
 // savedKinds are the kinds this release saves whole. Each one's editor lives
 // with its screen; the guarantees are these.
-var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, ReportItem, NormalizationPolicyItem}
+var savedKinds = []ItemKind{EnvironmentItem, TestItem, ObservationItem, CaseItem, ProjectItem, AnalysisSettingsItem, FindingReviewItem, VariantItem, ProfileItem, CheckGroupItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, ReportItem, NormalizationPolicyItem, RunnerItem}
 
 // savedKindsRule is the refusal of a kind this release does not save.
-const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources, suites, reports and normalization policies whole"
+const savedKindsRule = "this release saves environments, tests, observations, case details, project settings, analysis settings, finding reviews, variants, profiles, check groups, scenarios, link rules, coverage, mapping presets, capture sources, suites, reports, normalization policies and runners whole"
 
 // documentKinds are the saved kinds whose state the project document holds
 // rather than a revision the catalog publishes.
@@ -104,6 +104,9 @@ type ItemDraft struct {
 	// Report is a report made from runs: created with its retained packet,
 	// and edited as its title and notes.
 	Report *ReportDraft `json:"report,omitzero"`
+	// Runner is a named runner: its readmit-runner/v1 configuration and the
+	// project environment it is assigned to.
+	Runner *RunnerDraft `json:"runner,omitzero"`
 }
 
 // ObservationDraft is an observation source and its window, which only mean
@@ -166,7 +169,7 @@ func (a *App) ValidateDraft(request DraftRequest) DraftValidation {
 			return a.validateDocumentDraft(ctx, request)
 		}
 		scope := draftScope{item: request.Item}
-		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem || request.Kind == SuiteItem || request.Kind == ReportItem {
+		if request.Kind == EnvironmentItem || request.Kind == TestItem || request.Kind == FindingReviewItem || request.Kind == VariantItem || request.Kind == ProfileItem || request.Kind == ScenarioItem || request.Kind == CoverageItem || request.Kind == SourceItem || request.Kind == SuiteItem || request.Kind == ReportItem || request.Kind == RunnerItem {
 			loaded, declined := a.loadCatalog(ctx, request.Context, false)
 			if loaded == nil {
 				result.refuse(declined.state, declined.reason)
@@ -489,6 +492,12 @@ func validateItemDraft(scope draftScope, kind ItemKind, draft ItemDraft) ([]cata
 		if len(found) == 0 {
 			staged, normalized.AnalysisSettings = members, config
 		}
+	case RunnerItem:
+		members, runner, found := validateRunnerDraft(scope, draft)
+		problems = append(problems, found...)
+		if len(found) == 0 {
+			staged, normalized.Runner = members, runner
+		}
 	case CheckGroupItem:
 		if draft.CheckGroup == nil {
 			return nil, nil, append(problems, FieldProblem{Field: "check_group", Problem: "a check group is a named set of checks"})
@@ -699,6 +708,8 @@ func verifierFor(kind ItemKind) catalog.Verifier {
 			return verifyCaptureSource(files)
 		case SuiteItem:
 			return verifySuite(files)
+		case RunnerItem:
+			return verifyRunner(files)
 		case SuiteApprovalItem:
 			_, err := readSuiteApproval(files[primaryRole(SuiteApprovalItem)])
 			return err

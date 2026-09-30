@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/bharm16/readmit/internal/customerrunner"
 	"github.com/bharm16/readmit/internal/durablerun"
 	"github.com/bharm16/readmit/internal/operationguard"
+	"github.com/bharm16/readmit/internal/runnerprotocol"
+	"github.com/bharm16/readmit/internal/runqueue"
 )
 
 // sendScheduleAlert has no proxy, redirects, authentication headers or response
@@ -141,6 +144,173 @@ loop:
 				break loop
 			}
 			if err = scheduler.Tick(ctx, time.Now()); err != nil && ctx.Err() == nil {
+				scheduleErr = err
+				cancel()
+				break loop
+			}
+		}
+	}
+	serveErr := <-result
+	if scheduleErr != nil {
+		return scheduleErr
+	}
+	return serveErr
+}
+
+// ExecuteManagedRun runs one managed occurrence: every test of the prepared
+// suite, in dependency order, each through the existing customer-runner
+// execution boundary with its own pinned input. A test whose dependency did
+// not pass is not run. The occurrence passes only when every test passed.
+func ExecuteManagedRun(ctx context.Context, entry runnerprotocol.ScheduleEntry, key string) string {
+	c, e := customerrunner.ReadConfig(entry.RunnerConfig)
+	if e != nil {
+		return "error"
+	}
+	identity, jobs, e := runqueue.PinnedJobs(ctx, entry.Spec)
+	if e != nil || identity != entry.Input {
+		return "error"
+	}
+	passed, done := map[string]bool{}, map[string]bool{}
+	worst := "passed"
+	rank := map[string]int{"passed": 0, "failed": 1, "error": 2, "cancelled": 3, "uncertain": 4}
+	for progressed := true; progressed; {
+		progressed = false
+		for i, job := range jobs {
+			if done[job.ID] {
+				continue
+			}
+			ready, blocked := true, false
+			for _, after := range job.After {
+				ready = ready && done[after]
+				blocked = blocked || done[after] && !passed[after]
+			}
+			if !ready {
+				continue
+			}
+			done[job.ID], progressed = true, true
+			state := "failed"
+			if !blocked {
+				state = executeQueuedJob(ctx, c, fmt.Sprintf("%s-%d", key, i), job)
+			}
+			passed[job.ID] = state == "passed"
+			if rank[state] > rank[worst] {
+				worst = state
+			}
+			if state == "uncertain" || state == "cancelled" {
+				return state
+			}
+		}
+	}
+	return worst
+}
+
+func executeQueuedJob(ctx context.Context, c customerrunner.Config, id string, job runqueue.PinnedJob) string {
+	summary, e := customerrunner.RunPinned(ctx, c, customerrunner.Job{Schema: "readmit-runner-job/v1", ID: id, Spec: job.Spec}, job.Input)
+	switch {
+	case summary.DeliveryUncertain || summary.JournalIncomplete:
+		return "uncertain"
+	case ctx.Err() != nil:
+		return "cancelled"
+	case e != nil:
+		return "error"
+	}
+	switch summary.State {
+	case durablerun.Passed:
+		return "passed"
+	case durablerun.AssertionFailed:
+		return "failed"
+	case durablerun.Cancelled:
+		return "cancelled"
+	}
+	return "error"
+}
+
+// RevalidateManagedRun is the check before every managed run: the runner
+// configuration is readable on this host and the prepared suite still
+// prepares to the pinned input. A change is never approved here; the
+// schedule is paused.
+func RevalidateManagedRun(ctx context.Context, project string, entry runnerprotocol.ScheduleEntry) string {
+	// A schedule runs only a runner configuration of its own project: an
+	// administrator of one project cannot point the scheduler at another's.
+	if c, e := customerrunner.ReadConfig(entry.RunnerConfig); e != nil || c.Project != project {
+		return runnerprotocol.ReasonUnreadable
+	}
+	identity, _, e := runqueue.PinnedJobs(ctx, entry.Spec)
+	if e != nil {
+		return runnerprotocol.ReasonUnreadable
+	}
+	if identity != entry.Input {
+		return runnerprotocol.ReasonPinChanged
+	}
+	return ""
+}
+
+// ServeManagedSchedules serves team access and runner admission with the
+// managed schedule service: the schedule route acknowledges commands and the
+// scheduler dispatches occurrences while this service runs, whether or not
+// any application is open.
+func (s *Store) ServeManagedSchedules(ctx context.Context, access *Access, runnerPath string) error {
+	return s.serveManagedSchedules(ctx, access, runnerPath, time.Now, ExecuteManagedRun, RevalidateManagedRun)
+}
+
+func (s *Store) serveManagedSchedules(ctx context.Context, access *Access, runnerPath string, clock func() time.Time, execute ManagedExecutor, revalidate ManagedRevalidator) error {
+	if access == nil || runnerPath == "" {
+		return ErrSchedule
+	}
+	runnerExecute := func(jobCtx context.Context, entry runnerprotocol.ScheduleEntry, key string) (state string) {
+		state = "error"
+		_ = s.operationGuard().Run(jobCtx, scheduledRun, func(ctx context.Context) error {
+			state = execute(ctx, entry, key)
+			return nil
+		})
+		return state
+	}
+	// Before every run: a current runner grant for the runner's project and
+	// environment, and an installed operation policy (the license).
+	authority := func(project string, entry runnerprotocol.ScheduleEntry) error {
+		policy, e := readRunnerPolicy(runnerPath)
+		if e != nil || s.operations == nil {
+			return ErrSchedule
+		}
+		c, e := customerrunner.ReadConfig(entry.RunnerConfig)
+		if e != nil || c.Project != project {
+			return ErrSchedule
+		}
+		for _, grant := range policy.Runners {
+			if grant.Project == c.Project && grant.Environment == c.Environment {
+				return nil
+			}
+		}
+		return ErrSchedule
+	}
+	scheduler, e := OpenManagedScheduler(managedDirectory(s.config.Root), clock(), runnerExecute, revalidate, sendScheduleAlert, authority)
+	if e != nil {
+		return e
+	}
+	defer scheduler.Close()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	handler, readyAt, e := s.runnerService(ctx, access, runnerPath, clock)
+	if e != nil {
+		return e
+	}
+	s.managed.Store(scheduler)
+	defer s.managed.Store(nil)
+	result := make(chan error, 1)
+	go func() { result <- s.serve(ctx, handler); cancel() }()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var scheduleErr error
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			break loop
+		case <-ticker.C:
+			if clock().Before(readyAt) {
+				continue
+			}
+			if err := scheduler.Tick(ctx, clock()); err != nil && ctx.Err() == nil {
 				scheduleErr = err
 				cancel()
 				break loop

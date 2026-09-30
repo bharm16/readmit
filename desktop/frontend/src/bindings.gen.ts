@@ -631,6 +631,7 @@ export interface CIHandoffRequest {
   coverage_file: string;
   output: string;
   gate?: CIGateStep;
+  suite?: string;
 }
 
 /** internal/desktop.CIHandoffResult */
@@ -4715,6 +4716,7 @@ export interface ItemDraft {
   suite?: SuiteDraft;
   normalization_policy?: NormalizationPolicy;
   report?: ReportDraft;
+  runner?: RunnerDraft;
 }
 
 /** internal/desktop.ItemDraftResult */
@@ -8951,6 +8953,7 @@ export interface RunnerConfigRequest {
   update_key: string;
   update_engine: string;
   output: string;
+  source?: string;
 }
 
 /** internal/desktop.RunnerConfigView */
@@ -8971,6 +8974,21 @@ export interface RunnerDocumentResult {
   document?: string;
   output?: string;
   sha256?: string;
+}
+
+/** internal/desktop.RunnerDraft */
+export interface RunnerDraft {
+  hub: string;
+  project: string;
+  environment: string;
+  root: string;
+  ca: string;
+  certificate: string;
+  key: RunnerReferenceInput;
+  token: RunnerReferenceInput;
+  update_key: string;
+  update_engine: string;
+  assigned: string;
 }
 
 /** internal/desktop.RunnerEnrollmentResult */
@@ -9015,6 +9033,13 @@ export interface RunnerGrantRequest {
   output: string;
 }
 
+/** internal/desktop.RunnerGrantsResult */
+export interface RunnerGrantsResult {
+  state: State;
+  reason?: string;
+  grants: RunnerprotocolGrant[];
+}
+
 /** internal/desktop.RunnerInspectResult */
 export interface RunnerInspectResult {
   state: State;
@@ -9054,6 +9079,14 @@ export interface RunnerJobState {
   reason?: string;
 }
 
+/** internal/desktop.RunnerListResult */
+export interface RunnerListResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  runners: RunnerRow[];
+}
+
 /** internal/desktop.RunnerRecoveryResult */
 export interface RunnerRecoveryResult {
   state: State;
@@ -9069,6 +9102,24 @@ export interface RunnerRecoveryResult {
 export interface RunnerReferenceInput {
   command: string;
   arguments: string[];
+}
+
+/** internal/desktop.RunnerRow */
+export interface RunnerRow {
+  ref: ItemRef;
+  name: string;
+  config: string;
+  environment: string;
+  hub_environment: string;
+  assigned?: string;
+  hub: string;
+  project: string;
+  root: string;
+  status: string;
+  reason?: string;
+  last_seen?: string;
+  active_jobs: number;
+  local: boolean;
 }
 
 /** internal/desktop.RunnerSettleRequest */
@@ -9100,6 +9151,18 @@ export interface RunnerUpdateResult {
   state: State;
   reason?: string;
   engine?: string;
+}
+
+/** internal/runnerprotocol.Grant */
+export interface RunnerprotocolGrant {
+  project: string;
+  subject: string;
+  environment: string;
+  engine: string;
+  spec: string;
+  profile: string;
+  max_seconds: number;
+  max_jobs: number;
 }
 
 /** internal/desktop.SampleCaptureRequest */
@@ -9483,6 +9546,45 @@ export interface ScenariogenVariant {
   mutations: ScenariogenMutation[];
 }
 
+/** internal/desktop.ScheduleCommandRequest */
+export interface ScheduleCommandRequest {
+  context: RequestContext;
+  kind: string;
+  schedule?: string;
+  expected_revision: number;
+  enable: boolean;
+  draft?: ScheduleDraft;
+  token?: string;
+  intent: string;
+}
+
+/** internal/desktop.ScheduleCommandResult */
+export interface ScheduleCommandResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  schedule?: string;
+  revision: number;
+  status?: string;
+  next?: string;
+  pending: boolean;
+  replayed: boolean;
+}
+
+/** internal/desktop.ScheduleDraft */
+export interface ScheduleDraft {
+  name: string;
+  suite: ItemRef;
+  environment: string;
+  runner: string;
+  repeat: string;
+  days: string[];
+  at: string;
+  zone: string;
+  window_minutes: number;
+  route: string;
+}
+
 /** internal/desktop.ScheduleEntryInput */
 export interface ScheduleEntryInput {
   id: string;
@@ -9505,6 +9607,21 @@ export interface ScheduleEntryView {
   notification?: string;
 }
 
+/** internal/desktop.ScheduleListRequest */
+export interface ScheduleListRequest {
+  context: RequestContext;
+  suite?: string;
+  runner?: string;
+}
+
+/** internal/desktop.ScheduleListResult */
+export interface ScheduleListResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  schedules: ScheduleRow[];
+}
+
 /** internal/desktop.ScheduleOccurrence */
 export interface ScheduleOccurrence {
   day: string;
@@ -9512,11 +9629,41 @@ export interface ScheduleOccurrence {
   state: string;
 }
 
+/** internal/desktop.ScheduleOccurrenceView */
+export interface ScheduleOccurrenceView {
+  day: string;
+  due: string;
+  offset?: string;
+  state: string;
+}
+
+/** internal/desktop.SchedulePin */
+export interface SchedulePin {
+  name: string;
+  version: string;
+}
+
 /** internal/desktop.SchedulePolicyRequest */
 export interface SchedulePolicyRequest {
   output: string;
   anchor: string;
   entries: ScheduleEntryInput[];
+}
+
+/** internal/desktop.SchedulePrepareRequest */
+export interface SchedulePrepareRequest {
+  context: RequestContext;
+  schedule?: string;
+  draft: ScheduleDraft;
+}
+
+/** internal/desktop.SchedulePrepareResult */
+export interface SchedulePrepareResult {
+  state: State;
+  reason?: string;
+  context: RequestContext;
+  review?: ScheduleReview;
+  problems: FieldProblem[];
 }
 
 /** internal/desktop.SchedulePreviewResult */
@@ -9528,6 +9675,54 @@ export interface SchedulePreviewResult {
   entries?: ScheduleEntryView[];
   alert?: string;
   alert_states?: string[];
+}
+
+/** internal/desktop.ScheduleReview */
+export interface ScheduleReview {
+  name: string;
+  suite: string;
+  version: string;
+  environment: string;
+  runner: string;
+  tests: SchedulePin[];
+  targets: SchedulePin[];
+  resets: string[];
+  repeat: string;
+  days: string[];
+  at: string;
+  zone: string;
+  next: string[];
+  window_minutes: number;
+  route: string;
+  notification?: string;
+  consequence: string;
+  token: string;
+}
+
+/** internal/desktop.ScheduleRow */
+export interface ScheduleRow {
+  id: string;
+  revision: number;
+  name: string;
+  suite: string;
+  version: string;
+  environment: string;
+  runner: string;
+  repeat: string;
+  days: string[];
+  at: string;
+  zone: string;
+  window_minutes: number;
+  route: string;
+  state: string;
+  reason?: string;
+  next?: string;
+  pending?: string;
+  pending_reason?: string;
+  recent: ScheduleOccurrenceView[];
+  draft?: ScheduleDraft;
+  suite_id?: string;
+  runner_id?: string;
 }
 
 /** internal/desktop.ScheduleSummary */
@@ -11751,6 +11946,7 @@ export interface Facade {
   ChooseOperatorHubConfig(): Promise<HubResult>;
   ChooseProjectLocation(): Promise<ProjectLocationResult>;
   ChooseRunSpec(workspace: string): Promise<RunSpecChoiceResult>;
+  ChooseRunnerPath(kind: string): Promise<PathChoiceResult>;
   ChooseSupportExportPath(): Promise<PacketPathResult>;
   ChooseSyntheticPacketPath(kind: string): Promise<PacketPathResult>;
   ClassifyDroppedSources(paths: string[]): Promise<DroppedSourcesResult>;
@@ -11759,6 +11955,7 @@ export interface Facade {
   ClearViews(workspace: string): Promise<ViewsResult>;
   CollectObservation(request: ObservationCollectFacadeRequest): Promise<ObservationCompletionResult>;
   CollectionProgress(): Promise<CollectionProgressResult>;
+  CommandSchedule(request: ScheduleCommandRequest): Promise<ScheduleCommandResult>;
   CommercialStatus(): Promise<CommercialStatusResult>;
   Compare(request: CompareRequest): Promise<CompareResult>;
   CompareCases(request: CaseComparisonRequest): Promise<CaseComparisonResult>;
@@ -11873,6 +12070,8 @@ export interface Facade {
   ListProjectRecoveryCopies(path: string): Promise<ProjectRecoveryCopiesResult>;
   ListProtectionControls(workspace: string): Promise<ProtectionListResult>;
   ListReceiverSnapshots(request: ItemRequest): Promise<ReceiverSnapshotsResult>;
+  ListRunners(request: RequestContext): Promise<RunnerListResult>;
+  ListSchedules(request: ScheduleListRequest): Promise<ScheduleListResult>;
   ListSearchSettings(workspace: string): Promise<SearchSettingsListResult>;
   ListViews(workspace: string): Promise<ViewsResult>;
   LocateItem(request: LocateRequest): Promise<ItemResult>;
@@ -11924,6 +12123,7 @@ export interface Facade {
   PostHubSupportReview(request: HubSupportReviewRequest): Promise<HubReviewsResult>;
   PreflightRun(request: RunPreflightRequest): Promise<RunPreflightResult>;
   PrepareAction(request: PrepareActionRequest): Promise<ActionReviewResult>;
+  PrepareSchedule(request: SchedulePrepareRequest): Promise<SchedulePrepareResult>;
   PrepareStagedUpgrade(request: UpgradePrepareRequest): Promise<UpgradeResult>;
   PrepareSyntheticRerun(request: SyntheticRerunRequest): Promise<SyntheticRerunResult>;
   PreviewFindingReview(request: DraftRequest): Promise<FindingReviewPreview>;
@@ -11955,6 +12155,7 @@ export interface Facade {
   ReadRedactPolicy(workspace: string, entry: string): Promise<RedactPolicyResult>;
   ReadResetPlan(workspace: string, planFile: string): Promise<ResetPlanResult>;
   ReadRunnerConfig(configPath: string): Promise<RunnerInspectResult>;
+  ReadRunnerGrants(path: string, project: string): Promise<RunnerGrantsResult>;
   ReadRunnerRecovery(configPath: string, jobID: string): Promise<RunnerRecoveryResult>;
   ReadSecrets(workspace: string, secretsFile: string): Promise<SecretsResult>;
   ReadSendPolicy(workspace: string, policyFile: string): Promise<SendPolicyResult>;

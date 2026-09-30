@@ -21,6 +21,7 @@ func run() error {
 	accessPath := flag.String("access-policy", "", "absolute team admission policy path")
 	runnerPath := flag.String("runner-policy", "", "absolute runner admission policy path")
 	schedulePath := flag.String("schedule-policy", "", "absolute initialized recurring schedule policy path")
+	managed := flag.Bool("schedules", false, "serve the managed schedule service with runner admission")
 	directory := flag.String("directory", "", "new backup directory or existing restore directory")
 	flag.Parse()
 	if *configPath == "" || flag.NArg() != 1 {
@@ -57,12 +58,18 @@ func run() error {
 			if err != nil {
 				return err
 			}
+			if *managed {
+				if *schedulePath != "" {
+					return fmt.Errorf("managed schedules and a schedule policy are served separately")
+				}
+				return store.ServeManagedSchedules(ctx, access, *runnerPath)
+			}
 			if *schedulePath != "" {
 				return store.ServeSchedules(ctx, access, *runnerPath, *schedulePath)
 			}
 			return store.ServeRunners(ctx, access, *runnerPath)
 		}
-		if *runnerPath != "" || *schedulePath != "" {
+		if *runnerPath != "" || *schedulePath != "" || *managed {
 			return fmt.Errorf("runner policy requires team access")
 		}
 		return store.Serve(ctx)

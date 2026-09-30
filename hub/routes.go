@@ -61,6 +61,8 @@ func Routes() []Route {
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/files", Purpose: "list the project's files"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/members", Purpose: "list the project's members"},
 		{Service: "team", Method: "GET", Path: "/v2/projects/{project}/reviewers", Purpose: "list the members a review may be requested of"},
+		{Service: "team", Method: "GET", Path: "/v1/projects/{project}/schedules", Purpose: "read the project's managed schedules"},
+		{Service: "team", Method: "POST", Path: "/v1/projects/{project}/schedules", Purpose: "acknowledge one managed schedule command"},
 
 		// The runner service: short-lived execution leases for enrolled
 		// customer runners.

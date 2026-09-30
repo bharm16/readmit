@@ -574,7 +574,7 @@ type ItemDraftResult struct {
 func (r *ItemDraftResult) refuse(state State, reason string) { r.State, r.Reason = state, reason }
 
 // draftKinds are the kinds whose editor starts from OpenItemDraft.
-var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, NormalizationPolicyItem}
+var draftKinds = []ItemKind{EnvironmentItem, ObservationItem, AnalysisSettingsItem, FindingReviewItem, CheckGroupItem, ProfileItem, ScenarioItem, LinkRulesItem, CoverageItem, MappingItem, SourceItem, SuiteItem, NormalizationPolicyItem, RunnerItem}
 
 // OpenItemDraft answers the draft an editor starts from. A reference with no
 // identity is a new object: a new environment starts unclassified with its
@@ -604,7 +604,7 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 			return a.openSuiteDraft(ctx, request)
 		}
 		if !slices.Contains(draftKinds, request.Ref.Kind) {
-			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping, capture source, suite and normalization policy drafts")
+			result.refuse(Failed, "this release opens environment, observation, test, analysis settings, finding review, check group, profile, scenario, link rule, coverage, mapping, capture source, suite, normalization policy and runner drafts")
 			return result
 		}
 		if request.Ref.ID == "" && request.Ref.Kind == FindingReviewItem {
@@ -634,6 +634,8 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				return result
 			case SourceItem:
 				draft.Source = defaultCaptureSource()
+			case RunnerItem:
+				draft.Runner = &RunnerDraft{Key: RunnerReferenceInput{Arguments: []string{}}, Token: RunnerReferenceInput{Arguments: []string{}}}
 			case EnvironmentItem:
 				target := operation.DefaultTarget()
 				target.Classification, target.Transport = replay.Unclassified, ""
@@ -759,6 +761,13 @@ func (a *App) OpenItemDraft(request ItemRequest) ItemDraftResult {
 				}
 				draft.Source = source
 			}
+		case RunnerItem:
+			runner, err := loaded.runnerDraftOf(record)
+			if err != nil {
+				result.refuse(Failed, err.Error())
+				return result
+			}
+			draft.Runner = runner
 		case EnvironmentItem:
 			members, err := loaded.environmentOf(record)
 			if err != nil {
